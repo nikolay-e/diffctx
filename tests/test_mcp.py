@@ -51,9 +51,8 @@ def legacy_tools(server):
     register_legacy_tools(server)
 
 
-def _get_text(call_result: tuple) -> str:
-    content_blocks = call_result[0]
-    return content_blocks[0].text
+def _get_text(call_result) -> str:
+    return call_result[0].text
 
 
 def _run_with_argv(main, argv):
@@ -208,6 +207,32 @@ class TestGetDiffContext:
         assert doc["schema"] == "diffctx.locate.v1"
         assert doc["items"]
         assert all(i["reasons"] for i in doc["items"])
+
+    @pytest.mark.asyncio
+    async def test_default_diff_ref_follows_the_work_in_front_of_the_agent(self, server, mcp_repo):
+        import json
+
+        args = {"repo_path": str(mcp_repo.path), "mode": "locate"}
+        clean = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert clean["commit_message"] == "add subtract function"
+
+        (mcp_repo.path / "src" / "extra.py").write_text("from calc import add\n\nX = add(2, 2)\n", encoding="utf-8")
+        dirty = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert dirty["changed_files"] == ["src/extra.py"]
+
+    @pytest.mark.asyncio
+    async def test_locate_keeps_the_overflow_count_but_not_the_list(self, server, mcp_repo):
+        import json
+
+        from diffctx._native import build_locate
+
+        engine = json.loads(build_locate(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=40, timeout=60))
+        assert engine["overflow"], "the fixture must overflow for this test to mean anything"
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "budget_tokens": 40}
+        doc = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
+        assert "overflow" not in doc
+        assert doc["overflow_count"] == engine["overflow_count"]
 
     @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
@@ -1238,6 +1263,16 @@ class TestToolDefinitionBudget:
         total = self._definition_tokens(tools[0])
         # 1063 * 0.4 = 425: the acceptance criterion was a >=60% cut.
         assert total <= 425, f"tool definition grew to {total} tokens, above the #127 budget"
+
+    def test_server_instructions_name_the_tool_within_a_budget(self, server):
+        """Under tool search the definition is deferred and these instructions are
+        all an agent sees; without them a fresh session reviewing a change never
+        called the tool (#289). They are paid for every session, so they are capped."""
+        import tiktoken
+
+        instructions = server._mcp_server.instructions or ""
+        assert "diffctx_context" in instructions
+        assert len(tiktoken.get_encoding("o200k_base").encode(instructions)) <= 60
 
     @pytest.mark.asyncio
     async def test_the_description_stays_under_the_budget(self, server):

@@ -93,14 +93,14 @@ def test_server_and_legacy_tool_agree_with_the_engine(tmp_path):
             {"repo_path": str(repo.path), "diff_ref": "HEAD~1..HEAD", "fragment_ids": [".netrc", "hidden.py", "app.py"]},
         )
     )
-    text = result[0][0].text
+    text = result[0].text
     assert "LEAK_NETRC" not in text
     assert "LEAK_HIDDEN" not in text
     assert "return 2" in text
 
     register_legacy_tools(mcp)
     result = asyncio.run(mcp.call_tool("get_file_context", {"repo_path": str(repo.path), "patterns": ["**/*", ".netrc"]}))
-    text = result[0][0].text
+    text = result[0].text
     assert "LEAK_NETRC" not in text
     assert "LEAK_HIDDEN" not in text
     # Two policies, not one. The glob reader is a tree-mode reader and applies
@@ -144,7 +144,7 @@ def test_a_directory_the_repo_ignores_is_not_readable_through_a_glob(tmp_path):
 
     register_legacy_tools(mcp)
     result = asyncio.run(mcp.call_tool("get_file_context", {"repo_path": str(repo.path), "patterns": ["**/*", ".git/config"]}))
-    text = result[0][0].text
+    text = result[0].text
     assert "LEAK_DIRRULE" not in text
     assert "LEAK_DIST" not in text
     assert "[remote" not in text, "the glob served .git/config, which carries the remote URL"
@@ -218,7 +218,7 @@ def test_a_three_dot_range_reads_bodies_from_its_right_side(tmp_path: Path, diff
 def _call(args: dict) -> str:
     from diffctx.mcp.server import mcp
 
-    return asyncio.run(mcp.call_tool("diffctx_context", args))[0][0].text
+    return asyncio.run(mcp.call_tool("diffctx_context", args))[0].text
 
 
 def test_a_bare_clone_is_refused_on_every_surface(tmp_path):

@@ -357,6 +357,13 @@
             "type": "string"
           }
         },
+        "no_fragment_changed_files": {
+          "description": "Changed files that yielded no fragment at all (not code, binary, over\nthe size cap) — absent for a reason no budget or selection controls.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "confidence": {
           "description": "Documented heuristic in [0, 1], NOT a probability and not a promise:\n`parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.\nIt says how much of the changed surface the run could see and fit — it\ncannot say whether what it selected is the right thing.",
           "type": "number",
@@ -370,6 +377,7 @@
         "next_up",
         "limit_reasons",
         "unrepresented_changed_files",
+        "no_fragment_changed_files",
         "confidence"
       ]
     },

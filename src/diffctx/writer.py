@@ -330,17 +330,19 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
 
 
 _OMITTED_TEXT_MARK = " (omitted)"
+_NO_FRAGMENTS_TEXT_MARK = " (no fragments)"
 
 
 def _escape_text_path(path: Any) -> str:
     # Backslash first, so an escaped marker below cannot be mistaken for a real
     # backslash the path carried; then the two line breaks git can emit
-    # unquoted; then the one suffix the changed-files list itself appends — a
+    # unquoted; then the suffixes the changed-files list itself appends — a
     # file literally named `report (omitted)` must not read as an omitted
     # `report`.
     text = str(path).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-    if text.endswith(_OMITTED_TEXT_MARK):
-        text = text[: -len(_OMITTED_TEXT_MARK)] + " \\(omitted)"
+    for mark in (_OMITTED_TEXT_MARK, _NO_FRAGMENTS_TEXT_MARK):
+        if text.endswith(mark):
+            text = text[: -len(mark)] + " \\" + mark[1:]
     return text
 
 
@@ -362,9 +364,11 @@ def _write_text_raw_diff(file: TextIO, tree: dict[str, Any]) -> None:
 
 def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     omitted = set(_omitted_changed_files(tree))
+    fragmentless = set(_no_fragment_changed_files(tree))
     file.write("  changed files:\n")
     for path in tree["changed_files"]:
-        mark = _OMITTED_TEXT_MARK if str(path) in omitted else ""
+        text = str(path)
+        mark = _NO_FRAGMENTS_TEXT_MARK if text in fragmentless else _OMITTED_TEXT_MARK if text in omitted else ""
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
@@ -551,12 +555,16 @@ def _omitted_changed_files(tree: dict[str, Any]) -> list[str]:
     # The engine's inventory row says whether anything of a changed file made
     # it out; the fallback re-derives it for a dict without one.
     if tree.get("changes"):
-        return [str(c["path"]) for c in tree["changes"] if not c.get("represented", True)]
+        return [str(c["path"]) for c in tree["changes"] if not c.get("represented", True) and not c.get("no_fragments")]
     changed = tree.get("changed_files") or []
     if not changed:
         return []
     represented = {str(frag.get("path", "")) for frag in tree.get("fragments") or []}
     return [str(p) for p in changed if str(p) not in represented]
+
+
+def _no_fragment_changed_files(tree: dict[str, Any]) -> list[str]:
+    return [str(c["path"]) for c in tree.get("changes") or [] if c.get("no_fragments")]
 
 
 def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str) -> None:
@@ -574,6 +582,7 @@ def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str
 # list, with the omitted entries marked, carries the same two facts for a marker
 # per entry instead of a whole line.
 _OMITTED_MARK = " — omitted"
+_NO_FRAGMENTS_MARK = " — no fragments"
 
 
 def _coverage_note(tree: dict[str, Any]) -> str | None:
@@ -581,7 +590,7 @@ def _coverage_note(tree: dict[str, Any]) -> str | None:
     if not coverage:
         return None
     reasons = ", ".join(str(r) for r in coverage.get("limit_reasons") or [])
-    return f"Coverage: {coverage.get('status', 'partial')} — the run stopped at a limit ({reasons}); context may be missing."
+    return f"Coverage: {coverage.get('status', 'partial')} — the run hit a limit ({reasons}); context may be missing."
 
 
 def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
@@ -589,13 +598,18 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     if not changed:
         return
     omitted = set(_omitted_changed_files(tree))
+    fragmentless = set(_no_fragment_changed_files(tree))
     file.write("**Changed files:**\n\n")
     for path in changed:
         text = str(path)
-        mark = _OMITTED_MARK if text in omitted else ""
+        mark = _NO_FRAGMENTS_MARK if text in fragmentless else _OMITTED_MARK if text in omitted else ""
         file.write(f"- {_escape_md_inline_code(text)}{mark}\n")
     if omitted:
         file.write("\n*\u201comitted\u201d = no fragment of this file is in the output (budget/selection).*\n")
+    if fragmentless:
+        file.write(
+            "\n*\u201cno fragments\u201d = the file yielded nothing to select (not code, binary, or over the size cap).*\n"
+        )
     file.write("\n")
 
 
@@ -756,7 +770,7 @@ def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
     if "selection_budget_exceeded" not in reasons:
         reasons.append("selection_budget_exceeded")
     coverage["limit_reasons"] = reasons
-    if any(not c["represented"] for c in trimmed.get("changes") or []):
+    if any(not c["represented"] and not c.get("no_fragments") for c in trimmed.get("changes") or []):
         coverage["status"] = "degraded"
     trimmed["coverage"] = coverage
     return trimmed

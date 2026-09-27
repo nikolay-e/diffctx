@@ -49,7 +49,7 @@ def test_server_json_package_version():
 
 
 def test_claude_plugin_json_version():
-    data = json.loads(_load_text(".claude-plugin/plugin.json"))
+    data = json.loads(_load_text("plugin/.claude-plugin/plugin.json"))
     assert data["version"] == __version__
 
 

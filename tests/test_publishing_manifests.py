@@ -53,7 +53,39 @@ class TestRegistryManifest:
 
 class TestClaudePlugin:
     def test_manifest_version_matches_package(self):
-        assert _load(".claude-plugin/plugin.json")["version"] == __version__
+        assert _load("plugin/.claude-plugin/plugin.json")["version"] == __version__
+
+    def test_marketplace_lists_the_plugin_folder(self):
+        [entry] = _load(".claude-plugin/marketplace.json")["plugins"]
+        assert entry["name"] == _load("plugin/.claude-plugin/plugin.json")["name"]
+        assert (PROJECT_ROOT / entry["source"] / ".claude-plugin" / "plugin.json").is_file()
+
+    def test_plugin_mcp_json_pins_the_released_package(self):
+        """Anthropic's plugin directory blocks an unpinned uvx launcher, and an
+        installed plugin must start the version it was reviewed at."""
+        server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
+        assert server["command"] == "uvx"
+        assert server["args"] == [
+            "-c",
+            "${CLAUDE_PLUGIN_ROOT}/constraints.txt",
+            "--from",
+            f"diffctx[mcp]=={__version__}",
+            "diffctx-mcp",
+        ]
+
+    def test_plugin_constraints_pin_every_dependency_exactly(self):
+        """The launcher pin fixes diffctx alone; its dependencies would resolve
+        fresh on every install. The constraints file pins all of them to the
+        uv.lock set the release was tested with."""
+        lines = (PROJECT_ROOT / "plugin" / "constraints.txt").read_text(encoding="utf-8").splitlines()
+        pins = {}
+        for line in lines:
+            spec = line.split(";")[0].strip()
+            name, sep, version = spec.partition("==")
+            assert sep and version and not re.search(r"[<>~!*,]", version), line
+            pins.setdefault(name.lower(), set()).add(version)
+        assert {"mcp", "pathspec", "pydantic", "anyio"} <= pins.keys()
+        assert "diffctx" not in pins
 
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]
@@ -61,11 +93,11 @@ class TestClaudePlugin:
         assert server["args"] == UVX_ARGS
 
     @pytest.mark.parametrize("command", ["diffctx", "impact"])
-    def test_slash_command_has_frontmatter_and_a_real_tool(self, command):
+    def test_skill_has_frontmatter_and_a_real_tool(self, command):
         """Plugin commands instruct the model to call an MCP tool by name;
         a tool rename that skips these files ships a plugin whose commands
         reference nothing."""
-        text = (PROJECT_ROOT / "commands" / f"{command}.md").read_text(encoding="utf-8")
+        text = (PROJECT_ROOT / "plugin" / "skills" / command / "SKILL.md").read_text(encoding="utf-8")
         front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
         assert front
         assert "description:" in front.group(1)

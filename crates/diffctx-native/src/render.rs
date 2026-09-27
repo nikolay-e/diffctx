@@ -23,6 +23,10 @@ pub struct ChangeSummary {
     /// `(display path, class, reason)` for every changed file, the class the
     /// selection policy ranked evidence by.
     pub changes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
+    /// Display paths of changed files that yielded no fragment at all (not
+    /// code, binary, over the size cap): unrepresented by nature, not because
+    /// the budget or the selection dropped them.
+    pub fragmentless: FxHashSet<String>,
     pub changed_files: Vec<String>,
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
@@ -73,6 +77,9 @@ pub struct ChangeEntry {
     pub path: String,
     pub class: crate::change_class::ChangeClass,
     pub represented: bool,
+    /// The file produced no fragment for any budget to keep or drop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_fragments: bool,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -171,7 +178,7 @@ impl DiffContextOutput {
         let mut unrepresented = false;
         for change in &mut self.changes {
             change.represented = represented.contains(change.path.as_str());
-            unrepresented |= !change.represented;
+            unrepresented |= !change.represented && !change.no_fragments;
         }
         let coverage = self
             .coverage
@@ -699,6 +706,7 @@ pub fn build_diff_context_output(
         .into_iter()
         .map(|(path, class, _reason)| ChangeEntry {
             represented: by_path.contains_key(&path),
+            no_fragments: change.fragmentless.contains(&path),
             path,
             class,
         })

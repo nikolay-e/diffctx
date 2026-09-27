@@ -104,6 +104,10 @@ pub struct Coverage {
     /// changed, the budget or the selection left nothing of them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unrepresented_changed_files: Vec<String>,
+    /// Changed files that yielded no fragment at all (not code, binary, over
+    /// the size cap) — absent for a reason no budget or selection controls.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub no_fragment_changed_files: Vec<String>,
     /// Documented heuristic in [0, 1], NOT a probability and not a promise:
     /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.
     /// It says how much of the changed surface the run could see and fit — it
@@ -122,6 +126,7 @@ impl Coverage {
             && self.next_up == 0
             && self.limit_reasons.is_empty()
             && self.unrepresented_changed_files.is_empty()
+            && self.no_fragment_changed_files.is_empty()
     }
 }
 
@@ -288,6 +293,13 @@ fn build_coverage(
         .iter()
         .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
         .collect();
+    let fragmented: FxHashSet<&str> = state.all_fragments.iter().map(|f| f.path()).collect();
+    let fragmentless: FxHashSet<String> = state
+        .changed_files
+        .iter()
+        .filter(|p| !fragmented.contains(p.to_string_lossy().as_ref()))
+        .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
+        .collect();
 
     // One grouping pass, not one scan per changed file: the naive form is
     // O(changed x all_fragments) with a path allocation per pair, and both
@@ -376,10 +388,15 @@ fn build_coverage(
                 .collect();
             changed
                 .iter()
-                .filter(|p| !represented.contains(*p))
+                .filter(|p| !represented.contains(*p) && !fragmentless.contains(*p))
                 .cloned()
                 .collect()
         },
+        no_fragment_changed_files: changed
+            .iter()
+            .filter(|p| fragmentless.contains(*p))
+            .cloned()
+            .collect(),
         confidence: (raw.clamp(0.0, 1.0) * 1e2).round() / 1e2,
     }
 }

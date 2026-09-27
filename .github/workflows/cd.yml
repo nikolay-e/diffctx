@@ -135,10 +135,17 @@ jobs:
           assert n == 1, "action.yml: diffctx-version default not found"
           act.write_text(s, encoding="utf-8")
 
-          plug = pathlib.Path(".claude-plugin/plugin.json")
+          plug = pathlib.Path("plugin/.claude-plugin/plugin.json")
           doc = json.loads(plug.read_text(encoding="utf-8"))
           doc["version"] = ver
           plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+          mcp = pathlib.Path("plugin/.mcp.json")
+          doc = json.loads(mcp.read_text(encoding="utf-8"))
+          args = doc["mcpServers"]["diffctx"]["args"]
+          [i] = [i for i, a in enumerate(args) if a.startswith("diffctx[mcp]==")]
+          args[i] = f"diffctx[mcp]=={ver}"
+          mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           srv = pathlib.Path("server.json")
           doc = json.loads(srv.read_text(encoding="utf-8"))
@@ -166,6 +173,19 @@ jobs:
           )
           assert n == 1, "Cargo.lock: diffctx package entry not found"
           lock.write_text(s, encoding="utf-8")
+
+          # CI installs with `uv sync --locked`, which refuses a lockfile whose
+          # editable diffctx entry lags pyproject — every job after 1.17.0 did.
+          uv_lock = pathlib.Path("uv.lock")
+          s = uv_lock.read_text(encoding="utf-8")
+          s, n = re.subn(
+              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+(?="\nsource = \{ editable = "\." \})',
+              lambda m: m.group(1) + ver,
+              s,
+              count=1,
+          )
+          assert n == 1, "uv.lock: editable diffctx entry not found"
+          uv_lock.write_text(s, encoding="utf-8")
           PY
           echo "version.py:"
           cat src/diffctx/version.py
@@ -207,6 +227,18 @@ jobs:
           PY
           grep -n -m3 -E '^## \[' CHANGELOG.md
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+
+      # The plugin's uvx launcher pins diffctx; this pins what diffctx pulls
+      # in, to the set CI installed from uv.lock, so an installed plugin runs
+      # the dependency versions this release was tested with.
+      - name: Pin the plugin's dependency set from uv.lock
+        run: |
+          uv export --frozen --no-dev --extra mcp --no-emit-project --no-hashes \
+            --no-header --no-annotate -q > plugin/constraints.txt
+          wc -l plugin/constraints.txt
+
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
         env:
@@ -214,8 +246,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock \
-            server.json action.yml .claude-plugin/plugin.json docs/product/github-action.md CITATION.cff \
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
+            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/constraints.txt \
+            docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
@@ -1159,6 +1192,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Key the OS upgrade layer to today
+        id: apt
+        run: echo "refresh=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
@@ -1168,6 +1205,7 @@ jobs:
           build-args: |
             VERSION=${{ needs.prepare-version.outputs.version }}
             DIFFCTX_BUILD_SHA=${{ needs.prepare-version.outputs.commit_sha }}
+            APT_REFRESH=${{ steps.apt.outputs.refresh }}
           outputs: >-
             type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 

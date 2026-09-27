@@ -1,12 +1,16 @@
 {
-    "version": "1.16.0",
+    "version": "1.17.0",
     "description": "Selects the minimum code an LLM needs to review a git diff",
     "homepage": "https://diffctx.com/",
     "license": "Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/nikolay-e/diffctx/releases/download/v1.16.0/diffctx-1.16.0-x86_64-pc-windows-msvc.zip",
-            "hash": "f690a79444040efff1328380ff14b509bf39dacd1e6502fe2a5684bbcc5a0dfa"
+            "url": "https://github.com/nikolay-e/diffctx/releases/download/v1.17.0/diffctx-1.17.0-x86_64-pc-windows-msvc.zip",
+            "hash": "c774f09790f64b6a104029dcf41b49b37cecea3176c52231417f0ecb58f6c84b"
+        },
+        "arm64": {
+            "url": "https://github.com/nikolay-e/diffctx/releases/download/v1.17.0/diffctx-1.17.0-aarch64-pc-windows-msvc.zip",
+            "hash": "499d32a204a7e11e50009a9b244ca74eece0ca859c45257bb2060f5de797f4cd"
         }
     },
     "bin": "diffctx.exe",
@@ -17,6 +21,9 @@
         "architecture": {
             "64bit": {
                 "url": "https://github.com/nikolay-e/diffctx/releases/download/v$version/diffctx-$version-x86_64-pc-windows-msvc.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/nikolay-e/diffctx/releases/download/v$version/diffctx-$version-aarch64-pc-windows-msvc.zip"
             }
         }
     }

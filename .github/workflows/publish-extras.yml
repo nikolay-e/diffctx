@@ -183,12 +183,14 @@ jobs:
           installed=0
           # Registry propagation took >100s on 1.15.0; without the installed
           # guard the loop used to fall through to a MODULE_NOT_FOUND that
-          # hid the real failure.
+          # hid the real failure. --prefer-online: npm caches the packument
+          # for its max-age, so without it every retry re-reads the first
+          # stale ETARGET answer (1.17.0 failed 10/10 that way).
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             # Sonar S8543 (unlocked dependency versions) is a false
             # positive: VERSION is the exact just-published version and
             # the package has zero dependencies.
-            if npm install --ignore-scripts "diffctx@$VERSION"; then installed=1; break; fi
+            if npm install --prefer-online --ignore-scripts "diffctx@$VERSION"; then installed=1; break; fi
             echo "npm registry not settled yet (attempt $attempt); retrying"
             sleep 30
           done

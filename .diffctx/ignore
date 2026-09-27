@@ -5,7 +5,10 @@
 htmlcov
 *.yaml
 *.yml
-tests
+# CI is code: a workflow change must reach its own review (#289).
+!.github/workflows/*.yml
+# The YAML corpus is noise; the Python tests are the coverage a review needs.
+tests/cases
 # Build and cache
 build
 dist

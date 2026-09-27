@@ -207,6 +207,7 @@ pub fn build_diff_context_in_memory(
         commit_messages: Vec::new(),
         commit_count: 0,
         changes: change_classes,
+        fragmentless: Default::default(),
         changed_files: changed_list,
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),

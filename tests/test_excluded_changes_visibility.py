@@ -153,6 +153,32 @@ def test_omitted_changed_files_are_disclosed_in_md_and_text(tmp_path):
     assert txt_marked == set(omitted)
 
 
+def test_a_changed_file_with_no_fragments_is_not_blamed_on_the_budget(tmp_path):
+    """#290: a changed file the fragmenter yields nothing for was reported as
+    budget-omitted with a degraded status, next to run-wide limits it never hit."""
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("src/app.py", "def a():\n    return 1\n")
+    repo.commit("initial")
+    repo.add_file("assets/icon.svg", '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>\n')
+    repo.commit("add icon")
+
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
+    assert [c["path"] for c in result["changes"] if c.get("no_fragments")] == ["assets/icon.svg"]
+    assert "evidence_budget_exceeded" not in (result.get("coverage") or {}).get("limit_reasons", [])
+    assert (result.get("coverage") or {}).get("status") != "degraded"
+
+    md = diffctx.to_markdown(result)
+    assert "- `assets/icon.svg` — no fragments" in md
+    assert "\u201cno fragments\u201d = the file yielded nothing to select" in md
+    assert "(budget/selection)" not in md
+    assert "assets/icon.svg (no fragments)" in diffctx.to_text(result)
+
+    located = run_diffctx_subprocess([".", "--diff", "HEAD~1", "--mode", "locate", "-f", "json", "-q"], cwd=repo.path)
+    coverage = json.loads(located.stdout).get("coverage") or {}
+    assert coverage.get("no_fragment_changed_files") == ["assets/icon.svg"]
+    assert "assets/icon.svg" not in coverage.get("unrepresented_changed_files", [])
+
+
 def test_fully_represented_output_has_no_omission_footer(tmp_path):
     repo = Pygit2Repo(tmp_path / "repo")
     repo.add_file("src/app.py", "def a():\n    pass\n")
@@ -188,7 +214,7 @@ def _assert_listed_unrepresented(repo: Path, diff_args: list[str], path: str) ->
     result = run_diffctx_subprocess([".", *diff_args, "-f", "json", "-q"], cwd=repo)
     doc = json.loads(result.stdout)
     assert doc["changed_files"] == [path], result.stderr
-    assert doc["changes"] == [{"path": path, "class": doc["changes"][0]["class"], "represented": False}]
+    assert doc["changes"] == [{"path": path, "class": doc["changes"][0]["class"], "represented": False, "no_fragments": True}]
     return str(result.stderr)
 
 

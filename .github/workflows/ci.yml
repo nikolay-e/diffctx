@@ -165,7 +165,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Build image
-        run: docker build -f Dockerfile --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}" -t diffctx:ci .
+        run: >-
+          docker build -f Dockerfile -t diffctx:ci
+          --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}"
+          --build-arg "APT_REFRESH=$(date -u +%F)" .
 
       # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
       # the latest commit's diff fits a fixed budget depends on what that
