@@ -23,19 +23,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS runtime
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git \
-    && rm -rf /var/lib/apt/lists/*
-
 # Keyed to the UTC day CI passes, so an unchanged Dockerfile still picks up
-# Debian security fixes instead of reusing the upgrade layer forever.
+# Debian security fixes instead of reusing the layer forever.
 ARG APT_REFRESH=unset
 # Bind-mounted host repositories carry foreign ownership; without the
 # safe.directory entry git refuses to read them ("dubious ownership") and
-# every --diff run fails. It rides in the same layer as the upgrade: both are
-# cheap, and one layer keyed to the day is one cache entry, not two.
-RUN echo "security upgrade keyed to ${APT_REFRESH}" \
+# every --diff run fails. One layer keyed to the day is one cache entry.
+RUN echo "packages keyed to ${APT_REFRESH}" \
     && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
     && DEBIAN_FRONTEND=noninteractive timeout 300 apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*' \

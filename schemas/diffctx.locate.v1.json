@@ -124,18 +124,10 @@
   "required": [
     "schema",
     "name",
-    "commit_count",
-    "changed_files",
-    "deleted_files",
-    "renamed_files",
-    "lockfile_changes",
     "budget_tokens",
     "summary",
     "item_count",
-    "items",
-    "coverage",
-    "overflow",
-    "overflow_count"
+    "items"
   ],
   "$defs": {
     "RenameEntry": {
@@ -371,13 +363,6 @@
         }
       },
       "required": [
-        "unparsed_files",
-        "zero_edge_files",
-        "ppr_truncated",
-        "next_up",
-        "limit_reasons",
-        "unrepresented_changed_files",
-        "no_fragment_changed_files",
         "confidence"
       ]
     },

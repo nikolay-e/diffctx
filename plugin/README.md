@@ -27,7 +27,7 @@ context stops paying for itself, under a hard token budget.
 
 ## What it runs
 
-The MCP server starts with `uvx --from diffctx[mcp]==<version> diffctx-mcp`,
+The MCP server starts with `uvx diffctx[mcp]==<version> mcp`,
 so [uv](https://docs.astral.sh/uv/) must be installed. `constraints.txt` pins
 every dependency to the exact set the release was tested with. On first
 start uv downloads those pinned packages from PyPI; after that nothing is

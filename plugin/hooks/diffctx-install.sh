@@ -98,7 +98,10 @@ asset="diffctx-$version-$target.$kind"
 expected=$(sed -n "s/.*\"$asset\"[[:space:]]*:[[:space:]]*\"\([0-9a-f]\{64\}\)\".*/\1/p" "$root/checksums.json" 2>/dev/null | head -1)
 [[ -n "$expected" ]] || exit 0
 command -v curl >/dev/null 2>&1 || fail
-tmp=$(mktemp -d 2>/dev/null) || fail
+# Next to the target, so the final mv is a rename: across filesystems it is
+# a copy, and a second session sees an executable half-written binary.
+mkdir -p "$bindir" || fail
+tmp=$(mktemp -d "$bindir/.tmp.XXXXXX" 2>/dev/null) || fail
 curl --proto '=https' --tlsv1.2 -fsSL --max-time 60 \
   -o "$tmp/$asset" "https://github.com/nikolay-e/diffctx/releases/download/v$version/$asset" || fail
 actual=$(sha256_of "$tmp/$asset") || fail

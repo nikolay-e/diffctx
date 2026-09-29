@@ -45,8 +45,13 @@ fn write(repo: &Path, rel: &str, content: &str) {
 }
 
 fn impact(repo: &Path, range: &str) -> serde_json::Value {
+    impact_env(repo, range, &[])
+}
+
+fn impact_env(repo: &Path, range: &str, env: &[(&str, &str)]) -> serde_json::Value {
     let out = Command::new(&*BIN)
         .current_dir(repo)
+        .envs(env.iter().copied())
         .args(["--diff", range, "--mode", "impact", "-q"])
         .output()
         .expect("run diffctx");
@@ -139,6 +144,259 @@ fn callers_outside_the_diff_are_listed_with_their_test_guard() {
 }
 
 #[test]
+fn a_test_that_only_shares_the_callers_name_is_not_its_guard() {
+    // A test that imports the changed module and happens to use the word
+    // `render` once read as the guard of `tools/report.py::render`, which it
+    // never imports (#312).
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "lib/core.py", "def core(v):\n    return v\n");
+    write(
+        repo,
+        "tools/report.py",
+        "from lib.core import core\n\n\ndef render(v):\n    return core(v) + 1\n",
+    );
+    write(
+        repo,
+        "tests/test_core.py",
+        "from lib.core import core\n\n\ndef test_core_doubles():\n    render = core(2)\n    assert render == 4\n",
+    );
+    commit_all(repo, "initial");
+    write(repo, "lib/core.py", "def core(v):\n    return v * 2\n");
+    commit_all(repo, "core: doubles");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let changed = doc["changed"].as_array().expect("changed");
+    let core = changed
+        .iter()
+        .find(|c| c["symbol"] == "core")
+        .expect("the changed function is listed");
+    let callers = core["callers"].as_array().expect("callers");
+    let render = callers
+        .iter()
+        .find(|c| c["symbol"] == "render")
+        .unwrap_or_else(|| panic!("render calls core: {callers:?}"));
+    assert!(
+        render.get("tested_by").is_none(),
+        "a test that never imports tools/report.py is not its guard: {render:?}"
+    );
+}
+
+#[test]
+fn a_two_letter_module_keeps_its_callers() {
+    // `src/db.py` once fell into the role-named branch (`mod.rs`, `index.ts`)
+    // and every caller was dropped as never naming the module.
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "src/db.py", "def connect(url):\n    return url\n");
+    write(
+        repo,
+        "src/app.py",
+        "from src.db import connect\n\n\ndef main():\n    return connect('x')\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "src/db.py",
+        "def connect(url):\n    return url.strip()\n",
+    );
+    commit_all(repo, "db: strip");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let callers = doc["changed"][0]["callers"].as_array().expect("callers");
+    assert!(
+        callers.iter().any(|c| c["symbol"] == "main"),
+        "src/app.py::main calls connect: {doc}"
+    );
+}
+
+#[test]
+fn a_deref_assignment_is_a_call_not_a_comment() {
+    // `*out = total(items);` starts with `*`, which only opens a comment
+    // continuation when a space follows.
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "Cargo.toml",
+        "[package]\nname = \"shop\"\nversion = \"0.1.0\"\n",
+    );
+    write(repo, "src/lib.rs", "pub mod pricing;\npub mod apply;\n");
+    write(
+        repo,
+        "src/pricing.rs",
+        "pub fn total(items: &[f64]) -> f64 {\n    items.iter().sum()\n}\n",
+    );
+    write(
+        repo,
+        "src/apply.rs",
+        "use crate::pricing::total;\n\npub fn apply(out: &mut f64, items: &[f64]) {\n    *out = total(items);\n}\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "src/pricing.rs",
+        "pub fn total(items: &[f64]) -> f64 {\n    items.iter().sum::<f64>() * 1.19\n}\n",
+    );
+    commit_all(repo, "pricing: vat");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let total = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .find(|c| c["symbol"] == "total")
+        .unwrap_or_else(|| panic!("total is listed: {doc}"));
+    assert!(
+        total["callers"]
+            .as_array()
+            .expect("callers")
+            .iter()
+            .any(|c| c["symbol"] == "apply"),
+        "apply calls total: {doc}"
+    );
+}
+
+#[test]
+fn a_wide_file_list_yields_to_the_callers() {
+    // 300 changed paths once ate the cap and every caller was dropped while
+    // `empty` still read false.
+    let tmp = repo_with_callers();
+    let repo = tmp.path();
+    for i in 0..300 {
+        write(repo, &format!("notes/entry_{i:03}.txt"), "note\n");
+    }
+    commit_all(repo, "notes");
+    let doc = impact(repo, "HEAD~2..HEAD");
+    assert_eq!(doc["empty"], false);
+    assert!(
+        doc["changed_files_omitted"].as_u64().unwrap_or(0) > 0,
+        "{doc}"
+    );
+    let callers = doc["changed"][0]["callers"].as_array().expect("callers");
+    assert!(callers.iter().any(|c| c["symbol"] == "charge"), "{doc}");
+    let text = impact_markdown(repo, "HEAD~2..HEAD");
+    assert!(text.contains("301 changed file(s)"), "{text}");
+    assert!(text.contains("shop/checkout.py::charge"), "{text}");
+}
+
+#[test]
+fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
+    let tmp = repo_with_callers();
+    let doc = impact_env(
+        tmp.path(),
+        "HEAD~1..HEAD",
+        &[("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")],
+    );
+    assert!(
+        !doc["limits"].as_array().expect("limits").is_empty(),
+        "{doc}"
+    );
+    assert_eq!(doc["empty"], false);
+    let out = Command::new(&*BIN)
+        .current_dir(tmp.path())
+        .env("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "-f",
+            "md",
+        ])
+        .output()
+        .expect("run diffctx");
+    let text = String::from_utf8(out.stdout).expect("utf8");
+    assert!(text.contains("(partial: the run stopped at"), "{text}");
+    assert!(!text.contains("Nothing outside the diff"), "{text}");
+}
+
+#[test]
+fn a_file_that_only_imports_the_symbol_is_not_a_caller() {
+    let tmp = repo_with_callers();
+    let repo = tmp.path();
+    write(
+        repo,
+        "shop/legacy.py",
+        "\"\"\"Old surface, kept for one release.\"\"\"\n\nfrom shop.pricing import total  # noqa: F401\n",
+    );
+    git(repo, &["add", "-A"]);
+    git(repo, &["commit", "-q", "-m", "legacy import"]);
+    write(
+        repo,
+        "shop/pricing.py",
+        "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
+    );
+    git(repo, &["commit", "-q", "-am", "vat again"]);
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let total = doc["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["symbol"] == "total")
+        .expect("total listed");
+    let paths: Vec<&str> = total["callers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["path"].as_str().unwrap())
+        .collect();
+    assert!(paths.contains(&"shop/checkout.py"), "{paths:?}");
+    assert!(
+        !paths.contains(&"shop/legacy.py"),
+        "an import-only module is not a call site: {paths:?}"
+    );
+}
+
+/// A one-line edit deep inside a Rust function body seeds a nested
+/// fragment (the `let`), not the function; the callers still belong to the
+/// function.
+#[test]
+fn an_edit_inside_a_function_body_still_names_the_functions_callers() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "Cargo.toml",
+        "[package]\nname = \"shop\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
+    write(repo, "src/lib.rs", "pub mod pricing;\npub mod checkout;\n");
+    write(
+        repo,
+        "src/pricing.rs",
+        "pub fn total(items: &[f64]) -> f64 {\n    let vat = 1.0;\n    let sum: f64 = items.iter().sum();\n    sum * vat\n}\n",
+    );
+    write(
+        repo,
+        "src/checkout.rs",
+        "use crate::pricing::total;\n\npub fn charge(items: &[f64]) -> f64 {\n    total(items) + 1.0\n}\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "src/pricing.rs",
+        "pub fn total(items: &[f64]) -> f64 {\n    let vat = 1.19;\n    let sum: f64 = items.iter().sum();\n    sum * vat\n}\n",
+    );
+    commit_all(repo, "vat");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let total = doc["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["symbol"] == "total")
+        .unwrap_or_else(|| panic!("the function, not its inner let, is the changed symbol: {doc}"));
+    let callers: Vec<&str> = total["callers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["symbol"].as_str().unwrap_or(""))
+        .collect();
+    assert!(callers.contains(&"charge"), "{doc}");
+}
+
+#[test]
 fn the_text_form_names_every_caller_and_its_guard() {
     let tmp = repo_with_callers();
     let text = impact_markdown(tmp.path(), "HEAD~1..HEAD");
@@ -219,12 +477,14 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
     let repo = tmp.path();
     init_repo(repo);
     write(repo, "svc/core.py", "def core(x):\n    return x\n");
-    for i in 0..120 {
+    // Under the Python builder's 64-file confirmation cap a wider fan-out keeps
+    // only import lines; sixty long-named callers are enough to pass the cap.
+    for i in 0..60 {
         write(
             repo,
             &format!("callers/caller_{i:03}.py"),
             &format!(
-                "from svc.core import core\n\n\ndef use_{i:03}(v):\n    return core(v) + {i}\n"
+                "from svc.core import core\n\n\ndef use_the_core_value_in_the_report_row_{i:03}(v):\n    return core(v) + {i}\n"
             ),
         );
     }

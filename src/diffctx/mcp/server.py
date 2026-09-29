@@ -54,6 +54,8 @@ _DEFAULT_MAX_TOKENS = 25_000
 # deadline here a single tool call can wedge the server for as long as a
 # pathological repository takes.
 _DEFAULT_TIMEOUT_SECONDS: int = _ENGINE_DEFAULT_TIMEOUT
+# A default is a guess; ten seconds of git status is all it may cost the call.
+_DEFAULT_DIFF_REF_TIMEOUT_SECONDS = 10
 
 
 def _deadline_message(tool: str) -> str:
@@ -177,17 +179,30 @@ def _default_diff_ref(repo: Path) -> str:
     # The repository is untrusted: its config must not get to run an fsmonitor
     # hook, and a parent's GIT_DIR must not redirect the check elsewhere.
     env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
-    status = subprocess.run(
-        ["git", "-C", str(repo), "-c", "core.fsmonitor=false", "status", "--porcelain", "--untracked-files=normal"],
-        stdin=subprocess.DEVNULL,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=_DEFAULT_TIMEOUT_SECONDS,
-    )
-    dirty = status.returncode == 0 and bool(status.stdout.strip())
-    return "HEAD" if dirty else "HEAD~1..HEAD"
+
+    def git(*args: str) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(repo), "-c", "core.fsmonitor=false", *args],
+                stdin=subprocess.DEVNULL,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_DEFAULT_DIFF_REF_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    # A guess that cannot be made is the working tree, never an error that
+    # would carry the resolved path or the command line back to the client.
+    status = git("status", "--porcelain", "--untracked-files=normal")
+    if status is None or status.returncode != 0 or status.stdout.strip():
+        return "HEAD"
+    parent = git("rev-parse", "-q", "--verify", "HEAD~1")
+    if parent is None or parent.returncode != 0:
+        return "HEAD"
+    return "HEAD~1..HEAD"
 
 
 def _validate_budget_tokens(budget_tokens: int) -> None:
@@ -223,7 +238,7 @@ mcp = FastMCP(
     instructions=(
         "Before reviewing, committing, merging or pushing a change, or when asked what it "
         "affects, call diffctx_context. mode=impact names the callers, tests and contracts "
-        "outside the diff, which git diff cannot. No diff_ref = uncommitted work."
+        "outside the diff, which git diff cannot. No diff_ref = uncommitted work, else the last commit."
     ),
 )
 # FastMCP takes no version argument, so the SDK reports its own version as the
@@ -282,7 +297,7 @@ async def diffctx_context(
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_max_tokens(max_tokens)
-    diff_ref = diff_ref or _default_diff_ref(validated_path)
+    diff_ref = diff_ref or await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
     # operation on its own. Requiring a third mode name for it would make the

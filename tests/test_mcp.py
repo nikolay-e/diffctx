@@ -221,6 +221,20 @@ class TestGetDiffContext:
         assert dirty["changed_files"] == ["src/extra.py"]
 
     @pytest.mark.asyncio
+    async def test_a_single_commit_clean_tree_defaults_to_the_working_tree(self, server, tmp_path):
+        # The clean-tree default is HEAD~1..HEAD, which a first commit cannot
+        # resolve; the answer is the (empty) working tree, not an error that
+        # names a range the caller never passed.
+        import json
+
+        repo = Pygit2Repo(tmp_path / "first")
+        repo.add_file("one.py", "x = 1\n")
+        repo.commit("first")
+        doc = json.loads(_get_text(await server.call_tool("diffctx_context", {"repo_path": str(repo.path), "mode": "locate"})))
+        assert doc["schema"] == "diffctx.locate.v1"
+        assert doc.get("changed_files", []) == []
+
+    @pytest.mark.asyncio
     async def test_locate_keeps_the_overflow_count_but_not_the_list(self, server, mcp_repo):
         import json
 

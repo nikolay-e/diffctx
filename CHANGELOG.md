@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The plugin's impact hook never ran under macOS `/bin/bash` 3.2**: an empty
+  `gate=()` expanded under `set -u` is an unbound variable there, the pipeline
+  died right of the pipe and `|| true` hid it. One never-empty argument array.
+- Hook command parsing: `git add … && git commit` reviews the working tree
+  (the add has not run when the hook sees the line — it reviewed the stale
+  index and was silent on the commonest agent pattern); `-m a -m b`, `-F file`
+  and other value flags no longer count as pathspecs; `git diff A B` and
+  `git diff main` are history, not the pending change; `cd dir && git …` and
+  a relative `-C` resolve against the agent's cwd.
+- Impact: a test guards a caller only when it names the symbol *and* reaches
+  the caller's module (a Rust test mentioning `render` was the guard of a
+  Python `render()`, #312); a chunk caller named `main[88]` is looked up as
+  `main`; two-letter modules (`db.py`) keep their callers; `*out = f()` and
+  `#[derive]` lines are code, not comments; a wide changed-file list folds
+  into a count before a single caller is dropped, and a symbol keeps its
+  strongest caller; a run that hit a limit says `(partial: …)` and is never
+  `empty`; schema contracts are listed before public symbols with a `+N more`
+  count; SHA-256 repositories count commits.
+- `diffctx.impact.v1` and `diffctx.locate.v1` required every field the
+  serializer may omit (`truncated`, `commit_count`, `deleted_files`, …), so no
+  real document validated; the schemas now require what is always present,
+  and a test validates real impact and locate output against them.
+- MCP: the default `diff_ref` on a clean single-commit repository is the
+  working tree, not an error naming a range the caller never passed; the
+  `git status` guess runs off the event loop with a 10 s cap and never leaks
+  the command line into the response.
+- CLI: `--mode impact -o out.yaml` is refused like `-f yaml` instead of
+  writing JSON silently; `--mode` help names the text default.
+- Plugin installer: the download is unpacked beside its target so the final
+  `mv` is a rename, never a copy another session could execute half-written.
+- MCP `mode=impact` with `paths` no longer marks the whole change reviewed.
+- Landing page: the four-part iOS viewport contract (`viewport-fit=cover`,
+  status-bar style, safe-area insets, taller `html`).
+- Privacy page names the release-binary download the plugin makes.
+- `bitcheck.sh` ranges re-pinned on the rewritten history; the old anchors
+  kept the pre-rewrite tree, with third-party tokens in retired benchmark
+  diffs, reachable on both forges.
+- Runtime image: one package layer (Sonar `docker:S7031`/`S6595`); PyJWT
+  2.15.1 in `uv.lock` (GHSA-w6j9-cwv2-h6wq, transitive).
+
 ## [1.18.0] - 2026-09-29
 
 ### Added

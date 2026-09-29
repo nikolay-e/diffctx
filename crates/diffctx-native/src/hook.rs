@@ -22,7 +22,7 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use crate::mode::ScoringMode;
 
-/// Bytes of context handed to the model; the impact renderer already caps
+/// Characters of context handed to the model; the impact renderer already caps
 /// itself in tokens, this is the belt for the belt.
 const MAX_CONTEXT_CHARS: usize = 9_000;
 
@@ -110,7 +110,7 @@ fn words(command: &str) -> Vec<String> {
                         out.push(std::mem::take(&mut cur));
                     }
                 }
-                ';' | '|' | '&' => {
+                c if OPERATORS.contains(&c) => {
                     if !cur.is_empty() {
                         out.push(std::mem::take(&mut cur));
                     }
@@ -126,30 +126,91 @@ fn words(command: &str) -> Vec<String> {
     out
 }
 
+const OPERATORS: &[char] = &[';', '|', '&'];
+
 fn is_operator(w: &str) -> bool {
-    matches!(w, ";" | "|" | "&")
+    w.chars().count() == 1 && w.chars().all(|c| OPERATORS.contains(&c))
 }
 
-/// Every git or gh statement of the command line: verb, `-C` directory and
-/// the arguments up to the next shell operator. `git add -A && git commit`
-/// is two statements, and the second is the one that matters.
+/// Flags whose next word is a value, not a pathspec or a revision.
+const VALUE_FLAGS: &[&str] = &[
+    "-m",
+    "-F",
+    "-C",
+    "-c",
+    "-t",
+    "-S",
+    "-G",
+    "-O",
+    "--message",
+    "--file",
+    "--author",
+    "--date",
+    "--fixup",
+    "--squash",
+    "--template",
+    "--reuse-message",
+    "--reedit-message",
+    "--trailer",
+    "--cleanup",
+    "--pathspec-from-file",
+];
+
+/// The positional arguments before `--`, with the values of value-taking
+/// flags skipped: `git commit -m a -m b` has none, `git commit -m x a.py`
+/// has one.
+fn positionals(args: &[String]) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut skip = false;
+    for a in args {
+        if skip {
+            skip = false;
+            continue;
+        }
+        if a == "--" {
+            break;
+        }
+        if VALUE_FLAGS.contains(&a.as_str()) {
+            skip = true;
+        } else if !a.starts_with('-') {
+            out.push(a.as_str());
+        }
+    }
+    out
+}
+
+/// Every git or gh statement of the command line: verb, directory (`-C`, or
+/// a `cd` earlier on the line) and the arguments up to the next shell
+/// operator. `git add -A && git commit` is two statements, and the second is
+/// the one that matters.
 fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
     let ws = words(command);
     let mut found = Vec::new();
+    let mut cwd: Option<String> = None;
     let mut i = 0;
     while i < ws.len() {
         let prog = Path::new(&ws[i])
             .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_default();
+        if ws[i] == "cd" {
+            if let Some(target) = ws
+                .get(i + 1)
+                .filter(|w| !is_operator(w) && !w.starts_with('-'))
+            {
+                cwd = Some(join_dir(cwd.as_deref(), target));
+            }
+            i += 1;
+            continue;
+        }
         if prog == "git" || prog == "gh" {
             let mut j = i + 1;
-            let mut dir = None;
+            let mut dir = cwd.clone();
             let mut verb = None;
             while j < ws.len() && !is_operator(&ws[j]) {
                 let w = &ws[j];
                 if prog == "git" && w == "-C" {
-                    dir = ws.get(j + 1).cloned();
+                    dir = ws.get(j + 1).map(|d| join_dir(cwd.as_deref(), d));
                     j += 2;
                     continue;
                 }
@@ -189,10 +250,38 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
     found
 }
 
+/// A directory as the shell line spelled it: `/r` is absolute on every
+/// platform here, and the join keeps the line's own separator.
+fn is_absolute_dir(dir: &str) -> bool {
+    dir.starts_with('/') || Path::new(dir).is_absolute()
+}
+
+fn join_dir(base: Option<&str>, dir: &str) -> String {
+    match base {
+        Some(b) if !is_absolute_dir(dir) => format!("{}/{dir}", b.trim_end_matches('/')),
+        _ => dir.to_string(),
+    }
+}
+
 pub fn detect(event: Event, command: &str) -> Option<Detected> {
-    statements(command)
-        .into_iter()
-        .find_map(|(verb, dir, args)| detect_statement(event, &verb, dir, args))
+    // The hook runs before the line does: a `git add` earlier on it has not
+    // staged anything yet, so the commit that follows records the working
+    // tree, not the index this process can see.
+    let mut staged_ahead = false;
+    for (verb, dir, args) in statements(command) {
+        if matches!(verb.as_str(), "add" | "rm" | "mv") {
+            staged_ahead = true;
+        }
+        if let Some(mut detected) = detect_statement(event, &verb, dir, args) {
+            if staged_ahead {
+                if let Trigger::Commit { all } = &mut detected.trigger {
+                    *all = true;
+                }
+            }
+            return Some(detected);
+        }
+    }
+    None
 }
 
 fn detect_statement(
@@ -211,10 +300,7 @@ fn detect_statement(
             let short_a = args
                 .iter()
                 .any(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('a'));
-            let pathspec = args.iter().any(|a| !a.starts_with('-') && a != "-m")
-                && !has("-m")
-                && !has("--message")
-                || args.iter().filter(|a| !a.starts_with('-')).count() > 1;
+            let pathspec = !positionals(&args).is_empty() || has("--");
             Trigger::Commit {
                 all: has("--all") || short_a || pathspec,
             }
@@ -249,8 +335,14 @@ fn detect_statement(
             Trigger::PullRequest
         }
         (Event::PostToolUse, "diff") => {
-            // A diff between two revisions is history, not the pending change.
-            if args.iter().any(|a| !a.starts_with('-') && a.contains("..")) {
+            // A diff between revisions, or against one other than HEAD, is
+            // history, not the pending change; a path before `--` is.
+            let revs = positionals(&args);
+            let looks_like_path = |r: &str| r.contains('/') || r.starts_with('.');
+            if revs.len() > 1
+                || revs.iter().any(|r| r.contains(".."))
+                || revs.iter().any(|r| *r != "HEAD" && !looks_like_path(r))
+            {
                 return None;
             }
             Trigger::Inspect {
@@ -336,6 +428,22 @@ pub fn content_key(root: &Path, range: &str) -> Option<String> {
     (key.len() == 40).then_some(key)
 }
 
+/// A stable key for an answer: FNV-1a over the repository root and the
+/// rendered text — no dependency, no collisions that matter at this scale.
+fn text_key(root: &Path, text: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in root
+        .to_string_lossy()
+        .bytes()
+        .chain([0u8])
+        .chain(text.bytes())
+    {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("answer-{h:016x}")
+}
+
 fn cache_dir() -> Option<PathBuf> {
     let base = std::env::var_os("DIFFCTX_CACHE_DIR")
         .map(PathBuf::from)
@@ -407,16 +515,16 @@ fn prepare(event: Event, stdin_json: &str) -> Option<Prepared> {
     let payload: serde_json::Value = serde_json::from_str(stdin_json).ok()?;
     let command = payload["tool_input"]["command"].as_str()?;
     let detected = detect(event, command)?;
-    let cwd = detected
-        .dir
-        .clone()
+    // A relative directory on the command line is relative to where the
+    // agent ran it, which the payload names; this process's cwd is a guess.
+    let base = payload["cwd"]
+        .as_str()
         .map(PathBuf::from)
-        .or_else(|| payload["cwd"].as_str().map(PathBuf::from))
         .or_else(|| std::env::current_dir().ok())?;
-    let root = if cwd.is_absolute() {
-        cwd
-    } else {
-        std::env::current_dir().ok()?.join(cwd)
+    let root = match detected.dir.as_deref() {
+        Some(dir) if is_absolute_dir(dir) => PathBuf::from(dir),
+        Some(dir) => base.join(dir),
+        None => base,
     };
     let root = crate::git::find_toplevel(&root)?;
     let range = range_for(&root, &detected.trigger)?;
@@ -442,6 +550,16 @@ fn impact_context(event: Event, root: &Path, range: &str) -> Option<String> {
         return None;
     }
     let text = truncate_chars(&crate::impact::render_markdown(&output), MAX_CONTEXT_CHARS);
+    // The worktree, the index after `git add`, and the commit itself name
+    // different diffs of one change, and the header says so; the substance
+    // is the symbols and their callers, and a substance already shown this
+    // day is not shown again (#314).
+    let substance = serde_json::to_string(&output.changed).unwrap_or_default();
+    let answer_key = text_key(root, &substance);
+    if is_seen(&answer_key) {
+        return None;
+    }
+    mark_seen(&answer_key);
     let lead = match event {
         Event::PreToolUse => "diffctx reviewed the change this command is about to record.",
         Event::PostToolUse => "diffctx reviewed the pending change you just inspected.",
@@ -554,9 +672,36 @@ mod tests {
         assert_eq!(pre("gh pr create --fill"), Some(Trigger::PullRequest));
         assert!(pre("gh pr view 12").is_none());
         assert!(pre("git status && git log").is_none());
+        // The add has not run when the hook sees the line: the commit
+        // records the working tree, not the index of this moment.
         assert_eq!(
             pre("git add -A && git commit -m x && git push"),
+            Some(Trigger::Commit { all: true })
+        );
+        assert_eq!(
+            pre("git commit -m a -m b"),
             Some(Trigger::Commit { all: false })
+        );
+        assert_eq!(
+            pre("git commit -F msg.txt"),
+            Some(Trigger::Commit { all: false })
+        );
+        assert_eq!(
+            pre("git commit -m x src/a.py"),
+            Some(Trigger::Commit { all: true })
+        );
+        assert_eq!(
+            detect(Event::PreToolUse, "cd sub/app && git commit -m x").unwrap(),
+            Detected {
+                trigger: Trigger::Commit { all: false },
+                dir: Some("sub/app".to_string())
+            }
+        );
+        assert_eq!(
+            detect(Event::PreToolUse, "cd /r && git -C sub commit -m x")
+                .unwrap()
+                .dir,
+            Some("/r/sub".to_string())
         );
     }
 
@@ -572,6 +717,20 @@ mod tests {
             Some(Trigger::Inspect { staged: false })
         );
         assert!(post("git diff HEAD~3..HEAD").is_none());
+        assert!(post("git diff HEAD~1 HEAD").is_none());
+        assert!(post("git diff main").is_none());
+        assert_eq!(
+            post("git diff HEAD"),
+            Some(Trigger::Inspect { staged: false })
+        );
+        assert_eq!(
+            post("git diff -- src/"),
+            Some(Trigger::Inspect { staged: false })
+        );
+        assert_eq!(
+            post("git diff src/a.py"),
+            Some(Trigger::Inspect { staged: false })
+        );
         assert!(post("git commit -m x").is_none());
         assert!(pre("git diff").is_none());
     }
@@ -580,7 +739,7 @@ mod tests {
     fn the_first_statement_wins_and_operators_end_it() {
         assert_eq!(
             pre("git add -A; git commit -m 'a; b' | cat"),
-            Some(Trigger::Commit { all: false })
+            Some(Trigger::Commit { all: true })
         );
         assert!(pre("git log | grep commit").is_none());
     }

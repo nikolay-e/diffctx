@@ -10,7 +10,12 @@ server of its own, and it makes no model or API calls.
   anywhere.
 - **Claude plugin** starts that same MCP server through `uvx`. The first start
   downloads the pinned `diffctx` package and its pinned dependencies from
-  PyPI; after that nothing is fetched. On claude.ai the plugin's skills run
+  PyPI. At session start the plugin also downloads the diffctx release
+  binary for your platform once per plugin version from the GitHub release,
+  verifies it against the checksums the plugin carries, and keeps it in the
+  plugin's data directory; a failed download is retried after six hours.
+  Nothing else is fetched, and no request carries anything about you. On
+  claude.ai the plugin's skills run
   the CLI inside Claude's own code-execution sandbox instead, under
   Anthropic's terms for that sandbox.
 - **GitHub Action** runs inside your own workflow and hands its result back

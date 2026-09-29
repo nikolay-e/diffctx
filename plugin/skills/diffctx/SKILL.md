@@ -8,10 +8,9 @@ repository with `mode="pack"`. Use `$ARGUMENTS` as `diff_ref`; when empty,
 omit `diff_ref`: the server reads the uncommitted work (`HEAD`) when the tree
 is dirty, else the last commit (`HEAD~1..HEAD`).
 
-If the MCP server is not available, run the same analysis through the CLI
-instead of reading files by hand: `diffctx . --diff <range> --mode pack` (the
-plugin keeps the release binary in its data directory; `uvx diffctx` works
-too), with the same range.
+Without the MCP server, run the same analysis instead of reading files by
+hand: `diffctx . --diff <range> --mode pack` with the binary the session-start
+recipe named, or `uvx diffctx`.
 
 Read the returned fragments, then explain the change: what it does, which
 parts of the codebase it touches, and anything in the surrounding context

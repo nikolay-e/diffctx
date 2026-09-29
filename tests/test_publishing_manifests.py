@@ -66,12 +66,14 @@ class TestClaudePlugin:
         installed plugin must start the version it was reviewed at."""
         server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
         assert server["command"] == "uvx"
+        # `uvx <package>==<version> <subcommand>`: the pin is the package
+        # argument itself, the form the directory's scanner reads; the `--from`
+        # spelling was reported as an unconfirmed pin and held for review.
         assert server["args"] == [
             "-c",
             "${CLAUDE_PLUGIN_ROOT}/constraints.txt",
-            "--from",
             f"diffctx[mcp]=={__version__}",
-            "diffctx-mcp",
+            "mcp",
         ]
 
     def test_plugin_constraints_pin_every_dependency_exactly(self):
@@ -322,6 +324,13 @@ class TestLandingPagePwa:
         assert 'rel="apple-touch-icon" href="/icons/apple-touch-icon.png"' in page
         assert (self.DOCS / "icons/apple-touch-icon.png").is_file()
         assert 'serviceWorker.register("/sw.js")' in page
+
+    def test_page_takes_the_whole_ios_screen_and_hands_the_insets_back(self):
+        page = (self.DOCS / "index.html").read_text(encoding="utf-8")
+        assert "viewport-fit=cover" in page
+        assert '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />' in page
+        assert "min-height: calc(100% + env(safe-area-inset-top))" in page
+        assert "padding-top: env(safe-area-inset-top)" in page
 
     @staticmethod
     def _precached() -> list[str]:

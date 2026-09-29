@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>diffctx — smart diff context for LLM code review</title>
     <meta
       name="description"
@@ -95,9 +99,15 @@
       }
       html {
         scroll-behavior: smooth;
+        /* Installed on iOS the viewport is screen-minus-status-bar; only a
+           document taller by the inset makes it re-lay out to the screen. */
+        min-height: calc(100% + env(safe-area-inset-top));
       }
       body {
         background: var(--ink);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        padding-bottom: env(safe-area-inset-bottom);
         color: var(--fg);
         font-family: var(--mono);
         font-size: 15px;
@@ -156,6 +166,7 @@
       nav {
         position: sticky;
         top: 0;
+        padding-top: env(safe-area-inset-top);
         z-index: 50;
         backdrop-filter: blur(12px);
         background: color-mix(in srgb, var(--ink) 82%, transparent);
@@ -1105,7 +1116,7 @@
       <div class="wrap">
         <a class="brand" href="#"><span class="dot"></span>diffctx</a>
         <div class="links">
-          <a href="#lab">pipeline</a>
+          <a href="#lab">stages</a>
           <a href="#edges">graph</a>
           <a href="#scoring">scoring</a>
           <a href="#install">install</a>
@@ -1322,7 +1333,7 @@
                   <div class="budget-fill" id="budget-fill"></div>
                 </div>
                 <span class="r-tok" id="tok-readout"
-                  >0 tokens · 0 fragments</span
+                  >selection happens at stage 5</span
                 >
               </div>
             </div>
@@ -1503,6 +1514,13 @@
             <code><span class="p">$</span> pipx install 'diffctx[mcp]'</code
             ><span class="why"
               >+ MCP server for Claude Code / Cursor / Zed</span
+            >
+          </div>
+          <div class="row">
+            <code
+              ><span class="p">$</span> diffctx . --diff main...feature</code
+            ><span class="why"
+              >a pull request: three dots = since the branch left main</span
             >
           </div>
           <div class="row">
@@ -2037,7 +2055,7 @@
           renderYaml(sel.picked, sel.spent, sel.excluded);
         } else {
           fill.style.width = "0%";
-          readout.textContent = "0 tokens · 0 fragments";
+          readout.textContent = "selection happens at stage 5";
           renderYaml([], 0);
         }
       }

@@ -14,20 +14,20 @@ pub const LOCATE_SCHEMA: &str = "diffctx.locate.v1";
 pub struct LocateOutput {
     pub schema: &'static str,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub commit_messages: Vec<String>,
     /// Commits in the range when that is more than `commit_messages` lists.
-    #[serde(skip_serializing_if = "crate::render::is_zero")]
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub commit_count: usize,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deleted_files: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub renamed_files: Vec<RenameEntry>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub ignored_changes: Vec<String>,
@@ -45,19 +45,19 @@ pub struct LocateOutput {
     /// An agent told honestly where the selection is thin can grep the gap
     /// itself; one told nothing has to distrust the whole answer. Emitted only
     /// when there is something to report, so a clean run costs no tokens.
-    #[serde(skip_serializing_if = "Coverage::is_clean")]
+    #[serde(default, skip_serializing_if = "Coverage::is_clean")]
     pub coverage: Coverage,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<crate::run_provenance::ProvenanceV1>,
     /// Ranked candidates that did not fit `budget_tokens`, without bodies.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<OverflowItem>,
     /// True total behind `overflow`, which is capped at `MAX_OVERFLOW_ITEMS`.
-    #[serde(skip_serializing_if = "crate::render::is_zero")]
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub overflow_count: usize,
     /// Present only when the sanitizer replaced a credential-shaped string in
     /// a commit message, the one free text locate prints.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redactions: Option<crate::sanitize::Redactions>,
 }
 
@@ -73,17 +73,17 @@ pub struct Coverage {
     /// Changed files with no symbol-level structure: every fragment is a
     /// chunk/section fallback, so the parser could not see inside them and
     /// nothing was pulled in by symbol.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unparsed_files: Vec<String>,
     /// Changed files whose fragments have no graph edge in either direction —
     /// no caller, import, type or co-change link was found, so relevance had no
     /// path to travel and context for them could only arrive by proximity.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub zero_edge_files: Vec<String>,
     /// PPR push-iteration hit its cap before converging: the ranking is a
     /// partial diffusion, so low-scoring items are less trustworthy than usual.
     /// Never set outside `--scoring ppr`.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ppr_truncated: bool,
     /// How many of the top-ranked overflow items a 25% larger budget would
     /// admit. Zero when the budget was not what stopped selection.
@@ -93,20 +93,20 @@ pub struct Coverage {
     /// candidates the budget correctly ignored; "scores at least as high as the
     /// weakest selected item" was worse than useless, because raising the budget
     /// lowers that bar and so *increased* the reported gap.
-    #[serde(skip_serializing_if = "crate::render::is_zero")]
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub next_up: usize,
     /// What stopped the run short of a complete pass, in the one vocabulary
     /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
     /// complete run.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limit_reasons: Vec<crate::resource::LimitReason>,
     /// Changed files with no ranked item at all: the inventory says they
     /// changed, the budget or the selection left nothing of them.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unrepresented_changed_files: Vec<String>,
     /// Changed files that yielded no fragment at all (not code, binary, over
     /// the size cap) — absent for a reason no budget or selection controls.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub no_fragment_changed_files: Vec<String>,
     /// Documented heuristic in [0, 1], NOT a probability and not a promise:
     /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.
@@ -162,13 +162,13 @@ pub struct LocateItem {
     pub path: String,
     pub lines: String,
     pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<&'static str>,
     /// Coarse impact group: `test`, `type`, or `config`; absent = general
     /// code (callers and friends). Path- and kind-derived, presentation only.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<&'static str>,
     pub score: f64,
     pub tokens: u32,
@@ -293,13 +293,11 @@ fn build_coverage(
         .iter()
         .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
         .collect();
-    let fragmented: FxHashSet<&str> = state.all_fragments.iter().map(|f| f.path()).collect();
-    let fragmentless: FxHashSet<String> = state
-        .changed_files
-        .iter()
-        .filter(|p| !fragmented.contains(p.to_string_lossy().as_ref()))
-        .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
-        .collect();
+    let fragmentless = crate::pipeline::fragmentless_changed_files(
+        &state.root_dir,
+        &state.changed_files,
+        &state.all_fragments,
+    );
 
     // One grouping pass, not one scan per changed file: the naive form is
     // O(changed x all_fragments) with a path allocation per pair, and both

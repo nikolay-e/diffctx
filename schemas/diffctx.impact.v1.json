@@ -49,6 +49,25 @@
       "format": "uint",
       "minimum": 0
     },
+    "changed_files_omitted": {
+      "description": "Changed files left out of `changed_files` to fit the cap; the count\nis still whole. The reader holds the file list already.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "contracts_omitted": {
+      "description": "Contracts beyond `MAX_CONTRACTS`, schema changes never among them.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "limits": {
+      "description": "The run stopped at a limit (a deadline, a cap): callers may be\nmissing, and `empty` is never claimed while this is set.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LimitReason"
+      }
+    },
     "tests_known": {
       "description": "Whether any test file was in view. Without one, an absent `tested_by`\nsays nothing about the caller, and the text form does not call it\nuntested.",
       "type": "boolean"
@@ -58,11 +77,8 @@
     "schema",
     "name",
     "changed_files",
-    "commit_count",
     "changed",
-    "contracts",
     "empty",
-    "truncated",
     "tests_known"
   ],
   "$defs": {
@@ -101,7 +117,6 @@
         "path",
         "lines",
         "kind",
-        "commits",
         "callers"
       ]
     },
@@ -157,6 +172,38 @@
       "required": [
         "path",
         "kind"
+      ]
+    },
+    "LimitReason": {
+      "description": "Why a run did not do everything it could have. One vocabulary for every\nphase; consumers read `coverage.limit_reasons` and never a per-subsystem\nboolean.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "file_too_large",
+            "total_byte_limit",
+            "candidate_limit",
+            "edge_contribution_limit",
+            "edge_limit",
+            "need_limit",
+            "discovery_truncated",
+            "diffusion_truncated",
+            "deadline",
+            "evidence_budget_exceeded",
+            "selection_budget_exceeded",
+            "sanitization_redaction"
+          ]
+        },
+        {
+          "description": "A file cut to `max_fragments_per_file`: what the diff touched survives\nthe cut, the rest is the longest fragments only.",
+          "type": "string",
+          "const": "fragment_limit"
+        },
+        {
+          "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
+          "type": "string",
+          "const": "non_utf8_content"
+        }
       ]
     }
   }

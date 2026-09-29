@@ -11,9 +11,8 @@ changed symbol, the callers outside the diff, whether a test guards each one,
 and which symbols more than one commit of the range touched; public API and
 schema changes are listed as facts.
 
-If the MCP server is not available, run the same analysis through the CLI:
-`diffctx . --diff <range> --mode impact` (the plugin keeps the release binary
-in its data directory; `uvx diffctx` works too).
+Without the MCP server, run `diffctx . --diff <range> --mode impact` with the
+binary the session-start recipe named, or `uvx diffctx`.
 
 Report the impact, ranked by risk:
 

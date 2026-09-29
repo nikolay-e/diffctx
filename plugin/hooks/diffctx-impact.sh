@@ -35,15 +35,24 @@ if [[ -z "$bin" ]]; then
   *) exe="" ;;
   esac
   bin="$data/bin/diffctx-$version$exe"
+  if [[ ! -x "$bin" ]]; then
+    # The plugin cache this session loaded may be older than the binary the
+    # installer put here (a mid-session upgrade); the newest installed
+    # release answers the same question.
+    newest=$(find "$data/bin" -maxdepth 1 -name 'diffctx-*' -type f 2>/dev/null | sort -V | tail -1)
+    [[ -n "$newest" && -x "$newest" ]] && bin="$newest"
+  fi
 fi
 [[ -x "$bin" ]] || exit 0
 
-gate=()
+# One array, never empty: under bash 3.2 (macOS /bin/bash) `set -u` treats
+# an empty array's expansion as unbound and the pipeline dies silently.
+args=(hook "$event")
 if [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_GATE:-false}" == "true" ]]; then
-  gate=(--gate)
+  args+=(--gate)
 fi
 
 # A release without the subcommand exits non-zero and prints nothing, which
 # is the right answer from an older binary.
-printf '%s' "$payload" | "$bin" hook "$event" "${gate[@]}" 2>/dev/null || true
+printf '%s' "$payload" | "$bin" "${args[@]}" 2>/dev/null || true
 exit 0

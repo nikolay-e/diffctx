@@ -129,17 +129,24 @@ fn build_impact(
     } else {
         Some(diff_range.to_string())
     };
+    // A scoped answer reviewed part of the change; the gate keys on all of it.
+    let mark = paths
+        .is_empty()
+        .then(|| diff_range_or_head(diff_range).to_string());
     let output = detach_guarded(py, move || {
-        crate::pipeline::build_diff_context_impact(
+        let output = crate::pipeline::build_diff_context_impact(
             &path,
             range.as_deref(),
             &paths,
             alpha,
             mode,
             timeout,
-        )
+        )?;
+        if let Some(range) = mark {
+            crate::hook::mark_range_reviewed(&path, &range);
+        }
+        Ok(output)
     })?;
-    crate::hook::mark_range_reviewed(Path::new(root_dir), diff_range_or_head(diff_range));
     if markdown {
         return Ok(crate::impact::render_markdown(&output));
     }

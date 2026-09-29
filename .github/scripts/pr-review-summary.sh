@@ -34,6 +34,9 @@ withheld=$(grep -oE '^\*[0-9]+ changed file\(s\) withheld by exclusion policy[^*
     echo
     echo '```'
     head -40 "$IMPACT_FILE"
+    if [[ $(wc -l <"$IMPACT_FILE") -gt 40 ]]; then
+      echo "_(truncated; the full impact is in the artifact)_"
+    fi
     echo '```'
   fi
   if [[ -n "$withheld" ]]; then

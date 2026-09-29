@@ -1,0 +1,62 @@
+name: rust_qualified_path_call
+tags:
+- lang:rust
+- change:single_file
+- change:body
+- context:cross_module
+- distance:1hop
+- difficulty:easy
+- builder:rust
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod pricing;
+      pub mod checkout;
+      pub mod inventory;
+    src/pricing.rs: |
+      pub fn total(items: &[f64]) -> f64 {
+          let vat = 1.0;
+          items.iter().sum::<f64>() * vat
+      }
+    src/checkout.rs: |
+      pub fn charge(items: &[f64]) -> f64 {
+          crate::pricing::total(items) + 1.0
+      }
+    src/inventory.rs: |
+      pub fn restock(count: u32) -> u32 {
+          count + 1
+      }
+  changed_files:
+    src/pricing.rs: |
+      pub fn total(items: &[f64]) -> f64 {
+          let vat = 1.19;
+          items.iter().sum::<f64>() * vat
+      }
+  commit_message: "pricing: totals include VAT"
+fixtures:
+  auto_garbage: true
+fragments:
+- id: total
+  selector:
+    path: src/pricing.rs
+    anchor: "pub fn total"
+- id: charge
+  selector:
+    path: src/checkout.rs
+    anchor: "pub fn charge"
+- id: no_restock
+  selector:
+    path: src/inventory.rs
+    anchor: "pub fn restock"
+oracle:
+  required:
+  - total
+  - charge
+  allowed: []
+  forbidden:
+  - no_restock

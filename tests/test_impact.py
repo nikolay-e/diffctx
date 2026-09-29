@@ -91,6 +91,12 @@ class TestImpactCli:
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "impact", "-f", "yaml"])
         assert result.returncode == 2
         assert "impact" in result.stderr
+        # The format an output file's extension implies is refused the same way,
+        # instead of JSON landing silently in out.yaml.
+        result = _run(repo.path, [".", "--diff", diff_range, "--mode", "impact", "-o", str(repo.path / "out.yaml")])
+        assert result.returncode == 2
+        assert "impact" in result.stderr
+        assert not (repo.path / "out.yaml").exists()
 
     def test_full_is_refused(self, impact_repo):
         repo, diff_range = impact_repo

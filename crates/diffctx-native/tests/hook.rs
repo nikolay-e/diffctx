@@ -336,7 +336,15 @@ fn a_git_diff_the_agent_ran_gets_the_impact_after_it() {
     let again = hook(repo, cache.path(), &payload(repo, "git commit -am vat"));
     assert_eq!(again.stdout, "");
 
-    // A historical diff is not the pending change.
+    // A historical diff is not the pending change — with a real HEAD~1 and
+    // a fresh pending edit, so the silence comes from the verb, not from an
+    // unresolvable revision.
+    commit_all(repo, "vat");
+    write(
+        repo,
+        "shop/pricing.py",
+        "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
+    );
     let cache2 = TempDir::new().unwrap();
     let h = hook_with(
         repo,
@@ -346,6 +354,53 @@ fn a_git_diff_the_agent_ran_gets_the_impact_after_it() {
         &payload_for("PostToolUse", repo, "git diff HEAD~1..HEAD"),
     );
     assert_eq!(h.stdout, "");
+    let h = hook_with(
+        repo,
+        cache2.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git diff"),
+    );
+    assert!(
+        h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+}
+
+#[test]
+fn one_change_through_status_diff_add_and_commit_is_shown_once() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    // Untracked files make the worktree diff and the index diff different
+    // patches; the answer for the reader is the same.
+    write(repo, "NOTES.txt", "scratch\n");
+    let shown = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git status"),
+    );
+    assert!(
+        shown.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        shown.stdout
+    );
+    git(repo, &["add", "-A"]);
+    for command in ["git diff --cached", "git status"] {
+        let again = hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &payload_for("PostToolUse", repo, command),
+        );
+        assert_eq!(again.stdout, "", "{command} repeated the same answer");
+    }
+    let commit = hook(repo, cache.path(), &payload(repo, "git commit -m vat"));
+    assert_eq!(commit.stdout, "", "the commit repeated the same answer");
 }
 
 #[test]

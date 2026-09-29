@@ -14,7 +14,8 @@ from tests.framework.pygit2_backend import Pygit2Repo
 
 jsonschema = pytest.importorskip("jsonschema")
 
-SCHEMA = json.loads((Path(__file__).resolve().parents[1] / "schemas" / "diffctx.context.v1.json").read_text())
+SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
+SCHEMA = json.loads((SCHEMAS / "diffctx.context.v1.json").read_text())
 
 
 def _repo(tmp_path):
@@ -64,3 +65,19 @@ d = json.loads(diffctx.to_json(r)); d.pop("latency", None); print(json.dumps(d))
     document = json.loads(proc.stdout)
     assert document["coverage"]["status"] == "partial"
     jsonschema.Draft202012Validator(SCHEMA).validate(document)
+
+
+@pytest.mark.parametrize("diff_range", ["HEAD", "HEAD~1..HEAD", "HEAD~2..HEAD"])
+def test_locate_and_impact_documents_validate_against_their_schemas(tmp_path, diff_range):
+    # `skip_serializing_if` without `default` left `truncated`, `commit_count`
+    # and friends required in the generated schema, so no real document
+    # validated; the Rust pin only proves the file matches the type.
+    from diffctx._native import build_impact, build_locate
+
+    repo = _repo(tmp_path)
+    for name, build in (("locate", build_locate), ("impact", build_impact)):
+        schema = json.loads((SCHEMAS / f"diffctx.{name}.v1.json").read_text())
+        document = json.loads(build(root_dir=repo.path, diff_range=diff_range))
+        assert document["schema"] == f"diffctx.{name}.v1"
+        errors = sorted(jsonschema.Draft202012Validator(schema).iter_errors(document), key=lambda e: list(e.path))
+        assert not errors, [f"{name} {list(e.path)}: {e.message}" for e in errors][:5]

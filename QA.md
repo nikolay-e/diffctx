@@ -13,7 +13,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
 | CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
-| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only, scanned by the gitops `sonar-scan` workflow on every Forgejo push |
+| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only. Since 2026-09-28 the per-push sensor is gone: the `autoqa-daily` workflow's `sonar` lane scans the Forgejo HEAD of the moment it runs (~10:45Z), so a push later that day is analysed the next morning and the gate/issue list lags it by up to a day |
 
 ## Stumble probe tasks
 
@@ -82,32 +82,25 @@ silently:
   pyproject edit landed without `uv lock` turns CI red instead of drifting;
   that IS the drift gate, there is no separate check. `--no-build` keeps every
   dependency on a wheel (no third-party `setup.py` runs); the root project is
-  exempt and still compiles through maturin. Dependabot's `uv` entry is
-  `lockfile-only` on purpose — the `pip` entry owns pyproject's ranges, and
-  without the split both ecosystems open the same PR twice.
+  exempt and still compiles through maturin. Renovate owns this pair too since
+  2026-09-29 (`0d75e73a` removed Dependabot and `automerge.yml`); a Dependabot
+  alert on a transitive pin (PyJWT, 2026-09-29) is closed by
+  `uv lock --upgrade-package <name>` plus the `plugin/constraints.txt` export
+  from cd.yml, by hand.
 - **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
   research harness's Python deps. One resolver for the whole repo; the
   separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
 - **`Cargo.toml` + `Cargo.lock`**, GitHub Actions pins, pre-commit revs, Docker
-  digests — Renovate on Forgejo (`renovate.json`, automerge). Dependabot on the
-  mirror keeps only `uv` + `pip`; its `github-actions` and `cargo` entries were
-  removed 2026-09-15 after they opened the same bump twice (#266 vs Forgejo #32).
-  Renovate does NOT detect pep621/uv, so the Python pair stays with Dependabot.
+  digests — Renovate on Forgejo (`renovate.json`, automerge). An epoch squash
+  of `main` leaves every open Renovate branch based on a commit that no longer
+  exists (`mergeable: false` on all ten, 2026-09-30); Renovate rebases them on
+  its next run — never hand-merge a conflicted bot branch after a rewrite.
 - **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
   pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
   0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
   runs on two CHANGELOG lines. A red "Pre-commit hooks" job right after a
   `chore(deps): update pre-commit hook` merge is that class — fix the files, not
   the pin.
-
-The pip entry runs `versioning-strategy: increase-if-necessary`. The default
-(`increase`) rewrites a floor to the newest resolvable version every run, and
-when that version already IS the floor the rewrite is a no-op that
-dependabot-core aborts on (`Expected content to change!`) — numpy and scipy hit
-that for weeks because their newest release supporting `requires-python =
-">=3.10"` is the version already written. A whole ecosystem's weekly run dies on
-one such dependency, so a red "Dependabot Updates" run is worth reading, not
-dismissing as bot noise.
 
 ## Tests
 
@@ -276,10 +269,13 @@ dismissing as bot noise.
    `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues raised on the
    day's own commits count as intake for that pass. The gate scores NEW code
    only, so older findings sit under a green gate; read the issue list, never
-   the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror:
-   a push to Forgejo `main` runs `sonar-diffctx-*` in `argo-workflows`, whose
-   verdict is the Forgejo commit status `argo-ci/sonar`. A fix's issues stay
-   open until that run finishes. The sensor (gitops `e3b914da`) went live on
+   the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror
+   and, since 2026-09-28, not per push either: the `autoqa-daily` workflow in
+   `argo-workflows` scans the Forgejo HEAD at ~10:45Z (its `inventory` node
+   lists the sha it took; `scan:false` = unchanged since the last analysis).
+   `api/project_analyses/search?project=diffctx` names the analysed revision
+   — compare it to HEAD before reading a verdict as current. A fix's issues
+   stay open until the next morning's run. The per-push sensor went live on
    2026-09-15 07:44Z, after that day's last diffctx push, so the project did
    not exist until the first push of the same evening (`ed4cd2f5`) created it:
    gate OK, 92 issues — 83 `rust:S3776` cognitive complexity (tracked, see the
@@ -299,6 +295,16 @@ dismissing as bot noise.
    per-batch median and the deduped gripes. A convergent gripe (the same slug
    from independent runs) is the signal — on 2026-08-30 four of six slugs were
    one defect, an unsourced headline number, and it was real.
+8. The Forgejo `[autoqa] repo nikolay-e/diffctx: open findings` issue (ci-bot,
+   from the same `autoqa-daily` run): gitleaks over the **whole reachable
+   history** plus grype over the Actions pins. It rewrites its own body each
+   day and closes itself when clean, so triage it before the next run, and
+   read the attached `findings.json` for the tail the body truncates. Two
+   traps: it reaches every commit any tag points at — the pre-rewrite
+   `bitcheck/*` anchors kept 61 third-party tokens in retired benchmark diffs
+   "ours" for a day (fixed by re-pinning bitcheck on the rewritten history);
+   and grype reads a sha-pinned action at the version in its `# vX` comment
+   (autoqa issue 68).
 
 ## Issue triage invariants
 
@@ -431,6 +437,13 @@ dismissing as bot noise.
   eval group provides): CI's test job installs no eval group, so an
   unguarded import fails collection on every Python version.
 
+- **`"${arr[@]}"` on an empty array is an unbound variable under bash 3.2
+  with `set -u`** — macOS `/bin/bash`, which `#!/usr/bin/env bash` resolves
+  to whenever Claude Code's PATH has no Homebrew bash (Dock, VS Code). The
+  plugin's impact hook died that way on every macOS default install of
+  1.18.0, right of a pipe, under `|| true`: exit 0, no output. Build one
+  never-empty array (`args=(hook "$event"); args+=(--gate)`), and probe hook
+  scripts with `/bin/bash` explicitly, not the shell on PATH.
 - **Every child process gets a null stdin.** Under an MCP client the server's
   stdin is the JSON-RPC pipe the client holds open; a git that inherited it
   never exited on Windows and every tool call reaching git hung (fixed
@@ -531,6 +544,11 @@ dismissing as bot noise.
 ranges x 4 scoring modes x pack/locate) in ~20 s; `clean` drops the
 snapshots and the fixture worktree.
 
+- The `bitcheck/<sha>` tags that anchor the fixture must point INTO the
+  rewritten history. Anchors from before an epoch squash keep the entire
+  old tree reachable on both forges, and the daily secret scan of history
+  then reports every retired benchmark blob — re-pin the ranges on `main`
+  commits after every rewrite, then delete the old tags on both remotes.
 - The input is a **worktree pinned to a fixed SHA**, not the live
   checkout. diffctx analysing its own repo means its sources appear in
   its own output as context fragments, so editing the code under test

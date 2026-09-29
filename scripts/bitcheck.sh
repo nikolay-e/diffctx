@@ -31,11 +31,14 @@ SNAP_DIR="${BITCHECK_DIR:-${TMPDIR:-/tmp}}/diffctx-bitcheck"
 # cells for a change that could not affect them: stashing one file had rewritten
 # a context fragment. Pinning the worktree makes the binary the only variable.
 # Every SHA this script pins is anchored by a pushed tag `bitcheck/<sha>` on
-# both remotes: the 2026-08-29 history rewrite left them reachable from no
-# branch, so a fresh clone could not `worktree add` the fixture at all and a
-# local `git gc` would have collected the objects. `git fetch --tags` restores
-# them; do not delete the tags when pruning.
-FIXTURE_SHA="5e2025ab"
+# both remotes: the epoch squashes leave them reachable from no branch, so a
+# fresh clone could not `worktree add` the fixture at all and a local `git gc`
+# would have collected the objects. `git fetch --tags` restores them; do not
+# delete the tags when pruning. The pins must sit on the rewritten history:
+# the first set anchored the pre-rewrite tree, which kept every retired
+# benchmark blob (upstream diffs full of third-party tokens) alive on both
+# forges, and the history secret scan reported all of them as ours.
+FIXTURE_SHA="99ff4abc"
 FIXTURE="$SNAP_DIR/fixture"
 
 # The binary under test is built HERE, every time. This script used to read
@@ -67,9 +70,9 @@ ensure_fixture() {
 # rename/deletion-carrying one, so fragmentation, scoping and git plumbing are
 # all exercised.
 RANGES=(
-  "33731da6..5e2025ab" # 68 files, Rust + Python + docs, today's batch
-  "48672615..e5540835" # single commit, one Rust module
-  "c6ae1b04..d4028021" # corpus schema + provenance, deletions and renames
+  "0d75e73a..99ff4abc" # 68 files, Rust + Python + docs: impact mode, 1.18.0
+  "384c4b86..3562b922" # 22 files, 3 Rust: calibrated tau, hard deadline
+  "d58814c9..0d75e73a" # 48 files, plugin: deletions and renames
 )
 MODES=(ego ppr bm25 rrf)
 # `locate` is a separate public schema (`locate.v1`) built from the same

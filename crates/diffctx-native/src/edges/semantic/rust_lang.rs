@@ -32,7 +32,10 @@ static FN_DEF_RE: Lazy<Regex> = Lazy::new(|| {
 });
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
 static FN_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z_]\w+)\s*[(<]").unwrap());
-static PATH_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\w+)::(\w+)").unwrap());
+/// Whole `a::b::c` paths; every adjacent pair is a (module, symbol) call so
+/// `crate::pricing::total(..)` names `pricing::total` and not only
+/// `crate::pricing`, which a pairwise regex stopped at.
+static PATH_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\w+(?:::\w+)+").unwrap());
 static IMPL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*impl(?:<[^>]*>)?\s+(\w+)\s+for\s+(\w+)").unwrap());
 static PUB_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*pub\s+use\s+([\w:]+)").unwrap());
@@ -107,9 +110,15 @@ fn extract_references(content: &str) -> References {
             fn_calls.insert(name.to_string());
         }
     }
-    let path_calls: FxHashSet<(String, String)> = PATH_CALL_RE
-        .captures_iter(content)
-        .map(|c| (c[1].to_string(), c[2].to_string()))
+    let path_calls: FxHashSet<(String, String)> = PATH_RE
+        .find_iter(content)
+        .flat_map(|m| {
+            let segments: Vec<&str> = m.as_str().split("::").collect();
+            segments
+                .windows(2)
+                .map(|w| (w[0].to_string(), w[1].to_string()))
+                .collect::<Vec<_>>()
+        })
         .collect();
     References {
         type_refs,
