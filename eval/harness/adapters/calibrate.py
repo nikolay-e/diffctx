@@ -324,8 +324,12 @@ def render_grid_report(trials: list[TrialResult]) -> str:
     lines: list[str] = ["# Calibration grid report", ""]
     benchmarks = sorted({name for t in trials for name in t.per_benchmark})
     headers = ["tau", "core_budget_fraction", "min_recall", *benchmarks]
-    lines.append("| " + " | ".join(headers) + " |")
-    lines.append("|" + "|".join(["---"] * len(headers)) + "|")
+    lines.extend(
+        [
+            "| " + " | ".join(headers) + " |",
+            "|" + "|".join(["---"] * len(headers)) + "|",
+        ]
+    )
     sorted_trials = sorted(trials, key=lambda t: -t.score)
     for t in sorted_trials:
         row = [f"{t.params.tau:.4f}", f"{t.params.core_budget_fraction:.4f}", f"{t.score:.4f}"]
@@ -335,10 +339,14 @@ def render_grid_report(trials: list[TrialResult]) -> str:
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
     best = sorted_trials[0]
-    lines.append("## Best cell")
-    lines.append("")
-    lines.append(f"- τ = {best.params.tau}")
-    lines.append(f"- core_budget_fraction = {best.params.core_budget_fraction}")
-    lines.append(f"- min(per-benchmark file_recall) = {best.score:.4f}")
-    lines.append("")
+    lines.extend(
+        [
+            "## Best cell",
+            "",
+            f"- τ = {best.params.tau}",
+            f"- core_budget_fraction = {best.params.core_budget_fraction}",
+            f"- min(per-benchmark file_recall) = {best.score:.4f}",
+            "",
+        ]
+    )
     return "\n".join(lines)

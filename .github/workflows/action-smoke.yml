@@ -281,17 +281,34 @@ jobs:
           scoring: ego
           budget: '8000'
 
+      # The impact view first: what this PR reaches outside its own diff is
+      # the part of the review that the raw diff cannot show, and it is small
+      # enough to sit in the comment itself.
+      - name: Build impact view
+        id: impact
+        uses: ./
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+          PIP_NO_INDEX: '1'
+        with:
+          mode: impact
+          format: md
+          output-path: ${{ runner.temp }}/diffctx-impact.md
+
       - name: Upload review context
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: diffctx-review-context
-          path: ${{ steps.diffctx.outputs.context-file }}
+          path: |
+            ${{ steps.diffctx.outputs.context-file }}
+            ${{ steps.impact.outputs.context-file }}
           if-no-files-found: error
           retention-days: 14
 
       - name: Summarise into the step summary
         env:
           CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
+          IMPACT_FILE: ${{ steps.impact.outputs.context-file }}
           TOKEN_COUNT: ${{ steps.diffctx.outputs.token-count }}
           DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
           EMPTY: ${{ steps.diffctx.outputs.empty }}

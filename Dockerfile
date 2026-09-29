@@ -30,14 +30,15 @@ RUN apt-get update \
 # Keyed to the UTC day CI passes, so an unchanged Dockerfile still picks up
 # Debian security fixes instead of reusing the upgrade layer forever.
 ARG APT_REFRESH=unset
+# Bind-mounted host repositories carry foreign ownership; without the
+# safe.directory entry git refuses to read them ("dubious ownership") and
+# every --diff run fails. It rides in the same layer as the upgrade: both are
+# cheap, and one layer keyed to the day is one cache entry, not two.
 RUN echo "security upgrade keyed to ${APT_REFRESH}" \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive timeout 300 apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Bind-mounted host repositories carry foreign ownership; without this git
-# refuses to read them ("dubious ownership") and every --diff run fails.
-RUN git config --system --add safe.directory '*' \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*' \
     && useradd --system --uid 10001 --create-home diffctx
 
 COPY --from=builder /usr/local/bin/diffctx /usr/local/bin/diffctx

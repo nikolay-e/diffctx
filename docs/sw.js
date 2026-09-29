@@ -33,7 +33,7 @@ self.addEventListener("fetch", (e) => {
     caches.open(SHELL).then(async (cache) => {
       try {
         const res = await fetch(req);
-        if (res.ok) cache.put(req, res.clone());
+        if (res.ok) void cache.put(req, res.clone());
         return res;
       } catch (err) {
         const hit = await cache.match(req, { ignoreSearch: true });

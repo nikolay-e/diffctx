@@ -117,6 +117,132 @@ fn expand_by_rare_identifiers(ctx: &DiscoveryContext) -> Vec<PathBuf> {
     result
 }
 
+/// Files that name what the change defines: the callers a change reaches
+/// (#310). Forward discovery follows what the changed file imports; nothing
+/// followed the other way, so a function with a hundred importers surfaced
+/// one of them and the impact view called the rest silence. Only the
+/// impact mode asks for this: widening the universe moves selection, and
+/// the corpus operating point is calibrated without it.
+pub struct ReverseReferenceDiscovery;
+
+/// A name held by more candidate files than this is vocabulary, not a
+/// reference, and following it would admit the repository.
+const MAX_REVERSE_FILES_PER_NAME: usize = 64;
+const MAX_REVERSE_FILES: usize = 256;
+const MIN_REVERSE_NAME_LEN: usize = 4;
+
+static DEFINITION_RE: OnceLock<regex::Regex> = OnceLock::new();
+
+fn definition_names(content: &str) -> Vec<String> {
+    let re = DEFINITION_RE.get_or_init(|| {
+        regex::Regex::new(
+            r"(?m)^\s*(?:export\s+(?:default\s+)?|pub(?:\([^)]*\))?\s+|public\s+|static\s+|async\s+|abstract\s+|final\s+|data\s+|sealed\s+|open\s+)*(?:fn|def|class|struct|enum|interface|trait|type|function|const|let|var|val|object|impl|protocol|module|record)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        )
+        .expect("definition regex")
+    });
+    re.captures_iter(content)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .filter(|n| n.len() >= MIN_REVERSE_NAME_LEN)
+        .collect()
+}
+
+impl DiscoveryStrategy for ReverseReferenceDiscovery {
+    fn name(&self) -> &'static str {
+        "reverse_reference"
+    }
+
+    fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+        let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
+        // Per changed file: the module name a reference would import it by,
+        // and the names it defines. A file that carries both is a reference
+        // however common the name; one that carries the name alone counts
+        // only while the name is rare enough to mean this definition.
+        let mut per_file: Vec<(Option<String>, FxHashSet<String>)> = Vec::new();
+        for path in &ctx.changed_files {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .filter(|s| s.len() >= MIN_REVERSE_NAME_LEN)
+                .map(|s| s.to_lowercase());
+            let names: FxHashSet<String> = ctx
+                .read_file(path)
+                .map(|c| {
+                    definition_names(&c)
+                        .into_iter()
+                        .map(|n| n.to_lowercase())
+                        .collect()
+                })
+                .unwrap_or_default();
+            if stem.is_some() || !names.is_empty() {
+                per_file.push((stem, names));
+            }
+        }
+        if per_file.is_empty() {
+            return Vec::new();
+        }
+        let mut name_holders: FxHashMap<&str, usize> = FxHashMap::default();
+        let mut strong: Vec<&PathBuf> = Vec::new();
+        let mut weak: Vec<(&PathBuf, Vec<&str>)> = Vec::new();
+        for (path, doc) in &ctx.shared_corpus().docs {
+            if changed_set.contains(path.as_path()) {
+                continue;
+            }
+            let mut is_strong = false;
+            let mut named: Vec<&str> = Vec::new();
+            for (stem, names) in &per_file {
+                let has_stem = stem
+                    .as_deref()
+                    .is_some_and(|s| doc.term_counts.contains_key(s));
+                for name in names {
+                    if doc.term_counts.contains_key(name) {
+                        *name_holders.entry(name.as_str()).or_default() += 1;
+                        named.push(name.as_str());
+                        if has_stem {
+                            is_strong = true;
+                        }
+                    }
+                }
+            }
+            if is_strong {
+                strong.push(path);
+            } else if !named.is_empty() {
+                weak.push((path, named));
+            }
+        }
+        strong.sort();
+        tracing::debug!(
+            "reverse references: {} definition sets, {} strong, {} weak, corpus {}",
+            per_file.len(),
+            strong.len(),
+            weak.len(),
+            ctx.shared_corpus().docs.len()
+        );
+        let mut result: Vec<PathBuf> = Vec::new();
+        let mut seen: FxHashSet<&PathBuf> = FxHashSet::default();
+        for f in strong {
+            if result.len() >= MAX_REVERSE_FILES {
+                return result;
+            }
+            if seen.insert(f) {
+                result.push(f.clone());
+            }
+        }
+        weak.sort_by(|a, b| a.0.cmp(b.0));
+        for (f, named) in weak {
+            if result.len() >= MAX_REVERSE_FILES {
+                break;
+            }
+            let rare = named
+                .iter()
+                .any(|n| name_holders.get(n).copied().unwrap_or(0) <= MAX_REVERSE_FILES_PER_NAME);
+            if rare && seen.insert(f) {
+                result.push(f.clone());
+            }
+        }
+        result
+    }
+}
+
 pub struct TestFileDiscovery;
 
 const TEST_PREFIXES: &[&str] = &["test_", "spec_"];

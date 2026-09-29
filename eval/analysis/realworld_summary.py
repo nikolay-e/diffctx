@@ -46,11 +46,14 @@ def summarise(rows: list[dict]) -> str:
     status = Counter(r.get("new_status", "unknown") for r in rows)
     produced = [r for r in rows if r.get("status") == "produced"]
 
-    out.append(f"# real-world benchmark, {n} of {SNAPSHOT['n']} cases re-run\n")
-
-    out.append("## Liveness\n")
-    out.append("| status | this run | snapshot (1.10.2, 30s cap) |")
-    out.append("|---|---|---|")
+    out.extend(
+        [
+            f"# real-world benchmark, {n} of {SNAPSHOT['n']} cases re-run\n",
+            "## Liveness\n",
+            "| status | this run | snapshot (1.10.2, 30s cap) |",
+            "|---|---|---|",
+        ]
+    )
     for key in ("ok", "over_dump", "hang", "no_output", "bad_json", "checkout_fail"):
         if status.get(key) or SNAPSHOT.get(key):
             out.append(f"| {key} | {_pct(status.get(key, 0), n)} | {SNAPSHOT.get(key, '—')} |")
@@ -77,8 +80,12 @@ def summarise(rows: list[dict]) -> str:
         return "\n".join(out)
 
     over = [r for r in produced if r.get("new_status") == "over_dump"]
-    out.append(f"- over-dump rate: **{_pct(len(over), len(produced))}** of produced")
-    out.append(f"  (and {_pct(len(over), n)} of all {n} re-run) — gate is < 10%")
+    out.extend(
+        [
+            f"- over-dump rate: **{_pct(len(over), len(produced))}** of produced",
+            f"  (and {_pct(len(over), n)} of all {n} re-run) — gate is < 10%",
+        ]
+    )
 
     precs = [r["precision_labelled"] for r in produced if r.get("precision_labelled") is not None]
     recs = [r["recall"] for r in produced if r.get("recall") is not None]
@@ -119,14 +126,22 @@ def summarise(rows: list[dict]) -> str:
     moved = Counter()
     for r in rows:
         moved[(r.get("baseline_status"), r.get("new_status"))] += 1
-    out.append("| was | now | cases |")
-    out.append("|---|---|---|")
+    out.extend(
+        [
+            "| was | now | cases |",
+            "|---|---|---|",
+        ]
+    )
     for (was, now), count in sorted(moved.items(), key=lambda kv: -kv[1]):
         out.append(f"| {was} | {now} | {count} |")
 
-    out.append("\n## By repo\n")
-    out.append("| repo | cases | ok | over_dump | hang |")
-    out.append("|---|---|---|---|---|")
+    out.extend(
+        [
+            "\n## By repo\n",
+            "| repo | cases | ok | over_dump | hang |",
+            "|---|---|---|---|---|",
+        ]
+    )
     for repo in sorted({r["repo"] for r in rows if r.get("repo")}):
         rr = [r for r in rows if r.get("repo") == repo]
         s = Counter(r.get("new_status") for r in rr)

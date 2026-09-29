@@ -1264,6 +1264,14 @@ class TestToolDefinitionBudget:
         # 1063 * 0.4 = 425: the acceptance criterion was a >=60% cut.
         assert total <= 425, f"tool definition grew to {total} tokens, above the #127 budget"
 
+    @pytest.mark.asyncio
+    async def test_the_tool_is_always_loaded(self, server):
+        """Under tool search a deferred tool needs a ToolSearch round-trip and is
+        lost after compaction; eight sessions with it deferred made 0 unprompted
+        calls (#289). One small tool is cheap to keep resident."""
+        tool = next(t for t in await server.list_tools() if t.name == "diffctx_context")
+        assert tool.meta == {"anthropic/alwaysLoad": True}
+
     def test_server_instructions_name_the_tool_within_a_budget(self, server):
         """Under tool search the definition is deferred and these instructions are
         all an agent sees; without them a fresh session reviewing a change never

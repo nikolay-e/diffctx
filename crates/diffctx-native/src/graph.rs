@@ -426,6 +426,39 @@ impl Graph {
         }
     }
 
+    /// Invoke `f(source_id, weight)` for each node with an edge INTO `node`,
+    /// with the weight of that incoming edge.
+    pub fn for_each_reverse_neighbor<F: FnMut(&FragmentId, f64)>(
+        &self,
+        node: &FragmentId,
+        mut f: F,
+    ) {
+        let rev = match self.rev_csr() {
+            Some(c) => c,
+            None => return,
+        };
+        let idx = match rev.node_to_idx.get(node) {
+            Some(&i) => i as usize,
+            None => return,
+        };
+        let s = rev.indptr[idx] as usize;
+        let e = rev.indptr[idx + 1] as usize;
+        for k in s..e {
+            let src_idx = rev.indices[k] as usize;
+            f(&rev.idx_to_node[src_idx], rev.weights[k]);
+        }
+    }
+
+    /// Whether `a -> b` is the stronger direction of the pair. Every builder
+    /// writes the reverse of an edge at `weight * reverse_factor` with the
+    /// factor below one, so the comparison recovers the direction the builder
+    /// meant (caller -> callee, importer -> imported) without a second table.
+    pub fn is_forward(&self, a: &FragmentId, b: &FragmentId) -> bool {
+        let ab = self.forward_edge_weight(a, b).unwrap_or(0.0);
+        let ba = self.forward_edge_weight(b, a).unwrap_or(0.0);
+        ab > ba
+    }
+
     pub fn ego_graph(
         &self,
         seeds: &FxHashSet<FragmentId>,

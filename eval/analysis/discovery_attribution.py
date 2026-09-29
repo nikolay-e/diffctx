@@ -68,16 +68,24 @@ def render(result: dict) -> str:
     never = len(result["never_surfaced"])
 
     out = [f"# Gold attribution over {total} gold files\n"]
-    out.append("| outcome | count | fixable by |")
-    out.append("|---|---|---|")
-    out.append(f"| selected | {sel} | — |")
-    out.append(f"| surfaced, not selected | {sns} | ranking / budget (#65, #123) |")
-    out.append(f"| never surfaced | {never} | discovery (#130, #179) |")
+    out.extend(
+        [
+            "| outcome | count | fixable by |",
+            "|---|---|---|",
+            f"| selected | {sel} | — |",
+            f"| surfaced, not selected | {sns} | ranking / budget (#65, #123) |",
+            f"| never surfaced | {never} | discovery (#130, #179) |",
+        ]
+    )
 
     if result["surfaced_by_source"]:
-        out.append("\nWhich strategy surfaced the gold files that made it into the universe:\n")
-        out.append("| source | gold files |")
-        out.append("|---|---|")
+        out.extend(
+            [
+                "\nWhich strategy surfaced the gold files that made it into the universe:\n",
+                "| source | gold files |",
+                "|---|---|",
+            ]
+        )
         for src, n in sorted(result["surfaced_by_source"].items(), key=lambda kv: -kv[1]):
             out.append(f"| {src} | {n} |")
 

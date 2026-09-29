@@ -24,22 +24,33 @@ AIDER_BUDGETS = [8000, 16000, 32000, 64000, 128000]
 DEPTHLESS = {"ppr", "bm25", "internal-bm25"}
 
 
+def _depths_for(method: str) -> list[int]:
+    if method in DEPTHLESS:
+        return [-1]
+    if method == "ego":
+        return [d for d in DEPTHS if d != -1]
+    return list(DEPTHS)
+
+
+def _engine_cells(method: str) -> list[dict]:
+    return [{"method": method, "depth": depth, "test_set": test_set} for depth in _depths_for(method) for test_set in TEST_SETS]
+
+
+def _aider_cells() -> list[dict]:
+    return [
+        {"method": "aider", "depth": -1, "test_set": test_set, "budget": budget}
+        for test_set in TEST_SETS
+        for budget in AIDER_BUDGETS
+    ]
+
+
 def cells(wanted: set[str]) -> list[dict]:
     out: list[dict] = []
     for method in METHODS[:-1]:
-        if method not in wanted:
-            continue
-        for depth in DEPTHS:
-            if method in DEPTHLESS and depth != -1:
-                continue
-            if method == "ego" and depth == -1:
-                continue
-            for test_set in TEST_SETS:
-                out.append({"method": method, "depth": depth, "test_set": test_set})
+        if method in wanted:
+            out.extend(_engine_cells(method))
     if "aider" in wanted:
-        for test_set in TEST_SETS:
-            for budget in AIDER_BUDGETS:
-                out.append({"method": "aider", "depth": -1, "test_set": test_set, "budget": budget})
+        out.extend(_aider_cells())
     return out
 
 

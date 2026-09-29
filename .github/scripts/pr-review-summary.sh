@@ -28,6 +28,14 @@ withheld=$(grep -oE '^\*[0-9]+ changed file\(s\) withheld by exclusion policy[^*
   echo
   echo "Review this instead of the raw diff: [download the context](${RUN_URL}#artifacts)" \
     "(artifact \`diffctx-review-context\`, 14 days)."
+  if [[ -n "${IMPACT_FILE:-}" && -s "${IMPACT_FILE}" ]]; then
+    echo
+    echo "**What this change reaches outside its diff** (\`--mode impact\`):"
+    echo
+    echo '```'
+    head -40 "$IMPACT_FILE"
+    echo '```'
+  fi
   if [[ -n "$withheld" ]]; then
     echo
     echo "${withheld} — read those in the raw diff."

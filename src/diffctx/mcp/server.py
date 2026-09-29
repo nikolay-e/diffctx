@@ -20,7 +20,7 @@ from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 # Every module a tool call needs is imported here, at startup, never inside the
 # call: a running server whose package is replaced on disk (`uv tool install
 # --force`) otherwise dies on its first lazy import (#291).
-from diffctx._native import GitError, build_diff_context, build_locate
+from diffctx._native import GitError, build_diff_context, build_impact, build_locate
 from diffctx.clipboard import ClipboardError, copy_to_clipboard
 from diffctx.tokens import count_tokens
 from diffctx.version import __version__
@@ -134,6 +134,32 @@ async def _locate_response(validated_path: Path, diff_range: str, budget_tokens:
     return _capped_by_max_tokens(payload, max_tokens, "lower budget_tokens or narrow diff_range")
 
 
+# The pre-commit answer (#310): what the change reaches outside its own
+# diff, as text, capped by the engine on its serialized size. An empty
+# impact is a finding, not a failure, and it is what the plugin hook stays
+# silent on.
+async def _impact_response(validated_path: Path, diff_range: str, clipboard: bool, max_tokens: int) -> str:
+    try:
+        payload = await _run_with_deadline(
+            "diffctx_context",
+            partial(
+                build_impact,
+                root_dir=validated_path,
+                diff_range=diff_range,
+                timeout=_DEFAULT_TIMEOUT_SECONDS,
+                markdown=True,
+            ),
+        )
+    except GitError as e:
+        raise _git_failure(diff_range, e) from e
+    if clipboard:
+        degraded_notice = await _copy_or_degrade(payload)
+        if degraded_notice is None:
+            return "Copied impact summary to clipboard"
+        payload = degraded_notice + payload
+    return _capped_by_max_tokens(payload, max_tokens, "narrow diff_range")
+
+
 # The overflow list is up to 50 paths an agent never feeds back: the locate
 # protocol continues through `items`, and on a large diff the list alone cost
 # thousands of tokens (#289). `overflow_count` and `coverage.next_up` keep the
@@ -195,9 +221,9 @@ async def _copy_or_degrade(content: str) -> str | None:
 mcp = FastMCP(
     "diffctx",
     instructions=(
-        "Before reviewing, committing or explaining a code change, or when asked what a change "
-        "affects, call diffctx_context first: it returns the callers, callees and tests the diff "
-        "touches, which git diff does not show. With no diff_ref it reads uncommitted work."
+        "Before reviewing, committing, merging or pushing a change, or when asked what it "
+        "affects, call diffctx_context. mode=impact names the callers, tests and contracts "
+        "outside the diff, which git diff cannot. No diff_ref = uncommitted work."
     ),
 )
 # FastMCP takes no version argument, so the SDK reports its own version as the
@@ -226,20 +252,23 @@ _UNTRUSTED_NOTICE = (
 # that mostly restated what the parameters already say. This is the whole
 # description: what it does, the two-call shape, and the safety boundary.
 _CONTEXT_DESCRIPTION = (
-    "Use before reviewing or committing: the callers, callees and tests a change "
-    "touches, which git diff omits. diff_ref: range, HEAD (default when dirty) or "
-    "24h. locate ranks ids for fragment_ids; pack returns code." + _UNTRUSTED_NOTICE
+    "What a change reaches outside its diff; call before reviewing, committing or pushing. "
+    "mode: impact (callers, tests, contracts), locate (ids for fragment_ids), pack (code). "
+    "diff_ref: range or HEAD (default when dirty)." + _UNTRUSTED_NOTICE
 )
 
 
 # The result is already a document (JSON or Markdown). Structured output would
 # ship it a second time as {"result": "<escaped string>"}, which clients render
 # instead of the text: every quote escaped, the tokens paid twice.
+# One tool with a small schema: resident in every session, so the pre-commit
+# call needs no ToolSearch round-trip and survives compaction (#289).
 @mcp.tool(
     name="diffctx_context",
     description=_CONTEXT_DESCRIPTION,
     annotations=_read_only("diffctx context"),
     structured_output=False,
+    meta={"anthropic/alwaysLoad": True},
 )
 async def diffctx_context(
     repo_path: str,
@@ -260,25 +289,37 @@ async def diffctx_context(
     # two-call shape something the caller has to remember rather than something
     # the arguments express.
     if fragment_ids:
-        fetched = await _run_with_deadline(
-            "diffctx_context",
-            partial(fetch_result, validated_path, diff_ref, fragment_ids, _DEFAULT_MAX_FILE_BYTES),
-        )
-        content = fetched.markdown
-        if clipboard:
-            degraded_notice = await _copy_or_degrade(content)
-            if degraded_notice is None:
-                return f"Copied {fetched.resolved} of {len(fragment_ids)} fragments to clipboard"
-            content = degraded_notice + content
-        return _capped_by_max_tokens(content, max_tokens, "fetch fewer fragment_ids")
+        return await _fetch_response(validated_path, diff_ref, fragment_ids, clipboard, max_tokens)
 
     _validate_budget_tokens(budget_tokens)
-    if mode not in ("pack", "locate"):
-        raise ValueError(f'mode must be "pack" or "locate", got {mode!r}')
+    if mode not in ("pack", "locate", "impact"):
+        raise ValueError(f'mode must be "pack", "locate" or "impact", got {mode!r}')
+    if include_raw_diff and mode != "pack":
+        raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
+    if mode == "impact":
+        return await _impact_response(validated_path, diff_ref, clipboard, max_tokens)
     if mode == "locate":
-        if include_raw_diff:
-            raise ValueError('mode="locate" emits no source; include_raw_diff applies to mode="pack" only')
         return await _locate_response(validated_path, diff_ref, budget_tokens, clipboard, max_tokens)
+    return await _pack_response(validated_path, diff_ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
+
+
+async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: list[str], clipboard: bool, max_tokens: int) -> str:
+    fetched = await _run_with_deadline(
+        "diffctx_context",
+        partial(fetch_result, validated_path, diff_ref, fragment_ids, _DEFAULT_MAX_FILE_BYTES),
+    )
+    content = fetched.markdown
+    if clipboard:
+        degraded_notice = await _copy_or_degrade(content)
+        if degraded_notice is None:
+            return f"Copied {fetched.resolved} of {len(fragment_ids)} fragments to clipboard"
+        content = degraded_notice + content
+    return _capped_by_max_tokens(content, max_tokens, "fetch fewer fragment_ids")
+
+
+async def _pack_response(
+    validated_path: Path, diff_ref: str, budget_tokens: int, clipboard: bool, max_tokens: int, include_raw_diff: bool
+) -> str:
     try:
         result = await _run_with_deadline(
             "diffctx_context",
@@ -293,16 +334,13 @@ async def diffctx_context(
         )
     except GitError as e:
         raise _git_failure(diff_ref, e) from e
-
     content = tree_to_string(result, "md")
-
     if clipboard:
         degraded_notice = await _copy_or_degrade(content)
         if degraded_notice is None:
             frag_count = result.get("fragment_count", 0)
             return f"Copied diff context ({frag_count} fragments) to clipboard"
         content = degraded_notice + content
-
     return _capped_by_max_tokens(content, max_tokens, "lower budget_tokens, narrow diff_ref, or use clipboard=true")
 
 

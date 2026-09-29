@@ -465,10 +465,14 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
     parts: list[str] = []
 
     if g.summary:
-        parts.append(graph_summary(pg))
-        parts.append(_format_cycles(g.level, pg))
-        parts.append(_format_hotspots(pg))
-        parts.append(_format_metrics(g.level, pg))
+        parts.extend(
+            [
+                graph_summary(pg),
+                _format_cycles(g.level, pg),
+                _format_hotspots(pg),
+                _format_metrics(g.level, pg),
+            ]
+        )
 
     if not g.summary:
         parts.append(_graph_to_string(pg, g.format, level=g.level))
@@ -494,6 +498,10 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
 
     if args.diff_range and args.mode == "locate":
         _run_locate_mode(args, prog)
+        return
+
+    if args.diff_range and args.mode == "impact":
+        _run_impact_mode(args, prog)
         return
 
     if args.diff_range:
@@ -525,6 +533,32 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
 
     if is_empty_diff_result:
         sys.exit(_EXIT_EMPTY_DIFF)
+
+
+def _run_impact_mode(args: ParsedArgs, prog: str) -> None:
+    from ._native import build_impact
+    from .tokens import print_token_summary
+
+    _ensure_git_repo(args.root_dir, prog)
+    payload = _call_with_wall_clock_deadline(
+        lambda: build_impact(
+            root_dir=args.root_dir,
+            diff_range=args.diff_range or "HEAD",
+            alpha=args.alpha,
+            scoring_mode=args.scoring,
+            timeout=args.timeout,
+            paths=_diff_scope(args),
+            markdown=args.output_format == "md",
+        ),
+        args.timeout,
+        prog,
+    )
+    output_content = payload if payload.endswith("\n") else payload + "\n"
+    # An empty impact is the answer ("nothing outside the diff depends on
+    # this"), not the empty-diff failure the other modes exit 4 on.
+    if not args.quiet:
+        print_token_summary(output_content)
+    _emit(output_content, args, prog, write_stdout=sys.stdout.write)
 
 
 def _run_locate_mode(args: ParsedArgs, prog: str) -> None:

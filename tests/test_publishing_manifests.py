@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -82,7 +83,9 @@ class TestClaudePlugin:
         for line in lines:
             spec = line.split(";")[0].strip()
             name, sep, version = spec.partition("==")
-            assert sep and version and not re.search(r"[<>~!*,]", version), line
+            assert sep, line
+            assert version, line
+            assert not re.search(r"[<>~!*,]", version), line
             pins.setdefault(name.lower(), set()).add(version)
         assert {"mcp", "pathspec", "pydantic", "anyio"} <= pins.keys()
         assert "diffctx" not in pins
@@ -92,7 +95,7 @@ class TestClaudePlugin:
         assert server["command"] == "uvx"
         assert server["args"] == UVX_ARGS
 
-    @pytest.mark.parametrize("command", ["diffctx", "impact"])
+    @pytest.mark.parametrize("command", ["diffctx", "impact", "commit"])
     def test_skill_has_frontmatter_and_a_real_tool(self, command):
         """Plugin commands instruct the model to call an MCP tool by name;
         a tool rename that skips these files ships a plugin whose commands
@@ -117,6 +120,69 @@ class TestClaudePlugin:
         # once the operator sets DIFFCTX_MCP_LEGACY_TOOLS is a broken command.
         exported = {t.name for t in mcp_server.mcp._tool_manager.list_tools()}
         assert referenced <= exported, f"unknown tools referenced: {referenced - exported}"
+
+
+class TestPluginHook:
+    def test_hooks_json_wires_install_at_session_start_and_impact_around_git(self):
+        hooks = _load("plugin/hooks/hooks.json")["hooks"]
+        [start] = hooks["SessionStart"]
+        [install] = start["hooks"]
+        assert install["command"].endswith("/hooks/diffctx-install.sh")
+        for event in ("PreToolUse", "PostToolUse"):
+            [entry] = hooks[event]
+            assert entry["matcher"] == "Bash"
+            [hook] = entry["hooks"]
+            assert hook["command"].endswith("/hooks/diffctx-impact.sh")
+            assert hook["timeout"] > _diffctx_hook_deadline()
+        for name in ("diffctx-install.sh", "diffctx-impact.sh"):
+            script = PROJECT_ROOT / "plugin" / "hooks" / name
+            assert script.is_file()
+            assert os.access(script, os.X_OK)
+
+    def test_the_commit_path_never_downloads(self):
+        """The install runs at session start with its own timeout and a
+        backoff; the git-path hook only runs a binary that is already there."""
+        impact = (PROJECT_ROOT / "plugin" / "hooks" / "diffctx-impact.sh").read_text(encoding="utf-8")
+        install = (PROJECT_ROOT / "plugin" / "hooks" / "diffctx-install.sh").read_text(encoding="utf-8")
+        assert "curl" not in impact
+        assert 'hook "$event"' in impact
+        assert impact.splitlines()[-1] == "exit 0"
+        assert "checksums.json" in install
+        assert "--max-time 60" in install
+        assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] > 60
+        assert "trap cleanup EXIT" in install
+        assert "install-failed" in install
+        assert "SessionStart" in install
+        # The release window: manifest bumped, checksums not yet published.
+        # That is "try again next session", never the six-hour backoff.
+        checksum_gate = next(line for line in install.splitlines() if '[[ -n "$expected" ]]' in line)
+        assert checksum_gate.endswith("|| exit 0")
+        assert "hook pretooluse --help" in install
+        assert install.splitlines()[-1] == "exit 0"
+
+    def test_plugin_checksums_are_the_release_checksums(self):
+        """One rendering, two copies: cd.yml writes both from the same assets."""
+        assert _load("plugin/checksums.json") == _load("packaging/npm/checksums.json")
+        assert all(k.startswith(f"diffctx-{__version__}-") for k in _load("plugin/checksums.json"))
+
+    def test_the_hook_options_are_declared(self):
+        options = _load("plugin/.claude-plugin/plugin.json")["userConfig"]
+        assert options["impact_hook"]["type"] == "boolean"
+        assert options["impact_hook"]["default"] is True
+        assert options["impact_gate"]["type"] == "boolean"
+        assert options["impact_gate"]["default"] is False
+
+    @pytest.mark.parametrize("command", ["diffctx", "impact", "commit"])
+    def test_skill_descriptions_fit_the_trigger_cap(self, command):
+        text = (PROJECT_ROOT / "plugin" / "skills" / command / "SKILL.md").read_text(encoding="utf-8")
+        front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL).group(1)
+        description = re.search(r"^description:\s*(.*)$", front, re.MULTILINE).group(1)
+        assert len(description) < 1536
+
+
+def _diffctx_hook_deadline() -> int:
+    source = (PROJECT_ROOT / "crates" / "diffctx-native" / "src" / "hook.rs").read_text(encoding="utf-8")
+    return int(re.search(r"HOOK_DEADLINE_SECS: u64 = (\d+)", source).group(1))
 
 
 class TestDistributionPins:

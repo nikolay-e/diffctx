@@ -1315,7 +1315,8 @@ jobs:
             --version "$VERSION" \
             --assets-dir ./release-binaries \
             --scoop bucket/diffctx.json \
-            --npm-checksums packaging/npm/checksums.json
+            --npm-checksums packaging/npm/checksums.json \
+            --plugin-checksums plugin/checksums.json
 
       # `bucket/` IS the Scoop bucket, and this manifest was pushed to main with
       # nothing checking it — a wrong hash, a stale version, or a `bin` that no
@@ -1371,7 +1372,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bucket/diffctx.json packaging/npm/checksums.json
+          git add bucket/diffctx.json packaging/npm/checksums.json plugin/checksums.json
           if git diff --staged --quiet; then
             echo "Manifests already current."
             exit 0

@@ -93,6 +93,30 @@ def build_locate(
     )
 
 
+def build_impact(
+    root_dir: Path,
+    diff_range: str,
+    alpha: float = _DEFAULT_ALPHA,
+    scoring_mode: str = _DEFAULT_SCORING,
+    timeout: int = _PIPELINE_TIMEOUT,
+    paths: list[str] | None = None,
+    markdown: bool = False,
+) -> str:
+    from diffctx._diffctx import build_impact as _rust_impact
+
+    return str(
+        _rust_impact(
+            str(root_dir),
+            diff_range,
+            alpha=alpha,
+            scoring_mode=scoring_mode,
+            timeout=timeout,
+            paths=paths or [],
+            markdown=markdown,
+        )
+    )
+
+
 def resolve_diff_range(root_dir: Path, diff_range: str) -> str:
     from diffctx._diffctx import resolve_diff_range as _rust_resolve
 

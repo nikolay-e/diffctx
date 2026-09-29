@@ -333,6 +333,14 @@ _OMITTED_TEXT_MARK = " (omitted)"
 _NO_FRAGMENTS_TEXT_MARK = " (no fragments)"
 
 
+def _file_mark(text: str, fragmentless: set[str], omitted: set[str], no_fragments_mark: str, omitted_mark: str) -> str:
+    if text in fragmentless:
+        return no_fragments_mark
+    if text in omitted:
+        return omitted_mark
+    return ""
+
+
 def _escape_text_path(path: Any) -> str:
     # Backslash first, so an escaped marker below cannot be mistaken for a real
     # backslash the path carried; then the two line breaks git can emit
@@ -367,8 +375,7 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     fragmentless = set(_no_fragment_changed_files(tree))
     file.write("  changed files:\n")
     for path in tree["changed_files"]:
-        text = str(path)
-        mark = _NO_FRAGMENTS_TEXT_MARK if text in fragmentless else _OMITTED_TEXT_MARK if text in omitted else ""
+        mark = _file_mark(str(path), fragmentless, omitted, _NO_FRAGMENTS_TEXT_MARK, _OMITTED_TEXT_MARK)
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
@@ -602,7 +609,7 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     file.write("**Changed files:**\n\n")
     for path in changed:
         text = str(path)
-        mark = _NO_FRAGMENTS_MARK if text in fragmentless else _OMITTED_MARK if text in omitted else ""
+        mark = _file_mark(text, fragmentless, omitted, _NO_FRAGMENTS_MARK, _OMITTED_MARK)
         file.write(f"- {_escape_md_inline_code(text)}{mark}\n")
     if omitted:
         file.write("\n*\u201comitted\u201d = no fragment of this file is in the output (budget/selection).*\n")

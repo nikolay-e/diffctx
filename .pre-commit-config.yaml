@@ -160,7 +160,7 @@ repos:
         # hashes did the same — 1354 of the baseline's 1360 entries came from
         # there, so approving a real secret-scan change meant scrolling past
         # 10k lines of noise.
-        exclude: ^(packaging|bucket|datasets)/
+        exclude: ^(packaging|bucket|datasets)/|^plugin/checksums\.json$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1

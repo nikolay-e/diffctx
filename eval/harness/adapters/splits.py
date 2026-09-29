@@ -138,52 +138,66 @@ def build_splits(config: SplitConfig) -> SplitResult:
 def render_split_report(config: SplitConfig, result: SplitResult, today: str = "") -> str:
     """Markdown summary suitable for committing alongside the manifests."""
     lines: list[str] = []
-    lines.append("# Split Report")
-    lines.append("")
+    lines.extend(
+        [
+            "# Split Report",
+            "",
+        ]
+    )
     if today:
         lines.append(f"Generated: {today}")
-    lines.append(f"Random seed: {config.seed}")
-    lines.append(f"Validation fraction: {config.validation_fraction}")
-    lines.append(f"Platform: {platform.machine()} ({platform.system()} {platform.release()})")
-    lines.append(
-        "Note: arm64 is the canonical platform for diffctx benchmarks on this "
-        "project — Rosetta'd amd64 on Apple Silicon is ~25% slower for a "
-        "sub-precision float-determinism win the paper does not require."
+    lines.extend(
+        [
+            f"Random seed: {config.seed}",
+            f"Validation fraction: {config.validation_fraction}",
+            f"Platform: {platform.machine()} ({platform.system()} {platform.release()})",
+            "Note: arm64 is the canonical platform for diffctx benchmarks on this "
+            "project — Rosetta'd amd64 on Apple Silicon is ~25% slower for a "
+            "sub-precision float-determinism win the paper does not require.",
+            "",
+            "## Totals",
+            "",
+            "| Split | Count |",
+            _TWO_COL_DIVIDER,
+            f"| Test | {result.stats.test_total} |",
+            f"| Validation | {result.stats.validation_total} |",
+            f"| Calibration | {result.stats.calibration_total} |",
+            "",
+            "## Test set per benchmark",
+            "",
+            "| Benchmark | Count |",
+            _TWO_COL_DIVIDER,
+        ]
     )
-    lines.append("")
-    lines.append("## Totals")
-    lines.append("")
-    lines.append("| Split | Count |")
-    lines.append(_TWO_COL_DIVIDER)
-    lines.append(f"| Test | {result.stats.test_total} |")
-    lines.append(f"| Validation | {result.stats.validation_total} |")
-    lines.append(f"| Calibration | {result.stats.calibration_total} |")
-    lines.append("")
-    lines.append("## Test set per benchmark")
-    lines.append("")
-    lines.append("| Benchmark | Count |")
-    lines.append(_TWO_COL_DIVIDER)
     for name in sorted(result.stats.test_per_benchmark):
         lines.append(f"| {name} | {result.stats.test_per_benchmark[name]} |")
-    lines.append("")
-    lines.append("## Contamination filtering")
-    lines.append("")
-    lines.append(f"- Pool before dedup: {result.stats.pool_before_dedup}")
-    lines.append(f"- Dropped (shared `(repo, base_commit)` with test): {result.stats.pool_dropped_by_contamination}")
-    lines.append(f"- Remaining (calibration + validation): {result.stats.calibration_total + result.stats.validation_total}")
-    lines.append("")
-    lines.append("## Stratification — `(source_benchmark, language)`")
-    lines.append("")
-    lines.append("| Source | Language | Calibration | Validation |")
-    lines.append("|---|---|---|---|")
+    lines.extend(
+        [
+            "",
+            "## Contamination filtering",
+            "",
+            f"- Pool before dedup: {result.stats.pool_before_dedup}",
+            f"- Dropped (shared `(repo, base_commit)` with test): {result.stats.pool_dropped_by_contamination}",
+            f"- Remaining (calibration + validation): {result.stats.calibration_total + result.stats.validation_total}",
+            "",
+            "## Stratification — `(source_benchmark, language)`",
+            "",
+            "| Source | Language | Calibration | Validation |",
+            "|---|---|---|---|",
+        ]
+    )
     for key in sorted(result.stats.per_stratum):
         cal, val = result.stats.per_stratum[key]
         lines.append(f"| {key[0]} | {key[1]} | {cal} | {val} |")
-    lines.append("")
-    lines.append("## Pinned dataset revisions")
-    lines.append("")
-    lines.append("| Adapter | Revision |")
-    lines.append(_TWO_COL_DIVIDER)
+    lines.extend(
+        [
+            "",
+            "## Pinned dataset revisions",
+            "",
+            "| Adapter | Revision |",
+            _TWO_COL_DIVIDER,
+        ]
+    )
     for name in sorted(result.stats.dataset_revisions):
         lines.append(f"| {name} | `{result.stats.dataset_revisions[name]}` |")
     lines.append("")

@@ -146,28 +146,28 @@ def _render_headline_metrics(reports: list[dict]) -> list[str]:
 
     fmt = _fmt_metric
     out = ["| **n_instances** | " + cell(lambda r: str(r["n_instances"])) + " |"]
-    out.append("| mean(\\|gold_files\\|) | " + cell(lambda r: fmt(r["n_gold_files"]["mean"])) + " |")
-    out.append(
-        "| P5/P50/P95(\\|gold_files\\|) | "
-        + cell(lambda r: f"{fmt(r['n_gold_files']['p5'])}/{fmt(r['n_gold_files']['p50'])}/{fmt(r['n_gold_files']['p95'])}")
-        + " |"
+    out.extend(
+        [
+            "| mean(\\|gold_files\\|) | " + cell(lambda r: fmt(r["n_gold_files"]["mean"])) + " |",
+            "| P5/P50/P95(\\|gold_files\\|) | "
+            + cell(lambda r: f"{fmt(r['n_gold_files']['p5'])}/{fmt(r['n_gold_files']['p50'])}/{fmt(r['n_gold_files']['p95'])}")
+            + " |",
+            "| max(\\|gold_files\\|) | " + cell(lambda r: fmt(r["n_gold_files"]["max"])) + " |",
+            "| mean(\\|changed_files\\|) | " + cell(lambda r: fmt(r["n_changed_files"]["mean"])) + " |",
+            "| mean(diff_size_lines) | " + cell(lambda r: fmt(r["diff_size_lines"]["mean"], 1)) + " |",
+            "| mean(\\|gold\\|/\\|changed\\|) | " + cell(lambda r: fmt(r["gold_to_changed_ratio"]["mean"], 3)) + " |",
+            "| P95(\\|gold\\|/\\|changed\\|) | " + cell(lambda r: fmt(r["gold_to_changed_ratio"]["p95"], 3)) + " |",
+            "| **% single-file gold** | " + cell(lambda r: f"{r['single_file_pct']:.1f}%") + " |",
+            "| **% multi-file gold** | " + cell(lambda r: f"{r['multi_file_pct']:.1f}%") + " |",
+            "| % zero-gold (sanity) | " + cell(lambda r: f"{r['zero_gold_pct']:.1f}%") + " |",
+            "| % whole-file gold | " + cell(lambda r: f"{r['whole_file_gold_pct']:.1f}%") + " |",
+            "| % fragment-level gold | " + cell(lambda r: f"{r['fragment_level_gold_pct']:.1f}%") + " |",
+            "| mean(\\|gold_fragments\\|) | "
+            + cell(lambda r: fmt(r["n_gold_fragments"]["mean"]) if r["n_gold_fragments"] else "—")
+            + " |",
+            "| mean(gold_lines) | " + cell(lambda r: fmt(r["n_gold_lines"]["mean"], 1) if r["n_gold_lines"] else "—") + " |",
+        ]
     )
-    out.append("| max(\\|gold_files\\|) | " + cell(lambda r: fmt(r["n_gold_files"]["max"])) + " |")
-    out.append("| mean(\\|changed_files\\|) | " + cell(lambda r: fmt(r["n_changed_files"]["mean"])) + " |")
-    out.append("| mean(diff_size_lines) | " + cell(lambda r: fmt(r["diff_size_lines"]["mean"], 1)) + " |")
-    out.append("| mean(\\|gold\\|/\\|changed\\|) | " + cell(lambda r: fmt(r["gold_to_changed_ratio"]["mean"], 3)) + " |")
-    out.append("| P95(\\|gold\\|/\\|changed\\|) | " + cell(lambda r: fmt(r["gold_to_changed_ratio"]["p95"], 3)) + " |")
-    out.append("| **% single-file gold** | " + cell(lambda r: f"{r['single_file_pct']:.1f}%") + " |")
-    out.append("| **% multi-file gold** | " + cell(lambda r: f"{r['multi_file_pct']:.1f}%") + " |")
-    out.append("| % zero-gold (sanity) | " + cell(lambda r: f"{r['zero_gold_pct']:.1f}%") + " |")
-    out.append("| % whole-file gold | " + cell(lambda r: f"{r['whole_file_gold_pct']:.1f}%") + " |")
-    out.append("| % fragment-level gold | " + cell(lambda r: f"{r['fragment_level_gold_pct']:.1f}%") + " |")
-    out.append(
-        "| mean(\\|gold_fragments\\|) | "
-        + cell(lambda r: fmt(r["n_gold_fragments"]["mean"]) if r["n_gold_fragments"] else "—")
-        + " |"
-    )
-    out.append("| mean(gold_lines) | " + cell(lambda r: fmt(r["n_gold_lines"]["mean"], 1) if r["n_gold_lines"] else "—") + " |")
     return out
 
 
@@ -178,8 +178,12 @@ def _render_language_mix(reports: list[dict]) -> list[str]:
         for lang in r["languages"]:
             if lang not in all_langs:
                 all_langs.append(lang)
-    out.append("| language | " + " | ".join(r["name"] for r in reports) + " |")
-    out.append("|---|" + "---|" * len(reports))
+    out.extend(
+        [
+            "| language | " + " | ".join(r["name"] for r in reports) + " |",
+            "|---|" + "---|" * len(reports),
+        ]
+    )
     for lang in all_langs:
         cells = [str(r["languages"].get(lang, 0)) for r in reports]
         out.append(f"| {lang} | " + " | ".join(cells) + " |")
@@ -202,8 +206,12 @@ def render_report(reports: list[dict]) -> str:
     if not reports:
         return "(no adapters)\n"
     out: list[str] = ["# Dataset characterization\n"]
-    out.append("| metric | " + " | ".join(r["name"] for r in reports) + " |")
-    out.append("|---|" + "---|" * len(reports))
+    out.extend(
+        [
+            "| metric | " + " | ".join(r["name"] for r in reports) + " |",
+            "|---|" + "---|" * len(reports),
+        ]
+    )
     out.extend(_render_headline_metrics(reports))
     out.extend(_render_language_mix(reports))
     out.extend(_render_sanity_flags(reports))

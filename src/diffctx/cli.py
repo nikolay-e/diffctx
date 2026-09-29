@@ -628,12 +628,14 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
     )
     diff_group.add_argument(
         "--mode",
-        choices=["pack", "locate"],
+        choices=["pack", "locate", "impact"],
         default=_UNSET,
         help=(
             "Output mode: pack = context with source bodies (default); "
             "locate = ranked navigation list with provenance reasons, JSON only "
-            "(diffctx.locate.v1; -f is ignored)"
+            "(diffctx.locate.v1; -f is ignored); "
+            "impact = callers outside the diff, the tests guarding them and "
+            "cross-commit overlap, under 2k tokens (diffctx.impact.v1 JSON, or text with -f md)"
         ),
     )
     diff_group.add_argument(
@@ -814,6 +816,14 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
 
 
 def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
+    if mode == "impact":
+        if args.full:
+            _exit_usage_error("--mode impact is incompatible with --full (impact walks the graph; --full bypasses it)")
+        if args.with_raw_diff:
+            _exit_usage_error("--mode impact emits no source; --with-raw-diff applies to pack mode only")
+        if args.format is not _UNSET and args.format not in ("json", "md"):
+            _exit_usage_error(f"-f {args.format} is not available with --mode impact (json or md)")
+        return
     if mode != "locate":
         return
     if args.full:

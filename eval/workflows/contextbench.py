@@ -249,9 +249,13 @@ def _collect_instance_diagnostics(
     if lo_all["line_recall"] < 1e-9 and frag_count > 0:
         diagnostics.append("DIAG: line_recall=0 with fragments>0 — possible line parse bug or no file overlap")
     if file_recall < 1e-9 and frag_count > 0:
-        diagnostics.append("DIAG: file_recall=0 with fragments>0 — selected files don't overlap gold at all")
-        diagnostics.append(f"  gold_files: {sorted(gf)[:5]}")
-        diagnostics.append(f"  selected:   {sorted(sel_files)[:5]}")
+        diagnostics.extend(
+            [
+                "DIAG: file_recall=0 with fragments>0 — selected files don't overlap gold at all",
+                f"  gold_files: {sorted(gf)[:5]}",
+                f"  selected:   {sorted(sel_files)[:5]}",
+            ]
+        )
     if nontrivial_recall < 1e-9 and frag_count > 5:
         diagnostics.append("DIAG: nontrivial_recall=0 — diffctx may only be selecting patch-adjacent files")
     unparsed = sum(1 for f in output.get("fragments", []) if parse_lines_field(f.get("lines", "")) is None)

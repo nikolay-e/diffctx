@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImpactOutput",
+  "description": "What a change reaches that its own diff does not show (#310): the\ncallers outside the diff of each changed symbol, whether a test guards\neach caller, which symbols more than one commit of the range touched,\nand the public contracts the range edits.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "range": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commit_count": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "changed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ChangedSymbol"
+      }
+    },
+    "contracts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Contract"
+      }
+    },
+    "empty": {
+      "description": "Nothing outside the diff depends on it, no contract moved, no symbol\nwas edited twice: the diff already says everything. A hook stays\nsilent on this, which is why it is a field and not an absence.",
+      "type": "boolean"
+    },
+    "truncated": {
+      "description": "Callers dropped to fit `IMPACT_TOKEN_CAP`, lowest weight first.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "tests_known": {
+      "description": "Whether any test file was in view. Without one, an absent `tested_by`\nsays nothing about the caller, and the text form does not call it\nuntested.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "changed_files",
+    "commit_count",
+    "changed",
+    "contracts",
+    "empty",
+    "truncated",
+    "tests_known"
+  ],
+  "$defs": {
+    "ChangedSymbol": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "commits": {
+          "description": "Commits of the range that touched these lines (blame at the head);\nzero when the range is not `base..head`.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "callers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Caller"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "kind",
+        "commits",
+        "callers"
+      ]
+    },
+    "Caller": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "string"
+        },
+        "weight": {
+          "type": "number",
+          "format": "double"
+        },
+        "tested_by": {
+          "description": "A test file that names this caller or is linked to its file; absent\nmeans the suite as diffctx sees it does not exercise it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "weight"
+      ]
+    },
+    "Contract": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ]
+    }
+  }
+}

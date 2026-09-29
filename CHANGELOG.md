@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-29
+
+### Added
+
+- **`--mode impact`: what a change reaches outside its own diff, under 2k
+  tokens.** For each changed symbol, the callers in files the diff does not
+  touch, whether a test guards each one, and which symbols more than one
+  commit of the range edited; public API and schema changes are listed as
+  facts. It walks the graph the other modes already build, with a discovery
+  pass that follows references *into* the changed files (the other modes
+  only follow what the changed files import), and filters name-only links
+  the way a reader would: the caller must name the symbol in code and
+  reference its module. An empty impact is an answer, not an error. CLI
+  (`-f md` is the text form), MCP `mode="impact"`, the GitHub Action's
+  `mode` input, and `schemas/diffctx.impact.v1.json`.
+- **`diffctx hook pretooluse` / `posttooluse`: the Claude Code plugin hands
+  the agent a change's impact without asking it to call anything.** Eight
+  agent sessions with the tool installed made zero unprompted calls (#289).
+  Before a commit, merge, cherry-pick, push or pull request the impact of
+  what that command records is injected as context — a plain `git commit`
+  reviews the index, `-a` the working tree, a merge the branch since its
+  merge base; after a `git diff` or `git status` the agent ran itself, the
+  pending change's impact rides on the answer it asked for. Once per change
+  (content-keyed with `git patch-id`, so a manual `--mode impact` run
+  counts), silent when nothing outside the diff depends on the change, and
+  never blocking: a range that runs out of the 30 s deadline is marked
+  reviewed rather than retried on every push. `impact_gate` (off by default)
+  denies a commit until its impact was shown once. At session start the
+  plugin fetches the release binary for the platform, verified against
+  `checksums.json`, into its data directory, backs off for six hours after a
+  failed download, and puts the one-line recipe into the session's context;
+  `impact_hook` turns all of it off (#310).
+- **`/diffctx:commit`**: the impact first, then the commit.
+- **`diffctx_context` is always loaded** under Claude Code's tool search
+  (`_meta.anthropic/alwaysLoad`), and its description names `impact` as the
+  pre-commit call; both skills default to the server's own range choice.
+- **The PR review comment opens with the impact view.**
+- **Plugin eval `breaking-caller`** measures the number under the goal: with
+  a contract change uncommitted and two callers about to break, does the
+  agent handle or name them before committing.
+
 ## [1.17.0] - 2026-09-23
 
 ### Added
@@ -1631,7 +1672,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...v1.15.0

@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
@@ -38,6 +38,8 @@ const EXIT_USAGE: i32 = 2;
 enum OutputFormat {
     Yaml,
     Json,
+    /// Text for a reader, `--mode impact` only
+    Md,
 }
 
 #[derive(Parser)]
@@ -45,9 +47,13 @@ enum OutputFormat {
     name = "diffctx",
     version,
     about = "Semantic diff context selector",
-    disable_version_flag = true
+    disable_version_flag = true,
+    args_conflicts_with_subcommands = true
 )]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Repository path to analyze
     #[arg(default_value = ".")]
     path: PathBuf,
@@ -97,8 +103,10 @@ struct Cli {
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked
-    /// navigation list with provenance reasons, JSON only (--format ignored)
-    #[arg(long, default_value = "pack", value_parser = ["pack", "locate"])]
+    /// navigation list with provenance reasons, JSON only (--format ignored);
+    /// `impact` = callers outside the diff, their tests, cross-commit overlap
+    /// (JSON, or text with `-f md`)
+    #[arg(long, default_value = "pack", value_parser = ["pack", "locate", "impact"])]
     mode: String,
 
     /// Wall-clock deadline in seconds; on expiry diffctx exits 124
@@ -108,6 +116,51 @@ struct Cli {
     /// Suppress the token summary on stderr
     #[arg(short = 'q', long)]
     quiet: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Agent-harness hooks; each reads its event on stdin and never fails
+    Hook {
+        #[command(subcommand)]
+        event: HookEvent,
+    },
+}
+
+#[derive(Subcommand)]
+enum HookEvent {
+    /// Claude Code PreToolUse: before a git commit, merge, cherry-pick, push
+    /// or a PR is created, print the change's impact as additionalContext
+    Pretooluse {
+        /// Strict gate: deny the command with the impact attached until the
+        /// change has been reviewed once (then the retry passes)
+        #[arg(long)]
+        gate: bool,
+    },
+    /// Claude Code PostToolUse: after a git diff or git status the agent ran,
+    /// print the pending change's impact as additionalContext
+    Posttooluse,
+}
+
+/// The hook contract is exit 0 with either the JSON answer or nothing: a
+/// non-zero exit blocks the agent's tool call, and a hook that blocks
+/// commits because diffctx hit a corner is a hook the user removes.
+fn run_hook(event: &HookEvent) {
+    let (kind, gate) = match event {
+        HookEvent::Pretooluse { gate } => (_diffctx::hook::Event::PreToolUse, *gate),
+        HookEvent::Posttooluse => (_diffctx::hook::Event::PostToolUse, false),
+    };
+    let mut input = String::new();
+    let _ = io::Read::read_to_string(&mut io::stdin().lock(), &mut input);
+    let answer = std::panic::catch_unwind(move || {
+        _diffctx::hook::respond_within_deadline(kind, input, gate)
+    })
+    .ok()
+    .flatten();
+    if let Some(json) = answer {
+        let _ = write_stdout(&format!("{json}\n"));
+    }
+    std::process::exit(0);
 }
 
 // Both bounds are checked by clap, before any git call, so a typo exits 2
@@ -360,6 +413,39 @@ fn run_locate(
     emit(cli, &rendered, is_empty, &[])
 }
 
+fn run_impact(
+    cli: &Cli,
+    path: PathBuf,
+    diff_ref: Option<String>,
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<()> {
+    let range = diff_ref.clone();
+    let output = run_with_deadline(timeout, move || {
+        _diffctx::pipeline::build_diff_context_impact(
+            &path,
+            range.as_deref(),
+            &[],
+            alpha,
+            scoring_mode,
+            timeout,
+        )
+    })?;
+    if let Some(range) = diff_ref.as_deref() {
+        _diffctx::hook::mark_range_reviewed(&cli.path, range);
+    }
+    let rendered = match cli.format {
+        OutputFormat::Md => _diffctx::impact::render_markdown(&output),
+        _ => format!("{}\n", serde_json::to_string(&output)?),
+    };
+    // An empty impact is the answer, not a failure: the hook keys on it.
+    if !cli.quiet {
+        print_token_summary(&rendered);
+    }
+    write_stdout(&rendered)
+}
+
 fn main() {
     if let Err(err) = real_main() {
         // The Python CLI and README promise exit 3 for git/environment
@@ -384,6 +470,9 @@ fn real_main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    if let Some(Commands::Hook { event }) = &cli.command {
+        run_hook(event);
+    }
     if cli.diff_ref.as_deref().is_some_and(|r| r.trim().is_empty()) {
         // An unset `$RANGE` in CI expands to this; guessing a meaning for it
         // would publish some other diff as the PR's context.
@@ -411,6 +500,13 @@ fn real_main() -> Result<()> {
     let no_content = cli.no_content;
     let full = cli.full;
 
+    if cli.mode == "impact" {
+        return run_impact(&cli, path, diff_ref, alpha, scoring_mode, timeout);
+    }
+    if matches!(cli.format, OutputFormat::Md) {
+        eprintln!("error: --format md is only available with --mode impact");
+        std::process::exit(EXIT_USAGE);
+    }
     if cli.mode == "locate" {
         if full {
             eprintln!(
@@ -472,5 +568,6 @@ fn render(format: OutputFormat, output: &DiffContextOutput) -> Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(output)?),
         OutputFormat::Yaml => serde_yaml::to_string(output)?,
+        OutputFormat::Md => unreachable!("rejected before the pipeline runs"),
     })
 }

@@ -299,8 +299,12 @@ def render_sweep_table(cells: list[dict]) -> str:
         lines.append(f"## {ts}\n")
         header = "| method \\ budget | " + " | ".join(str(b) if b >= 0 else "-1 (∞)" for b in budgets_sorted) + " |"
         sep = "|" + " --- |" * (1 + len(budgets_sorted))
-        lines.append(header)
-        lines.append(sep)
+        lines.extend(
+            [
+                header,
+                sep,
+            ]
+        )
         for m in methods_sorted:
             row = [f"| **{m}** "] + [_format_sweep_cell(by_set[ts].get((m, b))) for b in budgets_sorted] + ["|"]
             lines.append("".join(row))
@@ -327,8 +331,12 @@ def _fmt_sweep(v: float | None, ndigits: int = 4) -> str:
 
 def _render_fbeta_section(sorted_cfgs, by_cfg) -> list[str]:
     out = ["\n## Headline by F-beta (mean across datasets)", ""]
-    out.append("| method | budget | depth | recall | precision | F0.5 | F1 | F2 | tokens p50 | tokens p95 |")
-    out.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "| method | budget | depth | recall | precision | F0.5 | F1 | F2 | tokens p50 | tokens p95 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for cfg in sorted_cfgs:
         cs = by_cfg[cfg]
         recall = _mean_of(cs, lambda s: s["file_recall"]["mean"])
@@ -348,8 +356,12 @@ def _render_fbeta_section(sorted_cfgs, by_cfg) -> list[str]:
 
 def _render_robustness_section(sorted_cfgs, by_cfg) -> list[str]:
     out = ["\n## Robustness — recall distribution (mean across datasets)", ""]
-    out.append("| method | budget | depth | %perfect | %zero | %partial | recall std |")
-    out.append("|---|---:|---:|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "| method | budget | depth | %perfect | %zero | %partial | recall std |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for cfg in sorted_cfgs:
         cs = by_cfg[cfg]
         perfect = _mean_of(cs, lambda s: s["file_recall"]["hist"]["perfect_pct"])
@@ -365,8 +377,12 @@ def _render_robustness_section(sorted_cfgs, by_cfg) -> list[str]:
 
 def _render_latency_section(sorted_cfgs, by_cfg) -> list[str]:
     out = ["\n## Latency — elapsed_seconds across datasets", ""]
-    out.append("| method | budget | depth | mean | p50 | p95 | p99 |")
-    out.append("|---|---:|---:|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "| method | budget | depth | mean | p50 | p95 | p99 |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for cfg in sorted_cfgs:
         cs = by_cfg[cfg]
         mean = _mean_of(cs, lambda s: s["elapsed_seconds"]["mean"])
@@ -383,8 +399,12 @@ def _render_latency_section(sorted_cfgs, by_cfg) -> list[str]:
 def _render_cardinality_section(sorted_cfgs, by_cfg, cardinality_present: bool) -> list[str]:
     out = ["\n## Selection cardinality (files / fragments)", ""]
     if cardinality_present:
-        out.append("| method | budget | depth | n_selected p50 | n_selected p95 | n_gold p50 |")
-        out.append("|---|---:|---:|---:|---:|---:|")
+        out.extend(
+            [
+                "| method | budget | depth | n_selected p50 | n_selected p95 | n_gold p50 |",
+                "|---|---:|---:|---:|---:|---:|",
+            ]
+        )
         for cfg in sorted_cfgs:
             cs = by_cfg[cfg]
             n_sel_p50 = _mean_of(cs, lambda s: s["n_selected"]["median"])
@@ -395,8 +415,12 @@ def _render_cardinality_section(sorted_cfgs, by_cfg, cardinality_present: bool) 
                 f"{_fmt_sweep(n_sel_p50, 1)} | {_fmt_sweep(n_sel_p95, 1)} | {_fmt_sweep(n_gold_p50, 1)} |"
             )
     else:
-        out.append("| method | budget | depth | fragment_count p50 | p95 |")
-        out.append("|---|---:|---:|---:|---:|")
+        out.extend(
+            [
+                "| method | budget | depth | fragment_count p50 | p95 |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
         for cfg in sorted_cfgs:
             cs = by_cfg[cfg]
             fc_p50 = _mean_of(cs, lambda s: s["fragment_count"]["median"])
@@ -485,8 +509,12 @@ def _fmt_latency(v: float | None, ndigits: int = 1) -> str:
 
 def _render_latency_breakdown_section(cfgs, by_cfg) -> list[str]:
     out = ["\n## Pipeline latency breakdown (median, ms)", ""]
-    out.append("| method | budget | depth | parse | discover | tokenize | scoring | selection |")
-    out.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "| method | budget | depth | parse | discover | tokenize | scoring | selection |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for cfg in cfgs:
         cs = by_cfg[cfg]
         parse = _mean_of(cs, lambda s: s["latency_breakdown"]["parse_changed_ms"]["median"])
@@ -504,8 +532,12 @@ def _render_latency_breakdown_section(cfgs, by_cfg) -> list[str]:
 
 def _render_graph_size_section(cfgs, by_cfg) -> list[str]:
     out = ["\n## Graph size — edges and pushes (median per instance)", ""]
-    out.append("| method | budget | depth | candidates | edges | edges_dropped | nodes_capped | ppr_fwd | ppr_bwd |")
-    out.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "| method | budget | depth | candidates | edges | edges_dropped | nodes_capped | ppr_fwd | ppr_bwd |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for cfg in cfgs:
         cs = by_cfg[cfg]
         cand = _mean_of(cs, lambda s: s["latency_breakdown"]["candidate_count"]["median"])
@@ -565,8 +597,12 @@ def _render_strata_section(
     buckets: tuple[str, ...],
 ) -> list[str]:
     out: list[str] = ["", f"## {title}", "", note, ""]
-    out.append("| method | budget | depth | " + " | ".join(buckets) + " |")
-    out.append("|---|---:|---:|" + "---:|" * len(buckets))
+    out.extend(
+        [
+            "| method | budget | depth | " + " | ".join(buckets) + " |",
+            "|---|---:|---:|" + "---:|" * len(buckets),
+        ]
+    )
     for cfg in cfgs:
         cs = by_cfg[cfg]
         row = [f"**{cfg[0]}**", str(cfg[1]), str(cfg[2])]
@@ -640,9 +676,13 @@ def render_gold_characterization(cells: list[dict]) -> str:
     if not by_set:
         return ""
     out: list[str] = ["\n## Gold characterization (per dataset, from any cell)"]
-    out.append("")
-    out.append("| dataset | %single-file | %multi-file | %whole-file | %zero-gold |")
-    out.append("|---|---:|---:|---:|---:|")
+    out.extend(
+        [
+            "",
+            "| dataset | %single-file | %multi-file | %whole-file | %zero-gold |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
     for ts in sorted(by_set):
         gc = by_set[ts]
         out.append(
@@ -671,11 +711,15 @@ def render_per_language_tables(cells: list[dict], top_n: int = 7) -> str:
     cfgs = sorted(per_cfg.keys(), key=lambda k: (_method_sort_key(k[0]), int(k[1]), int(k[2])))
 
     out: list[str] = ["\n## Per-language headline (top languages by instance count)"]
-    out.append("")
-    out.append("Each cell shows `recall / F1 / F2` for that (method, budget, depth) on that language.")
-    out.append("")
-    out.append("| config | " + " | ".join(top_langs) + " |")
-    out.append("|---|" + "---|" * len(top_langs))
+    out.extend(
+        [
+            "",
+            "Each cell shows `recall / F1 / F2` for that (method, budget, depth) on that language.",
+            "",
+            "| config | " + " | ".join(top_langs) + " |",
+            "|---|" + "---|" * len(top_langs),
+        ]
+    )
     for cfg in cfgs:
         langs = per_cfg[cfg]
         cells_md: list[str] = [f"**{cfg[0]}** b={cfg[1]} L={cfg[2]}"]

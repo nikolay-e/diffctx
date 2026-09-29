@@ -94,7 +94,7 @@ pub fn build_diff_context_in_memory(
         token_corpus: std::sync::OnceLock::new(),
     };
     let (discovered, _attribution) =
-        crate::pipeline::create_discovery(&config).discover_attributed(&discovery_ctx);
+        crate::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);
     let discovered_paths: FxHashSet<String> = discovered
         .iter()
         .map(|p| p.to_string_lossy().to_string())

@@ -98,6 +98,63 @@ fn build_locate(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
+/// `--mode impact` (#310): callers outside the diff, their tests and the
+/// range's cross-commit overlap, as `diffctx.impact.v1` JSON or as the
+/// markdown the hook injects — one renderer for every surface.
+#[pyfunction]
+#[pyo3(signature = (
+    root_dir,
+    diff_range,
+    alpha = DEFAULT_PPR_ALPHA,
+    scoring_mode = DEFAULT_SCORING,
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+    paths = Vec::new(),
+    markdown = false,
+))]
+fn build_impact(
+    py: Python<'_>,
+    root_dir: &str,
+    diff_range: &str,
+    alpha: f64,
+    scoring_mode: &str,
+    timeout: u64,
+    paths: Vec<String>,
+    markdown: bool,
+) -> PyResult<String> {
+    let mode =
+        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let path = Path::new(root_dir).to_path_buf();
+    let range = if diff_range.is_empty() {
+        None
+    } else {
+        Some(diff_range.to_string())
+    };
+    let output = detach_guarded(py, move || {
+        crate::pipeline::build_diff_context_impact(
+            &path,
+            range.as_deref(),
+            &paths,
+            alpha,
+            mode,
+            timeout,
+        )
+    })?;
+    crate::hook::mark_range_reviewed(Path::new(root_dir), diff_range_or_head(diff_range));
+    if markdown {
+        return Ok(crate::impact::render_markdown(&output));
+    }
+    serde_json::to_string(&output)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+fn diff_range_or_head(diff_range: &str) -> &str {
+    if diff_range.is_empty() {
+        "HEAD"
+    } else {
+        diff_range
+    }
+}
+
 fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     if let Some(git_err) = e.downcast_ref::<RustGitError>() {
         return GitError::new_err(git_err.to_string());
@@ -616,6 +673,7 @@ fn graph_summary<'py>(
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
     m.add_function(wrap_pyfunction!(build_locate, m)?)?;
+    m.add_function(wrap_pyfunction!(build_impact, m)?)?;
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;

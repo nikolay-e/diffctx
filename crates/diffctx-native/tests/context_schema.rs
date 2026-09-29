@@ -1,4 +1,4 @@
-//! The checked-in JSON Schemas for `diffctx.context.v1` and
+//! The checked-in JSON Schemas for `diffctx.context.v1`, `diffctx.impact.v1` and
 //! `diffctx.locate.v1` are generated from the artifact types, never edited by
 //! hand. Regenerate with `DIFFCTX_UPDATE_SCHEMAS=1 cargo test --test context_schema`.
 
@@ -51,6 +51,24 @@ fn the_checked_in_locate_schema_is_the_generated_one() {
         );
     }
     assert!(schema["properties"]["coverage"].is_object());
+}
+
+#[test]
+fn the_checked_in_impact_schema_is_the_generated_one() {
+    let schema = _diffctx::impact::impact_schema();
+    assert_pinned("diffctx.impact.v1.json", &schema);
+    let required: Vec<&str> = schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    for key in ["schema", "name", "changed_files", "changed", "empty"] {
+        assert!(
+            required.contains(&key),
+            "{key} must be required; got {required:?}"
+        );
+    }
 }
 
 #[test]

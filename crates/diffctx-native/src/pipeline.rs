@@ -14,7 +14,7 @@ use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::discovery::{
     BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
-    TestFileDiscovery,
+    ReverseReferenceDiscovery, TestFileDiscovery,
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::git::{self, CatFileBatch};
@@ -207,6 +207,34 @@ pub fn build_diff_context_locate(
         run_selection(&state, budget_tokens, tau)
     };
     Ok(crate::locate::build_locate(&state, &outcome))
+}
+
+/// `--mode impact` (#310): the same scored state as locate, rendered as what
+/// the change reaches outside its own diff. No selection runs: the answer is
+/// a graph walk from the changed symbols, capped on its serialized size.
+pub fn build_diff_context_impact(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::impact::ImpactOutput> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let state = compute_scored_state_with(
+        root_dir,
+        diff_range,
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        true,
+    )?;
+    Ok(crate::impact::build_impact(
+        &state,
+        diff_range,
+        Some(deadline),
+    ))
 }
 
 /// Line count for an untracked file, or `None` when it is binary — the same
@@ -619,6 +647,31 @@ pub fn compute_scored_state(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<ScoredState> {
+    compute_scored_state_with(
+        root_dir,
+        diff_range,
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        false,
+    )
+}
+
+/// `reverse_references` widens discovery to the files that name what the
+/// change defines. Impact mode alone asks for it: the wider universe moves
+/// selection, and it is deliberately outside `PipelineConfig` so the
+/// effective-config hash every evaluation row carries stays what it was.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_scored_state_with(
+    root_dir: &Path,
+    diff_range: Option<&str>,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+    reverse_references: bool,
+) -> Result<ScoredState> {
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
@@ -765,7 +818,7 @@ pub fn compute_scored_state(
     };
 
     let (discovered_files, discovery_attribution) =
-        create_discovery(&config).discover_attributed(&discovery_ctx);
+        create_discovery(&config, reverse_references).discover_attributed(&discovery_ctx);
     let discovered_files: Vec<PathBuf> = discovered_files
         .into_iter()
         .map(|p| candidate_files::normalize_path(&p, &root_dir))
@@ -2085,12 +2138,19 @@ fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<S
     revs
 }
 
-pub(crate) fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
-    Box::new(EnsembleDiscovery::new(vec![
+pub(crate) fn create_discovery(
+    config: &PipelineConfig,
+    reverse_references: bool,
+) -> Box<dyn DiscoveryStrategy> {
+    let mut strategies: Vec<Box<dyn DiscoveryStrategy>> = vec![
         Box::new(DefaultDiscovery),
         Box::new(TestFileDiscovery),
         Box::new(BM25Discovery::new(config.bm25_top_k)),
-    ]))
+    ];
+    if reverse_references {
+        strategies.push(Box::new(ReverseReferenceDiscovery));
+    }
+    Box::new(EnsembleDiscovery::new(strategies))
 }
 
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {

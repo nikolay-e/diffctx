@@ -1,7 +1,7 @@
 {
   "name": "diffctx",
   "displayName": "diffctx",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Selects the minimum code an LLM needs to review a git diff",
   "author": {
     "name": "Nikolay Eremeev",
@@ -21,5 +21,19 @@
     "code-graph",
     "mcp",
     "llm"
-  ]
+  ],
+  "userConfig": {
+    "impact_hook": {
+      "type": "boolean",
+      "title": "Impact before commit, merge and push",
+      "description": "Before git commit/merge/cherry-pick/push or a PR, and after a git diff or git status, show what the pending change reaches outside the diff (once per change, never blocks)",
+      "default": true
+    },
+    "impact_gate": {
+      "type": "boolean",
+      "title": "Strict gate: no commit before its impact was reviewed",
+      "description": "Deny git commit/merge/push until the change's impact has been shown once (by the hook, a manual --mode impact run, or the /diffctx:impact skill); the retry passes. Fixing a caller changes the content, so the next attempt is denied once more with the new impact.",
+      "default": false
+    }
+  }
 }

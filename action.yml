@@ -60,9 +60,19 @@ inputs:
 
   format:
     description: >-
-      Output format (`--format`): `md`, `yaml`, `json` or `txt`.
+      Output format (`--format`): `md`, `yaml`, `json` or `txt`
+      (`md` or `json` with `mode: impact`).
     required: false
     default: md
+
+  mode:
+    description: >-
+      Output mode (`--mode`): `pack` = context with source bodies, `locate` =
+      ranked navigation list (JSON), `impact` = what the change reaches outside
+      its diff — callers, the tests guarding them, cross-commit overlap — under
+      2k tokens.
+    required: false
+    default: pack
 
   output-path:
     description: >-
@@ -89,7 +99,7 @@ inputs:
   diffctx-version:
     description: Exact diffctx release installed from PyPI.
     required: false
-    default: 1.17.0
+    default: 1.18.0
   python-version:
     description: Python interpreter used for the isolated diffctx install.
     required: false
@@ -159,6 +169,7 @@ runs:
         IN_ALPHA: ${{ inputs.alpha }}
         IN_FULL: ${{ inputs.full }}
         IN_FORMAT: ${{ inputs.format }}
+        IN_MODE: ${{ inputs.mode }}
         IN_OUTPUT_PATH: ${{ inputs.output-path }}
         IN_TIMEOUT: ${{ inputs.timeout }}
         IN_FAIL_ON_EMPTY: ${{ inputs.fail-on-empty }}
@@ -198,6 +209,13 @@ runs:
             exit 2
             ;;
         esac
+        case "$IN_MODE" in
+          pack | locate | impact) ;;
+          *)
+            echo "::error::unsupported mode '$IN_MODE' (pack, locate, impact)"
+            exit 2
+            ;;
+        esac
 
         out="$IN_OUTPUT_PATH"
         if [ -z "$out" ]; then
@@ -205,7 +223,7 @@ runs:
         fi
         mkdir -p "$(dirname "$out")"
 
-        args=("$IN_PATH" --diff "$range")
+        args=("$IN_PATH" --diff "$range" --mode "$IN_MODE")
         args+=(--format "$IN_FORMAT" --output-file "$out")
         if [ "$IN_FULL" = "true" ]; then
           args+=(--full)

@@ -60,6 +60,15 @@ def build_locate(
     timeout: int = ...,
     paths: list[str] = ...,
 ) -> str: ...
+def build_impact(
+    root_dir: str,
+    diff_range: str,
+    alpha: float = ...,
+    scoring_mode: str = ...,
+    timeout: int = ...,
+    paths: list[str] = ...,
+    markdown: bool = ...,
+) -> str: ...
 def compute_scored_state(
     root_dir: str,
     diff_range: str,

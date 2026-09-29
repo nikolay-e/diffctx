@@ -556,10 +556,14 @@ def render_per_bucket_table(rows: list[dict], buckets: Sequence[str], title: str
     if not grouped:
         return ""
     out: list[str] = [f"\n## {title}", ""]
-    out.append("Each cell shows: `mean [95% bootstrap CI] (n)`. CI uses 2000 resamples.")
-    out.append("")
-    out.append("| method | budget | depth | dataset | " + " | ".join(buckets) + " |")
-    out.append("|---|---:|---:|---|" + "---|" * len(buckets))
+    out.extend(
+        [
+            "Each cell shows: `mean [95% bootstrap CI] (n)`. CI uses 2000 resamples.",
+            "",
+            "| method | budget | depth | dataset | " + " | ".join(buckets) + " |",
+            "|---|---:|---:|---|" + "---|" * len(buckets),
+        ]
+    )
     method_order = ["aider", "bm25", "ppr", "ego"]
     keys = sorted(
         grouped.keys(),
@@ -592,14 +596,16 @@ def render_pooled_per_bucket_table(rows: list[dict], buckets: Sequence[str], tit
         contributing[r["bucket"]].add(r["dataset"])
 
     out: list[str] = [f"\n## {title} (pooled across datasets)", ""]
-    out.append(
-        "Pooled means weighted by per-dataset n. CI is half-width approximation "
-        "`sqrt(Σnᵢ·varᵢ)/Σnᵢ`. Bucket header notes the *contributing* datasets — "
-        "for buckets where only one of {swebench, polybench, contextbench} has "
-        "any instances, this is **NOT** a cross-dataset pool but a single-dataset "
-        "result mislabelled by the convenience of the matrix shape."
+    out.extend(
+        [
+            "Pooled means weighted by per-dataset n. CI is half-width approximation "
+            "`sqrt(Σnᵢ·varᵢ)/Σnᵢ`. Bucket header notes the *contributing* datasets — "
+            "for buckets where only one of {swebench, polybench, contextbench} has "
+            "any instances, this is **NOT** a cross-dataset pool but a single-dataset "
+            "result mislabelled by the convenience of the matrix shape.",
+            "",
+        ]
     )
-    out.append("")
     bucket_headers: list[str] = []
     for b in buckets:
         ds = sorted(contributing.get(b, set()))
@@ -610,8 +616,12 @@ def render_pooled_per_bucket_table(rows: list[dict], buckets: Sequence[str], tit
         else:
             short = ",".join(d[:4] for d in ds)
             bucket_headers.append(f"{b} ({short})")
-    out.append("| method | budget | depth | " + " | ".join(bucket_headers) + " |")
-    out.append("|---|---:|---:|" + "---|" * len(buckets))
+    out.extend(
+        [
+            "| method | budget | depth | " + " | ".join(bucket_headers) + " |",
+            "|---|---:|---:|" + "---|" * len(buckets),
+        ]
+    )
     method_order = ["aider", "bm25", "ppr", "ego"]
     keys = sorted(
         pooled.keys(),
@@ -646,25 +656,25 @@ def render_pairwise_table(rows: list[dict], title: str) -> str:
     if not rows:
         return ""
     out: list[str] = [f"\n## {title}", ""]
-    out.append(
-        "**Δ is paired** (instance-id matched, computed on the same instances "
-        "for both methods). 95% bootstrap CI from 5000 resamples on the "
-        "per-instance Δ; rendered `<1e-10` when the bootstrap floor (1/n_iter) "
-        "is hit. The `mean_a / mean_b` columns are the *marginal* per-method "
-        "means on the paired subset and are diagnostic only — **the headline "
-        "effect is `Δ`, not `mean_b - mean_a`**, because group means do not "
-        "control for shared instance difficulty (Smucker, Allan, Carterette, "
-        "CIKM 2007). Multiple-testing correction is applied **within each "
-        "`claim_id` family**: pre-registered claims use Holm-Bonferroni "
-        "(FWER), exploratory claims use BH-FDR (q=0.10)."
+    out.extend(
+        [
+            "**Δ is paired** (instance-id matched, computed on the same instances "
+            "for both methods). 95% bootstrap CI from 5000 resamples on the "
+            "per-instance Δ; rendered `<1e-10` when the bootstrap floor (1/n_iter) "
+            "is hit. The `mean_a / mean_b` columns are the *marginal* per-method "
+            "means on the paired subset and are diagnostic only — **the headline "
+            "effect is `Δ`, not `mean_b - mean_a`**, because group means do not "
+            "control for shared instance difficulty (Smucker, Allan, Carterette, "
+            "CIKM 2007). Multiple-testing correction is applied **within each "
+            "`claim_id` family**: pre-registered claims use Holm-Bonferroni "
+            "(FWER), exploratory claims use BH-FDR (q=0.10).",
+            "",
+            "| claim_id (correction) | pair | dataset | bucket | n_paired | "
+            "mean_a (marg) | mean_b (marg) | Δ paired | 95% CI | Wilcoxon p | "
+            "adj p | reject? | family |",
+            "|---|---|---|---|---:|---:|---:|---:|---|---:|---:|---|---:|",
+        ]
     )
-    out.append("")
-    out.append(
-        "| claim_id (correction) | pair | dataset | bucket | n_paired | "
-        "mean_a (marg) | mean_b (marg) | Δ paired | 95% CI | Wilcoxon p | "
-        "adj p | reject? | family |"
-    )
-    out.append("|---|---|---|---|---:|---:|---:|---:|---|---:|---:|---|---:|")
     correction_order = {"holm": 0, "fdr": 1}
     rows_sorted = sorted(
         rows,
@@ -694,18 +704,20 @@ def render_regression_table(rows: list[dict]) -> str:
     if not rows:
         return ""
     out: list[str] = ["\n## Continuous regression: recall ~ log(1+ratio) + log(1+|gold|)", ""]
-    out.append(
-        "**Per-(method, budget, depth, dataset)** OLS with cluster bootstrap on `instance_id`. "
-        "Pooled-across-datasets regression is omitted: it would mix Simpson-style between-dataset "
-        "mean shifts with within-dataset difficulty slopes (Cañamares & Castells, CIKM 2021). "
-        "Cells where `var(log1p(ratio)) < 1e-6` (e.g. swebench: every instance has ratio=1) are "
-        "skipped — no slope is fittable when the regressor is constant."
+    out.extend(
+        [
+            "**Per-(method, budget, depth, dataset)** OLS with cluster bootstrap on `instance_id`. "
+            "Pooled-across-datasets regression is omitted: it would mix Simpson-style between-dataset "
+            "mean shifts with within-dataset difficulty slopes (Cañamares & Castells, CIKM 2021). "
+            "Cells where `var(log1p(ratio)) < 1e-6` (e.g. swebench: every instance has ratio=1) are "
+            "skipped — no slope is fittable when the regressor is constant.",
+            "",
+            "Larger (less negative) `ratio_slope` = better scaling on hard instances.",
+            "",
+            "| method | budget | depth | dataset | n | clusters | intercept | ratio_slope | ratio CI | gold_slope | gold CI |",
+            "|---|---:|---:|---|---:|---:|---:|---:|---|---:|---|",
+        ]
     )
-    out.append("")
-    out.append("Larger (less negative) `ratio_slope` = better scaling on hard instances.")
-    out.append("")
-    out.append("| method | budget | depth | dataset | n | clusters | intercept | ratio_slope | ratio CI | gold_slope | gold CI |")
-    out.append("|---|---:|---:|---|---:|---:|---:|---:|---|---:|---|")
     method_order = ["aider", "bm25", "ppr", "ego"]
     rows_sorted = sorted(
         rows,
@@ -740,16 +752,24 @@ def render_per_language_hard(rows: list[dict]) -> str:
         return ""
 
     out: list[str] = ["\n## Hard regime (ratio>1.5): recall by language", ""]
-    out.append("Per-cell x per-language `mean [CI] (n)`. Languages with <5 instances per cell are dropped.")
-    out.append("")
+    out.extend(
+        [
+            "Per-cell x per-language `mean [CI] (n)`. Languages with <5 instances per cell are dropped.",
+            "",
+        ]
+    )
     method_order = ["aider", "bm25", "ppr", "ego"]
     keys = sorted(
         by_method.keys(),
         key=lambda k: (method_order.index(k[0]) if k[0] in method_order else 99, k[1], k[2], k[3]),
     )
     lang_order = sorted(languages)
-    out.append("| method | budget | depth | dataset | " + " | ".join(lang_order) + " |")
-    out.append("|---|---:|---:|---|" + "---|" * len(lang_order))
+    out.extend(
+        [
+            "| method | budget | depth | dataset | " + " | ".join(lang_order) + " |",
+            "|---|---:|---:|---|" + "---|" * len(lang_order),
+        ]
+    )
     for key in keys:
         cells = []
         for lang in lang_order:
@@ -763,12 +783,14 @@ def render_matched_cardinality(rows: list[dict]) -> str:
     if not rows:
         return ""
     out: list[str] = ["\n## Cardinality scan: median fragments returned vs recall", ""]
-    out.append(
-        "Methods returning similar median cardinality should be compared head-to-head. Recall ± half-CI; precision is mean."
+    out.extend(
+        [
+            "Methods returning similar median cardinality should be compared head-to-head. Recall ± half-CI; precision is mean.",
+            "",
+            "| method | budget | depth | dataset | median_card | mean_card | recall | recall CI | precision |",
+            "|---|---:|---:|---|---:|---:|---:|---|---:|",
+        ]
     )
-    out.append("")
-    out.append("| method | budget | depth | dataset | median_card | mean_card | recall | recall CI | precision |")
-    out.append("|---|---:|---:|---|---:|---:|---:|---|---:|")
     method_order = ["aider", "bm25", "ppr", "ego"]
     rows_sorted = sorted(
         rows,
@@ -821,16 +843,18 @@ def _render_structural_fact(rows: list[dict], _datasets: list[str]) -> str:
             by_ds[ds]["trivial"] += 1
 
     out: list[str] = ["## Structural fact (lead)", ""]
-    out.append(
-        "Only one of the three test sets has any instances where retrieval is "
-        "non-trivial (`|gold|/|changed| > 1.5`). On the other two, gold ⊆ diff "
-        "by construction, so every method recovers gold by returning the diff "
-        "itself — the recall ceiling is identical and method ranking is "
-        "uninformative. Pooling across all three dilutes any retrieval signal."
+    out.extend(
+        [
+            "Only one of the three test sets has any instances where retrieval is "
+            "non-trivial (`|gold|/|changed| > 1.5`). On the other two, gold ⊆ diff "
+            "by construction, so every method recovers gold by returning the diff "
+            "itself — the recall ceiling is identical and method ranking is "
+            "uninformative. Pooling across all three dilutes any retrieval signal.",
+            "",
+            "| dataset | n | trivial (ratio≤1.0) | hard (ratio>1.5) | hard fraction |",
+            "|---|---:|---:|---:|---:|",
+        ]
     )
-    out.append("")
-    out.append("| dataset | n | trivial (ratio≤1.0) | hard (ratio>1.5) | hard fraction |")
-    out.append("|---|---:|---:|---:|---:|")
     total_n = 0
     total_hard = 0
     for ds in sorted(by_ds.keys()):
@@ -848,12 +872,14 @@ def _render_structural_fact(rows: list[dict], _datasets: list[str]) -> str:
             f"**{sum(d['trivial'] for d in by_ds.values())}** | "
             f"**{total_hard}** | **{total_hard / total_n * 100:.1f}%** |"
         )
-    out.append("")
-    out.append(
-        "**Reading guide:** in tables below, the only cells that distinguish "
-        "retrieval methods are the ones populated by datasets with hard "
-        "instances. When a bucket header reads `(<dataset> only)` the row is "
-        "single-dataset by structural necessity, not by analyst choice."
+    out.extend(
+        [
+            "",
+            "**Reading guide:** in tables below, the only cells that distinguish "
+            "retrieval methods are the ones populated by datasets with hard "
+            "instances. When a bucket header reads `(<dataset> only)` the row is "
+            "single-dataset by structural necessity, not by analyst choice.",
+        ]
     )
     return "\n".join(out) + "\n"
 
@@ -953,19 +979,21 @@ def main() -> int:
     bucket_labels_ratio = [b[0] for b in _RATIO_BUCKETS]
     bucket_labels_gold = [b[0] for b in _GOLD_BUCKETS]
     md_parts: list[str] = ["# Stratified analysis\n"]
-    md_parts.append(_render_structural_fact(rows, datasets))
-    md_parts.append(f"**Rows:** {len(rows)} per-instance records across {len(by_cell)} (method, budget, depth, dataset) cells.\n")
-    md_parts.append(render_pooled_per_bucket_table(bucket_ratio, bucket_labels_ratio, "Recall by difficulty ratio"))
-    md_parts.append(
-        render_per_bucket_table(bucket_ratio, bucket_labels_ratio, "Recall by difficulty ratio (per-dataset, with CI)")
+    md_parts.extend(
+        [
+            _render_structural_fact(rows, datasets),
+            f"**Rows:** {len(rows)} per-instance records across {len(by_cell)} (method, budget, depth, dataset) cells.\n",
+            render_pooled_per_bucket_table(bucket_ratio, bucket_labels_ratio, "Recall by difficulty ratio"),
+            render_per_bucket_table(bucket_ratio, bucket_labels_ratio, "Recall by difficulty ratio (per-dataset, with CI)"),
+            render_pooled_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (file count)"),
+            render_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (per-dataset, with CI)"),
+            render_pairwise_table(pair_ratio, "Pairwise comparisons by difficulty ratio"),
+            render_pairwise_table(pair_gold, "Pairwise comparisons by |gold| bucket"),
+            render_regression_table(regs),
+            render_per_language_hard(lang_hard),
+            render_matched_cardinality(cardinality),
+        ]
     )
-    md_parts.append(render_pooled_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (file count)"))
-    md_parts.append(render_per_bucket_table(bucket_gold, bucket_labels_gold, "Recall by |gold| (per-dataset, with CI)"))
-    md_parts.append(render_pairwise_table(pair_ratio, "Pairwise comparisons by difficulty ratio"))
-    md_parts.append(render_pairwise_table(pair_gold, "Pairwise comparisons by |gold| bucket"))
-    md_parts.append(render_regression_table(regs))
-    md_parts.append(render_per_language_hard(lang_hard))
-    md_parts.append(render_matched_cardinality(cardinality))
 
     (args.out / "STRATIFIED_REPORT.md").write_text("\n".join(md_parts))
 

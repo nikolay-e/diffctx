@@ -42,6 +42,8 @@ pub(crate) mod select;
 pub(crate) mod utility;
 
 // Output.
+pub mod hook;
+pub mod impact;
 pub mod locate;
 pub mod render;
 
