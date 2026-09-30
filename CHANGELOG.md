@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-09-30
+
 ### Fixed
 
 - **The plugin's impact hook never ran under macOS `/bin/bash` 3.2**: an empty
@@ -1714,7 +1716,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.1...HEAD
+[1.18.1]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...v1.16.0
