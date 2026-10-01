@@ -147,10 +147,17 @@ jobs:
           args[i] = f"diffctx[mcp]=={ver}"
           mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
-          # The hooks run the same pinned package, the version written plainly
-          # in each script: the plugin directory only runs code in the
-          # repository or a package pinned to an exact version.
-          for hook in ("plugin/hooks/diffctx-impact.sh", "plugin/hooks/diffctx-session.sh"):
+          # The hooks run the same pinned package, and the skills name it for
+          # the no-MCP fallback; the version is written plainly in each: the
+          # plugin directory only runs code in the repository or a package
+          # pinned to an exact version.
+          for hook in (
+              "plugin/hooks/diffctx-impact.sh",
+              "plugin/hooks/diffctx-session.sh",
+              "plugin/skills/commit/SKILL.md",
+              "plugin/skills/diffctx/SKILL.md",
+              "plugin/skills/impact/SKILL.md",
+          ):
               p = pathlib.Path(hook)
               pin = re.compile(r"diffctx(\[mcp\])?==\d+\.\d+\.\d+")
               s, n = pin.subn(lambda m: f"diffctx{m.group(1) or ''}=={ver}", p.read_text(encoding="utf-8"))
@@ -259,6 +266,7 @@ jobs:
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/constraints.txt \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
+            plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
             docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then

@@ -163,6 +163,15 @@ class TestPluginHook:
         assert "&)" in session
         assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] <= 10
 
+    def test_the_skills_name_the_pinned_package(self):
+        """The no-MCP fallback in each skill is a command the model runs, so it
+        carries the exact version too; cd.yml bumps it with the hooks."""
+        for skill in sorted((PROJECT_ROOT / "plugin" / "skills").glob("*/SKILL.md")):
+            text = skill.read_text(encoding="utf-8")
+            specs = re.findall(r"uvx (diffctx\S*)", text)
+            assert specs, skill
+            assert all(spec == f"diffctx=={__version__}" for spec in specs), (skill, specs)
+
     def test_the_hook_options_are_declared(self):
         options = _load("plugin/.claude-plugin/plugin.json")["userConfig"]
         assert options["impact_hook"]["type"] == "boolean"

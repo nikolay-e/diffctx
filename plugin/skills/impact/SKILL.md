@@ -11,8 +11,8 @@ changed symbol, the callers outside the diff, whether a test guards each one,
 and which symbols more than one commit of the range touched; public API and
 schema changes are listed as facts.
 
-Without the MCP server, run the command the session-start recipe named,
-`uvx diffctx==<version> . --diff <range> --mode impact -f md`.
+Without the MCP server, run
+`uvx diffctx==1.18.1 . --diff <range> --mode impact -f md`.
 
 Report the impact, ranked by risk:
 
