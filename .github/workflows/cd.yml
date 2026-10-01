@@ -147,6 +147,23 @@ jobs:
           args[i] = f"diffctx[mcp]=={ver}"
           mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
+          # The hooks run the same pinned package, and the skills name it for
+          # the no-MCP fallback; the version is written plainly in each: the
+          # plugin directory only runs code in the repository or a package
+          # pinned to an exact version.
+          for hook in (
+              "plugin/hooks/diffctx-impact.sh",
+              "plugin/hooks/diffctx-session.sh",
+              "plugin/skills/commit/SKILL.md",
+              "plugin/skills/diffctx/SKILL.md",
+              "plugin/skills/impact/SKILL.md",
+          ):
+              p = pathlib.Path(hook)
+              pin = re.compile(r"diffctx(\[mcp\])?==\d+\.\d+\.\d+")
+              s, n = pin.subn(lambda m: f"diffctx{m.group(1) or ''}=={ver}", p.read_text(encoding="utf-8"))
+              assert n >= 1, f"{hook}: no pinned diffctx"
+              p.write_text(s, encoding="utf-8")
+
           srv = pathlib.Path("server.json")
           doc = json.loads(srv.read_text(encoding="utf-8"))
           doc["version"] = ver
@@ -248,6 +265,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/constraints.txt \
+            plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
+            plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
             docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
@@ -1315,8 +1334,7 @@ jobs:
             --version "$VERSION" \
             --assets-dir ./release-binaries \
             --scoop bucket/diffctx.json \
-            --npm-checksums packaging/npm/checksums.json \
-            --plugin-checksums plugin/checksums.json
+            --npm-checksums packaging/npm/checksums.json
 
       # `bucket/` IS the Scoop bucket, and this manifest was pushed to main with
       # nothing checking it — a wrong hash, a stale version, or a `bin` that no
@@ -1372,7 +1390,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bucket/diffctx.json packaging/npm/checksums.json plugin/checksums.json
+          git add bucket/diffctx.json packaging/npm/checksums.json
           if git diff --staged --quiet; then
             echo "Manifests already current."
             exit 0

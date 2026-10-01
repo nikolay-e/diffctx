@@ -141,6 +141,63 @@ fn context_of(h: &Hook) -> String {
         .to_string()
 }
 
+fn payload_in_session(session: &str, repo: &Path, command: &str) -> String {
+    let mut doc: serde_json::Value = serde_json::from_str(&payload(repo, command)).unwrap();
+    doc["session_id"] = serde_json::Value::String(session.to_string());
+    doc.to_string()
+}
+
+#[test]
+fn a_change_one_session_was_shown_is_news_to_the_next() {
+    // The marker used to be keyed by content alone, so a second session
+    // committing content the first had reviewed got silence (#323).
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let first = hook(
+        repo,
+        cache.path(),
+        &payload_in_session("one", repo, "git commit -am vat"),
+    );
+    assert!(context_of(&first).contains("shop/checkout.py::charge"));
+    let again = hook(
+        repo,
+        cache.path(),
+        &payload_in_session("one", repo, "git commit -am vat"),
+    );
+    assert_eq!(again.stdout, "", "the same session is not told twice");
+    let other = hook(
+        repo,
+        cache.path(),
+        &payload_in_session("two", repo, "git commit -am vat"),
+    );
+    assert!(
+        context_of(&other).contains("shop/checkout.py::charge"),
+        "{}",
+        other.stdout
+    );
+}
+
+#[test]
+fn a_manual_impact_run_just_before_still_counts() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let manual = Command::new(&*BIN)
+        .current_dir(repo)
+        .env("DIFFCTX_CACHE_DIR", cache.path())
+        .args(["--diff", "HEAD", "--mode", "impact", "-q"])
+        .output()
+        .expect("run diffctx");
+    assert!(manual.status.success());
+    let h = hook(
+        repo,
+        cache.path(),
+        &payload_in_session("fresh", repo, "git commit -am vat"),
+    );
+    assert_eq!(h.stdout, "");
+}
+
 #[test]
 fn a_commit_with_an_outside_caller_gets_the_impact_once() {
     let tmp = repo_with_pending_change();

@@ -28,6 +28,14 @@ const MAX_CALLERS_SHOWN_PER_FILE: usize = 3;
 /// Contracts are a list of facts the reader can grep for; past this many the
 /// list is the diff's own `pub` lines read back.
 const MAX_CONTRACTS: usize = 12;
+/// A declaration longer than this many lines before its body opens is
+/// compared on its first lines only.
+const MAX_SIGNATURE_LINES: usize = 12;
+const CALLER_LOSING_LIMITS: &[crate::resource::LimitReason] = &[
+    crate::resource::LimitReason::Deadline,
+    crate::resource::LimitReason::DiscoveryTruncated,
+    crate::resource::LimitReason::CandidateLimit,
+];
 /// Paths listed before the rest fold into a count: the reader has the diff.
 const MAX_CHANGED_FILES_LISTED: usize = 24;
 
@@ -81,8 +89,11 @@ pub struct ImpactOutput {
     /// Contracts beyond `MAX_CONTRACTS`, schema changes never among them.
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub contracts_omitted: usize,
-    /// The run stopped at a limit (a deadline, a cap): callers may be
-    /// missing, and `empty` is never claimed while this is set.
+    /// The run stopped at a limit that can lose a caller — the deadline, a
+    /// truncated reverse discovery, a capped candidate universe — and `empty`
+    /// is never claimed while this is set. Caps every real repository trips
+    /// (a large lockfile, the fragment or edge cap) are not listed: they
+    /// fired on every run and made the hook speak on every commit (#306).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limits: Vec<crate::resource::LimitReason>,
     /// Whether any test file was in view. Without one, an absent `tested_by`
@@ -333,6 +344,12 @@ fn named_container_of<'a>(core: &'a Fragment, all: &'a [Fragment]) -> Option<&'a
                 && f.id != core.id
         })
         .min_by_key(|f| f.line_count())
+        // A module-level `export const f = (…) => …` is a definition in all
+        // but kind: nothing encloses it, and its importers are its callers
+        // (#324). Inside a function a variable is the function's business.
+        .or_else(|| {
+            (core.kind == FragmentKind::Variable && core.symbol_name.is_some()).then_some(core)
+        })
 }
 
 /// Of fragments nested in one another (a method and its impl, a function
@@ -382,11 +399,81 @@ fn is_public(path: &str, symbol: Option<&str>, content: &str) -> bool {
 }
 
 fn is_schema_file(path: &str) -> bool {
+    // A test named for the schema it checks is not a schema.
+    if crate::testfiles::is_test_path(Path::new(path)) {
+        return false;
+    }
     let lower = path.to_lowercase();
     SCHEMA_FILE_EXTENSIONS
         .iter()
         .any(|ext| lower.ends_with(ext))
         || SCHEMA_FILE_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// The revision a change is measured against: the left side of a range, a
+/// lone revision itself, HEAD for the working tree.
+fn base_revision(diff_range: Option<&str>) -> String {
+    match diff_range.map(crate::git::split_diff_range) {
+        Some((Some(base), _)) => base,
+        _ => diff_range.unwrap_or("HEAD").to_string(),
+    }
+}
+
+/// A fragment without its decorators. The decorator belongs to the fragment
+/// (Python `@app.route(…, methods={"GET"})`, a TS `@Component({…})`) but not
+/// to the declaration: `export` comes after it, and a `{` in it would end the
+/// declaration's head before the signature began.
+fn without_decorators(content: &str) -> &str {
+    let mut rest = content;
+    while let Some(line) = rest.lines().next() {
+        let t = line.trim_start();
+        if !(t.is_empty() || t.starts_with('@')) {
+            break;
+        }
+        rest = rest.get(line.len() + 1..).unwrap_or("");
+    }
+    rest
+}
+
+/// The declaration a caller depends on: from the definition's first line
+/// through the one that opens its body (`{`, `=>`, a trailing `:`), cut
+/// there, so a body on the same line is not part of it.
+fn declaration_head(content: &str) -> String {
+    let mut head = Vec::new();
+    for line in without_decorators(content)
+        .lines()
+        .take(MAX_SIGNATURE_LINES)
+    {
+        if let Some(at) = line.find("=>") {
+            head.push(&line[..at + 2]);
+            break;
+        }
+        if let Some(at) = line.find('{') {
+            head.push(&line[..=at]);
+            break;
+        }
+        head.push(line);
+        if line.trim_end().ends_with(':') || line.trim_end().ends_with(';') {
+            break;
+        }
+    }
+    head.join("\n")
+}
+
+/// Whether an exported symbol's declaration moved: its head is looked for in
+/// the file at the base revision, whitespace-insensitively. A body-only edit
+/// is what the callers list already says, and a contracts section repeated
+/// on every refactor teaches the reader to skip it (#325). A file the base
+/// does not have is new, and every export in it is a new contract.
+fn signature_changed(state: &ScoredState, base: &str, core: &Fragment) -> bool {
+    let rel_path = rel(state, core.path());
+    let Ok(old) = crate::git::show_file_at_revision(&state.root_dir, base, Path::new(&rel_path))
+    else {
+        return true;
+    };
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let head = squash(&declaration_head(&core.content));
+    head.is_empty() || !squash(&old).contains(&head)
 }
 
 /// `(base, head)` for blame: a two-sided range as given, a single revision
@@ -526,6 +613,7 @@ pub fn build_impact(
     cores.dedup_by(|a, b| a.id == b.id);
 
     let bounds = commit_bounds(diff_range).filter(|_| state.commit_count >= 2);
+    let base = base_revision(diff_range);
 
     let mut changed: Vec<ChangedSymbol> = Vec::new();
     // Schema changes first, then the public symbols something calls, then
@@ -664,7 +752,9 @@ pub fn build_impact(
             (Some((base, head)), true) => commits_touching(state, base, head, core),
             _ => 0,
         };
-        if is_public(core.path(), symbol, &core.content) {
+        if is_public(core.path(), symbol, without_decorators(&core.content))
+            && signature_changed(state, &base, core)
+        {
             public_api.push((
                 callers.is_empty(),
                 Contract {
@@ -717,7 +807,12 @@ pub fn build_impact(
     contracts.extend(public_api.into_iter().map(|(_, c)| c));
     let contracts_omitted = contracts.len().saturating_sub(MAX_CONTRACTS);
     contracts.truncate(MAX_CONTRACTS);
-    let limits = state.run.reasons();
+    let limits: Vec<crate::resource::LimitReason> = state
+        .run
+        .reasons()
+        .into_iter()
+        .filter(|r| CALLER_LOSING_LIMITS.contains(r))
+        .collect();
     let empty = changed.is_empty() && contracts.is_empty() && limits.is_empty();
     let mut output = ImpactOutput {
         schema: IMPACT_SCHEMA,

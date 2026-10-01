@@ -1181,9 +1181,10 @@
         default auto budget, counted with the o200k_base tokenizer. Clone the
         repo and run the command to reproduce it. The selection is smaller than
         the patch and still carries the callers, types and config the patch
-        alone does not show. Against pasting the 66 changed files whole — 768,268
-        tokens — it is 17.6× (13.9× without the one 158k-token generated test
-        snapshot among them). The ratio is not a constant:
+        alone does not show. A second ratio, against a different baseline:
+        against pasting the 66 changed files whole — 768,268 tokens — it is
+        17.6× (13.9× without the one 158k-token generated test snapshot among
+        them). The ratio is not a constant:
         it tracks how much of the changed files is unrelated to the change, so a
         wide refactor across large files compresses far more than a three-file
         fix, where diffctx often <em>adds</em> tokens because it pulls in the
@@ -1942,6 +1943,10 @@
       }
       function renderYaml(picked, spent, excluded) {
         const el = document.getElementById("yaml");
+        if (picked === null) {
+          el.innerHTML = `<span class="yc"># the selection is printed here at stage 5</span>`;
+          return;
+        }
         if (!picked.length) {
           el.innerHTML = `<span class="yc"># nothing selected at these dials — lower τ or raise the budget</span>`;
           return;
@@ -2056,7 +2061,7 @@
         } else {
           fill.style.width = "0%";
           readout.textContent = "selection happens at stage 5";
-          renderYaml([], 0);
+          renderYaml(null, 0);
         }
       }
 

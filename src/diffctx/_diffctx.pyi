@@ -69,6 +69,7 @@ def build_impact(
     paths: list[str] = ...,
     markdown: bool = ...,
 ) -> str: ...
+def hook_respond(event: str, stdin_json: str, gate: bool = ...) -> str | None: ...
 def compute_scored_state(
     root_dir: str,
     diff_range: str,

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-10-01
+
+### Changed
+
+- **The Claude plugin no longer downloads anything but its pinned package.**
+  The directory runs only code from the reviewed repository or a package
+  pinned to an exact version, and refused 1.18.1 for fetching the release
+  binary at session start. The git hooks now run `diffctx hook <event>` from
+  `uvx diffctx[mcp]==<version>` — the MCP server's own pinned launch, so the
+  environment its start cached is the one the hook finds, `--offline` on the
+  commit path. The session start only warms that cache in the background and
+  names the command; `diffctx-install.sh` and `plugin/checksums.json` are
+  gone. The PyPI package gains the `diffctx hook` subcommand the native
+  binary had. The skills' no-MCP fallback names the same exact version
+  instead of a `<version>` placeholder, and the release bumps it.
+
+### Fixed
+
+- 1.18.1's impact listed every resource cap as a limit, so the fragment and
+  edge caps nearly every repository hits printed `(partial: …)` and made the
+  hook speak on every commit; only the deadline, a truncated reverse
+  discovery and a capped candidate universe can lose a caller, and only those
+  are listed (#306).
+- A test file named for a schema (`test_context_schema.py`) is no longer
+  reported as a schema contract.
+- Impact: a changed module-level `export const f = (…) => …` is a changed
+  symbol whose importers are its callers; it used to read "Nothing outside the
+  diff depends on this change" (#324).
+- Impact: "Contracts changed" lists an exported symbol only when its
+  declaration moved; a body-only edit is what its callers already say (#325).
+  A decorated export (`@Component({…}) export class …`) is public, and its
+  decorator is not mistaken for the declaration.
+- The hook's "already reviewed" markers are per session: a change one session
+  was shown used to be silence for every other session for a day. A manual
+  `--mode impact` run still silences the hook on the same content, for 15
+  minutes (#323).
+- `diffctx hook` from the PyPI package writes its answer as UTF-8: Windows'
+  cp1252 stdout turned the answer's dashes into bytes Claude Code cannot
+  read, and a character cp1252 lacks made the hook silent.
+- `uv.lock`: urllib3 2.8.0 (GHSA-gh4c-6fx4-qh6g, GHSA-vxq7-64xx-v4gw,
+  GHSA-8988-9cw3-xx77) and virtualenv 21.14.1 (GHSA-94p9-xgh2-xp45,
+  GHSA-9h9j-4vrj-gf7g), both development-only.
+- The hook no longer guesses the repository behind `cd $VAR`, `cd ~/…` or
+  `git -C "$REPO"`: a directory only the shell can expand is skipped instead
+  of reviewing whatever repository the agent's cwd is.
+
 ## [1.18.1] - 2026-09-30
 
 ### Fixed
@@ -1716,7 +1762,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.1...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.2...HEAD
+[1.18.2]: https://github.com/nikolay-e/diffctx/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...v1.17.0

@@ -30,6 +30,11 @@ const MAX_CONTEXT_CHARS: usize = 9_000;
 /// review, a fix and the push that follows; short enough that the same
 /// change revisited tomorrow gets its impact again.
 const SEEN_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// How long a manual `--mode impact` run silences the hook on the same
+/// content. It is not tied to a session, so it must not outlive the moment:
+/// a run just before the commit counts, another session hours later does
+/// not inherit it (#323).
+const MANUAL_SEEN_TTL: Duration = Duration::from_secs(15 * 60);
 
 /// The hook's own wall-clock ceiling. Claude Code kills a hook at its
 /// configured timeout and treats the kill as "no output", so this only has to
@@ -187,6 +192,10 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
     let ws = words(command);
     let mut found = Vec::new();
     let mut cwd: Option<String> = None;
+    // Set once a `cd` names a directory the line alone cannot resolve
+    // (`cd $R`, `cd ~/x`); git statements under it are skipped rather than
+    // reviewed against whatever repository the agent's cwd happens to be.
+    let mut lost = false;
     let mut i = 0;
     while i < ws.len() {
         let prog = Path::new(&ws[i])
@@ -198,7 +207,12 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
                 .get(i + 1)
                 .filter(|w| !is_operator(w) && !w.starts_with('-'))
             {
-                cwd = Some(join_dir(cwd.as_deref(), target));
+                if is_unresolvable(target) {
+                    lost = true;
+                } else if is_absolute_dir(target) || !lost {
+                    cwd = Some(join_dir(cwd.as_deref(), target));
+                    lost = false;
+                }
             }
             i += 1;
             continue;
@@ -206,11 +220,21 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
         if prog == "git" || prog == "gh" {
             let mut j = i + 1;
             let mut dir = cwd.clone();
+            let mut dir_lost = lost;
             let mut verb = None;
             while j < ws.len() && !is_operator(&ws[j]) {
                 let w = &ws[j];
                 if prog == "git" && w == "-C" {
-                    dir = ws.get(j + 1).map(|d| join_dir(cwd.as_deref(), d));
+                    if let Some(d) = ws.get(j + 1) {
+                        if is_unresolvable(d) {
+                            dir_lost = true;
+                        } else if is_absolute_dir(d) {
+                            dir = Some(d.clone());
+                            dir_lost = false;
+                        } else {
+                            dir = Some(join_dir(cwd.as_deref(), d));
+                        }
+                    }
                     j += 2;
                     continue;
                 }
@@ -231,7 +255,7 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
                 args.push(ws[j].clone());
                 j += 1;
             }
-            if let Some(verb) = verb {
+            if let Some(verb) = verb.filter(|_| !dir_lost) {
                 found.push((
                     if prog == "gh" {
                         format!("gh {verb}")
@@ -248,6 +272,12 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
         i += 1;
     }
     found
+}
+
+/// A directory only the shell could expand: a variable, a command
+/// substitution, a home-relative path.
+fn is_unresolvable(dir: &str) -> bool {
+    dir.contains('$') || dir.contains('`') || dir.starts_with('~')
 }
 
 /// A directory as the shell line spelled it: `/r` is absolute on every
@@ -463,6 +493,10 @@ fn marker(key: &str) -> Option<PathBuf> {
 }
 
 pub fn is_seen(key: &str) -> bool {
+    is_seen_within(key, SEEN_TTL)
+}
+
+fn is_seen_within(key: &str, ttl: Duration) -> bool {
     let Some(path) = marker(key) else {
         return false;
     };
@@ -472,7 +506,24 @@ pub fn is_seen(key: &str) -> bool {
     meta.modified()
         .ok()
         .and_then(|m| SystemTime::now().duration_since(m).ok())
-        .is_some_and(|age| age < SEEN_TTL)
+        .is_some_and(|age| age < ttl)
+}
+
+/// The hook's own markers are per session: the payload names it, and a
+/// change one session was shown is news to the next (#323). Only what a
+/// file name can carry is kept of the id.
+fn session_key(key: &str, session: Option<&str>) -> String {
+    let session: String = session
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(64)
+        .collect();
+    if session.is_empty() {
+        key.to_string()
+    } else {
+        format!("{key}.{session}")
+    }
 }
 
 pub fn mark_seen(key: &str) {
@@ -509,6 +560,7 @@ struct Prepared {
     root: PathBuf,
     range: String,
     key: String,
+    session: Option<String>,
 }
 
 fn prepare(event: Event, stdin_json: &str) -> Option<Prepared> {
@@ -528,14 +580,21 @@ fn prepare(event: Event, stdin_json: &str) -> Option<Prepared> {
     };
     let root = crate::git::find_toplevel(&root)?;
     let range = range_for(&root, &detected.trigger)?;
-    let key = content_key(&root, &range)?;
-    if is_seen(&key) {
+    let content = content_key(&root, &range)?;
+    let session = payload["session_id"].as_str().map(str::to_string);
+    let key = session_key(&content, session.as_deref());
+    if is_seen(&key) || is_seen_within(&content, MANUAL_SEEN_TTL) {
         return None;
     }
-    Some(Prepared { root, range, key })
+    Some(Prepared {
+        root,
+        range,
+        key,
+        session,
+    })
 }
 
-fn impact_context(event: Event, root: &Path, range: &str) -> Option<String> {
+fn impact_context(event: Event, root: &Path, range: &str, session: Option<&str>) -> Option<String> {
     let scoring = ScoringMode::from_str(DEFAULT_SCORING).ok()?;
     let output = crate::pipeline::build_diff_context_impact(
         root,
@@ -555,7 +614,7 @@ fn impact_context(event: Event, root: &Path, range: &str) -> Option<String> {
     // is the symbols and their callers, and a substance already shown this
     // day is not shown again (#314).
     let substance = serde_json::to_string(&output.changed).unwrap_or_default();
-    let answer_key = text_key(root, &substance);
+    let answer_key = session_key(&text_key(root, &substance), session);
     if is_seen(&answer_key) {
         return None;
     }
@@ -595,7 +654,12 @@ fn hook_json(event: Event, context: &str, gate: bool) -> String {
 /// every push that follows.
 pub fn respond(event: Event, stdin_json: &str, gate: bool) -> Option<String> {
     let prepared = prepare(event, stdin_json)?;
-    let context = impact_context(event, &prepared.root, &prepared.range);
+    let context = impact_context(
+        event,
+        &prepared.root,
+        &prepared.range,
+        prepared.session.as_deref(),
+    );
     mark_seen(&prepared.key);
     context.map(|c| hook_json(event, &c, gate))
 }
@@ -609,7 +673,12 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     let key = prepared.key.clone();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(impact_context(event, &prepared.root, &prepared.range));
+        let _ = tx.send(impact_context(
+            event,
+            &prepared.root,
+            &prepared.range,
+            prepared.session.as_deref(),
+        ));
     });
     let left = Duration::from_secs(HOOK_DEADLINE_SECS).saturating_sub(started.elapsed());
     let answer = match rx.recv_timeout(left) {
@@ -702,6 +771,18 @@ mod tests {
                 .unwrap()
                 .dir,
             Some("/r/sub".to_string())
+        );
+        // A directory only the shell can expand is not guessed at: the
+        // agent's cwd may be another repository entirely.
+        assert!(pre("cd $R && git commit -qm init").is_none());
+        assert!(pre("cd ~/x && git commit -m x").is_none());
+        assert!(pre("git -C \"$REPO\" commit -m x").is_none());
+        assert!(pre("cd $R && cd sub && git commit -m x").is_none());
+        assert_eq!(
+            detect(Event::PreToolUse, "cd $R && cd /abs && git commit -m x")
+                .unwrap()
+                .dir,
+            Some("/abs".to_string())
         );
     }
 

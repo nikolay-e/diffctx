@@ -286,7 +286,7 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
     let doc = impact_env(
         tmp.path(),
         "HEAD~1..HEAD",
-        &[("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")],
+        &[("DIFFCTX_MAX_CANDIDATE_FILES", "1")],
     );
     assert!(
         !doc["limits"].as_array().expect("limits").is_empty(),
@@ -295,7 +295,7 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
     assert_eq!(doc["empty"], false);
     let out = Command::new(&*BIN)
         .current_dir(tmp.path())
-        .env("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")
+        .env("DIFFCTX_MAX_CANDIDATE_FILES", "1")
         .args([
             "--diff",
             "HEAD~1..HEAD",
@@ -310,6 +310,182 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
     let text = String::from_utf8(out.stdout).expect("utf8");
     assert!(text.contains("(partial: the run stopped at"), "{text}");
     assert!(!text.contains("Nothing outside the diff"), "{text}");
+}
+
+#[test]
+fn a_cap_every_repository_trips_does_not_make_an_empty_answer_speak() {
+    // 1.18.1 listed every limit, so the edge and fragment caps a real
+    // repository always hits turned each commit's empty answer into a
+    // "(partial: ...)" injection (#306).
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "lone.py", "def lone():\n    return 1\n");
+    write(repo, "other.py", "def other():\n    return 2\n");
+    commit_all(repo, "initial");
+    write(repo, "lone.py", "def lone():\n    return 3\n");
+    commit_all(repo, "lone: 3");
+    let doc = impact_env(
+        repo,
+        "HEAD~1..HEAD",
+        &[("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")],
+    );
+    assert_eq!(doc["empty"], true, "{doc}");
+    assert!(doc.get("limits").is_none(), "{doc}");
+}
+
+#[test]
+fn a_test_named_for_a_schema_is_not_a_schema_contract() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "tests/test_context_schema.py",
+        "def test_a():\n    assert True\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "tests/test_context_schema.py",
+        "def test_a():\n    assert 1\n",
+    );
+    commit_all(repo, "test");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let contracts = doc
+        .get("contracts")
+        .and_then(|c| c.as_array())
+        .cloned()
+        .unwrap_or_default();
+    assert!(!contracts.iter().any(|c| c["kind"] == "schema"), "{doc}");
+}
+
+fn ts_repo_with_panel() -> TempDir {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "src/engine/panel.ts",
+        "export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));\n\nexport function mono(x: number): number {\n  return x * 2;\n}\n",
+    );
+    for i in 1..=3 {
+        write(
+            repo,
+            &format!("src/cards/card{i}.ts"),
+            &format!(
+                "import {{ clamp, mono }} from '../engine/panel';\n\nexport function draw{i}(v: number): number {{\n  return clamp(v, 0, 1) + mono(v);\n}}\n"
+            ),
+        );
+    }
+    commit_all(repo, "initial");
+    tmp
+}
+
+#[test]
+fn a_changed_arrow_function_const_has_its_importers_as_callers() {
+    // `export const clamp = (…) => …` was a `variable` fragment, not a
+    // definition, and the answer read "Nothing outside the diff" (#324).
+    let tmp = ts_repo_with_panel();
+    let repo = tmp.path();
+    write(
+        repo,
+        "src/engine/panel.ts",
+        "export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));\n\nexport function mono(x: number): number {\n  return x * 2;\n}\n",
+    );
+    commit_all(repo, "clamp");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let clamp = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .find(|c| c["symbol"] == "clamp")
+        .unwrap_or_else(|| panic!("clamp is a changed symbol: {doc}"));
+    assert_eq!(
+        clamp["callers"].as_array().expect("callers").len(),
+        3,
+        "{doc}"
+    );
+}
+
+#[test]
+fn a_body_only_change_of_an_export_is_not_a_contract() {
+    // A contract is the exported surface; a body edit is what the callers
+    // list already says (#325). The signature edit right after it is one.
+    let tmp = ts_repo_with_panel();
+    let repo = tmp.path();
+    write(
+        repo,
+        "src/engine/panel.ts",
+        "export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));\n\nexport function mono(x: number): number {\n  return x * 3;\n}\n",
+    );
+    commit_all(repo, "mono body");
+    let contracts = |doc: &serde_json::Value| -> Vec<String> {
+        doc.get("contracts")
+            .and_then(|c| c.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|c| c["symbol"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let body = impact(repo, "HEAD~1..HEAD");
+    assert!(!contracts(&body).contains(&"mono".to_string()), "{body}");
+    assert!(
+        body["changed"]
+            .as_array()
+            .expect("changed")
+            .iter()
+            .any(|c| c["symbol"] == "mono"),
+        "the callers still name it: {body}"
+    );
+    write(
+        repo,
+        "src/engine/panel.ts",
+        "export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));\n\nexport function mono(x: number, k = 3): number {\n  return x * k;\n}\n",
+    );
+    commit_all(repo, "mono signature");
+    let signature = impact(repo, "HEAD~1..HEAD");
+    assert!(
+        contracts(&signature).contains(&"mono".to_string()),
+        "{signature}"
+    );
+}
+
+#[test]
+fn a_decorated_export_whose_signature_moved_is_a_contract() {
+    // The decorator belongs to the fragment: `export` was not at its head, so
+    // the class was not public, and a `{` in the decorator cut the head
+    // before the signature.
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "src/panel.ts",
+        "@Component({ selector: 'panel' })\nexport class Panel {\n  draw(): number {\n    return 1;\n  }\n}\n",
+    );
+    write(
+        repo,
+        "src/app.ts",
+        "import { Panel } from './panel';\n\nexport function boot(): Panel {\n  return new Panel();\n}\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "src/panel.ts",
+        "@Component({ selector: 'panel' })\nexport class Panel<T> {\n  draw(): number {\n    return 1;\n  }\n}\n",
+    );
+    commit_all(repo, "panel: generic");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let contracts: Vec<&str> = doc["contracts"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no contracts: {doc}"))
+        .iter()
+        .filter_map(|c| c["symbol"].as_str())
+        .collect();
+    assert!(contracts.contains(&"Panel"), "{doc}");
 }
 
 #[test]

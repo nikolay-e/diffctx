@@ -71,7 +71,6 @@ def main() -> None:
     parser.add_argument("--assets-dir", required=True, type=Path)
     parser.add_argument("--scoop", type=Path)
     parser.add_argument("--npm-checksums", type=Path)
-    parser.add_argument("--plugin-checksums", type=Path)
     args = parser.parse_args()
 
     checksums = collect_checksums(args.assets_dir, args.version)
@@ -79,7 +78,6 @@ def main() -> None:
     for path, content in (
         (args.scoop, render_scoop(args.version, checksums)),
         (args.npm_checksums, json.dumps(checksums, indent=2, sort_keys=True) + "\n"),
-        (args.plugin_checksums, json.dumps(checksums, indent=2, sort_keys=True) + "\n"),
     ):
         if path is None:
             continue

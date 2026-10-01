@@ -33,10 +33,9 @@ every dependency to the exact set the release was tested with. On first
 start uv downloads those pinned packages from PyPI; after that nothing is
 fetched.
 
-At session start the plugin downloads the diffctx release binary for your
-platform once from the GitHub release, verifies it against the checksums this
-plugin carries, and keeps it in the plugin's data directory; the git hooks
-only ever run that binary. A hash of each reviewed change is
+The git hooks run that same pinned package, `diffctx hook <event>`, from uv's
+cache and never touch the network: a session start fills the cache in the
+background. A hash of each reviewed change is
 kept in your user cache so the same change is not reviewed twice; no content
 is stored.
 
