@@ -8,7 +8,7 @@ Two steps, in this order.
 1. Call the `diffctx_context` MCP tool from the diffctx server on the current
    repository with `mode="impact"` and no `diff_ref` (it reads the pending
    work). Without the MCP server, run
-   `uvx diffctx==1.18.1 . --diff --mode impact -f md`. For every
+   `uvx diffctx==1.18.2 . --diff --mode impact -f md`. For every
    caller outside the diff marked UNTESTED, either fix it now or say in one
    line why it is unaffected. An empty impact means nothing outside the diff
    depends on the change.

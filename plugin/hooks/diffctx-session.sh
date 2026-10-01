@@ -10,8 +10,8 @@ set -u
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 command -v uvx >/dev/null 2>&1 || exit 0
 
-(uvx -q -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.1" --version \
+(uvx -q -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.2" --version \
   </dev/null >/dev/null 2>&1 &)
 
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.1 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). The plugin also injects this before git commit/merge/push and after git diff."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.2 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). The plugin also injects this before git commit/merge/push and after git diff."}}'
 exit 0

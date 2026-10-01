@@ -9,7 +9,7 @@ omit `diff_ref`: the server reads the uncommitted work (`HEAD`) when the tree
 is dirty, else the last commit (`HEAD~1..HEAD`).
 
 Without the MCP server, run the same analysis instead of reading files by
-hand: `uvx diffctx==1.18.1 . --diff <range> --mode pack`.
+hand: `uvx diffctx==1.18.2 . --diff <range> --mode pack`.
 
 Read the returned fragments, then explain the change: what it does, which
 parts of the codebase it touches, and anything in the surrounding context

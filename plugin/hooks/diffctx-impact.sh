@@ -34,7 +34,7 @@ if [[ -n "${DIFFCTX_HOOK_BIN:-}" ]]; then
   launch=("$DIFFCTX_HOOK_BIN")
 else
   command -v uvx >/dev/null 2>&1 || exit 0
-  launch=(uvx -q --offline -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.1")
+  launch=(uvx -q --offline -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.2")
 fi
 
 # A release without the subcommand, or a cache uv has not filled yet, exits
