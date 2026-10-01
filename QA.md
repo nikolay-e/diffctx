@@ -93,8 +93,11 @@ silently:
 - **`Cargo.toml` + `Cargo.lock`**, GitHub Actions pins, pre-commit revs, Docker
   digests — Renovate on Forgejo (`renovate.json`, automerge). An epoch squash
   of `main` leaves every open Renovate branch based on a commit that no longer
-  exists (`mergeable: false` on all ten, 2026-09-30); Renovate rebases them on
-  its next run — never hand-merge a conflicted bot branch after a rewrite.
+  exists, and Renovate reads that as a manual edit: the Dependency Dashboard
+  (Forgejo #4) lists them under "PR Edited (Blocked)" and no run touches them
+  again (all ten sat on `f047eeae` for two days, 2026-09-30). Tick their
+  `rebase-branch` boxes in the dashboard body after every rewrite; the next
+  daily run rebuilds them on `main`. Never hand-merge a conflicted bot branch.
 - **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
   pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
   0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
