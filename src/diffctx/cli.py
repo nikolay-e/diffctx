@@ -360,8 +360,10 @@ def _run_hook(argv: list[str]) -> NoReturn:
         payload = sys.stdin.buffer.read().decode("utf-8", "replace")
         answer = hook_respond(event, payload, bool(flags))
         if answer:
-            sys.stdout.write(answer + "\n")
-            sys.stdout.flush()
+            # Claude Code reads UTF-8; Windows' default stdout is cp1252, which
+            # mangles the answer's dashes and cannot encode some of it at all.
+            sys.stdout.buffer.write((answer + "\n").encode("utf-8"))
+            sys.stdout.buffer.flush()
     except Exception:
         pass
     raise SystemExit(0)

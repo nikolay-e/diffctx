@@ -146,3 +146,28 @@ class TestImpactMcp:
                     "include_raw_diff": True,
                 },
             )
+
+
+def test_machine_read_output_is_utf8_under_a_cp1252_console(tmp_path):
+    # Windows' default stdout encoding wrote the impact's dashes as cp1252
+    # bytes and crashed on a path cp1252 cannot encode.
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("shop/pricing.py", "def total(items):\n    return sum(items)\n")
+    repo.add_file("shop/checkout.py", "from shop.pricing import total\n\n\ndef charge(cart):\n    return total(cart)\n")
+    repo.add_file("shop/цены.py", "RATE = 1\n")
+    base = repo.commit("initial")
+    repo.add_file("shop/pricing.py", "def total(items):\n    return sum(items) * 2\n")
+    repo.add_file("shop/цены.py", "RATE = 2\n")
+    head = repo.commit("double")
+    env = {**os.environ, "PYTHONPATH": str(SRC_DIR), "PYTHONIOENCODING": "cp1252", "DIFFCTX_NO_MARKER": "1"}
+    for mode, fmt, expected in (("impact", "md", "charge (4-5) \u2014"), ("locate", "json", "цены.py")):
+        result = subprocess.run(
+            [sys.executable, "-m", "diffctx", ".", "--diff", f"{base}..{head}", "--mode", mode, "-f", fmt, "-q"],
+            cwd=repo.path,
+            capture_output=True,
+            env=env,
+            timeout=120,
+        )
+        assert result.returncode == 0, (mode, result.stderr.decode("utf-8", "replace")[-400:])
+        text = result.stdout.decode("utf-8")
+        assert expected in text, (mode, text[:400])

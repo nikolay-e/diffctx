@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was shown used to be silence for every other session for a day. A manual
   `--mode impact` run still silences the hook on the same content, for 15
   minutes (#323).
+- `diffctx hook` from the PyPI package writes its answer as UTF-8: Windows'
+  cp1252 stdout turned the answer's dashes into bytes Claude Code cannot
+  read, and a character cp1252 lacks made the hook silent.
+- `uv.lock`: urllib3 2.8.0 (GHSA-gh4c-6fx4-qh6g, GHSA-vxq7-64xx-v4gw,
+  GHSA-8988-9cw3-xx77) and virtualenv 21.14.1 (GHSA-94p9-xgh2-xp45,
+  GHSA-9h9j-4vrj-gf7g), both development-only.
 - The hook no longer guesses the repository behind `cd $VAR`, `cd ~/…` or
   `git -C "$REPO"`: a directory only the shell can expand is skipped instead
   of reviewing whatever repository the agent's cwd is.

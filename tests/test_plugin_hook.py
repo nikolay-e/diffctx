@@ -42,7 +42,14 @@ def _event(repo: Path, hook_event: str, command: str) -> str:
 
 
 def _env(tmp_path: Path) -> dict[str, str]:
-    return {**os.environ, "PYTHONPATH": str(SRC_DIR), "DIFFCTX_CACHE_DIR": str(tmp_path / "cache")}
+    # Windows' default stdout encoding, on every OS: the answer carries dashes
+    # cp1252 writes as non-UTF-8 bytes, and Claude Code reads UTF-8.
+    return {
+        **os.environ,
+        "PYTHONPATH": str(SRC_DIR),
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
+        "PYTHONIOENCODING": "cp1252",
+    }
 
 
 def _hook(tmp_path: Path, args: list[str], stdin: str) -> subprocess.CompletedProcess[str]:
