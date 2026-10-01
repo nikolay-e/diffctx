@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diff depends on this change" (#324).
 - Impact: "Contracts changed" lists an exported symbol only when its
   declaration moved; a body-only edit is what its callers already say (#325).
+  A decorated export (`@Component({…}) export class …`) is public, and its
+  decorator is not mistaken for the declaration.
 - The hook's "already reviewed" markers are per session: a change one session
   was shown used to be silence for every other session for a day. A manual
   `--mode impact` run still silences the hook on the same content, for 15

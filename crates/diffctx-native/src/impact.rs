@@ -419,12 +419,31 @@ fn base_revision(diff_range: Option<&str>) -> String {
     }
 }
 
+/// A fragment without its decorators. The decorator belongs to the fragment
+/// (Python `@app.route(…, methods={"GET"})`, a TS `@Component({…})`) but not
+/// to the declaration: `export` comes after it, and a `{` in it would end the
+/// declaration's head before the signature began.
+fn without_decorators(content: &str) -> &str {
+    let mut rest = content;
+    while let Some(line) = rest.lines().next() {
+        let t = line.trim_start();
+        if !(t.is_empty() || t.starts_with('@')) {
+            break;
+        }
+        rest = rest.get(line.len() + 1..).unwrap_or("");
+    }
+    rest
+}
+
 /// The declaration a caller depends on: from the definition's first line
 /// through the one that opens its body (`{`, `=>`, a trailing `:`), cut
 /// there, so a body on the same line is not part of it.
 fn declaration_head(content: &str) -> String {
     let mut head = Vec::new();
-    for line in content.lines().take(MAX_SIGNATURE_LINES) {
+    for line in without_decorators(content)
+        .lines()
+        .take(MAX_SIGNATURE_LINES)
+    {
         if let Some(at) = line.find("=>") {
             head.push(&line[..at + 2]);
             break;
@@ -733,7 +752,9 @@ pub fn build_impact(
             (Some((base, head)), true) => commits_touching(state, base, head, core),
             _ => 0,
         };
-        if is_public(core.path(), symbol, &core.content) && signature_changed(state, &base, core) {
+        if is_public(core.path(), symbol, without_decorators(&core.content))
+            && signature_changed(state, &base, core)
+        {
             public_api.push((
                 callers.is_empty(),
                 Contract {

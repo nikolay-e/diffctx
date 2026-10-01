@@ -454,6 +454,41 @@ fn a_body_only_change_of_an_export_is_not_a_contract() {
 }
 
 #[test]
+fn a_decorated_export_whose_signature_moved_is_a_contract() {
+    // The decorator belongs to the fragment: `export` was not at its head, so
+    // the class was not public, and a `{` in the decorator cut the head
+    // before the signature.
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "src/panel.ts",
+        "@Component({ selector: 'panel' })\nexport class Panel {\n  draw(): number {\n    return 1;\n  }\n}\n",
+    );
+    write(
+        repo,
+        "src/app.ts",
+        "import { Panel } from './panel';\n\nexport function boot(): Panel {\n  return new Panel();\n}\n",
+    );
+    commit_all(repo, "initial");
+    write(
+        repo,
+        "src/panel.ts",
+        "@Component({ selector: 'panel' })\nexport class Panel<T> {\n  draw(): number {\n    return 1;\n  }\n}\n",
+    );
+    commit_all(repo, "panel: generic");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let contracts: Vec<&str> = doc["contracts"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no contracts: {doc}"))
+        .iter()
+        .filter_map(|c| c["symbol"].as_str())
+        .collect();
+    assert!(contracts.contains(&"Panel"), "{doc}");
+}
+
+#[test]
 fn a_file_that_only_imports_the_symbol_is_not_a_caller() {
     let tmp = repo_with_callers();
     let repo = tmp.path();
