@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commit path. The session start only warms that cache in the background and
   names the command; `diffctx-install.sh` and `plugin/checksums.json` are
   gone. The PyPI package gains the `diffctx hook` subcommand the native
-  binary had.
+  binary had. The skills' no-MCP fallback names the same exact version
+  instead of a `<version>` placeholder, and the release bumps it.
 
 ### Fixed
 
