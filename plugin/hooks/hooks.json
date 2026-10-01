@@ -1,13 +1,13 @@
 {
-  "description": "Installs the diffctx release binary once per session start; before a git commit, merge, cherry-pick, push or a PR is created, hands Claude what the pending change reaches outside the diff",
+  "description": "Warms uv's cache with the pinned diffctx package at session start; before a git commit, merge, cherry-pick, push or a PR is created, hands Claude what the pending change reaches outside the diff",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/diffctx-install.sh",
-            "timeout": 90
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/diffctx-session.sh",
+            "timeout": 10
           }
         ]
       }

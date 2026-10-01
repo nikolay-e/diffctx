@@ -334,10 +334,37 @@ def main() -> None:
     if sys.argv[1:2] == ["mcp"]:
         _run_mcp_server()
         return
+    if sys.argv[1:2] == ["hook"]:
+        _run_hook(sys.argv[2:])
 
     from ._app import run
 
     run()
+
+
+_HOOK_USAGE = "usage: diffctx hook {pretooluse [--gate] | posttooluse} < event.json"
+
+
+def _run_hook(argv: list[str]) -> NoReturn:
+    # Claude Code's contract, as in the native binary: exit 0 with the JSON
+    # answer or nothing. A non-zero exit blocks the agent's tool call, so
+    # everything past argument parsing is silence on failure.
+    event, flags = (argv[0], argv[1:]) if argv else ("", [])
+    if event not in ("pretooluse", "posttooluse") or any(f != "--gate" for f in flags):
+        _exit_usage_error(_HOOK_USAGE)
+    if flags and event != "pretooluse":
+        _exit_usage_error(_HOOK_USAGE)
+    try:
+        from ._diffctx import hook_respond
+
+        payload = sys.stdin.buffer.read().decode("utf-8", "replace")
+        answer = hook_respond(event, payload, bool(flags))
+        if answer:
+            sys.stdout.write(answer + "\n")
+            sys.stdout.flush()
+    except Exception:
+        pass
+    raise SystemExit(0)
 
 
 def _run_mcp_server() -> None:

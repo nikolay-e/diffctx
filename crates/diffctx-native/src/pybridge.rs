@@ -154,6 +154,36 @@ fn build_impact(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
+/// `diffctx hook <event>` for installs that reach diffctx through the PyPI
+/// package (the Claude plugin runs it pinned under uvx): the JSON answer, or
+/// `None` for silence. A panic is silence too — the hook contract is that a
+/// failure never blocks the agent's tool call.
+#[pyfunction]
+#[pyo3(signature = (event, stdin_json, gate = false))]
+fn hook_respond(
+    py: Python<'_>,
+    event: &str,
+    stdin_json: String,
+    gate: bool,
+) -> PyResult<Option<String>> {
+    let kind = match event {
+        "pretooluse" => crate::hook::Event::PreToolUse,
+        "posttooluse" => crate::hook::Event::PostToolUse,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown hook event {other:?}: pretooluse or posttooluse"
+            )));
+        }
+    };
+    Ok(py.detach(move || {
+        std::panic::catch_unwind(move || {
+            crate::hook::respond_within_deadline(kind, stdin_json, gate)
+        })
+        .ok()
+        .flatten()
+    }))
+}
+
 fn diff_range_or_head(diff_range: &str) -> &str {
     if diff_range.is_empty() {
         "HEAD"
@@ -681,6 +711,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
     m.add_function(wrap_pyfunction!(build_locate, m)?)?;
     m.add_function(wrap_pyfunction!(build_impact, m)?)?;
+    m.add_function(wrap_pyfunction!(hook_respond, m)?)?;
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;

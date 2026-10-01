@@ -125,47 +125,43 @@ class TestClaudePlugin:
 
 
 class TestPluginHook:
-    def test_hooks_json_wires_install_at_session_start_and_impact_around_git(self):
+    HOOKS = PROJECT_ROOT / "plugin" / "hooks"
+
+    def test_hooks_json_wires_the_session_start_and_impact_around_git(self):
         hooks = _load("plugin/hooks/hooks.json")["hooks"]
         [start] = hooks["SessionStart"]
-        [install] = start["hooks"]
-        assert install["command"].endswith("/hooks/diffctx-install.sh")
+        [session] = start["hooks"]
+        assert session["command"].endswith("/hooks/diffctx-session.sh")
         for event in ("PreToolUse", "PostToolUse"):
             [entry] = hooks[event]
             assert entry["matcher"] == "Bash"
             [hook] = entry["hooks"]
             assert hook["command"].endswith("/hooks/diffctx-impact.sh")
             assert hook["timeout"] > _diffctx_hook_deadline()
-        for name in ("diffctx-install.sh", "diffctx-impact.sh"):
-            script = PROJECT_ROOT / "plugin" / "hooks" / name
-            assert script.is_file()
+        assert sorted(p.name for p in self.HOOKS.glob("*.sh")) == ["diffctx-impact.sh", "diffctx-session.sh"]
+        for script in self.HOOKS.glob("*.sh"):
             assert os.access(script, os.X_OK)
+            assert script.read_text(encoding="utf-8").splitlines()[-1] == "exit 0"
 
-    def test_the_commit_path_never_downloads(self):
-        """The install runs at session start with its own timeout and a
-        backoff; the git-path hook only runs a binary that is already there."""
-        impact = (PROJECT_ROOT / "plugin" / "hooks" / "diffctx-impact.sh").read_text(encoding="utf-8")
-        install = (PROJECT_ROOT / "plugin" / "hooks" / "diffctx-install.sh").read_text(encoding="utf-8")
-        assert "curl" not in impact
-        assert 'hook "$event"' in impact
-        assert impact.splitlines()[-1] == "exit 0"
-        assert "checksums.json" in install
-        assert "--max-time 60" in install
-        assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] > 60
-        assert "trap cleanup EXIT" in install
-        assert "install-failed" in install
-        assert "SessionStart" in install
-        # The release window: manifest bumped, checksums not yet published.
-        # That is "try again next session", never the six-hour backoff.
-        checksum_gate = next(line for line in install.splitlines() if '[[ -n "$expected" ]]' in line)
-        assert checksum_gate.endswith("|| exit 0")
-        assert "hook pretooluse --help" in install
-        assert install.splitlines()[-1] == "exit 0"
-
-    def test_plugin_checksums_are_the_release_checksums(self):
-        """One rendering, two copies: cd.yml writes both from the same assets."""
-        assert _load("plugin/checksums.json") == _load("packaging/npm/checksums.json")
-        assert all(k.startswith(f"diffctx-{__version__}-") for k in _load("plugin/checksums.json"))
+    def test_the_hooks_run_only_the_pinned_package(self):
+        """The directory runs code from the reviewed repository or a package
+        pinned to an exact version, written plainly in the command (1.18.1 was
+        refused for downloading the release binary). Both scripts launch the
+        MCP server's own pinned spec, so the environment its start cached is
+        the one the git hook finds offline."""
+        pin = f'"diffctx[mcp]=={__version__}"'
+        for name in ("diffctx-impact.sh", "diffctx-session.sh"):
+            text = (self.HOOKS / name).read_text(encoding="utf-8")
+            for fetcher in ("curl", "wget", "releases/download", "checksums"):
+                assert fetcher not in text, (name, fetcher)
+            assert f'-c "${{CLAUDE_PLUGIN_ROOT:-.}}/constraints.txt" {pin}' in text, name
+        impact = (self.HOOKS / "diffctx-impact.sh").read_text(encoding="utf-8")
+        assert "uvx -q --offline" in impact
+        assert '"${args[@]}"' in impact
+        session = (self.HOOKS / "diffctx-session.sh").read_text(encoding="utf-8")
+        assert f"uvx diffctx=={__version__} . --diff --mode impact -f md" in session
+        assert "&)" in session
+        assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] <= 10
 
     def test_the_hook_options_are_declared(self):
         options = _load("plugin/.claude-plugin/plugin.json")["userConfig"]

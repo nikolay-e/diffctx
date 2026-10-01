@@ -62,7 +62,7 @@
       "minimum": 0
     },
     "limits": {
-      "description": "The run stopped at a limit (a deadline, a cap): callers may be\nmissing, and `empty` is never claimed while this is set.",
+      "description": "The run stopped at a limit that can lose a caller — the deadline, a\ntruncated reverse discovery, a capped candidate universe — and `empty`\nis never claimed while this is set. Caps every real repository trips\n(a large lockfile, the fragment or edge cap) are not listed: they\nfired on every run and made the hook speak on every commit (#306).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/LimitReason"

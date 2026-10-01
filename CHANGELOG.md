@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The Claude plugin no longer downloads anything but its pinned package.**
+  The directory runs only code from the reviewed repository or a package
+  pinned to an exact version, and refused 1.18.1 for fetching the release
+  binary at session start. The git hooks now run `diffctx hook <event>` from
+  `uvx diffctx[mcp]==<version>` — the MCP server's own pinned launch, so the
+  environment its start cached is the one the hook finds, `--offline` on the
+  commit path. The session start only warms that cache in the background and
+  names the command; `diffctx-install.sh` and `plugin/checksums.json` are
+  gone. The PyPI package gains the `diffctx hook` subcommand the native
+  binary had.
+
+### Fixed
+
+- 1.18.1's impact listed every resource cap as a limit, so the fragment and
+  edge caps nearly every repository hits printed `(partial: …)` and made the
+  hook speak on every commit; only the deadline, a truncated reverse
+  discovery and a capped candidate universe can lose a caller, and only those
+  are listed (#306).
+- A test file named for a schema (`test_context_schema.py`) is no longer
+  reported as a schema contract.
+- Impact: a changed module-level `export const f = (…) => …` is a changed
+  symbol whose importers are its callers; it used to read "Nothing outside the
+  diff depends on this change" (#324).
+- Impact: "Contracts changed" lists an exported symbol only when its
+  declaration moved; a body-only edit is what its callers already say (#325).
+- The hook's "already reviewed" markers are per session: a change one session
+  was shown used to be silence for every other session for a day. A manual
+  `--mode impact` run still silences the hook on the same content, for 15
+  minutes (#323).
+- The hook no longer guesses the repository behind `cd $VAR`, `cd ~/…` or
+  `git -C "$REPO"`: a directory only the shell can expand is skipped instead
+  of reviewing whatever repository the agent's cwd is.
+
 ## [1.18.1] - 2026-09-30
 
 ### Fixed

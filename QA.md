@@ -13,7 +13,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
 | CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
-| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only. Since 2026-09-28 the per-push sensor is gone: the `autoqa-daily` workflow's `sonar` lane scans the Forgejo HEAD of the moment it runs (~10:45Z), so a push later that day is analysed the next morning and the gate/issue list lags it by up to a day |
+| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only. Since 2026-09-28 the per-push sensor is gone: the `autoqa-daily` cron's `sonar` lane (00:15 Europe/Berlin) scans the Forgejo HEAD of that moment, so the gate and issue list lag a push by up to a day |
 
 ## Stumble probe tasks
 
@@ -270,9 +270,10 @@ silently:
    day's own commits count as intake for that pass. The gate scores NEW code
    only, so older findings sit under a green gate; read the issue list, never
    the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror
-   and, since 2026-09-28, not per push either: the `autoqa-daily` workflow in
-   `argo-workflows` scans the Forgejo HEAD at ~10:45Z (its `inventory` node
-   lists the sha it took; `scan:false` = unchanged since the last analysis).
+   and, since 2026-09-28, not per push either: the `autoqa-daily` cron in
+   `argo-workflows` (00:15 Europe/Berlin) scans the Forgejo HEAD (its
+   `inventory` node lists the sha it took; `scan:false` = unchanged since the
+   last analysis).
    `api/project_analyses/search?project=diffctx` names the analysed revision
    — compare it to HEAD before reading a verdict as current. A fix's issues
    stay open until the next morning's run. The per-push sensor went live on
@@ -444,6 +445,16 @@ silently:
   1.18.0, right of a pipe, under `|| true`: exit 0, no output. Build one
   never-empty array (`args=(hook "$event"); args+=(--gate)`), and probe hook
   scripts with `/bin/bash` explicitly, not the shell on PATH.
+- **The Claude plugin runs nothing it downloaded.** The directory refused
+  1.18.1 for fetching the release binary at session start; it runs only code
+  in the reviewed repository or a package pinned to an exact version. The
+  hooks run `uvx -c constraints.txt "diffctx[mcp]==X" hook <event>` — the MCP
+  server's own launch — with the version written plainly in each script
+  (cd.yml bumps it, `test_publishing_manifests` pins it). Probe a hook change
+  with `tests/test_plugin_hook.py` (it drives the script under `/bin/bash`),
+  and remember a manual `--mode impact` run silences the hook on the same
+  content for 15 minutes: use `DIFFCTX_NO_MARKER=1` or a scratch
+  `DIFFCTX_CACHE_DIR` when comparing the two.
 - **Every child process gets a null stdin.** Under an MCP client the server's
   stdin is the JSON-RPC pipe the client holds open; a git that inherited it
   never exited on Windows and every tool call reaching git hung (fixed
