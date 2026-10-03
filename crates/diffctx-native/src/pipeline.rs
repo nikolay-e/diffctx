@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -233,6 +234,35 @@ pub fn build_diff_context_impact(
     Ok(crate::impact::build_impact(
         &state,
         diff_range,
+        None,
+        Some(deadline),
+    ))
+}
+
+/// `--symbol` (#336): impact anchored on a name's definitions instead of a
+/// diff — where it is defined, who calls it, which tests reach each caller.
+pub fn build_symbol_impact(
+    root_dir: &Path,
+    query: &str,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::impact::ImpactOutput> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let state = compute_scored_state_anchored(
+        root_dir,
+        Anchor::Symbol(query),
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        true,
+    )?;
+    Ok(crate::impact::build_impact(
+        &state,
+        None,
+        Some(query),
         Some(deadline),
     ))
 }
@@ -603,6 +633,125 @@ fn resolve_change_set(
     })))
 }
 
+/// A name a change could not anchor (#336): its definitions stand in for
+/// the changed hunks, so the run that follows is impact's own — reverse
+/// discovery from the definition, the call edges into it, the tests that
+/// reach each caller.
+pub enum Anchor<'a> {
+    Diff(Option<&'a str>),
+    Symbol(&'a str),
+}
+
+const MAX_SYMBOL_FILES: usize = 256;
+
+fn resolve_symbol_change_set(
+    root_dir: &Path,
+    scope: &[String],
+    query: &str,
+    run: &crate::resource::RunContext,
+    t_entry: Instant,
+) -> Result<ChangeSet> {
+    let (path, name) = match query.rsplit_once(':') {
+        Some((p, n)) if !p.is_empty() => (Some(p), n),
+        _ => (None, query),
+    };
+    let is_name = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+    if !is_name {
+        anyhow::bail!("--symbol takes NAME or PATH:NAME, got {query:?}");
+    }
+    let pathspec: Vec<String> = match path {
+        Some(p) => vec![crate::paths::to_posix_display(std::borrow::Cow::Borrowed(
+            p,
+        ))],
+        None => scope.to_vec(),
+    };
+    let mut files = git::grep_files_with_word(root_dir, name, &pathspec)?;
+    let rel: Vec<String> = files
+        .iter()
+        .filter_map(|f| rel_path_string(root_dir, f))
+        .collect();
+    let withheld: FxHashSet<String> = withheld_paths(root_dir, &rel).into_iter().collect();
+    files.retain(|f| {
+        !is_lockfile_path(f) && rel_path_string(root_dir, f).is_some_and(|r| !withheld.contains(&r))
+    });
+    if files.len() > MAX_SYMBOL_FILES {
+        files.truncate(MAX_SYMBOL_FILES);
+        run.note(crate::resource::LimitReason::CandidateLimit);
+    }
+
+    let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
+    let fragments = crate::fragmentation::process_files_for_fragments(
+        &files,
+        root_dir,
+        &[],
+        &mut seen,
+        None,
+        true,
+        run,
+    );
+    let definitions: Vec<&Fragment> = fragments
+        .iter()
+        .filter(|f| f.symbol_name.as_deref() == Some(name) && crate::impact::is_container(f.kind))
+        .collect();
+    if definitions.is_empty() {
+        anyhow::bail!(
+            "no definition of {name:?} found{}",
+            path.map(|p| format!(" in {p}")).unwrap_or_default()
+        );
+    }
+
+    let mut hunks = Vec::with_capacity(definitions.len());
+    let mut diff_text = String::new();
+    let mut changed_files: Vec<PathBuf> = Vec::new();
+    for def in &definitions {
+        let (start, len) = (def.start_line(), def.line_count());
+        hunks.push(crate::types::DiffHunk {
+            path: Arc::from(def.path()),
+            new_start: start,
+            new_len: len,
+            old_start: start,
+            old_len: len,
+        });
+        let display = crate::paths::display_rel_or_abs(root_dir, Path::new(def.path()));
+        let _ = write!(
+            diff_text,
+            "diff --git a/{display} b/{display}\n--- a/{display}\n+++ b/{display}\n@@ -{start},{len} +{start},{len} @@\n"
+        );
+        for line in def.content.lines() {
+            diff_text.push('+');
+            diff_text.push_str(line);
+            diff_text.push('\n');
+        }
+        let file = PathBuf::from(def.path());
+        if !changed_files.contains(&file) {
+            changed_files.push(file);
+        }
+    }
+
+    Ok(ChangeSet::Ready(Box::new(ChangeSetData {
+        commit_count: 0,
+        hunks,
+        diff_text,
+        changed_files,
+        deleted_display: Vec::new(),
+        renamed_display: Vec::new(),
+        lockfile_display: Vec::new(),
+        ignored_display: Vec::new(),
+        policy_excluded: 0,
+        preferred_revs: Vec::new(),
+        commit_message: None,
+        commit_messages: Vec::new(),
+        head_rev: None,
+        pre_phase_ms: t_entry.elapsed().as_secs_f64() * 1000.0,
+    })))
+}
+
 /// Where the run looks: the repository root, and the pathspecs that narrow
 /// it. Explicit `paths` are the scope as given; with none, a `root_dir`
 /// below the repository root narrows the run to that subtree.
@@ -672,6 +821,27 @@ pub fn compute_scored_state_with(
     timeout: u64,
     reverse_references: bool,
 ) -> Result<ScoredState> {
+    compute_scored_state_anchored(
+        root_dir,
+        Anchor::Diff(diff_range),
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        reverse_references,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compute_scored_state_anchored(
+    root_dir: &Path,
+    anchor: Anchor<'_>,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+    reverse_references: bool,
+) -> Result<ScoredState> {
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
@@ -687,31 +857,40 @@ pub fn compute_scored_state_with(
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
-    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
-    let diff_range = resolved.range.as_deref();
-    let is_working_tree_diff = resolved.from_duration || is_working_tree_range(diff_range);
+    let (resolved_range, change_set) = match anchor {
+        Anchor::Diff(diff_range) => {
+            let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
+            let range = resolved.range.as_deref();
+            let is_working_tree_diff = resolved.from_duration || is_working_tree_range(range);
+            let change_set =
+                resolve_change_set(&root_dir, range, &scope, is_working_tree_diff, t_entry)?;
+            (resolved.range, change_set)
+        }
+        Anchor::Symbol(query) => (
+            None,
+            resolve_symbol_change_set(&root_dir, &scope, query, &run, t_entry)?,
+        ),
+    };
+    let diff_range = resolved_range.as_deref();
 
-    let data =
-        match resolve_change_set(&root_dir, diff_range, &scope, is_working_tree_diff, t_entry)? {
-            ChangeSet::Empty {
-                changed_files,
-                lockfile_changes,
-                ignored_changes,
-                policy_excluded_count,
-            } => {
-                let mut state =
-                    empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
-                state.change_classes =
-                    classify_changes(&state.root_dir, &changed_files, &[], "", &[]);
-                state.changed_files = changed_files;
-                state.lockfile_changes = lockfile_changes;
-                state.ignored_changes = ignored_changes;
-                state.policy_excluded_count = policy_excluded_count;
-                state.envelope_tokens = envelope_tokens_of(&state);
-                return Ok(state);
-            }
-            ChangeSet::Ready(data) => data,
-        };
+    let data = match change_set {
+        ChangeSet::Empty {
+            changed_files,
+            lockfile_changes,
+            ignored_changes,
+            policy_excluded_count,
+        } => {
+            let mut state = empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
+            state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], "", &[]);
+            state.changed_files = changed_files;
+            state.lockfile_changes = lockfile_changes;
+            state.ignored_changes = ignored_changes;
+            state.policy_excluded_count = policy_excluded_count;
+            state.envelope_tokens = envelope_tokens_of(&state);
+            return Ok(state);
+        }
+        ChangeSet::Ready(data) => data,
+    };
     let ChangeSetData {
         commit_count,
         hunks,

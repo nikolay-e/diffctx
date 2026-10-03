@@ -344,16 +344,15 @@ silently:
   line exists.** The CD sdist gate printed five Rust paths for the log and
   died on the write error; the 1.16.0 release stopped at "Build sdist" with
   nothing published. `grep -m5` prints the same lines without a pipe.
-- **The release tag lives on GitHub only until the next Forgejo push prunes
-  it.** `cd.yml` tags on GitHub; Forgejo is the source of truth and its push
-  mirror removes any tag Forgejo does not have, and a removed tag turns the
-  published release into a draft (assets stop downloading, `npm install`
-  breaks — it fetches the binary from the release). 1.16.0 lost its tag
-  within minutes of the finalize job because a routine `git push origin
-  main` ran first. After every release, before any other push:
-  `git fetch github --tags && git push origin vX.Y.Z`; if the tag is already
-  gone, recreate it on the "Release version X.Y.Z" commit, push to Forgejo
-  first, then GitHub, then `gh release edit vX.Y.Z --draft=false`.
+- **`cd.yml` tags on GitHub only, and nothing carries tags to Forgejo.**
+  Until 2026-10-02 a Forgejo push mirror pruned every tag Forgejo lacked,
+  which drafted the release (assets 404 for `npm install` and Scoop) — 1.16.0
+  and 1.18.2 (#332). That mirror is gone (gitops `dae29cbf2`; `github-reverse-sync`
+  moves branches only), and `publish-extras.yml` now recreates a missing tag
+  at the "Release version X.Y.Z" commit and un-drafts the release, with a
+  `::warning::`. Still push the tag to Forgejo by hand after a release
+  (`git fetch github --tags && git push origin vX.Y.Z`); re-adding a push
+  mirror brings the pruning back.
 - **A dependency PR merged right after a release fails `uv sync --locked`.**
   Its `uv.lock` still names the pre-release project version; the bump
   changed `pyproject.toml` underneath it. `uv lock` (one-line diff) and

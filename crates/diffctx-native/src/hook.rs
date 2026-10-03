@@ -5,7 +5,8 @@
 //!   `gh pr create`, the impact of what that command is about to record.
 //! * `posttooluse`: after a `git diff` or `git status` the agent ran on its
 //!   own, the impact of the working tree it just asked about — the path the
-//!   agent already walks, with nothing new to decide.
+//!   agent already walks, with nothing new to decide. After a text search
+//!   for a name the pending change edits, that name's callers.
 //!
 //! Each reads the event on stdin and answers with `additionalContext`, or
 //! with nothing when the impact is empty, the same content was already
@@ -217,6 +218,19 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
             i += 1;
             continue;
         }
+        if SEARCH_TOOLS.contains(&prog.as_str()) {
+            // `… | grep x` filters another command's output, not the code.
+            let piped = i > 0 && ws[i - 1] == "|";
+            let mut j = i + 1;
+            while j < ws.len() && !is_operator(&ws[j]) {
+                j += 1;
+            }
+            if !piped && !lost {
+                found.push(("grep".to_string(), cwd.clone(), ws[i + 1..j].to_vec()));
+            }
+            i = j;
+            continue;
+        }
         if prog == "git" || prog == "gh" {
             let mut j = i + 1;
             let mut dir = cwd.clone();
@@ -272,6 +286,68 @@ fn statements(command: &str) -> Vec<(String, Option<String>, Vec<String>)> {
         i += 1;
     }
     found
+}
+
+const SEARCH_TOOLS: &[&str] = &["grep", "egrep", "fgrep", "rg", "ag", "ack"];
+
+/// Search flags whose next word is a value, not the pattern or a path.
+const SEARCH_VALUE_FLAGS: &str = "-f --file -A -B -C --context --after-context --before-context -m --max-count -g --glob --iglob -t --type -T --type-not -j --threads -M --max-columns -d --max-depth";
+
+/// The pattern of a grep/rg/ag/`git grep` argument list, and the path after
+/// it when there is one.
+fn search_pattern(args: &[String]) -> Option<(String, Option<String>)> {
+    let mut pattern = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "-e" || a == "--regexp" {
+            pattern = it.next().cloned();
+        } else if let Some(p) = a.strip_prefix("--regexp=") {
+            pattern = Some(p.to_string());
+        } else if SEARCH_VALUE_FLAGS.split(' ').any(|f| f == a) {
+            it.next();
+        } else if a.starts_with('-') {
+            // A boolean flag, or `--` before the paths.
+        } else if pattern.is_none() {
+            pattern = Some(a.clone());
+        } else {
+            let path = Some(a.clone()).filter(|p| !is_unresolvable(p));
+            return Some((pattern?, path));
+        }
+    }
+    Some((pattern?, None))
+}
+
+/// Keywords a definition search spells around the name: `def total`,
+/// `fn total`, `class Cart`.
+const DECLARATION_WORDS: &str = "def class fn func function struct enum trait impl interface type let const var pub async static export import from new self this return";
+
+/// The identifiers a search pattern names, with its regex escapes (`\b`,
+/// `\(`, `\w`) and declaration keywords dropped.
+fn pattern_names(pattern: &str) -> Vec<String> {
+    let mut cleaned = String::with_capacity(pattern.len());
+    let mut chars = pattern.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            chars.next();
+            cleaned.push(' ');
+        } else if c.is_alphanumeric() || c == '_' {
+            cleaned.push(c);
+        } else {
+            cleaned.push(' ');
+        }
+    }
+    let mut names: Vec<String> = Vec::new();
+    for w in cleaned.split_whitespace() {
+        if w.chars().count() >= 2
+            && !w.starts_with(|c: char| c.is_ascii_digit())
+            && !DECLARATION_WORDS.split(' ').any(|d| d == w)
+            && !names.iter().any(|n| n == w)
+        {
+            names.push(w.to_string());
+        }
+    }
+    names.truncate(8);
+    names
 }
 
 /// A directory only the shell could expand: a variable, a command
@@ -474,7 +550,7 @@ fn text_key(root: &Path, text: &str) -> String {
     format!("answer-{h:016x}")
 }
 
-fn cache_dir() -> Option<PathBuf> {
+fn cache_root() -> Option<PathBuf> {
     let base = std::env::var_os("DIFFCTX_CACHE_DIR")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from))
@@ -485,7 +561,11 @@ fn cache_dir() -> Option<PathBuf> {
                 std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache"))
             }
         })?;
-    Some(base.join("diffctx").join("seen"))
+    Some(base.join("diffctx"))
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    Some(cache_root()?.join("seen"))
 }
 
 fn marker(key: &str) -> Option<PathBuf> {
@@ -513,17 +593,21 @@ fn is_seen_within(key: &str, ttl: Duration) -> bool {
 /// change one session was shown is news to the next (#323). Only what a
 /// file name can carry is kept of the id.
 fn session_key(key: &str, session: Option<&str>) -> String {
-    let session: String = session
-        .unwrap_or("")
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(64)
-        .collect();
+    let session = file_safe(session);
     if session.is_empty() {
         key.to_string()
     } else {
         format!("{key}.{session}")
     }
+}
+
+fn file_safe(session: Option<&str>) -> String {
+    session
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(64)
+        .collect()
 }
 
 pub fn mark_seen(key: &str) {
@@ -560,43 +644,77 @@ struct Prepared {
     root: PathBuf,
     range: String,
     key: String,
-    session: Option<String>,
 }
 
-fn prepare(event: Event, stdin_json: &str) -> Option<Prepared> {
-    let payload: serde_json::Value = serde_json::from_str(stdin_json).ok()?;
-    let command = payload["tool_input"]["command"].as_str()?;
-    let detected = detect(event, command)?;
-    // A relative directory on the command line is relative to where the
-    // agent ran it, which the payload names; this process's cwd is a guess.
+/// What one invocation learned about itself, for its line in the hook log.
+#[derive(Default)]
+struct Trace {
+    session: Option<String>,
+    verb: Option<&'static str>,
+    root: Option<PathBuf>,
+    range: Option<String>,
+}
+
+/// Why the hook stayed silent, as its log line names it; `shown` otherwise.
+type Silence = &'static str;
+
+fn verb_of(trigger: &Trigger) -> &'static str {
+    match trigger {
+        Trigger::Commit { .. } => "commit",
+        Trigger::Merge(_) => "merge",
+        Trigger::CherryPick(_) => "cherry-pick",
+        Trigger::Push => "push",
+        Trigger::PullRequest => "pr",
+        Trigger::Inspect { .. } => "inspect",
+    }
+}
+
+/// A relative directory on the command line is relative to where the agent
+/// ran it, which the payload names; this process's cwd is a guess.
+fn repo_root(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
     let base = payload["cwd"]
         .as_str()
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())?;
-    let root = match detected.dir.as_deref() {
+    let dir = match dir {
         Some(dir) if is_absolute_dir(dir) => PathBuf::from(dir),
         Some(dir) => base.join(dir),
         None => base,
     };
-    let root = crate::git::find_toplevel(&root)?;
-    let range = range_for(&root, &detected.trigger)?;
-    let content = content_key(&root, &range)?;
-    let session = payload["session_id"].as_str().map(str::to_string);
-    let key = session_key(&content, session.as_deref());
-    if is_seen(&key) || is_seen_within(&content, MANUAL_SEEN_TTL) {
-        return None;
-    }
-    Some(Prepared {
-        root,
-        range,
-        key,
-        session,
-    })
+    // A search names a file as often as a directory.
+    let dir = if dir.is_file() {
+        dir.parent()?.to_path_buf()
+    } else {
+        dir
+    };
+    crate::git::find_toplevel(&dir)
 }
 
-fn impact_context(event: Event, root: &Path, range: &str, session: Option<&str>) -> Option<String> {
-    let scoring = ScoringMode::from_str(DEFAULT_SCORING).ok()?;
-    let output = crate::pipeline::build_diff_context_impact(
+fn prepare(
+    event: Event,
+    payload: &serde_json::Value,
+    trace: &mut Trace,
+) -> Result<Prepared, Silence> {
+    let command = payload["tool_input"]["command"]
+        .as_str()
+        .ok_or("no-trigger")?;
+    let detected = detect(event, command).ok_or("no-trigger")?;
+    trace.verb = Some(verb_of(&detected.trigger));
+    let root = repo_root(payload, detected.dir.as_deref()).ok_or("not-git")?;
+    trace.root = Some(root.clone());
+    let range = range_for(&root, &detected.trigger).ok_or("no-range")?;
+    trace.range = Some(range.clone());
+    let content = content_key(&root, &range).ok_or("clean")?;
+    let key = session_key(&content, trace.session.as_deref());
+    if is_seen(&key) || is_seen_within(&content, MANUAL_SEEN_TTL) {
+        return Err("seen");
+    }
+    Ok(Prepared { root, range, key })
+}
+
+fn run_impact(root: &Path, range: &str) -> Result<crate::impact::ImpactOutput, Silence> {
+    let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
+    crate::pipeline::build_diff_context_impact(
         root,
         Some(range),
         &[],
@@ -604,9 +722,18 @@ fn impact_context(event: Event, root: &Path, range: &str, session: Option<&str>)
         scoring,
         PIPELINE_SECS,
     )
-    .ok()?;
+    .map_err(|_| "error:pipeline")
+}
+
+fn impact_context(
+    event: Event,
+    root: &Path,
+    range: &str,
+    session: Option<&str>,
+) -> Result<String, Silence> {
+    let output = run_impact(root, range)?;
     if output.empty {
-        return None;
+        return Err("empty");
     }
     let text = truncate_chars(&crate::impact::render_markdown(&output), MAX_CONTEXT_CHARS);
     // The worktree, the index after `git add`, and the commit itself name
@@ -616,16 +743,174 @@ fn impact_context(event: Event, root: &Path, range: &str, session: Option<&str>)
     let substance = serde_json::to_string(&output.changed).unwrap_or_default();
     let answer_key = session_key(&text_key(root, &substance), session);
     if is_seen(&answer_key) {
-        return None;
+        return Err("seen");
     }
     mark_seen(&answer_key);
     let lead = match event {
         Event::PreToolUse => "diffctx reviewed the change this command is about to record.",
         Event::PostToolUse => "diffctx reviewed the pending change you just inspected.",
     };
-    Some(format!(
+    Ok(format!(
         "{lead} What it reaches outside the diff:\n{text}\nCheck these callers before going on, or tell the user why they are unaffected."
     ))
+}
+
+/// A text search the agent ran: a Bash grep/rg/ag/`git grep`, or the Grep
+/// tool.
+struct Searched {
+    dir: Option<String>,
+    pattern: String,
+}
+
+fn searched(payload: &serde_json::Value) -> Option<Searched> {
+    if payload["tool_name"] == "Grep" {
+        return Some(Searched {
+            dir: payload["tool_input"]["path"].as_str().map(str::to_string),
+            pattern: payload["tool_input"]["pattern"].as_str()?.to_string(),
+        });
+    }
+    let command = payload["tool_input"]["command"].as_str()?;
+    let (_, dir, args) = statements(command)
+        .into_iter()
+        .find(|(verb, _, _)| verb == "grep")?;
+    let (pattern, path) = search_pattern(&args)?;
+    Some(Searched {
+        dir: path.map(|p| join_dir(dir.as_deref(), &p)).or(dir),
+        pattern,
+    })
+}
+
+/// The names of the definitions the pending change edits: the innermost
+/// named container around each hunk of the working tree, the way impact
+/// names its changed symbols. Only the changed files are parsed, so a
+/// search for any other name stops here without running the pipeline.
+fn edited_definitions(root: &Path) -> Vec<String> {
+    let Ok(hunks) = crate::git::parse_diff(root, Some("HEAD"), &[]) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = hunks.iter().map(|h| PathBuf::from(&*h.path)).collect();
+    files.sort();
+    files.dedup();
+    let fragments = crate::fragmentation::fragment_files(
+        &files,
+        root,
+        &[],
+        &mut rustc_hash::FxHashSet::default(),
+        None,
+        true,
+        &crate::resource::RunContext::unbounded(),
+        &hunks,
+    );
+    let mut names = Vec::new();
+    for hunk in &hunks {
+        let around: Vec<&crate::types::Fragment> = fragments
+            .iter()
+            .filter(|f| {
+                f.path() == &*hunk.path
+                    && crate::impact::is_container(f.kind)
+                    && f.symbol_name.is_some()
+                    && f.id.start_line <= hunk.end_line()
+                    && f.id.end_line >= hunk.new_start
+            })
+            .collect();
+        let innermost = around.iter().filter(|outer| {
+            !around.iter().any(|inner| {
+                inner.id != outer.id
+                    && inner.id.start_line >= outer.id.start_line
+                    && inner.id.end_line <= outer.id.end_line
+            })
+        });
+        names.extend(innermost.filter_map(|f| f.symbol_name.clone()));
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The pending change's callers by symbol name, in the impact's own
+/// rendering. `partial` is a run that stopped at a limit: a name missing from
+/// it is no proof that nothing calls it.
+struct Known {
+    callers: std::collections::BTreeMap<String, String>,
+    partial: bool,
+}
+
+fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
+    let mut by_name: std::collections::BTreeMap<String, Vec<crate::impact::ChangedSymbol>> =
+        std::collections::BTreeMap::new();
+    for sym in std::mem::take(&mut output.changed) {
+        if let Some(name) = sym.symbol.clone() {
+            by_name.entry(name).or_default().push(sym);
+        }
+    }
+    output.contracts.clear();
+    output.contracts_omitted = 0;
+    output.empty = false;
+    let partial = !output.limits.is_empty();
+    let callers = by_name
+        .into_iter()
+        .filter(|(_, syms)| syms.iter().any(|s| !s.callers.is_empty()))
+        .map(|(name, syms)| {
+            output.changed = syms;
+            let text = truncate_chars(&crate::impact::render_markdown(&output), MAX_CONTEXT_CHARS);
+            (name, text)
+        })
+        .collect();
+    Known { callers, partial }
+}
+
+/// A search for a name the pending change defines is a search for its
+/// callers, which the impact already has (#337). Once per name per content
+/// per session; silence for any other name and on a clean tree.
+fn search_answer(
+    payload: &serde_json::Value,
+    search: &Searched,
+    started: Instant,
+    trace: &mut Trace,
+) -> Result<String, Silence> {
+    let names = pattern_names(&search.pattern);
+    if names.is_empty() {
+        return Err("no-symbol");
+    }
+    let root = repo_root(payload, search.dir.as_deref()).ok_or("not-git")?;
+    trace.root = Some(root.clone());
+    trace.range = Some("HEAD".to_string());
+    let content = content_key(&root, "HEAD").ok_or("clean")?;
+    let edited = edited_definitions(&root);
+    let session = trace.session.clone();
+    let key = |name: &str| session_key(&format!("{content}.{name}"), session.as_deref());
+    let names: Vec<String> = names.into_iter().filter(|n| edited.contains(n)).collect();
+    if names.is_empty() {
+        return Err("no-symbol");
+    }
+    let names: Vec<String> = names.into_iter().filter(|n| !is_seen(&key(n))).collect();
+    if names.is_empty() {
+        return Err("seen");
+    }
+    // Marked before the run: a name that cost the deadline once must not
+    // cost it on every grep that follows.
+    for name in &names {
+        mark_seen(&key(name));
+    }
+    let known = within_deadline(started, move || {
+        run_impact(&root, "HEAD").map(known_answers)
+    })?;
+    let mut answers = Vec::new();
+    for name in &names {
+        match known.callers.get(name) {
+            Some(text) => answers.push(format!(
+                "You searched for `{name}`, which the pending change edits; diffctx already found what calls it:\n{text}"
+            )),
+            None if !known.partial => answers.push(format!(
+                "diffctx: `{name}` is edited by the pending change, and nothing outside the diff calls it."
+            )),
+            None => {}
+        }
+    }
+    if answers.is_empty() {
+        return Err("partial");
+    }
+    Ok(answers.join("\n"))
 }
 
 /// The JSON the hook prints. The strict gate denies the command with the
@@ -647,46 +932,106 @@ fn hook_json(event: Event, context: &str, gate: bool) -> String {
     serde_json::json!({ "hookSpecificOutput": out }).to_string()
 }
 
-/// The hook's whole decision on one stdin payload: the JSON to print, or
-/// `None` for silence. Every failure path is silence, and the content is
-/// marked reviewed whether the answer came back, came back empty, or ran
-/// out of time — a range that cost the deadline once must not cost it on
-/// every push that follows.
-pub fn respond(event: Event, stdin_json: &str, gate: bool) -> Option<String> {
-    let prepared = prepare(event, stdin_json)?;
-    let context = impact_context(
-        event,
-        &prepared.root,
-        &prepared.range,
-        prepared.session.as_deref(),
-    );
-    mark_seen(&prepared.key);
-    context.map(|c| hook_json(event, &c, gate))
-}
-
-/// `respond`, bounded: past the deadline the hook prints nothing rather than
+/// `work`, bounded: past the deadline the hook prints nothing rather than
 /// holding the tool call. A hook that stalls a commit teaches the user to
 /// remove it.
-pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
-    let started = Instant::now();
-    let prepared = prepare(event, &stdin_json)?;
-    let key = prepared.key.clone();
+fn within_deadline<T: Send + 'static>(
+    started: Instant,
+    work: impl FnOnce() -> Result<T, Silence> + Send + 'static,
+) -> Result<T, Silence> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(impact_context(
-            event,
-            &prepared.root,
-            &prepared.range,
-            prepared.session.as_deref(),
-        ));
+        let _ = tx.send(work());
     });
     let left = Duration::from_secs(HOOK_DEADLINE_SECS).saturating_sub(started.elapsed());
-    let answer = match rx.recv_timeout(left) {
-        Ok(context) => context,
-        Err(_) => None,
-    };
+    match rx.recv_timeout(left) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("timeout"),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("error:panic"),
+    }
+}
+
+/// The hook's whole decision on one stdin payload. The content is marked
+/// reviewed whether the answer came back, came back empty, or ran out of
+/// time — a range that cost the deadline once must not cost it on every
+/// push that follows.
+fn decide(
+    event: Event,
+    stdin_json: &str,
+    gate: bool,
+    started: Instant,
+    trace: &mut Trace,
+) -> Result<String, Silence> {
+    let payload: serde_json::Value =
+        serde_json::from_str(stdin_json).map_err(|_| "error:payload")?;
+    trace.session = payload["session_id"].as_str().map(str::to_string);
+    if event == Event::PostToolUse {
+        if let Some(search) = searched(&payload) {
+            trace.verb = Some("grep");
+            return search_answer(&payload, &search, started, trace)
+                .map(|c| hook_json(event, &c, false));
+        }
+    }
+    let prepared = prepare(event, &payload, trace)?;
+    let key = prepared.key.clone();
+    let session = trace.session.clone();
+    let answer = within_deadline(started, move || {
+        impact_context(event, &prepared.root, &prepared.range, session.as_deref())
+    });
     mark_seen(&key);
     answer.map(|c| hook_json(event, &c, gate))
+}
+
+/// The log is cut over to `hook.log.1` past this size: a few thousand runs.
+const LOG_MAX_BYTES: u64 = 256 * 1024;
+
+/// One line per run in `<cache>/diffctx/hook.log` (#338): Claude Code keeps
+/// only hooks that print, so without it a silent hook that decided "nothing
+/// to say" and one that never got an answer look the same afterwards.
+/// `<unix ts> <session> <event> <verb> <range> <outcome> <ms>ms <repo>`.
+fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
+    let Some(dir) = cache_root() else { return };
+    let path = dir.join("hook.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_MAX_BYTES) {
+        let _ = std::fs::rename(&path, dir.join("hook.log.1"));
+    }
+    let session = file_safe(trace.session.as_deref());
+    let line = format!(
+        "{} {} {} {} {} {outcome} {}ms {}\n",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+        if session.is_empty() { "-" } else { &session },
+        event.name(),
+        trace.verb.unwrap_or("-"),
+        trace.range.as_deref().unwrap_or("-"),
+        elapsed.as_millis(),
+        trace.root.as_deref().map_or_else(
+            || "-".to_string(),
+            |r| r.to_string_lossy().replace(['\n', '\r'], "?")
+        ),
+    );
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
+/// The hook's answer, or `None` for silence; every failure path is silence,
+/// and every run leaves its line in the hook log.
+pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
+    let started = Instant::now();
+    let mut trace = Trace::default();
+    let answer = decide(event, &stdin_json, gate, started, &mut trace);
+    log_outcome(
+        event,
+        &trace,
+        answer.as_ref().err().copied().unwrap_or("shown"),
+        started.elapsed(),
+    );
+    answer.ok()
 }
 
 #[cfg(test)]
@@ -825,6 +1170,43 @@ mod tests {
         assert!(pre("git log | grep commit").is_none());
     }
 
+    fn searched_in(command: &str) -> Option<(Option<String>, Vec<String>)> {
+        let payload = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": command}});
+        searched(&payload).map(|s| (s.dir, pattern_names(&s.pattern)))
+    }
+
+    #[test]
+    fn a_search_names_its_pattern_and_where_it_looks() {
+        let names = |c: &str| searched_in(c).map(|(_, n)| n);
+        assert_eq!(
+            names(r#"grep -rn "def handle_upload" ."#),
+            Some(vec!["handle_upload".to_string()])
+        );
+        assert_eq!(
+            names(r"rg -n 'ClassName\(' src/"),
+            Some(vec!["ClassName".to_string()])
+        );
+        assert_eq!(
+            names(r"git grep -n -e '\btotal\b' -- '*.py'"),
+            Some(vec!["total".to_string()])
+        );
+        assert_eq!(
+            names("rg -C 3 -t py 'fn (charge|refund)'"),
+            Some(vec!["charge".to_string(), "refund".to_string()])
+        );
+        assert_eq!(
+            searched_in("cd /r && rg -n total shop/").unwrap().0,
+            Some("/r/shop/".to_string())
+        );
+        assert!(searched_in("git log | grep total").is_none());
+        assert!(searched_in("cd $R && grep -rn total .").is_none());
+        assert!(searched_in("cargo test").is_none());
+        let grep_tool = serde_json::json!({"tool_name": "Grep", "tool_input": {"pattern": "class Cart\\b", "path": "/r/src"}});
+        let tool = searched(&grep_tool).unwrap();
+        assert_eq!(tool.dir.as_deref(), Some("/r/src"));
+        assert_eq!(pattern_names(&tool.pattern), vec!["Cart".to_string()]);
+    }
+
     #[test]
     fn a_cherry_pick_range_is_kept_verbatim() {
         let root = Path::new(".");
@@ -870,15 +1252,20 @@ mod tests {
 
     #[test]
     fn malformed_input_is_silence() {
-        assert!(respond(Event::PreToolUse, "not json", false).is_none());
-        assert!(respond(Event::PreToolUse, "{}", false).is_none());
-        assert!(
-            respond(
+        let decide = |stdin: &str| {
+            decide(
                 Event::PreToolUse,
-                r#"{"tool_input":{"command":"ls"}}"#,
-                false
+                stdin,
+                false,
+                Instant::now(),
+                &mut Trace::default(),
             )
-            .is_none()
+        };
+        assert_eq!(decide("not json"), Err("error:payload"));
+        assert_eq!(decide("{}"), Err("no-trigger"));
+        assert_eq!(
+            decide(r#"{"tool_input":{"command":"ls"}}"#),
+            Err("no-trigger")
         );
     }
 }

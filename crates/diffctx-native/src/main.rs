@@ -78,6 +78,11 @@ struct Cli {
     #[arg(long = "diff", num_args = 0..=1, default_missing_value = "HEAD")]
     diff_ref: Option<String>,
 
+    /// Impact without a diff: where NAME (or PATH:NAME) is defined, who
+    /// calls it, and the tests that reach each caller
+    #[arg(long, value_name = "NAME", conflicts_with = "diff_ref")]
+    symbol: Option<String>,
+
     /// PPR damping: how tightly context clusters around changes, 0-1 exclusive
     #[arg(long, default_value_t = DEFAULT_PPR_ALPHA, value_parser = parse_alpha)]
     alpha: f64,
@@ -137,8 +142,8 @@ enum HookEvent {
         #[arg(long)]
         gate: bool,
     },
-    /// Claude Code PostToolUse: after a git diff or git status the agent ran,
-    /// print the pending change's impact as additionalContext
+    /// Claude Code PostToolUse: after a git diff or git status, the pending
+    /// change's impact; after a search for a name the change edits, its callers
     Posttooluse,
 }
 
@@ -435,9 +440,13 @@ fn run_impact(
     if let Some(range) = diff_ref.as_deref() {
         _diffctx::hook::mark_range_reviewed(&cli.path, range);
     }
+    emit_impact(cli, &output)
+}
+
+fn emit_impact(cli: &Cli, output: &_diffctx::impact::ImpactOutput) -> Result<()> {
     let rendered = match cli.format {
-        OutputFormat::Md => _diffctx::impact::render_markdown(&output),
-        _ => format!("{}\n", serde_json::to_string(&output)?),
+        OutputFormat::Md => _diffctx::impact::render_markdown(output),
+        _ => format!("{}\n", serde_json::to_string(output)?),
     };
     // An empty impact is the answer, not a failure: the hook keys on it.
     if !cli.quiet {
@@ -500,6 +509,23 @@ fn real_main() -> Result<()> {
     let no_content = cli.no_content;
     let full = cli.full;
 
+    if let Some(symbol) = cli.symbol.clone() {
+        if cli.mode == "locate" {
+            eprintln!("error: --symbol answers in --mode impact");
+            std::process::exit(EXIT_USAGE);
+        }
+        let output = run_with_deadline(timeout, move || {
+            _diffctx::pipeline::build_symbol_impact(
+                &path,
+                &symbol,
+                &[],
+                alpha,
+                scoring_mode,
+                timeout,
+            )
+        })?;
+        return emit_impact(&cli, &output);
+    }
     if cli.mode == "impact" {
         return run_impact(&cli, path, diff_ref, alpha, scoring_mode, timeout);
     }

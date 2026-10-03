@@ -1,4 +1,4 @@
-from diffctx.mcp.server import main
+from diffctx.mcp.launch import main
 
 if __name__ == "__main__":
     main()

@@ -554,3 +554,58 @@ fn the_git_dash_c_directory_wins_over_cwd() {
     let context = context_of(&h);
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
 }
+
+fn search_payload(repo: &Path, tool: &str, query: &str) -> String {
+    let tool_input = if tool == "Grep" {
+        serde_json::json!({"pattern": query})
+    } else {
+        serde_json::json!({"command": query})
+    };
+    serde_json::json!({
+        "session_id": "s1",
+        "hook_event_name": "PostToolUse",
+        "tool_name": tool,
+        "cwd": repo.to_string_lossy(),
+        "tool_input": tool_input
+    })
+    .to_string()
+}
+
+#[test]
+fn a_search_for_a_changed_name_is_answered_with_its_callers() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let search = |tool: &str, query: &str| {
+        hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &search_payload(repo, tool, query),
+        )
+    };
+    let h = search("Bash", r"rg -n 'def total\(' shop/");
+    assert_eq!(h.code, Some(0));
+    let context = output_of(&h, "PostToolUse")["additionalContext"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(context.contains("`total`"), "{context}");
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(!context.contains("Contracts"), "{context}");
+    assert_eq!(search("Grep", "total").stdout, "", "once per name");
+    assert_eq!(search("Bash", "grep -rn restock .").stdout, "");
+
+    // The search answer does not stand in for the commit's review.
+    let commit = hook(repo, cache.path(), &payload(repo, "git commit -am vat"));
+    assert!(context_of(&commit).contains("shop/checkout.py::charge"));
+
+    let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
+    let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
+    assert_eq!(outcomes, ["shown", "seen", "no-symbol", "shown"], "{log}");
+    assert!(
+        log.lines().last().unwrap().contains(" commit HEAD shown "),
+        "{log}"
+    );
+}

@@ -134,7 +134,8 @@ class TestPluginHook:
         assert session["command"].endswith("/hooks/diffctx-session.sh")
         for event in ("PreToolUse", "PostToolUse"):
             [entry] = hooks[event]
-            assert entry["matcher"] == "Bash"
+            # A Grep-tool search is answered after it ran (#337); the gate stays on Bash.
+            assert entry["matcher"] == ("Bash|Grep" if event == "PostToolUse" else "Bash")
             [hook] = entry["hooks"]
             assert hook["command"].endswith("/hooks/diffctx-impact.sh")
             assert hook["timeout"] > _diffctx_hook_deadline()

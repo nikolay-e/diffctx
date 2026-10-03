@@ -69,6 +69,10 @@ pub struct ImpactOutput {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<String>,
+    /// Set on a `--symbol` query (#336): `changed` then lists the symbol's
+    /// definitions, and `changed_files` the files that hold them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
     pub changed_files: Vec<String>,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub commit_count: usize,
@@ -137,7 +141,7 @@ pub struct Contract {
     pub kind: &'static str,
 }
 
-fn is_container(kind: FragmentKind) -> bool {
+pub(crate) fn is_container(kind: FragmentKind) -> bool {
     use FragmentKind as K;
     matches!(
         kind,
@@ -230,6 +234,9 @@ fn references_module(
 ) -> bool {
     let changed = Path::new(changed_path);
     let caller_path = Path::new(caller.path());
+    if caller_path == changed {
+        return true;
+    }
     let empty = FxHashSet::default();
     // The import sits at the top of the file, outside the calling fragment.
     let file_words = file_identifiers.get(caller.path()).unwrap_or(&empty);
@@ -372,6 +379,12 @@ fn innermost<'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment> {
         .zip(keep)
         .filter_map(|(f, k)| k.then_some(f))
         .collect()
+}
+
+fn within(id: &FragmentId, outer: &Fragment) -> bool {
+    id.path.as_ref() == outer.path()
+        && id.start_line >= outer.start_line()
+        && id.end_line <= outer.end_line()
 }
 
 fn rel(state: &ScoredState, path: &str) -> String {
@@ -588,6 +601,7 @@ impl<'a> TestIndex<'a> {
 pub fn build_impact(
     state: &ScoredState,
     diff_range: Option<&str>,
+    query: Option<&str>,
     deadline: Option<Instant>,
 ) -> ImpactOutput {
     let graph = &state.scoring_result.graph;
@@ -660,7 +674,12 @@ pub fn build_impact(
         graph.for_each_reverse_neighbor(&core.id, |src, weight| {
             let reason = if ambiguous {
                 "ambiguous_name"
-            } else if changed_paths.contains(src.path.as_ref()) || state.core_ids.contains(src) {
+            } else if state.core_ids.contains(src)
+                || within(src, core)
+                || (query.is_none() && changed_paths.contains(src.path.as_ref()))
+            {
+                // A queried name has no diff: a call from elsewhere in its
+                // own file is a caller like any other.
                 "inside_the_diff"
             } else if graph.edge_category(src, &core.id) != Some(EdgeCategory::Semantic) {
                 tracing::trace!(
@@ -689,8 +708,8 @@ pub fn build_impact(
                     return;
                 };
                 // A file that defines the same name calls its own.
-                let shadowed =
-                    symbol.is_some_and(|s| defined_in.contains(&(s.to_string(), frag.path())));
+                let shadowed = frag.path() != core.path()
+                    && symbol.is_some_and(|s| defined_in.contains(&(s.to_string(), frag.path())));
                 if frag.kind == FragmentKind::Excerpt {
                     "excerpt"
                 } else if shadowed {
@@ -752,7 +771,8 @@ pub fn build_impact(
             (Some((base, head)), true) => commits_touching(state, base, head, core),
             _ => 0,
         };
-        if is_public(core.path(), symbol, without_decorators(&core.content))
+        if query.is_none()
+            && is_public(core.path(), symbol, without_decorators(&core.content))
             && signature_changed(state, &base, core)
         {
             public_api.push((
@@ -766,7 +786,8 @@ pub fn build_impact(
         }
         // A changed symbol nothing depends on is the diff itself; the reader
         // holds that already, and listing it spends the cap on nothing.
-        if callers.is_empty() && commits < 2 {
+        // A queried symbol's definition is half the answer: where it is.
+        if callers.is_empty() && commits < 2 && query.is_none() {
             continue;
         }
         changed.push(ChangedSymbol {
@@ -822,6 +843,7 @@ pub fn build_impact(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         range: diff_range.map(str::to_string),
+        symbol: query.map(str::to_string),
         changed_files,
         commit_count: state.commit_count,
         changed,
@@ -919,12 +941,23 @@ pub fn render_markdown(output: &ImpactOutput) -> String {
     } else {
         String::new()
     };
-    let _ = writeln!(
-        out,
-        "diffctx impact for {range}: {} changed file(s), {} caller(s) outside the diff{guard_summary}",
-        output.changed_files.len() + output.changed_files_omitted,
-        callers
-    );
+    match &output.symbol {
+        Some(symbol) => {
+            let _ = writeln!(
+                out,
+                "diffctx impact for symbol {symbol}: {} definition(s), {callers} caller(s){guard_summary}",
+                output.changed.len(),
+            );
+        }
+        None => {
+            let _ = writeln!(
+                out,
+                "diffctx impact for {range}: {} changed file(s), {} caller(s) outside the diff{guard_summary}",
+                output.changed_files.len() + output.changed_files_omitted,
+                callers
+            );
+        }
+    }
     if !output.limits.is_empty() {
         let reasons: Vec<String> = output
             .limits

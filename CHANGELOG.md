@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--symbol NAME` (or `PATH:NAME`) and the MCP `symbol` parameter: impact
+  without a diff — where a name is defined, who calls it, and the tests that
+  reach each caller, including calls from its own file. The questions an agent
+  asks before it has changed anything used to have no answer but `grep` (#336).
+- `diffctx-mcp --version` / `-v`, and `diffctx mcp --version` (#334).
+- Plugin hook: a grep/rg/ag/`git grep` or Grep-tool search for a name the
+  pending change edits is answered once with that name's callers and tests,
+  or one line saying nothing outside calls it (#337). Every hook run, and a
+  launch that never reached diffctx, leaves one line in
+  `<cache>/diffctx/hook.log`, so a silent hook can be told from a failed one (#338).
+
+### Changed
+
+- MCP: `diffctx_context` defaults to `mode="impact"`. Its description and the
+  server instructions promise what a change reaches outside its diff; a call
+  that omitted `mode` got a locate ranking without reverse discovery, missed
+  the callers it asked for and read `tests: 0` (#335). `mode="locate"` and the
+  `fragment_ids` flow are unchanged.
+
+### Fixed
+
+- `diffctx-mcp` from a base install (no `[mcp]` extra) died on
+  `import anyio` with a traceback; it now answers `--help`/`--version` and
+  otherwise names the extra to install, exit 3. The release smoke installs the
+  base package into a fresh venv and checks both (#333).
+- The plugin's session start removes the binaries 1.18.1 and earlier
+  downloaded into `$CLAUDE_PLUGIN_DATA/bin` — 61 MB per version that no update
+  ever deleted.
+- A release whose GitHub tag is pruned after CD no longer loses its npm
+  publish: `publish-extras` checks out the release commit, re-creates a
+  missing tag, publishes a release that turned into a draft, and downloads
+  assets by id (#332).
+
 ## [1.18.2] - 2026-10-01
 
 ### Changed

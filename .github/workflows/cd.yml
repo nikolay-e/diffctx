@@ -813,6 +813,33 @@ jobs:
           grep -q "def sub" "${RUNNER_TEMP}/uvx.md"
           echo "OK: uvx runs the published wheel"
 
+      # A console script cannot depend on an extra, so the base install ships
+      # diffctx-mcp too; it must answer --version and name the extra rather
+      # than die on `import anyio` (#333). A fresh venv, so nothing the runner
+      # or an earlier step installed can stand in for the missing extra.
+      - name: Smoke - diffctx-mcp from a base install
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          python -m venv "${RUNNER_TEMP}/base"
+          bin="${RUNNER_TEMP}/base/bin"
+          [[ -d "$bin" ]] || bin="${RUNNER_TEMP}/base/Scripts"
+          "$bin/python" -m pip install --only-binary :all: "diffctx==${VERSION}"
+          test "$("$bin/diffctx-mcp" --version)" = "diffctx-mcp ${VERSION}"
+          set +e
+          "$bin/diffctx-mcp" --help >/dev/null 2>&1
+          help_rc=$?
+          "$bin/diffctx-mcp" </dev/null 2>"${RUNNER_TEMP}/base-mcp.err"
+          rc=$?
+          set -e
+          cat "${RUNNER_TEMP}/base-mcp.err"
+          test "$help_rc" -eq 0
+          test "$rc" -eq 3
+          grep -q "diffctx\[mcp\]" "${RUNNER_TEMP}/base-mcp.err"
+          if grep -q Traceback "${RUNNER_TEMP}/base-mcp.err"; then exit 1; fi
+          echo "OK: base install's diffctx-mcp names the extra"
+
       # server.json, .mcp.json and the Claude plugin all resolve to
       # `uvx --from diffctx[mcp] diffctx-mcp`, but nothing here installed the
       # [mcp] extra or ran the console script — so renaming the entry point, or
@@ -1118,12 +1145,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare-version.outputs.version }}
-          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
           gh workflow run publish-crate.yml \
             --repo "$REPO" --ref main \
-            -f version="$VERSION" -f ref="$TAG_NAME"
+            -f version="$VERSION" -f ref="$COMMIT_SHA"
 
       - name: Wait for the crate publish workflow
         env:
@@ -1145,13 +1172,14 @@ jobs:
       id-token: write
       contents: read
     steps:
-      # The release tag, not main: finalize-release commits the bumped
+      # The release commit, not main: finalize-release commits the bumped
       # server.json there, and registry versions are immutable — publishing
-      # main mid-release would race the bump commit.
-      - name: Checkout release tag
+      # main mid-release would race the bump commit. Not the tag either: it
+      # has been pruned minutes after the push (#332).
+      - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.prepare-version.outputs.tag_name }}
+          ref: ${{ needs.prepare-version.outputs.commit_sha }}
 
       # Release assets are named linux_amd64/arm64 (Go convention), NOT the
       # uname -m x86_64/aarch64 — a naive $(uname -m) URL 404s. Pinned by
@@ -1196,10 +1224,10 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
     steps:
-      - name: Checkout release tag
+      - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ needs.prepare-version.outputs.tag_name }}
+          ref: ${{ needs.prepare-version.outputs.commit_sha }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
@@ -1435,7 +1463,7 @@ jobs:
   publish-extras:
     name: Publish npm wrapper and mirror to Docker Hub
     # No edge to update-packaging-manifests: publish-extras.yml re-renders the
-    # npm checksums from the release tag, so a Scoop bucket failure can never
+    # npm checksums from the release assets, so a Scoop bucket failure can never
     # hold back npm or the Docker Hub mirror.
     needs: [prepare-version, publish-image]
     if: github.event.inputs.publish_to_pypi == 'true'
@@ -1451,11 +1479,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
           gh workflow run publish-extras.yml \
             --repo "$REPO" --ref main \
             -f version="$VERSION" \
+            -f commit="$COMMIT_SHA" \
             -f publish_npm=true \
             -f mirror_dockerhub=true
 

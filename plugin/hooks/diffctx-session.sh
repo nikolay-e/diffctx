@@ -7,6 +7,13 @@
 # exit 0.
 set -u
 
+# Up to 1.18.1 this hook downloaded a binary per release into the plugin's
+# data directory. Nothing reads it since, and an update never removed the
+# previous one: 61 MB per version left behind (#52).
+if [[ -n "${CLAUDE_PLUGIN_DATA:-}" ]]; then
+  rm -rf "${CLAUDE_PLUGIN_DATA:?}/bin" "${CLAUDE_PLUGIN_DATA:?}"/install-failed-* 2>/dev/null
+fi
+
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 command -v uvx >/dev/null 2>&1 || exit 0
 

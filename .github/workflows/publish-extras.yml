@@ -13,6 +13,10 @@ concurrency:
       version:
         description: 'Released version to publish downstream (e.g. 1.12.1)'
         required: true
+      commit:
+        description: 'Release commit SHA (default: the tag, else the "Release version X" commit on main)'
+        required: false
+        default: ''
       publish_npm:
         description: 'Publish the npm wrapper'
         required: true
@@ -31,29 +35,109 @@ concurrency:
           - 'false'
 
 jobs:
+  # The release tag has been deleted under a published release (a Forgejo push
+  # mirror pruned v1.16.0 and v1.18.2 minutes after CD pushed it), which drafts
+  # the release: install.js and Scoop then 404 on releases/download/vX, and a
+  # checkout of the tag fails (#332). So nothing downstream reads the tag: the
+  # commit and the release are resolved independently of it, and a missing tag
+  # or a drafted release is restored here, loudly, before anything publishes.
+  release:
+    name: Resolve the release and keep it published
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.resolve.outputs.commit }}
+      release_id: ${{ steps.resolve.outputs.release_id }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve the release commit and the GitHub release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+          COMMIT: ${{ github.event.inputs.commit }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          export TAG="v${VERSION}"
+          # An epoch squash re-anchors old tags and drops their "Release
+          # version" commits, so the subject is only the fallback for a tag
+          # pruned right after its release.
+          SUBJECT="Release version ${VERSION}"
+          [ -n "$COMMIT" ] || COMMIT=$(git rev-parse -q --verify "refs/tags/${TAG}^{commit}" || true)
+          [ -n "$COMMIT" ] || COMMIT=$(git log origin/main --format='%H%x09%s' \
+            | awk -F'\t' -v s="$SUBJECT" '$2 == s && !n++ { print $1 }')
+          [ -n "$COMMIT" ] || { echo "no ${TAG} tag and no '${SUBJECT}' commit on main"; exit 1; }
+          COMMIT=$(git rev-parse --verify "${COMMIT}^{commit}")
+          git merge-base --is-ancestor "$COMMIT" origin/main \
+            || { echo "${COMMIT} is not on main"; exit 1; }
+          RELEASE_ID=$(gh api "repos/${REPO}/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name == env.TAG or .name == "Release " + env.VERSION)][0].id // empty')
+          [ -n "$RELEASE_ID" ] || { echo "no GitHub release for ${TAG}"; exit 1; }
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "${TAG}: commit ${COMMIT}, release ${RELEASE_ID}"
+
+      - name: Restore a pruned tag and a drafted release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+          RELEASE_ID: ${{ steps.resolve.outputs.release_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            [ "$(git rev-parse "${TAG}^{commit}")" = "$COMMIT" ] \
+              || { echo "${TAG} points at $(git rev-parse "${TAG}^{commit}"), not ${COMMIT}"; exit 1; }
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release version ${VERSION}" "$COMMIT"
+            git push origin "refs/tags/${TAG}"
+            echo "::warning::${TAG} was missing on GitHub; recreated at ${COMMIT}. Push it to Forgejo too."
+          fi
+          if [ "$(gh api "repos/${REPO}/releases/${RELEASE_ID}" --jq .draft)" = true ]; then
+            gh api -X PATCH "repos/${REPO}/releases/${RELEASE_ID}" \
+              -f tag_name="$TAG" -F draft=false -f make_latest=legacy >/dev/null
+            echo "::warning::release ${TAG} was a draft; published it again"
+          fi
+          [ "$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id)" = "$RELEASE_ID" ]
+
   npm:
     name: Publish npm wrapper
+    needs: release
     if: github.event.inputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - name: Checkout release tag
+      - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: v${{ github.event.inputs.version }}
+          ref: ${{ needs.release.outputs.commit }}
 
       - name: Download release binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.event.inputs.version }}
+          RELEASE_ID: ${{ needs.release.outputs.release_id }}
         run: |
+          set -euo pipefail
           mkdir -p release-binaries
-          gh release download "v${VERSION}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --dir release-binaries \
-            --pattern 'diffctx-*-*.tar.gz' --pattern 'diffctx-*-*.zip'
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            --jq '.assets[] | select(.name | test("^diffctx-.+-.+[.](tar[.]gz|zip)$")) | "\(.id) \(.name)"' \
+            | while read -r id name; do
+                gh api -H 'Accept: application/octet-stream' \
+                  "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" > "release-binaries/${name}"
+              done
           ls -la release-binaries
 
       - name: Set up Python

@@ -140,7 +140,9 @@ async def _locate_response(validated_path: Path, diff_range: str, budget_tokens:
 # diff, as text, capped by the engine on its serialized size. An empty
 # impact is a finding, not a failure, and it is what the plugin hook stays
 # silent on.
-async def _impact_response(validated_path: Path, diff_range: str, clipboard: bool, max_tokens: int) -> str:
+async def _impact_response(
+    validated_path: Path, diff_range: str, clipboard: bool, max_tokens: int, symbol: str | None = None
+) -> str:
     try:
         payload = await _run_with_deadline(
             "diffctx_context",
@@ -150,6 +152,7 @@ async def _impact_response(validated_path: Path, diff_range: str, clipboard: boo
                 diff_range=diff_range,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
                 markdown=True,
+                symbol=symbol,
             ),
         )
     except GitError as e:
@@ -267,9 +270,9 @@ _UNTRUSTED_NOTICE = (
 # that mostly restated what the parameters already say. This is the whole
 # description: what it does, the two-call shape, and the safety boundary.
 _CONTEXT_DESCRIPTION = (
-    "What a change reaches outside its diff; call before reviewing, committing or pushing. "
-    "mode: impact (callers, tests, contracts), locate (ids for fragment_ids), pack (code). "
-    "diff_ref: range or HEAD (default when dirty)." + _UNTRUSTED_NOTICE
+    "Callers, tests and contracts a change reaches outside its diff; call before reviewing, committing or pushing. "
+    "mode: impact (default), locate (fragment ids), pack (code). "
+    "diff_ref: range or HEAD. symbol: a name, not a diff." + _UNTRUSTED_NOTICE
 )
 
 
@@ -288,15 +291,20 @@ _CONTEXT_DESCRIPTION = (
 async def diffctx_context(
     repo_path: str,
     diff_ref: str | None = None,
-    mode: str = "locate",
+    mode: str = "impact",
     budget_tokens: int = 8000,
     fragment_ids: list[str] | None = None,
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     include_raw_diff: bool = False,
+    symbol: str | None = None,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_max_tokens(max_tokens)
+    if symbol:
+        if diff_ref or fragment_ids or mode != "impact":
+            raise ValueError("symbol answers in mode impact, without diff_ref or fragment_ids")
+        return await _impact_response(validated_path, "", clipboard, max_tokens, symbol=symbol)
     diff_ref = diff_ref or await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
@@ -392,15 +400,3 @@ def run_server() -> None:
             "DIFFCTX_ALLOWED_PATHS is not set: every repository this process can read is reachable through the tools"
         )
     mcp.run(transport="stdio")
-
-
-def main(prog: str = "diffctx-mcp") -> None:
-    """Run the MCP executable surface."""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        prog=prog,
-        description="Run the diffctx MCP server (stdio transport) for editor/agent integration.",
-    )
-    parser.parse_args()
-    run_server()

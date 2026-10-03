@@ -20,6 +20,7 @@ from tests.framework.pygit2_backend import Pygit2Repo
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 IMPACT_SCRIPT = PROJECT_ROOT / "plugin" / "hooks" / "diffctx-impact.sh"
+SESSION_SCRIPT = PROJECT_ROOT / "plugin" / "hooks" / "diffctx-session.sh"
 
 
 @pytest.fixture
@@ -136,3 +137,124 @@ def test_the_plugin_script_reaches_the_hook_on_an_add_and_commit_line(tmp_path, 
     answer = json.loads(result.stdout)["hookSpecificOutput"]
     text = answer["permissionDecisionReason"] if gate else answer["additionalContext"]
     assert "shop/checkout.py::charge" in text
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+@pytest.mark.parametrize("impact_hook", ["true", "false"])
+def test_session_start_removes_the_binaries_earlier_releases_downloaded(tmp_path, bash, impact_hook):
+    data = tmp_path / "plugin-data"
+    (data / "bin" / ".tmp.Xa81").mkdir(parents=True)
+    for leftover in ("bin/diffctx-1.18.0", "bin/diffctx-1.18.1", "install-failed-1.18.1"):
+        (data / leftover).write_bytes(b"\0" * 64)
+    (data / "settings.json").write_text("{}", encoding="utf-8")
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin"),
+        "CLAUDE_PLUGIN_DATA": str(data),
+        "CLAUDE_PLUGIN_OPTION_IMPACT_HOOK": impact_hook,
+    }
+    result = subprocess.run([bash, str(SESSION_SCRIPT)], capture_output=True, text=True, env=env, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert sorted(p.name for p in data.iterdir()) == ["settings.json"]
+
+
+def _search(repo: Path, tool: str, query: str, session: str = "s1") -> str:
+    tool_input = {"pattern": query, "path": str(repo)} if tool == "Grep" else {"command": query}
+    return json.dumps(
+        {"session_id": session, "hook_event_name": "PostToolUse", "cwd": str(repo), "tool_name": tool, "tool_input": tool_input}
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool", "query"),
+    [("Bash", 'grep -rn "def total" .'), ("Bash", r"cd shop && rg -n 'total\(' ."), ("Grep", r"\btotal\b")],
+)
+def test_a_search_for_a_changed_name_hears_its_callers_once(tmp_path, pending_change, tool, query):
+    first = _hook(tmp_path, ["posttooluse"], _search(pending_change, tool, query))
+    assert first.returncode == 0, first.stderr
+    assert "shop/checkout.py::charge" in _context(first.stdout)
+    again = _hook(tmp_path, ["posttooluse"], _search(pending_change, tool, query))
+    assert again.stdout == ""
+    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8").splitlines()
+    assert [line.split()[5] for line in log] == ["shown", "seen"]
+
+
+def test_a_search_answers_only_a_changed_name_on_a_pending_change(tmp_path, pending_change):
+    unrelated = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn charge ."))
+    assert unrelated.returncode == 0, unrelated.stderr
+    assert unrelated.stdout == ""
+    filtered = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "cat shop/pricing.py | grep total"))
+    assert filtered.stdout == ""
+    subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
+    clean = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn total ."))
+    assert clean.stdout == ""
+    outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook.log").read_text().splitlines()]
+    assert outcomes == ["no-symbol", "no-trigger", "clean"]
+
+
+def test_a_changed_name_nothing_calls_is_said_in_one_line(tmp_path, pending_change):
+    (pending_change / "shop" / "pricing.py").write_text(
+        "def total(items):\n    return round(sum(i.price for i in items) * 1.19, 2)\n\n\ndef unused():\n    return 1\n",
+        encoding="utf-8",
+    )
+    result = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Grep", "def unused"))
+    context = _context(result.stdout)
+    assert "`unused`" in context and "nothing outside the diff calls it" in context
+    assert "\n" not in context
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_the_plugin_script_launches_on_a_search_only_over_a_pending_change(tmp_path, pending_change, bash):
+    calls = tmp_path / "calls"
+    launcher = tmp_path / "diffctx"
+    launcher.write_text(f'#!/bin/sh\necho >> "{calls}"\nexec "{sys.executable}" -m diffctx "$@"\n', encoding="utf-8")
+    launcher.chmod(0o755)
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "PYTHONPATH": str(SRC_DIR),
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
+        "DIFFCTX_HOOK_BIN": str(launcher),
+        "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin"),
+    }
+
+    def run(stdin: str) -> str:
+        result = subprocess.run(
+            [bash, str(IMPACT_SCRIPT)], input=stdin, capture_output=True, text=True, encoding="utf-8", env=env, timeout=120
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout
+
+    assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Bash", 'grep -rn "def total" .')))
+    assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Grep", "total", session="s2")))
+    assert run(_search(pending_change, "Bash", "ls | grep total")) == ""
+    assert calls.read_text().count("\n") == 2
+    subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
+    assert run(_search(pending_change, "Bash", "grep -rn total .")) == ""
+    assert calls.read_text().count("\n") == 2, "a clean tree launches nothing"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_a_launch_that_fails_leaves_a_line_in_the_hook_log(tmp_path, pending_change, bash):
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
+        "DIFFCTX_HOOK_BIN": "/usr/bin/false",
+    }
+    result = subprocess.run(
+        [bash, str(IMPACT_SCRIPT)],
+        input=_event(pending_change, "PreToolUse", "git commit -am vat"),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    line = (tmp_path / "cache" / "diffctx" / "hook.log").read_text().split()
+    assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]

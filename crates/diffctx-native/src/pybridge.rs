@@ -110,7 +110,9 @@ fn build_locate(
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     paths = Vec::new(),
     markdown = false,
+    symbol = None,
 ))]
+#[allow(clippy::too_many_arguments)]
 fn build_impact(
     py: Python<'_>,
     root_dir: &str,
@@ -120,6 +122,7 @@ fn build_impact(
     timeout: u64,
     paths: Vec<String>,
     markdown: bool,
+    symbol: Option<String>,
 ) -> PyResult<String> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -130,10 +133,14 @@ fn build_impact(
         Some(diff_range.to_string())
     };
     // A scoped answer reviewed part of the change; the gate keys on all of it.
-    let mark = paths
-        .is_empty()
-        .then(|| diff_range_or_head(diff_range).to_string());
+    let mark =
+        (paths.is_empty() && symbol.is_none()).then(|| diff_range_or_head(diff_range).to_string());
     let output = detach_guarded(py, move || {
+        if let Some(symbol) = symbol {
+            return crate::pipeline::build_symbol_impact(
+                &path, &symbol, &paths, alpha, mode, timeout,
+            );
+        }
         let output = crate::pipeline::build_diff_context_impact(
             &path,
             range.as_deref(),

@@ -1,0 +1,22 @@
+# diff context: cwd
+
+> timing: report elapsed in milliseconds
+
+**Changed files:**
+
+- `src/shop/timing.py`
+
+## `src/shop/timing.py:4-5` **elapsed** _function_ — **changed**
+
+```python
+def elapsed(start: float) -> float:
+    return (time.monotonic() - start) * 1000
+```
+
+## `src/shop/checkout.py:1-3` _chunk_
+
+```python
+from shop.timing import elapsed as took
+
+SLOW_CHECKOUT_SECONDS = 2.0
+```

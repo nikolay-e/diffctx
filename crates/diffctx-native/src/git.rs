@@ -1015,6 +1015,49 @@ pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
     }
 }
 
+/// Tracked and unignored untracked files holding `word` as a whole word.
+/// git grep exits 1 for "no match", which is an answer here, not a failure.
+pub fn grep_files_with_word(
+    repo_root: &Path,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Vec<PathBuf>> {
+    let mut args: Vec<&str> = vec![
+        "grep",
+        "--untracked",
+        "-l",
+        "-z",
+        "-I",
+        "-w",
+        "-F",
+        "-e",
+        word,
+    ];
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    let mut cmd = git_command(repo_root);
+    cmd.args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = cmd.spawn().map_err(GitError::Io)?;
+    let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), &args)?;
+    if output.status.code() == Some(1) && output.stderr.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(command_failure(repo_root, &args, &stderr));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|p| !p.is_empty() && crate::paths::contains_lexically(Path::new(p)))
+        .map(|p| crate::paths::repo_join(repo_root, p))
+        .collect())
+}
+
 pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
     let mut args: Vec<&str> = vec!["ls-files", "--others", "--exclude-standard", "-z"];
     if !pathspec.is_empty() {
