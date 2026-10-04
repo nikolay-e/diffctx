@@ -1117,3 +1117,217 @@ fn a_long_range_says_how_many_commits_the_list_left_out() {
         assert_eq!(doc["commit_count"], 25, "{mode}");
     }
 }
+
+/// #306: an oversized file nobody selected costs the answer nothing — the
+/// run is complete and the cap goes to `capped`; a limit on a changed file
+/// raises the headline and names the file.
+#[test]
+fn a_per_file_limit_raises_the_headline_only_where_the_answer_is() {
+    let tmp = code_change_repo();
+    let repo = tmp.path();
+    let big: String = (0..6000)
+        .map(|i| format!("def f{i}(x):\n    return x + {i}\n"))
+        .collect();
+    std::fs::write(repo.join("generated_tables.py"), big).expect("write");
+    commit_all(repo, "a big unrelated module");
+    std::fs::write(
+        repo.join("util.py"),
+        "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return b - a\n",
+    )
+    .expect("write");
+    commit_all(repo, "flip sub");
+    let json = |range: &str| -> serde_json::Value {
+        let out = run(repo, &[".", "--diff", range, "--format", "json", "--quiet"]);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).expect("json")
+    };
+    let doc = json("HEAD~1..HEAD");
+    assert_eq!(
+        doc["coverage"]["status"], "complete",
+        "{:#}",
+        doc["coverage"]
+    );
+    assert!(
+        doc["coverage"]["capped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "file_too_large")
+    );
+    assert!(doc["coverage"].get("limited_files").is_none());
+
+    let mut latin1 = b"def greet():\n    return '".to_vec();
+    latin1.extend_from_slice(&[0xe9, 0xe8]);
+    latin1.extend_from_slice(b"'\n");
+    std::fs::write(repo.join("util.py"), latin1).expect("write");
+    commit_all(repo, "latin-1 util");
+    let doc = json("HEAD~1..HEAD");
+    assert_eq!(
+        doc["coverage"]["status"], "partial",
+        "{:#}",
+        doc["coverage"]
+    );
+    assert_eq!(
+        doc["coverage"]["limited_files"],
+        serde_json::json!([{"path": "util.py", "reason": "non_utf8_content"}])
+    );
+}
+
+/// #300: `--budget` bounds what the reader receives — the serialized locate
+/// document — not only the bodies the items stand for.
+#[test]
+fn a_locate_answer_fits_its_budget() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let workflow = |condition: &str| -> String {
+        let mut text = String::from("spec:\n  dependencies:\n    - name: push\n  triggers:\n");
+        for i in 0..120 {
+            text.push_str(&format!(
+                "    - template:\n        name: build-{i}\n        conditions: {condition}\n        k8s:\n          operation: create\n          source:\n            resource:\n              kind: Workflow\n              metadata:\n                generateName: build-{i}-\n"
+            ));
+        }
+        text
+    };
+    std::fs::write(repo.join("sensor.yaml"), workflow("push")).expect("write");
+    commit_all(repo, "initial");
+    std::fs::write(repo.join("sensor.yaml"), workflow("push && tag")).expect("write");
+    commit_all(repo, "gate every trigger");
+    let out = run(
+        repo,
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "locate",
+            "--budget",
+            "2000",
+            "-q",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    // What an MCP client receives: the overflow pointer list is stripped there.
+    doc.as_object_mut().unwrap().remove("overflow");
+    let tokens = _diffctx::tokenizer::count_tokens(&doc.to_string());
+    assert!(
+        tokens <= 2000,
+        "locate answer is {tokens} tokens for --budget 2000"
+    );
+    assert!(doc["item_count"].as_u64().unwrap() >= 1);
+}
+
+/// #330: a language this build has no grammar for is read as text by design;
+/// listing it as unparsed dropped confidence to 0 on every SQL or Kotlin
+/// change. A file with a grammar and no structure still is a blind spot.
+#[test]
+fn a_file_without_a_grammar_is_not_a_blind_spot() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::write(repo.join("schema.sql"), "CREATE TABLE t (id int);\n").expect("write");
+    std::fs::write(repo.join("App.kt"), "fun main() {}\n").expect("write");
+    commit_all(repo, "initial");
+    std::fs::write(
+        repo.join("schema.sql"),
+        "CREATE TABLE t (id int, name text);\n",
+    )
+    .expect("write");
+    std::fs::write(repo.join("App.kt"), "fun main() { println(1) }\n").expect("write");
+    commit_all(repo, "change");
+    let out = run(
+        repo,
+        &[".", "--diff", "HEAD~1..HEAD", "--mode", "locate", "-q"],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let unparsed = &doc["coverage"]["unparsed_files"];
+    assert!(unparsed.is_null(), "{:#}", doc["coverage"]);
+}
+
+/// #340: co-change history is read before the range's head, not before the
+/// checkout — later commits must not leak into a historical range.
+#[test]
+fn a_historical_range_ignores_history_after_its_head() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::write(repo.join("ledger.py"), "def post(x):\n    return x\n").expect("write");
+    std::fs::write(
+        repo.join("audit.py"),
+        "from ledger import post\n\n\ndef trail(y):\n    return post(y)\n",
+    )
+    .expect("write");
+    commit_all(repo, "base");
+    std::fs::write(repo.join("ledger.py"), "def post(x):\n    return x + 1\n").expect("write");
+    commit_all(repo, "the change");
+    let range = {
+        let out = Command::new("git")
+            .current_dir(repo)
+            .args(["rev-parse", "HEAD~1", "HEAD"])
+            .output()
+            .expect("rev-parse");
+        let revs: Vec<String> = String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        format!("{}..{}", revs[0], revs[1])
+    };
+    let history_edges = |repo: &Path| -> usize {
+        let out = Command::new(&*BIN)
+            .current_dir(repo)
+            .env("DIFFCTX_TRACE_BUILDERS", "1")
+            .args([".", "--diff", &range, "--format", "json", "--quiet"])
+            .output()
+            .expect("run diffctx");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .filter(|l| l.starts_with("builder history"))
+            .filter_map(|l| {
+                l.rsplit(", ")
+                    .next()?
+                    .strip_suffix(" edges")?
+                    .parse::<usize>()
+                    .ok()
+            })
+            .sum()
+    };
+    assert_eq!(history_edges(repo), 0);
+    for i in 0..6 {
+        std::fs::write(
+            repo.join("ledger.py"),
+            format!("def post(x):\n    return x + {i}\n"),
+        )
+        .expect("write");
+        std::fs::write(
+            repo.join("audit.py"),
+            format!("from ledger import post\n\n\ndef trail(y):\n    return post(y) + {i}\n"),
+        )
+        .expect("write");
+        commit_all(repo, "later, together");
+    }
+    assert_eq!(
+        history_edges(repo),
+        0,
+        "commits after the range's head reached its co-change graph"
+    );
+}

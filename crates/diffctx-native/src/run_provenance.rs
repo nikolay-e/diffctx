@@ -88,9 +88,14 @@ impl RunProvenance {
         // `git diff X` compares X with the working tree; only `A..B` names a
         // committed right side.
         let working_tree = head_rev.is_none();
-        let head = head_rev
-            .as_deref()
-            .and_then(|rev| crate::git::rev_oid(root_dir, rev));
+        // A staged snapshot's head is a tree, named by its own id.
+        let head = head_rev.as_deref().and_then(|rev| {
+            crate::git::rev_oid(root_dir, rev).or_else(|| {
+                rev.bytes()
+                    .all(|b| b.is_ascii_hexdigit())
+                    .then(|| rev.to_string())
+            })
+        });
         let base = base_rev
             .as_deref()
             .or(diff_range)

@@ -7,11 +7,18 @@
 # exit 0.
 set -u
 
+# Up to 1.18.1 this hook downloaded a binary per release into the plugin's
+# data directory. Nothing reads it since, and an update never removed the
+# previous one: 61 MB per version left behind (#52).
+if [[ -n "${CLAUDE_PLUGIN_DATA:-}" ]]; then
+  rm -rf "${CLAUDE_PLUGIN_DATA:?}/bin" "${CLAUDE_PLUGIN_DATA:?}"/install-failed-* 2>/dev/null
+fi
+
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 command -v uvx >/dev/null 2>&1 || exit 0
 
 (uvx -q -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.2" --version \
   </dev/null >/dev/null 2>&1 &)
 
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.2 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). The plugin also injects this before git commit/merge/push and after git diff."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.2 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). The plugin also injects this before git commit/merge/push and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself."}}'
 exit 0

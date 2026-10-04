@@ -52,11 +52,12 @@ Subcommands:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--diff` RANGE | — | Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now (24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the window plus the uncommitted work on top. Bare --diff shows uncommitted changes (working tree vs HEAD). |
+| `--diff` RANGE | — | Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now (24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the window plus the uncommitted work on top. 'staged' (or --diff=--cached) analyses the index alone, captured once. Bare --diff shows uncommitted changes (working tree vs HEAD). |
 | `--budget` TOKENS | — | Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families tokenize differently, so leave headroom; see 'Token counting' below): omit = auto (default: 3x the change's core, clamped to 8000-48000, so a wide diff sits at the ceiling), N = cap on the whole artifact (change summary charged first), -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only) |
 | `--alpha` FLOAT | — | PPR continuation probability, 0-1 exclusive (default: 0.60; higher = mass travels further from the change, lower = tighter around it). Only affects --scoring ppr |
 | `--tau` FLOAT | — | Relevance threshold for full fragment content, >= 0 (default: 0.05). Fragments scoring below it are reduced to signature stubs or dropped; higher = leaner output, lower = more surrounding context |
 | `--scoring` {ppr,ego,bm25,rrf,pit} | — | Scoring mode: ego = structural neighbors of the change (default); ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; bm25 = lexical similarity, for sparse cross-file structure; rrf = rank fusion of ego and bm25 on ranks; pit = the same fusion on score percentiles rather than ranks |
+| `--symbol` NAME | — | Impact without a diff: where NAME (or PATH:NAME) is defined, who calls it, and the tests that reach each caller. Implies --mode impact |
 | `--mode` {pack,locate,impact} | — | Output mode: pack = context with source bodies (default); locate = ranked navigation list with provenance reasons, JSON only (diffctx.locate.v1; -f is ignored); impact = callers outside the diff, the tests guarding them and cross-commit overlap, under 2k tokens (text by default, diffctx.impact.v1 JSON with -f json) |
 | `--timeout` SECONDS | — | Wall-clock deadline for --diff analysis (default: 300); on expiry diffctx aborts with exit code 124 instead of hanging |
 | `--full` | off | Include every fragment of the changed files and nothing else — no related-code context (ignores --budget/--tau/--alpha/--scoring) |

@@ -55,7 +55,10 @@ impl TokenCorpus {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
         let store = TokenCacheStore::open(min_len);
         let oids = if store.is_some() {
-            resolve_cacheable_oids(&ctx.root_dir)
+            match ctx.source.list_blobs(&[]) {
+                Some(blobs) => blobs.into_iter().map(|b| (b.path, b.oid)).collect(),
+                None => resolve_cacheable_oids(&ctx.root_dir),
+            }
         } else {
             FxHashMap::default()
         };

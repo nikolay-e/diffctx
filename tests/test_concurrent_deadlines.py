@@ -103,3 +103,65 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path,
         assert report["coverage"]["status"] == "partial"
     assert "deadline" in report["coverage"]["limit_reasons"]
     assert report["changed"] == ["main.py"], "a partial artifact still lists every changed file"
+
+
+_STALLING_GIT = """#!/bin/sh
+for a in "$@"; do
+  if [ "$a" = cat-file ]; then echo $$ >> "$STALLED_PIDS"; exec sleep 600; fi
+done
+exec "$REAL_GIT" "$@"
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stalling git is a POSIX shell script")
+def test_a_cancelled_request_stops_its_native_run_and_git_children(tmp_path, monkeypatch):
+    # The MCP server abandons a worker it gave up on; without the token the
+    # native run went on to its own 60 s deadline behind a stalled git.
+    from diffctx._diffctx import CancelToken
+
+    repo = _repo(tmp_path, "stalled", files=2)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "git"
+    fake.write_text(_STALLING_GIT, encoding="utf-8")
+    fake.chmod(0o755)
+    real_git = subprocess.run(["sh", "-c", "command -v git"], capture_output=True, text=True, check=True).stdout.strip()
+    monkeypatch.setenv("REAL_GIT", real_git)
+    pids_file = tmp_path / "stalled.pids"
+    monkeypatch.setenv("STALLED_PIDS", str(pids_file))
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+
+    token = CancelToken()
+    outcome: dict[str, object] = {}
+
+    def work():
+        try:
+            outcome["result"] = token.scope(
+                lambda: diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1..HEAD", timeout=60)
+            )
+        except Exception as e:  # a withdrawn run may end as an error or a partial artifact
+            outcome["error"] = e
+
+    worker = threading.Thread(target=work)
+    worker.start()
+    time.sleep(1.0)
+    cancelled_at = time.monotonic()
+    token.cancel()
+    worker.join(timeout=30)
+    assert not worker.is_alive(), "the cancelled run kept going"
+    assert time.monotonic() - cancelled_at < 5
+    if "result" in outcome:
+        coverage = json.dumps(outcome["result"].get("coverage"))
+        assert "cancelled" in coverage, coverage
+    stalled = [int(p) for p in pids_file.read_text(encoding="utf-8").split()]
+    assert stalled, "the stalling git never ran: the test measured nothing"
+    time.sleep(0.5)
+    assert not [pid for pid in stalled if _alive(pid)], "a killed git child outlived the cancellation"
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True

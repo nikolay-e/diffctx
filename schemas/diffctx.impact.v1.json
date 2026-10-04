@@ -16,11 +16,44 @@
         "null"
       ]
     },
+    "index_tree": {
+      "description": "The index captured as a tree, when the range is the staged changes:\nthe snapshot this answer is about. A later `git add` makes it stale.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "symbol": {
+      "description": "Set on a `--symbol` query (#336): `changed` then lists the symbol's\ndefinitions, and `changed_files` the files that hold them.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "changed_files": {
       "type": "array",
       "items": {
         "type": "string"
       }
+    },
+    "deleted_files": {
+      "description": "Deleted by the change: no fragment, but what still names them is\nwhat breaks (#347).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stale_references": {
+      "description": "Lines outside the change that still name a deleted or renamed path:\na Dockerfile `COPY`, a workflow step, an import (#313).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/StaleReference"
+      }
+    },
+    "stale_references_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
     },
     "commit_count": {
       "type": "integer",
@@ -82,6 +115,33 @@
     "tests_known"
   ],
   "$defs": {
+    "StaleReference": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "target": {
+          "description": "The deleted or renamed path the line still names.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`deleted`, or `renamed to <new path>`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "target",
+        "kind"
+      ]
+    },
     "ChangedSymbol": {
       "type": "object",
       "properties": {
@@ -111,6 +171,13 @@
           "items": {
             "$ref": "#/$defs/Caller"
           }
+        },
+        "unresolved": {
+          "description": "Why callers could not be resolved at all: a name defined in many\nfiles in a language without a binding model, a trait method reached\nthrough dynamic dispatch. Its empty `callers` is then no finding.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -140,17 +207,53 @@
           "format": "double"
         },
         "tested_by": {
-          "description": "A test file that names this caller or is linked to its file; absent\nmeans the suite as diffctx sees it does not exercise it.",
+          "description": "A test file that calls this caller, directly or through `tested_via`.",
           "type": [
             "string",
             "null"
           ]
+        },
+        "tested_via": {
+          "description": "The function between the caller and the test that reaches it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_tested": {
+          "description": "A test reaches the caller's file but none of the paths to this caller:\nthe one case where an absent `tested_by` is a finding, not a gap in\nwhat static analysis can see (a route hit over HTTP, a fixture).",
+          "type": "boolean"
+        },
+        "evidence": {
+          "description": "`resolved`: an import binding links the reference to the changed\ndefinition (Python, JavaScript, TypeScript). `name`: the lexical model\nof a language without a binding model — a mention in code of a file\nthat names the module. `candidate`: the binding or the receiver is not\nknown; `reason` says which.",
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relation": {
+          "description": "`reference` when the definition is named without being called: a\ncallback, a value passed on.",
+          "type": "string",
+          "default": ""
+        },
+        "sites": {
+          "description": "The lines that reference the definition, when known.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
         }
       },
       "required": [
         "path",
         "lines",
-        "weight"
+        "weight",
+        "evidence"
       ]
     },
     "Contract": {
@@ -203,6 +306,11 @@
           "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
           "type": "string",
           "const": "non_utf8_content"
+        },
+        {
+          "description": "The caller withdrew the request (an MCP cancellation, the MCP\ndeadline): work stopped at the next poll instead of running on\ndetached.",
+          "type": "string",
+          "const": "cancelled"
         }
       ]
     }

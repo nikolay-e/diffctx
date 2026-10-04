@@ -8,6 +8,19 @@ use crate::types::{Fragment, FragmentId};
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
 
+/// Words of a language's syntax and builtins. Narrower than the code
+/// stopwords on purpose: `password` or `order` shared by a config and the
+/// code that reads it is the link this fallback exists for.
+static SYNTAX_WORDS: once_cell::sync::Lazy<rustc_hash::FxHashSet<&'static str>> =
+    once_cell::sync::Lazy::new(|| {
+        "self this cls super def fn func function lambda return none null nil undefined \
+         true false void var let const val new class struct enum interface impl trait \
+         type import from export package module use pub public private protected static \
+         final async await yield int str bool float double char string object any"
+            .split_whitespace()
+            .collect()
+    });
+
 pub struct TagsEdgeBuilder;
 
 impl EdgeBuilder for TagsEdgeBuilder {
@@ -20,8 +33,15 @@ impl EdgeBuilder for TagsEdgeBuilder {
 
         for f in fragments {
             let path = f.path();
+            // `self`, `None`, `def`: every code fragment of a language shares
+            // them, and a fallback edge on a keyword is noise with weight.
+            // Config files keep every word: there the fallback is the link.
+            let code = crate::config::extensions::CODE_EXTENSIONS
+                .contains(base::file_ext(Path::new(path)).as_str());
             for ident in &f.identifiers {
-                if ident.len() >= TAGS_SEMANTIC.min_ident_len {
+                if ident.len() >= TAGS_SEMANTIC.min_ident_len
+                    && !(code && SYNTAX_WORDS.contains(ident.to_lowercase().as_str()))
+                {
                     ident_index
                         .entry(ident.as_str())
                         .or_default()

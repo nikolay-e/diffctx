@@ -310,6 +310,7 @@ class ParsedArgs:
     quiet: bool = False
     no_ignores: bool = False
     diff_range: str | None = None
+    symbol: str | None = None
     budget: int | None = None
     alpha: float = _DEFAULT_ALPHA
     tau: float | None = None
@@ -377,21 +378,10 @@ def _run_mcp_server() -> None:
     if Path("mcp").is_dir():
         _warn("'mcp' is the subcommand; to map the directory ./mcp, run: diffctx ./mcp")
 
-    try:
-        from .mcp.server import main as mcp_main
-    except ImportError:
-        _fail_missing_mcp_extra()
+    from .mcp.launch import main as mcp_main
 
     sys.argv = [f"{_current_prog} mcp", *sys.argv[2:]]
     mcp_main(prog=f"{_current_prog} mcp")
-
-
-def _fail_missing_mcp_extra() -> NoReturn:
-    print(
-        f"{_current_prog}: error: the mcp subcommand requires the 'mcp' extra: pip install 'diffctx[mcp]'",
-        file=sys.stderr,
-    )
-    sys.exit(3)
 
 
 DEFAULT_IGNORES_HELP = """
@@ -604,8 +594,8 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         help=(
             "Git diff range (e.g., HEAD~1..HEAD, main..feature) or a duration window ending now "
             "(24h, 8d, 90min, 1h30m, 2w — units s/m/h/d/w), which covers the commits inside the "
-            "window plus the uncommitted work on top. Bare --diff shows uncommitted changes "
-            "(working tree vs HEAD)."
+            "window plus the uncommitted work on top. 'staged' (or --diff=--cached) analyses the "
+            "index alone, captured once. Bare --diff shows uncommitted changes (working tree vs HEAD)."
         ),
     )
     diff_group.add_argument(
@@ -656,6 +646,15 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         ),
     )
     diff_group.add_argument(
+        "--symbol",
+        default=None,
+        metavar="NAME",
+        help=(
+            "Impact without a diff: where NAME (or PATH:NAME) is defined, who calls it, "
+            "and the tests that reach each caller. Implies --mode impact"
+        ),
+    )
+    diff_group.add_argument(
         "--mode",
         choices=["pack", "locate", "impact"],
         default=_UNSET,
@@ -698,7 +697,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
 
 
 def _warn_diff_only_flags(args: argparse.Namespace) -> None:
-    if args.diff_range:
+    if args.diff_range or args.symbol:
         return
     used = []
     if args.budget is not _UNSET:
@@ -813,19 +812,34 @@ def _resolve_max_file_bytes(args: argparse.Namespace) -> int | None:
     return _validate_max_file_bytes(value, args.no_file_size_limit)
 
 
+def _resolve_anchor(args: argparse.Namespace) -> tuple[str | None, str]:
+    mode = "pack" if args.mode is _UNSET else args.mode
+    diff_range = "HEAD" if args.diff_range == _DIFF_SENTINEL else args.diff_range
+    if diff_range is not None and not diff_range.strip():
+        _exit_usage_error("--diff requires a non-empty range")
+    if args.symbol is None:
+        return diff_range, mode
+    if diff_range is not None:
+        _exit_usage_error("--symbol and --diff are exclusive: --symbol needs no change to anchor on")
+    if args.mode is not _UNSET and mode != "impact":
+        _exit_usage_error("--symbol answers in --mode impact")
+    return None, "impact"
+
+
+def _refuse_tree_flags_for(args: argparse.Namespace, flag: str) -> None:
+    if args.no_ignores:
+        _exit_usage_error(f"--no-ignores is not supported with {flag} (git's own ignore rules always apply in diff mode)")
+    _refuse_path_spec_flags(args, flag)
+    _warn_tree_only_flags(args)
+
+
 def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | None, float, float | None, str, int, str]:
     budget = None if args.budget is _UNSET else args.budget
     alpha = _DEFAULT_ALPHA if args.alpha is _UNSET else args.alpha
     tau = None if args.tau is _UNSET else args.tau
     scoring = _DEFAULT_SCORING if args.scoring is _UNSET else args.scoring
     timeout = _DEFAULT_TIMEOUT if args.timeout is _UNSET else args.timeout
-    mode = "pack" if args.mode is _UNSET else args.mode
-
-    diff_range = args.diff_range
-    if diff_range == _DIFF_SENTINEL:
-        diff_range = "HEAD"
-    if diff_range is not None and not diff_range.strip():
-        _exit_usage_error("--diff requires a non-empty range")
+    diff_range, mode = _resolve_anchor(args)
     _validate_budget(budget)
     _validate_alpha(alpha)
     _validate_tau(tau)
@@ -834,12 +848,10 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
     _warn_full_selection_conflict(args)
     if diff_range and not args.full and args.alpha is not _UNSET and scoring != "ppr":
         _warn(f"--alpha only affects --scoring ppr (current scoring: {scoring}); value ignored")
-
     if diff_range:
-        if args.no_ignores:
-            _exit_usage_error("--no-ignores is not supported with --diff (git's own ignore rules always apply in diff mode)")
-        _refuse_path_spec_flags(args, "--diff")
-        _warn_tree_only_flags(args)
+        _refuse_tree_flags_for(args, "--diff")
+    elif args.symbol is not None:
+        _refuse_tree_flags_for(args, "--symbol")
     _validate_locate_mode(args, mode)
     return diff_range, budget, alpha, tau, scoring, timeout, mode
 
@@ -903,6 +915,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         quiet=args.quiet,
         no_ignores=args.no_ignores,
         diff_range=diff_range,
+        symbol=args.symbol,
         budget=budget,
         alpha=alpha,
         tau=tau,

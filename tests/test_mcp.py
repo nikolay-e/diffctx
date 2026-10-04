@@ -101,7 +101,7 @@ class TestMcpSubcommand:
         from diffctx import cli
 
         started = []
-        monkeypatch.setattr("diffctx.mcp.server.main", lambda prog="diffctx-mcp": started.append(prog))
+        monkeypatch.setattr("diffctx.mcp.server.run_server", lambda: started.append(True))
         monkeypatch.setattr(cli.sys, "argv", ["diffctx", "mcp"])
         cli.main()
         assert started, "mcp subcommand did not dispatch to the server"
@@ -536,6 +536,7 @@ class TestBudgetTokensValidation:
             {
                 "repo_path": str(mcp_repo.path),
                 "diff_ref": "HEAD~1..HEAD",
+                "mode": "locate",
                 "budget_tokens": -1,
                 "max_tokens": 50,
             },
@@ -612,6 +613,7 @@ class TestTokenBudgetGuardExecutes:
             {
                 "repo_path": str(big_file_repo.path),
                 "diff_ref": "HEAD~1..HEAD",
+                "mode": "locate",
                 "budget_tokens": -1,
                 "max_tokens": 100,
             },
@@ -626,6 +628,7 @@ class TestTokenBudgetGuardExecutes:
             {
                 "repo_path": str(big_file_repo.path),
                 "diff_ref": "HEAD~1..HEAD",
+                "mode": "locate",
                 "budget_tokens": -1,
                 "max_tokens": 200_000,
             },
@@ -743,7 +746,7 @@ class TestClipboardDegradation:
         monkeypatch.setattr("diffctx.clipboard.detect_clipboard_command", lambda: None)
         result = await server.call_tool(
             "diffctx_context",
-            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "clipboard": True},
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "clipboard": True},
         )
         text = _get_text(result)
         assert "clipboard unavailable" in text
@@ -853,7 +856,7 @@ class TestRepoPathWalksUpToRoot:
     async def test_subdirectory_of_a_normal_repo_is_accepted(self, server, mcp_repo):
         result = await server.call_tool(
             "diffctx_context",
-            {"repo_path": str(mcp_repo.path / "src"), "diff_ref": "HEAD~1..HEAD"},
+            {"repo_path": str(mcp_repo.path / "src"), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -863,7 +866,7 @@ class TestRepoPathWalksUpToRoot:
         self._run_git("worktree", "add", str(worktree_path), "-b", "wt-branch", cwd=mcp_repo.path)
         result = await server.call_tool(
             "diffctx_context",
-            {"repo_path": str(worktree_path / "src"), "diff_ref": "HEAD~1..HEAD"},
+            {"repo_path": str(worktree_path / "src"), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -915,7 +918,7 @@ class TestConcurrencyAndTimeoutRecovery:
         diff_result, tree_result = await asyncio.gather(
             server.call_tool(
                 "diffctx_context",
-                {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
+                {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
             ),
             server.call_tool("get_tree_map", {"repo_path": str(mcp_repo.path)}),
         )
@@ -951,7 +954,7 @@ class TestGitRefInjection:
     async def test_ordinary_range_is_unaffected(self, server, mcp_repo):
         result = await server.call_tool(
             "diffctx_context",
-            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
+            {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         assert "calc.py" in _get_text(result)
 
@@ -1004,6 +1007,25 @@ class TestFileContextHonoursTheIgnoreContract:
         assert "deploy.key" not in text
 
 
+class TestDefaultMode:
+    """The description and the server instructions sell the call as "what a
+    change reaches outside its diff". With locate as the default, a call that
+    omitted mode got a ranking without reverse discovery and missed the
+    callers it was asked for (#335)."""
+
+    @pytest.mark.asyncio
+    async def test_omitted_mode_names_the_callers_outside_the_diff(self, server, tmp_path):
+        repo = Pygit2Repo(tmp_path / "repo")
+        repo.add_file("src/calc.py", "def add(a, b):\n    return a + b\n")
+        repo.add_file("src/main.py", "from calc import add\n\ndef run():\n    return add(1, 2)\n")
+        repo.commit("base")
+        repo.add_file("src/calc.py", "def add(a, b, c=0):\n    return a + b + c\n")
+        repo.commit("widen add")
+        text = _get_text(await server.call_tool("diffctx_context", {"repo_path": str(repo.path), "diff_ref": "HEAD~1..HEAD"}))
+        assert text.startswith("diffctx impact for HEAD~1..HEAD")
+        assert "src/main.py" in text
+
+
 @pytest.mark.timeout(60)
 class TestProgressiveDisclosure:
     """The two-call shape #127 collapsed the server onto: rank, then read.
@@ -1021,7 +1043,7 @@ class TestProgressiveDisclosure:
             _get_text(
                 await server.call_tool(
                     "diffctx_context",
-                    {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"},
+                    {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
                 )
             )
         )

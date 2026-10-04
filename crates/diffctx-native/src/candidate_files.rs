@@ -56,7 +56,10 @@ fn is_candidate_file(
             // context, and the artifact says so rather than rendering as
             // complete (#T4.2: a 237 KB helper importing the changed file
             // vanished with no coverage block).
-            ctx.note(crate::resource::LimitReason::FileTooLarge);
+            ctx.note_file(
+                crate::resource::LimitReason::FileTooLarge,
+                crate::paths::display_rel_or_abs(root_dir, file_path),
+            );
             return false;
         }
         Err(_) => return false,
@@ -67,12 +70,53 @@ fn is_candidate_file(
 
 /// The discovery universe under `scope` (repo-relative pathspecs; empty is
 /// the whole repository), with every size exclusion recorded on `ctx`.
+/// `is_candidate_file` for a blob of the analysed snapshot: its size and
+/// language come from the object, never from the disk's copy.
+fn is_snapshot_candidate(
+    blob: &crate::source::ListedBlob,
+    root_dir: &Path,
+    included_set: &FxHashSet<PathBuf>,
+    source: &crate::source::Source,
+    ctx: &crate::resource::RunContext,
+) -> bool {
+    if included_set.contains(&blob.path) {
+        return false;
+    }
+    let name = blob.path.to_string_lossy();
+    let allowed = get_language_for_file(&name).is_some()
+        || (blob.path.extension().is_none()
+            && source.read_bytes(&blob.path).is_some_and(|bytes| {
+                let head = &bytes[..bytes.len().min(SHEBANG_SNIFF_BYTES)];
+                crate::languages::sniff_language(&name, &String::from_utf8_lossy(head)).is_some()
+            }));
+    if !allowed {
+        return false;
+    }
+    if blob.size as usize > LIMITS.max_file_size {
+        ctx.note_file(
+            crate::resource::LimitReason::FileTooLarge,
+            crate::paths::display_rel_or_abs(root_dir, &blob.path),
+        );
+        return false;
+    }
+    true
+}
+
 pub fn collect_candidate_files(
     root_dir: &Path,
     included_set: &FxHashSet<PathBuf>,
     scope: &[String],
     ctx: &crate::resource::RunContext,
 ) -> Vec<PathBuf> {
+    let source = crate::source::current();
+    if let Some(blobs) = source.list_blobs(scope) {
+        let admitted = blobs
+            .into_iter()
+            .filter(|b| is_snapshot_candidate(b, root_dir, included_set, &source, ctx))
+            .map(|b| b.path)
+            .collect();
+        return filter_ignored_and_secret(root_dir, admitted);
+    }
     match tracked_candidates(root_dir, included_set, scope, ctx) {
         Some(files) => filter_ignored_and_secret(root_dir, files),
         // The walk sees untracked paths, so ancestor-inherited rules must count

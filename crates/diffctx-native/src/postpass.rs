@@ -217,6 +217,24 @@ pub fn rescue_nontrivial_context(
     let has_context = selected.iter().any(|f| !changed_paths.contains(&f.id.path));
     let admissible_files = if has_context { admissible_files } else { None };
 
+    // A signature stands in for its body: when a caller's body is worth
+    // rescuing but does not fit, its signature still reaches the file.
+    let score = |f: &Fragment| {
+        let own = rel_scores.get(&f.id).copied().unwrap_or(0.0);
+        if !f.kind.is_signature() {
+            return own;
+        }
+        all_fragments
+            .iter()
+            .filter(|b| {
+                b.id.path == f.id.path
+                    && b.id != f.id
+                    && b.start_line() == f.start_line()
+                    && b.end_line() >= f.end_line()
+            })
+            .map(|b| rel_scores.get(&b.id).copied().unwrap_or(0.0))
+            .fold(own, f64::max)
+    };
     let mut candidates: Vec<&Fragment> = all_fragments
         .iter()
         .filter(|f| {
@@ -224,7 +242,7 @@ pub fn rescue_nontrivial_context(
                 && !core_ids.contains(&f.id)
                 && !changed_paths.contains(&f.id.path)
                 && !represented_paths.contains(&f.id.path)
-                && rel_scores.get(&f.id).copied().unwrap_or(0.0) >= min_score
+                && score(f) >= min_score
                 && f.token_count <= rescue_budget
                 // #65/#211: every pick here opens a new file by construction,
                 // so the admission gate applies with no open-file exemption.
@@ -232,9 +250,10 @@ pub fn rescue_nontrivial_context(
         })
         .collect();
     candidates.sort_by(|a, b| {
-        let sa = rel_scores.get(&a.id).copied().unwrap_or(0.0);
-        let sb = rel_scores.get(&b.id).copied().unwrap_or(0.0);
-        sb.total_cmp(&sa).then_with(|| a.id.cmp(&b.id))
+        score(b)
+            .total_cmp(&score(a))
+            .then_with(|| a.kind.is_signature().cmp(&b.kind.is_signature()))
+            .then_with(|| a.id.cmp(&b.id))
     });
 
     let mut interval_idx = IntervalIndex::new();

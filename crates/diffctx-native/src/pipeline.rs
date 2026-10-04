@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -88,6 +89,13 @@ pub struct ScoredState {
     /// on nothing a sweep cell changes, and `select_with_params` re-runs
     /// selection per (tau, cbf) cell against this one state.
     pub envelope_tokens: u32,
+    /// The captured index tree when the run analyses staged changes: the
+    /// identity of the snapshot every current-side byte came from.
+    pub index_tree: Option<String>,
+    /// The range as resolved — a duration's base commit, the staged
+    /// snapshot's `base..tree` — which every git question about the change
+    /// must use; the caller's spelling is for display.
+    pub analysed_range: Option<String>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -206,7 +214,9 @@ pub fn build_diff_context_locate(
     } else {
         run_selection(&state, budget_tokens, tau)
     };
-    Ok(crate::locate::build_locate(&state, &outcome))
+    let mut output = crate::locate::build_locate(&state, &outcome);
+    output.fit_to(outcome.effective_budget);
+    Ok(output)
 }
 
 /// `--mode impact` (#310): the same scored state as locate, rendered as what
@@ -233,6 +243,35 @@ pub fn build_diff_context_impact(
     Ok(crate::impact::build_impact(
         &state,
         diff_range,
+        None,
+        Some(deadline),
+    ))
+}
+
+/// `--symbol` (#336): impact anchored on a name's definitions instead of a
+/// diff — where it is defined, who calls it, which tests reach each caller.
+pub fn build_symbol_impact(
+    root_dir: &Path,
+    query: &str,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::impact::ImpactOutput> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let state = compute_scored_state_anchored(
+        root_dir,
+        Anchor::Symbol(query),
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        true,
+    )?;
+    Ok(crate::impact::build_impact(
+        &state,
+        None,
+        Some(query),
         Some(deadline),
     ))
 }
@@ -463,6 +502,7 @@ fn hunkless_changed_files(
 fn resolve_change_set(
     root_dir: &Path,
     diff_range: Option<&str>,
+    staged: Option<&git::StagedSnapshot>,
     pathspec: &[String],
     is_working_tree_diff: bool,
     t_entry: Instant,
@@ -551,6 +591,13 @@ fn resolve_change_set(
         .map(git::split_diff_range)
         .unwrap_or((None, None));
     let preferred_revs = build_preferred_revs(base_rev.as_deref(), head_rev.as_deref());
+    // A staged snapshot's head is a tree: it has content and no history. Its
+    // commits are none, and the history channels anchor on the commit it
+    // sits on.
+    let (head_rev, history_head) = match staged {
+        Some(s) => (None, s.head.clone()),
+        None => (head_rev.clone(), head_rev),
+    };
     let commit_message = head_rev
         .as_deref()
         .and_then(|h| git::get_commit_message(root_dir, h).ok())
@@ -564,9 +611,10 @@ fn resolve_change_set(
     // `A..B` names both ends; a bare `X` diffs X against the working tree,
     // whose commits are `X..HEAD`. Every commit of the range travels whole
     // (subject and body); `commit_message` stays the head's subject.
-    let subject_range = match (base_rev.as_deref(), head_rev.as_deref()) {
-        (Some(base), Some(head)) => Some((base.to_string(), head.to_string())),
-        (None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
+    let subject_range = match (staged, base_rev.as_deref(), head_rev.as_deref()) {
+        (Some(_), _, _) => None,
+        (None, Some(base), Some(head)) => Some((base.to_string(), head.to_string())),
+        (None, None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
         _ => None,
     };
     let commit_count = subject_range
@@ -598,8 +646,127 @@ fn resolve_change_set(
         preferred_revs,
         commit_message,
         commit_messages,
-        head_rev,
+        head_rev: history_head,
         pre_phase_ms,
+    })))
+}
+
+/// A name a change could not anchor (#336): its definitions stand in for
+/// the changed hunks, so the run that follows is impact's own — reverse
+/// discovery from the definition, the call edges into it, the tests that
+/// reach each caller.
+pub enum Anchor<'a> {
+    Diff(Option<&'a str>),
+    Symbol(&'a str),
+}
+
+const MAX_SYMBOL_FILES: usize = 256;
+
+fn resolve_symbol_change_set(
+    root_dir: &Path,
+    scope: &[String],
+    query: &str,
+    run: &crate::resource::RunContext,
+    t_entry: Instant,
+) -> Result<ChangeSet> {
+    let (path, name) = match query.rsplit_once(':') {
+        Some((p, n)) if !p.is_empty() => (Some(p), n),
+        _ => (None, query),
+    };
+    let is_name = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+    if !is_name {
+        anyhow::bail!("--symbol takes NAME or PATH:NAME, got {query:?}");
+    }
+    let pathspec: Vec<String> = match path {
+        Some(p) => vec![crate::paths::to_posix_display(std::borrow::Cow::Borrowed(
+            p,
+        ))],
+        None => scope.to_vec(),
+    };
+    let mut files = git::grep_files_with_word(root_dir, name, &pathspec)?;
+    let rel: Vec<String> = files
+        .iter()
+        .filter_map(|f| rel_path_string(root_dir, f))
+        .collect();
+    let withheld: FxHashSet<String> = withheld_paths(root_dir, &rel).into_iter().collect();
+    files.retain(|f| {
+        !is_lockfile_path(f) && rel_path_string(root_dir, f).is_some_and(|r| !withheld.contains(&r))
+    });
+    if files.len() > MAX_SYMBOL_FILES {
+        files.truncate(MAX_SYMBOL_FILES);
+        run.note(crate::resource::LimitReason::CandidateLimit);
+    }
+
+    let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
+    let fragments = crate::fragmentation::process_files_for_fragments(
+        &files,
+        root_dir,
+        &[],
+        &mut seen,
+        None,
+        true,
+        run,
+    );
+    let definitions: Vec<&Fragment> = fragments
+        .iter()
+        .filter(|f| f.symbol_name.as_deref() == Some(name) && f.kind.is_definition_kind())
+        .collect();
+    if definitions.is_empty() {
+        anyhow::bail!(
+            "no definition of {name:?} found{}",
+            path.map(|p| format!(" in {p}")).unwrap_or_default()
+        );
+    }
+
+    let mut hunks = Vec::with_capacity(definitions.len());
+    let mut diff_text = String::new();
+    let mut changed_files: Vec<PathBuf> = Vec::new();
+    for def in &definitions {
+        let (start, len) = (def.start_line(), def.line_count());
+        hunks.push(crate::types::DiffHunk {
+            path: Arc::from(def.path()),
+            new_start: start,
+            new_len: len,
+            old_start: start,
+            old_len: len,
+        });
+        let display = crate::paths::display_rel_or_abs(root_dir, Path::new(def.path()));
+        let _ = write!(
+            diff_text,
+            "diff --git a/{display} b/{display}\n--- a/{display}\n+++ b/{display}\n@@ -{start},{len} +{start},{len} @@\n"
+        );
+        for line in def.content.lines() {
+            diff_text.push('+');
+            diff_text.push_str(line);
+            diff_text.push('\n');
+        }
+        let file = PathBuf::from(def.path());
+        if !changed_files.contains(&file) {
+            changed_files.push(file);
+        }
+    }
+
+    Ok(ChangeSet::Ready(Box::new(ChangeSetData {
+        commit_count: 0,
+        hunks,
+        diff_text,
+        changed_files,
+        deleted_display: Vec::new(),
+        renamed_display: Vec::new(),
+        lockfile_display: Vec::new(),
+        ignored_display: Vec::new(),
+        policy_excluded: 0,
+        preferred_revs: Vec::new(),
+        commit_message: None,
+        commit_messages: Vec::new(),
+        head_rev: None,
+        pre_phase_ms: t_entry.elapsed().as_secs_f64() * 1000.0,
     })))
 }
 
@@ -672,10 +839,64 @@ pub fn compute_scored_state_with(
     timeout: u64,
     reverse_references: bool,
 ) -> Result<ScoredState> {
+    compute_scored_state_anchored(
+        root_dir,
+        Anchor::Diff(diff_range),
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+        reverse_references,
+    )
+}
+
+/// The range a diff anchor resolves to (a duration window becomes a
+/// revision range) and the change set either anchor yields.
+fn resolve_anchor(
+    root_dir: &Path,
+    anchor: Anchor<'_>,
+    scope: &[String],
+    run: &crate::resource::RunContext,
+    t_entry: Instant,
+) -> Result<(Option<String>, Option<git::StagedSnapshot>, ChangeSet)> {
+    match anchor {
+        Anchor::Diff(diff_range) => {
+            let resolved = git::resolve_duration_range(root_dir, diff_range)?;
+            let range = resolved.range.as_deref();
+            let is_working_tree_diff = resolved.from_duration || is_working_tree_range(range);
+            run.set_source(crate::source::Source::for_range(root_dir, range)?);
+            let change_set = resolve_change_set(
+                root_dir,
+                range,
+                resolved.staged.as_ref(),
+                scope,
+                is_working_tree_diff,
+                t_entry,
+            )?;
+            Ok((resolved.range, resolved.staged, change_set))
+        }
+        Anchor::Symbol(query) => Ok((
+            None,
+            None,
+            resolve_symbol_change_set(root_dir, scope, query, run, t_entry)?,
+        )),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compute_scored_state_anchored(
+    root_dir: &Path,
+    anchor: Anchor<'_>,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+    reverse_references: bool,
+) -> Result<ScoredState> {
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
-    let run = crate::resource::RunContext::new(crate::resource::ResourceBudget::resolve(timeout));
+    let run = crate::resource::RunContext::for_run(timeout);
     let _in_run = run.enter();
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
@@ -687,31 +908,32 @@ pub fn compute_scored_state_with(
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
 
-    let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
-    let diff_range = resolved.range.as_deref();
-    let is_working_tree_diff = resolved.from_duration || is_working_tree_range(diff_range);
+    let (resolved_range, staged, change_set) =
+        resolve_anchor(&root_dir, anchor, &scope, &run, t_entry)?;
+    let index_tree = staged.map(|s| s.tree);
+    let diff_range = resolved_range.as_deref();
 
-    let data =
-        match resolve_change_set(&root_dir, diff_range, &scope, is_working_tree_diff, t_entry)? {
-            ChangeSet::Empty {
-                changed_files,
-                lockfile_changes,
-                ignored_changes,
-                policy_excluded_count,
-            } => {
-                let mut state =
-                    empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
-                state.change_classes =
-                    classify_changes(&state.root_dir, &changed_files, &[], "", &[]);
-                state.changed_files = changed_files;
-                state.lockfile_changes = lockfile_changes;
-                state.ignored_changes = ignored_changes;
-                state.policy_excluded_count = policy_excluded_count;
-                state.envelope_tokens = envelope_tokens_of(&state);
-                return Ok(state);
-            }
-            ChangeSet::Ready(data) => data,
-        };
+    let data = match change_set {
+        ChangeSet::Empty {
+            changed_files,
+            lockfile_changes,
+            ignored_changes,
+            policy_excluded_count,
+        } => {
+            let mut state = empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
+            state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], "", &[]);
+            state.changed_files = changed_files;
+            state.lockfile_changes = lockfile_changes;
+            state.ignored_changes = ignored_changes;
+            state.policy_excluded_count = policy_excluded_count;
+            state.index_tree = index_tree;
+            state.analysed_range = resolved_range.clone();
+            state.run.set_source(run.source());
+            state.envelope_tokens = envelope_tokens_of(&state);
+            return Ok(state);
+        }
+        ChangeSet::Ready(data) => data,
+    };
     let ChangeSetData {
         commit_count,
         hunks,
@@ -728,6 +950,7 @@ pub fn compute_scored_state_with(
         head_rev,
         pre_phase_ms,
     } = *data;
+    run.set_head_rev(head_rev.clone());
 
     let t0 = Instant::now();
 
@@ -815,6 +1038,7 @@ pub fn compute_scored_state_with(
         expansion_concepts,
         file_cache,
         token_corpus: std::sync::OnceLock::new(),
+        source: crate::source::current(),
     };
 
     let (discovered_files, discovery_attribution) =
@@ -928,6 +1152,8 @@ pub fn compute_scored_state_with(
         provenance,
         run,
         envelope_tokens: 0,
+        index_tree,
+        analysed_range: resolved_range.clone(),
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
@@ -1559,8 +1785,75 @@ pub fn select_with_params(
     if output.redactions.is_some() {
         limits.push(crate::resource::LimitReason::SanitizationRedaction);
     }
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &limits);
+    let about = answer_paths(state, selected.iter());
+    output.coverage =
+        crate::resource::CoverageReport::build(&state.run, &limits, &|p| about.contains(p));
     output
+}
+
+/// The files an answer is about — the changed ones and those it selected
+/// from — by display path: a per-file limit elsewhere cost it nothing.
+/// A code file the run could not read is about the answer too when it
+/// imports a changed module: a caller dropped for its size is lost context.
+pub(crate) struct AnswerScope {
+    root: PathBuf,
+    paths: FxHashSet<String>,
+    stems: Vec<String>,
+    source: crate::source::Source,
+}
+
+impl AnswerScope {
+    pub(crate) fn contains(&self, display_path: &str) -> bool {
+        if self.paths.contains(display_path) {
+            return true;
+        }
+        let ext = crate::edges::base::file_ext(Path::new(display_path));
+        if self.stems.is_empty()
+            || !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
+        {
+            return false;
+        }
+        let Some(content) = self.source.read_bytes(&self.root.join(display_path)) else {
+            return false;
+        };
+        String::from_utf8_lossy(&content).lines().any(|line| {
+            let head = line.trim_start();
+            ["import ", "from ", "use ", "#include", "require", "mod "]
+                .iter()
+                .any(|k| head.starts_with(k))
+                && head
+                    .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    .any(|w| self.stems.iter().any(|s| s == w))
+        })
+    }
+}
+
+pub(crate) fn answer_paths<'a>(
+    state: &ScoredState,
+    selected: impl Iterator<Item = &'a Fragment>,
+) -> AnswerScope {
+    let stems = state
+        .changed_files
+        .iter()
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()))
+        .filter(|s| s.len() >= 3 && !matches!(*s, "mod" | "lib" | "main" | "index" | "__init__"))
+        .map(str::to_string)
+        .collect();
+    AnswerScope {
+        source: state.run.source(),
+        root: state.root_dir.clone(),
+        paths: state
+            .changed_files
+            .iter()
+            .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+            .chain(
+                selected.map(|f| {
+                    crate::paths::display_rel_or_abs(&state.root_dir, Path::new(f.path()))
+                }),
+            )
+            .collect(),
+        stems,
+    }
 }
 
 /// THE secret-path policy, for every surface. Private-key, keystore and
@@ -1952,6 +2245,9 @@ fn build_diff_context_full(
     let preferred_revs = build_preferred_revs(base_rev.as_deref(), head_rev.as_deref());
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let mut batch_reader = CatFileBatch::new(&root_dir)?;
+    let run = crate::resource::RunContext::unbounded();
+    run.set_source(crate::source::Source::for_range(&root_dir, diff_range)?);
+    let _in_run = run.enter();
     let mut all_fragments = crate::fragmentation::fragment_files(
         &changed_files,
         &root_dir,
@@ -1959,7 +2255,7 @@ fn build_diff_context_full(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         true,
-        &crate::resource::RunContext::unbounded(),
+        &run,
         &hunks,
     );
     assign_token_counts(&mut all_fragments);
@@ -2083,6 +2379,8 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
         change_classes: Vec::new(),
         heavy_latency_ms: HeavyLatencyMs::default(),
         envelope_tokens: 0,
+        index_tree: None,
+        analysed_range: None,
     }
 }
 
@@ -2121,7 +2419,9 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     } else {
         &[]
     };
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run, limits);
+    let about = answer_paths(state, std::iter::empty());
+    output.coverage =
+        crate::resource::CoverageReport::build(&state.run, limits, &|p| about.contains(p));
     output
 }
 
@@ -2154,6 +2454,7 @@ pub(crate) fn create_discovery(
 }
 
 fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
+    let source = crate::source::current();
     // Stream files one at a time to avoid materialising all content before the cap.
     // Previous par_iter().collect() allocated the full eligible corpus into an
     // intermediate Vec before truncating — on repos with thousands of files this
@@ -2166,11 +2467,13 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
         if cache_bytes > GRAPH_FILTERING.max_cache_bytes {
             break;
         }
-        let Ok(meta) = path.metadata() else { continue };
-        if meta.len() as usize > LIMITS.max_file_size {
-            continue;
+        if source.rev().is_none() {
+            let Ok(meta) = path.metadata() else { continue };
+            if meta.len() as usize > LIMITS.max_file_size {
+                continue;
+            }
         }
-        if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Some(content) = source.read_to_string(&path) {
             cache_bytes += content.len();
             cache.insert(path, content);
         }

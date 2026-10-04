@@ -100,6 +100,13 @@ pub struct Coverage {
     /// complete run.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limit_reasons: Vec<crate::resource::LimitReason>,
+    /// Limits the run hit that cost these items nothing: graph caps, and
+    /// per-file caps on files the answer does not touch (#306).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capped: Vec<crate::resource::LimitReason>,
+    /// The files behind the per-file reasons in `limit_reasons`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limited_files: Vec<crate::resource::LimitedFile>,
     /// Changed files with no ranked item at all: the inventory says they
     /// changed, the budget or the selection left nothing of them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -147,6 +154,78 @@ pub struct Summary {
     pub changed: usize,
     pub context: usize,
     pub tests: usize,
+}
+
+impl Summary {
+    fn of(items: &[LocateItem]) -> Self {
+        Self {
+            files: items
+                .iter()
+                .map(|i| i.path.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            changed: items.iter().filter(|i| i.role == Some("changed")).count(),
+            context: items.iter().filter(|i| i.role.is_none()).count(),
+            tests: items.iter().filter(|i| i.group == Some("test")).count(),
+        }
+    }
+}
+
+impl LocateOutput {
+    /// #300: the budget bounds what the reader receives, and that is the
+    /// serialized document — a row per item costs more than the item's own
+    /// tokens. The overflow list is a capped pointer the MCP surface strips,
+    /// so it is not charged. Past the budget: context from the tail, then a
+    /// changed file's second and later items; the first item of every
+    /// changed file stays. Each dropped item is counted in `overflow_count`
+    /// and the cut is recorded as a limit.
+    pub fn fit_to(&mut self, budget: u32) {
+        let cost = |o: &Self| {
+            let mut doc = serde_json::to_value(o).unwrap_or_default();
+            if let Some(map) = doc.as_object_mut() {
+                map.remove("overflow");
+            }
+            crate::tokenizer::count_tokens(&doc.to_string())
+        };
+        if budget == 0 || cost(self) <= budget {
+            return;
+        }
+        while cost(self) > budget {
+            let row = |i: &LocateItem| {
+                crate::tokenizer::count_tokens(&serde_json::to_string(i).unwrap_or_default())
+            };
+            let mut over = cost(self).saturating_sub(budget);
+            let before = self.items.len();
+            while over > 0 {
+                let victim = self
+                    .items
+                    .iter()
+                    .rposition(|i| i.role.is_none())
+                    .or_else(|| {
+                        self.items.iter().enumerate().rev().find_map(|(at, i)| {
+                            self.items[..at]
+                                .iter()
+                                .any(|earlier| earlier.path == i.path)
+                                .then_some(at)
+                        })
+                    });
+                let Some(at) = victim else { break };
+                over = over.saturating_sub(row(&self.items[at]));
+                self.items.remove(at);
+            }
+            if self.items.len() == before {
+                break;
+            }
+            self.overflow_count += before - self.items.len();
+            self.summary = Summary::of(&self.items);
+            self.item_count = self.items.len();
+            let reason = crate::resource::LimitReason::SelectionBudgetExceeded;
+            if !self.coverage.limit_reasons.contains(&reason) {
+                self.coverage.limit_reasons.push(reason);
+                self.coverage.limit_reasons.sort();
+            }
+        }
+    }
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -325,7 +404,7 @@ fn build_coverage(
         // Only where structure was expected. A `.md` or `.json` file has no
         // symbols to find, so listing it as a blind spot is true and useless:
         // there is nothing for the caller to grep for.
-        let parseable = crate::languages::get_language_for_file(file).is_some();
+        let parseable = crate::parsers::has_grammar(file);
         if parseable && !frags.iter().any(|f| is_structural(f.kind)) {
             unparsed.push(file.clone());
         }
@@ -371,13 +450,18 @@ fn build_coverage(
     };
     let truncated = state.scoring_result.ppr_truncated;
     let raw = parsed_share * linked_share * fit_share - if truncated { 0.1 } else { 0.0 };
+    let about = crate::pipeline::answer_paths(state, outcome.selected.iter());
+    let (limit_reasons, capped, limited_files) =
+        crate::resource::classify_limits(&state.run, &[], &|p| about.contains(p));
 
     Coverage {
         unparsed_files: unparsed,
         zero_edge_files: zero_edge,
         ppr_truncated: truncated,
         next_up,
-        limit_reasons: state.run.reasons(),
+        limit_reasons,
+        capped,
+        limited_files,
         unrepresented_changed_files: {
             let represented: FxHashSet<String> = outcome
                 .selected
@@ -572,16 +656,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         ignored_changes: state.ignored_changes.clone(),
         policy_excluded_count: state.policy_excluded_count,
         budget_tokens: outcome.effective_budget,
-        summary: Summary {
-            files: items
-                .iter()
-                .map(|i| i.path.as_str())
-                .collect::<std::collections::BTreeSet<_>>()
-                .len(),
-            changed: items.iter().filter(|i| i.role == Some("changed")).count(),
-            context: items.iter().filter(|i| i.role.is_none()).count(),
-            tests: items.iter().filter(|i| i.group == Some("test")).count(),
-        },
+        summary: Summary::of(&items),
         item_count: items.len(),
         items,
         coverage,

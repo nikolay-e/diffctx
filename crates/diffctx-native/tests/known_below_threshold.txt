@@ -44,7 +44,6 @@ languages/scripting/scripting_001_class_instantiation
 languages/scripting/scripting_004_interface
 languages/scripting/scripting_005_abstract_class
 synthetic/balanced/suite-1/cross-module/bal_crossmod_025_kotlin_event_to_listener
-synthetic/balanced/suite-1/one-hop/bal_1hop_035_java_mapper_to_facade
 synthetic/balanced/suite-1/one-hop/bal_1hop_050_typescript_cache_to_resolver
 synthetic/balanced/suite-1/test-context/bal_testctx_003_python_http_client_test
 synthetic/balanced/suite-1/test-context/bal_testctx_009_python_template_engine_test
@@ -71,7 +70,6 @@ synthetic/gaps/suite-1/gap_156_shell_terraform_secrets_rotation_import_chain
 synthetic/gaps/suite-1/gap_158_shell_terraform_monitoring_setup_single_import
 synthetic/gaps/suite-2/gap2_005_kotlin_python_payment_gateway_null_fix
 synthetic/gaps/suite-2/gap2_088_kotlin_refactor_import_chain_auth_token
-synthetic/gaps/suite-2/gap2_161_ts_signature_cross_module_mqtt_broker
 synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # 2026-08-19 admission-gate batch (#211): measured cost of gating the post-passes/singletons.
 # Mechanisms per arm A/B in the issue: yaml_003/yaml_012/terraform_070 = greedy admits naming-
@@ -105,3 +103,7 @@ builders/nim_import_path
 builders/ocaml_open_module
 # Discovery never admits the imported .nix file into the universe.
 builders/nix_import_path
+# Passed only through a tags edge on `public`/`int`/`void` between the new
+# empty method and UserService; the real path (changed method -> its class ->
+# the class's users) needs the core lifted to its container.
+synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_repo

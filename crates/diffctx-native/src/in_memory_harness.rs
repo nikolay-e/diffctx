@@ -92,6 +92,7 @@ pub fn build_diff_context_in_memory(
         expansion_concepts,
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
+        source: crate::source::Source::WorkingTree,
     };
     let (discovered, _attribution) =
         crate::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);
@@ -165,6 +166,8 @@ pub fn build_diff_context_in_memory(
         &diff_text,
         &all_fragments,
     );
+    let fragmentless =
+        crate::pipeline::fragmentless_changed_files(dummy_root, &changed_files, &all_fragments);
 
     let crate::pipeline::PostpassOutcome {
         mut selected,
@@ -207,7 +210,7 @@ pub fn build_diff_context_in_memory(
         commit_messages: Vec::new(),
         commit_count: 0,
         changes: change_classes,
-        fragmentless: Default::default(),
+        fragmentless,
         changed_files: changed_list,
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),

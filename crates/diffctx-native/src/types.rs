@@ -113,6 +113,26 @@ impl FragmentKind {
         matches!(self, Self::Class | Self::Interface | Self::Struct)
     }
 
+    /// A kind a reader names when asked what changed: the declaration around
+    /// a hunk, never a local inside it.
+    pub fn is_definition_kind(&self) -> bool {
+        matches!(
+            self,
+            Self::Function
+                | Self::Class
+                | Self::Struct
+                | Self::Impl
+                | Self::Interface
+                | Self::Enum
+                | Self::Module
+                | Self::Type
+                | Self::Record
+                | Self::Property
+                | Self::Declaration
+                | Self::Definition
+        )
+    }
+
     pub fn is_signature(&self) -> bool {
         matches!(
             self,

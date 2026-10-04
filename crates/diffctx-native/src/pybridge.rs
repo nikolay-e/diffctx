@@ -44,6 +44,39 @@ fn detach_guarded<T: Send>(
     py.detach(work).map_err(map_pipeline_err)
 }
 
+/// A withdrawable request: `scope(fn)` runs `fn` so that every pipeline it
+/// starts on this thread stops at its next poll, and every git child it is
+/// waiting on is killed, once `cancel()` is called from any thread. The MCP
+/// server cancels on its own deadline and on the client's cancellation, so a
+/// worker it abandons does not run on to completion.
+#[pyclass(name = "CancelToken", frozen)]
+struct PyCancelToken {
+    flag: Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[pymethods]
+impl PyCancelToken {
+    #[new]
+    fn new() -> Self {
+        Self {
+            flag: Arc::default(),
+        }
+    }
+
+    fn cancel(&self) {
+        self.flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[getter]
+    fn cancelled(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn scope<'py>(&self, work: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        crate::resource::with_cancel(self.flag.clone(), || work.call0())
+    }
+}
+
 /// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
 /// as the compact `diffctx.locate.v1` JSON string (ranked items + provenance
 /// reasons, no source bodies).
@@ -110,7 +143,9 @@ fn build_locate(
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     paths = Vec::new(),
     markdown = false,
+    symbol = None,
 ))]
+#[allow(clippy::too_many_arguments)]
 fn build_impact(
     py: Python<'_>,
     root_dir: &str,
@@ -120,6 +155,7 @@ fn build_impact(
     timeout: u64,
     paths: Vec<String>,
     markdown: bool,
+    symbol: Option<String>,
 ) -> PyResult<String> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -130,10 +166,14 @@ fn build_impact(
         Some(diff_range.to_string())
     };
     // A scoped answer reviewed part of the change; the gate keys on all of it.
-    let mark = paths
-        .is_empty()
-        .then(|| diff_range_or_head(diff_range).to_string());
+    let mark =
+        (paths.is_empty() && symbol.is_none()).then(|| diff_range_or_head(diff_range).to_string());
     let output = detach_guarded(py, move || {
+        if let Some(symbol) = symbol {
+            return crate::pipeline::build_symbol_impact(
+                &path, &symbol, &paths, alpha, mode, timeout,
+            );
+        }
         let output = crate::pipeline::build_diff_context_impact(
             &path,
             range.as_deref(),
@@ -143,7 +183,7 @@ fn build_impact(
             timeout,
         )?;
         if let Some(range) = mark {
-            crate::hook::mark_range_reviewed(&path, &range);
+            crate::hook::mark_range_reviewed(&path, &range, &output);
         }
         Ok(output)
     })?;
@@ -715,6 +755,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_scored_state, m)?)?;
     m.add_function(wrap_pyfunction!(select_with_params, m)?)?;
     m.add_class::<PyScoredState>()?;
+    m.add_class::<PyCancelToken>()?;
     m.add_function(wrap_pyfunction!(get_raw_diff_text, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_diff_range, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;

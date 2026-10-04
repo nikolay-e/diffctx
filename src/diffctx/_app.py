@@ -500,7 +500,7 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         _run_locate_mode(args, prog)
         return
 
-    if args.diff_range and args.mode == "impact":
+    if (args.diff_range or args.symbol) and args.mode == "impact":
         _run_impact_mode(args, prog)
         return
 
@@ -549,6 +549,7 @@ def _run_impact_mode(args: ParsedArgs, prog: str) -> None:
             timeout=args.timeout,
             paths=_diff_scope(args),
             markdown=args.output_format == "md",
+            symbol=args.symbol,
         ),
         args.timeout,
         prog,

@@ -235,6 +235,20 @@ impl EdgeBuilder for PythonEdgeBuilder {
             })
             .collect();
 
+        // An import sits in the file's import chunk, never in the function
+        // that makes the call: confirmation is a fact about the file, and
+        // judged per fragment almost no Python call edge cleared the naming
+        // floor (#317, #339).
+        let mut file_modules: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
+        for f in &py_frags {
+            if let Some(imports) = frag_imports.get(&f.id) {
+                file_modules
+                    .entry(f.path())
+                    .or_default()
+                    .extend(imports.modules.iter().map(String::as_str));
+            }
+        }
+
         let frag_to_module: FxHashMap<FragmentId, String> = py_frags
             .iter()
             .filter_map(|f| {
@@ -246,6 +260,29 @@ impl EdgeBuilder for PythonEdgeBuilder {
                 }
             })
             .collect();
+
+        // `from m import f as g`: a call to `g` is a call to `m.f`. The same
+        // binding facts impact resolves callers with, so the graph and the
+        // answer agree on what an alias reaches (#344).
+        let mut file_aliases: FxHashMap<&str, FxHashMap<String, (String, String)>> =
+            FxHashMap::default();
+        for f in &py_frags {
+            for (local, target) in crate::bindings::python_bindings(&f.content).names {
+                if let crate::bindings::Target::Member { module, name } = target {
+                    if local == name {
+                        continue;
+                    }
+                    if let Some(module) =
+                        resolve_from_module(&module, Path::new(f.path()), repo_root)
+                    {
+                        file_aliases
+                            .entry(f.path())
+                            .or_default()
+                            .insert(local, (module, name));
+                    }
+                }
+            }
+        }
 
         let referencing_files = count_referencing_files(&py_frags, &name_to_defs, &frag_defines);
         let (module_reps, module_defs) = module_targets(&py_frags, &frag_defines, repo_root);
@@ -283,6 +320,22 @@ impl EdgeBuilder for PythonEdgeBuilder {
                     if self_defs.contains(name) {
                         continue;
                     }
+                    if let Some((module, original)) =
+                        file_aliases.get(f.path()).and_then(|a| a.get(name))
+                    {
+                        if let Some(tgt) = module_defs.get(module).and_then(|d| d.get(original)) {
+                            if tgt != &f.id {
+                                base::add_edge(
+                                    &mut edges,
+                                    &f.id,
+                                    tgt,
+                                    base_weight * PYTHON_SEMANTIC.import_confirmed_boost,
+                                    PYTHON_SEMANTIC.reverse_factor,
+                                );
+                            }
+                        }
+                        continue;
+                    }
                     // Same ambiguity bar as CFamilySemanticWeights::
                     // max_files_per_name: a name defined in more files than
                     // this is vocabulary, not a dependency. Uncapped, this
@@ -302,8 +355,10 @@ impl EdgeBuilder for PythonEdgeBuilder {
                             }
                             let dst_module =
                                 frag_to_module.get(dst_id).map(|s| s.as_str()).unwrap_or("");
-                            let confirmed =
-                                !dst_module.is_empty() && src_imports.modules.contains(dst_module);
+                            let confirmed = !dst_module.is_empty()
+                                && file_modules
+                                    .get(f.path())
+                                    .is_some_and(|m| m.contains(dst_module));
                             if !confirmed
                                 && referencing_files.get(name).copied().unwrap_or(0)
                                     > MAX_REFERENCING_FILES_UNCONFIRMED
@@ -390,7 +445,18 @@ impl EdgeBuilder for PythonEdgeBuilder {
         let mut module_to_files: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
         let mut file_to_imports: FxHashMap<PathBuf, FxHashSet<String>> = FxHashMap::default();
 
-        for f in candidates {
+        // The changed files are indexed too: their own imports are the
+        // forward hop (#341). A module is registered under its exact name
+        // only — under every ancestor package, `import a` discovered all of
+        // `a`; `import a.b` still reaches `a/__init__.py` by its own name.
+        let mut indexed: Vec<&PathBuf> = candidates.iter().collect();
+        indexed.extend(
+            py_changed
+                .iter()
+                .copied()
+                .filter(|c| !candidates.contains(c)),
+        );
+        for f in indexed {
             if !is_python_file(f) {
                 continue;
             }
@@ -401,13 +467,6 @@ impl EdgeBuilder for PythonEdgeBuilder {
                     .entry(module.clone())
                     .or_default()
                     .push(f.clone());
-                let parts: Vec<&str> = module.split('.').collect();
-                for i in 1..parts.len() {
-                    module_to_files
-                        .entry(parts[..i].join("."))
-                        .or_default()
-                        .push(f.clone());
-                }
             }
             let content = base::read_file_cached(f, file_cache);
             if let Some(c) = content {

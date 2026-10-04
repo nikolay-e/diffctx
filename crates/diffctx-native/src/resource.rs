@@ -42,6 +42,10 @@ pub enum LimitReason {
     DiscoveryTruncated,
     DiffusionTruncated,
     Deadline,
+    /// The caller withdrew the request (an MCP cancellation, the MCP
+    /// deadline): work stopped at the next poll instead of running on
+    /// detached.
+    Cancelled,
     EvidenceBudgetExceeded,
     SelectionBudgetExceeded,
     SanitizationRedaction,
@@ -143,12 +147,56 @@ pub struct ResourceUsage {
     pub final_edges: u64,
 }
 
-/// The disclosure block of an artifact whose run hit a limit: absent when
-/// nothing limited the run, so a complete run's output is unchanged.
+/// A limit that touched one file, by its display path.
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LimitedFile {
+    pub path: String,
+    pub reason: LimitReason,
+}
+
+impl LimitReason {
+    /// Loses context wherever it fires: the run as a whole stopped short.
+    fn is_run_wide_loss(self) -> bool {
+        matches!(
+            self,
+            Self::Deadline
+                | Self::Cancelled
+                | Self::DiscoveryTruncated
+                | Self::CandidateLimit
+                | Self::TotalByteLimit
+                | Self::EdgeContributionLimit
+                | Self::EvidenceBudgetExceeded
+                | Self::SelectionBudgetExceeded
+                | Self::SanitizationRedaction
+        )
+    }
+
+    /// Loses context only in the file it names.
+    fn is_per_file(self) -> bool {
+        matches!(
+            self,
+            Self::FileTooLarge | Self::FragmentLimit | Self::NonUtf8Content
+        )
+    }
+}
+
+const MAX_LIMITED_FILES_LISTED: usize = 20;
+
+/// What a run's limits mean for the reader (#306). `limit_reasons` are the
+/// ones that can have cost this answer context: a run-wide stop, or a
+/// per-file limit on a file the answer is about (changed, or holding a
+/// selected fragment). Graph caps every repository trips, and a size cap on
+/// a lockfile nobody reads, go to `capped` and leave the status `complete`.
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct CoverageReport {
     pub status: &'static str,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limit_reasons: Vec<LimitReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capped: Vec<LimitReason>,
+    /// The files behind the per-file reasons in `limit_reasons`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limited_files: Vec<LimitedFile>,
     pub resources: ResourceUsage,
     /// Files that were not UTF-8 and were decoded with replacement
     /// characters (`NonUtf8Content`): their symbols and identifiers may be
@@ -157,20 +205,62 @@ pub struct CoverageReport {
     pub lossy_files: Vec<String>,
 }
 
+/// `limit_reasons`, `capped` and the relevant `limited_files` of a run, by
+/// the rule on [`CoverageReport`]. `extra` are the selection's own reasons.
+pub fn classify_limits(
+    ctx: &RunContext,
+    extra: &[LimitReason],
+    relevant: &dyn Fn(&str) -> bool,
+) -> (Vec<LimitReason>, Vec<LimitReason>, Vec<LimitedFile>) {
+    let mut reasons: BTreeSet<LimitReason> = ctx.reasons().into_iter().collect();
+    reasons.extend(extra.iter().copied());
+    let limited: Vec<LimitedFile> = ctx
+        .limited_files()
+        .into_iter()
+        .filter(|f| relevant(&f.path))
+        .collect();
+    let (mut headline, mut capped) = (Vec::new(), Vec::new());
+    for reason in reasons {
+        let loses = reason.is_run_wide_loss()
+            || (reason.is_per_file() && limited.iter().any(|f| f.reason == reason));
+        if loses {
+            headline.push(reason);
+        } else {
+            capped.push(reason);
+        }
+    }
+    let mut limited: Vec<LimitedFile> = limited
+        .into_iter()
+        .filter(|f| headline.contains(&f.reason))
+        .collect();
+    limited.truncate(MAX_LIMITED_FILES_LISTED);
+    (headline, capped, limited)
+}
+
 impl CoverageReport {
-    /// `extra` are the selection's own reasons — per outcome, since one run
-    /// context serves every budget a sweep asks of it. A run that could not
-    /// give every changed file a witness is `degraded`, not merely partial.
-    pub fn from_context(ctx: &RunContext, extra: &[LimitReason]) -> Option<Self> {
-        let mut reasons: BTreeSet<LimitReason> = ctx.reasons().into_iter().collect();
-        reasons.extend(extra.iter().copied());
-        if reasons.is_empty() {
+    /// A run that could not give every changed file a witness is
+    /// `degraded`, not merely partial. Absent when nothing limited the run.
+    pub fn build(
+        ctx: &RunContext,
+        extra: &[LimitReason],
+        relevant: &dyn Fn(&str) -> bool,
+    ) -> Option<Self> {
+        let (limit_reasons, capped, limited_files) = classify_limits(ctx, extra, relevant);
+        if limit_reasons.is_empty() && capped.is_empty() {
             return None;
         }
-        let degraded = reasons.contains(&LimitReason::EvidenceBudgetExceeded);
+        let status = if limit_reasons.contains(&LimitReason::EvidenceBudgetExceeded) {
+            "degraded"
+        } else if limit_reasons.is_empty() {
+            "complete"
+        } else {
+            "partial"
+        };
         Some(Self {
-            status: if degraded { "degraded" } else { "partial" },
-            limit_reasons: reasons.into_iter().collect(),
+            status,
+            limit_reasons,
+            capped,
+            limited_files,
             resources: ctx.usage(),
             lossy_files: ctx.lossy_files(),
         })
@@ -179,12 +269,18 @@ impl CoverageReport {
 
 struct Inner {
     expires_at: Option<Instant>,
+    /// The git ceiling: the CLI `--timeout` even when the test hook spends
+    /// the compute deadline up front, so the run still reaches its phases.
+    io_expires_at: Option<Instant>,
+    cancel: Arc<AtomicBool>,
     budget: ResourceBudget,
     tripped: AtomicBool,
     contributions: AtomicU64,
     reasons: Mutex<BTreeSet<LimitReason>>,
     usage: Mutex<ResourceUsage>,
-    lossy_files: Mutex<BTreeSet<String>>,
+    limited_files: Mutex<BTreeSet<(String, LimitReason)>>,
+    head_rev: Mutex<Option<String>>,
+    source: Mutex<Option<crate::source::Source>>,
 }
 
 #[derive(Clone)]
@@ -194,22 +290,44 @@ pub struct RunContext {
 
 impl RunContext {
     pub fn new(budget: ResourceBudget) -> Self {
+        let io_secs = budget.max_wall_secs;
+        Self::with_io_deadline(budget, io_secs)
+    }
+
+    /// The pipeline's context: `timeout_secs` bounds every git child of the
+    /// run, together, whatever the budget's compute deadline is.
+    pub fn for_run(timeout_secs: u64) -> Self {
+        Self::with_io_deadline(ResourceBudget::resolve(timeout_secs), timeout_secs)
+    }
+
+    fn with_io_deadline(budget: ResourceBudget, io_secs: u64) -> Self {
         // Saturating: an absurd timeout must clamp to "no ceiling", not wrap
         // behind `now` and fire instantly.
-        let expires_at = if budget.max_wall_secs == u64::MAX {
-            None
-        } else {
-            Instant::now().checked_add(Duration::from_secs(budget.max_wall_secs))
+        let after = |secs: u64| {
+            if secs == u64::MAX {
+                None
+            } else {
+                Instant::now().checked_add(Duration::from_secs(secs))
+            }
         };
+        let expires_at = after(budget.max_wall_secs);
+        let io_expires_at = after(io_secs);
+        let cancel = PENDING_CANCEL
+            .with(|c| c.borrow().clone())
+            .unwrap_or_default();
         Self {
             inner: Arc::new(Inner {
                 expires_at,
+                io_expires_at,
+                cancel,
                 budget,
                 tripped: AtomicBool::new(false),
                 contributions: AtomicU64::new(0),
                 reasons: Mutex::new(BTreeSet::new()),
                 usage: Mutex::new(ResourceUsage::default()),
-                lossy_files: Mutex::new(BTreeSet::new()),
+                limited_files: Mutex::new(BTreeSet::new()),
+                head_rev: Mutex::new(None),
+                source: Mutex::new(None),
             }),
         }
     }
@@ -225,17 +343,57 @@ impl RunContext {
     /// A file decoded lossily: `NonUtf8Content` plus the path, so the reader
     /// knows which symbols to distrust.
     pub fn note_lossy(&self, display_path: String) {
-        self.note(LimitReason::NonUtf8Content);
-        self.inner.lossy_files.lock().unwrap().insert(display_path);
+        self.note_file(LimitReason::NonUtf8Content, display_path);
+    }
+
+    /// A limit that cost one file something, with the file: the coverage
+    /// block can then say whether it touched what the answer is about.
+    pub fn note_file(&self, reason: LimitReason, display_path: String) {
+        self.note(reason);
+        self.inner
+            .limited_files
+            .lock()
+            .unwrap()
+            .insert((display_path, reason));
+    }
+
+    /// The commit the analysed change sits on, for the history channels;
+    /// `None` for the working tree and for an unborn branch.
+    pub fn set_head_rev(&self, rev: Option<String>) {
+        *self.inner.head_rev.lock().unwrap() = rev;
+    }
+
+    pub fn source(&self) -> crate::source::Source {
+        self.inner
+            .source
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_default()
+    }
+
+    pub fn set_source(&self, source: crate::source::Source) {
+        *self.inner.source.lock().unwrap() = Some(source);
     }
 
     pub fn lossy_files(&self) -> Vec<String> {
+        self.limited_files()
+            .into_iter()
+            .filter(|f| f.reason == LimitReason::NonUtf8Content)
+            .map(|f| f.path)
+            .collect()
+    }
+
+    pub fn limited_files(&self) -> Vec<LimitedFile> {
         self.inner
-            .lossy_files
+            .limited_files
             .lock()
             .unwrap()
             .iter()
-            .cloned()
+            .map(|(path, reason)| LimitedFile {
+                path: path.clone(),
+                reason: *reason,
+            })
             .collect()
     }
 
@@ -243,6 +401,11 @@ impl RunContext {
     /// every later poll is a cheap atomic load.
     pub fn check(&self) -> bool {
         if self.inner.tripped.load(Ordering::Relaxed) {
+            return false;
+        }
+        if self.cancelled() {
+            self.note(LimitReason::Cancelled);
+            self.inner.tripped.store(true, Ordering::Relaxed);
             return false;
         }
         match self.inner.expires_at {
@@ -253,6 +416,10 @@ impl RunContext {
             }
             _ => true,
         }
+    }
+
+    pub fn cancelled(&self) -> bool {
+        self.inner.cancel.load(Ordering::Relaxed)
     }
 
     /// Whether the deadline has fired, without re-checking the clock.
@@ -313,6 +480,10 @@ impl RunContext {
 
 thread_local! {
     static CURRENT: RefCell<Option<RunContext>> = const { RefCell::new(None) };
+    /// The cancellation flag the next context created on this thread adopts:
+    /// the FFI entry sets it around the pipeline call, so a withdrawn MCP
+    /// request reaches every phase and every git child of that run.
+    static PENDING_CANCEL: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
     /// What the loops of the builder running on this thread have already
     /// charged through `poll_emissions`, so the orchestrator charges only the
     /// remainder when the builder returns — never the same edge twice.
@@ -332,6 +503,36 @@ impl Drop for ScopedContext {
 
 fn with_current<T>(f: impl FnOnce(&RunContext) -> T) -> Option<T> {
     CURRENT.with(|c| c.borrow().as_ref().map(f))
+}
+
+/// Runs `f` with `flag` as the cancellation of every run it starts.
+pub fn with_cancel<T>(flag: Arc<AtomicBool>, f: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Arc<AtomicBool>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            PENDING_CANCEL.with(|c| *c.borrow_mut() = prev);
+        }
+    }
+    let _restore = Restore(PENDING_CANCEL.with(|c| c.replace(Some(flag))));
+    f()
+}
+
+pub fn current_source() -> Option<crate::source::Source> {
+    with_current(RunContext::source)
+}
+
+/// What bounds a git child started now: the run's I/O deadline and its
+/// cancellation. `None` outside a run.
+pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
+    with_current(|ctx| (ctx.inner.io_expires_at, ctx.inner.cancel.clone()))
+}
+
+/// The head of the range the current run analyses, for builders that read
+/// history: the same `--diff A..B` must see the same past whatever is
+/// checked out (#340).
+pub fn current_head_rev() -> Option<String> {
+    with_current(|ctx| ctx.inner.head_rev.lock().unwrap().clone()).flatten()
 }
 
 /// Intra-loop poll for the builder loops whose single invocation can outrun

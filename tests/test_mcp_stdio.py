@@ -21,7 +21,17 @@ from mcp.client.stdio import stdio_client
 
 _TOOL_SNAPSHOT = {
     "diffctx_context": (
-        ["budget_tokens", "clipboard", "diff_ref", "fragment_ids", "include_raw_diff", "max_tokens", "mode", "repo_path"],
+        [
+            "budget_tokens",
+            "clipboard",
+            "diff_ref",
+            "fragment_ids",
+            "include_raw_diff",
+            "max_tokens",
+            "mode",
+            "repo_path",
+            "symbol",
+        ],
         ["repo_path"],
     ),
 }
@@ -185,7 +195,9 @@ async def test_a_running_server_survives_its_package_being_replaced_on_disk(work
             for module in (site / "diffctx").rglob("*.py"):
                 module.unlink()
             repo = str(workspace["repo"])
-            located = await _step("locate", session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD"}))
+            located = await _step(
+                "locate", session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD", "mode": "locate"})
+            )
             assert not located.isError, located.content[0].text
             ids = [f"{i['path']}:{i['lines']}" for i in json.loads(located.content[0].text)["items"]]
             fetched = await _step(

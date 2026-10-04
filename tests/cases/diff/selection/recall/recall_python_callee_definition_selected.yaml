@@ -1,0 +1,61 @@
+# #339/#317: the import is in the file's import chunk, not in run(); per-fragment
+# confirmation left the call edge under the naming floor and the callee unselected.
+name: recall_python_callee_definition_selected
+tags:
+- lang:python
+- change:single_file
+- context:import_chain
+- distance:1hop
+- difficulty:easy
+repo:
+  initial_files:
+    pkg/__init__.py: ''
+    pkg/helper.py: "def zorblax(v):\n    return v * 2\n"
+    pkg/changed.py: "from pkg.helper import zorblax\n\n\ndef run(x):\n    y = x\n    return zorblax(y)\n"
+    pkg/caller.py: "from pkg.changed import run\n\n\ndef main():\n    return run(3)\n"
+    pkg/noise1.py: "def noise1(a):\n    return a * 1\n"
+    pkg/noise2.py: "def noise2(a):\n    return a * 2\n"
+    pkg/noise3.py: "def noise3(a):\n    return a * 3\n"
+    pkg/noise4.py: "def noise4(a):\n    return a * 4\n"
+    pkg/noise5.py: "def noise5(a):\n    return a * 5\n"
+    pkg/noise6.py: "def noise6(a):\n    return a * 6\n"
+    pkg/noise7.py: "def noise7(a):\n    return a * 7\n"
+    pkg/noise8.py: "def noise8(a):\n    return a * 8\n"
+    pkg/noise9.py: "def noise9(a):\n    return a * 9\n"
+    pkg/noise10.py: "def noise10(a):\n    return a * 10\n"
+    pkg/noise11.py: "def noise11(a):\n    return a * 11\n"
+    pkg/noise12.py: "def noise12(a):\n    return a * 12\n"
+    pkg/noise13.py: "def noise13(a):\n    return a * 13\n"
+    pkg/noise14.py: "def noise14(a):\n    return a * 14\n"
+    pkg/noise15.py: "def noise15(a):\n    return a * 15\n"
+    pkg/noise16.py: "def noise16(a):\n    return a * 16\n"
+    pkg/noise17.py: "def noise17(a):\n    return a * 17\n"
+    pkg/noise18.py: "def noise18(a):\n    return a * 18\n"
+    pkg/noise19.py: "def noise19(a):\n    return a * 19\n"
+    pkg/noise20.py: "def noise20(a):\n    return a * 20\n"
+    pkg/noise21.py: "def noise21(a):\n    return a * 21\n"
+    pkg/noise22.py: "def noise22(a):\n    return a * 22\n"
+    pkg/noise23.py: "def noise23(a):\n    return a * 23\n"
+    pkg/noise24.py: "def noise24(a):\n    return a * 24\n"
+    pkg/noise25.py: "def noise25(a):\n    return a * 25\n"
+    pkg/noise26.py: "def noise26(a):\n    return a * 26\n"
+    pkg/noise27.py: "def noise27(a):\n    return a * 27\n"
+    pkg/noise28.py: "def noise28(a):\n    return a * 28\n"
+    pkg/noise29.py: "def noise29(a):\n    return a * 29\n"
+    pkg/noise30.py: "def noise30(a):\n    return a * 30\n"
+  changed_files:
+    pkg/changed.py: "from pkg.helper import zorblax\n\n\ndef run(x):\n    y = x + 1\n    return zorblax(y)\n"
+  commit_message: 'run: offset by one'
+fragments:
+- id: callee
+  selector:
+    path: pkg/helper.py
+    anchor: def zorblax
+- id: noise
+  selector:
+    path: pkg/noise7.py
+oracle:
+  required:
+  - callee
+  forbidden:
+  - noise

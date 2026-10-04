@@ -422,12 +422,7 @@ pub fn read_file_cached<'a>(
     path: &Path,
     cache: Option<&'a FxHashMap<PathBuf, String>>,
 ) -> Option<String> {
-    if let Some(c) = cache {
-        if let Some(content) = c.get(path) {
-            return Some(content.clone());
-        }
-    }
-    std::fs::read_to_string(path).ok()
+    crate::source::read_cached(path, cache)
 }
 
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {

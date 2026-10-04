@@ -12,7 +12,7 @@ only what a reader cannot recover by looking.
 
 - `python -m diffctx` and the `diffctx` console script enter through
   `diffctx.cli:main`.
-- `diffctx-mcp` enters through `diffctx.mcp.server:main`.
+- `diffctx-mcp` enters through `diffctx.mcp.launch:main`.
 - `python -m eval <subcommand>` is the single evaluation command dispatcher.
 - The standalone Rust binary is built from `crates/diffctx-native/`.
 

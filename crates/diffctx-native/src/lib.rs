@@ -12,6 +12,7 @@ mod paths;
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;
 pub mod change_class;
+pub(crate) mod container;
 pub(crate) mod excerpt;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
@@ -48,6 +49,7 @@ pub mod locate;
 pub mod render;
 
 // Orchestration and shared configuration.
+pub(crate) mod bindings;
 pub mod config;
 pub mod effective_config;
 pub mod mode;
@@ -56,6 +58,7 @@ pub mod pipeline;
 pub mod resource;
 pub mod run_provenance;
 pub mod sanitize;
+pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
 pub(crate) mod types;

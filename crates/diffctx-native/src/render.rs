@@ -185,9 +185,14 @@ impl DiffContextOutput {
             .get_or_insert_with(|| crate::resource::CoverageReport {
                 status: "partial",
                 limit_reasons: Vec::new(),
+                capped: Vec::new(),
+                limited_files: Vec::new(),
                 resources: crate::resource::ResourceUsage::default(),
                 lossy_files: Vec::new(),
             });
+        if coverage.status == "complete" {
+            coverage.status = "partial";
+        }
         if !coverage
             .limit_reasons
             .contains(&crate::resource::LimitReason::SelectionBudgetExceeded)

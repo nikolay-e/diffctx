@@ -206,9 +206,12 @@ With `pip install 'diffctx[mcp]'` already done, replace the
 `uvx --from 'diffctx[mcp]' diffctx-mcp` tail with plain `diffctx-mcp`.
 
 The server exposes one tool, `diffctx_context`, that assistants call when
-reviewing PRs, explaining changes, or investigating broken tests. It ranks the
-code that explains a diff, then reads only the fragments the assistant picked —
-two calls that pay for the selection instead of a whole pack. The wider
+reviewing PRs, explaining changes, or investigating broken tests. By default it
+answers what a change reaches outside its diff — callers, the tests that reach
+them, changed contracts — in under 2k tokens; `symbol` asks the same of a name
+with no change at all. `mode=locate` ranks the code that explains a diff and
+`fragment_ids` then reads only the fragments the assistant picked — two calls
+that pay for the selection instead of a whole pack. The wider
 `get_tree_map` and `get_file_context` tools are opt-in via
 `DIFFCTX_MCP_LEGACY_TOOLS=1`. Filesystem confinement via
 `DIFFCTX_ALLOWED_PATHS`: see [SECURITY.md](SECURITY.md).

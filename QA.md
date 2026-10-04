@@ -98,6 +98,10 @@ silently:
   again (all ten sat on `f047eeae` for two days, 2026-09-30). Tick their
   `rebase-branch` boxes in the dashboard body after every rewrite; the next
   daily run rebuilds them on `main`. Never hand-merge a conflicted bot branch.
+- **`plugin/constraints.txt` is not Renovate's.** cd.yml exports it from
+  `uv.lock` at release — the set CI tested. Renovate used to bump it one
+  package at a time (pydantic and pydantic-core as two PRs, either alone
+  unresolvable); `renovate.json` disables the file since 2026-10-04.
 - **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
   pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
   0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
@@ -143,6 +147,10 @@ silently:
   harness: measurement-only tau override, meaningful only with
   `DIFFCTX_YAML_IGNORE_BASELINE=1`; default run still measures the
   shipped constant.
+- **A test that reads the CLI's stdout decodes it as UTF-8 explicitly**
+  (`encoding="utf-8"` next to `text=True`): the CLI writes UTF-8 and Windows
+  decodes with cp1252, so an assertion on `—` passes everywhere but the five
+  Windows legs.
 - **Python API fragments carry** `content/kind/lines/path/role/symbol`
   only — no `token_count`. Integration tests measuring budget use must
   proxy via `len(content)` (~4 chars/token).
@@ -344,16 +352,15 @@ silently:
   line exists.** The CD sdist gate printed five Rust paths for the log and
   died on the write error; the 1.16.0 release stopped at "Build sdist" with
   nothing published. `grep -m5` prints the same lines without a pipe.
-- **The release tag lives on GitHub only until the next Forgejo push prunes
-  it.** `cd.yml` tags on GitHub; Forgejo is the source of truth and its push
-  mirror removes any tag Forgejo does not have, and a removed tag turns the
-  published release into a draft (assets stop downloading, `npm install`
-  breaks — it fetches the binary from the release). 1.16.0 lost its tag
-  within minutes of the finalize job because a routine `git push origin
-  main` ran first. After every release, before any other push:
-  `git fetch github --tags && git push origin vX.Y.Z`; if the tag is already
-  gone, recreate it on the "Release version X.Y.Z" commit, push to Forgejo
-  first, then GitHub, then `gh release edit vX.Y.Z --draft=false`.
+- **`cd.yml` tags on GitHub only, and nothing carries tags to Forgejo.**
+  Until 2026-10-02 a Forgejo push mirror pruned every tag Forgejo lacked,
+  which drafted the release (assets 404 for `npm install` and Scoop) — 1.16.0
+  and 1.18.2 (#332). That mirror is gone (gitops `dae29cbf2`; `github-reverse-sync`
+  moves branches only), and `publish-extras.yml` now recreates a missing tag
+  at the "Release version X.Y.Z" commit and un-drafts the release, with a
+  `::warning::`. Still push the tag to Forgejo by hand after a release
+  (`git fetch github --tags && git push origin vX.Y.Z`); re-adding a push
+  mirror brings the pruning back.
 - **A dependency PR merged right after a release fails `uv sync --locked`.**
   Its `uv.lock` still names the pre-release project version; the bump
   changed `pyproject.toml` underneath it. `uv lock` (one-line diff) and
@@ -503,6 +510,9 @@ silently:
 - None of the resolutions above exist on the self-hosted server: they were
   made on the retired hosted instance and did not migrate, so every one
   re-raises until it is resolved again.
+- The landing page's `doi.org/10.5281/zenodo.18824579` answers 403 to a
+  scripted HEAD; a GET with a browser User-Agent follows two redirects to the
+  Zenodo record (200). Not a broken link.
 
 ## Recurring bug patterns (diagnose once, recognise thereafter)
 

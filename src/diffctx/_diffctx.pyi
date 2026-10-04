@@ -1,4 +1,7 @@
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 class GitError(Exception): ...
 
@@ -17,6 +20,13 @@ class PyProjectGraph:
     def root_dir(self) -> str: ...
 
 class PyScoredState: ...
+
+class CancelToken:
+    def __init__(self) -> None: ...
+    def cancel(self) -> None: ...
+    @property
+    def cancelled(self) -> bool: ...
+    def scope(self, work: Callable[[], _T]) -> _T: ...
 
 class PyQuotientGraph:
     @property
@@ -68,6 +78,7 @@ def build_impact(
     timeout: int = ...,
     paths: list[str] = ...,
     markdown: bool = ...,
+    symbol: str | None = ...,
 ) -> str: ...
 def hook_respond(event: str, stdin_json: str, gate: bool = ...) -> str | None: ...
 def compute_scored_state(

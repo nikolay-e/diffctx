@@ -143,9 +143,16 @@ def test_the_per_file_fragment_cap_keeps_the_edit_and_says_so(tmp_path):
 def test_the_per_node_edge_cap_is_disclosed(tmp_path):
     callers = {f"c{i}.py": f"from core import target\n\n\ndef call_{i}():\n    return target({i})\n" for i in range(6)}
     repo = _two_commit_repo(tmp_path, {"core.py": _TARGET_BEFORE, **callers}, {"core.py": _TARGET_AFTER})
-    _assert_reason_on_every_format(_docs_per_format(repo, {"DIFFCTX_MAX_EDGES_PER_NODE": "1"}), "edge_limit")
+    # A per-node cap prunes edges by design and every real repository trips
+    # it; it is disclosed as `capped`, and the reader is not warned (#306).
+    docs = _docs_per_format(repo, {"DIFFCTX_MAX_EDGES_PER_NODE": "1"})
+    assert "edge_limit" in yaml.safe_load(docs["yaml"])["coverage"]["capped"]
+    coverage = json.loads(docs["json"])["coverage"]
+    assert "edge_limit" in coverage["capped"]
+    assert "edge_limit" not in coverage.get("limit_reasons", [])
+    assert "Coverage:" not in docs["md"]
     uncapped = json.loads(_docs_per_format(repo, {})["json"])
-    assert "edge_limit" not in (uncapped.get("coverage") or {}).get("limit_reasons", [])
+    assert "edge_limit" not in (uncapped.get("coverage") or {}).get("capped", [])
 
 
 def _function(i: int, lines: int, value: int) -> str:

@@ -12,32 +12,33 @@ use super::super::base::{EdgeBuilder, add_edge};
 pub struct CochangeEdgeBuilder;
 
 impl CochangeEdgeBuilder {
+    /// The commits before the range's head, not before whatever is checked
+    /// out, under the git timeout; `-z` keeps non-ASCII paths unquoted (#340).
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
-        let output = crate::git::git_command(repo_root)
-            .args([
+        let head = crate::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
+        let limit = format!("-n{}", COCHANGE.commits_limit);
+        let stdout = crate::git::run_git(
+            repo_root,
+            &[
                 "log",
                 "--name-only",
-                "--pretty=format:",
-                &format!("-n{}", COCHANGE.commits_limit),
-            ])
-            .output()
-            .ok()?;
-
-        if !output.status.success() {
-            return None;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+                "-z",
+                "--format=%x1e",
+                &limit,
+                &head,
+                "--",
+            ],
+        )
+        .ok()?;
         let commits: Vec<Vec<String>> = stdout
-            .split("\n\n")
-            .filter(|c| !c.trim().is_empty())
+            .split('\u{1e}')
             .map(|c| {
-                c.trim()
-                    .split('\n')
+                c.split(['\0', '\n'])
                     .filter(|l| !l.is_empty())
-                    .map(|l| l.to_string())
-                    .collect()
+                    .map(str::to_string)
+                    .collect::<Vec<String>>()
             })
+            .filter(|files| !files.is_empty())
             .collect();
 
         Some(commits)

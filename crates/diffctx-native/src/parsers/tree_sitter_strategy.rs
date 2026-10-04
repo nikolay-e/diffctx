@@ -172,7 +172,9 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ],
     },
     LangConfig {
-        extensions: &[".php", ".phtml"],
+        extensions: &[
+            ".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps",
+        ],
         ts_name: "php",
         definition_types: &[
             "function_definition",
@@ -687,6 +689,13 @@ static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
 
 fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
     LANGUAGE_CACHE.get(ts_name).cloned()
+}
+
+/// A grammar compiled into this build parses the file: structure is to be
+/// expected, so its absence is a blind spot. A language without one is read
+/// as text by design (#330).
+pub fn has_grammar(path: &str) -> bool {
+    find_lang_config(path).is_some_and(|c| LANGUAGE_CACHE.contains_key(c.ts_name))
 }
 
 /// A parse of `content` under the named grammar, from the same thread-local
@@ -1700,6 +1709,63 @@ mod grammar_tests {
                 );
             }
         }
+    }
+
+    /// Languages the extension map knows and this build reads as text: no
+    /// grammar, by decision. A grammar dropped from the build (Kotlin, once)
+    /// or a mapping added without one fails here instead of turning into a
+    /// silent blind spot (#330).
+    const TEXT_LANGUAGES: &[&str] = &[
+        "ada",
+        "asciidoc",
+        "asm",
+        "batch",
+        "bazel",
+        "bibtex",
+        "cobol",
+        "d",
+        "diff",
+        "dockerfile",
+        "elisp",
+        "fish",
+        "fortran",
+        "fsharp",
+        "ini",
+        "jinja",
+        "kotlin",
+        "latex",
+        "lisp",
+        "markdown",
+        "nim",
+        "pascal",
+        "perl",
+        "powershell",
+        "properties",
+        "protobuf",
+        "racket",
+        "rst",
+        "scheme",
+        "sql",
+        "systemverilog",
+        "text",
+        "toml",
+        "v",
+        "vhdl",
+        "vim",
+        "xml",
+    ];
+
+    #[test]
+    fn every_mapped_language_has_a_grammar_or_is_declared_text() {
+        let mut missing: Vec<(&str, &str)> = crate::languages::EXTENSION_TO_LANGUAGE
+            .iter()
+            .filter(|(ext, lang)| {
+                !has_grammar(&format!("file{ext}")) && !TEXT_LANGUAGES.contains(lang)
+            })
+            .map(|(ext, lang)| (*lang, *ext))
+            .collect();
+        missing.sort();
+        assert!(missing.is_empty(), "mapped without a grammar: {missing:?}");
     }
 
     #[test]

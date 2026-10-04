@@ -47,6 +47,7 @@ def _run(cwd: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=120,
     )
 
@@ -71,9 +72,9 @@ class TestImpactCli:
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "impact", "-q"])
         assert result.returncode == 0, result.stderr
         assert "shop/checkout.py::charge" in result.stdout
-        assert "tested by tests/test_checkout.py" in result.stdout
+        assert "reachable from tests: tests/test_checkout.py" in result.stdout
         assert "shop/report.py::summarize" in result.stdout
-        assert "UNTESTED" in result.stdout
+        assert "summarize (4-5) — no static test link found" in result.stdout
         assert len(result.stdout.splitlines()) <= 25
 
     def test_a_docs_only_change_is_empty_and_exits_zero(self, impact_repo):
@@ -129,7 +130,7 @@ class TestImpactMcp:
         text = _get_text(result)
         assert text.startswith("diffctx impact for")
         assert "shop/checkout.py::charge" in text
-        assert "UNTESTED" in text
+        assert "summarize (4-5) — no static test link found" in text
 
     @pytest.mark.asyncio
     async def test_mode_impact_refuses_the_raw_diff(self, server, impact_repo):
@@ -171,3 +172,106 @@ def test_machine_read_output_is_utf8_under_a_cp1252_console(tmp_path):
         assert result.returncode == 0, (mode, result.stderr.decode("utf-8", "replace")[-400:])
         text = result.stdout.decode("utf-8")
         assert expected in text, (mode, text[:400])
+
+
+class TestSymbolQuery:
+    """The questions an agent asks before it has changed anything — who calls
+    this, where is it defined, which tests reach it — answered by the impact
+    walk anchored on the name's definitions instead of a diff (#336)."""
+
+    @pytest.fixture
+    def clean_repo(self, impact_repo):
+        repo, _ = impact_repo
+        repo.add_file("legacy/tally.py", "def total(rows):\n    return len(rows)\n")
+        repo.add_file(
+            "legacy/invoice.py",
+            "from legacy.tally import total\n\n\ndef bill(rows):\n    return total(rows)\n",
+        )
+        repo.add_file(
+            "shop/discount.py",
+            "def rebate(cart):\n    return cart.base * 0.1\n\n\ndef apply(cart):\n    return cart.base - rebate(cart)\n",
+        )
+        repo.commit("legacy pricing, discounts")
+        return repo
+
+    def test_names_definition_callers_and_their_tests(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "shop/pricing.py:total", "-q", "-f", "md"])
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.startswith("diffctx impact for symbol shop/pricing.py:total: 1 definition(s)")
+        assert "- shop/pricing.py::total" in result.stdout
+        assert "called from shop/checkout.py::charge" in result.stdout
+        assert "reachable from tests: tests/test_checkout.py" in result.stdout
+        assert "called from shop/report.py::summarize" in result.stdout
+        assert "legacy/" not in result.stdout
+
+    def test_a_bare_name_answers_for_every_definition(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "total", "-q", "-f", "json"])
+        assert result.returncode == 0, result.stderr
+        doc = json.loads(result.stdout)
+        assert doc["symbol"] == "total"
+        callers = {d["path"]: {c["path"] for c in d["callers"]} for d in doc["changed"]}
+        assert callers["legacy/tally.py"] == {"legacy/invoice.py"}
+        assert {"shop/checkout.py", "shop/report.py"} <= callers["shop/pricing.py"]
+
+    def test_a_caller_in_the_defining_file_counts(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "rebate", "-q", "-f", "md"])
+        assert result.returncode == 0, result.stderr
+        assert "called from shop/discount.py::apply" in result.stdout
+
+    def test_a_symbol_with_no_callers_still_says_where_it_is(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "apply", "-q", "-f", "md"])
+        assert result.returncode == 0, result.stderr
+        assert "1 definition(s), 0 caller(s)" in result.stdout
+        assert "- shop/discount.py::apply" in result.stdout
+
+    def test_an_unknown_name_is_an_error_naming_it(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "no_such_function", "-q"])
+        assert result.returncode != 0
+        assert 'no definition of "no_such_function" found' in result.stderr
+
+    @pytest.mark.parametrize(
+        "args",
+        [["--symbol", "total", "--diff", "HEAD~1"], ["--symbol", "total", "--mode", "locate"], ["--symbol", "a b"]],
+    )
+    def test_conflicting_or_malformed_requests_are_usage_errors(self, clean_repo, args):
+        result = _run(clean_repo.path, [".", *args, "-q"])
+        assert result.returncode == 2 or "--symbol takes NAME" in result.stderr, result.stderr
+        assert result.stdout == ""
+
+    @pytest.mark.asyncio
+    async def test_mcp_symbol_parameter(self, server, clean_repo):
+        result = await server.call_tool("diffctx_context", {"repo_path": str(clean_repo.path), "symbol": "shop/pricing.py:total"})
+        text = _get_text(result)
+        assert text.startswith("diffctx impact for symbol shop/pricing.py:total")
+        assert "shop/checkout.py::charge" in text
+
+
+class TestStagedImpact:
+    """`staged` is the index captured once (#354): the disk's unstaged edits
+    are not part of the answer, through the CLI and the MCP tool alike."""
+
+    @pytest.fixture
+    def staged_repo(self, impact_repo):
+        repo, _ = impact_repo
+        repo.add_file("shop/pricing.py", "def total(items):\n    return sum(i.price for i in items) * 2\n")
+        subprocess.run(["git", "add", "shop/pricing.py"], cwd=repo.path, check=True)
+        (repo.path / "shop" / "report.py").write_text("def summarize(orders):\n    return len(orders)\n", encoding="utf-8")
+        return repo
+
+    def test_cli_and_mcp_answer_for_the_index(self, staged_repo):
+        result = _run(staged_repo.path, [".", "--diff", "staged", "--mode", "impact", "-q", "-f", "json"])
+        assert result.returncode == 0, result.stderr
+        doc = json.loads(result.stdout)
+        assert doc["changed_files"] == ["shop/pricing.py"]
+        assert doc["index_tree"]
+        callers = {c["path"] for s in doc["changed"] for c in s["callers"]}
+        assert callers == {"shop/checkout.py", "shop/report.py"}, "report.py's unstaged edit is not the snapshot"
+
+    @pytest.mark.asyncio
+    async def test_mcp_staged_matches_the_cli(self, server, staged_repo):
+        result = await server.call_tool(
+            "diffctx_context", {"repo_path": str(staged_repo.path), "diff_ref": "staged", "mode": "impact"}
+        )
+        text = _get_text(result)
+        assert text.startswith("diffctx impact for staged changes (index tree ")
+        assert "shop/report.py::summarize" in text

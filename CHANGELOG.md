@@ -7,6 +7,145 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--symbol NAME` (or `PATH:NAME`) and the MCP `symbol` parameter: impact
+  without a diff — where a name is defined, who calls it, and the tests that
+  reach each caller, including calls from its own file. The questions an agent
+  asks before it has changed anything used to have no answer but `grep` (#336).
+- `--diff staged` (also `--diff=--cached`) and MCP `diff_ref="staged"`: the
+  index captured once as a tree is the whole current side of the run — the
+  changed files, the callers, their imports, the test files, the stale
+  references — whatever the disk says. An unborn branch is diffed against the
+  empty tree of the repository's object format, an unmerged index is an error,
+  an empty index diff reads "No changes to analyse.", and impact names the
+  snapshot (`index_tree`, "staged changes (index tree …)") (#354).
+- `diffctx-mcp --version` / `-v`, and `diffctx mcp --version` (#334).
+- Plugin hook: a grep/rg/ag/`git grep` or Grep-tool search for a name the
+  pending change edits is answered once with that name's callers and tests,
+  or one line saying nothing outside calls it (#337). Every hook run, and a
+  launch that never reached diffctx, leaves one line in
+  `<cache>/diffctx/hook.log`, so a silent hook can be told from a failed one (#338).
+
+### Changed
+
+- Impact resolves callers through import bindings in Python and JS/TS
+  (#343, #344, #349, #353). A reference is a caller when the import it goes
+  through lands on the changed file — relative and absolute Python imports,
+  `import … as`, `from … import … as`, package re-exports, ES imports,
+  `require`, `export … from`, and `tsconfig` `paths` read as data; a method
+  call when its receiver is `self`/`this` in that class or a subclass, the
+  class itself, or a variable constructed or annotated as it. Same-named
+  modules (`shop/pricing.py` vs `legacy/pricing.py`, two `App.tsx`), duplicate
+  source roots and unrelated receivers (`update.message`) no longer pass, and
+  an alias call (`took()` for `elapsed`) does — in the graph too, so pack and
+  locate see it. A reference whose import or receiver cannot be resolved is a
+  possible caller (`evidence: "candidate"`, `reason`), listed after the
+  resolved ones and counted in the header; other languages keep the name
+  model and say so. A call through a parameter shadowing the import is not a
+  caller; passing a function on is a `reference`; the chunks of one function,
+  and a file's module-level code, are one caller with its `sites`.
+- A name defined in many files of a language without a binding model, and a
+  Rust method implementing a trait (reachable through `dyn Trait`), say
+  `callers not resolved` instead of being dropped; a qualified `--symbol
+  path:name` resolves whatever the global definition count. An empty impact
+  reads "No resolved static callers outside the diff in the analysed scope."
+- Plugin hook (#342): an answer is keyed by its result identity — the
+  analyser version, the checkout, the base commit and every changed path's
+  final blob id — so every spelling of one snapshot shares it and any new
+  byte, a caller's edit included, is answered at once; there is no time
+  window. An answer is recorded as delivered only when it is returned; a run
+  that timed out is retried, at most twice per identity, and never counts as
+  a review; a partial answer is retried within the same bound. A commit gets
+  a reminder only when its target is exactly what was shown. A view the agent
+  does not read whole is no inspection: `git diff | grep`, `|&`, `--stat`,
+  `--name-only`, `--quiet` (but `--stat --patch`, `--exit-code` and `||` are);
+  `git add … && git commit`, `-a` and pathspec commits are labelled as a
+  preview, and the commit that lands is reviewed after it when it differs. A
+  git command hidden in `$(…)`, backticks or `sh -c` is logged as
+  `unsupported-syntax`. The automatic answer is fitted to 600 tokens with
+  possible callers folded into a count; a search for an edited name never
+  answers "nothing calls it" for a symbol whose callers were not resolved.
+- Test labels say what static analysis shows: "reachable from tests: X" (via
+  a caller, within two call hops), "no static test link found", "no static
+  test link (its file has tests)" — never execution coverage, which a closing
+  line states.
+
+- MCP: `diffctx_context` defaults to `mode="impact"`. Its description and the
+  server instructions promise what a change reaches outside its diff; a call
+  that omitted `mode` got a locate ranking without reverse discovery, missed
+  the callers it asked for and read `tests: 0` (#335). `mode="locate"` and the
+  `fragment_ids` flow are unchanged.
+- Impact names deleted files and counts them, and lists the lines outside the
+  change that still name a deleted or renamed path — a Dockerfile `COPY`, a
+  workflow step, an import (#313, #347). The markdown says "uncommitted
+  changes" or "staged changes" instead of "HEAD".
+- Impact's test labels: a caller is "tested by X" when a test reaches it
+  directly or through up to two callers ("via f"); UNTESTED only when a test
+  reaches its file but not it; otherwise "no test found". A test edge to the
+  file no longer counts as the caller's guard (#348, half of #312).
+- A commit of a change whose impact was already shown gets one line naming
+  it instead of silence; `--amend` reviews the index against `HEAD~1` (#346).
+- Coverage: `partial` only when a limit touched what the answer is about — a
+  run-wide stop, or a per-file limit on a changed file, a selected file or a
+  code file importing a changed module. `limited_files` names them; graph caps
+  every repository hits go to `capped` and print nothing (#306).
+- Python: an import confirms the calls of the whole file, not of the fragment
+  that holds it, so a changed function's callee and callers clear the naming
+  floor; discovery follows the changed files' own imports and no longer pulls
+  in a whole package for an ancestor import (#317, #339, #341).
+- Locate's serialized answer fits `--budget` (the overflow pointer list, which
+  the MCP surface strips, is not charged) (#300).
+
+### Fixed
+
+- An explicit range is analysed from its own head: the discovery universe is
+  the head tree's file list (`ls-tree`), and discovery, the edge builders and
+  the fragment reader read that tree, never the checked-out files. A file
+  added after the range's head no longer becomes context, one deleted only on
+  disk is still there, and a read the snapshot cannot serve is not filled from
+  the disk. Impact computes the base, the commit bounds and the
+  stale-reference search from the resolved range, so a duration window such
+  as `24h` no longer asks git about a revision named `24h` (#354).
+- A stalled git can no longer hang a run (#356). Every git child gets what is
+  left of the run's one deadline rather than a fresh full `--timeout`; its
+  pipes are read on their own threads, so neither the child nor a descendant
+  holding a pipe can hold the caller; on Unix the child's whole process group
+  is killed. A `cat-file --batch` stream that timed out or lost framing is
+  discarded, never reused, and the file is re-read through `git show`. A read
+  the deadline interrupted is reported (`deadline`) instead of being replaced
+  by the disk's copy. MCP cancellation and the MCP deadline now stop the native
+  run and kill its git children (`cancelled`); the corpus harness ends a run
+  whose case exceeds its limit, naming the case.
+- `diffctx-mcp` from a base install (no `[mcp]` extra) died on
+  `import anyio` with a traceback; it now answers `--help`/`--version` and
+  otherwise names the extra to install, exit 3. The release smoke installs the
+  base package into a fresh venv and checks both (#333).
+- The plugin's session start removes the binaries 1.18.1 and earlier
+  downloaded into `$CLAUDE_PLUGIN_DATA/bin` — 61 MB per version that no update
+  ever deleted.
+- A release whose GitHub tag is pruned after CD no longer loses its npm
+  publish: `publish-extras` checks out the release commit, re-creates a
+  missing tag, publishes a release that turned into a draft, and downloads
+  assets by id (#332).
+- Impact: a name inside a string literal or comment is not a call, and a
+  dotted call to a module-level definition counts only through its own module
+  — `re.search` is not a call to a changed `search` (#345); a caller importing
+  a class through its package (`from models import Steps`) is found (#351).
+- Reverse discovery reads Go/Kotlin/Swift `func`/`fun` and Java/C# methods,
+  ignores indented locals and counts each document once per name (#319).
+- Co-change history is read before the range's head, under the git timeout,
+  with non-ASCII paths intact: a historical range no longer depends on what is
+  checked out (#340).
+- Locate lists a file as unparsed only when this build has a grammar for it;
+  SQL, Kotlin or `.txt` changes no longer read `confidence 0.0` (#330).
+  `.php3`–`.php7` and `.phps` reach the PHP grammar.
+- The plugin hook dropped shell redirections into the git arguments, so
+  `git commit -m x 2>&1 | tail` reviewed the whole dirty tree.
+- The tags fallback no longer links code by syntax words (`self`, `None`,
+  `int`, `public`).
+- The in-memory harness marks changed files that yield no fragment (#321).
+
 ## [1.18.2] - 2026-10-01
 
 ### Changed

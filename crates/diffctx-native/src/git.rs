@@ -1,9 +1,9 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdout, Command, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -95,6 +95,14 @@ pub enum GitError {
     Io(#[from] std::io::Error),
     #[error("timeout after {0}s")]
     Timeout(u64),
+    #[error("cancelled")]
+    Cancelled,
+    #[error("cat-file protocol: {0}")]
+    Protocol(String),
+    #[error("Path not found: {0}")]
+    MissingObject(String),
+    #[error("cat-file: blob too large ({size} bytes): {spec}")]
+    BlobTooLarge { size: usize, spec: String },
 }
 
 impl GitError {
@@ -104,6 +112,12 @@ impl GitError {
             self,
             Self::InvalidRange(_) | Self::InvalidDuration(_) | Self::InvalidPath(_)
         )
+    }
+
+    /// The run ran out of time or was withdrawn: what follows is partial,
+    /// never a finding about the file that was being read.
+    pub fn is_interruption(&self) -> bool {
+        matches!(self, Self::Timeout(_) | Self::Cancelled)
     }
 }
 
@@ -250,6 +264,24 @@ pub struct ResolvedRange {
     /// A duration resolves against the live working tree, so untracked files
     /// belong in the change set exactly as they do for a bare `--diff`.
     pub from_duration: bool,
+    pub staged: Option<StagedSnapshot>,
+}
+
+/// The index captured once as a tree: every current-side byte of the run
+/// comes from `tree`, every old one from `base`, whatever the disk or a
+/// later `git add` says. `head` is the commit the snapshot sits on, for the
+/// history channels; `None` on an unborn branch.
+#[derive(Clone, Debug)]
+pub struct StagedSnapshot {
+    pub base: String,
+    pub tree: String,
+    pub head: Option<String>,
+}
+
+/// The public names for the staged index: `staged`, and git's own
+/// `--cached`, accepted literally and nowhere else as an option.
+pub fn is_staged_keyword(spec: &str) -> bool {
+    matches!(spec.trim(), "staged" | "--cached")
 }
 
 impl ResolvedRange {
@@ -257,8 +289,48 @@ impl ResolvedRange {
         Self {
             range: diff_range.map(str::to_string),
             from_duration: false,
+            staged: None,
         }
     }
+}
+
+/// `A..T` where `T` names a tree — the form the plugin hook builds from
+/// `git write-tree` — is a snapshot with content and no history: it gets
+/// the same treatment as `staged`, anchored on `A`.
+fn tree_endpoint(repo_root: &Path, range: &str) -> Option<StagedSnapshot> {
+    let (Some(base), Some(head)) = split_diff_range(range) else {
+        return None;
+    };
+    if !(head.len() >= 7 && head.bytes().all(|b| b.is_ascii_hexdigit()))
+        || validate_rev(&head).is_err()
+    {
+        return None;
+    }
+    let kind = run_git(repo_root, &["cat-file", "-t", &head]).ok()?;
+    (kind.trim() == "tree").then(|| StagedSnapshot {
+        head: rev_oid(repo_root, &base),
+        base,
+        tree: head,
+    })
+}
+
+/// Captures the index. An index with unmerged entries has no tree to
+/// analyse, and falling back to the working tree would answer a different
+/// question, so it is an error naming the cause.
+pub fn capture_staged(repo_root: &Path) -> Result<StagedSnapshot> {
+    let tree = match run_git(repo_root, &["write-tree"]) {
+        Ok(out) => out.trim().to_string(),
+        Err(GitError::CommandFailed(reason)) => {
+            return Err(GitError::CommandFailed(format!(
+                "cannot analyse the staged changes: the index cannot be written as a tree \
+                 (unmerged entries? resolve them and stage the result) — {reason}"
+            )));
+        }
+        Err(e) => return Err(e),
+    };
+    let head = rev_oid(repo_root, "HEAD");
+    let base = head.clone().unwrap_or_else(|| empty_tree_oid(repo_root));
+    Ok(StagedSnapshot { base, tree, head })
 }
 
 /// The oid of the empty tree, used as the base when the repository is younger
@@ -307,10 +379,21 @@ pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Res
     let Some(spec) = diff_range else {
         return Ok(ResolvedRange::verbatim(None));
     };
+    if is_staged_keyword(spec) {
+        let staged = capture_staged(repo_root)?;
+        return Ok(ResolvedRange {
+            range: Some(format!("{}..{}", staged.base, staged.tree)),
+            from_duration: false,
+            staged: Some(staged),
+        });
+    }
     let trimmed = spec.trim();
     let parsed = parse_duration_seconds(trimmed);
     if parsed.is_none() && !looks_like_duration(trimmed) {
-        return Ok(ResolvedRange::verbatim(Some(trimmed)));
+        return Ok(ResolvedRange {
+            staged: tree_endpoint(repo_root, trimmed),
+            ..ResolvedRange::verbatim(Some(trimmed))
+        });
     }
     if rev_exists(repo_root, trimmed) {
         return Ok(ResolvedRange::verbatim(Some(trimmed)));
@@ -331,6 +414,7 @@ pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Res
     Ok(ResolvedRange {
         range: Some(base),
         from_duration: true,
+        staged: None,
     })
 }
 
@@ -358,6 +442,11 @@ pub fn git_command(repo_root: &Path) -> Command {
         // in a user's shell widened every hunk and changed which fragment
         // counted as the core (#263).
         .env_remove("GIT_DIFF_OPTS");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     cmd
 }
 
@@ -402,7 +491,7 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
         }
     })?;
 
-    let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), args)?;
+    let output = supervise(child)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -412,69 +501,199 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn collect_pipe(
-    handle: Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>>,
-    name: &str,
-) -> Result<Vec<u8>> {
-    match handle {
-        None => Ok(Vec::new()),
-        Some(h) => h
-            .join()
-            .map_err(|_| {
-                GitError::Io(std::io::Error::other(format!(
-                    "git {name} reader thread panicked"
-                )))
-            })?
-            .map_err(GitError::Io),
+/// What one git child may spend: the per-call ceiling cut to what the run
+/// has left, so N children cannot each spend a full `--timeout`, plus the
+/// run's cancellation.
+#[derive(Clone)]
+struct ChildLimits {
+    deadline: Instant,
+    cancel: Option<Arc<AtomicBool>>,
+}
+
+/// The slice a blocked wait sleeps before it looks at the cancellation flag
+/// again; a finished child is noticed at once whatever the slice.
+const POLL_SLICE: Duration = Duration::from_millis(100);
+/// How long reaping a killed child may take before it is given up on.
+const REAP_GRACE: Duration = Duration::from_secs(2);
+const MAX_STDERR_BYTES: usize = 64 * 1024;
+
+type RunLimits = (Option<Instant>, Arc<AtomicBool>);
+
+impl ChildLimits {
+    fn current() -> Self {
+        Self::of_run(crate::resource::current_io_limits())
+    }
+
+    fn of_run(run: Option<RunLimits>) -> Self {
+        let ceiling = Instant::now() + Duration::from_secs(git_timeout());
+        match run {
+            Some((io_deadline, cancel)) => Self {
+                deadline: io_deadline.map_or(ceiling, |d| d.min(ceiling)),
+                cancel: Some(cancel),
+            },
+            None => Self {
+                deadline: ceiling,
+                cancel: None,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    fn within(timeout: Duration) -> Self {
+        Self {
+            deadline: Instant::now() + timeout,
+            cancel: None,
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|c| c.load(Ordering::Relaxed))
+    }
+
+    /// Why the child may not go on, if it may not.
+    fn exhausted(&self) -> Option<GitError> {
+        if self.cancelled() {
+            Some(GitError::Cancelled)
+        } else if Instant::now() >= self.deadline {
+            Some(self.timeout_error())
+        } else {
+            None
+        }
+    }
+
+    fn timeout_error(&self) -> GitError {
+        GitError::Timeout(git_timeout())
+    }
+
+    fn next_slice(&self) -> Duration {
+        self.deadline
+            .saturating_duration_since(Instant::now())
+            .min(POLL_SLICE)
     }
 }
 
+/// Kills the child and everything it started: on Unix every git child leads
+/// its own process group, so a descendant holding the stdout pipe open (a
+/// lazy fetch, a hook) dies with it instead of keeping a reader blocked.
+fn kill_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        if let Ok(pgid) = i32::try_from(child.id()) {
+            // SAFETY: kill(2) with a negative pid signals the group the child
+            // leads; it touches no memory of ours.
+            #[allow(unsafe_code)]
+            unsafe {
+                libc::kill(-pgid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait_timeout(REAP_GRACE);
+}
+
+fn spawn_pipe_reader(
+    mut pipe: impl Read + Send + 'static,
+    keep: usize,
+) -> mpsc::Receiver<std::io::Result<Vec<u8>>> {
+    let (tx, rx) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let mut chunk = vec![0u8; 65536];
+        let result = loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break Ok(kept),
+                Ok(n) => {
+                    let room = keep.saturating_sub(kept.len());
+                    kept.extend_from_slice(&chunk[..n.min(room)]);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => break Err(e),
+            }
+        };
+        let _ = tx.send(result);
+    });
+    rx
+}
+
+fn await_pipe(
+    rx: Option<mpsc::Receiver<std::io::Result<Vec<u8>>>>,
+    limits: &ChildLimits,
+) -> Result<Vec<u8>> {
+    let Some(rx) = rx else {
+        return Ok(Vec::new());
+    };
+    loop {
+        if let Some(stop) = limits.exhausted() {
+            return Err(stop);
+        }
+        match rx.recv_timeout(limits.next_slice()) {
+            Ok(read) => return read.map_err(GitError::Io),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            // A reader that vanished used to read as an empty buffer — an
+            // unreadable `git diff` then looked exactly like an empty diff.
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(GitError::Io(std::io::Error::other(
+                    "git pipe reader thread panicked",
+                )));
+            }
+        }
+    }
+}
+
+fn supervise(child: Child) -> Result<std::process::Output> {
+    supervise_within(child, &ChildLimits::current())
+}
+
+#[cfg(test)]
 fn wait_with_timeout(
     child: Child,
     timeout: Duration,
     _args: &[&str],
 ) -> Result<std::process::Output> {
-    let mut child = child;
-    let stdout_handle = child.stdout.take().map(|mut s| {
-        std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
-            let mut buf = Vec::new();
-            s.read_to_end(&mut buf)?;
-            Ok(buf)
-        })
-    });
-    let stderr_handle = child.stderr.take().map(|mut s| {
-        std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
-            let mut buf = Vec::new();
-            s.read_to_end(&mut buf)?;
-            Ok(buf)
-        })
-    });
+    supervise_within(child, &ChildLimits::within(timeout))
+}
+
+/// Waits for the child, its stdout and its stderr together under one
+/// deadline. The pipes are read on their own threads and awaited through
+/// channels, so neither a stalled child nor a descendant that inherited a
+/// pipe can hold the caller past the deadline.
+fn supervise_within(mut child: Child, limits: &ChildLimits) -> Result<std::process::Output> {
+    let stdout = child
+        .stdout
+        .take()
+        .map(|s| spawn_pipe_reader(s, usize::MAX));
+    let stderr = child
+        .stderr
+        .take()
+        .map(|s| spawn_pipe_reader(s, MAX_STDERR_BYTES));
 
     // A zero ceiling is spent before the call, so the verdict cannot be left
     // to whether the child happens to exit first: on a fast machine
     // `wait_timeout(0)` reaps an already-finished git and reports success,
     // which turned `timeout=0` into "no deadline at all" (seen on an ARM
     // runner, 2026-09-17).
-    let status = match child.wait_timeout(timeout)?.filter(|_| !timeout.is_zero()) {
-        Some(status) => status,
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(GitError::Timeout(timeout.as_secs()));
+    let status = loop {
+        if let Some(stop) = limits.exhausted() {
+            kill_tree(&mut child);
+            return Err(stop);
+        }
+        if let Some(status) = child.wait_timeout(limits.next_slice())? {
+            break status;
         }
     };
-
-    // A reader that failed or panicked used to collapse into an empty
-    // buffer returned as success — an unreadable `git diff` then looked
-    // exactly like a diff with nothing in it.
-    let stdout = collect_pipe(stdout_handle, "stdout")?;
-    let stderr = collect_pipe(stderr_handle, "stderr")?;
-
-    Ok(std::process::Output {
-        status,
-        stdout,
-        stderr,
-    })
+    let output = await_pipe(stdout, limits).and_then(|stdout| {
+        await_pipe(stderr, limits).map(|stderr| std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    });
+    if output.is_err() {
+        kill_tree(&mut child);
+    }
+    output
 }
 
 /// `Err` when git could not answer at all — a timeout above all. Collapsing
@@ -949,7 +1168,7 @@ pub fn show_file_bytes_at_revision(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let child = cmd.spawn()?;
-    let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), &["show"])?;
+    let output = supervise(child)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(command_failure(repo_root, &["show"], &stderr));
@@ -1013,6 +1232,115 @@ pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
         Ok(s) => Ok(s.trim().to_string()),
         Err(_) => Ok(String::new()),
     }
+}
+
+/// The blob ids `git add` would store for `paths` (repo-relative), in order:
+/// the repository's filters (line endings, LFS) applied, nothing written.
+pub fn hash_object_paths(repo_root: &Path, paths: &[String]) -> Result<Vec<String>> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut child = git_command(repo_root)
+        .args(["hash-object", "--stdin-paths"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| GitError::CommandFailed("hash-object: no stdin".into()))?;
+    let input: String = paths.iter().map(|p| format!("{p}\n")).collect();
+    let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let output = supervise(child)?;
+    let _ = writer.join();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(command_failure(repo_root, &["hash-object"], &stderr));
+    }
+    let oids: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    if oids.len() != paths.len() {
+        return Err(GitError::CommandFailed("hash-object: short answer".into()));
+    }
+    Ok(oids)
+}
+
+/// `git grep`'s stdout; exit 1 means "no match", which is an answer here,
+/// not a failure.
+fn run_grep(repo_root: &Path, args: &[&str]) -> Result<String> {
+    let mut cmd = git_command(repo_root);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let child = cmd.spawn().map_err(GitError::Io)?;
+    let output = supervise(child)?;
+    if output.status.code() == Some(1) && output.stderr.is_empty() {
+        return Ok(String::new());
+    }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(command_failure(repo_root, args, &stderr));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Tracked and unignored untracked files holding `word` as a whole word.
+pub fn grep_files_with_word(
+    repo_root: &Path,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Vec<PathBuf>> {
+    let mut args: Vec<&str> = vec![
+        "grep",
+        "--untracked",
+        "-l",
+        "-z",
+        "-I",
+        "-w",
+        "-F",
+        "-e",
+        word,
+    ];
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    Ok(run_grep(repo_root, &args)?
+        .split('\0')
+        .filter(|p| !p.is_empty() && crate::paths::contains_lexically(Path::new(p)))
+        .map(|p| crate::paths::repo_join(repo_root, p))
+        .collect())
+}
+
+/// Every line holding one of `needles` (fixed strings) at `rev`, or in the
+/// working tree when `rev` is `None`: (repo-relative path, line, text).
+pub fn grep_lines(
+    repo_root: &Path,
+    needles: &[String],
+    rev: Option<&str>,
+) -> Result<Vec<(String, u32, String)>> {
+    if needles.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
+    for n in needles {
+        args.push("-e");
+        args.push(n);
+    }
+    args.extend(rev);
+    let prefix = rev.map(|r| format!("{r}:")).unwrap_or_default();
+    Ok(run_grep(repo_root, &args)?
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, '\0');
+            let path = parts.next()?;
+            let path = path.strip_prefix(prefix.as_str()).unwrap_or(path);
+            let no = parts.next()?.parse().ok()?;
+            Some((path.to_string(), no, parts.next()?.to_string()))
+        })
+        .collect())
 }
 
 pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
@@ -1415,7 +1743,7 @@ fn find_ignored_paths_inner(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let child = cmd.spawn()?;
-        let output = wait_with_timeout(child, Duration::from_secs(git_timeout()), &arg_refs)?;
+        let output = supervise(child)?;
         // Exit code 1 from `check-ignore` means "none of the given paths are
         // ignored" — not a failure. Any other non-zero code is a real error.
         if !output.status.success() && output.status.code() != Some(1) {
@@ -1556,46 +1884,164 @@ fn ancestor_dirs(rel: &str) -> Vec<String> {
     dirs
 }
 
+/// One `git cat-file --batch` answer, as the connection's worker read it.
+enum BatchReply {
+    Blob(Vec<u8>),
+    /// `missing`, `ambiguous`, or an object that is not a blob (a directory
+    /// path names a tree): nothing this caller can read as a file.
+    Absent,
+    TooLarge(usize),
+    /// The stream can no longer be trusted: malformed framing, early EOF,
+    /// an I/O error. The connection is discarded.
+    Broken(String),
+}
+
+const MAX_BATCH_HEADER_BYTES: u64 = 4096;
+
+/// A live `cat-file --batch` child. The caller owns the `Child` and nothing
+/// else touches it, so killing it never waits on a lock held by a blocked
+/// read; the pipes belong to a worker thread the caller only ever awaits
+/// with a deadline.
+struct BatchConn {
+    child: Child,
+    requests: mpsc::SyncSender<Vec<u8>>,
+    replies: mpsc::Receiver<BatchReply>,
+}
+
+impl BatchConn {
+    fn start(repo_root: &Path) -> Result<Self> {
+        let mut child = git_command(repo_root)
+            .args(["cat-file", "--batch"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+            kill_tree(&mut child);
+            return Err(GitError::Protocol(
+                "failed to capture the batch pipes".into(),
+            ));
+        };
+        let (requests, request_rx) = mpsc::sync_channel::<Vec<u8>>(1);
+        let (reply_tx, replies) = mpsc::sync_channel(1);
+        std::thread::spawn(move || batch_worker(stdin, stdout, &request_rx, &reply_tx));
+        Ok(Self {
+            child,
+            requests,
+            replies,
+        })
+    }
+
+    /// A graceful close gives git the cleanup allowance to exit on EOF, cut
+    /// to what the run has left; a cancelled or expired run kills at once.
+    fn shut_down(mut self, graceful: Option<&ChildLimits>) {
+        drop(self.requests);
+        if let Some(limits) = graceful {
+            let allowance = Duration::from_secs(GIT.catfile_termination_timeout_seconds)
+                .min(limits.deadline.saturating_duration_since(Instant::now()));
+            if limits.exhausted().is_none()
+                && matches!(self.child.wait_timeout(allowance), Ok(Some(_)))
+            {
+                return;
+            }
+        }
+        kill_tree(&mut self.child);
+    }
+}
+
+fn batch_worker(
+    mut stdin: ChildStdin,
+    stdout: ChildStdout,
+    requests: &mpsc::Receiver<Vec<u8>>,
+    replies: &mpsc::SyncSender<BatchReply>,
+) {
+    let mut reader = BufReader::new(stdout);
+    while let Ok(request) = requests.recv() {
+        let reply = match stdin.write_all(&request).and_then(|()| stdin.flush()) {
+            Ok(()) => read_batch_reply(&mut reader),
+            Err(e) => BatchReply::Broken(format!("write failed: {e}")),
+        };
+        let broken = matches!(reply, BatchReply::Broken(_));
+        if replies.send(reply).is_err() || broken {
+            return;
+        }
+    }
+}
+
+fn read_batch_reply(reader: &mut BufReader<ChildStdout>) -> BatchReply {
+    let mut header = Vec::new();
+    match reader
+        .by_ref()
+        .take(MAX_BATCH_HEADER_BYTES)
+        .read_until(b'\n', &mut header)
+    {
+        Ok(0) => return BatchReply::Broken("unexpected EOF".into()),
+        Ok(_) if header.last() != Some(&b'\n') => {
+            return BatchReply::Broken("unterminated header".into());
+        }
+        Ok(_) => {}
+        Err(e) => return BatchReply::Broken(format!("read failed: {e}")),
+    }
+    let header = String::from_utf8_lossy(&header);
+    let header = header.trim_end();
+    if header.ends_with(" missing") || header.ends_with(" ambiguous") {
+        return BatchReply::Absent;
+    }
+    let mut parts = header.rsplitn(3, ' ');
+    let (Some(size), Some(kind)) = (parts.next(), parts.next()) else {
+        return BatchReply::Broken(format!("malformed header: {header}"));
+    };
+    let Ok(size) = size.parse::<usize>() else {
+        return BatchReply::Broken(format!("invalid size in header: {header}"));
+    };
+    let keep = kind == "blob" && size <= crate::config::limits::MAX_BLOB_READ_BYTES;
+    // An object that is not kept is drained in bounded chunks, so the stream
+    // stays in step for the next request without allocating `size` bytes.
+    let mut body = if keep { vec![0u8; size] } else { Vec::new() };
+    let read = if keep {
+        reader.read_exact(&mut body)
+    } else {
+        std::io::copy(&mut reader.by_ref().take(size as u64), &mut std::io::sink()).and_then(|n| {
+            if n == size as u64 {
+                Ok(())
+            } else {
+                Err(std::io::ErrorKind::UnexpectedEof.into())
+            }
+        })
+    };
+    // The record terminator is part of the protocol: failing to consume it
+    // leaves the stream one byte off for every request after this one.
+    let mut terminator = [0u8; 1];
+    if let Err(e) = read.and_then(|()| reader.read_exact(&mut terminator)) {
+        return BatchReply::Broken(format!("body read failed: {e}"));
+    }
+    if terminator[0] != b'\n' {
+        return BatchReply::Broken("record terminator missing".into());
+    }
+    match (keep, kind) {
+        (true, _) => BatchReply::Blob(body),
+        (false, "blob") => BatchReply::TooLarge(size),
+        (false, _) => BatchReply::Absent,
+    }
+}
+
 pub struct CatFileBatch {
     repo_root: PathBuf,
-    child: Option<Child>,
-    reader: Option<BufReader<ChildStdout>>,
+    conn: Option<BatchConn>,
+    /// The run that created the batch: a request from a worker thread the
+    /// run was never published to is held to the same deadline.
+    run: Option<RunLimits>,
 }
 
 impl CatFileBatch {
+    /// The child starts on the first request: a run that reads only the
+    /// working tree never spawns one.
     pub fn new(repo_root: &Path) -> Result<Self> {
-        let mut batch = Self {
+        Ok(Self {
             repo_root: repo_root.to_path_buf(),
-            child: None,
-            reader: None,
-        };
-        batch.ensure_started()?;
-        Ok(batch)
-    }
-
-    fn ensure_started(&mut self) -> Result<()> {
-        let needs_restart = match &mut self.child {
-            None => true,
-            // `Err` from try_wait is not "still running": a child that cannot
-            // be queried cannot be trusted with the next request either.
-            Some(child) => !matches!(child.try_wait(), Ok(None)),
-        };
-
-        if needs_restart {
-            let mut child = git_command(&self.repo_root)
-                .args(["cat-file", "--batch"])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .spawn()?;
-            let stdout = child.stdout.take().ok_or_else(|| {
-                GitError::CommandFailed("cat-file: failed to capture stdout pipe".into())
-            })?;
-            self.reader = Some(BufReader::new(stdout));
-            self.child = Some(child);
-        }
-
-        Ok(())
+            conn: None,
+            run: crate::resource::current_io_limits(),
+        })
     }
 
     pub fn get(&mut self, rev: &str, rel_path: &Path) -> Result<String> {
@@ -1616,97 +2062,68 @@ impl CatFileBatch {
         if display.chars().any(|c| c.is_control()) {
             return show_file_bytes_at_revision(&self.repo_root, rev, rel_path);
         }
-        let spec = format!("{rev}:{display}\n");
-
-        self.ensure_started()?;
-
-        let stdin = self
-            .child
-            .as_mut()
-            .and_then(|c| c.stdin.as_mut())
-            .ok_or_else(|| GitError::CommandFailed("cat-file stdin unavailable".into()))?;
-        stdin.write_all(spec.as_bytes())?;
-        stdin.flush()?;
-
-        let reader = self
-            .reader
-            .as_mut()
-            .ok_or_else(|| GitError::CommandFailed("cat-file stdout unavailable".into()))?;
-
-        let mut header_line = String::new();
-        reader.read_line(&mut header_line)?;
-
-        if header_line.is_empty() {
-            return Err(GitError::CommandFailed(format!(
-                "cat-file: unexpected EOF for {}",
-                spec.trim()
+        let spec = format!("{rev}:{display}");
+        let limits = self.limits();
+        if let Some(stop) = limits.exhausted() {
+            return Err(stop);
+        }
+        let conn = match self.conn.take() {
+            Some(conn) => conn,
+            None => BatchConn::start(&self.repo_root)?,
+        };
+        if conn
+            .requests
+            .send(format!("{spec}\n").into_bytes())
+            .is_err()
+        {
+            conn.shut_down(None);
+            return Err(GitError::Protocol(format!(
+                "connection closed before {spec}"
             )));
         }
-
-        let header_str = header_line.trim();
-        if header_str.ends_with("missing") {
-            return Err(GitError::CommandFailed(format!(
-                "Path not found: {}",
-                spec.trim()
-            )));
-        }
-
-        let parts: Vec<&str> = header_str.split_whitespace().collect();
-        if parts.len() < 3 {
-            return Err(GitError::CommandFailed(format!(
-                "cat-file: malformed header: {}",
-                header_str
-            )));
-        }
-
-        let size: usize = parts[2].parse().map_err(|_| {
-            GitError::CommandFailed(format!("cat-file: invalid size in header: {}", header_str))
-        })?;
-
-        // Guard against allocating an unbounded blob. Anything larger than the
-        // biggest size we will ever parse is drained from the stream in bounded
-        // chunks (to keep the cat-file pipe in sync for the next request) and
-        // rejected, instead of allocating `size` bytes up front (OOM on a
-        // pathological multi-hundred-MB blob).
-        if size > crate::config::limits::MAX_BLOB_READ_BYTES {
-            let mut remaining = size;
-            let mut scratch = [0u8; 65536];
-            while remaining > 0 {
-                let want = remaining.min(scratch.len());
-                reader.read_exact(&mut scratch[..want])?;
-                remaining -= want;
+        let reply = loop {
+            if let Some(stop) = limits.exhausted() {
+                // A half-consumed stream is never reused: the next request
+                // would read this one's leftover bytes as its own answer.
+                conn.shut_down(None);
+                return Err(stop);
             }
-            let mut trailing = [0u8; 1];
-            reader.read_exact(&mut trailing)?;
-            return Err(GitError::CommandFailed(format!(
-                "cat-file: blob too large ({} bytes): {}",
-                size,
-                spec.trim()
-            )));
+            match conn.replies.recv_timeout(limits.next_slice()) {
+                Ok(reply) => break reply,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    break BatchReply::Broken("worker exited".into());
+                }
+            }
+        };
+        match reply {
+            // The stream is discarded; this one file is asked through argv,
+            // under the same deadline, and the next request starts a fresh
+            // connection.
+            BatchReply::Broken(why) => {
+                conn.shut_down(None);
+                tracing::debug!("cat-file batch discarded: {why} ({spec})");
+                show_file_bytes_at_revision(&self.repo_root, rev, rel_path)
+            }
+            reply => {
+                self.conn = Some(conn);
+                match reply {
+                    BatchReply::Blob(bytes) => Ok(bytes),
+                    BatchReply::TooLarge(size) => Err(GitError::BlobTooLarge { size, spec }),
+                    _ => Err(GitError::MissingObject(spec)),
+                }
+            }
         }
+    }
 
-        let mut content = vec![0u8; size];
-        reader.read_exact(&mut content)?;
-
-        // The record terminator is part of the protocol: failing to consume it
-        // leaves the stream one byte off for every `get()` after this one.
-        let mut trailing = [0u8; 1];
-        reader.read_exact(&mut trailing)?;
-
-        Ok(content)
+    fn limits(&self) -> ChildLimits {
+        ChildLimits::of_run(crate::resource::current_io_limits().or_else(|| self.run.clone()))
     }
 
     pub fn close(&mut self) {
-        self.reader.take();
-        if let Some(mut child) = self.child.take() {
-            drop(child.stdin.take());
-            match child.wait_timeout(Duration::from_secs(GIT.catfile_termination_timeout_seconds)) {
-                Ok(Some(_)) => {}
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-            }
+        let limits = self.limits();
+        if let Some(conn) = self.conn.take() {
+            conn.shut_down(Some(&limits));
         }
     }
 }

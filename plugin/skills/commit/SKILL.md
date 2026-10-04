@@ -9,9 +9,10 @@ Two steps, in this order.
    repository with `mode="impact"` and no `diff_ref` (it reads the pending
    work). Without the MCP server, run
    `uvx diffctx==1.18.2 . --diff --mode impact -f md`. For every
-   caller outside the diff marked UNTESTED, either fix it now or say in one
-   line why it is unaffected. An empty impact means nothing outside the diff
-   depends on the change.
+   caller outside the diff with no static test link, and every possible
+   caller, either fix it now or say in one line why it is unaffected. An empty
+   impact means no resolved static caller in the analysed scope; a line
+   saying callers were not resolved is not empty.
 2. Stage what belongs to the change and commit. Use `$ARGUMENTS` as the
    message when given; otherwise write one line under 72 characters that
    says what changed and, when the impact named a caller you adjusted, that

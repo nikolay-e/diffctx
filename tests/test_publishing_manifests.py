@@ -134,7 +134,8 @@ class TestPluginHook:
         assert session["command"].endswith("/hooks/diffctx-session.sh")
         for event in ("PreToolUse", "PostToolUse"):
             [entry] = hooks[event]
-            assert entry["matcher"] == "Bash"
+            # A Grep-tool search is answered after it ran (#337); the gate stays on Bash.
+            assert entry["matcher"] == ("Bash|Grep" if event == "PostToolUse" else "Bash")
             [hook] = entry["hooks"]
             assert hook["command"].endswith("/hooks/diffctx-impact.sh")
             assert hook["timeout"] > _diffctx_hook_deadline()
@@ -329,6 +330,11 @@ class TestLandingPagePwa:
         assert 'rel="apple-touch-icon" href="/icons/apple-touch-icon.png"' in page
         assert (self.DOCS / "icons/apple-touch-icon.png").is_file()
         assert 'serviceWorker.register("/sw.js")' in page
+
+    def test_the_site_root_serves_a_favicon(self):
+        # Chrome requests /favicon.ico on its own whatever the page declares;
+        # a 404 there is the console error every first visit logged.
+        assert (self.DOCS / "favicon.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"
 
     def test_page_takes_the_whole_ios_screen_and_hands_the_insets_back(self):
         page = (self.DOCS / "index.html").read_text(encoding="utf-8")

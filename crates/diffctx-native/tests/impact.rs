@@ -577,9 +577,18 @@ fn the_text_form_names_every_caller_and_its_guard() {
     let tmp = repo_with_callers();
     let text = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(text.contains("shop/checkout.py::charge"), "{text}");
-    assert!(text.contains("tested by tests/test_checkout.py"), "{text}");
+    assert!(
+        text.contains("reachable from tests: tests/test_checkout.py"),
+        "{text}"
+    );
     assert!(text.contains("shop/report.py::summarize"), "{text}");
-    assert!(text.contains("UNTESTED"), "{text}");
+    // No test reaches shop/report.py at all: absence of evidence, not a
+    // finding (#348). "no static test link (its file has tests)" is kept for a tested file whose caller no test
+    // reaches.
+    assert!(
+        text.contains("summarize (4-5) — no static test link found"),
+        "{text}"
+    );
     assert!(
         text.lines().count() <= 25,
         "the hook injects this before a commit; {} lines is not readable there",
@@ -597,7 +606,10 @@ fn a_change_nothing_depends_on_is_empty() {
     assert_eq!(doc["empty"], true, "{doc}");
     assert!(doc["changed"].as_array().unwrap().is_empty());
     let text = impact_markdown(repo, "HEAD~1..HEAD");
-    assert!(text.contains("Nothing outside the diff depends"), "{text}");
+    assert!(
+        text.contains("No resolved static callers outside the diff in the analysed scope."),
+        "{text}"
+    );
 }
 
 #[test]
@@ -694,4 +706,270 @@ fn md_is_rejected_outside_impact_mode() {
         .output()
         .expect("run diffctx");
     assert_eq!(out.status.code(), Some(2));
+}
+
+/// #345: a name inside a string literal is not a call, and `re.search` is not
+/// a call to a changed module-level `search` — but `download.search` and an
+/// aliased `dl.refused` are.
+#[test]
+fn strings_and_foreign_receivers_are_not_callers() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "fetcher/__init__.py", "");
+    write(
+        repo,
+        "fetcher/download.py",
+        "def refused(url):\n    return url.startswith('x')\n\n\ndef search(query):\n    return [query]\n",
+    );
+    write(
+        repo,
+        "apps/ml/test_model_cache.py",
+        "def download_model_files():\n    raise AssertionError(\"an unpinned model must be refused before it is fetched\")\n",
+    );
+    write(
+        repo,
+        "tests/test_download.py",
+        "import re\nfrom fetcher import download\n\n\ndef test_release_matches():\n    assert re.search(r\"v1\", \"v1.2\")\n\n\ndef test_search_finds():\n    assert download.search(\"q\") == [\"q\"]\n",
+    );
+    write(
+        repo,
+        "fetcher/api.py",
+        "import fetcher.download as dl\n\n\ndef handle(url):\n    # refused() is checked first, 2× per call\n    label = \"× size\"\n    return dl.refused(url)\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "fetcher/download.py",
+        "def refused(url):\n    return url.startswith('x') or not url\n\n\ndef search(query):\n    return [query.strip()]\n",
+    );
+    commit_all(repo, "tighten");
+
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let callers = |sym: &str| -> Vec<String> {
+        doc["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["symbol"] == sym)
+            .flat_map(|c| c["callers"].as_array().unwrap().clone())
+            .map(|c| {
+                format!(
+                    "{}::{}",
+                    c["path"].as_str().unwrap(),
+                    c["symbol"].as_str().unwrap_or("")
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        callers("search"),
+        vec!["tests/test_download.py::test_search_finds"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        callers("refused"),
+        vec!["fetcher/api.py::handle"],
+        "{doc:#}"
+    );
+}
+
+/// #351: `from models import Steps` reaches `models/wearables.py::Steps`
+/// through the package index; the class passed as a value is a reference.
+#[test]
+fn a_package_reexport_reaches_the_defining_module() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "models/__init__.py",
+        "from .wearables import Steps\n\n__all__ = [\"Steps\"]\n",
+    );
+    write(
+        repo,
+        "models/wearables.py",
+        "class Steps(Base):\n    total_distance = Column(Float, default=0)\n",
+    );
+    write(
+        repo,
+        "loaders/normalize.py",
+        "from models import Steps\n\n\ndef upsert_canonical_steps(db, row, user_id):\n    return upsert_data(db, Steps, row, \"date\", user_id)\n",
+    );
+    write(
+        repo,
+        "reports/summary.py",
+        "from models import Sleep\n\n\ndef summarize(db):\n    return [Sleep, Steps]\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "models/wearables.py",
+        "class Steps(Base):\n    total_distance = Column(Float)\n",
+    );
+    commit_all(repo, "no default");
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        md.contains("loaders/normalize.py::upsert_canonical_steps"),
+        "{md}"
+    );
+    assert!(
+        !md.contains("reports/summary.py"),
+        "importing another name from the package is not a reference: {md}"
+    );
+}
+
+/// #348: a helper tested through the public function that calls it is
+/// tested; a caller in a tested file that no test reaches says its file has tests.
+#[test]
+fn a_test_reaches_a_caller_through_the_function_it_calls() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "lib/core.py", "def core(v):\n    return v\n");
+    write(
+        repo,
+        "app/tools.py",
+        "from lib.core import core\n\n\ndef helper(v):\n    return core(v)\n\n\ndef public_tool(v):\n    return helper(v) + 1\n\n\ndef orphan(v):\n    return core(v) - 1\n",
+    );
+    write(
+        repo,
+        "tests/test_tools.py",
+        "from app.tools import public_tool\n\n\ndef test_tool():\n    assert public_tool(1) == 2\n",
+    );
+    commit_all(repo, "base");
+    write(repo, "lib/core.py", "def core(v):\n    return v * 2\n");
+    commit_all(repo, "double");
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "app/tools.py::helper (4-5) — reachable from tests: tests/test_tools.py via public_tool"
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains("app/tools.py::orphan (12-13) — no static test link (its file has tests)"),
+        "{md}"
+    );
+}
+
+/// #347/#313: a deletion-only change still counts its files, and every line
+/// that still names the deleted path is the impact.
+#[test]
+fn a_deleted_file_still_named_elsewhere_is_reported() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "scripts/build_image.sh",
+        "#!/bin/sh\ndocker build .\n",
+    );
+    write(
+        repo,
+        "Dockerfile",
+        "FROM alpine\nCOPY scripts/build_image.sh /app/\n",
+    );
+    write(repo, "Makefile", "image:\n\t./scripts/build_image.sh\n");
+    write(repo, "app.py", "def main():\n    return 1\n");
+    commit_all(repo, "base");
+    git(repo, &["rm", "-q", "scripts/build_image.sh"]);
+    commit_all(repo, "drop the script");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    assert_eq!(
+        doc["deleted_files"],
+        serde_json::json!(["scripts/build_image.sh"]),
+        "{doc:#}"
+    );
+    let stale: Vec<String> = doc["stale_references"]
+        .as_array()
+        .expect("stale references")
+        .iter()
+        .map(|r| format!("{}:{}", r["path"].as_str().unwrap(), r["line"]))
+        .collect();
+    assert_eq!(stale, vec!["Dockerfile:2", "Makefile:2"], "{doc:#}");
+    assert_eq!(doc["empty"], false);
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(md.contains("1 changed file(s) (1 deleted)"), "{md}");
+    assert!(
+        md.contains("Dockerfile:2 names scripts/build_image.sh (deleted)"),
+        "{md}"
+    );
+}
+
+#[test]
+fn a_rename_its_importer_missed_is_reported_and_the_tree_is_labelled() {
+    let tmp = repo_with_callers();
+    let repo = tmp.path();
+    git(repo, &["mv", "shop/pricing.py", "shop/prices.py"]);
+    let md = impact_markdown(repo, "HEAD");
+    assert!(
+        md.starts_with("diffctx impact for uncommitted changes:"),
+        "{md}"
+    );
+    assert!(
+        md.contains("shop/checkout.py:1 names shop/pricing.py (renamed to shop/prices.py)"),
+        "{md}"
+    );
+}
+
+/// #319: reverse discovery reads Go `func` (with a receiver) and Java
+/// methods; a local `const` shared with an unrelated file is not a definition.
+#[test]
+fn reverse_discovery_reads_funcs_and_methods_not_locals() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "go.mod", "module example.com/app\n\ngo 1.22\n");
+    write(
+        repo,
+        "pkg/billing/ledger.go",
+        "package billing\n\ntype Ledger struct{ rate int }\n\nfunc (l *Ledger) Reconcile(total int) int {\n\treturn total * l.rate\n}\n",
+    );
+    write(
+        repo,
+        "cmd/report/main.go",
+        "package main\n\nimport \"example.com/app/pkg/billing\"\n\nfunc main() {\n\tl := &billing.Ledger{}\n\t_ = l.Reconcile(3)\n}\n",
+    );
+    write(
+        repo,
+        "src/main/java/app/Pricing.java",
+        "package app;\n\npublic class Pricing {\n    public static int quoteFor(int n) {\n        return n * 2;\n    }\n}\n",
+    );
+    write(
+        repo,
+        "src/main/java/app/Checkout.java",
+        "package app;\n\npublic class Checkout {\n    int pay(int n) {\n        return Pricing.quoteFor(n);\n    }\n}\n",
+    );
+    write(
+        repo,
+        "web/panel.ts",
+        "export function render(rows: number[]): number {\n  const accumulated = rows.length;\n  return accumulated;\n}\n",
+    );
+    write(
+        repo,
+        "web/unrelated.ts",
+        "export function other(): number {\n  const accumulated = 1;\n  return accumulated;\n}\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "pkg/billing/ledger.go",
+        "package billing\n\ntype Ledger struct{ rate int }\n\nfunc (l *Ledger) Reconcile(total int) int {\n\treturn total*l.rate + 1\n}\n",
+    );
+    write(
+        repo,
+        "src/main/java/app/Pricing.java",
+        "package app;\n\npublic class Pricing {\n    public static int quoteFor(int n) {\n        return n * 3;\n    }\n}\n",
+    );
+    write(
+        repo,
+        "web/panel.ts",
+        "export function render(rows: number[]): number {\n  const accumulated = rows.length + 1;\n  return accumulated;\n}\n",
+    );
+    commit_all(repo, "change");
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(md.contains("cmd/report/main.go::main"), "{md}");
+    assert!(md.contains("src/main/java/app/Checkout.java"), "{md}");
+    assert!(!md.contains("web/unrelated.ts"), "{md}");
 }

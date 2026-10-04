@@ -594,10 +594,12 @@ _NO_FRAGMENTS_MARK = " — no fragments"
 
 def _coverage_note(tree: dict[str, Any]) -> str | None:
     coverage = tree.get("coverage")
-    if not coverage:
+    if not coverage or coverage.get("status") == "complete":
         return None
     reasons = ", ".join(str(r) for r in coverage.get("limit_reasons") or [])
-    return f"Coverage: {coverage.get('status', 'partial')} — the run hit a limit ({reasons}); context may be missing."
+    files = ", ".join(f"{f['path']} ({f['reason']})" for f in coverage.get("limited_files") or [])
+    where = f" in {files}" if files else ""
+    return f"Coverage: {coverage.get('status', 'partial')} — the run hit a limit ({reasons}){where}; context may be missing."
 
 
 def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
@@ -777,6 +779,8 @@ def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
     if "selection_budget_exceeded" not in reasons:
         reasons.append("selection_budget_exceeded")
     coverage["limit_reasons"] = reasons
+    if coverage.get("status") == "complete":
+        coverage["status"] = "partial"
     if any(not c["represented"] and not c.get("no_fragments") for c in trimmed.get("changes") or []):
         coverage["status"] = "degraded"
     trimmed["coverage"] = coverage

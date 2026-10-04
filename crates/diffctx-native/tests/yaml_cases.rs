@@ -543,8 +543,58 @@ fn run_case_with_scoring(
     }
 }
 
+/// Cases running right now, with when they started. A hung case cannot be
+/// stopped from another thread, so the supervisor ends the whole process,
+/// naming it: a bounded red run instead of seven silent hours (#356).
+static IN_FLIGHT: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::BTreeMap<String, std::time::Instant>>,
+> = std::sync::LazyLock::new(Default::default);
+
+const DEFAULT_CASE_LIMIT_SECS: u64 = 600;
+
+fn supervised(name: &str, work: impl FnOnce() -> Result<(), Failed>) -> Result<(), Failed> {
+    IN_FLIGHT
+        .lock()
+        .unwrap()
+        .insert(name.to_string(), std::time::Instant::now());
+    let result = work();
+    IN_FLIGHT.lock().unwrap().remove(name);
+    result
+}
+
+fn start_supervisor() {
+    let limit = std::time::Duration::from_secs(
+        std::env::var("DIFFCTX_YAML_CASE_LIMIT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CASE_LIMIT_SECS),
+    );
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let hung: Vec<String> = IN_FLIGHT
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, started)| started.elapsed() > limit)
+                .map(|(name, started)| format!("{name} ({}s)", started.elapsed().as_secs()))
+                .collect();
+            if !hung.is_empty() {
+                eprintln!(
+                    "yaml_cases: case(s) exceeded {}s and cannot be stopped in-process, \
+                     aborting the run: {}",
+                    limit.as_secs(),
+                    hung.join(", ")
+                );
+                std::process::exit(101);
+            }
+        }
+    });
+}
+
 fn main() {
     let args = Arguments::from_args();
+    start_supervisor();
 
     let limit: Option<usize> = std::env::var("DIFFCTX_YAML_CASES_LIMIT")
         .ok()
@@ -559,7 +609,10 @@ fn main() {
         .iter()
         .map(|c| {
             let (name, path) = (c.name.clone(), c.path.clone());
-            Trial::test(c.name.clone(), move || run_case(&name, &path)).with_kind("yaml")
+            Trial::test(c.name.clone(), move || {
+                supervised(&name, || run_case(&name, &path))
+            })
+            .with_kind("yaml")
         })
         .collect();
 
@@ -571,8 +624,10 @@ fn main() {
             let (name, path) = (c.name.clone(), c.path.clone());
             let label = format!("scoring/{scoring:?}/{}", c.name).to_lowercase();
             trials.push(
-                Trial::test(label, move || {
-                    run_case_with_scoring(&name, &path, scoring, true)
+                Trial::test(label.clone(), move || {
+                    supervised(&label, || {
+                        run_case_with_scoring(&name, &path, scoring, true)
+                    })
                 })
                 .with_kind("yaml"),
             );

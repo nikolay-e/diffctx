@@ -25,7 +25,7 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
     ]
 });
 
-pub(crate) use tree_sitter_strategy::parse_tree;
+pub(crate) use tree_sitter_strategy::{has_grammar, parse_tree};
 
 pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {

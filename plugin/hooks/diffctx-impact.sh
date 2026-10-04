@@ -14,14 +14,39 @@ set -u
 # anything: the matcher is every Bash call, the interest is a few.
 payload=$(cat 2>/dev/null) || exit 0
 case "$payload" in
-*'git '* | *'gh '*) ;;
+*'"PreToolUse"'*) event=pretooluse hook_event=PreToolUse ;;
+*'"PostToolUse"'*) event=posttooluse hook_event=PostToolUse ;;
 *) exit 0 ;;
 esac
+
+# After a text search the hook answers a grep for a name the pending change
+# defines (#337). A search heads its statement (`… | grep` filters output),
+# and a clean tree has nothing to answer with, so most searches end here.
+searches_pending_change() {
+  local re='"tool_name"[[:space:]]*:[[:space:]]*"Grep"|(^|"|[;&(])[[:space:]]*(git[[:space:]]+grep|e?grep|fgrep|rg|ag|ack)[[:space:]]'
+  [[ $payload =~ $re ]] || return 1
+  local dir=.
+  re='"cwd"[[:space:]]*:[[:space:]]*"([^"]*)"'
+  [[ $payload =~ $re ]] && dir=${BASH_REMATCH[1]}
+  re='(^|[[:space:]"])cd[[:space:]]+(/[^[:space:];&|"\\]+)'
+  [[ $payload =~ $re ]] && dir=${BASH_REMATCH[2]}
+  git -C "$dir" diff --quiet HEAD -- 2>/dev/null
+  [[ $? -eq 1 ]]
+}
 case "$payload" in
-*'"PreToolUse"'*) event=pretooluse ;;
-*'"PostToolUse"'*) event=posttooluse ;;
-*) exit 0 ;;
+*'git '* | *'gh '*) ;;
+*) [[ $event == posttooluse ]] && searches_pending_change || exit 0 ;;
 esac
+
+# The binary logs every run it gets (#338); a launch that never reached it
+# is logged here, or an audit could not tell it from a hook with nothing to say.
+log_failure() {
+  local dir="${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx" session=-
+  local re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]+)"'
+  [[ $payload =~ $re ]] && session=${BASH_REMATCH[1]}
+  mkdir -p "$dir" 2>/dev/null &&
+    printf '%s %s %s - - error:%s - -\n' "$(date +%s)" "$session" "$hook_event" "$1" >>"$dir/hook.log" 2>/dev/null
+}
 
 # One array, never empty: under bash 3.2 (macOS /bin/bash) `set -u` treats
 # an empty array's expansion as unbound and the pipeline dies silently.
@@ -33,11 +58,16 @@ fi
 if [[ -n "${DIFFCTX_HOOK_BIN:-}" ]]; then
   launch=("$DIFFCTX_HOOK_BIN")
 else
-  command -v uvx >/dev/null 2>&1 || exit 0
+  command -v uvx >/dev/null 2>&1 || {
+    log_failure no-uvx
+    exit 0
+  }
   launch=(uvx -q --offline -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.2")
 fi
 
 # A release without the subcommand, or a cache uv has not filled yet, exits
 # non-zero and prints nothing, which is the right answer on the commit path.
-printf '%s' "$payload" | "${launch[@]}" "${args[@]}" 2>/dev/null || true
+printf '%s' "$payload" | "${launch[@]}" "${args[@]}" 2>/dev/null
+status=$?
+[[ $status -eq 0 ]] || log_failure "launch-$status"
 exit 0

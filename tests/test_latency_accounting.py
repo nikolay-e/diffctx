@@ -82,11 +82,19 @@ def test_the_pre_phase_is_actually_measured(latency_repo):
     )
 
 
-def test_selection_covers_the_post_passes(latency_repo):
+def test_selection_covers_the_post_passes(tmp_path):
     """`selection_ms` is the only home for the three post-passes. If it were
     reset to cover the greedy alone, their cost would vanish from the accounting
-    while still being spent."""
-    latency = _latency(latency_repo.path)
+    while still being spent. The repository is sized so selection does work
+    that survives the 0.1 ms rounding of the report."""
+    repo = Pygit2Repo(tmp_path / "selection_repo")
+    body = "".join(f"def f{i}(x):\n    return x + {i}\n\n\n" for i in range(400))
+    repo.add_file("src/many.py", body)
+    repo.add_file("src/use.py", "".join(f"from many import f{i}\n" for i in range(400)))
+    repo.commit("initial")
+    repo.add_file("src/many.py", body.replace("x + ", "x - "))
+    repo.commit("flip")
+    latency = _latency(repo.path)
     assert latency["selection_ms"] > 0
     assert latency["selection_ms"] <= latency["total_ms"]
 

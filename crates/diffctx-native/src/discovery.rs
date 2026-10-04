@@ -17,6 +17,10 @@ pub struct DiscoveryContext {
     pub expansion_concepts: FxHashSet<String>,
     pub file_cache: FxHashMap<PathBuf, String>,
     pub token_corpus: OnceLock<TokenCorpus>,
+    /// Where an uncached file is read: the analysed snapshot, not
+    /// necessarily the disk. Carried here because the strategies run on
+    /// rayon workers the run's context is not published to.
+    pub source: crate::source::Source,
 }
 
 impl DiscoveryContext {
@@ -24,7 +28,7 @@ impl DiscoveryContext {
         if let Some(content) = self.file_cache.get(path) {
             return Some(Cow::Borrowed(content.as_str()));
         }
-        std::fs::read_to_string(path).ok().map(Cow::Owned)
+        self.source.read_to_string(path).map(Cow::Owned)
     }
 
     pub fn shared_corpus(&self) -> &TokenCorpus {
@@ -133,15 +137,29 @@ const MIN_REVERSE_NAME_LEN: usize = 4;
 
 static DEFINITION_RE: OnceLock<regex::Regex> = OnceLock::new();
 
+/// The names a file defines, from the lines that declare them. Bindings
+/// (`const`, `let`, `var`, `val`) count only at column 0 — an indented one is
+/// a local, and `result` or `value` would admit half the repository. `func`
+/// takes a Go receiver; a Java/C# method is a modified return type followed
+/// by its name. `impl Display for Foo` defines nothing (#319).
 fn definition_names(content: &str) -> Vec<String> {
     let re = DEFINITION_RE.get_or_init(|| {
-        regex::Regex::new(
-            r"(?m)^\s*(?:export\s+(?:default\s+)?|pub(?:\([^)]*\))?\s+|public\s+|static\s+|async\s+|abstract\s+|final\s+|data\s+|sealed\s+|open\s+)*(?:fn|def|class|struct|enum|interface|trait|type|function|const|let|var|val|object|impl|protocol|module|record)\s+([A-Za-z_][A-Za-z0-9_]*)",
-        )
+        regex::Regex::new(concat!(
+            r"(?m)^(?:export\s+(?:default\s+)?)?(?:const|let|var|val)\s+([A-Za-z_][A-Za-z0-9_]*)",
+            r"|^\s*(?:export\s+(?:default\s+)?|pub(?:\([^)]*\))?\s+|public\s+|private\s+|protected\s+|internal\s+|static\s+|async\s+|abstract\s+|final\s+|data\s+|sealed\s+|open\s+|override\s+|suspend\s+)*",
+            r"(?:fn|def|class|struct|enum|interface|trait|type|function|func|fun|proc|object|protocol|module|record)\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)",
+            r"|^\s*(?:(?:public|private|protected|internal|static|final|abstract|synchronized|virtual|override|async)\s+)+[A-Za-z_][\w<>\[\],.?]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        ))
         .expect("definition regex")
     });
     re.captures_iter(content)
-        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .filter_map(|c| {
+            c.iter()
+                .skip(1)
+                .flatten()
+                .next()
+                .map(|m| m.as_str().to_string())
+        })
         .filter(|n| n.len() >= MIN_REVERSE_NAME_LEN)
         .collect()
 }
@@ -188,21 +206,27 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
                 continue;
             }
             let mut is_strong = false;
-            let mut named: Vec<&str> = Vec::new();
+            // A document holds a name once, however many changed files
+            // define it: counted per changed file, two definers of `parse`
+            // hit the 64-holder cap at 32 documents.
+            let mut named: FxHashSet<&str> = FxHashSet::default();
             for (stem, names) in &per_file {
                 let has_stem = stem
                     .as_deref()
                     .is_some_and(|s| doc.term_counts.contains_key(s));
                 for name in names {
                     if doc.term_counts.contains_key(name) {
-                        *name_holders.entry(name.as_str()).or_default() += 1;
-                        named.push(name.as_str());
+                        named.insert(name.as_str());
                         if has_stem {
                             is_strong = true;
                         }
                     }
                 }
             }
+            for name in &named {
+                *name_holders.entry(name).or_default() += 1;
+            }
+            let named: Vec<&str> = named.into_iter().collect();
             if is_strong {
                 strong.push(path);
             } else if !named.is_empty() {
@@ -460,7 +484,10 @@ impl DiscoveryStrategy for EnsembleDiscovery {
         let per_strategy: Vec<(&'static str, Vec<PathBuf>)> = self
             .strategies
             .par_iter()
-            .map(|strategy| (strategy.name(), strategy.discover(ctx)))
+            .map(|strategy| {
+                let found = crate::source::with_source(&ctx.source, || strategy.discover(ctx));
+                (strategy.name(), found)
+            })
             .collect();
 
         let mut seen: FxHashSet<PathBuf> = FxHashSet::default();
@@ -536,6 +563,7 @@ mod tests {
                 expansion_concepts: self.concepts.iter().map(|s| s.to_string()).collect(),
                 file_cache: FxHashMap::default(),
                 token_corpus,
+                source: crate::source::Source::WorkingTree,
             }
         }
     }

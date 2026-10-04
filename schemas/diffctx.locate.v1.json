@@ -342,6 +342,20 @@
             "$ref": "#/$defs/LimitReason"
           }
         },
+        "capped": {
+          "description": "Limits the run hit that cost these items nothing: graph caps, and\nper-file caps on files the answer does not touch (#306).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitReason"
+          }
+        },
+        "limited_files": {
+          "description": "The files behind the per-file reasons in `limit_reasons`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitedFile"
+          }
+        },
         "unrepresented_changed_files": {
           "description": "Changed files with no ranked item at all: the inventory says they\nchanged, the budget or the selection left nothing of them.",
           "type": "array",
@@ -395,7 +409,28 @@
           "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
           "type": "string",
           "const": "non_utf8_content"
+        },
+        {
+          "description": "The caller withdrew the request (an MCP cancellation, the MCP\ndeadline): work stopped at the next poll instead of running on\ndetached.",
+          "type": "string",
+          "const": "cancelled"
         }
+      ]
+    },
+    "LimitedFile": {
+      "description": "A limit that touched one file, by its display path.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/LimitReason"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
       ]
     },
     "ProvenanceV1": {

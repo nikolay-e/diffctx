@@ -763,7 +763,7 @@
       ]
     },
     "CoverageReport": {
-      "description": "The disclosure block of an artifact whose run hit a limit: absent when\nnothing limited the run, so a complete run's output is unchanged.",
+      "description": "What a run's limits mean for the reader (#306). `limit_reasons` are the\nones that can have cost this answer context: a run-wide stop, or a\nper-file limit on a file the answer is about (changed, or holding a\nselected fragment). Graph caps every repository trips, and a size cap on\na lockfile nobody reads, go to `capped` and leave the status `complete`.",
       "type": "object",
       "properties": {
         "status": {
@@ -773,6 +773,19 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/LimitReason"
+          }
+        },
+        "capped": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitReason"
+          }
+        },
+        "limited_files": {
+          "description": "The files behind the per-file reasons in `limit_reasons`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitedFile"
           }
         },
         "resources": {
@@ -788,7 +801,6 @@
       },
       "required": [
         "status",
-        "limit_reasons",
         "resources"
       ]
     },
@@ -821,7 +833,28 @@
           "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
           "type": "string",
           "const": "non_utf8_content"
+        },
+        {
+          "description": "The caller withdrew the request (an MCP cancellation, the MCP\ndeadline): work stopped at the next poll instead of running on\ndetached.",
+          "type": "string",
+          "const": "cancelled"
         }
+      ]
+    },
+    "LimitedFile": {
+      "description": "A limit that touched one file, by its display path.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/LimitReason"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
       ]
     },
     "ResourceUsage": {

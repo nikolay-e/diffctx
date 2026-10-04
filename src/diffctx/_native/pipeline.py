@@ -101,6 +101,7 @@ def build_impact(
     timeout: int = _PIPELINE_TIMEOUT,
     paths: list[str] | None = None,
     markdown: bool = False,
+    symbol: str | None = None,
 ) -> str:
     from diffctx._diffctx import build_impact as _rust_impact
 
@@ -113,6 +114,7 @@ def build_impact(
             timeout=timeout,
             paths=paths or [],
             markdown=markdown,
+            symbol=symbol,
         )
     )
 

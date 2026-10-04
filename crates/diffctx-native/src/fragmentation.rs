@@ -207,9 +207,16 @@ fn dedup_fragments(raw_frags: Vec<Fragment>, seen: &mut FxHashSet<FragmentId>) -
 /// coverage block owes the reader — the file was decoded lossily (not
 /// UTF-8), or it was over the size cap and not read at all.
 enum FileRead {
-    Text { content: String, lossy: bool },
+    Text {
+        content: String,
+        lossy: bool,
+    },
     TooLarge,
     Unreadable,
+    /// The run's deadline or cancellation stopped the read: the file is
+    /// unknown, and reading the disk instead would answer for another
+    /// snapshot.
+    Interrupted(crate::resource::LimitReason),
 }
 
 /// The one decoder for file bytes, whichever store they came from. A
@@ -264,7 +271,16 @@ fn read_file_content(
             Some(reader) => reader.get_bytes(rev, rel),
             None => git::show_file_bytes_at_revision(root_dir, rev, rel),
         };
-        let Ok(bytes) = bytes else { continue };
+        let bytes = match bytes {
+            Ok(bytes) => bytes,
+            Err(git::GitError::Cancelled) => {
+                return FileRead::Interrupted(crate::resource::LimitReason::Cancelled);
+            }
+            Err(e) if e.is_interruption() => {
+                return FileRead::Interrupted(crate::resource::LimitReason::Deadline);
+            }
+            Err(_) => continue,
+        };
         if bytes.len() > max_size {
             oversized = true;
             continue;
@@ -276,7 +292,9 @@ fn read_file_content(
         return FileRead::Text { content, lossy };
     }
 
-    if abs_path.is_file() {
+    // A snapshot's file absent from both its revisions is not in the
+    // snapshot; the disk's copy would answer for another state (#354).
+    if crate::source::current().rev().is_none() && abs_path.is_file() {
         if let Ok(meta) = std::fs::metadata(&abs_path) {
             if meta.len() as usize > max_size {
                 return FileRead::TooLarge;
@@ -367,7 +385,7 @@ pub fn fragment_files(
             chunk_contents
                 .par_iter()
                 .map(|(file_path, content)| {
-                    fragment_one(file_path, content, is_changed, hunks, ctx)
+                    fragment_one(file_path, root_dir, content, is_changed, hunks, ctx)
                 })
                 .collect::<Vec<_>>(),
         );
@@ -410,7 +428,17 @@ fn read_chunk(
                     Some((file_path.clone(), content))
                 }
                 FileRead::TooLarge => {
-                    ctx.note(crate::resource::LimitReason::FileTooLarge);
+                    ctx.note_file(
+                        crate::resource::LimitReason::FileTooLarge,
+                        crate::paths::display_rel_or_abs(root_dir, file_path),
+                    );
+                    None
+                }
+                FileRead::Interrupted(reason) => {
+                    ctx.note_file(
+                        reason,
+                        crate::paths::display_rel_or_abs(root_dir, file_path),
+                    );
                     None
                 }
                 FileRead::Unreadable => None,
@@ -431,6 +459,7 @@ fn read_chunk(
 /// edited hunk before core identification runs.
 fn fragment_one(
     file_path: &Path,
+    root_dir: &Path,
     content: &str,
     is_changed: bool,
     hunks: &[crate::types::DiffHunk],
@@ -453,7 +482,10 @@ fn fragment_one(
     if raw_frags.len() > cap {
         raw_frags = cap_fragments(raw_frags, cap, file_path, generated, hunks);
         if !generated {
-            ctx.note(crate::resource::LimitReason::FragmentLimit);
+            ctx.note_file(
+                crate::resource::LimitReason::FragmentLimit,
+                crate::paths::display_rel_or_abs(root_dir, file_path),
+            );
         }
     }
     if generated {
