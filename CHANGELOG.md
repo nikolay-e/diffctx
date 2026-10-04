@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.3] - 2026-10-04
+
 ### Added
 
 - `--symbol NAME` (or `PATH:NAME`) and the MCP `symbol` parameter: impact
@@ -1901,7 +1903,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.2...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.3...HEAD
+[1.18.3]: https://github.com/nikolay-e/diffctx/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/nikolay-e/diffctx/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/nikolay-e/diffctx/compare/v1.17.0...v1.18.0

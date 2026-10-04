@@ -12,7 +12,7 @@ and which symbols more than one commit of the range touched; public API and
 schema changes are listed as facts.
 
 Without the MCP server, run
-`uvx diffctx==1.18.2 . --diff <range> --mode impact -f md`.
+`uvx diffctx==1.18.3 . --diff <range> --mode impact -f md`.
 
 Report the impact, ranked by risk:
 
