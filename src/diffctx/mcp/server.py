@@ -5,14 +5,15 @@ import logging
 import os
 import subprocess
 import sys
-from collections.abc import Callable
-from functools import partial
+from collections.abc import Awaitable, Callable
+from functools import partial, wraps
 from pathlib import Path
-from typing import TypeVar
+from typing import ParamSpec, TypeVar
 
 import anyio
 import anyio.to_thread
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
@@ -33,6 +34,29 @@ from .security import validate_repo_path
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
+_P = ParamSpec("_P")
+
+
+# A refusal meant for the caller (a path outside the roots, an invalid range,
+# a deadline, a symbol nothing defines) raises ValueError or a bare
+# LookupError. The SDK passes only a ToolError's text to the client and
+# replaces any other exception's with "Error executing tool", so without this
+# the agent would learn nothing it could correct. A KeyError or IndexError is
+# a bug in this server, not a refusal, and stays one.
+def reports_refusals(tool: Callable[_P, Awaitable[_T]]) -> Callable[_P, Awaitable[_T]]:
+    @wraps(tool)
+    async def answer(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        try:
+            return await tool(*args, **kwargs)
+        except ValueError as e:
+            raise ToolError(str(e)) from e
+        except LookupError as e:
+            if type(e) is not LookupError:
+                raise
+            raise ToolError(str(e)) from e
+
+    return answer
+
 
 # Read from the engine rather than copied. The layering contract forbids
 # mcp -> cli, and the previous answer to that was to restate the number here —
@@ -196,6 +220,8 @@ def _default_diff_ref(repo: Path) -> str:
                 env=env,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
                 timeout=_DEFAULT_DIFF_REF_TIMEOUT_SECONDS,
             )
@@ -241,25 +267,22 @@ async def _copy_or_degrade(content: str) -> str | None:
 # With tool search on (Claude Code's default) the tool definition is deferred:
 # an agent sees only these instructions until it searches, so they, not the
 # description, decide whether the tool is ever reached for (#289).
-mcp = FastMCP(
+mcp = MCPServer(
     "diffctx",
+    version=__version__,
     instructions=(
         "Before reviewing, committing, merging or pushing a change, or when asked what it "
         "affects, call diffctx_context. mode=impact names the callers, tests and contracts "
-        "outside the diff, which git diff cannot. No diff_ref = uncommitted work, else the last commit."
+        "outside the diff, which git diff cannot. No diff_ref: uncommitted work, or the last commit if clean."
     ),
 )
-# FastMCP takes no version argument, so the SDK reports its own version as the
-# server version during initialize. Clients then see the mcp package version
-# instead of ours, drifting on every SDK bump.
-mcp._mcp_server.version = __version__
 
 
 def _read_only(title: str) -> ToolAnnotations:
     # The MCP defaults are pessimistic: an unannotated tool is advertised as
     # destructive and open-world, which costs it auto-permission in clients.
     # Every tool here reads a local repository and writes nothing back to it.
-    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=False)
+    return ToolAnnotations(title=title, read_only_hint=True, open_world_hint=False)
 
 
 # Everything these tools return is repository content the operator did not
@@ -275,9 +298,9 @@ _UNTRUSTED_NOTICE = (
 # that mostly restated what the parameters already say. This is the whole
 # description: what it does, the two-call shape, and the safety boundary.
 _CONTEXT_DESCRIPTION = (
-    "Callers, tests and contracts a change reaches outside its diff; call before reviewing, committing or pushing. "
+    "Callers, tests and contracts a change reaches outside its diff. "
     "mode: impact (default), locate (fragment ids), pack (code). "
-    "diff_ref: range, HEAD or staged. symbol: a name." + _UNTRUSTED_NOTICE
+    "diff_ref: HEAD = uncommitted, HEAD~1..HEAD = last commit. symbol: a name." + _UNTRUSTED_NOTICE
 )
 
 
@@ -293,6 +316,7 @@ _CONTEXT_DESCRIPTION = (
     structured_output=False,
     meta={"anthropic/alwaysLoad": True},
 )
+@reports_refusals
 async def diffctx_context(
     repo_path: str,
     diff_ref: str | None = None,
@@ -306,18 +330,18 @@ async def diffctx_context(
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     _validate_max_tokens(max_tokens)
-    if symbol:
+    if symbol is not None:
         if diff_ref or fragment_ids or mode != "impact":
             raise ValueError("symbol answers in mode impact, without diff_ref or fragment_ids")
         return await _impact_response(validated_path, "", clipboard, max_tokens, symbol=symbol)
-    diff_ref = diff_ref or await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
+    ref = diff_ref if diff_ref else await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
     # operation on its own. Requiring a third mode name for it would make the
     # two-call shape something the caller has to remember rather than something
     # the arguments express.
     if fragment_ids:
-        return await _fetch_response(validated_path, diff_ref, fragment_ids, clipboard, max_tokens)
+        return await _fetch_response(validated_path, ref, fragment_ids, clipboard, max_tokens)
 
     _validate_budget_tokens(budget_tokens)
     if mode not in ("pack", "locate", "impact"):
@@ -325,10 +349,10 @@ async def diffctx_context(
     if include_raw_diff and mode != "pack":
         raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
     if mode == "impact":
-        return await _impact_response(validated_path, diff_ref, clipboard, max_tokens)
+        return await _impact_response(validated_path, ref, clipboard, max_tokens)
     if mode == "locate":
-        return await _locate_response(validated_path, diff_ref, budget_tokens, clipboard, max_tokens)
-    return await _pack_response(validated_path, diff_ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
+        return await _locate_response(validated_path, ref, budget_tokens, clipboard, max_tokens)
+    return await _pack_response(validated_path, ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
 
 
 async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: list[str], clipboard: bool, max_tokens: int) -> str:
@@ -382,7 +406,7 @@ def _legacy_tools_enabled() -> bool:
     return os.environ.get("DIFFCTX_MCP_LEGACY_TOOLS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def register_legacy_tools(server: FastMCP = mcp) -> None:
+def register_legacy_tools(server: MCPServer = mcp) -> None:
     from .legacy import register
 
     register(server)

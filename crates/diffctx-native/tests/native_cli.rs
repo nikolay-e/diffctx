@@ -1331,3 +1331,187 @@ fn a_historical_range_ignores_history_after_its_head() {
         "commits after the range's head reached its co-change graph"
     );
 }
+
+/// #340: a range's own commits do not vouch for its files, and history that
+/// does links the two files once, representative to representative.
+#[test]
+fn co_change_reads_history_before_the_range_and_links_files_once() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let ledger = |i: u32| {
+        format!(
+            "def post(x):\n    return x + {i}\n\n\ndef void(x):\n    return -x\n\n\ndef total(xs):\n    return sum(xs)\n"
+        )
+    };
+    let audit = |i: u32| {
+        format!(
+            "from ledger import post\n\n\ndef trail(y):\n    return post(y) + {i}\n\n\ndef flag(y):\n    return y > 0\n\n\ndef note(y):\n    return str(y)\n"
+        )
+    };
+    std::fs::write(repo.join("ledger.py"), ledger(0)).expect("write");
+    std::fs::write(repo.join("audit.py"), audit(0)).expect("write");
+    std::fs::write(repo.join("other.py"), "def unrelated():\n    return 1\n").expect("write");
+    commit_all(repo, "base");
+    let history_edges = |range: &str| -> usize {
+        let out = Command::new(&*BIN)
+            .current_dir(repo)
+            .env("DIFFCTX_TRACE_BUILDERS", "1")
+            .args([".", "--diff", range, "--format", "json", "--quiet"])
+            .output()
+            .expect("run diffctx");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .filter(|l| l.starts_with("builder history"))
+            .filter_map(|l| {
+                l.rsplit(", ")
+                    .next()?
+                    .strip_suffix(" edges")?
+                    .parse::<usize>()
+                    .ok()
+            })
+            .sum()
+    };
+    for i in 1..=6 {
+        std::fs::write(repo.join("ledger.py"), ledger(i)).expect("write");
+        std::fs::write(repo.join("audit.py"), audit(i)).expect("write");
+        commit_all(repo, "together, inside the range");
+    }
+    assert_eq!(
+        history_edges("HEAD~6..HEAD"),
+        0,
+        "the range's own commits reached its co-change graph"
+    );
+    // A bare revision and a time window diff against the working tree: their
+    // commits run up to HEAD and are the range's own just the same.
+    for range in ["HEAD~6", "1d"] {
+        assert_eq!(history_edges(range), 0, "{range}");
+    }
+    std::fs::write(repo.join("other.py"), "def unrelated():\n    return 2\n").expect("write");
+    commit_all(repo, "the change");
+    let linked = history_edges("HEAD~1..HEAD");
+    assert!(
+        (1..=2).contains(&linked),
+        "one file pair is one edge (each way at most), not every fragment pair: {linked}"
+    );
+}
+
+/// #296, #327: under a tight budget the rewritten functions are placed whole
+/// once every changed file has its witness, not left as one-line stubs while
+/// the budget goes to one-line constants.
+#[test]
+fn rewritten_functions_are_placed_whole_before_the_budget_goes_elsewhere() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let consts = |bump: u32| -> String {
+        (0..30)
+            .map(|i| format!("LIMIT_{i} = {}\n", i + bump))
+            .collect()
+    };
+    let function = |name: &str, k: u32, op: &str| -> String {
+        let body: String = (0..14)
+            .map(|j| format!("    total = total + item.weight {op} {}\n", j + k))
+            .collect();
+        format!(
+            "def {name}(items):\n    total = 0\n    for item in items:\n{body}    return total\n\n\n"
+        )
+    };
+    let file = |bump: u32, op: &str| {
+        format!(
+            "{}\n\n{}{}",
+            consts(bump),
+            function("step", 0, op),
+            function("push", 100, op)
+        )
+    };
+    std::fs::write(repo.join("worker.py"), file(0, "*")).expect("write");
+    commit_all(repo, "base");
+    std::fs::write(repo.join("worker.py"), file(1, "//")).expect("write");
+    commit_all(repo, "change");
+    let out = Command::new(&*BIN)
+        .current_dir(repo)
+        .args([
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "locate",
+            "--budget",
+            "900",
+            "-q",
+        ])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("locate json");
+    let spans: Vec<(String, String)> = doc["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| {
+            (
+                i["symbol"].as_str().unwrap_or("").to_string(),
+                i["lines"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    for name in ["step", "push"] {
+        let (_, lines) = spans
+            .iter()
+            .find(|(s, _)| s == name)
+            .unwrap_or_else(|| panic!("{name} missing: {spans:?}"));
+        let (a, b) = lines.split_once('-').expect("range");
+        let len = b.parse::<u32>().unwrap() - a.parse::<u32>().unwrap() + 1;
+        assert!(len > 10, "{name} placed as {lines}, a stub: {spans:?}");
+    }
+}
+
+/// #311: a Django migration says "Generated by Django" in its header, but it
+/// is the range's schema change, not generated output to rank last.
+#[test]
+fn a_migration_is_not_a_generated_file_and_protoc_output_still_is() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::write(repo.join("README.md"), "x\n").expect("write");
+    commit_all(repo, "base");
+    std::fs::create_dir_all(repo.join("app/migrations")).expect("mkdir");
+    std::fs::write(
+        repo.join("app/migrations/0002_add.py"),
+        "# Generated by Django 4.2 on 2026-01-01\nfrom django.db import migrations\n\n\nclass Migration(migrations.Migration):\n    operations = []\n",
+    )
+    .expect("write");
+    std::fs::write(
+        repo.join("app/msg.pb.go"),
+        "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage pb\n",
+    )
+    .expect("write");
+    commit_all(repo, "migration");
+    let out = Command::new(&*BIN)
+        .current_dir(repo)
+        .args([".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
+        .output()
+        .expect("run diffctx");
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let class = |p: &str| {
+        doc["changes"]
+            .as_array()
+            .expect("changes")
+            .iter()
+            .find(|c| c["path"] == p)
+            .map(|c| c["class"].as_str().unwrap_or("").to_string())
+            .unwrap_or_default()
+    };
+    assert_ne!(class("app/migrations/0002_add.py"), "generated", "{doc}");
+    assert_eq!(class("app/msg.pb.go"), "generated", "{doc}");
+}

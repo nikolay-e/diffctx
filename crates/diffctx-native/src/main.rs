@@ -465,6 +465,10 @@ fn main() {
             eprintln!("diffctx: {err}");
             std::process::exit(if git_err.is_usage() { EXIT_USAGE } else { 3 });
         }
+        if let Some(q) = err.downcast_ref::<_diffctx::pipeline::SymbolQueryError>() {
+            eprintln!("diffctx: {q}");
+            std::process::exit(if q.malformed { EXIT_USAGE } else { 1 });
+        }
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }

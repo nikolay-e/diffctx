@@ -153,15 +153,18 @@ fn expand_config_key(key: &str) -> FxHashSet<String> {
     result
 }
 
-fn extract_config_keys(suffix: &str, content: &str) -> FxHashSet<String> {
+/// Every key a config file spells, its sub-words included, each marked
+/// whether the file spells it whole.
+fn extract_config_keys(suffix: &str, content: &str) -> FxHashMap<String, bool> {
     let patterns = patterns_for_suffix(suffix);
-    let mut keys = FxHashSet::default();
+    let mut keys: FxHashMap<String, bool> = FxHashMap::default();
     for pat in patterns {
         for cap in pat.captures_iter(content) {
             if let Some(m) = cap.get(1) {
                 let raw_key = m.as_str().to_lowercase();
                 for expanded in expand_config_key(&raw_key) {
-                    keys.insert(expanded);
+                    let whole = expanded == raw_key;
+                    *keys.entry(expanded).or_default() |= whole;
                 }
             }
         }
@@ -236,11 +239,15 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         // pure speedup.
         let mut key_to_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         let mut fallback_patterns: Vec<(Regex, usize)> = Vec::new();
+        let mut spelled_whole: FxHashSet<String> = FxHashSet::default();
         for (ci, cfg) in config_frags.iter().enumerate() {
             let suffix = base::file_ext(Path::new(cfg.path()));
-            for key in extract_config_keys(&suffix, &cfg.content) {
+            for (key, whole) in extract_config_keys(&suffix, &cfg.content) {
                 if key.len() < 4 || STOPWORDS.contains(key.as_str()) {
                     continue;
+                }
+                if whole {
+                    spelled_whole.insert(key.to_lowercase());
                 }
                 let bytes = key.as_bytes();
                 let word_edges = key.is_ascii()
@@ -253,6 +260,34 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                 }
             }
         }
+        // The ambiguity bar holds on the config side too: a sub-word most
+        // config files carry (`workflow_dispatch` -> `workflow` in every CI
+        // workflow) names no one file, and every source file saying the word
+        // was linked to all of them (#297). A key spelled whole is the
+        // setting itself: `database_url` in two of four environment files
+        // still names what the code reads.
+        let config_files: FxHashSet<&str> = config_frags.iter().map(|f| f.path()).collect();
+        let per_key_files = |cis: &[usize]| {
+            cis.iter()
+                .map(|&ci| config_frags[ci].path())
+                .collect::<FxHashSet<&str>>()
+                .len()
+        };
+        let vocabulary = |n: usize, sub_word: bool| {
+            n > MAX_FILES_PER_KEY
+                || (sub_word && config_files.len() >= 4 && n * 4 > config_files.len())
+        };
+        key_to_cfgs
+            .retain(|key, cis| !vocabulary(per_key_files(cis), !spelled_whole.contains(key)));
+        let mut fallback_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
+        for (re, ci) in &fallback_patterns {
+            fallback_cfgs
+                .entry(re.as_str().to_string())
+                .or_default()
+                .push(*ci);
+        }
+        fallback_patterns
+            .retain(|(re, _)| !vocabulary(per_key_files(&fallback_cfgs[re.as_str()]), false));
         if key_to_cfgs.is_empty() && fallback_patterns.is_empty() {
             return FxHashMap::default();
         }
@@ -381,9 +416,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                 None => continue,
             };
             let suffix = base::file_ext(cfg_path);
-            for key in extract_config_keys(&suffix, &content) {
-                all_keys.insert(key);
-            }
+            all_keys.extend(extract_config_keys(&suffix, &content).into_keys());
         }
 
         if all_keys.is_empty() {

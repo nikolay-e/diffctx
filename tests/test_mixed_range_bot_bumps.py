@@ -16,6 +16,8 @@ import json
 import pytest
 
 import diffctx
+from diffctx import writer
+from diffctx._diffctx import count_tokens
 from tests.framework.pygit2_backend import Pygit2Repo
 
 BOT_SUBJECT = "build: automatic update of image tags"
@@ -122,3 +124,30 @@ def test_a_multi_commit_range_is_not_titled_by_the_last_commit(gitops_repo):
     rendered = diffctx.to_markdown(result)
     assert HUMAN_SUBJECT in rendered
     assert "2 commits" in rendered
+
+
+def test_a_reformatted_file_loses_its_witness_before_a_rewritten_one(tmp_path):
+    repo = Pygit2Repo(tmp_path / "repo")
+    body = "def step(x):\n" + "".join(f"    x = x + {i}\n" for i in range(40)) + "    return x\n"
+    repo.add_file("src/a_fmt.py", body)
+    repo.add_file("src/z_calc.py", body.replace("step", "calc"))
+    repo.commit("initial")
+    (repo.path / "src" / "a_fmt.py").write_text(body.replace("(x):", "( x ):").replace(" = x", " =  x"), encoding="utf-8")
+    (repo.path / "src" / "z_calc.py").write_text(body.replace("step", "calc").replace("x + ", "x * "), encoding="utf-8")
+    result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD")
+    classes = {c["path"]: c["class"] for c in result["changes"]}
+    assert classes["src/a_fmt.py"] == "layout"
+    assert classes["src/z_calc.py"] in ("content", "unknown")
+    full = writer.tree_to_string(result, "md")
+    selection = result["provenance"]["selection"]
+    tight = {
+        **result,
+        "provenance": {**result["provenance"], "selection": {**selection, "budget_tokens": count_tokens(full) - 20}},
+    }
+    fitted, _ = writer.fit_to_budget(tight, "md")
+
+    def text_of(tree, path):
+        return "".join(f["content"] for f in tree["fragments"] if f["path"] == path)
+
+    assert text_of(fitted, "src/z_calc.py") == text_of(result, "src/z_calc.py")
+    assert text_of(fitted, "src/a_fmt.py") != text_of(result, "src/a_fmt.py")

@@ -68,12 +68,25 @@ impl EdgeBuilder for OCamlEdgeBuilder {
             base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
+        // `open` brings a module into the whole file: the relation leaves from
+        // the file's representative, where its seeds are lifted to.
+        let reps = base::file_representatives(fragments.iter());
         let mut edges: EdgeDict = FxHashMap::default();
 
         for f in &frags {
             let self_defs = extract_defs(&f.content);
+            let from = reps.get(f.path()).unwrap_or(&f.id);
             for open_name in extract_opens(&f.content) {
-                base::link_by_name(&f.id, &open_name, &idx, &mut edges, open_w, reverse_factor);
+                // A module is its file's stem: `open Palette` is palette.ml.
+                base::link_by_stem(
+                    from,
+                    &open_name,
+                    &[".ml", ".mli"],
+                    &idx,
+                    &mut edges,
+                    open_w,
+                    reverse_factor,
+                );
                 if let Some(targets) = name_to_defs.get(&open_name.to_lowercase()) {
                     add_edges_from_ids(&mut edges, &f.id, targets, open_w, reverse_factor);
                 }

@@ -116,7 +116,7 @@ def server():
 
 
 def _get_text(call_result) -> str:
-    return call_result[0].text
+    return call_result.content[0].text
 
 
 class TestImpactMcp:
@@ -134,7 +134,7 @@ class TestImpactMcp:
 
     @pytest.mark.asyncio
     async def test_mode_impact_refuses_the_raw_diff(self, server, impact_repo):
-        from mcp.server.fastmcp.exceptions import ToolError
+        from mcp.server.mcpserver.exceptions import ToolError
 
         repo, diff_range = impact_repo
         with pytest.raises(ToolError, match="impact"):
@@ -224,19 +224,59 @@ class TestSymbolQuery:
         assert "1 definition(s), 0 caller(s)" in result.stdout
         assert "- shop/discount.py::apply" in result.stdout
 
-    def test_an_unknown_name_is_an_error_naming_it(self, clean_repo):
-        result = _run(clean_repo.path, [".", "--symbol", "no_such_function", "-q"])
-        assert result.returncode != 0
-        assert 'no definition of "no_such_function" found' in result.stderr
+    @pytest.mark.parametrize(("query", "named"), [("no_such_function", "no_such_function"), ("Ledger::total", "Ledger.total")])
+    def test_an_unknown_name_is_an_error_naming_it(self, clean_repo, query, named):
+        result = _run(clean_repo.path, [".", "--symbol", query, "-q"])
+        assert result.returncode == 1, result.stderr
+        assert f'no definition of "{named}" found' in result.stderr
+        assert "internal error" not in result.stderr
+
+    def test_a_common_name_keeps_its_definition_past_the_file_cap(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "repo")
+        for i in range(300):
+            repo.add_file(f"app/m{i:03}.py", f"from zz.core import settle\n\n\ndef use_{i}():\n    return settle()\n")
+        repo.add_file("zz/core.py", "def settle():\n    return 1\n")
+        repo.commit("many callers")
+        result = _run(repo.path, [".", "--symbol", "settle", "-q", "-f", "json"])
+        assert result.returncode == 0, result.stderr
+        assert [d["path"] for d in json.loads(result.stdout)["changed"]] == ["zz/core.py"]
+
+    def test_a_name_qualified_by_its_module_answers_for_that_definition(self, clean_repo):
+        result = _run(clean_repo.path, [".", "--symbol", "pricing.total", "-q", "-f", "json"])
+        assert result.returncode == 0, result.stderr
+        assert [d["path"] for d in json.loads(result.stdout)["changed"]] == ["shop/pricing.py"]
 
     @pytest.mark.parametrize(
         "args",
-        [["--symbol", "total", "--diff", "HEAD~1"], ["--symbol", "total", "--mode", "locate"], ["--symbol", "a b"]],
+        [
+            ["--symbol", "total", "--diff", "HEAD~1"],
+            ["--symbol", "total", "--mode", "locate"],
+            ["--symbol", "a b"],
+            ["--symbol", "shop..total"],
+            ["--symbol", "9lives"],
+        ],
     )
     def test_conflicting_or_malformed_requests_are_usage_errors(self, clean_repo, args):
         result = _run(clean_repo.path, [".", *args, "-q"])
-        assert result.returncode == 2 or "--symbol takes NAME" in result.stderr, result.stderr
+        assert result.returncode == 2, result.stderr
         assert result.stdout == ""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("arguments", "refusal"),
+        [
+            ({"symbol": "total", "diff_ref": "HEAD~1"}, "symbol answers in mode impact"),
+            ({"symbol": "no_such_function"}, 'no definition of "no_such_function" found'),
+            ({"symbol": ""}, "--symbol takes NAME"),
+        ],
+    )
+    async def test_mcp_symbol_refusals_say_what_to_correct(self, server, clean_repo, arguments, refusal):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        with pytest.raises(ToolError) as refused:
+            await server.call_tool("diffctx_context", {"repo_path": str(clean_repo.path), **arguments})
+        assert refusal in str(refused.value)
+        assert not isinstance(refused.value.__cause__, RuntimeError)
 
     @pytest.mark.asyncio
     async def test_mcp_symbol_parameter(self, server, clean_repo):

@@ -12,8 +12,9 @@ use super::super::base::{EdgeBuilder, add_edge};
 pub struct CochangeEdgeBuilder;
 
 impl CochangeEdgeBuilder {
-    /// The commits before the range's head, not before whatever is checked
-    /// out, under the git timeout; `-z` keeps non-ASCII paths unquoted (#340).
+    /// The commits up to the range's base — not whatever is checked out, and
+    /// not the range's own commits — under the git timeout; `-z` keeps
+    /// non-ASCII paths unquoted (#340).
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
         let head = crate::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
         let limit = format!("-n{}", COCHANGE.commits_limit);
@@ -64,26 +65,25 @@ impl CochangeEdgeBuilder {
         cochange
     }
 
-    fn build_path_to_frags_index(
+    fn representatives_by_rel_path(
         &self,
         fragments: &[Fragment],
         repo_root: &Path,
-    ) -> FxHashMap<String, Vec<FragmentId>> {
-        let mut path_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
-        for f in fragments {
-            let path = Path::new(f.path());
-            let rel = if path.is_absolute() {
-                path.strip_prefix(repo_root)
-                    .ok()
-                    .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
-            } else {
-                Some(crate::paths::to_posix_display(path.to_string_lossy()))
-            };
-            if let Some(rel) = rel {
-                path_to_frags.entry(rel).or_default().push(f.id.clone());
-            }
-        }
-        path_to_frags
+    ) -> FxHashMap<String, FragmentId> {
+        crate::edges::base::file_representatives(fragments)
+            .into_iter()
+            .filter_map(|(path, id)| {
+                let p = Path::new(&path);
+                let rel = if p.is_absolute() {
+                    p.strip_prefix(repo_root)
+                        .ok()
+                        .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
+                } else {
+                    Some(crate::paths::to_posix_display(p.to_string_lossy()))
+                };
+                rel.map(|r| (r, id))
+            })
+            .collect()
     }
 }
 
@@ -103,19 +103,19 @@ impl EdgeBuilder for CochangeEdgeBuilder {
         };
 
         let cochange = self.count_cochanges(&commits);
-        let path_to_frags = self.build_path_to_frags_index(fragments, repo_root);
+        let representatives = self.representatives_by_rel_path(fragments, repo_root);
 
+        // Co-change endorses a file, not each of its fragments: the pair
+        // links the two files' representatives, the way every file-level
+        // relation does (`base::file_representatives`).
         let mut edges: EdgeDict = FxHashMap::default();
         for ((p1, p2), count) in &cochange {
             if *count < COCHANGE.min_count {
                 continue;
             }
             let edge_weight = weight.min(COCHANGE.log_scale_factor * (*count as f64).ln_1p());
-            for fid1 in path_to_frags.get(p1).unwrap_or(&vec![]) {
-                for fid2 in path_to_frags.get(p2).unwrap_or(&vec![]) {
-                    if fid1 == fid2 {
-                        continue;
-                    }
+            if let (Some(fid1), Some(fid2)) = (representatives.get(p1), representatives.get(p2)) {
+                if fid1 != fid2 {
                     add_edge(&mut edges, fid1, fid2, edge_weight, reverse_factor);
                 }
             }

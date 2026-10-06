@@ -311,6 +311,21 @@ fn an_empty_index_diff_is_an_empty_change_set() {
     assert!(!text.contains("No resolved static callers"), "{text}");
 }
 
+/// `write-tree` on the real index takes its lock; a `git add` running
+/// beside the review used to fail it as "unmerged entries?".
+#[test]
+fn a_held_index_lock_does_not_stop_the_staged_review() {
+    let tmp = shop();
+    let repo = tmp.path();
+    write(repo, "shop/pricing.py", TOTAL_CHANGED);
+    git(repo, &["add", "shop/pricing.py"]);
+    let lock = repo.join(".git/index.lock");
+    std::fs::write(&lock, b"").expect("lock");
+    let doc = impact(repo, "staged");
+    assert!(lock.exists(), "the review never touches the lock");
+    assert_eq!(callers(&doc, "total"), vec!["shop/checkout.py::charge"]);
+}
+
 #[test]
 fn an_unmerged_index_is_an_error_not_the_working_tree() {
     let tmp = shop();

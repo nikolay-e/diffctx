@@ -31,7 +31,7 @@ pytest.importorskip("hypothesis")
 
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from tests.framework.pygit2_backend import Pygit2Repo
 
@@ -119,7 +119,7 @@ def _call(server, args: dict) -> str:
         return ""
     except Exception as e:
         pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
-    return result[0].text if result else ""
+    return result.content[0].text if result.content else ""
 
 
 @pytest.fixture
@@ -209,4 +209,4 @@ def test_no_glob_pattern_reaches_outside_the_repository(legacy_server, jailed, p
         return
     except Exception as e:
         pytest.fail(f"unhandled {type(e).__name__} escaped the tool: {e}")
-    assert CANARY not in (result[0].text if result else "")
+    assert CANARY not in (result.content[0].text if result.content else "")

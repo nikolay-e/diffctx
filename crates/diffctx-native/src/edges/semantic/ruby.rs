@@ -15,6 +15,8 @@ fn is_ruby_file(path: &Path) -> bool {
     RUBY_EXTENSIONS.contains(base::file_ext(path).as_str())
 }
 
+const RUBY_SUFFIXES: &[&str] = &[".rb", ""];
+
 static REQUIRE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*(?:require|require_relative)\s+['"]([^'"]+)['"]"#).unwrap());
 static DEF_RE: Lazy<Regex> = Lazy::new(|| {
@@ -79,7 +81,19 @@ impl EdgeBuilder for RubyEdgeBuilder {
         for f in &frags {
             let self_defs = extract_defines(&f.content);
             for req in extract_requires(&f.content) {
-                base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
+                // A path (`require_relative '../vendor/palette'`) names a
+                // file; anything else is a load-path name.
+                if !base::link_module_path(
+                    &f.id,
+                    &req,
+                    RUBY_SUFFIXES,
+                    &idx,
+                    &mut edges,
+                    require_w,
+                    reverse_factor,
+                ) {
+                    base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
+                }
             }
             for mixin in extract_mixins(&f.content) {
                 if let Some(targets) = name_to_defs.get(&mixin.to_lowercase()) {
@@ -106,13 +120,27 @@ impl EdgeBuilder for RubyEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
+        let mut found = base::discover_by_module_paths(
             changed,
             candidates,
             repo_root,
             file_cache,
             is_ruby_file,
             extract_requires,
-        )
+            RUBY_SUFFIXES,
+        );
+        for path in base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_ruby_file,
+            extract_requires,
+        ) {
+            if !found.contains(&path) {
+                found.push(path);
+            }
+        }
+        found
     }
 }

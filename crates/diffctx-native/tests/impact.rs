@@ -973,3 +973,1267 @@ fn reverse_discovery_reads_funcs_and_methods_not_locals() {
     assert!(md.contains("src/main/java/app/Checkout.java"), "{md}");
     assert!(!md.contains("web/unrelated.ts"), "{md}");
 }
+
+fn header(md: &str) -> &str {
+    md.lines().next().unwrap_or_default()
+}
+
+fn repo_of(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for (p, c) in files {
+        write(repo, p, c);
+    }
+    commit_all(repo, "initial");
+    for (p, c) in changes {
+        write(repo, p, c);
+    }
+    if !changes.is_empty() {
+        commit_all(repo, "change");
+    }
+    tmp
+}
+
+fn changed_symbols(doc: &serde_json::Value) -> Vec<String> {
+    doc["changed"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|c| c["symbol"].as_str().unwrap_or("").to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn contract_symbols(doc: &serde_json::Value) -> Vec<String> {
+    doc.get("contracts")
+        .and_then(|c| c.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|c| {
+                    format!(
+                        "{} {}",
+                        c["kind"].as_str().unwrap_or(""),
+                        c["symbol"]
+                            .as_str()
+                            .unwrap_or(c["path"].as_str().unwrap_or(""))
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// #386: the header and the per-line guard come from one predicate.
+#[test]
+fn the_header_counts_every_caller_the_lines_call_untested() {
+    let tmp = repo_with_callers();
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("no static test link found"), "{md}");
+    assert!(
+        header(&md).contains(", 1 without a static test link"),
+        "{md}"
+    );
+}
+
+/// Owner request on #355: a changed definition no test reaches is counted.
+#[test]
+fn a_changed_definition_no_test_reaches_is_counted() {
+    let tmp = repo_with_callers();
+    let repo = tmp.path();
+    write(
+        repo,
+        "shop/report.py",
+        "from shop.pricing import total\n\n\ndef summarize(orders):\n    return [round(total(o.items)) for o in orders]\n",
+    );
+    commit_all(repo, "report rounds");
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        header(&md).contains("1 changed definition(s) without a static test link"),
+        "{md}"
+    );
+}
+
+/// #387: callers that could not be resolved are not "0 callers".
+#[test]
+fn unresolved_callers_are_not_reported_as_none() {
+    let def = |n: u32| format!("pub fn build() -> u32 {{\n    {n}\n}}\n");
+    let tmp = repo_of(
+        &[
+            ("src/lib.rs", "pub mod a;\npub mod b;\npub mod c;\n"),
+            ("src/a.rs", &def(1)),
+            ("src/b.rs", &def(2)),
+            ("src/c.rs", &def(3)),
+        ],
+        &[("src/a.rs", &def(10))],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(header(&md).contains("callers unresolved"), "{md}");
+    assert!(!header(&md).contains(" 0 caller(s)"), "{md}");
+}
+
+/// A file `.diffctx/ignore` withholds is never named by impact: not by a
+/// definition its hunk removed, not as a deleted file.
+#[test]
+fn a_withheld_file_is_never_named_by_its_removed_definitions_or_deletion() {
+    let tmp = repo_of(
+        &[
+            (".diffctx/ignore", "internal/\n"),
+            (
+                "internal/acquisition.js",
+                "export function priceForAcmeTakeover(x) {\n  return x * 2;\n}\n\nexport function other(x) {\n  return x;\n}\n",
+            ),
+            ("internal/plan.js", "export const plan = 1;\n"),
+            (
+                "src/app.js",
+                "import { priceForAcmeTakeover } from '../internal/acquisition.js';\nexport function run(x) {\n  return priceForAcmeTakeover(x);\n}\n",
+            ),
+            (
+                "src/util.js",
+                "export function util(x) {\n  return x + 2;\n}\n",
+            ),
+        ],
+        &[
+            (
+                "internal/acquisition.js",
+                "export function other(x) {\n  return x;\n}\n",
+            ),
+            (
+                "src/util.js",
+                "export function util(x) {\n  return x + 3;\n}\n",
+            ),
+        ],
+    );
+    let repo = tmp.path();
+    std::fs::remove_file(repo.join("internal/plan.js")).expect("rm");
+    commit_all(repo, "drop the plan");
+    for range in ["HEAD~2..HEAD~1", "HEAD~1..HEAD", "HEAD~2..HEAD"] {
+        let doc = impact(repo, range);
+        let text = doc.to_string();
+        assert!(!text.contains("internal/"), "{range}: {doc:#}");
+        assert!(!text.contains("priceForAcmeTakeover"), "{range}: {doc:#}");
+        let md = impact_markdown(repo, range);
+        assert!(!md.contains("internal/"), "{range}: {md}");
+    }
+}
+
+/// git quotes a non-ASCII path in a diff header; the quoted spelling used to
+/// match no file, so a removal there reported nothing.
+#[test]
+fn a_definition_removed_from_a_non_ascii_path_is_reported() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/caf\u{e9}.js",
+                "export function price(x) {\n  return x * 2;\n}\n\nexport function legacyPrice(x) {\n  return x * 3;\n}\n",
+            ),
+            (
+                "src/shop.js",
+                "import { price, legacyPrice } from './caf\u{e9}.js';\nexport function total(x) {\n  return price(x) + legacyPrice(x);\n}\n",
+            ),
+        ],
+        &[(
+            "src/caf\u{e9}.js",
+            "export function price(x) {\n  return x * 4;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        changed_symbols(&doc).contains(&"legacyPrice".to_string()),
+        "{doc:#}"
+    );
+    assert!(
+        contract_symbols(&doc).contains(&"removed_api legacyPrice".to_string()),
+        "{doc:#}"
+    );
+}
+
+/// A statement moved out of its `if` is a change, whatever `diff.context`
+/// the user configured: with it at 0 the hunk lost the lines that show the
+/// move and read as layout.
+#[test]
+fn a_dedented_statement_is_a_change_under_any_diff_context() {
+    let core = |body: &str| {
+        format!(
+            "import os\n\n\ndef charge(user, amount):\n    if user.blocked:\n        log(user)\n{body}    return amount\n\n\ndef log(u):\n    print(u)\n\n\ndef refund(u, a):\n    print(u, a)\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            ("pkg/__init__.py", ""),
+            ("pkg/core.py", &core("        refund(user, amount)\n")),
+            (
+                "pkg/app.py",
+                "from pkg.core import charge\n\n\ndef handler(req):\n    return charge(req.user, req.amount)\n",
+            ),
+        ],
+        &[("pkg/core.py", &core("    refund(user, amount)\n"))],
+    );
+    git(tmp.path(), &["config", "diff.context", "0"]);
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("called from pkg/app.py::handler"), "{md}");
+}
+
+/// Deleting a call statement from a method removes no member.
+#[test]
+fn a_deleted_call_inside_a_method_is_no_removed_member() {
+    let form = |body: &str| {
+        format!(
+            "import {{ validate }} from './validate.js';\n\nexport class Form {{\n  submit(x) {{\n    validate(x);\n{body}    return x;\n  }}\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            ("src/form.js", &form("    notify(x);\n")),
+            (
+                "src/notify.js",
+                "export function warnUser(m) {\n  notify(m);\n}\n",
+            ),
+            (
+                "src/validate.js",
+                "export function validate(x) {\n  return x;\n}\n",
+            ),
+        ],
+        &[("src/form.js", &form(""))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        !changed_symbols(&doc).contains(&"notify".to_string()),
+        "{doc:#}"
+    );
+    assert!(contract_symbols(&doc).is_empty(), "{doc:#}");
+}
+
+/// Deleting the function right under a caller leaves that caller outside
+/// the diff: a pure removal is anchored on the line above it.
+#[test]
+fn a_caller_right_above_a_deleted_function_is_still_a_caller() {
+    let core = |rate: &str, tail: &str| {
+        format!(
+            "def rate(amount):\n    return amount * {rate}\n\n\ndef invoice(amount):\n    total = rate(amount)\n    return total\n{tail}\n\ndef last():\n    return 1\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            ("pkg/__init__.py", ""),
+            ("pkg/core.py", &core("2", "def obsolete():\n    return 0\n")),
+        ],
+        &[("pkg/core.py", &core("3", ""))],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("pkg/core.py::invoice"), "{md}");
+}
+
+/// Lines removed from inside a definition are its change at any
+/// indentation: a dedented SQL string reads like a deletion beside it.
+#[test]
+fn a_column_zero_line_removed_inside_a_body_is_a_change() {
+    let users = |filter: &str| {
+        format!(
+            "def active_users(db):\n    return db.query(\"\"\"\nSELECT id FROM users\n{filter}ORDER BY id\n\"\"\")\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            ("app/__init__.py", ""),
+            ("app/queries.py", &users("WHERE active\n")),
+            (
+                "app/report.py",
+                "from app.queries import active_users\n\n\ndef monthly(db):\n    return len(active_users(db))\n",
+            ),
+        ],
+        &[("app/queries.py", &users(""))],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("called from app/report.py::monthly"), "{md}");
+}
+
+/// A Rust function moved to another module: the call still naming the old
+/// module is broken, the one naming the new module is not.
+#[test]
+fn a_rust_call_still_naming_the_old_module_of_a_move_is_reported() {
+    let rate = "pub fn tax_rate() -> u32 {\n    19\n}\n";
+    let tmp = repo_of(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"k\"\nversion = \"0.1.0\"\n",
+            ),
+            (
+                "src/lib.rs",
+                "pub mod old;\npub mod new;\npub mod main_use;\npub mod fixed;\n",
+            ),
+            ("src/old.rs", rate),
+            ("src/new.rs", "pub fn other() -> u32 {\n    1\n}\n"),
+            (
+                "src/main_use.rs",
+                "pub fn price() -> u32 {\n    crate::old::tax_rate() * 2\n}\n",
+            ),
+            (
+                "src/fixed.rs",
+                "pub fn cost() -> u32 {\n    crate::new::tax_rate()\n}\n",
+            ),
+        ],
+        &[
+            ("src/old.rs", "\n"),
+            (
+                "src/new.rs",
+                "pub fn other() -> u32 {\n    1\n}\n\npub fn tax_rate() -> u32 {\n    19\n}\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let removed = doc["changed"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["path"] == "src/old.rs"))
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    let callers: Vec<&str> = removed["callers"]
+        .as_array()
+        .map(|c| c.iter().filter_map(|c| c["path"].as_str()).collect())
+        .unwrap_or_default();
+    assert_eq!(callers, vec!["src/main_use.rs"], "{doc:#}");
+}
+
+/// `Owner.name` answers only for that owner's definition, and a path may
+/// prefix `Owner::name`.
+#[test]
+fn a_qualified_symbol_names_its_owner_and_takes_a_path() {
+    let tmp = repo_of(
+        &[
+            (
+                "shop.py",
+                "class Cart:\n    def add(self, x):\n        return x\n\n\nclass Ledger:\n    def total(self):\n        return 1\n",
+            ),
+            (
+                "use.py",
+                "from shop import Ledger\n\n\ndef run():\n    return Ledger().total()\n",
+            ),
+        ],
+        &[],
+    );
+    let symbol = |query: &str| {
+        Command::new(&*BIN)
+            .current_dir(tmp.path())
+            .args(["--symbol", query, "-q", "-f", "md"])
+            .output()
+            .expect("run diffctx")
+    };
+    let wrong = symbol("Cart.total");
+    assert!(
+        !wrong.status.success(),
+        "{}",
+        String::from_utf8_lossy(&wrong.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&wrong.stderr).contains("no definition"),
+        "{}",
+        String::from_utf8_lossy(&wrong.stderr)
+    );
+    for query in [
+        "Ledger.total",
+        "shop.py:Ledger.total",
+        "shop.py:Ledger::total",
+    ] {
+        let out = symbol(query);
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{query}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(text.contains("shop.py::total"), "{query}: {text}");
+    }
+}
+
+/// #392: files the repository's own ignore rules withhold are counted in
+/// the header, in a diff and for a symbol, instead of reading as nothing.
+#[test]
+fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
+    let tmp = repo_of(
+        &[
+            (".diffctx/ignore", "app/tests/\n"),
+            ("app/__init__.py", ""),
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+        ],
+        &[
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2 + 1\n"),
+            (
+                "app/tests/test_conf.py",
+                "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 3\n",
+            ),
+        ],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        header(&md).contains("1 changed file(s), 1 more withheld by ignore rules"),
+        "{md}"
+    );
+    assert!(md.contains("were not read"), "{md}");
+    let out = Command::new(&*BIN)
+        .current_dir(tmp.path())
+        .args(["--symbol", "workers", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        header(&text).contains("1 file(s) naming it withheld by ignore rules"),
+        "{text}"
+    );
+}
+
+/// #414: in Python `//` is floor division; the call after it is a caller.
+#[test]
+fn a_call_after_python_floor_division_is_a_caller() {
+    let tmp = repo_of(
+        &[
+            (
+                "shop/paging.py",
+                "def page_size(cfg):\n    return cfg.get(\"page\", 20)\n",
+            ),
+            (
+                "shop/report.py",
+                "from shop.paging import page_size\n\n\ndef pages(rows, cfg):\n    return rows // page_size(cfg)\n",
+            ),
+        ],
+        &[(
+            "shop/paging.py",
+            "def page_size(cfg):\n    return max(1, cfg.get(\"page\", 20))\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let changed = doc["changed"].as_array().expect("changed");
+    let page_size = changed
+        .iter()
+        .find(|c| c["symbol"] == "page_size")
+        .unwrap_or_else(|| panic!("page_size missing: {doc:#}"));
+    assert!(
+        page_size["callers"]
+            .as_array()
+            .is_some_and(|c| c.iter().any(|c| c["symbol"] == "pages")),
+        "{doc:#}"
+    );
+}
+
+/// #403: a type and its impl blocks are one definition, and a trait method
+/// is reached through its trait, not by the other `fmt`s in the repository.
+#[test]
+fn a_type_with_trait_impls_is_one_definition_reached_by_its_users() {
+    let other = |t: &str| {
+        format!(
+            "pub struct {t};\n\nimpl std::fmt::Display for {t} {{\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        f.write_str(\"{t}\")\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            (
+                "src/lib.rs",
+                "pub mod a;\npub mod b;\npub mod c;\npub mod error;\npub mod run;\n",
+            ),
+            ("src/a.rs", &other("A")),
+            ("src/b.rs", &other("B")),
+            ("src/c.rs", &other("C")),
+            ("src/error.rs", "pub fn helper() {}\n"),
+            (
+                "src/run.rs",
+                "use crate::error::QueryError;\n\npub fn run(q: &str) -> Result<(), QueryError> {\n    Err(QueryError { message: q.to_string() })\n}\n",
+            ),
+        ],
+        &[(
+            "src/error.rs",
+            "pub fn helper() {}\n\npub struct QueryError {\n    pub message: String,\n}\n\nimpl std::fmt::Display for QueryError {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        f.write_str(&self.message)\n    }\n}\n\nimpl std::error::Error for QueryError {}\n\nimpl<T: Into<String>> From<T> for QueryError {\n    fn from(t: T) -> Self {\n        QueryError { message: t.into() }\n    }\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let symbols = changed_symbols(&doc);
+    assert_eq!(
+        symbols.iter().filter(|s| *s == "QueryError").count(),
+        1,
+        "{doc:#}"
+    );
+    let changed = doc["changed"].as_array().expect("changed");
+    let entry = |name: &str| changed.iter().find(|c| c["symbol"] == name);
+    let ty = entry("QueryError").expect("QueryError listed");
+    assert!(ty.get("unresolved").is_none(), "{doc:#}");
+    assert!(
+        ty["callers"]
+            .as_array()
+            .is_some_and(|c| c.iter().any(|c| c["path"] == "src/run.rs")),
+        "{doc:#}"
+    );
+    for (method, tr) in [("fmt", "Display"), ("from", "From")] {
+        let m = entry(method).expect("trait method listed");
+        assert!(
+            m["unresolved"]
+                .as_str()
+                .is_some_and(|u| u.starts_with(&format!("implements `{tr}`"))),
+            "{doc:#}"
+        );
+    }
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("rust files"), "{md}");
+}
+
+fn registry_repo(port_after: &str) -> TempDir {
+    repo_of(
+        &[
+            (
+                "flow/registry.py",
+                "REGISTRY = {}\n\n\ndef register_node(cls):\n    REGISTRY[cls.__name__] = cls\n    return cls\n\n\ndef create(name):\n    return REGISTRY[name]()\n",
+            ),
+            (
+                "flow/port.py",
+                "from dataclasses import dataclass\n\n\n@dataclass\nclass Port:\n    name: str\n    kind: str = \"text\"\n",
+            ),
+            (
+                "flow/nodes.py",
+                "from flow.port import Port\nfrom flow.registry import register_node\n\n\n@register_node\nclass ImproveNode:\n    inputs = [Port(\"draft\")]\n\n    def run(self):\n        return self.inputs\n",
+            ),
+            (
+                "tests/test_flow.py",
+                "from flow.registry import create\n\n\ndef test_the_flow_runs():\n    assert create(\"ImproveNode\").run()\n",
+            ),
+        ],
+        &[("flow/port.py", port_after)],
+    )
+}
+
+/// #388: a defaulted field changes no construction site.
+#[test]
+fn a_defaulted_field_keeps_every_constructor_working() {
+    let tmp = registry_repo(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Port:\n    name: str\n    kind: str = \"text\"\n    loop_back: bool = False\n",
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("called from flow/nodes.py"), "{md}");
+    assert!(md.contains("signature-compatible"), "{md}");
+    assert!(header(&md).contains(" 0 caller(s)"), "{md}");
+}
+
+/// #388: a class registered by a decorator is reached through the registry,
+/// which static test links cannot follow.
+#[test]
+fn a_caller_registered_by_a_decorator_is_not_called_untested() {
+    let tmp = registry_repo(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Port:\n    name: str\n    kind: int = 0\n",
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("flow/nodes.py::ImproveNode"), "{md}");
+    assert!(md.contains("@register_node"), "{md}");
+    assert!(!md.contains("no static test link found"), "{md}");
+    assert!(
+        header(&md).contains(", 0 without a static test link"),
+        "{md}"
+    );
+}
+
+/// #370: a formatter run and a comment are no contract and reach no caller.
+#[test]
+fn a_formatting_only_change_is_neither_a_contract_nor_a_caller_list() {
+    let tmp = ts_repo_with_panel();
+    let repo = tmp.path();
+    write(
+        repo,
+        "src/engine/panel.ts",
+        "export const clamp = (v: number, a: number, b: number) =>\n  Math.min(b, Math.max(a, v));\n\n// Doubles its input.\nexport function mono(\n  x: number,\n): number {\n  return x * 2\n}\n",
+    );
+    for i in 1..=3 {
+        write(
+            repo,
+            &format!("src/cards/card{i}.ts"),
+            &format!(
+                "import {{ mono, clamp }} from \"../engine/panel\";\n\nexport function draw{i}(v: number): number {{\n  return clamp(v, 0, 1) + mono(v);\n}}\n"
+            ),
+        );
+    }
+    commit_all(repo, "biome");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    assert!(contract_symbols(&doc).is_empty(), "{doc}");
+    assert!(changed_symbols(&doc).is_empty(), "{doc}");
+    assert_eq!(doc["empty"], true, "{doc}");
+
+    let tmp = repo_with_callers();
+    let repo = tmp.path();
+    write(
+        repo,
+        "shop/pricing.py",
+        "def total(items):\n    \"\"\"The VAT-inclusive total.\"\"\"\n    # rounded to cents\n    return round(sum(i.price for i in items) * 1.19, 2)\n",
+    );
+    commit_all(repo, "docs");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    assert!(changed_symbols(&doc).is_empty(), "{doc}");
+}
+
+/// #362: an unchanged caller in a changed file is outside the diff.
+#[test]
+fn an_unchanged_caller_in_the_changed_file_is_listed() {
+    let tmp = repo_of(
+        &[(
+            "tool.py",
+            "def diagnose(xs):\n    return len(xs)\n\n\ndef main():\n    return diagnose([1, 2])\n",
+        )],
+        &[(
+            "tool.py",
+            "def diagnose(xs):\n    return len(xs) + 1\n\n\ndef main():\n    return diagnose([1, 2])\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("called from tool.py::main"), "{md}\n{doc}");
+}
+
+/// #359: `pub` inside a `pub(crate)` module is crate-internal.
+#[test]
+fn pub_items_of_a_crate_private_module_are_not_public_api() {
+    let tmp = repo_of(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"k\"\nversion = \"0.1.0\"\n",
+            ),
+            (
+                "src/lib.rs",
+                "pub(crate) mod m;\npub mod n;\npub mod r#type;\n#[cfg(feature = \"k\")] pub mod kind;\n",
+            ),
+            ("src/m.rs", "pub fn f(x: u32) -> u32 {\n    x\n}\n"),
+            ("src/n.rs", "pub fn g(x: u32) -> u32 {\n    x\n}\n"),
+            ("src/type.rs", "pub fn t(x: u32) -> u32 {\n    x\n}\n"),
+            ("src/kind.rs", "pub fn k(x: u32) -> u32 {\n    x\n}\n"),
+        ],
+        &[
+            (
+                "src/m.rs",
+                "pub fn f(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+            ),
+            (
+                "src/n.rs",
+                "pub fn g(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+            ),
+            (
+                "src/type.rs",
+                "pub fn t(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+            ),
+            (
+                "src/kind.rs",
+                "pub fn k(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+            ),
+        ],
+    );
+    let contracts = contract_symbols(&impact(tmp.path(), "HEAD~1..HEAD"));
+    for public in ["public_api g", "public_api t", "public_api k"] {
+        assert!(contracts.contains(&public.to_string()), "{contracts:?}");
+    }
+    assert!(
+        !contracts.contains(&"public_api f".to_string()),
+        "{contracts:?}"
+    );
+}
+
+/// #374: a script named for a schema is not a schema.
+#[test]
+fn a_script_named_for_a_schema_is_not_a_schema_contract() {
+    let tmp = repo_of(
+        &[
+            ("scripts/ci/schema-compat.sh", "#!/bin/sh\ndocker build .\n"),
+            ("db/schema.sql", "create table a (id int);\n"),
+        ],
+        &[
+            (
+                "scripts/ci/schema-compat.sh",
+                "#!/bin/sh\ndocker build --pull .\n",
+            ),
+            ("db/schema.sql", "create table a (id bigint);\n"),
+        ],
+    );
+    let contracts = contract_symbols(&impact(tmp.path(), "HEAD~1..HEAD"));
+    assert_eq!(contracts, vec!["schema db/schema.sql".to_string()]);
+}
+
+/// #369, #383: a deleted path is named by its path, not by its basename
+/// where another file still has it, and never by a bare word.
+#[test]
+fn a_stale_reference_names_the_deleted_path_itself() {
+    let tmp = repo_of(
+        &[
+            ("biome.jsonc", "{}\n"),
+            ("child/biome.json", "{}\n"),
+            ("child/pkg/probes.py", "def ping():\n    return 1\n"),
+            ("child/pkg/__init__.py", ""),
+            (".pre-commit-config.yaml", "files: biome.jsonc\n"),
+            ("AGENTS.md", "The sweep probes every child.\n"),
+            ("mise.toml", "install = \"mise install\"\n"),
+            (
+                "child/app.py",
+                "from pkg.probes import ping\n\n\ndef go():\n    return ping()\n",
+            ),
+            (
+                "child/README.md",
+                "Edit child/biome.json to change the rules.\n",
+            ),
+        ],
+        &[],
+    );
+    let repo = tmp.path();
+    git(
+        repo,
+        &["rm", "-q", "child/biome.json", "child/pkg/probes.py"],
+    );
+    commit_all(repo, "drop");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let mut stale: Vec<String> = doc["stale_references"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|r| format!("{}:{}", r["path"].as_str().unwrap(), r["line"]))
+        .collect();
+    stale.sort();
+    assert_eq!(
+        stale,
+        vec!["child/README.md:1", "child/app.py:1"],
+        "{doc:#}"
+    );
+}
+
+/// #367: a removed member of an exported interface is a contract, and an
+/// optional call to it outside the diff is its caller.
+#[test]
+fn a_removed_optional_member_names_its_remaining_call_site() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/engine.ts",
+                "export interface Engine {\n  play(): void;\n  setGain?(db: number): void;\n}\n",
+            ),
+            (
+                "src/web.ts",
+                "import type { Engine } from './engine';\n\nexport class WebEngine implements Engine {\n  play(): void {}\n  setGain(db: number): void {}\n}\n",
+            ),
+            (
+                "src/store.ts",
+                "import type { Engine } from './engine';\n\nexport function apply(engine: Engine, db: number): void {\n  engine.setGain?.(db);\n}\n",
+            ),
+        ],
+        &[
+            (
+                "src/engine.ts",
+                "export interface Engine {\n  play(): void;\n}\n",
+            ),
+            (
+                "src/web.ts",
+                "import type { Engine } from './engine';\n\nexport class WebEngine implements Engine {\n  play(): void {}\n}\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("setGain"), "{md}");
+    assert!(md.contains("src/store.ts::apply"), "{md}\n{doc}");
+    assert!(
+        contract_symbols(&doc)
+            .iter()
+            .any(|c| c.starts_with("removed_api") && c.ends_with("setGain")),
+        "{doc}"
+    );
+}
+
+fn change_class_of(repo: &Path, path: &str) -> String {
+    let out = Command::new(&*BIN)
+        .current_dir(repo)
+        .args(["--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
+        .output()
+        .expect("run diffctx");
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    doc["changes"]
+        .as_array()
+        .expect("changes")
+        .iter()
+        .find(|c| c["path"] == path)
+        .map(|c| c["class"].as_str().unwrap_or("").to_string())
+        .unwrap_or_default()
+}
+
+/// A layout verdict hides the symbol's callers, so only what a formatter
+/// can change may earn it: `//` is code in Python, a swapped import binds
+/// different names, a template literal is not a plain string, a statement
+/// moved between hunks is a reorder.
+#[test]
+fn code_that_only_looks_like_formatting_is_not_layout() {
+    let floor = repo_of(
+        &[
+            ("m.py", "def mid(lo, hi):\n    return (lo + hi) // 2\n"),
+            (
+                "u.py",
+                "from m import mid\n\n\ndef use(a):\n    return mid(a, 9)\n",
+            ),
+        ],
+        &[("m.py", "def mid(lo, hi):\n    return (lo + hi) // 3\n")],
+    );
+    assert_ne!(change_class_of(floor.path(), "m.py"), "layout");
+    assert!(
+        impact_markdown(floor.path(), "HEAD~1..HEAD").contains("called from u.py::use"),
+        "a floor-division change keeps its callers"
+    );
+    let swapped = repo_of(
+        &[(
+            "m.py",
+            "from a import x\nfrom b import y\n\n\ndef f():\n    return x() + y()\n",
+        )],
+        &[(
+            "m.py",
+            "from a import y\nfrom b import x\n\n\ndef f():\n    return x() + y()\n",
+        )],
+    );
+    assert_ne!(change_class_of(swapped.path(), "m.py"), "layout");
+    let template = repo_of(
+        &[(
+            "t.ts",
+            "export function greet(n: string): string {\n  return 'hi ${n}';\n}\n",
+        )],
+        &[(
+            "t.ts",
+            "export function greet(n: string): string {\n  return `hi ${n}`;\n}\n",
+        )],
+    );
+    assert_ne!(change_class_of(template.path(), "t.ts"), "layout");
+    let sql = repo_of(
+        &[(
+            "q.py",
+            "def active(cur):\n    return cur.execute(\n        \"\"\"SELECT id FROM users WHERE active\"\"\"\n    )\n",
+        )],
+        &[(
+            "q.py",
+            "def active(cur):\n    return cur.execute(\n        \"\"\"SELECT id FROM users WHERE NOT active\"\"\"\n    )\n",
+        )],
+    );
+    assert_ne!(change_class_of(sql.path(), "q.py"), "layout");
+    let reordered = repo_of(
+        &[("r.py", "A = 1\nB = 2\nC = 3\nD = 4\nE = 5\nF = 6\nG = 7\n")],
+        &[("r.py", "B = 2\nC = 3\nD = 4\nE = 5\nF = 6\nG = 7\nA = 1\n")],
+    );
+    assert_ne!(change_class_of(reordered.path(), "r.py"), "layout");
+}
+
+/// Only an appended parameter or field that brings its own default leaves
+/// call sites working (#388); anything else lists them.
+#[test]
+fn breaking_insertions_are_not_signature_compatible() {
+    let mid = repo_of(
+        &[
+            ("f.py", "def f(\n    a,\n    c=2,\n):\n    return a + c\n"),
+            (
+                "u.py",
+                "from f import f\n\n\ndef use():\n    return f(1, 5)\n",
+            ),
+        ],
+        &[(
+            "f.py",
+            "def f(\n    a,\n    b=1,\n    c=2,\n):\n    return a + b + c\n",
+        )],
+    );
+    let md = impact_markdown(mid.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("signature-compatible"), "{md}");
+    assert!(md.contains("called from u.py::use"), "{md}");
+    let callback = repo_of(
+        &[
+            ("p.ts", "export interface Props {\n  label: string;\n}\n"),
+            (
+                "c.ts",
+                "import type { Props } from './p';\n\nexport function render(p: Props): string {\n  return p.label;\n}\n",
+            ),
+        ],
+        &[(
+            "p.ts",
+            "export interface Props {\n  label: string;\n  onChange: (v: string) => void;\n}\n",
+        )],
+    );
+    assert!(!impact_markdown(callback.path(), "HEAD~1..HEAD").contains("signature-compatible"));
+    let required = repo_of(
+        &[
+            (
+                "m.py",
+                "from pydantic import BaseModel, Field\n\n\nclass Order(BaseModel):\n    sku: str\n",
+            ),
+            (
+                "u.py",
+                "from m import Order\n\n\ndef make():\n    return Order(sku='a')\n",
+            ),
+        ],
+        &[(
+            "m.py",
+            "from pydantic import BaseModel, Field\n\n\nclass Order(BaseModel):\n    sku: str\n    qty: int = Field(...)\n",
+        )],
+    );
+    let md = impact_markdown(required.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("signature-compatible"), "{md}");
+    // A call in the body that gains a keyword argument is no parameter list.
+    let body = repo_of(
+        &[
+            (
+                "pkg/core.py",
+                "def handle(a):\n    return compute(a)\n\n\ndef compute(a, strict=False):\n    return a\n",
+            ),
+            (
+                "pkg/app.py",
+                "from pkg.core import handle\n\n\ndef handler(req):\n    return handle(req)\n",
+            ),
+        ],
+        &[(
+            "pkg/core.py",
+            "def handle(a):\n    return compute(a, strict=True)\n\n\ndef compute(a, strict=False):\n    return a\n",
+        )],
+    );
+    let md = impact_markdown(body.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("signature-compatible"), "{md}");
+    assert!(md.contains("called from pkg/app.py::handler"), "{md}");
+    // `__slots__` changes how every instance is built.
+    let slots = repo_of(
+        &[
+            ("pt.py", "class Point:\n    x = 0\n"),
+            (
+                "u.py",
+                "from pt import Point\n\n\ndef make():\n    p = Point()\n    p.y = 1\n    return p\n",
+            ),
+        ],
+        &[(
+            "pt.py",
+            "class Point:\n    x = 0\n    __slots__ = (\"x\",)\n",
+        )],
+    );
+    let md = impact_markdown(slots.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("signature-compatible"), "{md}");
+    assert!(md.contains("u.py::make"), "{md}");
+}
+
+/// Relative spellings name the deleted file too: `./utils`, `from .probes
+/// import`; a `../lib/foo` that resolves elsewhere does not.
+#[test]
+fn relative_references_to_a_moved_file_are_stale_and_foreign_ones_are_not() {
+    let tmp = repo_of(
+        &[
+            ("src/utils.ts", "export const x = 1;\n"),
+            (
+                "src/app.ts",
+                "import { x } from './utils';\nexport const y = x;\n",
+            ),
+            ("pkg/probes.py", "def ping():\n    return 1\n"),
+            ("pkg/__init__.py", ""),
+            (
+                "pkg/run.py",
+                "from .probes import ping\n\n\ndef go():\n    return ping()\n",
+            ),
+            ("packages/a/lib/foo.ts", "export const f = 1;\n"),
+            ("packages/b/lib/foo.ts", "export const g = 2;\n"),
+            (
+                "packages/b/src/x.ts",
+                "import { g } from '../lib/foo';\nexport const h = g;\n",
+            ),
+        ],
+        &[],
+    );
+    let repo = tmp.path();
+    git(repo, &["mv", "src/utils.ts", "src/helpers.ts"]);
+    git(
+        repo,
+        &["rm", "-q", "pkg/probes.py", "packages/a/lib/foo.ts"],
+    );
+    commit_all(repo, "move");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let mut stale: Vec<String> = doc["stale_references"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|r| format!("{}:{}", r["path"].as_str().unwrap(), r["line"]))
+        .collect();
+    stale.sort();
+    assert_eq!(stale, vec!["pkg/run.py:1", "src/app.ts:1"], "{doc:#}");
+}
+
+/// A definition moved to another module leaves the old module's importers
+/// broken; the removal is reported with them (#367 class).
+#[test]
+fn a_moved_function_names_the_importers_of_its_old_module() {
+    let tmp = repo_of(
+        &[
+            (
+                "a.py",
+                "def foo():\n    return 1\n\n\ndef keep():\n    return 2\n",
+            ),
+            ("b.py", "def bar():\n    return 3\n"),
+            (
+                "c.py",
+                "from a import foo\n\n\ndef use():\n    return foo()\n",
+            ),
+        ],
+        &[
+            ("a.py", "def keep():\n    return 2\n"),
+            (
+                "b.py",
+                "def bar():\n    return 3\n\n\ndef foo():\n    return 1\n",
+            ),
+        ],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("c.py::use"), "{md}");
+}
+
+/// Removed members are found wherever the parser split their class, and
+/// `def self.x` names `x`, never `self`.
+#[test]
+fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
+    let ts = repo_of(
+        &[
+            (
+                "store.ts",
+                "export class Store {\n  load(): number {\n    return 1;\n  }\n\n  save(): number {\n    return 2;\n  }\n}\n",
+            ),
+            (
+                "use.ts",
+                "import { Store } from './store';\n\nexport function persist(s: Store): number {\n  return s.save();\n}\n",
+            ),
+        ],
+        &[(
+            "store.ts",
+            "export class Store {\n  load(): number {\n    return 1;\n  }\n}\n",
+        )],
+    );
+    let md = impact_markdown(ts.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("save") && md.contains("use.ts::persist"),
+        "{md}"
+    );
+    let rb = repo_of(
+        &[
+            (
+                "svc.rb",
+                "class Svc\n  def self.call(x)\n    x\n  end\n\n  def self.keep\n    1\n  end\nend\n",
+            ),
+            (
+                "job.rb",
+                "require_relative 'svc'\n\ndef run\n  Svc.call(1)\nend\n",
+            ),
+        ],
+        &[("svc.rb", "class Svc\n  def self.keep\n    1\n  end\nend\n")],
+    );
+    let doc = impact(rb.path(), "HEAD~1..HEAD");
+    assert!(
+        !changed_symbols(&doc).contains(&"self".to_string()),
+        "{doc}"
+    );
+}
+
+/// Deleting the functions below one leaves that one unchanged: only the
+/// removed definitions are the change.
+#[test]
+fn a_deletion_below_a_definition_does_not_change_it() {
+    let tmp = repo_of(
+        &[
+            (
+                "lib.py",
+                "import os\n\n\ndef keep(x):\n    return x\n\n\ndef drop(x):\n    return -x\n\n\ndef tail():\n    return 0\n",
+            ),
+            (
+                "use.py",
+                "from lib import keep\n\n\ndef run():\n    return keep(1)\n",
+            ),
+        ],
+        // An edit elsewhere in the file, as an import fix beside such a
+        // deletion usually is.
+        &[(
+            "lib.py",
+            "import sys\n\n\ndef keep(x):\n    return x\n\n\ndef tail():\n    return 0\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        !changed_symbols(&doc).contains(&"keep".to_string()),
+        "{doc}"
+    );
+    // Removing the body's last line is a change to it.
+    let tail = repo_of(
+        &[
+            (
+                "lib.py",
+                "def keep(x):\n    x = x + 1\n    return x\n\n\ndef tail():\n    return 0\n",
+            ),
+            (
+                "use.py",
+                "from lib import keep\n\n\ndef run():\n    return keep(1)\n",
+            ),
+        ],
+        &[(
+            "lib.py",
+            "def keep(x):\n    x = x + 1\n\n\ndef tail():\n    return 0\n",
+        )],
+    );
+    let doc = impact(tail.path(), "HEAD~1..HEAD");
+    assert!(changed_symbols(&doc).contains(&"keep".to_string()), "{doc}");
+}
+
+/// Two children of a monorepo that never import each other share words,
+/// not tests: a lexical test link stops at the project a manifest marks.
+#[test]
+fn a_sibling_project_s_test_does_not_guard_a_caller() {
+    let files = |root_manifest: bool| {
+        let mut f = vec![
+            ("web/package.json", "{\"name\": \"web\"}\n"),
+            (
+                "web/src/contracts.ts",
+                "export const CONTRACTS = { theme: 'dark' };\n",
+            ),
+            (
+                "web/src/config.ts",
+                "import { CONTRACTS } from './contracts';\n\nexport function generated(): string {\n  return CONTRACTS.theme;\n}\n",
+            ),
+            (
+                "quiz/tests/conftest.py",
+                "import config\n\nCONTRACTS = {}\n\n\ndef test_generated():\n    assert config.generated() == CONTRACTS\n",
+            ),
+        ];
+        if root_manifest {
+            f.push(("quiz/pyproject.toml", "[project]\nname = \"quiz\"\n"));
+        }
+        f
+    };
+    let change = [(
+        "web/src/contracts.ts",
+        "export const CONTRACTS = { theme: 'light' };\n",
+    )];
+    // One project: the lexical link stands, so the probe below is not vacuous.
+    let together = repo_of(&files(false), &change);
+    let md = impact_markdown(together.path(), "HEAD~1..HEAD");
+    assert!(md.contains("quiz/tests/conftest.py"), "{md}");
+    let apart = repo_of(&files(true), &change);
+    let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
+    assert!(md.contains("web/src/config.ts::generated"), "{md}");
+    assert!(!md.contains("quiz/tests/conftest.py"), "{md}");
+}
+
+/// A sibling module of one language that imports the definition by its
+/// qualified name is a real dependency: a Maven `it/` module tests `core/`.
+#[test]
+fn a_sibling_module_importing_the_qualified_name_still_guards_it() {
+    let pricing = |rate: &str| {
+        format!(
+            "package com.acme.core;\n\npublic class Pricing {{\n    public static int gross(int a) {{\n        return a * {rate};\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            (
+                "pom.xml",
+                "<project><modules><module>core</module><module>it</module></modules></project>\n",
+            ),
+            (
+                "core/pom.xml",
+                "<project><artifactId>core</artifactId></project>\n",
+            ),
+            (
+                "it/pom.xml",
+                "<project><artifactId>it</artifactId></project>\n",
+            ),
+            (
+                "core/src/main/java/com/acme/core/Pricing.java",
+                &pricing("2"),
+            ),
+            (
+                "it/src/test/java/com/acme/it/PricingTest.java",
+                "package com.acme.it;\n\nimport com.acme.core.Pricing;\n\npublic class PricingTest {\n    public void testGross() {\n        assert Pricing.gross(2) == 6;\n    }\n}\n",
+            ),
+        ],
+        &[(
+            "core/src/main/java/com/acme/core/Pricing.java",
+            &pricing("3"),
+        )],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("PricingTest.java"), "{md}");
+    assert!(
+        !md.contains("Pricing.java::gross (4-6) — no static test link"),
+        "{md}"
+    );
+}
+
+/// Where indentation, a tuple's comma, a mid-word `#` or a semicolon before
+/// a `[` line is syntax, changing it is not formatting; a consistent
+/// reindent, a re-wrapped call and a call's trailing comma still are.
+#[test]
+fn syntax_that_formatting_rules_would_erase_is_not_layout() {
+    let class = |path: &str, old: &str, new: &str| {
+        let repo = repo_of(&[(path, old)], &[(path, new)]);
+        change_class_of(repo.path(), path)
+    };
+    for (path, old, new) in [
+        (
+            "p.py",
+            "def f(x):\n    if x:\n        a()\n        b()\n    c()\n",
+            "def f(x):\n    if x:\n        a()\n    b()\n    c()\n",
+        ),
+        ("k.yaml", "a:\n  b: 1\n  c: 2\n", "a:\n  b: 1\nc: 2\n"),
+        (
+            "u.yaml",
+            "url: http://a.example\n",
+            "url: http://b.example\n",
+        ),
+        ("t.py", "T = (1,)\n", "T = (1)\n"),
+        ("s.sh", "echo ${#a}\n", "echo ${#b}\n"),
+        (
+            "j.js",
+            "let a = 1\n[1, 2].map(f)\n",
+            "let a = 1;\n[1, 2].map(f)\n",
+        ),
+    ] {
+        assert_ne!(class(path, old, new), "layout", "{path}: {new:?}");
+    }
+    for (path, old, new) in [
+        (
+            "y.yaml",
+            "a:\n  b: 1\n  c:\n    d: 2\n",
+            "a:\n    b: 1\n    c:\n        d: 2\n",
+        ),
+        (
+            "r.py",
+            "def f():\n    return g(a, b)\n",
+            "def f():\n    return g(\n        a,\n        b,\n    )\n",
+        ),
+        ("c.sh", "echo a # old\n", "echo a # new\n"),
+        ("k.py", "f(a,)\n", "f(a)\n"),
+        ("s.js", "let a = 1\nfoo()\n", "let a = 1;\nfoo()\n"),
+    ] {
+        assert_eq!(class(path, old, new), "layout", "{path}: {new:?}");
+    }
+}
+
+/// A function nested in another is a local name, and reading an attribute
+/// of an object nothing types is no call: neither collects possible
+/// callers from unrelated code.
+#[test]
+fn local_functions_and_untyped_attribute_reads_are_not_callers() {
+    let tmp = repo_of(
+        &[
+            (
+                "log.py",
+                "class RequestLog:\n    def headers(self):\n        return {}\n\n    def __call__(self, out):\n        def write(line):\n            out.append(line)\n\n        write('a')\n        return out\n",
+            ),
+            (
+                "server.py",
+                "def respond(handler, response):\n    handler.wfile.write(b'x')\n    return response.headers\n",
+            ),
+            (
+                "client.py",
+                "def fetch(session):\n    return session.headers()\n",
+            ),
+        ],
+        &[(
+            "log.py",
+            "class RequestLog:\n    def headers(self):\n        return {'x': '1'}\n\n    def __call__(self, out):\n        def write(line):\n            out.append(line.strip())\n\n        write('a')\n        return out\n",
+        )],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("server.py"), "{md}");
+    assert!(
+        md.contains("client.py::fetch"),
+        "an untyped call stays possible: {md}"
+    );
+}

@@ -320,20 +320,16 @@ silently:
 
 ## Issue triage invariants
 
-- `v3`-labeled issues are the current paper cycle (tracking issue #256:
-  order of work, E/Q freeze); `post-v3` is the deferred research/product
-  backlog. Neither is a rotting defect — check staleness, don't force
-  per-pass decisions.
-- `gated` label = blocked on a pre-registered experiment or eval-cycle
-  boundary.
-- Defect classes (2026-09-22): `bug` = shipped behaviour is wrong;
-  `eval-integrity` = the measurement instrument is wrong (harness, dataset,
-  aggregator, provenance) — these are #269's splits and never sit under
-  `research`; `regression` = v1/v2 had it and the rewrite lost it;
-  `validation-gap` = a shipped default nobody measured; `known-limitation` =
-  a measured ceiling of the mechanism. An issue whose body documents a broken
-  instrument but carries only `benchmark`/`paper` is misfiled — that is how a
-  tracker with zero `bug`s read as "no defects left".
+- **The label set and the tracker rule live in #394** (root: invariants,
+  epics, versions). Every open issue has one primary home — `epic:*`,
+  `invariant:*`, `deferred` or `blocked:measurement` — plus `bug` /
+  `enhancement` from the templates; nothing else. Finer classes (regression,
+  known limitation, validation gap) go in the body. A broken instrument is
+  `invariant:eval-integrity`, never a research or benchmark item: that
+  misfiling is how a tracker with zero `bug`s once read as "no defects left".
+- **Fixed in source, verified on the repro, released are three states.**
+  An issue fixed on `main` sits in the next release's milestone and closes
+  with a comment naming that release.
 - **A closure comment does not tick the body.** #245's items 2/5/6 stayed
   `[ ]` for three weeks after the comment that closed them, and an outside
   audit read the issue as closed-with-open-work. When a comment closes a

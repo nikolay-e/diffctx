@@ -291,6 +291,9 @@ class GraphArgs:
     format: str = "mermaid"
     summary: bool = False
     level: str = "directory"
+    # JSON, GraphML and the summary's counts stay per fragment unless a level
+    # is asked for: their consumers parse fragment ids.
+    export_level: str = "fragment"
 
 
 @dataclass
@@ -451,12 +454,18 @@ Token counting (--budget, and the summary line on stderr):
   stderr token summary, which always reports the real size of what was written.
 
 Exit codes:
-  0  success
+  0  success, including a partial artifact stopped at --timeout and a
+     deletion/rename/lockfile-only diff
   1  runtime error (unreadable path, write failure)
-  2  usage error (unknown flag, invalid value, or a flag the mode does not take)
-  3  environment error (git missing, not a repository, unknown revision)
-  4  --diff produced no context (clean tree or empty range)
-  124  --diff exceeded the --timeout wall-clock deadline
+  2  usage error (unknown flag, invalid value, a malformed duration such as
+     1.5h, or a tree-mode flag given with --diff or graph)
+  3  environment error (git missing, not a repository, bare or shallow clone
+     missing the revision, no commits yet)
+  4  --diff produced no semantic context (clean tree, binary-only, everything
+     filtered); the output is still written
+  124  --diff ran 30 s past --timeout without stopping cooperatively
+  130  interrupted (Ctrl-C)
+  141  broken pipe (e.g. piping into head)
 """
 
 
@@ -529,7 +538,7 @@ def _build_graph_parser(prog: str = "diffctx graph") -> argparse.ArgumentParser:
         "--level",
         choices=["fragment", "file", "directory"],
         default=_UNSET,
-        help="Node granularity: directory, file, or fragment = function/class-level block (default: directory); applies to mermaid output and --summary",
+        help="Node granularity: directory, file, or fragment = function/class-level block (default: directory for mermaid, fragment for -f json/graphml and the --summary counts)",
     )
     return graph_parser
 
@@ -673,7 +682,9 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         metavar="SECONDS",
         help=(
             f"Wall-clock deadline for --diff analysis (default: {_DEFAULT_TIMEOUT}); "
-            "on expiry diffctx aborts with exit code 124 instead of hanging"
+            "on expiry the run stops cooperatively and emits a partial artifact whose "
+            "coverage block names the limit (exit 0); 124 is the watchdog 30 s later, "
+            "for a phase that could not stop"
         ),
     )
     diff_group.add_argument(
@@ -761,8 +772,6 @@ def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     graph_level = "directory" if args.level is _UNSET else args.level
     if args.summary and args.format is not _UNSET:
         _warn(f"-f {graph_format} ignored with --summary")
-    if not args.summary and args.level is not _UNSET and graph_format in ("json", "graphml"):
-        _warn(f"--level {graph_level} applies to mermaid output and --summary; ignored for -f {graph_format}")
     _warn_quiet_log_level_conflict(args)
     output_file_path, force_stdout = _resolve_output_file(args.output_file, False, graph_format)
     verbosity = "error" if args.quiet else args.log_level
@@ -786,6 +795,7 @@ def _build_graph_parsed_args(args: argparse.Namespace) -> ParsedArgs:
             format=graph_format,
             summary=args.summary,
             level=graph_level,
+            export_level="fragment" if args.level is _UNSET else args.level,
         ),
     )
 

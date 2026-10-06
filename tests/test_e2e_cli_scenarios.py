@@ -381,6 +381,7 @@ class TestDiffModeJourneys:
         )
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SRC_DIR)
+        env["DIFFCTX_TEST_WATCHDOG_GRACE_SECS"] = "1"
         result = subprocess.run(
             [sys.executable, "-c", watchdog_script],
             capture_output=True,
@@ -392,6 +393,21 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_TIMEOUT
         assert "wall-clock deadline" in result.stderr
         assert "--timeout" in result.stderr
+
+    def test_a_pipeline_that_stops_at_its_deadline_still_answers(self):
+        """#382: the engine returns a partial answer at --timeout; a watchdog
+        firing at the same instant killed it and printed nothing at all."""
+        script = (
+            "import time\n"
+            "from diffctx._app import _call_with_wall_clock_deadline\n"
+            "print(_call_with_wall_clock_deadline(lambda: (time.sleep(1.5), 'partial')[1], 1, 'diffctx'))\n"
+        )
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(SRC_DIR)
+        env.pop("DIFFCTX_TEST_WATCHDOG_GRACE_SECS", None)
+        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, timeout=30, check=False)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "partial"
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
         out = tmp_path / "diff.yaml"
@@ -430,6 +446,76 @@ class TestGraphModeJourneys:
         result = run_diffctx_subprocess(["graph", ".", "--level", level], cwd=graph_repo.path)
         assert result.returncode == EXIT_OK
         assert result.stdout.strip()
+
+    @pytest.mark.parametrize("fmt", ["json", "graphml"])
+    def test_an_explicit_file_level_exports_file_nodes(self, graph_repo, fmt):
+        """#352: `--level file` was ignored for JSON and GraphML; every node was a
+        fragment (`path:start-end`) and the caller had to group them."""
+        result = run_diffctx_subprocess(["graph", ".", "--level", "file", "-f", fmt], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK, result.stderr
+        assert "--level" not in result.stderr
+        if fmt == "json":
+            doc = json.loads(result.stdout)
+            ids = {n["id"] for n in doc["nodes"]}
+            assert ids
+            assert all(":" not in i for i in ids), ids
+            assert doc["node_count"] == len(ids)
+            assert all({e["source"], e["target"]} <= ids for e in doc["edges"])
+        else:
+            assert not re.search(r'<node id="[^"]*:\d+-\d+"', result.stdout)
+
+    def test_without_a_level_the_export_stays_per_fragment(self, graph_repo):
+        doc = json.loads(run_diffctx_subprocess(["graph", ".", "-f", "json"], cwd=graph_repo.path).stdout)
+        assert all(re.search(r":\d+-\d+$", n["id"]) for n in doc["nodes"])
+
+    def test_a_file_level_summary_counts_and_ranks_files(self, graph_repo):
+        result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=graph_repo.path)
+        assert result.returncode == EXIT_OK
+        nodes = int(re.search(r"Nodes: (\d+)", result.stdout).group(1))
+        files = int(re.search(r"Files: (\d+)", result.stdout).group(1))
+        assert nodes == files
+        ranked = result.stdout.split("most-referenced:")[1].splitlines() if "most-referenced:" in result.stdout else []
+        assert not any(re.search(r":\d+\s+in_degree", line) for line in ranked), ranked
+
+    def test_a_key_every_workflow_carries_links_no_source_file(self, tmp_path):
+        """#297: `workflow_dispatch:` in every CI workflow split into the word
+        `workflow`, and every source file that says "workflow" was linked to
+        every workflow's concurrency block, outranking the changed code."""
+        repo = Pygit2Repo(tmp_path / "workflows")
+        for name in ("ci", "cd", "docker", "security", "automerge"):
+            repo.add_file(
+                f".github/workflows/{name}.yml",
+                f"name: {name}\non:\n  push:\n  workflow_dispatch:\nconcurrency:\n"
+                "  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n",
+            )
+        repo.add_file("app/runner.py", "def run_workflow(workflow):\n    return workflow.steps\n")
+        repo.add_file("deploy.yml", "release_channel: stable\n")
+        repo.add_file("app/release.py", "def channel(cfg):\n    return cfg['release_channel']\n")
+        repo.commit("initial commit")
+        result = run_diffctx_subprocess(["graph", ".", "-f", "json"], cwd=repo.path)
+        assert result.returncode == EXIT_OK
+        edges = json.loads(result.stdout)["edges"]
+        linked = {(e["source"].split(":")[0], e["target"].split(":")[0]) for e in edges}
+        workflow_to_code = {(a, b) for a, b in linked if ".github/workflows/" in a + b and "app/" in a + b}
+        assert not workflow_to_code, workflow_to_code
+        assert ("deploy.yml", "app/release.py") in linked, "a key one config file owns still links"
+
+    @pytest.mark.parametrize("environments", [3, 4, 6])
+    def test_a_setting_two_environments_share_still_links_its_reader(self, tmp_path, environments):
+        repo = Pygit2Repo(tmp_path / "envs")
+        for i in range(environments):
+            extra = "payment_gateway_url: https://pay\n" if i < 2 else ""
+            repo.add_file(f"config/env{i}.yaml", f"log_level: info\n{extra}")
+        repo.add_file("app/pay.py", "def gateway(cfg):\n    return cfg['payment_gateway_url']\n")
+        repo.commit("initial commit")
+        # The tags fallback links the two files by the key as well; without it
+        # the config builder's own vocabulary gate is what is measured.
+        result = run_diffctx_subprocess(
+            ["graph", ".", "-f", "json", "--level", "file"], cwd=repo.path, env={"DIFFCTX_DISABLE_BUILDERS": "tags"}
+        )
+        assert result.returncode == EXIT_OK
+        linked = {(e["source"], e["target"]) for e in json.loads(result.stdout)["edges"]}
+        assert any("app/pay.py" in a + b and "config/env0.yaml" in a + b for a, b in linked), linked
 
     def test_one_way_import_reports_no_cycles(self, graph_repo):
         result = run_diffctx_subprocess(["graph", ".", "--summary", "--level", "file"], cwd=graph_repo.path)

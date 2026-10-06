@@ -72,10 +72,10 @@ case runs the full pipeline against a real git repo built per test.
 
 **Garbage injection is opt-in, and almost nothing opts in.** This
 paragraph claimed for months that *every* case injects ~10 unrelated
-files and asserts they stay excluded; measured on 2026-09-06, exactly
-**1 of 2725 cases** sets `fixtures.auto_garbage`, and the leak assertion
-in `yaml_cases.rs` runs only under that flag. The `GARBAGE_*` prefix is
-what the assertion matches on. The Python corpus in
+files and asserts they stay excluded; measured on 2026-10-07, **29 of
+2762 cases** set `fixtures.auto_garbage` (1 of 2725 on 2026-09-06), and
+the leak assertion in `yaml_cases.rs` runs only under that flag. The
+`GARBAGE_*` prefix is what the assertion matches on. The Python corpus in
 `tests/garbage_data.py` is separately injected by `test_mcp.py` and
 `test_e2e_cli_scenarios.py` — that, not the YAML corpus, is where
 garbage currently guards the relevance filter. Turning the flag on

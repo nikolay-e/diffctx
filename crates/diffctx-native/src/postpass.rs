@@ -217,41 +217,27 @@ pub fn rescue_nontrivial_context(
     let has_context = selected.iter().any(|f| !changed_paths.contains(&f.id.path));
     let admissible_files = if has_context { admissible_files } else { None };
 
-    // A signature stands in for its body: when a caller's body is worth
-    // rescuing but does not fit, its signature still reaches the file.
-    let score = |f: &Fragment| {
-        let own = rel_scores.get(&f.id).copied().unwrap_or(0.0);
-        if !f.kind.is_signature() {
-            return own;
-        }
-        all_fragments
-            .iter()
-            .filter(|b| {
-                b.id.path == f.id.path
-                    && b.id != f.id
-                    && b.start_line() == f.start_line()
-                    && b.end_line() >= f.end_line()
-            })
-            .map(|b| rel_scores.get(&b.id).copied().unwrap_or(0.0))
-            .fold(own, f64::max)
-    };
-    let mut candidates: Vec<&Fragment> = all_fragments
+    // A signature's score scans every fragment, so it is computed once per
+    // candidate rather than in every comparison of the sort.
+    let mut candidates: Vec<(f64, &Fragment)> = all_fragments
         .iter()
         .filter(|f| {
             !selected_ids.contains(&f.id)
                 && !core_ids.contains(&f.id)
                 && !changed_paths.contains(&f.id.path)
                 && !represented_paths.contains(&f.id.path)
-                && score(f) >= min_score
+        })
+        .map(|f| (rescue_score(f, all_fragments, rel_scores), f))
+        .filter(|(score, f)| {
+            *score >= min_score
                 && f.token_count <= rescue_budget
                 // #65/#211: every pick here opens a new file by construction,
                 // so the admission gate applies with no open-file exemption.
                 && admissible_files.is_none_or(|a| a.contains(&f.id.path))
         })
         .collect();
-    candidates.sort_by(|a, b| {
-        score(b)
-            .total_cmp(&score(a))
+    candidates.sort_by(|(sa, a), (sb, b)| {
+        sb.total_cmp(sa)
             .then_with(|| a.kind.is_signature().cmp(&b.kind.is_signature()))
             .then_with(|| a.id.cmp(&b.id))
     });
@@ -262,7 +248,7 @@ pub fn rescue_nontrivial_context(
     }
 
     let mut budget_used = 0u32;
-    for cand in candidates {
+    for (_, cand) in candidates {
         // The path filter above was a snapshot of the incoming selection, so
         // without this the pass could spend its whole budget stacking several
         // fragments of one newly reached file — no gain on the file-level
@@ -282,6 +268,29 @@ pub fn rescue_nontrivial_context(
         represented_paths.insert(cand.id.path.clone());
         budget_used += cand.token_count;
     }
+}
+
+/// A signature stands in for its body: when a caller's body is worth
+/// rescuing but does not fit, its signature still reaches the file.
+fn rescue_score(
+    f: &Fragment,
+    all_fragments: &[Fragment],
+    rel_scores: &FxHashMap<FragmentId, f64>,
+) -> f64 {
+    let own = rel_scores.get(&f.id).copied().unwrap_or(0.0);
+    if !f.kind.is_signature() {
+        return own;
+    }
+    all_fragments
+        .iter()
+        .filter(|b| {
+            b.id.path == f.id.path
+                && b.id != f.id
+                && b.start_line() == f.start_line()
+                && b.end_line() >= f.end_line()
+        })
+        .map(|b| rel_scores.get(&b.id).copied().unwrap_or(0.0))
+        .fold(own, f64::max)
 }
 
 pub fn ensure_changed_files_represented(

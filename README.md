@@ -1,312 +1,75 @@
-# diffctx — smart diff context for LLM code review
+# diffctx — what a git change reaches, and the code to review it
 
 [![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/diffctx)](https://pypi.org/project/diffctx/)
 [![crates.io](https://img.shields.io/crates/v/diffctx)](https://crates.io/crates/diffctx)
 [![npm](https://img.shields.io/npm/v/diffctx)](https://www.npmjs.com/package/diffctx)
-[![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
 
-**diffctx selects the minimum code an LLM needs to review a git diff.**
-Instead of pasting whole files, it walks the dependency graph outward from the
-changed lines and stops once more context stops paying for itself.
+**diffctx tells an agent or a reviewer what a change reaches outside its
+diff** — the callers, the tests that reach them, the contracts it crosses —
+**and selects the code needed to understand it** under a token budget. Local,
+deterministic, no index, no model calls. Caller resolution is static and per
+language; where it cannot resolve, the answer says so instead of printing a
+zero.
 
 > Formerly published as `treemapper` — every command, flag, and API call works unchanged.
-
-## How it compares
-
-Whole-repo packers (repomix and friends) seed on the repository and export
-everything; persistent code-graph servers answer structural queries against a
-maintained index. diffctx is **diff-seeded**: the input is a change, the
-output is the fragments needed to understand it, packed under a hard token
-budget — local, deterministic, no index, no model calls. Measured results and
-when the other two families fit better: [COMPARISON.md](COMPARISON.md).
 
 ## Install
 
 ```bash
-uvx diffctx . --diff HEAD~1             # zero-install, run once via uv
-pipx install diffctx                    # recommended: isolated CLI, no venv needed
-pip install diffctx                     # or: into an active environment
-pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
+# Claude Code: the MCP server, /diffctx:impact, and hooks that run it before commit and push
+claude plugin marketplace add nikolay-e/diffctx
+claude plugin install diffctx@diffctx
+
+# any MCP client
+claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+
+# CLI, zero-install
+uvx diffctx . --diff HEAD~1
 ```
 
-Without Python:
-
-```bash
-cargo install diffctx                   # native CLI from crates.io
-npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
-docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
-```
-
-On Windows, via Scoop (this repository is the bucket):
-
-```powershell
-scoop bucket add diffctx https://github.com/nikolay-e/diffctx
-scoop install diffctx/diffctx
-```
-
-Every [release](https://github.com/nikolay-e/diffctx/releases/latest) carries
-prebuilt binaries; the current target set is Linux (x86_64/aarch64), macOS
-(arm64/x86_64) and Windows (x64/arm64), and a release older than a target's
-first build lacks it (v1.16.0 predates the macOS x86_64 and Windows arm64
-archives). On Windows on ARM, `diffctx[mcp]` builds `cryptography` from source,
-which needs OpenSSL: that project publishes no wheel for the platform.
-Free-threaded CPython (`3.14t`) cannot load the `abi3` wheel, so each release
-after 1.16.0 also ships a `cp314t` wheel per platform (the extension runs with
-the GIL off); on 1.16.0 itself `pip` and `uv` fall back to compiling the sdist.
-The native binary and Docker image cover diff mode with YAML/JSON output and
-write to stdout (redirect to capture); tree mode, Markdown output, the `graph`
-subcommand and the MCP server live in the Python package.
-
-## Quick start
-
-```bash
-diffctx . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
-diffctx . -f md -c            # full codebase export → clipboard in Markdown
-```
-
-![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif)
-
-*`diffctx . --diff HEAD~1` selects only the fragments an LLM needs to review the
-last commit, instead of dumping every changed file in full.*
-
-## Diff context mode
-
-Finds the minimal set of fragments needed to understand a change — imports,
-callers, type definitions, config dependencies — across 50+ file types. It
-builds a code graph (imports, co-changes, type refs), propagates relevance
-outward from the changed lines, and stops when relevance drops below `--tau` or
-the `--budget` token cap is hit.
-
-`--diff` takes a git range (`HEAD~1..HEAD`, `main..feature`) or a **duration
-window ending now** — `24h`, `8d`, `90min`, `1h30m`, `2w` (units `s`, `m`/`min`,
-`h`, `d`, `w`, composable). A window diffs the working tree against the last
-commit before it, so it covers the commits made inside the window *plus* the
-uncommitted and untracked work on top — `diffctx . --diff 24h` is "everything I
-touched today". A ref that happens to look like a duration (a branch `24h`)
-keeps its git meaning.
-
-| Flag        | Default | Description                                                              |
-|-------------|---------|--------------------------------------------------------------------------|
-| `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs); `rrf` = reciprocal-rank fusion of `ego` and `bm25` (widest recall, no scale calibration between the two signals); `pit` = the same fusion on score percentiles |
-| `--budget`  | auto    | Cap in o200k_base tokens on the whole rendered artifact (see [Token counting](docs/product/token-budget.md)): every changed file gets one witness first, relevance fills the rest, and the renderer drops context from the tail until the document fits. A budget smaller than the summary yields the summary alone. `N` = fixed cap, `-1` disables it, `0` is a strict-zero floor (no fragments; use `--full` for changed files only) |
-| `--alpha`   | 0.60    | PPR continuation probability: higher = relevance travels further from the change, lower = tighter around it (`--scoring ppr` only) |
-| `--tau`     | 0.05    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
-| `--full`    | false   | Only the changed files, every fragment, no related-code context          |
-| `--timeout` | 300     | Wall-clock deadline in seconds; on expiry the run stops cooperatively and emits a partial artifact whose `coverage` block names the limit (exit 0). 124 is the watchdog behind it, 30 s later, for a phase that could not stop |
-| `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
-| `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. Adds a `coverage` block naming what the run could not see (`unparsed_files`, `zero_edge_files`, `ppr_truncated`, `next_up`, a heuristic `confidence`) and an `overflow` ranking of what the budget left behind — omitted entirely when there is nothing to disclose. `impact` answers, under 2k tokens, what the change reaches outside its diff: callers in files the diff does not touch, whether a test guards each, cross-commit overlap, and the public API and schema changes (text by default, `diffctx.impact.v1` JSON with `-f json`). The MCP tool takes both as `mode` |
-
-Every JSON/YAML artifact opens with `schema: diffctx.context.v1` and validates
-against [`schemas/diffctx.context.v1.json`](schemas/diffctx.context.v1.json),
-generated from the engine's own type; it closes with a `provenance` block
-(engine version, input object ids, the effective configuration and its hash,
-the selection parameters, the tokenizer) and, when a limit stopped the run
-short, a `coverage` block naming it.
-
-### `graph` subcommand
-
-Explore the underlying dependency graph directly, without a diff:
-
-```bash
-diffctx graph .                                  # Mermaid graph of directory deps (default)
-diffctx graph . --summary                        # cycles, hotspots, coupling metrics
-diffctx graph . --level fragment -f json         # fragment-level graph as JSON
-diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
-```
+pipx, pip, cargo, npm, Docker, Scoop, other MCP clients and the Python API:
+[integrations](docs/product/integrations.md).
 
 ## Usage
 
-<!-- BEGIN USAGE -->
 ```bash
-# full codebase export:
-diffctx .                                 # Markdown to stdout + token count
-diffctx . -f md -c                        # Markdown → clipboard
-diffctx . -f json -o tree.json            # JSON → file
-diffctx . --no-content                    # structure only, no file contents
-diffctx . --max-depth 3                   # limit depth
-diffctx . -i custom.ignore                # custom ignore patterns
-
-# diff context mode (requires git repo):
-diffctx . --diff                          # uncommitted changes (working tree vs HEAD)
-diffctx . --diff HEAD~1                   # context for last commit
-diffctx . --diff main..feature            # context for feature branch
-diffctx . --diff 24h                      # everything changed in the last 24 hours
-diffctx . --diff 8d                       # same over 8 days (also 90s, 10min, 1h30m, 2w)
-diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
-diffctx . --diff HEAD~1 -c                # diff context to clipboard
-diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context
-diffctx . --diff HEAD~1 --mode locate     # ranked navigation JSON, no source
-```
-<!-- END USAGE -->
-
-Every run reports token count and size on stderr — `12,847 tokens
-(o200k_base), 52.3 KB`. Counts are exact only for the GPT-4o family; Claude,
-Gemini and others tokenize differently, so treat `--budget` as an upper bound
-and leave headroom ([details](docs/product/token-budget.md)). Unreadable files
-become placeholders like `<binary file: N bytes>`.
-
-## Python API
-
-```python
-from pathlib import Path
-from diffctx import build_diff_context, map_directory, to_json, to_markdown, to_text, to_yaml
-
-ctx = build_diff_context(
-    Path("."),
-    "HEAD~1..HEAD",
-    budget_tokens=None,       # None = auto; 0 = no fragments; -1 = uncapped; N = cap on the whole artifact
-    alpha=0.6,
-    tau=0.05,
-    full=False,
-    scoring_mode="ego",
-    timeout=300,
-    with_raw_diff=False,      # True also embeds the raw unified diff (not charged to budget)
-)
-print(to_markdown(ctx))
-
-tree = map_directory(
-    ".",
-    max_depth=None,
-    no_content=False,
-    max_file_bytes=None,
-    ignore_file=None,
-    no_default_ignores=False,
-    whitelist_file=None,
-)
-print(to_yaml(tree))
+diffctx . --diff --mode impact          # uncommitted work: callers outside the diff, their tests, contracts
+diffctx . --symbol parse_config         # the same for a name, no change needed
+diffctx . --diff main...feature         # the code to review a branch, packed under the auto budget
+diffctx . --diff HEAD~1 --budget 12000  # the last commit, capped at 12k o200k tokens
+diffctx . --diff 24h --mode locate      # today's work as ranked JSON, no source bodies
+diffctx .                               # whole-tree export, Markdown
 ```
 
-## MCP server
+`--diff` takes a git range, `staged`, or a duration window ending now (`24h`,
+`90min`, `2w`). Every flag, default and exit code:
+[command-line reference](docs/product/cli.md).
 
-[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
-[![diffctx MCP server](https://glama.ai/mcp/servers/nikolay-e/diffctx/badges/score.svg)](https://glama.ai/mcp/servers/nikolay-e/diffctx)
+![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif)
 
-diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
-assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
-automatically during code review. It is published in the official MCP registry
-as `io.github.nikolay-e/diffctx`. One-line setup (zero-install via
-[uv](https://docs.astral.sh/uv/)):
+## How it compares
 
-```bash
-# Claude Code plugin: the server plus /diffctx:diffctx and /diffctx:impact
-claude plugin marketplace add nikolay-e/diffctx
-claude plugin install diffctx@diffctx
-# Claude Code, server only
-claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
-# Codex CLI
-codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
-# Gemini CLI
-gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp
-# VS Code
-code --add-mcp '{"name":"diffctx","command":"uvx","args":["--from","diffctx[mcp]","diffctx-mcp"]}'
-```
+Whole-repo packers export everything; code-graph servers answer queries
+against a maintained index. diffctx is **diff-seeded**: the input is a change,
+the output is what it touches and what explains it. Measured results, and when
+the other two fit better: [COMPARISON.md](COMPARISON.md).
 
-With `pip install 'diffctx[mcp]'` already done, replace the
-`uvx --from 'diffctx[mcp]' diffctx-mcp` tail with plain `diffctx-mcp`.
+## More
 
-The server exposes one tool, `diffctx_context`, that assistants call when
-reviewing PRs, explaining changes, or investigating broken tests. By default it
-answers what a change reaches outside its diff — callers, the tests that reach
-them, changed contracts — in under 2k tokens; `symbol` asks the same of a name
-with no change at all. `mode=locate` ranks the code that explains a diff and
-`fragment_ids` then reads only the fragments the assistant picked — two calls
-that pay for the selection instead of a whole pack. The wider
-`get_tree_map` and `get_file_context` tools are opt-in via
-`DIFFCTX_MCP_LEGACY_TOOLS=1`. Filesystem confinement via
-`DIFFCTX_ALLOWED_PATHS`: see [SECURITY.md](SECURITY.md).
-
-Every stdio client takes the same server shape; only the config file differs:
-
-| Client | Config file | Key |
-|---|---|---|
-| Claude Code (project) | `.mcp.json` | `mcpServers` |
-| Claude Desktop | `claude_desktop_config.json` | `mcpServers` |
-| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
-| Continue | `~/.continue/config.json` | `experimental.modelContextProtocolServers` (transport object) |
-| Zed | `~/.config/zed/settings.json` | `context_servers` (`command.path`) |
-
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "uvx",
-      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
-    }
-  }
-}
-```
-
-With `pip install 'diffctx[mcp]'` already done, `"command": "diffctx-mcp"` with
-no args works everywhere instead. Use the `diffctx-mcp` entry point, not the
-`diffctx mcp` subcommand: the latter only exists from 1.12.3 onward and would
-map a directory named `mcp` on older releases.
-
-## Ignore patterns
-
-Respects `.gitignore` and `.diffctx/ignore` automatically — hierarchically at
-every directory level, with full gitignore semantics (negation `!important.log`,
-anchored `/root_only.txt`), and in tree mode the output file is always
-auto-ignored (`--diff` reports a saved `tree.md` like any other change). Three
-controls are tree mode only and are refused with `--diff` and `graph`: `.diffctx/whitelist`
-(`-w`) as an include-only filter, `-i` for an extra ignore file, and
-`--no-default-ignores` / `--no-ignores` to drop the built-in patterns or every
-ignore rule.
-
-An excluded path never appears in the output in any role: in diff mode it is
-dropped both from `changed_files` and from the candidate universe, so it cannot
-come back as a related-context fragment either (including under `--full`). The
-same guarantee covers secret-like paths (`id_rsa`, `*.pem`, `*.key`, ...),
-which are filtered even without an ignore entry.
-
-## Token cache
-
-Diff mode caches per-blob tokenization in the OS cache directory (e.g.
-`~/Library/Caches/diffctx/token-cache`) — a pure speedup, safe to delete.
-`DIFFCTX_TOKEN_CACHE_DIR` relocates it; `DIFFCTX_TOKEN_CACHE_MAX_BYTES` caps
-its size (default 512 MB, `0` disables eviction).
-
-## Exit codes
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Success — output contains content |
-| `1`  | Runtime error (bad path, permission denied, etc.) |
-| `2`  | Usage error (invalid flags/arguments, an empty `--diff ""`, a malformed duration such as `1.5h`, an out-of-range `--alpha`/`--tau`/`--budget`/`--timeout`, or a tree-mode flag — `-i`/`-w`/`--no-default-ignores`/`--no-ignores` — given with `--diff` or `graph`) |
-| `3`  | Environment error (`--diff` outside a git repo, in a bare one, or on a missing path, git not installed or refusing to start — its `fatal:` line is printed, no commits yet, a revision missing from a shallow clone) |
-| `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
-| `124`| `--diff` ran 30 s past the `--timeout` deadline without stopping cooperatively (the deadline itself yields a partial artifact and exit 0) |
-| `130`| Interrupted (Ctrl-C) |
-| `141`| Broken pipe (e.g. piping into `head`) |
-
-## License
+- [Documentation site](https://diffctx.com/) — the pipeline end to end
+- [Command-line reference](docs/product/cli.md) — rendered from `diffctx --help`
+- [Integrations](docs/product/integrations.md) — install, MCP clients, Python API
+- [FAQ](docs/product/faq.md) — heuristic or oracle, ignore rules, monorepos, secrets
+- [Token counting](docs/product/token-budget.md) — `--budget` for non-GPT models
+- [GitHub Action](docs/product/github-action.md) — diff context as a CI step
+- [Benchmarks](BENCHMARKS.md) and the [paper](https://doi.org/10.5281/zenodo.18824579)
+- [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
+- [Parameter strategy](docs/engineering/parameter-strategy.md)
 
 Apache 2.0
 
 <!-- mcp-name: io.github.nikolay-e/diffctx -->
 <!-- Ownership marker read from the PyPI description by the MCP registry. -->
 <!-- Must survive edits verbatim: one space after the colon, case-sensitive. -->
-
----
-
-- [Documentation site](https://diffctx.com/) — the pipeline
-  end to end: diff → fragments → graph → relevance → selection
-- [Command-line reference](docs/product/cli.md) — every flag with its default
-  and meaning, rendered from `diffctx --help`
-- [GitHub Action](docs/product/github-action.md) — diff context as a CI step
-  for LLM review
-- [Token counting](docs/product/token-budget.md) — which encoder, and what
-  `--budget` means for non-GPT models
-- [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
-  or a persistent code-graph server fits better
-- [Benchmarks](BENCHMARKS.md) — every published number with what it was
-  measured on, and how to reproduce it
-- [FAQ](docs/product/faq.md) — heuristic or oracle, whose tokens, monorepos,
-  the raw diff, secrets
-- [Paper](https://doi.org/10.5281/zenodo.18824579) — budgeted typed-graph
-  retrieval for diff-aware context selection (Zenodo, 2026)
-- [Changelog](CHANGELOG.md)
-- [Security policy](SECURITY.md) — threat model and vulnerability reporting
-- [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,
-  `--tau`, and edge weights are calibrated

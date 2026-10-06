@@ -1,0 +1,54 @@
+name: ruby_require_relative_path
+tags:
+- lang:ruby
+- change:single_file
+- context:cross_module
+- builder:ruby
+repo:
+  initial_files:
+    bin/boot.rb: |
+      require_relative '../vendor/palette'
+
+      WIDTH = 800
+      HEIGHT = 600
+      puts "starting #{WIDTH}x#{HEIGHT}"
+    vendor/palette.rb: |
+      module Tints
+        CRIMSON = 0xDC143C
+        TEAL = 0x008080
+      end
+    vendor/archive.rb: |
+      def compress_folder(folder)
+        system("tar -czf #{folder}.tgz #{folder}")
+      end
+    vendor/network.rb: |
+      def wait_for_port(host, port)
+        system("nc -z #{host} #{port}")
+      end
+  changed_files:
+    bin/boot.rb: |
+      require_relative '../vendor/palette'
+
+      WIDTH = 1024
+      HEIGHT = 768
+      puts "starting #{WIDTH}x#{HEIGHT}"
+  commit_message: Larger default window
+fixtures:
+  auto_garbage: true
+fragments:
+- id: gold
+  selector:
+    path: vendor/palette.rb
+    anchor: CRIMSON =
+- id: no_0
+  selector:
+    path: vendor/archive.rb
+- id: no_1
+  selector:
+    path: vendor/network.rb
+oracle:
+  required:
+  - gold
+  forbidden:
+  - no_0
+  - no_1

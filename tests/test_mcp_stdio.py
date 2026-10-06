@@ -115,7 +115,7 @@ async def _step(name: str, call):
 
 
 def _snapshot(tools) -> dict:
-    return {t.name: (sorted(t.inputSchema["properties"]), sorted(t.inputSchema.get("required", []))) for t in tools}
+    return {t.name: (sorted(t.input_schema["properties"]), sorted(t.input_schema.get("required", []))) for t in tools}
 
 
 @pytest.mark.timeout(120)
@@ -123,22 +123,22 @@ def _snapshot(tools) -> dict:
 @pytest.mark.asyncio
 async def test_the_default_surface_over_real_stdio(argv, workspace):
     async with _session(argv, workspace) as (session, init):
-        assert init.serverInfo.version == __version__
+        assert init.server_info.version == __version__
         assert _snapshot((await _step("list_tools", session.list_tools())).tools) == _TOOL_SNAPSHOT
 
         outside = await _step(
             "diffctx_context", session.call_tool("diffctx_context", {"repo_path": str(workspace["outside"]), "mode": "locate"})
         )
-        assert outside.isError
+        assert outside.is_error
         assert "outside the roots" in outside.content[0].text
 
         bad_budget = await _step(
             "diffctx_context", session.call_tool("diffctx_context", {"repo_path": str(workspace["repo"]), "budget_tokens": "abc"})
         )
-        assert bad_budget.isError
+        assert bad_budget.is_error
 
         legacy = await _step("get_tree_map", session.call_tool("get_tree_map", {"repo_path": str(workspace["repo"])}))
-        assert legacy.isError
+        assert legacy.is_error
         assert "Unknown tool" in legacy.content[0].text
 
         located = await _step(
@@ -147,10 +147,10 @@ async def test_the_default_surface_over_real_stdio(argv, workspace):
                 "diffctx_context", {"repo_path": str(workspace["repo"]), "diff_ref": "HEAD~1..HEAD", "mode": "locate"}
             ),
         )
-        assert not located.isError, located.content[0].text
+        assert not located.is_error, located.content[0].text
         # The document travels once, as text: a structured copy wrapped it in
         # {"result": "<escaped JSON>"} and clients rendered that instead.
-        assert located.structuredContent is None
+        assert located.structured_content is None
         doc = json.loads(located.content[0].text)
         assert doc["schema"] == "diffctx.locate.v1"
         assert any(item["path"] == "src/calc.py" for item in doc["items"])
@@ -169,7 +169,7 @@ async def test_legacy_tools_appear_only_behind_the_env_gate(argv, workspace):
     async with _session(argv, workspace, legacy=True) as (session, _):
         assert _snapshot((await _step("list_tools", session.list_tools())).tools) == _LEGACY_TOOL_SNAPSHOT
         tree = await _step("get_tree_map", session.call_tool("get_tree_map", {"repo_path": str(workspace["repo"])}))
-        assert not tree.isError, tree.content[0].text
+        assert not tree.is_error, tree.content[0].text
         assert "calc.py" in tree.content[0].text
 
 
@@ -198,11 +198,57 @@ async def test_a_running_server_survives_its_package_being_replaced_on_disk(work
             located = await _step(
                 "locate", session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD", "mode": "locate"})
             )
-            assert not located.isError, located.content[0].text
+            assert not located.is_error, located.content[0].text
             ids = [f"{i['path']}:{i['lines']}" for i in json.loads(located.content[0].text)["items"]]
             fetched = await _step(
                 "fetch",
                 session.call_tool("diffctx_context", {"repo_path": repo, "diff_ref": "HEAD~1..HEAD", "fragment_ids": ids}),
             )
-            assert not fetched.isError, fetched.content[0].text
+            assert not fetched.is_error, fetched.content[0].text
             assert "def sub" in fetched.content[0].text
+
+
+def _rpc(proc, request: dict) -> dict:
+    proc.stdin.write(json.dumps(request) + "\n")
+    proc.stdin.flush()
+    return json.loads(proc.stdout.readline())
+
+
+@pytest.mark.timeout(120)
+def test_a_client_that_probes_with_server_discover_first_gets_an_answer(workspace):
+    """#366: Claude Code opens with `server/discover` (MCP 2026-07-28); the 1.x
+    SDK rejected the probe as an invalid request on every connect and wrote 31
+    validation errors to stderr. A client that skips the probe still gets the
+    `initialize` handshake (the other tests here connect that way)."""
+    import subprocess
+
+    env = {k: v for k, v in os.environ.items() if k != "DIFFCTX_MCP_LEGACY_TOOLS"}
+    env["DIFFCTX_ALLOWED_PATHS"] = str(workspace["allowed"])
+    with open(workspace["stderr"], "w", encoding="utf-8") as errlog:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "diffctx.mcp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=errlog,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            cwd=str(workspace["cwd"]),
+        )
+        try:
+            probe = {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientInfo": {"name": "probe", "version": "0"},
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            }
+            discover = _rpc(proc, {"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": probe})
+            assert "2026-07-28" in discover["result"]["supportedVersions"], discover
+            assert discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == __version__, discover
+            listed = _rpc(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": probe})
+            assert [t["name"] for t in listed["result"]["tools"]] == ["diffctx_context"], listed
+        finally:
+            proc.stdin.close()
+            proc.wait(timeout=30)
+    assert "Failed to validate request" not in workspace["stderr"].read_text(encoding="utf-8")

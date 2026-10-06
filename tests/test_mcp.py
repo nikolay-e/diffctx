@@ -6,7 +6,7 @@ import subprocess
 import pytest
 
 mcp = pytest.importorskip("mcp", reason="mcp package not installed")
-from mcp.server.fastmcp.exceptions import ToolError  # noqa: E402
+from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
 from tests.framework.pygit2_backend import Pygit2Repo  # noqa: E402
 from tests.garbage_data import GARBAGE_FILES  # noqa: E402
@@ -40,7 +40,7 @@ def server():
 def legacy_tools(server):
     """The pre-v3 tree-map and glob-read tools, which #127 took off by default.
 
-    Registration is idempotent-by-overwrite on the FastMCP registry, so a class
+    Registration is idempotent-by-overwrite on the MCPServer registry, so a class
     that needs them can ask repeatedly. The *default-off* claim is deliberately
     NOT tested through this fixture — a test that registers the tools cannot
     also prove they are absent, so that assertion runs in a fresh process
@@ -52,7 +52,7 @@ def legacy_tools(server):
 
 
 def _get_text(call_result) -> str:
-    return call_result[0].text
+    return call_result.content[0].text
 
 
 def _run_with_argv(main, argv):
@@ -118,13 +118,13 @@ class TestMcpSubcommand:
 
 class TestServerIdentity:
     """The `initialize` response is how a client learns which diffctx it is
-    talking to. FastMCP takes no version argument, so an unset version makes
+    talking to. An unset version makes
     the SDK report its own — clients saw the mcp package version instead."""
 
     def test_reports_package_version_not_sdk_version(self, server):
         from diffctx.version import __version__
 
-        assert server._mcp_server.version == __version__
+        assert server.version == __version__
 
     @pytest.mark.asyncio
     async def test_every_tool_is_annotated_read_only(self, server):
@@ -136,8 +136,8 @@ class TestServerIdentity:
         for tool in tools:
             assert tool.annotations is not None, f"{tool.name} has no annotations"
             assert tool.annotations.title, f"{tool.name} has no title"
-            assert tool.annotations.readOnlyHint is True, f"{tool.name} is not read-only"
-            assert tool.annotations.openWorldHint is False, f"{tool.name} is open-world"
+            assert tool.annotations.read_only_hint is True, f"{tool.name} is not read-only"
+            assert tool.annotations.open_world_hint is False, f"{tool.name} is open-world"
 
 
 @pytest.mark.timeout(30)
@@ -219,6 +219,20 @@ class TestGetDiffContext:
         (mcp_repo.path / "src" / "extra.py").write_text("from calc import add\n\nX = add(2, 2)\n", encoding="utf-8")
         dirty = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
         assert dirty["changed_files"] == ["src/extra.py"]
+
+    @pytest.mark.asyncio
+    async def test_head_means_the_uncommitted_work_and_says_where_the_last_commit_is(self, server, mcp_repo):
+        """#368: `diff_ref="HEAD"` on a clean tree read as "this commit reaches
+        nothing", while the commit itself changed 40 files. HEAD is the working
+        tree everywhere (CLI, hook, skill); the answer and the surface say how to
+        ask for the last commit instead."""
+        clean = _get_text(await server.call_tool("diffctx_context", {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD"}))
+        assert "uncommitted changes: 0 changed file(s)" in clean
+        assert "HEAD~1..HEAD" in clean
+        last = _get_text(await server.call_tool("diffctx_context", {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"}))
+        assert "HEAD~1..HEAD: 2 changed file(s)" in last
+        tool = next(t for t in await server.list_tools() if t.name == "diffctx_context")
+        assert "HEAD~1..HEAD" in (tool.description or "")
 
     @pytest.mark.asyncio
     async def test_a_single_commit_clean_tree_defaults_to_the_working_tree(self, server, tmp_path):
@@ -1289,7 +1303,7 @@ class TestToolDefinitionBudget:
         import tiktoken
 
         enc = tiktoken.get_encoding("o200k_base")
-        payload = {"name": tool.name, "description": tool.description, "inputSchema": tool.inputSchema}
+        payload = {"name": tool.name, "description": tool.description, "inputSchema": tool.input_schema}
         return len(enc.encode(json.dumps(payload, separators=(",", ":"))))
 
     @pytest.mark.asyncio
@@ -1314,7 +1328,7 @@ class TestToolDefinitionBudget:
         called the tool (#289). They are paid for every session, so they are capped."""
         import tiktoken
 
-        instructions = server._mcp_server.instructions or ""
+        instructions = server.instructions or ""
         assert "diffctx_context" in instructions
         assert len(tiktoken.get_encoding("o200k_base").encode(instructions)) <= 60
 

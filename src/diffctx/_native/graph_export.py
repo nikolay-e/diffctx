@@ -7,16 +7,16 @@ from diffctx._diffctx import graph_to_graphml_string as _rust_graph_to_graphml_s
 from diffctx._diffctx import graph_to_json_string as _rust_graph_to_json_string
 
 
-def graph_to_json_string(pg: Any) -> str:
-    return _rust_graph_to_json_string(pg)
+def graph_to_json_string(pg: Any, level: str = "fragment") -> str:
+    return _rust_graph_to_json_string(pg, level)
 
 
-def graph_to_graphml_string(pg: Any) -> str:
-    return _rust_graph_to_graphml_string(pg)
+def graph_to_graphml_string(pg: Any, level: str = "fragment") -> str:
+    return _rust_graph_to_graphml_string(pg, level)
 
 
-def graph_summary(pg: Any, top_n: int = 10) -> str:
-    s = _rust_graph_summary(pg, top_n)
+def graph_summary(pg: Any, top_n: int = 10, level: str = "fragment") -> str:
+    s = _rust_graph_summary(pg, top_n, level)
     lines = [
         "Project graph summary:",
         f"  Nodes: {s['node_count']}  Edges: {s['edge_count']}  Files: {s['file_count']}",

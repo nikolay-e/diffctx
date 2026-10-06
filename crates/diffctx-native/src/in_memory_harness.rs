@@ -138,6 +138,7 @@ pub fn build_diff_context_in_memory(
         core_excerpts,
         scoring_result,
         needs,
+        changed_lines,
         ..
     } = crate::pipeline::score_from_fragments(
         all_fragments,
@@ -163,7 +164,7 @@ pub fn build_diff_context_in_memory(
         dummy_root,
         &changed_files,
         &hunks,
-        &diff_text,
+        &crate::change_class::hunk_texts(&diff_text),
         &all_fragments,
     );
     let fragmentless =
@@ -183,6 +184,7 @@ pub fn build_diff_context_in_memory(
         selection_budget,
         tau,
         &crate::pipeline::evidence_priority_of(&changed_files, &change_classes),
+        &changed_lines,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();

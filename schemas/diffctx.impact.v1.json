@@ -104,6 +104,18 @@
     "tests_known": {
       "description": "Whether any test file was in view. Without one, an absent `tested_by`\nsays nothing about the caller, and the text form does not call it\nuntested.",
       "type": "boolean"
+    },
+    "untested_definitions": {
+      "description": "Changed definitions no test reaches by a static link, listed or not:\na change nobody calls can still be a change nothing tests.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "withheld_files": {
+      "description": "Files the run withheld (`.diffctx/ignore`, gitignore, secret names):\nchanged files of the range, or files naming the queried symbol. Their\ncalls and tests were not read, so a zero says nothing about them\n(#392).",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
     }
   },
   "required": [
@@ -178,6 +190,16 @@
             "string",
             "null"
           ]
+        },
+        "untested": {
+          "description": "No test reaches the definition itself by a static link.",
+          "type": "boolean"
+        },
+        "compatible_callers": {
+          "description": "Call sites left working by the change: it only added fields or\nparameters with defaults, so they are counted, not listed (#388).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
         }
       },
       "required": [
@@ -223,6 +245,13 @@
         "file_tested": {
           "description": "A test reaches the caller's file but none of the paths to this caller:\nthe one case where an absent `tested_by` is a finding, not a gap in\nwhat static analysis can see (a route hit over HTTP, a fixture).",
           "type": "boolean"
+        },
+        "registered_by": {
+          "description": "The decorator that registers the caller (`@register_node`,\n`@app.route`): what reaches it is whatever reads that registry, which\nno static test link follows, so its absence is no finding (#388).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "evidence": {
           "description": "`resolved`: an import binding links the reference to the changed\ndefinition (Python, JavaScript, TypeScript). `name`: the lexical model\nof a language without a binding model — a mention in code of a file\nthat names the module. `candidate`: the binding or the receiver is not\nknown; `reason` says which.",

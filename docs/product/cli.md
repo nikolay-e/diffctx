@@ -4,7 +4,8 @@ Every flag `diffctx` accepts, with its default and one line of meaning. This
 page is rendered from the parsers themselves by `scripts/update_cli_reference.py`
 (`tests/test_cli_reference.py` fails when it differs from what the parsers
 declare), so what you read here is what the installed version answers. Worked examples
-live in the [README](../../README.md#usage); what `--budget` counts is in
+live in the [README](https://github.com/nikolay-e/diffctx/blob/main/README.md#usage) and
+[integrations](integrations.md); what `--budget` counts is in
 [Token counting](token-budget.md).
 
 The native binary (`cargo install diffctx`, `npx diffctx`, the Docker image)
@@ -59,7 +60,7 @@ Subcommands:
 | `--scoring` {ppr,ego,bm25,rrf,pit} | — | Scoring mode: ego = structural neighbors of the change (default); ppr = graph-wide relevance (Personalized PageRank), for far-reaching changes; bm25 = lexical similarity, for sparse cross-file structure; rrf = rank fusion of ego and bm25 on ranks; pit = the same fusion on score percentiles rather than ranks |
 | `--symbol` NAME | — | Impact without a diff: where NAME (or PATH:NAME) is defined, who calls it, and the tests that reach each caller. Implies --mode impact |
 | `--mode` {pack,locate,impact} | — | Output mode: pack = context with source bodies (default); locate = ranked navigation list with provenance reasons, JSON only (diffctx.locate.v1; -f is ignored); impact = callers outside the diff, the tests guarding them and cross-commit overlap, under 2k tokens (text by default, diffctx.impact.v1 JSON with -f json) |
-| `--timeout` SECONDS | — | Wall-clock deadline for --diff analysis (default: 300); on expiry diffctx aborts with exit code 124 instead of hanging |
+| `--timeout` SECONDS | — | Wall-clock deadline for --diff analysis (default: 300); on expiry the run stops cooperatively and emits a partial artifact whose coverage block names the limit (exit 0); 124 is the watchdog 30 s later, for a phase that could not stop |
 | `--full` | off | Include every fragment of the changed files and nothing else — no related-code context (ignores --budget/--tau/--alpha/--scoring) |
 | `--with-raw-diff` | off | Also embed the raw unified diff (git's own +/- text) ahead of the selected fragments. Additive only: selection is unchanged, and the diff does NOT count against --budget (the stderr token summary counts it, reporting the real output size). Lock-file, ignored, and secret-like sections stay omitted. Python CLI only — the native binary has no such flag |
 
@@ -130,12 +131,18 @@ Token counting (--budget, and the summary line on stderr):
   stderr token summary, which always reports the real size of what was written.
 
 Exit codes:
-  0  success
+  0  success, including a partial artifact stopped at --timeout and a
+     deletion/rename/lockfile-only diff
   1  runtime error (unreadable path, write failure)
-  2  usage error (unknown flag, invalid value, or a flag the mode does not take)
-  3  environment error (git missing, not a repository, unknown revision)
-  4  --diff produced no context (clean tree or empty range)
-  124  --diff exceeded the --timeout wall-clock deadline
+  2  usage error (unknown flag, invalid value, a malformed duration such as
+     1.5h, or a tree-mode flag given with --diff or graph)
+  3  environment error (git missing, not a repository, bare or shallow clone
+     missing the revision, no commits yet)
+  4  --diff produced no semantic context (clean tree, binary-only, everything
+     filtered); the output is still written
+  124  --diff ran 30 s past --timeout without stopping cooperatively
+  130  interrupted (Ctrl-C)
+  141  broken pipe (e.g. piping into head)
 ```
 
 ## `diffctx graph`
@@ -164,12 +171,12 @@ Build and analyze the project dependency graph
 | `--log-level` {error,warning,info,debug} | `error` | Log level (default: error) |
 | `-f`, `--format` {mermaid,json,graphml} | — | Graph output format (default: mermaid) |
 | `--summary` | off | Print graph statistics instead of the graph (cycles, hotspots, coupling); -f is ignored |
-| `--level` {fragment,file,directory} | — | Node granularity: directory, file, or fragment = function/class-level block (default: directory); applies to mermaid output and --summary |
+| `--level` {fragment,file,directory} | — | Node granularity: directory, file, or fragment = function/class-level block (default: directory for mermaid, fragment for -f json/graphml and the --summary counts) |
 
 ## `diffctx mcp`
 
 Runs the MCP server over stdio — the same entry point as `diffctx-mcp` —
 and takes no flags. It needs the `mcp` extra (`pip install 'diffctx[mcp]'`);
 the tool it exposes, its arguments and its read-only guarantees are
-described in the [security policy](../../SECURITY.md) and the README's
-MCP section.
+described in the [security policy](https://github.com/nikolay-e/diffctx/blob/main/SECURITY.md) and
+[integrations](integrations.md).

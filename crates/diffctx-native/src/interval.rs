@@ -29,6 +29,18 @@ impl IntervalIndex {
         intervals.insert(pos, item);
     }
 
+    pub fn remove_id(&mut self, frag_id: &FragmentId) {
+        if !self.ids.remove(frag_id) {
+            return;
+        }
+        if let Some(intervals) = self.by_path.get_mut(&frag_id.path) {
+            let item = (frag_id.start_line, frag_id.end_line);
+            if let Ok(pos) = intervals.binary_search(&item) {
+                intervals.remove(pos);
+            }
+        }
+    }
+
     pub fn contains(&self, frag_id: &FragmentId) -> bool {
         self.ids.contains(frag_id)
     }

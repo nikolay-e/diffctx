@@ -105,6 +105,31 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path,
     assert report["changed"] == ["main.py"], "a partial artifact still lists every changed file"
 
 
+def test_impact_past_its_deadline_answers_partially(tmp_path):
+    """#382: a range that outlives the deadline returned nothing at all; the
+    symbols answered so far are an answer, marked as partial."""
+    repo = _repo(tmp_path, "impact-deadline", files=30)
+    child = textwrap.dedent(f"""
+        import json
+        from pathlib import Path
+        from diffctx._native.pipeline import build_impact
+
+        print(build_impact(Path({str(repo.path)!r}), 'HEAD~1'))
+        """)
+    proc = subprocess.run(
+        [sys.executable, "-c", child],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "DIFFCTX_TEST_DEADLINE_EXPIRED": "1"},
+    )
+    assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
+    doc = json.loads(proc.stdout)
+    assert "deadline" in doc.get("limits", []), doc
+    assert doc["empty"] is False
+    assert doc["changed_files"] == ["main.py"]
+
+
 _STALLING_GIT = """#!/bin/sh
 for a in "$@"; do
   if [ "$a" = cat-file ]; then echo $$ >> "$STALLED_PIDS"; exec sleep 600; fi

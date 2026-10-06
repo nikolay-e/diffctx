@@ -44,14 +44,19 @@ const MAX_CHANGED_FILES_LISTED: usize = 24;
 /// A symbol name with more definitions than this cannot be traced by name.
 const MAX_DEFINITIONS: usize = 2;
 
-const SCHEMA_FILE_MARKERS: &[&str] = &[
-    "/migrations/",
-    "/migration/",
-    "/alembic/versions/",
+const SCHEMA_DIRECTORIES: &[&str] = &[
+    "migrations",
+    "migration",
+    "versions",
     "schema",
+    "schemas",
     "openapi",
     "swagger",
 ];
+/// Names a data or API description file takes: `schema.json`,
+/// `openapi.yaml`, `user.schema.json`. A script named for a schema is code.
+const SCHEMA_FILE_STEMS: &[&str] = &["schema", "openapi", "swagger"];
+const SCHEMA_DATA_EXTENSIONS: &[&str] = &["json", "yaml", "yml", "graphql", "graphqls", "sql"];
 const SCHEMA_FILE_EXTENSIONS: &[&str] = &[
     ".sql",
     ".proto",
@@ -120,6 +125,16 @@ pub struct ImpactOutput {
     /// says nothing about the caller, and the text form does not call it
     /// untested.
     pub tests_known: bool,
+    /// Changed definitions no test reaches by a static link, listed or not:
+    /// a change nobody calls can still be a change nothing tests.
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub untested_definitions: usize,
+    /// Files the run withheld (`.diffctx/ignore`, gitignore, secret names):
+    /// changed files of the range, or files naming the queried symbol. Their
+    /// calls and tests were not read, so a zero says nothing about them
+    /// (#392).
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub withheld_files: usize,
     /// The token cap the answer was fitted to.
     #[serde(skip)]
     #[schemars(skip)]
@@ -143,6 +158,13 @@ pub struct ChangedSymbol {
     /// through dynamic dispatch. Its empty `callers` is then no finding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unresolved: Option<String>,
+    /// No test reaches the definition itself by a static link.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub untested: bool,
+    /// Call sites left working by the change: it only added fields or
+    /// parameters with defaults, so they are counted, not listed (#388).
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub compatible_callers: usize,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -163,6 +185,11 @@ pub struct Caller {
     /// what static analysis can see (a route hit over HTTP, a fixture).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub file_tested: bool,
+    /// The decorator that registers the caller (`@register_node`,
+    /// `@app.route`): what reaches it is whatever reads that registry, which
+    /// no static test link follows, so its absence is no finding (#388).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registered_by: Option<String>,
     /// `resolved`: an import binding links the reference to the changed
     /// definition (Python, JavaScript, TypeScript). `name`: the lexical model
     /// of a language without a binding model — a mention in code of a file
@@ -248,49 +275,85 @@ fn code_of(
     let mut i = 0;
     let mut quote: Option<u8> = None;
     while i < bytes.len() {
-        if let Some(t) = *triple {
-            if bytes[i..].starts_with(t.as_bytes()) {
-                out[i..i + 3].fill(b' ');
-                *triple = None;
-                i += 3;
-            } else {
-                out[i] = b' ';
-                i += 1;
+        let rest = &bytes[i..];
+        let blanked = if let Some(t) = *triple {
+            close_triple(rest, t, triple)
+        } else if let Some(q) = quote {
+            close_quote(rest, q, &mut quote)
+        } else {
+            match lexeme(rest, hash_comments, single_quotes) {
+                Lexeme::Comment => {
+                    out[i..].fill(b' ');
+                    break;
+                }
+                Lexeme::Triple(t) => {
+                    *triple = Some(t);
+                    t.len()
+                }
+                Lexeme::Quote(q) => {
+                    quote = Some(q);
+                    1
+                }
+                Lexeme::Code => {
+                    i += 1;
+                    continue;
+                }
             }
-            continue;
-        }
-        let b = bytes[i];
-        if let Some(q) = quote {
-            out[i] = b' ';
-            if b == b'\\' && i + 1 < bytes.len() {
-                out[i + 1] = b' ';
-                i += 2;
-                continue;
-            }
-            if b == q {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if hash_comments && (bytes[i..].starts_with(b"\"\"\"") || bytes[i..].starts_with(b"'''")) {
-            *triple = Some(if b == b'"' { "\"\"\"" } else { "'''" });
-            out[i..i + 3].fill(b' ');
-            i += 3;
-            continue;
-        }
-        let comment = bytes[i..].starts_with(b"//") || (hash_comments && b == b'#');
-        if comment {
-            out[i..].fill(b' ');
-            break;
-        }
-        if b == b'"' || b == b'`' || (single_quotes && b == b'\'') {
-            quote = Some(b);
-            out[i] = b' ';
-        }
-        i += 1;
+        };
+        out[i..i + blanked].fill(b' ');
+        i += blanked;
     }
     String::from_utf8(out).unwrap_or_default()
+}
+
+enum Lexeme {
+    Code,
+    Comment,
+    Triple(&'static str),
+    Quote(u8),
+}
+
+fn lexeme(rest: &[u8], hash_comments: bool, single_quotes: bool) -> Lexeme {
+    let b = rest[0];
+    if hash_comments && (rest.starts_with(b"\"\"\"") || rest.starts_with(b"'''")) {
+        return Lexeme::Triple(if b == b'"' { "\"\"\"" } else { "'''" });
+    }
+    // In the `#` languages `//` is floor division, defined-or or a
+    // rational, and the call after it is code (#414).
+    let comment = if hash_comments {
+        b == b'#'
+    } else {
+        rest.starts_with(b"//")
+    };
+    if comment {
+        Lexeme::Comment
+    } else if b == b'"' || b == b'`' || (single_quotes && b == b'\'') {
+        Lexeme::Quote(b)
+    } else {
+        Lexeme::Code
+    }
+}
+
+/// Bytes of a triple-quoted string at `rest`, closing it at its delimiter.
+fn close_triple(rest: &[u8], t: &'static str, triple: &mut Option<&'static str>) -> usize {
+    if rest.starts_with(t.as_bytes()) {
+        *triple = None;
+        t.len()
+    } else {
+        1
+    }
+}
+
+/// Bytes of a quoted string at `rest`: an escape takes two, the quote ends it.
+fn close_quote(rest: &[u8], q: u8, quote: &mut Option<u8>) -> usize {
+    match rest {
+        [b'\\', _, ..] => 2,
+        [b, ..] if *b == q => {
+            *quote = None;
+            1
+        }
+        _ => 1,
+    }
 }
 
 /// `code_of` for the binding model's languages (Python and JS/TS).
@@ -299,8 +362,8 @@ pub(crate) fn mask_code(line: &str, python: bool, triple: &mut Option<&'static s
 }
 
 fn receiver_before(code: &str, at: usize) -> Option<&str> {
-    let head = code[..at].trim_end_matches('?');
-    let head = head.strip_suffix('.')?;
+    let head = code[..at].strip_suffix('.')?;
+    let head = head.strip_suffix('?').unwrap_or(head);
     let start = head
         .rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
         .map_or(0, |i| i + 1);
@@ -376,8 +439,9 @@ fn module_aliases(file_fragments: &[&Fragment], stem: &str) -> Vec<String> {
 /// A method lives inside a type, or names its receiver in the declaration
 /// (`func (l *Ledger) Reconcile`, Kotlin `fun String.pad()`); anything else
 /// is reached through its module.
-fn is_member(core: &Fragment, all: &[Fragment]) -> bool {
-    if enclosing_class(core, all).is_some() {
+/// `file`: the fragments of the core's own file, in fragment order.
+fn is_member(core: &Fragment, file: &[&Fragment]) -> bool {
+    if enclosing_class(core, file).is_some() {
         return true;
     }
     let head = without_decorators(&core.content).trim_start();
@@ -386,7 +450,7 @@ fn is_member(core: &Fragment, all: &[Fragment]) -> bool {
             .strip_prefix("fun ")
             .is_some_and(|rest| rest.split('(').next().is_some_and(|n| n.contains('.')));
     receiver
-        || all.iter().any(|f| {
+        || file.iter().any(|f| {
             f.path() == core.path()
                 && f.id != core.id
                 && (f.kind.is_container() || f.kind == FragmentKind::Impl)
@@ -572,12 +636,108 @@ fn is_public(path: &str, symbol: Option<&str>, content: &str) -> bool {
         return symbol.is_some_and(|s| s.chars().next().is_some_and(|c| c.is_ascii_uppercase()));
     }
     let head = content.trim_start();
+    // `pub(crate)`, `pub(super)` and `pub(in …)` reach no other crate.
     head.starts_with("pub ")
-        || head.starts_with("pub(")
         || head.starts_with("export ")
         || head.starts_with("public ")
         || head.starts_with("module.exports")
         || head.starts_with("exports.")
+}
+
+/// Whether every module on a Rust file's path is public from its crate
+/// root: `pub fn` in a `pub(crate) mod` is crate-internal (#359). A binary
+/// crate exports nothing. Files outside Rust are left to `is_public`.
+fn rust_module_is_public(state: &ScoredState, path: &str) -> bool {
+    if !path.ends_with(".rs") {
+        return true;
+    }
+    let source = state.run.source();
+    let read = |p: &Path| {
+        source
+            .read_to_string(p)
+            .or_else(|| std::fs::read_to_string(p).ok())
+    };
+    let file = Path::new(path);
+    let Some(src_dir) = file.ancestors().find(|d| {
+        d.file_name().is_some_and(|n| n == "src")
+            && d.parent().is_some_and(|c| {
+                c.join("Cargo.toml").exists() || read(&c.join("Cargo.toml")).is_some()
+            })
+    }) else {
+        return true;
+    };
+    let Ok(rel_path) = file.strip_prefix(src_dir) else {
+        return true;
+    };
+    let mut segments: Vec<String> = rel_path
+        .with_extension("")
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+    if segments.last().is_some_and(|s| s == "mod") {
+        segments.pop();
+    }
+    if segments.first().is_some_and(|s| s == "main" || s == "bin") {
+        return false;
+    }
+    if segments == ["lib"] {
+        return true;
+    }
+    let mut parent = src_dir.join("lib.rs");
+    for (i, seg) in segments.iter().enumerate() {
+        let Some(text) = read(&parent) else {
+            return i > 0;
+        };
+        let declared_pub = text.lines().map(without_attributes).any(|l| {
+            l.strip_prefix("pub mod ")
+                .and_then(|rest| {
+                    rest.trim_start()
+                        .trim_start_matches("r#")
+                        .strip_prefix(seg.as_str())
+                })
+                .is_some_and(|after| after.trim_start().starts_with([';', '{']))
+                || (l.starts_with("pub use ") && l.contains(&format!("{seg}::")))
+        });
+        if !declared_pub {
+            return false;
+        }
+        let dir = parent.parent().unwrap_or(src_dir).to_path_buf();
+        let base = if parent
+            .file_name()
+            .is_some_and(|n| n == "lib.rs" || n == "mod.rs")
+        {
+            dir
+        } else {
+            dir.join(parent.file_stem().unwrap_or_default())
+        };
+        let flat = base.join(format!("{seg}.rs"));
+        parent = if flat.exists() || read(&flat).is_some() {
+            flat
+        } else {
+            base.join(seg).join("mod.rs")
+        };
+    }
+    true
+}
+
+/// A line without the `#[cfg(..)]`-style attributes written before its item.
+fn without_attributes(line: &str) -> &str {
+    let mut rest = line.trim_start();
+    while let Some(attr) = rest.strip_prefix("#[") {
+        let mut depth = 1usize;
+        let Some(end) = attr.char_indices().find_map(|(i, c)| {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                _ => {}
+            }
+            (depth == 0).then_some(i)
+        }) else {
+            return rest;
+        };
+        rest = attr[end + 1..].trim_start();
+    }
+    rest
 }
 
 fn is_schema_file(path: &str) -> bool {
@@ -586,10 +746,34 @@ fn is_schema_file(path: &str) -> bool {
         return false;
     }
     let lower = path.to_lowercase();
-    SCHEMA_FILE_EXTENSIONS
+    if SCHEMA_FILE_EXTENSIONS
         .iter()
         .any(|ext| lower.ends_with(ext))
-        || SCHEMA_FILE_MARKERS.iter().any(|m| lower.contains(m))
+    {
+        return true;
+    }
+    let p = Path::new(&lower);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let in_schema_dir = p.parent().is_some_and(|d| {
+        d.components()
+            .any(|c| SCHEMA_DIRECTORIES.contains(&c.as_os_str().to_str().unwrap_or("")))
+    });
+    // A migration is code by extension and a schema by where it lives.
+    let migration = p
+        .components()
+        .any(|c| matches!(c.as_os_str().to_str(), Some("migrations" | "migration")))
+        || lower.contains("/alembic/versions/");
+    if migration {
+        return true;
+    }
+    if !SCHEMA_DATA_EXTENSIONS.contains(&ext) {
+        return false;
+    }
+    let file = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    in_schema_dir
+        || file
+            .split('.')
+            .any(|part| SCHEMA_FILE_STEMS.contains(&part))
 }
 
 /// The revision a change is measured against: the left side of a range, a
@@ -697,6 +881,9 @@ struct TestIndex<'a> {
     /// Source path -> one test path linked to it by a test edge.
     by_path: FxHashMap<String, String>,
     test_fragments: Vec<&'a Fragment>,
+    /// `tested_by` per fragment: callers repeat across changed symbols, and
+    /// each answer walks every test fragment.
+    memo: std::cell::RefCell<FxHashMap<FragmentId, Option<(String, Option<String>)>>>,
 }
 
 impl<'a> TestIndex<'a> {
@@ -726,6 +913,7 @@ impl<'a> TestIndex<'a> {
         Self {
             by_path,
             test_fragments,
+            memo: std::cell::RefCell::default(),
         }
     }
 
@@ -744,13 +932,15 @@ impl<'a> TestIndex<'a> {
         }
         // A chunk inside a long function is named `main[88]`; the test
         // names `main`.
-        caller
+        let name = caller
             .symbol_name
             .as_deref()
             .map(base_symbol)
             .filter(|s| s.len() >= 3)?;
+        // A test that does not spell the name cannot link to it.
         self.test_fragments
             .iter()
+            .filter(|t| t.content.contains(name))
             .find(|t| link(t, caller))
             .map(|t| t.path().to_string())
     }
@@ -759,6 +949,23 @@ impl<'a> TestIndex<'a> {
     /// the test calls something that calls it — a public tool over a helper
     /// is how most code is tested (#348). Two hops up the call graph.
     fn tested_by(
+        &self,
+        caller: &'a Fragment,
+        state: &ScoredState,
+        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
+        link: &Link,
+    ) -> Option<(String, Option<String>)> {
+        if let Some(known) = self.memo.borrow().get(&caller.id) {
+            return known.clone();
+        }
+        let answer = self.walk_up(caller, state, by_id, link);
+        self.memo
+            .borrow_mut()
+            .insert(caller.id.clone(), answer.clone());
+        answer
+    }
+
+    fn walk_up(
         &self,
         caller: &'a Fragment,
         state: &ScoredState,
@@ -896,25 +1103,55 @@ fn dispatched_trait(state: &ScoredState, core: &Fragment) -> Option<String> {
     let head = head.strip_prefix("unsafe ").unwrap_or(head);
     let name = if let Some(rest) = head.strip_prefix("impl") {
         let (lhs, _) = rest.split_once(" for ")?;
-        lhs.rsplit('>').next().unwrap_or(lhs)
+        skip_generics(lhs)
     } else {
         head.strip_prefix("trait ")?
     };
-    let name = name.trim().split(['<', ' ', '{', ':']).next().unwrap_or("");
+    // `std::fmt::Display<T>` names `Display`; `trait Foo: Bar` names `Foo`.
+    let name = name.trim().split(['<', ' ', '{']).next().unwrap_or("");
     let name = name.rsplit("::").next().unwrap_or(name);
+    let name = name.split(':').next().unwrap_or(name);
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// The class a fragment sits in, in its own file.
-fn enclosing_class<'a>(f: &Fragment, all: &'a [Fragment]) -> Option<&'a Fragment> {
-    let indent = |text: &str| {
-        text.lines()
-            .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
-            .map_or(0, |l| l.len() - l.trim_start().len())
-    };
-    let own = indent(&f.content);
+/// `<T: Clone> Iterator<Item = T>` without its leading parameter list.
+fn skip_generics(text: &str) -> &str {
+    let text = text.trim_start();
+    if !text.starts_with('<') {
+        return text;
+    }
+    let mut depth = 0usize;
+    let mut prev = ' ';
+    for (i, c) in text.char_indices() {
+        match c {
+            '<' => depth += 1,
+            // `Fn() -> u32` closes nothing.
+            '>' if prev != '-' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return &text[i + 1..];
+                }
+            }
+            _ => {}
+        }
+        prev = c;
+    }
+    ""
+}
+
+/// The class a fragment sits in, among `file`, the fragments of its own
+/// file in fragment order.
+/// The indentation of a text's first non-blank, non-decorator line.
+fn indent_of(text: &str) -> usize {
+    text.lines()
+        .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
+        .map_or(0, |l| l.len() - l.trim_start().len())
+}
+
+fn enclosing_class<'a>(f: &Fragment, file: &[&'a Fragment]) -> Option<&'a Fragment> {
+    let own = indent_of(&f.content);
     let containers = || {
-        all.iter().filter(|c| {
+        file.iter().copied().filter(|c| {
             c.path() == f.path()
                 && c.id != f.id
                 && c.kind.is_container()
@@ -931,10 +1168,190 @@ fn enclosing_class<'a>(f: &Fragment, all: &'a [Fragment]) -> Option<&'a Fragment
             (own > 0)
                 .then(|| {
                     containers()
-                        .filter(|c| indent(&c.content) < own)
+                        .filter(|c| indent_of(&c.content) < own)
                         .max_by_key(|c| c.start_line())
                 })
                 .flatten()
+        })
+}
+
+/// Decorators that shape a definition without handing it to anyone.
+const SHAPING_DECORATORS: &[&str] = &[
+    "property",
+    "staticmethod",
+    "classmethod",
+    "dataclass",
+    "abstractmethod",
+    "override",
+    "cached_property",
+    "wraps",
+    "lru_cache",
+    "cache",
+    "total_ordering",
+    "final",
+    "overload",
+    "contextmanager",
+    "asynccontextmanager",
+    "Override",
+    "Deprecated",
+    "SuppressWarnings",
+    "FunctionalInterface",
+];
+
+/// The decorator that hands a definition to a registry, a router or a
+/// container, on the definition or on the class around it.
+fn registering_decorator(f: &Fragment, file: &[&Fragment]) -> Option<String> {
+    let of = |content: &str| {
+        content
+            .lines()
+            .map(str::trim_start)
+            .take_while(|l| l.is_empty() || l.starts_with('@'))
+            .filter_map(|l| {
+                let name = l
+                    .strip_prefix('@')?
+                    .split(|c: char| c == '(' || c.is_whitespace())
+                    .next()?;
+                let last = name.rsplit('.').next().unwrap_or(name);
+                (!name.is_empty()
+                    && !SHAPING_DECORATORS.contains(&last)
+                    && !name.starts_with("pytest."))
+                .then(|| name.to_string())
+            })
+            .next()
+    };
+    of(&f.content).or_else(|| enclosing_class(f, file).and_then(|c| of(&c.content)))
+}
+
+/// A field or parameter line that brings its own default (`x: int = 0`,
+/// `x = 0`, TypeScript `x?: T`): adding one breaks no call site.
+static DEFAULTED_LINE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(
+        r"^\s*(readonly\s+)?[A-Za-z_$][\w$]*\s*(\?\s*:[^=]*|:[^=]*=\s*\S.*|=\s*[^=\s].*)$",
+    )
+    .expect("defaulted line regex")
+});
+
+/// The parameters between a declaration's first `(` and its match, split at
+/// top-level commas, whitespace squashed.
+fn parameter_list(text: &str) -> Option<(String, Vec<String>, String)> {
+    let open = text.find('(')?;
+    let mut depth = 0i32;
+    let mut close = None;
+    for (i, c) in text[open..].char_indices() {
+        match c {
+            '(' | '[' | '{' | '<' => depth += 1,
+            ')' | ']' | '}' | '>' => {
+                depth -= 1;
+                if depth == 0 && c == ')' {
+                    close = Some(open + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close = close?;
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut params = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for c in text[open + 1..close].chars() {
+        match c {
+            '(' | '[' | '{' | '<' => depth += 1,
+            ')' | ']' | '}' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                params.push(squash(&cur));
+                cur.clear();
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    params.push(squash(&cur));
+    params.retain(|p| !p.is_empty());
+    Some((squash(&text[..open]), params, squash(&text[close..])))
+}
+
+fn defaulted(param: &str) -> bool {
+    (param.contains('=') && !param.contains("=>") && !requires_value(param))
+        || param.contains("?:")
+        || param.starts_with('*')
+        || param.starts_with("...")
+}
+
+/// `x: int = Field(...)` and `x = ...` declare a default that is a
+/// required marker, not a value.
+fn requires_value(line: &str) -> bool {
+    let Some((_, value)) = line.split_once('=') else {
+        return false;
+    };
+    let value = value.trim().trim_end_matches(',').trim();
+    value == "..." || value.starts_with("Field(...") || value.starts_with("Field( ...")
+}
+
+/// A line that adds a field or a parameter with its own default.
+fn adds_defaulted(line: &str) -> bool {
+    // `__slots__ = ("y",)` or `__hash__ = None` changes how every instance
+    // is built or compared; a default does not make it compatible.
+    let dunder = line.trim_start().starts_with("__");
+    DEFAULTED_LINE.is_match(line) && !dunder && !line.contains("=>") && !requires_value(line)
+}
+
+/// A field or parameter declaration of any kind: what may not follow an
+/// inserted one, since everything after it would shift position.
+fn declares_member(line: &str) -> bool {
+    static MEMBER: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^\s*(readonly\s+)?\*{0,2}[A-Za-z_$][\w$]*\s*(\??\s*:|=|,\s*$)")
+            .expect("member regex")
+    });
+    MEMBER.is_match(line)
+}
+
+/// Whether every hunk in the definition only added fields or parameters
+/// that carry a default (#388): the call sites keep working, so they are
+/// counted instead of listed.
+fn compatible_extension(core: &Fragment, hunks: &[&crate::change_class::HunkText]) -> bool {
+    let head_end = core.start_line() + declaration_head(&core.content).lines().count() as u32;
+    !hunks.is_empty()
+        && hunks.iter().all(|h| {
+            let (_, end) = h.new_range();
+            if h.removed.is_empty() {
+                // Appended only: the next declaration line after the run
+                // must close the list, or the inserted member shifts every
+                // positional argument behind it.
+                let after = core
+                    .content
+                    .lines()
+                    .skip((end + 1).saturating_sub(core.start_line()) as usize)
+                    .find(|l| !l.trim().is_empty());
+                let appended = after.is_none_or(|l| !declares_member(l));
+                (core.kind.is_container() || end < head_end)
+                    && appended
+                    && h.added
+                        .iter()
+                        .filter(|l| !l.trim().is_empty())
+                        .all(|l| adds_defaulted(l))
+            } else {
+                // A parameter list lives in the declaration head; the same
+                // shape in a body line is a call (`compute(a)` →
+                // `compute(a, strict=True)`), and it breaks nothing it adds.
+                let (start, _) = h.new_range();
+                if start < core.start_line() || end >= head_end {
+                    return false;
+                }
+                let (Some((old_pre, old, old_post)), Some((new_pre, new, new_post))) = (
+                    parameter_list(&h.removed.join("\n")),
+                    parameter_list(&h.added.join("\n")),
+                ) else {
+                    return false;
+                };
+                old_pre == new_pre
+                    && old_post == new_post
+                    && new.len() > old.len()
+                    && new[..old.len()] == old[..]
+                    && new[old.len()..].iter().all(|p| defaulted(p))
+            }
         })
 }
 
@@ -956,6 +1373,44 @@ pub fn build_impact(
         .filter_map(|p| p.to_str())
         .collect();
     let tests = TestIndex::build(state);
+    // A caller in a changed file is outside the diff unless its lines are
+    // in a hunk: the reader holds the hunks, not the rest of the file (#362).
+    let mut hunk_lines: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
+    for h in &state.hunk_texts {
+        // A pure removal sits between new lines N and N+1: as `(N+1, N)` the
+        // overlap test below holds only for a fragment spanning both, not
+        // for the caller that ends on N right above the deleted lines.
+        let range = if h.new_len == 0 {
+            (h.new_start + 1, h.new_start)
+        } else {
+            h.new_range()
+        };
+        hunk_lines.entry(h.path.as_str()).or_default().push(range);
+    }
+    let in_a_hunk = |id: &FragmentId| {
+        if state.hunk_texts.is_empty() {
+            return changed_paths.contains(id.path.as_ref());
+        }
+        hunk_lines
+            .get(rel(state, id.path.as_ref()).as_str())
+            .is_some_and(|ranges| {
+                ranges
+                    .iter()
+                    .any(|&(a, b)| id.start_line <= b && id.end_line >= a)
+            })
+    };
+    let hunks_in = |core: &Fragment| -> Vec<&crate::change_class::HunkText> {
+        let path = rel(state, core.path());
+        state
+            .hunk_texts
+            .iter()
+            .filter(|h| {
+                let (a, b) = h.new_range();
+                h.path == path && core.start_line() <= b && core.end_line() >= a
+            })
+            .collect()
+    };
+    let mut untested_definitions = 0usize;
 
     // A hunk inside a function body seeds a nested fragment — a `let`, an
     // inner block — that nobody calls; the symbol a reader knows, and the one
@@ -980,7 +1435,9 @@ pub fn build_impact(
     let mut public_api: Vec<(bool, Contract)> = Vec::new();
     // Definitions are counted per language: the builders link a call to the
     // definitions of its own language, so a Python wrapper named like a Rust
-    // function is not what makes the Rust name ambiguous.
+    // function is not what makes the Rust name ambiguous. An `impl` block
+    // extends the type it names rather than competing with it: a struct with
+    // a `Display` and an `Error` impl is one definition, not three.
     let mut definitions: FxHashMap<(&str, String), usize> = FxHashMap::default();
     let mut defined_in: FxHashSet<(String, &str)> = FxHashSet::default();
     let mut file_identifiers: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
@@ -994,7 +1451,7 @@ pub fn build_impact(
         if let Some(name) = f
             .symbol_name
             .as_deref()
-            .filter(|_| f.kind.is_definition_kind())
+            .filter(|_| f.kind.is_definition_kind() && f.kind != FragmentKind::Impl)
         {
             let lang = crate::languages::get_language_for_file(f.path()).unwrap_or("");
             *definitions.entry((lang, name.to_lowercase())).or_default() += 1;
@@ -1011,12 +1468,75 @@ pub fn build_impact(
         .into_iter()
         .chain(state.all_fragments.iter().map(|f| rel(state, f.path())))
         .collect();
+    // The directories that hold a project manifest: in a monorepo each
+    // child is one, and a name two siblings both spell links nothing.
+    let projects: FxHashSet<String> = universe
+        .iter()
+        .filter(|p| PROJECT_MANIFESTS.contains(&p.rsplit('/').next().unwrap_or(p.as_str())))
+        .map(|p| p.rsplit_once('/').map_or("", |(dir, _)| dir).to_string())
+        .collect();
+    let project_of = |path: &str| -> String {
+        let rel_path = rel(state, path);
+        let mut dir = rel_path.as_str();
+        while let Some((parent, _)) = dir.rsplit_once('/') {
+            if projects.contains(parent) {
+                return parent.to_string();
+            }
+            dir = parent;
+        }
+        String::new()
+    };
+    // A lexical link stops at a sibling project's manifest: a Python test
+    // naming `config` is not a test of another project's `config.ts`. It
+    // crosses when one language and a qualified name say the dependency is
+    // real — a Maven `it/` module importing `com.acme.core.Pricing`, a
+    // workspace crate writing `core_crate::pricing`.
+    let one_project = |user: &Fragment, used: &Fragment| {
+        let (pu, pd) = (project_of(user.path()), project_of(used.path()));
+        let nests = |outer: &str, inner: &str| {
+            outer.is_empty() || inner == outer || inner.starts_with(&format!("{outer}/"))
+        };
+        if nests(&pu, &pd) || nests(&pd, &pu) {
+            return true;
+        }
+        let lang = crate::languages::get_language_for_file;
+        let empty = FxHashSet::default();
+        let words = files.identifiers.get(user.path()).unwrap_or(&empty);
+        lang(user.path()).is_some()
+            && lang(user.path()) == lang(used.path())
+            && Path::new(&rel(state, used.path()))
+                .parent()
+                .into_iter()
+                .flat_map(Path::components)
+                .filter_map(|c| c.as_os_str().to_str())
+                .map(str::to_lowercase)
+                .filter(|d| d.len() >= 2 && !GENERIC_DIRECTORIES.contains(&d.as_str()))
+                .any(|d| words.contains(d.as_str()))
+    };
     let resolver = Resolver::new(&state.root_dir, &source, universe);
+    let file_of = |f: &Fragment| files.fragments.get(f.path()).map_or(&[][..], Vec::as_slice);
     let class_of =
-        |f: &Fragment| enclosing_class(f, &state.all_fragments).and_then(|c| c.symbol_name.clone());
+        |f: &Fragment| enclosing_class(f, file_of(f)).and_then(|c| c.symbol_name.clone());
     let finding = |user: &Fragment, used: &Fragment, name: &str| -> Option<Finding> {
+        // A function defined inside another one is a local name: only that
+        // function can call it, never through a receiver. An enum, a record
+        // or a module around a method is no such scope (`Op.PLUS.apply`).
+        let scope = file_of(used).iter().find(|f| {
+            f.id != used.id
+                && f.kind == FragmentKind::Function
+                && f.start_line() < used.start_line()
+                && f.end_line() >= used.end_line()
+        });
+        if let Some(scope) = scope {
+            if user.path() != used.path()
+                || user.start_line() < scope.start_line()
+                || user.end_line() > scope.end_line()
+            {
+                return None;
+            }
+        }
         let path = rel(state, used.path());
-        let class = if is_member(used, &state.all_fragments) {
+        let class = if scope.is_none() && is_member(used, file_of(used)) {
             class_of(used)
         } else {
             None
@@ -1027,7 +1547,7 @@ pub fn build_impact(
             class: class.as_deref(),
         };
         let user_path = rel(state, user.path());
-        let header = enclosing_class(user, &state.all_fragments).and_then(|c| {
+        let header = enclosing_class(user, file_of(user)).and_then(|c| {
             c.symbol_name
                 .as_deref()
                 .map(|n| (n, c.content.lines().next().unwrap_or("")))
@@ -1053,7 +1573,8 @@ pub fn build_impact(
         if modelled(user, used) {
             finding(user, used, name).is_some_and(|f| f.evidence == Evidence::Resolved)
         } else {
-            mentions(user, Some(name), &Receiver::Any)
+            one_project(user, used)
+                && mentions(user, Some(name), &Receiver::Any)
                 && references_module(user, &files, Some(name), used.path())
         }
     };
@@ -1061,13 +1582,74 @@ pub fn build_impact(
         if modelled(test, caller) {
             resolver.imports_file(&rel(state, test.path()), &rel(state, caller.path()))
         } else {
-            references_module(test, &files, None, caller.path())
+            one_project(test, caller) && references_module(test, &files, None, caller.path())
         }
     };
     let cores = innermost(cores);
+    // An `impl` block extends the type it names: with that type among the
+    // cores, a second entry for the block repeats the type (#403).
+    let types: FxHashSet<(&str, &str)> = cores
+        .iter()
+        .filter(|c| c.kind != FragmentKind::Impl)
+        .filter_map(|c| Some((c.path(), c.symbol_name.as_deref()?)))
+        .collect();
+    let cores: Vec<&Fragment> = cores
+        .into_iter()
+        .filter(|c| {
+            c.kind != FragmentKind::Impl
+                || !c
+                    .symbol_name
+                    .as_deref()
+                    .is_some_and(|s| types.contains(&(c.path(), s)))
+        })
+        .collect();
+    // A deletion that only borders a definition removed whatever followed
+    // it, at its own indentation or shallower: the definitions it took are
+    // reported as removed, this one did not change — and it is no part of
+    // the diff when it calls another changed symbol. Lines removed between
+    // two lines the definition spans are its own body, at any indentation
+    // (a dedented SQL string). A core no hunk overlaps was attached to a
+    // deletion beside it: the hunks name its file, never its lines.
+    let borders_only = |core: &Fragment| -> bool {
+        let core_hunks = hunks_in(core);
+        if core_hunks.is_empty() {
+            let core_path = rel(state, core.path());
+            return state.hunk_texts.iter().any(|h| h.path == core_path);
+        }
+        let header_indent = indent_of(without_decorators(&core.content));
+        core_hunks.iter().all(|h| {
+            let interior = core.start_line() <= h.new_start && core.end_line() > h.new_start;
+            h.added.is_empty()
+                && !interior
+                && h.removed
+                    .iter()
+                    .find(|l| !l.trim().is_empty())
+                    .is_some_and(|l| indent_of(l) <= header_indent)
+        })
+    };
+    let bordering: FxHashSet<&FragmentId> = cores
+        .iter()
+        .filter(|c| borders_only(c))
+        .map(|c| &c.id)
+        .collect();
     for (i, core) in cores.iter().enumerate() {
+        // Past the deadline the symbols already answered are the answer:
+        // `limits` then says it is partial, and a mass reformat returns what
+        // it found instead of nothing (#382).
+        if !state.run.check() {
+            break;
+        }
+        let core_hunks = hunks_in(core);
+        // A formatter run or a comment changes nothing a caller sees (#370).
+        if query.is_none() && !core_hunks.is_empty() && core_hunks.iter().all(|h| h.is_layout()) {
+            continue;
+        }
+        if query.is_none() && bordering.contains(&core.id) {
+            continue;
+        }
+        let compatible = query.is_none() && compatible_extension(core, &core_hunks);
         let symbol = core.symbol_name.as_deref();
-        let member = is_member(core, &state.all_fragments);
+        let member = is_member(core, file_of(core));
         let stem = Path::new(core.path())
             .file_stem()
             .and_then(|s| s.to_str())
@@ -1100,13 +1682,31 @@ pub fn build_impact(
         graph.for_each_reverse_neighbor(&core.id, |src, weight| {
             let reason = if ambiguous {
                 "ambiguous_name"
-            } else if state.core_ids.contains(src)
+            } else if (state.core_ids.contains(src) && !bordering.contains(src))
                 || within(src, core)
-                || (query.is_none() && changed_paths.contains(src.path.as_ref()))
+                || (query.is_none() && in_a_hunk(src))
             {
                 // A queried name has no diff: a call from elsewhere in its
                 // own file is a caller like any other.
                 "inside_the_diff"
+            } else if let Some((frag, found)) = by_id
+                .get(src)
+                .filter(|f| {
+                    binding_model
+                        && modelled(f, core)
+                        && f.kind != FragmentKind::Excerpt
+                        && !is_import_block(&f.content)
+                })
+                .and_then(|f| {
+                    finding(f, core, symbol.map(base_symbol).unwrap_or(""))
+                        .filter(|x| x.evidence == Evidence::Resolved)
+                        .map(|x| (*f, x))
+                })
+            {
+                // A resolved binding is stronger evidence than which way the
+                // edge between the two fragments happens to weigh more.
+                sources.push((frag, weight, Some(found)));
+                return;
             } else if graph.edge_category(src, &core.id) != Some(EdgeCategory::Semantic) {
                 tracing::trace!(
                     "impact {}: {} -> {:?} {:?} w={:.2} back={:.2}",
@@ -1210,12 +1810,19 @@ pub fn build_impact(
             .map(|frag| {
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 let found = findings.get(&frag.id);
+                let registered_by = tested
+                    .is_none()
+                    .then(|| registering_decorator(frag, file_of(frag)))
+                    .flatten();
                 Caller {
                     path: rel(state, frag.path()),
                     symbol: frag.symbol_name.clone(),
                     lines: lines_of(&frag.id),
                     weight: (weights[&frag.id] * 1e3).round() / 1e3,
-                    file_tested: tested.is_none() && tests.file_tested(frag, &reaches_file),
+                    file_tested: tested.is_none()
+                        && registered_by.is_none()
+                        && tests.file_tested(frag, &reaches_file),
+                    registered_by,
                     tested_by: tested.as_ref().map(|(p, _)| rel(state, p)),
                     tested_via: tested.and_then(|(_, via)| via),
                     evidence: match found.map(|f| f.evidence) {
@@ -1249,6 +1856,7 @@ pub fn build_impact(
         };
         if query.is_none()
             && is_public(core.path(), symbol, without_decorators(&core.content))
+            && rust_module_is_public(state, core.path())
             && signature_changed(state, &base, core)
         {
             public_api.push((
@@ -1264,23 +1872,42 @@ pub fn build_impact(
         // holds that already, and listing it spends the cap on nothing.
         // A queried symbol's definition is half the answer: where it is.
         // Unless nothing could be resolved: an empty list is then no finding,
-        // and silence would read as one.
-        let unresolved = if ambiguous {
-            symbol.map(|s| {
-                let n = definitions
-                    .get(&(core_lang, s.to_lowercase()))
-                    .copied()
-                    .unwrap_or(0);
-                format!("`{s}` is defined in {n} {core_lang} files and this language has no binding model here")
-            })
-        } else {
-            dispatched_trait(state, core).map(|t| {
+        // and silence would read as one. A trait method is reached through
+        // its trait, whatever else shares its name (`fmt` in `impl Display`).
+        let unresolved = dispatched_trait(state, core)
+            .map(|t| {
                 format!(
                     "implements `{t}`; calls through `dyn {t}` or a generic bound are not resolved"
                 )
             })
+            .or_else(|| {
+                symbol.filter(|_| ambiguous).map(|s| {
+                    let n = definitions
+                        .get(&(core_lang, s.to_lowercase()))
+                        .copied()
+                        .unwrap_or(0);
+                    format!("`{s}` has {n} {core_lang} definitions and this language has no binding model here")
+                })
+            });
+        let untested = query.is_none()
+            && tests.any()
+            && !crate::testfiles::is_test_path(Path::new(core.path()))
+            && registering_decorator(core, file_of(core)).is_none()
+            && tests.tested_by(core, state, &by_id, &link).is_none();
+        untested_definitions += usize::from(untested);
+        let compatible_callers = if compatible {
+            let n = callers.iter().filter(|c| c.evidence != "candidate").count();
+            callers.clear();
+            n
+        } else {
+            0
         };
-        if callers.is_empty() && commits < 2 && query.is_none() && unresolved.is_none() {
+        if callers.is_empty()
+            && compatible_callers == 0
+            && commits < 2
+            && query.is_none()
+            && unresolved.is_none()
+        {
             continue;
         }
         changed.push(ChangedSymbol {
@@ -1291,7 +1918,39 @@ pub fn build_impact(
             commits,
             callers,
             unresolved,
+            untested,
+            compatible_callers,
         });
+    }
+    if query.is_none() && state.run.check() {
+        let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
+        for (n, p) in &defined_in {
+            defined.entry(n.as_str()).or_default().insert(rel(state, p));
+        }
+        let head_rev = analysed
+            .map(crate::git::split_diff_range)
+            .and_then(|(_, head)| head);
+        let binds_to = |file: &str, text: &str, name: &str, old: &str| {
+            let is_old = |spec: &str| matches!(resolver.resolve(file, spec), bindings::Resolution::File(f) if f == old);
+            let b = resolver.bindings(file);
+            b.star_from.iter().any(|m| is_old(m))
+                || b.names.iter().any(|(local, t)| match t {
+                    bindings::Target::Member { module, name: n } => n == name && is_old(module),
+                    bindings::Target::Module(m) => {
+                        text.contains(&format!("{local}.{name}")) && is_old(m)
+                    }
+                })
+        };
+        for (sym, contract) in
+            removed_definitions(state, &defined, head_rev.as_deref(), &in_a_hunk, &binds_to)
+        {
+            if let Some(c) = contract {
+                contracts.push(c);
+            }
+            if !sym.callers.is_empty() {
+                changed.push(sym);
+            }
+        }
     }
     // Symbols with something to say first: callers, then commit overlap.
     changed.sort_by(|a, b| {
@@ -1308,8 +1967,14 @@ pub fn build_impact(
         .iter()
         .map(|p| rel(state, &p.to_string_lossy()))
         .collect();
+    let layout_files: FxHashSet<&str> = state
+        .change_classes
+        .iter()
+        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
+        .map(|(p, _, _)| p.as_str())
+        .collect();
     for path in &changed_files {
-        if is_schema_file(path) {
+        if is_schema_file(path) && !layout_files.contains(path.as_str()) {
             contracts.push(Contract {
                 path: path.clone(),
                 symbol: None,
@@ -1357,35 +2022,407 @@ pub fn build_impact(
         contracts_omitted,
         limits,
         tests_known: tests.any(),
+        untested_definitions,
+        withheld_files: state.policy_excluded_count,
         cap: IMPACT_TOKEN_CAP,
     };
     fit_to_cap(&mut output);
     output
 }
 
+/// A declaration a removed line spells: `function f(`, `def f(`, `fn f(`,
+/// `class C`, `interface I`, `func (r T) f(`, `def self.f`, `const f = () =>`.
+static REMOVED_DECLARATION: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(
+    || {
+        regex::Regex::new(
+        r"^\s*((?:(?:export|default|pub(?:\([^)]*\))?|public|private|protected|static|async|abstract|readonly|override|declare)\s+)*)(?:(?:function\*?|def|fn|func|class|interface|type|enum|struct|trait)\s+(?:\([^)]*\)\s*)?(?:self\.)?([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]*)?=>|[A-Za-z_$][\w$]*\s*=>))",
+    )
+    .expect("removed declaration regex")
+    },
+);
+
+/// A member a removed line declares inside a class or an interface:
+/// `m?(): void;`, `m(x: T) {`, `async m() {`.
+static REMOVED_MEMBER: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(
+        r"^\s*(?:(?:public|private|protected|static|async|abstract|readonly|override|get|set)\s+)*([A-Za-z_$][\w$]*)\??\s*(?:<[^>]*>)?\s*\([^)]*\)\s*(?::[^;{=]*)?\s*[;{]?\s*$",
+    )
+    .expect("removed member regex")
+});
+
+/// The member a class-body line declares. `notify(x);` with no modifier
+/// and no return type is a call statement inside a method body, not a
+/// declaration: read as one, deleting the call reported a removed API.
+fn member_declared(line: &str) -> Option<&str> {
+    let name = REMOVED_MEMBER.captures(line)?.get(1)?.as_str();
+    let code = line.trim();
+    let modified = code
+        .split_whitespace()
+        .next()
+        .is_some_and(|w| MEMBER_MODIFIERS.contains(&w));
+    let call = code
+        .strip_suffix(';')
+        .is_some_and(|c| c.trim_end().ends_with(')'));
+    (modified || !call).then_some(name)
+}
+
+const MEMBER_MODIFIERS: &[&str] = &[
+    "public",
+    "private",
+    "protected",
+    "static",
+    "async",
+    "abstract",
+    "readonly",
+    "override",
+    "declare",
+    "get",
+    "set",
+];
+
+/// Directory names every project has: naming one says nothing about which.
+const GENERIC_DIRECTORIES: &[&str] = &[
+    "src", "main", "java", "kotlin", "scala", "lib", "test", "tests", "app", "pkg", "internal",
+    "cmd", "include", "source", "sources",
+];
+
+const NOT_MEMBER_NAMES: &[&str] = &[
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "return",
+    "function",
+    "super",
+    "constructor",
+    "await",
+    "new",
+    "typeof",
+    "self",
+    "cls",
+    "this",
+];
+
+fn declared_name(line: &str) -> Option<(&str, bool)> {
+    let c = REMOVED_DECLARATION.captures(line)?;
+    let prefix = c.get(1).map_or("", |m| m.as_str());
+    let name = c.get(2).or_else(|| c.get(3))?.as_str();
+    Some((
+        name,
+        prefix.contains("export") || prefix.contains("pub ") || prefix.trim() == "pub",
+    ))
+}
+
+/// Definitions the change removed and nothing at the head defines again,
+/// with the lines outside the diff that still name them (#367). They have
+/// no fragment at the head, so the callers graph never reaches them: an
+/// optional call (`engine.setGain?.()`) silently becomes a no-op.
+fn removed_definitions(
+    state: &ScoredState,
+    defined: &FxHashMap<&str, FxHashSet<String>>,
+    head: Option<&str>,
+    in_a_hunk: &dyn Fn(&FragmentId) -> bool,
+    binds_to: &dyn Fn(&str, &str, &str, &str) -> bool,
+) -> Vec<(ChangedSymbol, Option<Contract>)> {
+    let mut removed: Vec<(String, &crate::change_class::HunkText, bool)> = Vec::new();
+    for h in &state.hunk_texts {
+        if !is_code_file(&h.path) {
+            continue;
+        }
+        let (anchor, _) = h.new_range();
+        let classes: Vec<&Fragment> = state
+            .all_fragments
+            .iter()
+            .filter(|f| {
+                f.kind.is_container() && f.start_line() <= anchor && rel(state, f.path()) == h.path
+            })
+            .collect();
+        // As in `enclosing_class`: a class may be fragmented as its header
+        // alone, so an indented line belongs to the nearest shallower class
+        // above it.
+        let container_of = |line: &str| {
+            let own = indent_of(line);
+            classes
+                .iter()
+                .copied()
+                .filter(|c| c.end_line() >= anchor)
+                .min_by_key(|c| c.line_count())
+                .or_else(|| {
+                    (own > 0)
+                        .then(|| {
+                            classes
+                                .iter()
+                                .copied()
+                                .filter(|c| indent_of(&c.content) < own)
+                                .max_by_key(|c| c.start_line())
+                        })
+                        .flatten()
+                })
+        };
+        let readded: FxHashSet<String> = h
+            .added
+            .iter()
+            .filter_map(|l| {
+                declared_name(l)
+                    .map(|(n, _)| n)
+                    .or_else(|| container_of(l).and_then(|_| member_declared(l)))
+                    .map(str::to_string)
+            })
+            .collect();
+        for line in &h.removed {
+            let container = container_of(line);
+            let (name, exported) = if let Some((n, exported)) = declared_name(line) {
+                (Some(n), exported)
+            } else if let Some(n) = container.and_then(|_| member_declared(line)) {
+                let exported = container.is_some_and(|f| {
+                    is_public(
+                        f.path(),
+                        f.symbol_name.as_deref(),
+                        without_decorators(&f.content),
+                    )
+                });
+                (Some(n), exported)
+            } else {
+                (None, false)
+            };
+            let Some(name) = name.filter(|n| {
+                n.len() >= 3
+                    && !NOT_MEMBER_NAMES.contains(n)
+                    && !defined.get(n).is_some_and(|at| at.contains(&h.path))
+                    && !readded.contains(*n)
+            }) else {
+                continue;
+            };
+            if !removed.iter().any(|(n, _, _)| n == name) {
+                removed.push((name.to_string(), h, exported));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (name, h, exported) in removed {
+        let Ok(hits) = crate::git::grep_lines(&state.root_dir, std::slice::from_ref(&name), head)
+        else {
+            continue;
+        };
+        let mut callers: Vec<Caller> = Vec::new();
+        // Defined again elsewhere: only the lines still bound to the old
+        // module are broken; the rest already reach the new definition.
+        // Without a binding model only a line qualified by the new module
+        // (`new::tax_rate`) is known to reach it; dropping every other line
+        // read a still-broken `old::tax_rate()` as fixed.
+        let moved_to = defined.get(name.as_str()).filter(|at| !at.is_empty());
+        let qualified_by = |text: &str, file: &str| {
+            let stem = Path::new(file)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            text.contains(&format!("{stem}::{name}")) || text.contains(&format!("{stem}.{name}"))
+        };
+        for (path, line, text) in hits {
+            if !is_code_file(&path) {
+                continue;
+            }
+            if let Some(at) = moved_to {
+                let reaches_new = if bindings::lang_of(&path).is_some() {
+                    !binds_to(&path, &text, &name, &h.path)
+                } else {
+                    at.iter().any(|f| qualified_by(&text, f)) && !qualified_by(&text, &h.path)
+                };
+                if reaches_new {
+                    continue;
+                }
+            }
+            let ext = Path::new(&path)
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            let code = code_of(
+                &text,
+                HASH_COMMENT_EXTENSIONS.contains(&ext.as_str()),
+                ext != "rs",
+                &mut None,
+            );
+            let bytes = code.as_bytes();
+            let Some(at) = code
+                .match_indices(name.as_str())
+                .map(|(at, _)| at)
+                .find(|&at| {
+                    let word = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'$';
+                    !at.checked_sub(1).is_some_and(|i| word(bytes[i]))
+                        && !bytes.get(at + name.len()).copied().is_some_and(word)
+                })
+            else {
+                continue;
+            };
+            let holder = state
+                .all_fragments
+                .iter()
+                .filter(|f| {
+                    rel(state, f.path()) == path
+                        && f.start_line() <= line
+                        && f.end_line() >= line
+                        && f.kind.is_definition_kind()
+                        && f.symbol_name.is_some()
+                })
+                .min_by_key(|f| f.line_count());
+            // A line declaring the name is where it went (a move), never a
+            // caller of the removed definition; a method of the same name
+            // that delegates to it still is one.
+            if holder.is_some_and(|f| in_a_hunk(&f.id) && f.line_count() <= 1)
+                || declared_name(&text).is_some_and(|(n, _)| n == name)
+            {
+                continue;
+            }
+            let next = code[at + name.len()..].trim_start();
+            callers.push(Caller {
+                path: path.clone(),
+                symbol: holder.and_then(|f| f.symbol_name.clone()),
+                lines: holder.map_or_else(|| format!("{line}-{line}"), |f| lines_of(&f.id)),
+                weight: 1.0,
+                tested_by: None,
+                tested_via: None,
+                file_tested: false,
+                registered_by: None,
+                evidence: "name",
+                reason: None,
+                relation: if next.starts_with('(') || next.starts_with("?.(") {
+                    "call"
+                } else {
+                    "reference"
+                },
+                sites: vec![line],
+            });
+        }
+        let callers = merge_by_symbol(callers);
+        let lines = format!(
+            "{}-{}",
+            h.old_start,
+            h.old_start + h.old_len.saturating_sub(1)
+        );
+        let contract = exported.then(|| Contract {
+            path: h.path.clone(),
+            symbol: Some(name.clone()),
+            kind: "removed_api",
+        });
+        out.push((
+            ChangedSymbol {
+                path: h.path.clone(),
+                symbol: Some(name),
+                lines,
+                kind: "removed".to_string(),
+                commits: 0,
+                callers,
+                unresolved: None,
+                untested: false,
+                compatible_callers: 0,
+            },
+            contract,
+        ));
+    }
+    out
+}
+
+const PROJECT_MANIFESTS: &[&str] = &[
+    "package.json",
+    "pyproject.toml",
+    "setup.py",
+    "Cargo.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "composer.json",
+    "Gemfile",
+    "mix.exs",
+    "deno.json",
+];
+
 const MAX_STALE_REFERENCES: usize = 24;
 const MAX_STALE_PER_TARGET: usize = 8;
-/// A file stem this generic names half the repository: it is no evidence of
-/// a reference to one particular deleted file.
-const GENERIC_STEMS: &[&str] = &[
-    "mod",
-    "lib",
-    "main",
-    "index",
-    "init",
-    "__init__",
-    "utils",
-    "util",
-    "test",
-    "tests",
-    "types",
-    "common",
-    "helpers",
-    "config",
-    "setup",
-    "readme",
-    "changelog",
-];
+
+/// How a line can name a path: the strongest first, so a line naming two
+/// targets is attributed to the one it names most exactly.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Naming {
+    FullPath,
+    RelativePath,
+    Module,
+    UniqueBasename,
+}
+
+fn normalize_rel(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    parts.join("/")
+}
+
+fn without_extension(path: &str) -> &str {
+    match path.rfind('.') {
+        Some(dot) if !path[dot..].contains('/') && dot > path.rfind('/').map_or(0, |s| s + 1) => {
+            &path[..dot]
+        }
+        _ => path,
+    }
+}
+
+/// How `token`, found in `referrer`, names `target` — or `None` when it is a
+/// different name that merely shares a basename or a word (#369, #383).
+fn naming(token: &str, referrer: &str, target: &str, unique_basename: bool) -> Option<Naming> {
+    let trimmed = token.trim_start_matches("./");
+    if trimmed == target || token.ends_with(&format!("/{target}")) {
+        return Some(Naming::FullPath);
+    }
+    let dir = referrer.rsplit_once('/').map_or("", |(d, _)| d);
+    if token.contains('/') {
+        let joined = normalize_rel(&format!("{dir}/{token}"));
+        if joined == target || joined == without_extension(target) {
+            return Some(Naming::RelativePath);
+        }
+    }
+    // A Python relative import: `.probes` is the sibling module, each
+    // further dot one package up.
+    let dots = token.chars().take_while(|c| *c == '.').count();
+    if dots > 0 && !token.contains('/') {
+        let rest = &token[dots..];
+        let mut base = dir.to_string();
+        for _ in 1..dots {
+            base = base
+                .rsplit_once('/')
+                .map_or(String::new(), |(d, _)| d.to_string());
+        }
+        let module = normalize_rel(&format!("{base}/{}", rest.replace('.', "/")));
+        let target_module = without_extension(target);
+        if !rest.is_empty()
+            && (module == target_module || format!("{module}/__init__") == target_module)
+        {
+            return Some(Naming::RelativePath);
+        }
+    }
+    // `pkg.probes` / `pkg/probes`: a module path of at least two segments
+    // that the target's path ends with.
+    let module = without_extension(target);
+    let segments: Vec<&str> = module.split('/').collect();
+    for take in 2..=segments.len() {
+        let tail = &segments[segments.len() - take..];
+        let dotted = tail.join(".");
+        let slashed = tail.join("/");
+        if token == dotted || token.starts_with(&format!("{dotted}.")) || trimmed == slashed {
+            return Some(Naming::Module);
+        }
+    }
+    let basename = target.rsplit('/').next().unwrap_or(target);
+    (unique_basename && basename.contains('.') && trimmed == basename)
+        .then_some(Naming::UniqueBasename)
+}
 
 /// What still names a path the change deleted or renamed, in the tree the
 /// change leaves behind: the range's head, or the working tree.
@@ -1407,20 +2444,28 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
     let head = diff_range
         .map(crate::git::split_diff_range)
         .and_then(|(_, head)| head);
+    let surviving: FxHashSet<String> = state
+        .run
+        .source()
+        .list_paths(&state.root_dir)
+        .into_iter()
+        .filter_map(|p| p.rsplit('/').next().map(str::to_string))
+        .collect();
     let mut needles: Vec<String> = Vec::new();
-    let stem_of = |t: &str| {
-        Path::new(t)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .filter(|s| s.len() >= 4 && !GENERIC_STEMS.contains(&s.to_lowercase().as_str()))
-            .map(str::to_string)
-    };
     for (target, _) in &targets {
         needles.push(target.clone());
         if let Some(name) = Path::new(target).file_name().and_then(|n| n.to_str()) {
             needles.push(name.to_string());
         }
-        needles.extend(stem_of(target));
+        // A module is named without its extension (`from pkg.probes import`).
+        if is_code_file(target) {
+            needles.extend(
+                Path::new(target)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string),
+            );
+        }
     }
     needles.sort();
     needles.dedup();
@@ -1432,14 +2477,7 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
         .iter()
         .map(|(_, new)| new.as_str())
         .collect();
-    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-    let names = |text: &str, word: &str| {
-        let bytes = text.as_bytes();
-        text.match_indices(word).any(|(at, _)| {
-            !at.checked_sub(1).is_some_and(|i| is_word(bytes[i]))
-                && !bytes.get(at + word.len()).copied().is_some_and(is_word)
-        })
-    };
+    let token_re = once_cell::sync::Lazy::force(&PATH_TOKEN);
     let mut found = Vec::new();
     let mut per_target: FxHashMap<&str, usize> = FxHashMap::default();
     let mut omitted = 0;
@@ -1447,16 +2485,22 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
         if renamed_to.contains(path.as_str()) {
             continue;
         }
-        let Some((target, kind)) = targets.iter().find(|(t, _)| {
-            let file_name = Path::new(t)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(t);
-            path != t
-                && (text.contains(t.as_str())
-                    || names(text, file_name)
-                    || stem_of(t).is_some_and(|stem| names(text, &stem)))
-        }) else {
+        let surviving = &surviving;
+        let targets = &targets;
+        let best = token_re
+            .find_iter(text)
+            .flat_map(|m| {
+                targets
+                    .iter()
+                    .filter(|(t, _)| t != path)
+                    .filter_map(move |(t, kind)| {
+                        let basename = t.rsplit('/').next().unwrap_or(t);
+                        naming(m.as_str(), path, t, !surviving.contains(basename))
+                            .map(|n| (n, std::cmp::Reverse(t.len()), t, kind))
+                    })
+            })
+            .min();
+        let Some((_, _, target, kind)) = best else {
             continue;
         };
         let count = per_target.entry(target.as_str()).or_default();
@@ -1474,6 +2518,12 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
     }
     (found, omitted)
 }
+
+/// A run of characters a path or a module name is spelled with.
+static PATH_TOKEN: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(r"[A-Za-z0-9_./@~$+-]*[A-Za-z0-9_$][A-Za-z0-9_./@~$+-]*")
+        .expect("path token regex")
+});
 
 fn serialized_tokens(output: &ImpactOutput) -> u32 {
     serde_json::to_string(output)
@@ -1529,7 +2579,7 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     if let Some(i) = output
         .changed
         .iter()
-        .rposition(|c| c.callers.is_empty() && c.unresolved.is_none())
+        .rposition(|c| c.callers.is_empty() && c.unresolved.is_none() && c.compatible_callers == 0)
     {
         output.changed.remove(i);
         return true;
@@ -1538,17 +2588,24 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
 }
 
 fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
-    let weakest = output
-        .changed
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| !c.callers.is_empty())
-        .min_by(|(_, a), (_, b)| {
-            let wa = a.callers.last().map(|c| c.weight).unwrap_or(0.0);
-            let wb = b.callers.last().map(|c| c.weight).unwrap_or(0.0);
-            wa.total_cmp(&wb)
-        })
-        .map(|(i, _)| i);
+    // A symbol's only caller goes last: while another symbol still has a
+    // tail to shed, dropping a whole symbol would make the selection look
+    // arbitrary, one function listed with all its callers and another
+    // with none (#386).
+    let weakest_among = |min_callers: usize| {
+        output
+            .changed
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.callers.len() >= min_callers)
+            .min_by(|(_, a), (_, b)| {
+                let wa = a.callers.last().map(|c| c.weight).unwrap_or(0.0);
+                let wb = b.callers.last().map(|c| c.weight).unwrap_or(0.0);
+                wa.total_cmp(&wb)
+            })
+            .map(|(i, _)| i)
+    };
+    let weakest = weakest_among(2).or_else(|| weakest_among(1));
     match weakest {
         // The strongest caller of a symbol is the fact; the symbol goes
         // whole once that is all it has left, never one caller at a time.
@@ -1611,7 +2668,20 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
     let mut out = String::new();
     write_header(&mut out, output);
     if output.empty && output.changed_files.is_empty() && output.deleted_files.is_empty() {
-        let _ = writeln!(out, "No changes to analyse.");
+        // `HEAD` is the uncommitted work, so on a clean tree it reads as
+        // "nothing is reached" while the last commit may reach a lot (#368).
+        let working_tree = output.index_tree.is_none()
+            && output.symbol.is_none()
+            && matches!(output.range.as_deref(), None | Some("HEAD"));
+        let _ = writeln!(
+            out,
+            "No changes to analyse.{}",
+            if working_tree {
+                " The working tree matches HEAD; HEAD~1..HEAD is the last commit."
+            } else {
+                ""
+            }
+        );
         return out;
     }
     if output.empty {
@@ -1628,14 +2698,41 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
     out
 }
 
+/// A caller no static test link reaches although one could have: the one
+/// predicate behind the header count, the folded count and the line (#386).
+fn without_test_link(c: &Caller) -> bool {
+    c.evidence != "candidate" && c.tested_by.is_none() && c.registered_by.is_none()
+}
+
+/// The caller count as far as it is known: symbols whose callers could not
+/// be resolved, or a run that stopped early, make a zero no finding (#387).
+fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String {
+    let unresolved = output
+        .changed
+        .iter()
+        .filter(|c| c.unresolved.is_some())
+        .count();
+    let mut phrase = if callers == 0 && unresolved > 0 && unresolved == output.changed.len() {
+        "callers unresolved".to_string()
+    } else {
+        let mut p = format!("{callers} caller(s){scope}");
+        if unresolved > 0 {
+            p.push_str(&format!(", callers unresolved for {unresolved} symbol(s)"));
+        }
+        p
+    };
+    if !output.limits.is_empty() {
+        phrase.push_str(" found before the run stopped");
+    }
+    phrase
+}
+
 fn write_header(out: &mut String, output: &ImpactOutput) {
     let range = range_label(output.range.as_deref(), output.index_tree.as_deref());
     let all = || output.changed.iter().flat_map(|c| &c.callers);
     let callers = all().filter(|c| c.evidence != "candidate").count();
     let possible = all().filter(|c| c.evidence == "candidate").count();
-    let untested = all()
-        .filter(|c| c.evidence != "candidate" && c.tested_by.is_none() && c.file_tested)
-        .count();
+    let untested = all().filter(|c| without_test_link(c)).count();
     let mut guard_summary = if output.tests_known {
         format!(", {untested} without a static test link")
     } else {
@@ -1644,18 +2741,36 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
     if possible > 0 {
         guard_summary.push_str(&format!(", {possible} possible"));
     }
+    if output.tests_known && output.untested_definitions > 0 {
+        guard_summary.push_str(&format!(
+            ", {} changed definition(s) without a static test link",
+            output.untested_definitions
+        ));
+    }
+    let withheld = |what: &str| {
+        if output.withheld_files == 0 {
+            String::new()
+        } else {
+            format!(
+                ", {} {what} withheld by ignore rules",
+                output.withheld_files
+            )
+        }
+    };
     match &output.symbol {
         Some(symbol) => {
             let _ = writeln!(
                 out,
-                "diffctx impact for symbol {symbol}: {} definition(s), {callers} caller(s){guard_summary}",
+                "diffctx impact for symbol {symbol}: {} definition(s){}, {}{guard_summary}",
                 output.changed.len(),
+                withheld("file(s) naming it"),
+                callers_phrase(output, callers, ""),
             );
         }
         None => {
             let _ = writeln!(
                 out,
-                "diffctx impact for {range}: {} changed file(s){}, {} caller(s) outside the diff{guard_summary}",
+                "diffctx impact for {range}: {} changed file(s){}{}, {}{guard_summary}",
                 output.changed_files.len()
                     + output.changed_files_omitted
                     + output.deleted_files.len(),
@@ -1664,9 +2779,16 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                 } else {
                     format!(" ({} deleted)", output.deleted_files.len())
                 },
-                callers
+                withheld("more"),
+                callers_phrase(output, callers, " outside the diff"),
             );
         }
+    }
+    if output.withheld_files > 0 {
+        let _ = writeln!(
+            out,
+            "(the withheld files were not read: calls and tests in them are not counted)"
+        );
     }
     if !output.limits.is_empty() {
         let reasons: Vec<String> = output
@@ -1694,6 +2816,10 @@ fn guard_of(c: &Caller, tests_known: bool) -> String {
     match (&c.tested_by, &c.tested_via) {
         (Some(t), Some(via)) => format!("reachable from tests: {t} via {via}"),
         (Some(t), None) => format!("reachable from tests: {t}"),
+        (None, _) if c.registered_by.is_some() => format!(
+            "registered by `@{}`; whatever reads that registry reaches it, which static test links do not follow",
+            c.registered_by.as_deref().unwrap_or_default()
+        ),
         (None, _) if c.file_tested => "no static test link (its file has tests)".to_string(),
         (None, _) if tests_known => "no static test link found".to_string(),
         (None, _) => "no test files in view".to_string(),
@@ -1717,12 +2843,29 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     };
     let _ = writeln!(
         out,
-        "- {}{commits}",
-        label(&sym.path, sym.symbol.as_deref(), &sym.lines)
+        "- {}{commits}{}",
+        label(&sym.path, sym.symbol.as_deref(), &sym.lines),
+        if sym.untested && tests_known {
+            " — no static test link"
+        } else {
+            ""
+        }
     );
     if let Some(note) = &sym.unresolved {
         let _ = writeln!(out, "  - callers not resolved: {note}");
     }
+    if sym.compatible_callers > 0 {
+        let _ = writeln!(
+            out,
+            "  - {} call site(s), signature-compatible: only fields or parameters with defaults were added",
+            sym.compatible_callers
+        );
+    }
+    write_resolved_callers(out, sym, tests_known);
+    write_candidate_callers(out, sym, compact);
+}
+
+fn write_resolved_callers(out: &mut String, sym: &ChangedSymbol, tests_known: bool) {
     // Thirty call sites in one test module are one fact, not thirty
     // lines: the first few name where, the count says how many.
     let mut shown_per_file: FxHashMap<&str, usize> = FxHashMap::default();
@@ -1732,7 +2875,7 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
         if *shown >= MAX_CALLERS_SHOWN_PER_FILE {
             let entry = folded_per_file.entry(c.path.as_str()).or_default();
             entry.0 += 1;
-            if c.tested_by.is_none() && c.file_tested {
+            if without_test_link(c) {
                 entry.1 += 1;
             }
             continue;
@@ -1763,6 +2906,9 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
             }
         );
     }
+}
+
+fn write_candidate_callers(out: &mut String, sym: &ChangedSymbol, compact: bool) {
     let candidates: Vec<&Caller> = sym
         .callers
         .iter()

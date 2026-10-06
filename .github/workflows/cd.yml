@@ -748,18 +748,25 @@ jobs:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
           python -m pip install --only-binary :all: --upgrade pip
-          # Poll PyPI until the new version is installable. Up to 5 minutes.
-          # Wheels only: the smoke tests the published wheel, and an sdist
-          # fallback would build from source and run its setup scripts.
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if python -m pip install --only-binary :all: "diffctx==${VERSION}"; then
-              echo "Installed diffctx ${VERSION} on attempt $attempt"
-              break
+          # One gate for every installer the smokes use (#364): pip and uv keep
+          # their own index clients and caches, and a CDN edge can still answer
+          # one of them with the pre-publish page after the other sees the
+          # version. Wheels only: an sdist fallback would build from source.
+          deadline=$((SECONDS + 600))
+          until python -m pip download -q --no-cache-dir --no-deps --only-binary :all: \
+                  -d "${RUNNER_TEMP}/probe" "diffctx==${VERSION}" &&
+                uvx --refresh --python 3.13 --no-build "diffctx==${VERSION}" --version |
+                  tr -d '\r' | grep -x "diffctx ${VERSION}" >/dev/null; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::diffctx ${VERSION} did not resolve for pip and uv within 10 minutes of the upload"
+              exit 1
             fi
-            echo "PyPI not ready yet (attempt $attempt); sleeping 30s"
+            echo "diffctx ${VERSION} not resolvable for every installer yet; retrying in 30s"
             sleep 30
           done
-          python -m pip show diffctx | grep -E '^(Name|Version)'
+          python -m pip install --no-cache-dir --only-binary :all: "diffctx==${VERSION}"
+          # Not `| grep -q`: an early exit breaks the pipe and pipefail fails the step.
+          [[ "$(python -m pip show diffctx | sed -n 's/^Version: //p')" == "${VERSION}" ]]
 
       - name: Smoke - diffctx --version
         shell: bash
@@ -809,7 +816,8 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          uvx --python 3.13 --no-build "diffctx==${VERSION}" . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/uvx.md"
+          uvx --refresh --python 3.13 --no-build "diffctx==${VERSION}" \
+            . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/uvx.md"
           grep -q "def sub" "${RUNNER_TEMP}/uvx.md"
           echo "OK: uvx runs the published wheel"
 
@@ -825,7 +833,7 @@ jobs:
           python -m venv "${RUNNER_TEMP}/base"
           bin="${RUNNER_TEMP}/base/bin"
           [[ -d "$bin" ]] || bin="${RUNNER_TEMP}/base/Scripts"
-          "$bin/python" -m pip install --only-binary :all: "diffctx==${VERSION}"
+          "$bin/python" -m pip install --no-cache-dir --only-binary :all: "diffctx==${VERSION}"
           test "$("$bin/diffctx-mcp" --version)" = "diffctx-mcp ${VERSION}"
           set +e
           "$bin/diffctx-mcp" --help >/dev/null 2>&1
@@ -852,7 +860,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install --only-binary :all: "diffctx[mcp]==${VERSION}"
+          python -m pip install --no-cache-dir --only-binary :all: "diffctx[mcp]==${VERSION}"
           command -v diffctx-mcp
           python - <<'PY'
           import json, os, subprocess, sys, tempfile, threading
@@ -969,14 +977,18 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if out=$(uvx --refresh --python 3.14t --no-build "diffctx==${VERSION}" --version 2>&1); then break; fi
+          deadline=$((SECONDS + 600))
+          until out=$(uvx --refresh --python 3.14t --no-build "diffctx==${VERSION}" --version 2>&1) &&
+                printf '%s\n' "$out" | tail -n 1 | tr -d '\r' | grep -qx "diffctx ${VERSION}"; do
             echo "$out"
-            echo "not installable yet (attempt $attempt); sleeping 30s"
+            if (( SECONDS >= deadline )); then
+              echo "::error::the cp314t wheel of diffctx ${VERSION} did not install within 10 minutes"
+              exit 1
+            fi
+            echo "not installable yet; retrying in 30s"
             sleep 30
           done
           echo "$out"
-          printf '%s\n' "$out" | tail -n 1 | tr -d '\r' | grep -qx "diffctx ${VERSION}"
 
       - name: Smoke - diff mode with the GIL off
         shell: bash
@@ -1148,6 +1160,7 @@ jobs:
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
+          echo "DISPATCHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           gh workflow run publish-crate.yml \
             --repo "$REPO" --ref main \
             -f version="$VERSION" -f ref="$COMMIT_SHA"
@@ -1157,9 +1170,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          sleep 15
-          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-crate.yml \
-            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          # The run this job dispatched, not whichever dispatch of the
+          # workflow happens to be newest.
+          for _ in $(seq 1 24); do
+            RUN_ID=$(gh run list --repo "$REPO" --workflow publish-crate.yml --event workflow_dispatch \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$DISPATCHED_AT\")] | sort_by(.createdAt) | .[0].databaseId // empty")
+            [[ -n "$RUN_ID" ]] && break
+            sleep 5
+          done
+          [[ -n "$RUN_ID" ]] || { echo "::error::no publish-crate.yml run started after $DISPATCHED_AT"; exit 1; }
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
 
@@ -1427,7 +1447,7 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-  # README advertises `scoop install diffctx/diffctx`; the job above verified
+  # docs/product/integrations.md advertises `scoop install diffctx/diffctx`; the job above verified
   # the manifest by hash and pushed it, and no Windows machine ever ran the
   # install. This one does, from the just-pushed bucket, against the public
   # release URL — a drafted release or a wrong `bin` fails here.
@@ -1482,6 +1502,7 @@ jobs:
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
+          echo "DISPATCHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           gh workflow run publish-extras.yml \
             --repo "$REPO" --ref main \
             -f version="$VERSION" \
@@ -1494,8 +1515,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          sleep 15
-          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-extras.yml \
-            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          # The run this job dispatched, not whichever dispatch of the
+          # workflow happens to be newest.
+          for _ in $(seq 1 24); do
+            RUN_ID=$(gh run list --repo "$REPO" --workflow publish-extras.yml --event workflow_dispatch \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$DISPATCHED_AT\")] | sort_by(.createdAt) | .[0].databaseId // empty")
+            [[ -n "$RUN_ID" ]] && break
+            sleep 5
+          done
+          [[ -n "$RUN_ID" ]] || { echo "::error::no publish-extras.yml run started after $DISPATCHED_AT"; exit 1; }
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20

@@ -96,6 +96,11 @@ pub struct ScoredState {
     /// snapshot's `base..tree` — which every git question about the change
     /// must use; the caller's spelling is for display.
     pub analysed_range: Option<String>,
+    /// The diff's hunks with their removed and added lines: whether a change
+    /// is layout only, what it removed, where its lines are.
+    pub hunk_texts: Vec<crate::change_class::HunkText>,
+    /// See `ScoredFragments::changed_lines`.
+    pub changed_lines: FxHashMap<FragmentId, f64>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -352,6 +357,9 @@ struct ChangeSetData {
     commit_messages: Vec<String>,
     commit_count: usize,
     head_rev: Option<String>,
+    /// The newest commit the history channels may read: the range's base,
+    /// so a change's own commits never vouch for its files (#340).
+    history_rev: Option<String>,
     pre_phase_ms: f64,
 }
 
@@ -570,12 +578,8 @@ fn resolve_change_set(
     // Display lists for the output header: deletions and renames produce no
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
-    let mut deleted_display: Vec<String> = deleted_files
-        .iter()
-        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
-        .collect();
-    deleted_display.sort();
-    let renamed_display = git::get_rename_pairs(root_dir, diff_range, pathspec).unwrap_or_default();
+    let (deleted_display, renamed_display) =
+        deletion_rename_displays(root_dir, diff_range, pathspec);
     let excluded: FxHashSet<PathBuf> = deleted_files.into_iter().chain(renamed_old).collect();
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
@@ -594,6 +598,7 @@ fn resolve_change_set(
     // A staged snapshot's head is a tree: it has content and no history. Its
     // commits are none, and the history channels anchor on the commit it
     // sits on.
+    let head_rev_is_worktree = head_rev.is_none();
     let (head_rev, history_head) = match staged {
         Some(s) => (None, s.head.clone()),
         None => (head_rev.clone(), head_rev),
@@ -646,6 +651,12 @@ fn resolve_change_set(
         preferred_revs,
         commit_message,
         commit_messages,
+        // A bare revision (a resolved time window included) diffs against
+        // the working tree: the commits after it are the range's own.
+        history_rev: base_rev.clone().or_else(|| match (staged, diff_range) {
+            (None, Some(rev)) if head_rev_is_worktree => Some(rev.to_string()),
+            _ => history_head.clone(),
+        }),
         head_rev: history_head,
         pre_phase_ms,
     })))
@@ -662,6 +673,49 @@ pub enum Anchor<'a> {
 
 const MAX_SYMBOL_FILES: usize = 256;
 
+/// A `--symbol` the caller can correct: a query that names nothing a
+/// definition could be (`malformed`), or a name nothing defines.
+#[derive(Debug)]
+pub struct SymbolQueryError {
+    pub message: String,
+    pub malformed: bool,
+}
+
+impl std::fmt::Display for SymbolQueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for SymbolQueryError {}
+
+/// `NAME`, `PATH:NAME`, or a qualified name: `Class.method`, `Class::method`,
+/// `module.func`, a Helm `chart.helper`.
+fn parse_symbol_query(query: &str) -> Option<(Option<&str>, Vec<&str>)> {
+    // The path ends at the last lone `:`; a `::` belongs to the name
+    // (`shop.py:Ledger::total`).
+    let bytes = query.as_bytes();
+    let lone = (0..bytes.len()).rev().find(|&i| {
+        bytes[i] == b':' && bytes.get(i + 1) != Some(&b':') && (i == 0 || bytes[i - 1] != b':')
+    });
+    let (path, name) = match lone {
+        Some(i) if i > 0 => (Some(&query[..i]), &query[i + 1..]),
+        _ => (None, query),
+    };
+    let segment = |s: &str| {
+        s.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '-')
+    };
+    let segments: Vec<&str> = name.split("::").flat_map(|s| s.split('.')).collect();
+    segments
+        .iter()
+        .all(|s| segment(s))
+        .then_some((path, segments))
+}
+
 fn resolve_symbol_change_set(
     root_dir: &Path,
     scope: &[String],
@@ -669,20 +723,18 @@ fn resolve_symbol_change_set(
     run: &crate::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
-    let (path, name) = match query.rsplit_once(':') {
-        Some((p, n)) if !p.is_empty() => (Some(p), n),
-        _ => (None, query),
+    let Some((path, segments)) = parse_symbol_query(query) else {
+        return Err(SymbolQueryError {
+            message: format!(
+                "--symbol takes NAME, PATH:NAME or a qualified Owner.NAME, got {query:?}"
+            ),
+            malformed: true,
+        }
+        .into());
     };
-    let is_name = name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '$');
-    if !is_name {
-        anyhow::bail!("--symbol takes NAME or PATH:NAME, got {query:?}");
-    }
+    let full = segments.join(".");
+    let name = *segments.last().expect("split yields one segment");
+    let qualifier = segments.len().checked_sub(2).map(|i| segments[i]);
     let pathspec: Vec<String> = match path {
         Some(p) => vec![crate::paths::to_posix_display(std::borrow::Cow::Borrowed(
             p,
@@ -698,7 +750,16 @@ fn resolve_symbol_change_set(
     files.retain(|f| {
         !is_lockfile_path(f) && rel_path_string(root_dir, f).is_some_and(|r| !withheld.contains(&r))
     });
+    let named_in = files.len();
     if files.len() > MAX_SYMBOL_FILES {
+        // The files that spell a declaration of the name go first, so the
+        // cap drops callers, never the definition the answer starts from.
+        let declaring: FxHashSet<PathBuf> =
+            git::grep_files_with_declaration(root_dir, name, &pathspec)
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
+        files.sort_by_key(|f| !declaring.contains(f));
         files.truncate(MAX_SYMBOL_FILES);
         run.note(crate::resource::LimitReason::CandidateLimit);
     }
@@ -713,15 +774,67 @@ fn resolve_symbol_change_set(
         true,
         run,
     );
-    let definitions: Vec<&Fragment> = fragments
+    let indent = |f: &Fragment| {
+        f.content
+            .lines()
+            .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
+            .map_or(0, |l| l.len() - l.trim_start().len())
+    };
+    // The class a definition sits in: the innermost one spanning it, else
+    // (a class fragmented as its header alone) the nearest shallower header
+    // above it. Any shallower class anywhere above answered `Cart.total`
+    // with `Ledger.total`.
+    let owner_of = |def: &Fragment| -> Option<&Fragment> {
+        let above = || {
+            fragments.iter().filter(|c| {
+                c.kind.is_container()
+                    && c.path() == def.path()
+                    && c.start_line() <= def.start_line()
+            })
+        };
+        above()
+            .filter(|c| c.end_line() >= def.end_line())
+            .max_by_key(|c| c.start_line())
+            .or_else(|| {
+                above()
+                    .filter(|c| indent(c) < indent(def))
+                    .max_by_key(|c| c.start_line())
+            })
+    };
+    let owned_by = |def: &Fragment, owner: &str| {
+        Path::new(def.path())
+            .file_stem()
+            .is_some_and(|stem| stem.to_string_lossy() == owner)
+            || owner_of(def).and_then(|c| c.symbol_name.as_deref()) == Some(owner)
+    };
+    let is_definition = |f: &&Fragment| f.kind.is_definition_kind();
+    let mut definitions: Vec<&Fragment> = fragments
         .iter()
-        .filter(|f| f.symbol_name.as_deref() == Some(name) && f.kind.is_definition_kind())
+        .filter(is_definition)
+        .filter(|f| f.symbol_name.as_deref() == Some(full.as_str()))
         .collect();
     if definitions.is_empty() {
-        anyhow::bail!(
-            "no definition of {name:?} found{}",
-            path.map(|p| format!(" in {p}")).unwrap_or_default()
-        );
+        definitions = fragments
+            .iter()
+            .filter(is_definition)
+            .filter(|f| f.symbol_name.as_deref() == Some(name))
+            .filter(|f| qualifier.is_none_or(|q| owned_by(f, q)))
+            .collect();
+    }
+    if definitions.is_empty() {
+        let capped = if named_in > MAX_SYMBOL_FILES {
+            format!(" (searched {MAX_SYMBOL_FILES} of the {named_in} files naming it)")
+        } else {
+            String::new()
+        };
+        return Err(SymbolQueryError {
+            message: format!(
+                "no definition of {full:?} found{}{capped}",
+                path.map(|p| format!(" in {p}")).unwrap_or_default()
+            ),
+            malformed: false,
+        }
+        .into());
     }
 
     let mut hunks = Vec::with_capacity(definitions.len());
@@ -761,11 +874,12 @@ fn resolve_symbol_change_set(
         renamed_display: Vec::new(),
         lockfile_display: Vec::new(),
         ignored_display: Vec::new(),
-        policy_excluded: 0,
+        policy_excluded: withheld.len(),
         preferred_revs: Vec::new(),
         commit_message: None,
         commit_messages: Vec::new(),
         head_rev: None,
+        history_rev: None,
         pre_phase_ms: t_entry.elapsed().as_secs_f64() * 1000.0,
     })))
 }
@@ -921,7 +1035,7 @@ pub fn compute_scored_state_anchored(
             policy_excluded_count,
         } => {
             let mut state = empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
-            state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], "", &[]);
+            state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], &[], &[]);
             state.changed_files = changed_files;
             state.lockfile_changes = lockfile_changes;
             state.ignored_changes = ignored_changes;
@@ -948,9 +1062,10 @@ pub fn compute_scored_state_anchored(
         commit_message,
         commit_messages,
         head_rev,
+        history_rev,
         pre_phase_ms,
     } = *data;
-    run.set_head_rev(head_rev.clone());
+    run.set_head_rev(history_rev);
 
     let t0 = Instant::now();
 
@@ -967,11 +1082,22 @@ pub fn compute_scored_state_anchored(
         &hunks,
     );
 
+    // The raw diff still carries the hunks the run withholds; the texts keep
+    // only the files analysed, or impact would name what `.diffctx/ignore`
+    // asked to keep out (a removed definition, its path).
+    let analysed: FxHashSet<String> = hunks
+        .iter()
+        .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
+        .collect();
+    let hunk_texts: Vec<_> = crate::change_class::hunk_texts(&diff_text)
+        .into_iter()
+        .filter(|h| analysed.contains(&h.path))
+        .collect();
     let change_classes = classify_changes(
         &root_dir,
         &changed_files,
         &hunks,
-        &diff_text,
+        &hunk_texts,
         &all_fragments,
     );
 
@@ -1082,6 +1208,7 @@ pub fn compute_scored_state_anchored(
         scoring_result,
         needs,
         tokenization_ms,
+        changed_lines,
     } = score_from_fragments(
         all_fragments,
         &hunks,
@@ -1154,6 +1281,8 @@ pub fn compute_scored_state_anchored(
         envelope_tokens: 0,
         index_tree,
         analysed_range: resolved_range.clone(),
+        hunk_texts,
+        changed_lines,
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
@@ -1184,10 +1313,20 @@ pub(crate) fn classify_changes(
     root_dir: &Path,
     changed_files: &[PathBuf],
     hunks: &[crate::types::DiffHunk],
-    diff_text: &str,
+    hunk_texts: &[crate::change_class::HunkText],
     fragments: &[Fragment],
 ) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
-    let lines_by_file = crate::change_class::changed_lines_by_file(diff_text);
+    // A file is layout-only when every run of it is: lines that only moved
+    // from one run to another are a reorder, not a reformat.
+    let mut sides_by_file: FxHashMap<&str, (Vec<String>, Vec<String>, bool)> = FxHashMap::default();
+    for h in hunk_texts {
+        let (removed, added, layout) = sides_by_file
+            .entry(h.path.as_str())
+            .or_insert_with(|| (Vec::new(), Vec::new(), true));
+        removed.extend(h.removed.iter().cloned());
+        added.extend(h.added.iter().cloned());
+        *layout &= h.is_layout();
+    }
     let mut head_by_path: FxHashMap<&str, &Fragment> = FxHashMap::default();
     for f in fragments {
         let entry = head_by_path.entry(f.path()).or_insert(f);
@@ -1207,9 +1346,15 @@ pub(crate) fn classify_changes(
             let generated = head_by_path
                 .get(key.as_ref())
                 .is_some_and(|f| crate::fragmentation::is_generated_file(path, &f.content));
-            let empty = Vec::new();
-            let lines = lines_by_file.get(&display).unwrap_or(&empty);
-            let (class, reason) = crate::change_class::classify(&file_hunks, lines, generated);
+            let (removed, added, runs_layout) = sides_by_file
+                .get(display.as_str())
+                .map_or((&[][..], &[][..], false), |(r, a, l)| {
+                    (r.as_slice(), a.as_slice(), *l)
+                });
+            let lines: Vec<String> = removed.iter().chain(added).cloned().collect();
+            let layout = !lines.is_empty() && runs_layout;
+            let (class, reason) =
+                crate::change_class::classify(&file_hunks, &lines, generated, layout);
             (display, class, reason)
         })
         .collect()
@@ -1224,6 +1369,9 @@ pub struct ScoredFragments {
     pub scoring_result: ScoringResult,
     pub needs: Vec<InformationNeed>,
     pub tokenization_ms: f64,
+    /// Changed lines per core fragment: how much of it the change touched,
+    /// which orders the changed code when the budget cannot hold all of it.
+    pub changed_lines: FxHashMap<FragmentId, f64>,
 }
 
 /// One heavy phase for every caller. The product pipeline arrives here from
@@ -1290,6 +1438,7 @@ pub fn score_from_fragments(
         scoring_result,
         needs,
         tokenization_ms,
+        changed_lines: seed_weights,
     }
 }
 
@@ -1351,14 +1500,33 @@ pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<
 
 /// The evidence floor's ordering: the class of every changed file keyed by
 /// the path its fragments carry.
+/// The order changed files earn budget in when not all of them fit:
+/// production code, then its tests, then config and docs, then mechanical
+/// or layout-only edits, then generated files. A test stub printed whole
+/// while the migration it exercises was omitted is the inversion (#311).
 pub(crate) fn evidence_priority_of(
     changed_files: &[PathBuf],
     change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
 ) -> FxHashMap<Arc<str>, u8> {
+    use crate::change_class::ChangeClass;
     changed_files
         .iter()
         .zip(change_classes)
-        .map(|(path, (_, class, _))| (Arc::from(path.to_string_lossy().as_ref()), class.priority()))
+        .map(|(path, (_, class, _))| {
+            let ext = crate::edges::base::file_ext(path);
+            let tier = match class {
+                ChangeClass::Generated => 4,
+                ChangeClass::Mechanical | ChangeClass::Layout => 3,
+                _ if crate::testfiles::is_test_path(path) => 1,
+                _ if crate::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
+                    || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
+                {
+                    2
+                }
+                _ => 0,
+            };
+            (Arc::from(path.to_string_lossy().as_ref()), tier)
+        })
         .collect()
 }
 
@@ -1400,6 +1568,7 @@ pub fn select_and_postpass(
     effective_budget: u32,
     tau: Option<f64>,
     evidence_priority: &FxHashMap<Arc<str>, u8>,
+    changed_lines: &FxHashMap<FragmentId, f64>,
 ) -> PostpassOutcome {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
@@ -1457,6 +1626,7 @@ pub fn select_and_postpass(
                 scoring_result.admissible_files.as_ref(),
                 scoring_result.declared_admissible_files.as_ref(),
                 Some(evidence_priority),
+                Some(changed_lines),
             )
         }
     };
@@ -1611,6 +1781,7 @@ pub fn run_selection(
         selection_budget,
         tau,
         &evidence_priority,
+        &state.changed_lines,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
@@ -2157,7 +2328,7 @@ fn full_empty_output(
     output.policy_excluded_count = withheld.policy_excluded_count;
     list_unrepresented_changes(
         &mut output,
-        &classify_changes(root_dir, changed_files, &[], "", &[]),
+        &classify_changes(root_dir, changed_files, &[], &[], &[]),
         &fragmentless_changed_files(root_dir, changed_files, &[]),
     );
     output
@@ -2281,7 +2452,7 @@ fn build_diff_context_full(
         commit_count: 0,
         commit_message,
         commit_messages: Vec::new(),
-        changes: classify_changes(&root_dir, &changed_files, &hunks, "", &all_fragments),
+        changes: classify_changes(&root_dir, &changed_files, &hunks, &[], &all_fragments),
         fragmentless: fragmentless_changed_files(&root_dir, &changed_files, &all_fragments),
         changed_files: changed_files
             .iter()
@@ -2320,7 +2491,19 @@ fn deletion_rename_displays(
         })
         .unwrap_or_default();
     deleted.sort();
-    let renamed = git::get_rename_pairs(root_dir, diff_range, pathspec).unwrap_or_default();
+    let mut renamed = git::get_rename_pairs(root_dir, diff_range, pathspec).unwrap_or_default();
+    // A deletion or rename of a withheld file is no exception to withholding
+    // it: the header would otherwise publish the path the policy hides.
+    let named: Vec<String> = deleted
+        .iter()
+        .cloned()
+        .chain(renamed.iter().flat_map(|(a, b)| [a.clone(), b.clone()]))
+        .collect();
+    let hidden: FxHashSet<String> = withheld_paths(root_dir, &named).into_iter().collect();
+    if !hidden.is_empty() {
+        deleted.retain(|p| !hidden.contains(p));
+        renamed.retain(|(a, b)| !hidden.contains(a) && !hidden.contains(b));
+    }
     (deleted, renamed)
 }
 
@@ -2381,6 +2564,8 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
         envelope_tokens: 0,
         index_tree: None,
         analysed_range: None,
+        hunk_texts: Vec::new(),
+        changed_lines: FxHashMap::default(),
     }
 }
 

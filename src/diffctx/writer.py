@@ -709,7 +709,8 @@ def _render(tree: dict[str, Any], output_format: str) -> str:
     return buf.getvalue()
 
 
-_CLASS_DROP_ORDER = {"generated": 0, "mechanical": 1, "unknown": 2, "content": 3}
+# render.rs `ChangeClass::priority`, reversed: both CLIs drop the same witness first.
+_CLASS_DROP_ORDER = {"generated": 0, "mechanical": 1, "layout": 1, "unknown": 3, "content": 3}
 
 
 def _drop_index(fragments: list[dict[str, Any]], classes: dict[str, str]) -> int:

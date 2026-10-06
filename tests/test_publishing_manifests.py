@@ -124,6 +124,31 @@ class TestClaudePlugin:
         assert referenced <= exported, f"unknown tools referenced: {referenced - exported}"
 
 
+class TestPluginEvalMock:
+    def test_the_eval_tool_listing_is_the_server_s_own(self):
+        """#320: the plugin evals serve `diffctx_context` from a mock, and a
+        listing that drifted from the server measured a tool nobody ships
+        (an old description, `mode` defaulting to locate, no `symbol`)."""
+        pytest.importorskip("mcp")
+        import asyncio
+
+        from diffctx.mcp.server import mcp as server
+
+        # Compared by name: other tests in the same process register the
+        # opt-in legacy tools on this shared server.
+        live = {
+            t.name: {
+                k: v
+                for k, v in t.model_dump(by_alias=True, exclude_none=True, mode="json").items()
+                if k in ("name", "description", "inputSchema")
+            }
+            for t in asyncio.run(server.list_tools())
+        }
+        mocked = _load("plugin/evals/mocks/diffctx/_tools.json")["tools"]
+        assert [t["name"] for t in mocked] == ["diffctx_context"]
+        assert all(t == live[t["name"]] for t in mocked)
+
+
 class TestPluginHook:
     HOOKS = PROJECT_ROOT / "plugin" / "hooks"
 
@@ -161,6 +186,7 @@ class TestPluginHook:
         assert '"${args[@]}"' in impact
         session = (self.HOOKS / "diffctx-session.sh").read_text(encoding="utf-8")
         assert f"uvx diffctx=={__version__} . --diff --mode impact -f md" in session
+        assert f"uvx diffctx=={__version__} . --symbol NAME -f md" in session
         assert "&)" in session
         assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] <= 10
 

@@ -14,7 +14,9 @@ fn is_nim_file(path: &Path) -> bool {
     base::has_ext(path, &[".nim", ".nims"])
 }
 
-static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w/,\s]+)").unwrap());
+// One line only: across a newline the read was `palette\n\nconst width` (#285).
+static IMPORT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[ \t]*import[ \t]+([^\n#]+)").unwrap());
 static FROM_IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*from\s+([\w/]+)\s+import\s+(.+)").unwrap());
 static INCLUDE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*include\s+([\w/]+)").unwrap());
@@ -33,26 +35,54 @@ static NIM_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
         "ptr nil true false and or not xor div mod echo assert doAssert len add del new newSeq ",
     ))
 });
+/// The module paths a file imports, as written: `import a/b, c`, the
+/// bracket form `import a/[b, c]`, `import x as y`, `from a/b import c`,
+/// `include a/b`. The standard library (`std/…`) is no file of the repo.
 fn extract_imports(content: &str) -> FxHashSet<String> {
     let mut refs = FxHashSet::default();
     for cap in IMPORT_RE.captures_iter(content) {
-        for part in cap[1].split(',') {
-            let name = part.trim().split('/').last().unwrap_or("").trim();
-            if !name.is_empty() {
-                refs.insert(name.to_string());
+        let line = cap[1].trim();
+        let mut parts: Vec<String> = Vec::new();
+        let mut depth = 0;
+        let mut cur = String::new();
+        for c in line.chars() {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                ',' if depth == 0 => {
+                    parts.push(std::mem::take(&mut cur));
+                    continue;
+                }
+                _ => {}
+            }
+            cur.push(c);
+        }
+        parts.push(cur);
+        for part in parts {
+            let part = part.split(" as ").next().unwrap_or("").trim().to_string();
+            match part.split_once('[') {
+                Some((prefix, rest)) => {
+                    for member in rest.trim_end_matches(']').split(',') {
+                        refs.insert(format!("{prefix}{}", member.trim()));
+                    }
+                }
+                None => {
+                    refs.insert(part);
+                }
             }
         }
     }
-    for cap in FROM_IMPORT_RE.captures_iter(content) {
-        refs.insert(cap[1].split('/').last().unwrap_or(&cap[1]).to_string());
-    }
     refs.extend(
-        INCLUDE_RE
+        FROM_IMPORT_RE
             .captures_iter(content)
-            .map(|c| c[1].split('/').last().unwrap_or(&c[1]).to_string()),
+            .map(|c| c[1].to_string()),
     );
+    refs.extend(INCLUDE_RE.captures_iter(content).map(|c| c[1].to_string()));
+    refs.retain(|r| !r.is_empty() && !r.starts_with("std/") && !r.starts_with("pkg/"));
     refs
 }
+
+const NIM_SUFFIXES: &[&str] = &[".nim"];
 
 fn extract_defs(content: &str) -> FxHashSet<String> {
     let mut defs: FxHashSet<String> = base::captures1(&PROC_RE, content).collect();
@@ -88,7 +118,15 @@ impl EdgeBuilder for NimEdgeBuilder {
         for f in &frags {
             let self_defs = extract_defs(&f.content);
             for imp in extract_imports(&f.content) {
-                base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, reverse_factor);
+                base::link_module_path(
+                    &f.id,
+                    &imp,
+                    NIM_SUFFIXES,
+                    &idx,
+                    &mut edges,
+                    import_w,
+                    reverse_factor,
+                );
             }
             for cap in CALL_RE.captures_iter(&f.content) {
                 let name = &cap[1];
@@ -115,13 +153,14 @@ impl EdgeBuilder for NimEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
+        base::discover_by_module_paths(
             changed,
             candidates,
             repo_root,
             file_cache,
             is_nim_file,
             extract_imports,
+            NIM_SUFFIXES,
         )
     }
 }

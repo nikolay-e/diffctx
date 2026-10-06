@@ -283,11 +283,16 @@ const JS_PROBES: &[&str] = &[
     "/index.cjs",
 ];
 
-/// `compilerOptions.paths` of the root `tsconfig.json`/`jsconfig.json`,
-/// read as data: `"@/*": ["src/*"]`-style patterns with one `*`.
-#[derive(Default)]
+/// `compilerOptions.paths` of one tsconfig, its `extends` chain folded in,
+/// read as data: `"@/*": ["src/*"]`-style patterns with one `*`. Both
+/// directories are repo-relative, `""` the root: `base_url` is `baseUrl`
+/// from its config's directory, the only base a bare specifier resolves
+/// against; `paths_dir` is the directory of the config that declares
+/// `paths`, what their targets resolve against when there is no `baseUrl`.
+#[derive(Default, Clone)]
 struct TsPaths {
-    base: String,
+    base_url: Option<String>,
+    paths_dir: Option<String>,
     patterns: Vec<(String, Vec<String>)>,
     readable: bool,
 }
@@ -334,75 +339,171 @@ fn copy_json_string(chars: &mut std::iter::Peekable<std::str::Chars>, out: &mut 
     }
 }
 
-impl TsPaths {
+/// Every tsconfig/jsconfig of the snapshot by directory: an import is
+/// resolved with the one nearest to it, as `tsc` and the bundlers do. A
+/// monorepo keeps its aliases in each app's `tsconfig.app.json`, and reading
+/// the root file alone left them all unresolved (#372).
+#[derive(Default)]
+struct TsConfigs {
+    by_dir: FxHashMap<String, TsPaths>,
+}
+
+fn is_tsconfig(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    (name.starts_with("tsconfig") || name.starts_with("jsconfig")) && name.ends_with(".json")
+}
+
+impl TsConfigs {
     fn read(source: &Source, root: &Path, files: &FxHashSet<String>) -> Self {
-        let Some(name) = ["tsconfig.json", "jsconfig.json"]
-            .into_iter()
-            .find(|n| files.contains(*n))
-        else {
-            return Self {
+        let mut by_dir: FxHashMap<String, TsPaths> = FxHashMap::default();
+        let mut configs: Vec<&String> = files.iter().filter(|f| is_tsconfig(f)).collect();
+        // `tsconfig.json` first: its patterns win a clash with a sibling
+        // config of the same directory.
+        configs.sort_by_key(|f| {
+            (
+                !f.ends_with("/tsconfig.json") && f.as_str() != "tsconfig.json",
+                f.as_str(),
+            )
+        });
+        for config in configs {
+            let dir = parent_dir(config).to_string();
+            let read = TsPaths::read_chain(source, root, files, config, 0);
+            let entry = by_dir.entry(dir).or_insert_with(|| TsPaths {
                 readable: true,
-                ..Self::default()
-            };
-        };
+                ..TsPaths::default()
+            });
+            if entry.base_url.is_none() {
+                entry.base_url = read.base_url;
+            }
+            if entry.paths_dir.is_none() {
+                entry.paths_dir = read.paths_dir;
+            }
+            for (pattern, targets) in read.patterns {
+                if !entry.patterns.iter().any(|(p, _)| *p == pattern) {
+                    entry.patterns.push((pattern, targets));
+                }
+            }
+            entry.readable &= read.readable;
+        }
+        Self { by_dir }
+    }
+
+    fn for_importer(&self, importer: &str) -> Option<&TsPaths> {
+        let mut dir = parent_dir(importer);
+        loop {
+            if let Some(found) = self.by_dir.get(dir) {
+                return Some(found);
+            }
+            if dir.is_empty() {
+                return None;
+            }
+            dir = parent_dir(dir);
+        }
+    }
+}
+
+impl TsPaths {
+    /// One config with its relative `extends` chain; a package `extends`
+    /// (`@tsconfig/node20`) cannot be read here, so the result is not
+    /// trusted to be complete.
+    fn read_chain(
+        source: &Source,
+        root: &Path,
+        files: &FxHashSet<String>,
+        config: &str,
+        depth: u8,
+    ) -> Self {
         let parsed = source
-            .read_to_string(&root.join(name))
+            .read_to_string(&root.join(config))
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&strip_json_comments(&t)).ok());
         let Some(doc) = parsed else {
             return Self::default();
         };
-        let opts = &doc["compilerOptions"];
-        let base = opts["baseUrl"]
-            .as_str()
-            .map(|b| normalize(Path::new(b)))
-            .unwrap_or_default();
-        let patterns = opts["paths"]
-            .as_object()
-            .map(|m| {
-                m.iter()
-                    .map(|(k, v)| {
-                        let targets = v
-                            .as_array()
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|t| t.as_str().map(str::to_string))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        (k.clone(), targets)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self {
-            base,
-            patterns,
-            readable: doc.get("extends").is_none(),
+        let dir = parent_dir(config);
+        let mut inherited = Self {
+            readable: true,
+            ..Self::default()
+        };
+        let extends: Vec<&str> = match &doc["extends"] {
+            serde_json::Value::String(e) => vec![e.as_str()],
+            serde_json::Value::Array(a) => a.iter().filter_map(|e| e.as_str()).collect(),
+            _ => Vec::new(),
+        };
+        for parent in extends {
+            let local = parent.starts_with('.');
+            let path = normalize(&Path::new(dir).join(parent));
+            let path = if path.ends_with(".json") {
+                path
+            } else {
+                format!("{path}.json")
+            };
+            if local && depth < 8 && files.contains(&path) {
+                let base = Self::read_chain(source, root, files, &path, depth + 1);
+                inherited.readable &= base.readable;
+                if base.base_url.is_some() {
+                    inherited.base_url = base.base_url;
+                }
+                if base.paths_dir.is_some() {
+                    inherited.paths_dir = base.paths_dir;
+                }
+                for p in base.patterns {
+                    inherited.patterns.retain(|(k, _)| *k != p.0);
+                    inherited.patterns.push(p);
+                }
+            } else {
+                inherited.readable = false;
+            }
         }
+        let opts = &doc["compilerOptions"];
+        if let Some(b) = opts["baseUrl"].as_str() {
+            inherited.base_url = Some(normalize(&Path::new(dir).join(b)));
+        }
+        if let Some(m) = opts["paths"].as_object() {
+            inherited.paths_dir = Some(normalize(Path::new(dir)));
+            inherited.patterns = m
+                .iter()
+                .map(|(k, v)| {
+                    let targets = v
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|t| t.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (k.clone(), targets)
+                })
+                .collect();
+        }
+        inherited
     }
 
+    /// The targets of the pattern tsc picks: an exact one, else the one with
+    /// the longest prefix before its `*`, the first on a tie.
     fn expand(&self, spec: &str) -> Option<Vec<String>> {
-        for (pattern, targets) in &self.patterns {
-            let matched = match pattern.split_once('*') {
+        let (_, star, targets) = self
+            .patterns
+            .iter()
+            .rev()
+            .filter_map(|(pattern, targets)| match pattern.split_once('*') {
                 Some((pre, post)) => spec
                     .strip_prefix(pre)
                     .and_then(|r| r.strip_suffix(post))
-                    .map(str::to_string),
-                None => (spec == pattern).then(String::new),
-            };
-            if let Some(star) = matched {
-                return Some(
-                    targets
-                        .iter()
-                        .map(|t| {
-                            let t = t.replace('*', &star);
-                            normalize(&Path::new(&self.base).join(t))
-                        })
-                        .collect(),
-                );
-            }
-        }
-        None
+                    .map(|star| (pre.len(), star.to_string(), targets)),
+                None => (spec == pattern).then(|| (usize::MAX, String::new(), targets)),
+            })
+            .max_by_key(|(rank, _, _)| *rank)?;
+        let base = self.base_url.as_ref().or(self.paths_dir.as_ref());
+        Some(
+            targets
+                .iter()
+                .map(|t| {
+                    normalize(
+                        &Path::new(base.map_or("", String::as_str)).join(t.replace('*', &star)),
+                    )
+                })
+                .collect(),
+        )
     }
 }
 
@@ -459,19 +560,23 @@ pub struct Resolver<'a> {
     root: &'a Path,
     source: &'a Source,
     files: FxHashSet<String>,
-    ts_paths: TsPaths,
+    ts_configs: TsConfigs,
     cache: RefCell<FxHashMap<String, Rc<FileBindings>>>,
+    /// Python resolution scans every file of the snapshot; the same
+    /// importer asks about the same specifier once per caller it checks.
+    resolved: RefCell<FxHashMap<(String, String), Resolution>>,
 }
 
 impl<'a> Resolver<'a> {
     pub fn new(root: &'a Path, source: &'a Source, files: FxHashSet<String>) -> Self {
-        let ts_paths = TsPaths::read(source, root, &files);
+        let ts_configs = TsConfigs::read(source, root, &files);
         Self {
             root,
             source,
             files,
-            ts_paths,
+            ts_configs,
             cache: RefCell::default(),
+            resolved: RefCell::default(),
         }
     }
 
@@ -493,11 +598,17 @@ impl<'a> Resolver<'a> {
     }
 
     pub fn resolve(&self, importer: &str, spec: &str) -> Resolution {
-        match lang_of(importer) {
+        let key = (importer.to_string(), spec.to_string());
+        if let Some(known) = self.resolved.borrow().get(&key) {
+            return known.clone();
+        }
+        let answer = match lang_of(importer) {
             Some(Lang::Python) => self.resolve_python(importer, spec),
             Some(Lang::Js) => self.resolve_js(importer, spec),
             None => Resolution::Unsupported,
-        }
+        };
+        self.resolved.borrow_mut().insert(key, answer.clone());
+        answer
     }
 
     fn python_module_files(&self, rel: &str) -> [String; 2] {
@@ -573,14 +684,19 @@ impl<'a> Resolver<'a> {
                 .probe_js(&joined)
                 .map_or(Resolution::Unsupported, Resolution::File);
         }
-        if let Some(targets) = self.ts_paths.expand(spec) {
+        let none = TsPaths {
+            readable: true,
+            ..TsPaths::default()
+        };
+        let ts = self.ts_configs.for_importer(importer).unwrap_or(&none);
+        if let Some(targets) = ts.expand(spec) {
             return targets
                 .iter()
                 .find_map(|t| self.probe_js(t))
                 .map_or(Resolution::Unsupported, Resolution::File);
         }
-        if !self.ts_paths.base.is_empty() {
-            let based = normalize(&Path::new(&self.ts_paths.base).join(spec));
+        if let Some(base) = &ts.base_url {
+            let based = normalize(&Path::new(base).join(spec));
             if let Some(found) = self.probe_js(&based) {
                 return Resolution::File(found);
             }
@@ -589,7 +705,7 @@ impl<'a> Resolver<'a> {
             || spec.starts_with("~/")
             || spec.starts_with('#')
             || spec.starts_with('/');
-        if alias_like || !self.ts_paths.readable {
+        if alias_like || !ts.readable {
             Resolution::Unsupported
         } else {
             Resolution::External
@@ -731,11 +847,15 @@ fn is_word(b: u8) -> bool {
 
 /// The dotted receiver before `at` (`a.b` in `a.b.name`), if any.
 fn receiver_chain(code: &str, at: usize) -> Option<&str> {
-    let head = code[..at]
-        .trim_end()
-        .strip_suffix('?')
-        .unwrap_or(&code[..at]);
-    let head = head.strip_suffix('.')?;
+    let before = code[..at].trim_end();
+    // `...name(...)` spreads what the call returns; its dots are no member
+    // access (every `...workboxPolicy({..})` in a Vite config was rejected).
+    if before.ends_with("...") {
+        return None;
+    }
+    // `a?.name`: the optional chain's `?` sits before the dot.
+    let head = before.strip_suffix('.')?;
+    let head = head.strip_suffix('?').unwrap_or(head);
     // `Bot().message`: the receiver is what `Bot` constructs.
     if let Some(call) = head.strip_suffix("()") {
         let bytes = call.as_bytes();
@@ -1046,7 +1166,7 @@ impl Resolver<'_> {
         if embedded || defines || assigned {
             return None;
         }
-        let relation = if next.starts_with('(') {
+        let relation = if next.starts_with('(') || next.starts_with("?.(") {
             Relation::Call
         } else {
             Relation::Reference
@@ -1061,7 +1181,11 @@ impl Resolver<'_> {
             }
             (None, None) => self.names(site, word, def.path, def.name),
         };
-        (evidence != Evidence::Rejected).then_some((evidence, relation))
+        // Reading `x.name` through a receiver nothing types is any object's
+        // attribute (`response.headers`); only a call is worth a guess.
+        let unresolved_read = relation == Relation::Reference
+            && matches!(evidence, Evidence::Candidate("receiver_unresolved"));
+        (evidence != Evidence::Rejected && !unresolved_read).then_some((evidence, relation))
     }
 
     fn module_member(&self, site: &Site, chain: &str, def: &Definition) -> Evidence {

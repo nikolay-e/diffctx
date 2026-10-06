@@ -2,7 +2,7 @@
 
 The questions that come back in reviews, issues and first-visit probes,
 answered once. Where an answer has a number, the number is in
-[BENCHMARKS.md](../../BENCHMARKS.md).
+[BENCHMARKS.md](https://github.com/nikolay-e/diffctx/blob/main/BENCHMARKS.md).
 
 ## Is the selection an oracle, or a heuristic?
 
@@ -69,8 +69,26 @@ floors apply everywhere: secret-by-name files (`id_rsa`, `*.pem`, `.env`-style
 paths your ignore rules cover) are withheld from every read surface, and a
 last pass replaces credential-shaped strings (cloud and API keys, tokens,
 JWTs, PEM blocks) with `[REDACTED:<category>]`, reporting the count in the
-artifact. Neither is a guarantee; [SECURITY.md](../../SECURITY.md) states
+artifact. Neither is a guarantee; [SECURITY.md](https://github.com/nikolay-e/diffctx/blob/main/SECURITY.md) states
 exactly what is and is not caught.
+
+## Which files does it never read?
+
+Everything `.gitignore` and `.diffctx/ignore` exclude, at every directory
+level with full gitignore semantics, plus secret-like paths (`id_rsa`,
+`*.pem`, `*.key`, ...) even without an entry. An excluded path appears in no
+role: in diff mode it leaves both the changed files and the candidate
+universe, so it cannot come back as context (also under `--full`). Impact
+does not yet count changed files withheld this way in its header (#392).
+`-w`/`.diffctx/whitelist`, `-i` and `--no-default-ignores`/`--no-ignores`
+are tree-mode only and refused with `--diff` and `graph`.
+
+## Where is the token cache?
+
+Diff mode caches per-blob tokenization in the OS cache directory (e.g.
+`~/Library/Caches/diffctx/token-cache`): a pure speedup, safe to delete.
+`DIFFCTX_TOKEN_CACHE_DIR` moves it; `DIFFCTX_TOKEN_CACHE_MAX_BYTES` caps it
+(default 512 MB, `0` disables eviction).
 
 ## Is the output deterministic?
 

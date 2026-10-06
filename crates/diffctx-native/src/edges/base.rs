@@ -105,6 +105,7 @@ pub struct FragmentIndex {
     /// `file_representatives` on the accepted reachability trade, #208).
     lower_paths: Vec<(String, FragmentId)>,
     component_to_paths: FxHashMap<String, Vec<u32>>,
+    root: Option<PathBuf>,
 }
 
 impl FragmentIndex {
@@ -157,6 +158,7 @@ impl FragmentIndex {
             by_name,
             lower_paths,
             component_to_paths,
+            root: repo_root.map(Path::to_path_buf),
         }
     }
 }
@@ -462,6 +464,166 @@ fn matches_any_ref(candidate_name: &str, candidate_rel: &str, refs: &FxHashSet<S
         }
     }
     false
+}
+
+impl FragmentIndex {
+    fn rel(&self, path: &str) -> String {
+        self.root
+            .as_deref()
+            .and_then(|root| Path::new(path).strip_prefix(root).ok())
+            .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
+            .unwrap_or_else(|| crate::paths::to_posix_display(path.into()))
+    }
+
+    /// The representative of the file at the repo-relative `rel`, compared
+    /// without case like every other path lookup here.
+    pub fn representative_of(&self, rel: &str) -> Option<&FragmentId> {
+        let lower = rel.to_lowercase();
+        let last = lower.rsplit('/').next()?;
+        self.component_to_paths.get(last)?.iter().find_map(|&pi| {
+            let (path_lower, rep) = &self.lower_paths[pi as usize];
+            (path_lower == &lower).then_some(rep)
+        })
+    }
+}
+
+/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
+/// above its start.
+pub fn normalize_lexical(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            p => parts.push(p),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+/// Where an import that spells a path may land (Nix `import ../x.nix`, Nim
+/// `import vendor/palette`): next to the importing file first, then from the
+/// repository root, with each suffix tried (`""` when the spec carries its
+/// own extension). A `..` was never folded, so such imports reached nothing
+/// (#285).
+pub fn module_path_candidates(importer_rel: &str, spec: &str, suffixes: &[&str]) -> Vec<String> {
+    let dir = importer_rel.rsplit_once('/').map_or("", |(d, _)| d);
+    let spec = spec.trim();
+    let mut out = Vec::new();
+    for base in [dir, ""] {
+        let joined = if base.is_empty() || spec.starts_with('/') {
+            spec.trim_start_matches('/').to_string()
+        } else {
+            format!("{base}/{spec}")
+        };
+        let Some(norm) = normalize_lexical(&joined) else {
+            continue;
+        };
+        for suffix in suffixes {
+            let candidate = format!("{norm}{suffix}");
+            if !norm.is_empty() && !out.contains(&candidate) {
+                out.push(candidate);
+            }
+        }
+    }
+    out
+}
+
+/// One edge from `src_id` to the file a path-spelled import resolves to;
+/// `false` when no indexed file is there.
+pub fn link_module_path(
+    src_id: &FragmentId,
+    spec: &str,
+    suffixes: &[&str],
+    idx: &FragmentIndex,
+    edges: &mut EdgeDict,
+    weight: f64,
+    reverse_factor: f64,
+) -> bool {
+    let importer = idx.rel(&src_id.path);
+    for candidate in module_path_candidates(&importer, spec, suffixes) {
+        if let Some(rep) = idx.representative_of(&candidate) {
+            if rep.path != src_id.path {
+                add_edge(edges, src_id, rep, weight, reverse_factor);
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// A module named by its file stem (OCaml `open Palette` is `palette.ml`):
+/// one edge to each file carrying it, abstaining above the ambiguity bar.
+pub fn link_by_stem(
+    src_id: &FragmentId,
+    stem: &str,
+    exts: &[&str],
+    idx: &FragmentIndex,
+    edges: &mut EdgeDict,
+    weight: f64,
+    reverse_factor: f64,
+) {
+    let stem = stem.to_lowercase();
+    let mut matched: Vec<&FragmentId> = Vec::new();
+    for ext in exts {
+        let name = format!("{stem}{ext}");
+        if let Some(posting) = idx.component_to_paths.get(&name) {
+            matched.extend(posting.iter().filter_map(|&pi| {
+                let (path_lower, rep) = &idx.lower_paths[pi as usize];
+                (path_lower.rsplit('/').next() == Some(name.as_str())).then_some(rep)
+            }));
+        }
+    }
+    if matched.len() > MAX_FILES_PER_PATH_REF {
+        return;
+    }
+    for rep in matched {
+        if rep.path != src_id.path {
+            add_edge(edges, src_id, rep, weight, reverse_factor);
+        }
+    }
+}
+
+/// Discovery for path-spelled imports: the candidates the changed files'
+/// imports resolve to, with the same rule `link_module_path` links by.
+pub fn discover_by_module_paths<P, E, I>(
+    changed: &[PathBuf],
+    candidates: &[PathBuf],
+    repo_root: Option<&Path>,
+    file_cache: Option<&FxHashMap<PathBuf, String>>,
+    recognises: P,
+    extract_specs: E,
+    suffixes: &[&str],
+) -> Vec<PathBuf>
+where
+    P: Fn(&Path) -> bool,
+    E: Fn(&str) -> I,
+    I: IntoIterator<Item = String>,
+{
+    let by_rel: FxHashMap<String, &PathBuf> = candidates
+        .iter()
+        .map(|c| (candidate_rel_path(c, repo_root).to_lowercase(), c))
+        .collect();
+    let mut found: Vec<PathBuf> = Vec::new();
+    for f in changed.iter().filter(|f| recognises(f)) {
+        let Some(content) = read_file_cached(f, file_cache) else {
+            continue;
+        };
+        let importer = candidate_rel_path(f, repo_root);
+        for spec in extract_specs(&content) {
+            let hit = module_path_candidates(&importer, &spec, suffixes)
+                .into_iter()
+                .find_map(|c| by_rel.get(&c.to_lowercase()).copied());
+            if let Some(path) = hit {
+                if !changed.contains(path) && !found.contains(path) {
+                    found.push(path.clone());
+                }
+            }
+        }
+    }
+    found
 }
 
 pub fn discover_files_by_refs(

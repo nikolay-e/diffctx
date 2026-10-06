@@ -4,6 +4,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
+use crate::analytics::QuotientGraph;
 use crate::graph::{EdgeCategory, Graph};
 use crate::types::{Fragment, FragmentId};
 
@@ -176,12 +177,7 @@ fn collect_sorted_edges(graph: &Graph) -> Vec<(FragmentId, FragmentId, f64, Edge
 }
 
 pub fn graph_to_document(view: &ProjectGraphView<'_>) -> GraphDocument {
-    let root_name = view
-        .root_dir
-        .and_then(|p| p.file_name())
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let root_name = root_name(view);
 
     let sorted_nodes = collect_sorted_nodes(view.fragments);
     let nodes: Vec<NodeRecord> = sorted_nodes
@@ -205,9 +201,73 @@ pub fn graph_to_document(view: &ProjectGraphView<'_>) -> GraphDocument {
     }
 }
 
+/// One node per file or directory and one edge per pair of them, labelled
+/// with the category most of its fragment edges carry (#352): what
+/// `--level` asks for, without the caller regrouping 17k fragment nodes.
+pub fn quotient_document(
+    view: &ProjectGraphView<'_>,
+    qg: &QuotientGraph,
+    kind: &str,
+) -> GraphDocument {
+    let mut nodes: Vec<NodeRecord> = qg
+        .nodes
+        .values()
+        .map(|n| NodeRecord {
+            id: n.key.to_string(),
+            label: n.label.clone(),
+            path: n.key.to_string(),
+            lines: String::new(),
+            kind: kind.to_string(),
+            symbol: String::new(),
+            token_count: u32::try_from(n.token_count).unwrap_or(u32::MAX),
+        })
+        .collect();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut edges: Vec<EdgeRecord> = qg
+        .edges
+        .values()
+        .map(|e| EdgeRecord {
+            source: e.source.to_string(),
+            source_symbol: String::new(),
+            target: e.target.to_string(),
+            target_symbol: String::new(),
+            weight: e.weight,
+            category: dominant_category(&e.categories),
+        })
+        .collect();
+    edges.sort_by(|a, b| (&a.source, &a.target).cmp(&(&b.source, &b.target)));
+    GraphDocument {
+        name: root_name(view),
+        doc_type: "project_graph".to_string(),
+        node_count: nodes.len(),
+        edge_count: edges.len(),
+        nodes,
+        edges,
+    }
+}
+
+fn dominant_category(categories: &FxHashMap<EdgeCategory, u32>) -> String {
+    categories
+        .iter()
+        .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.as_str().cmp(a.0.as_str())))
+        .map(|(c, _)| c.as_str().to_string())
+        .unwrap_or_default()
+}
+
+fn root_name(view: &ProjectGraphView<'_>) -> String {
+    view.root_dir
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
 pub fn graph_to_json_string(view: &ProjectGraphView<'_>) -> Result<String, serde_json::Error> {
-    let doc = graph_to_document(view);
-    let mut out = serde_json::to_string_pretty(&doc)?;
+    document_to_json(&graph_to_document(view))
+}
+
+pub fn document_to_json(doc: &GraphDocument) -> Result<String, serde_json::Error> {
+    let mut out = serde_json::to_string_pretty(doc)?;
     out.push('\n');
     Ok(out)
 }
@@ -229,7 +289,10 @@ fn escape_graphml(text: &str) -> String {
 }
 
 pub fn graph_to_graphml_string(view: &ProjectGraphView<'_>) -> String {
-    let doc = graph_to_document(view);
+    document_to_graphml(&graph_to_document(view))
+}
+
+pub fn document_to_graphml(doc: &GraphDocument) -> String {
     let mut out = String::new();
 
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -373,6 +436,47 @@ pub fn graph_summary(view: &ProjectGraphView<'_>, top_n: usize) -> GraphSummary 
         density,
         edge_type_counts: type_counts,
         top_in_degree,
+    }
+}
+
+/// The summary at file or directory level: groups are the nodes, and a
+/// group's in-degree counts the fragment edges reaching it from other groups.
+pub fn quotient_summary(
+    view: &ProjectGraphView<'_>,
+    qg: &QuotientGraph,
+    top_n: usize,
+) -> GraphSummary {
+    let node_count = qg.nodes.len();
+    let edge_count = qg.edges.len();
+    let density = if node_count > 1 {
+        edge_count as f64 / (node_count * (node_count - 1)) as f64
+    } else {
+        0.0
+    };
+    let mut type_counts: FxHashMap<String, usize> = FxHashMap::default();
+    let mut in_deg: FxHashMap<&str, usize> = FxHashMap::default();
+    for e in qg.edges.values() {
+        for (cat, n) in &e.categories {
+            *type_counts.entry(cat.as_str().to_string()).or_insert(0) += *n as usize;
+            *in_deg.entry(e.target.as_ref()).or_insert(0) += *n as usize;
+        }
+    }
+    let mut sorted: Vec<(&str, usize)> = in_deg.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    GraphSummary {
+        node_count,
+        edge_count,
+        file_count: collect_files(view.fragments),
+        density,
+        edge_type_counts: type_counts,
+        top_in_degree: sorted
+            .into_iter()
+            .take(top_n)
+            .map(|(key, deg)| TopInDegreeEntry {
+                label: key.to_string(),
+                in_degree: deg,
+            })
+            .collect(),
     }
 }
 

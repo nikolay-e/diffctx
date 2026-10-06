@@ -21,7 +21,8 @@ Every flag `diffctx` accepts, with its default and one line of meaning. This
 page is rendered from the parsers themselves by `scripts/update_cli_reference.py`
 (`tests/test_cli_reference.py` fails when it differs from what the parsers
 declare), so what you read here is what the installed version answers. Worked examples
-live in the [README](../../README.md#usage); what `--budget` counts is in
+live in the [README](https://github.com/nikolay-e/diffctx/blob/main/README.md#usage) and
+[integrations](integrations.md); what `--budget` counts is in
 [Token counting](token-budget.md).
 
 The native binary (`cargo install diffctx`, `npx diffctx`, the Docker image)
@@ -84,8 +85,8 @@ def render() -> str:
         "Runs the MCP server over stdio — the same entry point as `diffctx-mcp` —\n"
         "and takes no flags. It needs the `mcp` extra (`pip install 'diffctx[mcp]'`);\n"
         "the tool it exposes, its arguments and its read-only guarantees are\n"
-        "described in the [security policy](../../SECURITY.md) and the README's\n"
-        "MCP section.\n"
+        "described in the [security policy](https://github.com/nikolay-e/diffctx/blob/main/SECURITY.md) and\n"
+        "[integrations](integrations.md).\n"
     )
 
 

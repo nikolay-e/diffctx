@@ -236,6 +236,13 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     if let Some(git_err) = e.downcast_ref::<RustGitError>() {
         return GitError::new_err(git_err.to_string());
     }
+    if let Some(q) = e.downcast_ref::<crate::pipeline::SymbolQueryError>() {
+        return if q.malformed {
+            pyo3::exceptions::PyValueError::new_err(q.message.clone())
+        } else {
+            pyo3::exceptions::PyLookupError::new_err(q.message.clone())
+        };
+    }
     pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
 }
 
@@ -703,28 +710,60 @@ fn to_mermaid(qg: &PyQuotientGraph, top_n: usize) -> String {
     analytics::to_mermaid(&qg.inner, top_n)
 }
 
-#[pyfunction]
-fn graph_to_json_string(pg: &PyProjectGraph) -> PyResult<String> {
+fn graph_document(pg: &PyProjectGraph, level: &str) -> PyResult<graph_export::GraphDocument> {
     let view = pg.view();
-    graph_export::graph_to_json_string(&view)
+    Ok(match parse_quotient_level(level)? {
+        analytics::QuotientLevel::Fragment => graph_export::graph_to_document(&view),
+        quotient => {
+            let qg = analytics::quotient_graph(
+                &pg.inner.graph,
+                &pg.inner.fragments,
+                quotient,
+                pg.inner.root_dir.to_str(),
+                None,
+            );
+            graph_export::quotient_document(&view, &qg, level)
+        }
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (pg, level="fragment"))]
+fn graph_to_json_string(pg: &PyProjectGraph, level: &str) -> PyResult<String> {
+    graph_export::document_to_json(&graph_document(pg, level)?)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 #[pyfunction]
-fn graph_to_graphml_string(pg: &PyProjectGraph) -> String {
-    let view = pg.view();
-    graph_export::graph_to_graphml_string(&view)
+#[pyo3(signature = (pg, level="fragment"))]
+fn graph_to_graphml_string(pg: &PyProjectGraph, level: &str) -> PyResult<String> {
+    Ok(graph_export::document_to_graphml(&graph_document(
+        pg, level,
+    )?))
 }
 
 #[pyfunction]
-#[pyo3(signature = (pg, top_n=10))]
+#[pyo3(signature = (pg, top_n=10, level="fragment"))]
 fn graph_summary<'py>(
     py: Python<'py>,
     pg: &PyProjectGraph,
     top_n: usize,
+    level: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
     let view = pg.view();
-    let summary = graph_export::graph_summary(&view, top_n);
+    let summary = match parse_quotient_level(level)? {
+        analytics::QuotientLevel::Fragment => graph_export::graph_summary(&view, top_n),
+        quotient => {
+            let qg = analytics::quotient_graph(
+                &pg.inner.graph,
+                &pg.inner.fragments,
+                quotient,
+                pg.inner.root_dir.to_str(),
+                None,
+            );
+            graph_export::quotient_summary(&view, &qg, top_n)
+        }
+    };
     let dict = PyDict::new(py);
     dict.set_item("node_count", summary.node_count)?;
     dict.set_item("edge_count", summary.edge_count)?;

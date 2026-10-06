@@ -108,10 +108,7 @@ def _bashes() -> list[str]:
     return sorted(set(found))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
-@pytest.mark.parametrize("bash", _bashes())
-@pytest.mark.parametrize("gate", [False, True])
-def test_the_plugin_script_reaches_the_hook_on_an_add_and_commit_line(tmp_path, pending_change, bash, gate):
+def _script(tmp_path: Path, bash: str, gate: bool, event: str) -> subprocess.CompletedProcess[str]:
     launcher = tmp_path / "diffctx"
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m diffctx "$@"\n', encoding="utf-8")
     launcher.chmod(0o755)
@@ -124,19 +121,30 @@ def test_the_plugin_script_reaches_the_hook_on_an_add_and_commit_line(tmp_path, 
         "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin"),
         "CLAUDE_PLUGIN_OPTION_IMPACT_GATE": "true" if gate else "false",
     }
-    result = subprocess.run(
-        [bash, str(IMPACT_SCRIPT)],
-        input=_event(pending_change, "PreToolUse", "git add -A && git commit -m vat"),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        timeout=120,
+    return subprocess.run(
+        [bash, str(IMPACT_SCRIPT)], input=event, capture_output=True, text=True, encoding="utf-8", env=env, timeout=120
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+@pytest.mark.parametrize("gate", [False, True])
+def test_the_plugin_script_reaches_the_hook_on_an_add_and_commit_line(tmp_path, pending_change, bash, gate):
+    result = _script(tmp_path, bash, gate, _event(pending_change, "PreToolUse", "git add -A && git commit -m vat"))
     assert result.returncode == 0, result.stderr
     answer = json.loads(result.stdout)["hookSpecificOutput"]
     text = answer["permissionDecisionReason"] if gate else answer["additionalContext"]
     assert "shop/checkout.py::charge" in text
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_the_gate_option_leaves_post_tool_use_answers_alone(tmp_path, pending_change, bash):
+    result = _script(tmp_path, bash, True, _event(pending_change, "PostToolUse", "git diff"))
+    assert result.returncode == 0, result.stderr
+    assert "shop/checkout.py::charge" in _context(result.stdout)
+    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8")
+    assert "error:" not in log, log
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
@@ -231,11 +239,19 @@ def test_the_plugin_script_launches_on_a_search_only_over_a_pending_change(tmp_p
 
     assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Bash", 'grep -rn "def total" .')))
     assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Grep", "total", session="s2")))
+    # `cd ~/repo` from another directory names the repository (#377).
+    from_home = json.loads(_search(pending_change, "Bash", 'cd ~/repo && grep -rn "def total" .', session="s3"))
+    from_home["cwd"] = str(tmp_path)
+    assert "shop/checkout.py::charge" in _context(run(json.dumps(from_home)))
+    # A `cd` the grep printed is its output, not where it ran.
+    printed = json.loads(_search(pending_change, "Bash", 'grep -rn "def total" .', session="s4"))
+    printed["tool_response"] = {"stdout": "./deploy.sh:3:  cd /srv/app && make\n"}
+    assert "shop/checkout.py::charge" in _context(run(json.dumps(printed)))
     assert run(_search(pending_change, "Bash", "ls | grep total")) == ""
-    assert calls.read_text().count("\n") == 2
+    assert calls.read_text().count("\n") == 4
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
     assert run(_search(pending_change, "Bash", "grep -rn total .")) == ""
-    assert calls.read_text().count("\n") == 2, "a clean tree launches nothing"
+    assert calls.read_text().count("\n") == 4, "a clean tree launches nothing"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")

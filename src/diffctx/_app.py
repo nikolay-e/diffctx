@@ -49,6 +49,8 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
             cwd=str(root_dir),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
     except OSError as exc:
@@ -134,6 +136,8 @@ def _working_tree_is_dirty(root_dir: Path) -> bool:
         cwd=str(root_dir),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     return status.returncode == 0 and bool(status.stdout.strip())
@@ -195,6 +199,9 @@ def _report_raw_diff_share(result: dict[str, Any], prog: str, args: ParsedArgs) 
     )
 
 
+_WATCHDOG_GRACE_SECONDS = 30
+
+
 def _call_with_wall_clock_deadline(build: Callable[[], _T], timeout_seconds: int, prog: str) -> _T:
     # The Rust extension releases the GIL but offers no cancellation, so a
     # pathological repo can hang far past any per-phase git timeout (#70).
@@ -211,14 +218,23 @@ def _call_with_wall_clock_deadline(build: Callable[[], _T], timeout_seconds: int
         except Exception as exc:  # KeyboardInterrupt/SystemExit stay on the main thread
             outcome.append(("err", exc))
 
+    # The engine stops cooperatively at the deadline and returns a partial
+    # answer; the watchdog waits a grace period beyond it, as the binary
+    # does, or it would kill exactly the answer the deadline exists to save
+    # (#382). The test variable replaces the whole wait.
+    grace = _WATCHDOG_GRACE_SECONDS
+    wait = timeout_seconds + grace
+    override = os.environ.get("DIFFCTX_TEST_WATCHDOG_GRACE_SECS")
+    if override is not None and override.isdigit():
+        grace = wait = int(override)
     thread = threading.Thread(target=worker, name="diffctx-pipeline", daemon=True)
     thread.start()
-    thread.join(timeout_seconds)
+    thread.join(wait)
     if thread.is_alive():
         print(
-            f"{prog}: pipeline exceeded {timeout_seconds}s wall-clock deadline; aborting before "
-            "OOM/SIGKILL. Narrow the review with an explicit '--diff <from>..<to>' range, "
-            "run on a smaller subtree, or raise '--timeout'.",
+            f"{prog}: pipeline exceeded {timeout_seconds}s wall-clock deadline and did not stop "
+            f"cooperatively within {grace}s more; aborting before OOM/SIGKILL. Narrow the review "
+            "with an explicit '--diff <from>..<to>' range, run on a smaller subtree, or raise '--timeout'.",
             file=sys.stderr,
         )
         sys.stderr.flush()
@@ -436,16 +452,16 @@ def _format_metrics(level: str, pg: Any) -> str:
     return "\n".join(lines)
 
 
-def _graph_to_string(pg: Any, fmt: str, level: str = "directory") -> str:
+def _graph_to_string(pg: Any, fmt: str, level: str = "directory", export_level: str = "fragment") -> str:
     from ._native.graph_analytics import quotient_graph, to_mermaid
     from ._native.graph_export import graph_to_graphml_string, graph_to_json_string
 
     if fmt == "graphml":
-        return graph_to_graphml_string(pg)
+        return graph_to_graphml_string(pg, level=export_level)
     if fmt == "mermaid":
         qg = quotient_graph(pg, level=level)
         return to_mermaid(qg)
-    return graph_to_json_string(pg)
+    return graph_to_json_string(pg, level=export_level)
 
 
 def _handle_graph_mode(args: ParsedArgs) -> str:
@@ -467,7 +483,7 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
     if g.summary:
         parts.extend(
             [
-                graph_summary(pg),
+                graph_summary(pg, level=g.export_level),
                 _format_cycles(g.level, pg),
                 _format_hotspots(pg),
                 _format_metrics(g.level, pg),
@@ -475,7 +491,7 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
         )
 
     if not g.summary:
-        parts.append(_graph_to_string(pg, g.format, level=g.level))
+        parts.append(_graph_to_string(pg, g.format, level=g.level, export_level=g.export_level))
 
     return "\n".join(parts) + "\n" if parts else ""
 
@@ -540,20 +556,25 @@ def _run_impact_mode(args: ParsedArgs, prog: str) -> None:
     from .tokens import print_token_summary
 
     _ensure_git_repo(args.root_dir, prog)
-    payload = _call_with_wall_clock_deadline(
-        lambda: build_impact(
-            root_dir=args.root_dir,
-            diff_range=args.diff_range or "HEAD",
-            alpha=args.alpha,
-            scoring_mode=args.scoring,
-            timeout=args.timeout,
-            paths=_diff_scope(args),
-            markdown=args.output_format == "md",
-            symbol=args.symbol,
-        ),
-        args.timeout,
-        prog,
-    )
+    try:
+        payload = _call_with_wall_clock_deadline(
+            lambda: build_impact(
+                root_dir=args.root_dir,
+                diff_range=args.diff_range or "HEAD",
+                alpha=args.alpha,
+                scoring_mode=args.scoring,
+                timeout=args.timeout,
+                paths=_diff_scope(args),
+                markdown=args.output_format == "md",
+                symbol=args.symbol,
+            ),
+            args.timeout,
+            prog,
+        )
+    except ValueError as exc:
+        # The engine refuses a `--symbol` that cannot name a definition.
+        print(f"{prog}: usage error: {exc}", file=sys.stderr)
+        sys.exit(_EXIT_USAGE)
     output_content = payload if payload.endswith("\n") else payload + "\n"
     # An empty impact is the answer ("nothing outside the diff depends on
     # this"), not the empty-diff failure the other modes exit 4 on.
@@ -693,6 +714,13 @@ def run(argv: list[str] | None = None, *, prog: str | None = None, version: str 
         print(f"{prog}: usage error: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_USAGE)
     except _KNOWN_RUNTIME_ERRORS as exc:
+        print(f"{prog}: {_format_runtime_error(exc)}", file=sys.stderr)
+        sys.exit(_EXIT_RUNTIME)
+    except LookupError as exc:
+        # The engine refuses a name nothing defines with a bare LookupError;
+        # a KeyError or IndexError is a bug here and keeps its traceback.
+        if type(exc) is not LookupError:
+            sys.exit(_handle_unexpected_exception(exc, prog=prog))
         print(f"{prog}: {_format_runtime_error(exc)}", file=sys.stderr)
         sys.exit(_EXIT_RUNTIME)
     except OSError as exc:

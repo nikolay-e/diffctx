@@ -33,6 +33,9 @@ fn extract_refs(content: &str) -> FxHashSet<String> {
     refs
 }
 
+/// A Nix path names the file, or a directory whose `default.nix` it means.
+const NIX_SUFFIXES: &[&str] = &["", "/default.nix"];
+
 pub struct NixEdgeBuilder;
 
 impl EdgeBuilder for NixEdgeBuilder {
@@ -49,7 +52,15 @@ impl EdgeBuilder for NixEdgeBuilder {
 
         for f in &frags {
             for r in extract_refs(&f.content) {
-                base::link_by_name(&f.id, &r, &idx, &mut edges, import_w, reverse_factor);
+                base::link_module_path(
+                    &f.id,
+                    &r,
+                    NIX_SUFFIXES,
+                    &idx,
+                    &mut edges,
+                    import_w,
+                    reverse_factor,
+                );
             }
         }
         edges
@@ -62,13 +73,14 @@ impl EdgeBuilder for NixEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
+        base::discover_by_module_paths(
             changed,
             candidates,
             repo_root,
             file_cache,
             is_nix_file,
             extract_refs,
+            NIX_SUFFIXES,
         )
     }
 }

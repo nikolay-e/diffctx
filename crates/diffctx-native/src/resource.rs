@@ -357,8 +357,9 @@ impl RunContext {
             .insert((display_path, reason));
     }
 
-    /// The commit the analysed change sits on, for the history channels;
-    /// `None` for the working tree and for an unborn branch.
+    /// The newest commit the history channels may read: the base of the
+    /// analysed range, the commit a staged snapshot sits on; `None` for the
+    /// working tree (its base is `HEAD`) and for an unborn branch.
     pub fn set_head_rev(&self, rev: Option<String>) {
         *self.inner.head_rev.lock().unwrap() = rev;
     }
@@ -528,9 +529,8 @@ pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
     with_current(|ctx| (ctx.inner.io_expires_at, ctx.inner.cancel.clone()))
 }
 
-/// The head of the range the current run analyses, for builders that read
-/// history: the same `--diff A..B` must see the same past whatever is
-/// checked out (#340).
+/// Where history ends for the current run: the same `--diff A..B` must see
+/// the same past whatever is checked out, and none of its own commits (#340).
 pub fn current_head_rev() -> Option<String> {
     with_current(|ctx| ctx.inner.head_rev.lock().unwrap().clone()).flatten()
 }

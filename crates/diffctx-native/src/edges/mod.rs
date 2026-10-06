@@ -236,13 +236,39 @@ fn collect_capped_edges_from(
                 dedicated_files.insert(idx_to_node[e.dst as usize].path.as_ref());
             }
         }
+        // A file of a language its dedicated builder parsed is not short of
+        // edges: no edge there is the builder's answer, and a shared word
+        // (a stdlib module name, a keyword) is no reference (#286). The
+        // fallback stands in only for a language nobody parses here, or a
+        // file the parser could not read.
+        let ext_of = |p: &str| crate::edges::base::file_ext(std::path::Path::new(p));
+        let covered_exts: FxHashSet<String> = dedicated_files.iter().map(|p| ext_of(p)).collect();
+        let parsed_files: FxHashSet<&str> = fragments
+            .iter()
+            .filter(|f| f.kind.is_definition_kind())
+            .map(|f| f.path())
+            .collect();
+        // Declarative files (stylesheets, HCL, SQL, data) refer to each other
+        // by names and literals no builder models yet; there the shared word
+        // is still the only signal.
+        const DECLARATIVE: &[&str] = &[
+            ".css", ".scss", ".sass", ".less", ".tf", ".tfvars", ".hcl", ".sql", ".yaml", ".yml",
+            ".json", ".toml", ".graphql", ".proto", ".prisma", ".xml",
+        ];
+        let needs_fallback = |p: &str| {
+            let ext = ext_of(p);
+            !dedicated_files.contains(p)
+                && (DECLARATIVE.contains(&ext.as_str())
+                    || !covered_exts.contains(&ext)
+                    || !parsed_files.contains(p))
+        };
         for (builder_idx, log) in per_builder_log.iter_mut().enumerate() {
             if !fallback_flags[builder_idx] {
                 continue;
             }
             log.retain(|e| {
-                !dedicated_files.contains(idx_to_node[e.src as usize].path.as_ref())
-                    || !dedicated_files.contains(idx_to_node[e.dst as usize].path.as_ref())
+                needs_fallback(idx_to_node[e.src as usize].path.as_ref())
+                    || needs_fallback(idx_to_node[e.dst as usize].path.as_ref())
             });
         }
     }

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from diffctx._diffctx import sanitize_text
 from diffctx.ignore import get_ignore_specs, get_whitelist_spec, should_ignore
@@ -25,6 +25,7 @@ from .server import (
     _read_only,
     _run_with_deadline,
     _validate_max_tokens,
+    reports_refusals,
 )
 
 _TREE_MAP_DESCRIPTION = (
@@ -263,8 +264,10 @@ async def get_file_context(
     return content
 
 
-def register(server: FastMCP) -> None:
-    server.tool(description=_TREE_MAP_DESCRIPTION, annotations=_read_only("Get tree map"), structured_output=False)(get_tree_map)
+def register(server: MCPServer) -> None:
+    server.tool(description=_TREE_MAP_DESCRIPTION, annotations=_read_only("Get tree map"), structured_output=False)(
+        reports_refusals(get_tree_map)
+    )
     server.tool(description=_FILE_CONTEXT_DESCRIPTION, annotations=_read_only("Get file context"), structured_output=False)(
-        get_file_context
+        reports_refusals(get_file_context)
     )

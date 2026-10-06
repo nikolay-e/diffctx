@@ -314,29 +314,157 @@ fn tree_endpoint(repo_root: &Path, range: &str) -> Option<StagedSnapshot> {
     })
 }
 
-/// Captures the index. An index with unmerged entries has no tree to
+/// Captures the index, through a copy: `write-tree` on the real one takes
+/// its lock (a concurrent `git add` then reads as an unmerged index) and
+/// rewrites its cache tree. An index with unmerged entries has no tree to
 /// analyse, and falling back to the working tree would answer a different
 /// question, so it is an error naming the cause.
 pub fn capture_staged(repo_root: &Path) -> Result<StagedSnapshot> {
-    let tree = match run_git(repo_root, &["write-tree"]) {
-        Ok(out) => out.trim().to_string(),
-        Err(GitError::CommandFailed(reason)) => {
-            return Err(GitError::CommandFailed(format!(
-                "cannot analyse the staged changes: the index cannot be written as a tree \
-                 (unmerged entries? resolve them and stage the result) — {reason}"
-            )));
-        }
-        Err(e) => return Err(e),
-    };
+    capture_planned(repo_root, PlanStart::Index, &[]).map_err(|e| match e {
+        GitError::CommandFailed(reason) => GitError::CommandFailed(format!(
+            "cannot analyse the staged changes: the index cannot be written as a tree \
+             (unmerged entries? resolve them and stage the result) — {reason}"
+        )),
+        e => e,
+    })
+}
+
+/// Where a staging plan starts: the index as it stands, or `HEAD` with
+/// commits applied on top (`git cherry-pick`).
+#[derive(Clone, Copy)]
+pub enum PlanStart<'a> {
+    Index,
+    Picked(&'a [String]),
+}
+
+/// One `git add`/`git rm` of a command line, run in its own directory.
+pub type PlanStep = (PathBuf, Vec<String>);
+
+/// The tree a command line will hand to git, built without touching the
+/// index or the working tree: a copy of the index in the git directory (a
+/// linked worktree has its own, a split index keeps its shared part beside
+/// it), the line's staging commands replayed against the copy, then
+/// `write-tree`. The steps run git itself, so pathspecs, ignores and clean
+/// filters resolve as they will when the line runs.
+pub fn capture_planned(
+    repo_root: &Path,
+    start: PlanStart,
+    steps: &[PlanStep],
+) -> Result<StagedSnapshot> {
+    let index = git_path(repo_root, "index")?;
+    let scratch = ScratchIndex(index.with_file_name(format!(
+        "diffctx-plan-{}-{}.index",
+        std::process::id(),
+        SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed)
+    )));
     let head = rev_oid(repo_root, "HEAD");
+    match start {
+        PlanStart::Index => {
+            if index.exists() {
+                std::fs::copy(&index, &scratch.0)?;
+            }
+        }
+        PlanStart::Picked(_) => {
+            let tree = head.as_deref().unwrap_or("--empty");
+            run_git_on_index(repo_root, &scratch.0, &["read-tree", tree], None)?;
+        }
+    }
+    if let PlanStart::Picked(commits) = start {
+        for commit in commits {
+            let patch = run_git_bytes(
+                repo_root,
+                &[
+                    "diff-tree",
+                    "-p",
+                    "--binary",
+                    "--no-renames",
+                    &format!("{commit}^"),
+                    commit,
+                ],
+            )?;
+            if !patch.trim_ascii().is_empty() {
+                run_git_on_index(
+                    repo_root,
+                    &scratch.0,
+                    &["apply", "--cached", "--whitespace=nowarn"],
+                    Some(&patch),
+                )?;
+            }
+        }
+    }
+    for (dir, args) in steps {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        run_git_on_index(dir, &scratch.0, &args, None)?;
+    }
+    let tree = run_git_on_index(repo_root, &scratch.0, &["write-tree"], None)?
+        .trim()
+        .to_string();
     let base = head.clone().unwrap_or_else(|| empty_tree_oid(repo_root));
     Ok(StagedSnapshot { base, tree, head })
+}
+
+static SCRATCH_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A scratch index and git's lock beside it, removed however the plan ends.
+struct ScratchIndex(PathBuf);
+
+impl Drop for ScratchIndex {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+        let _ = std::fs::remove_file(self.0.with_extension("index.lock"));
+    }
+}
+
+/// `git rev-parse --git-path <name>` as an absolute path: in a linked
+/// worktree `.git` is a file and the index lives elsewhere.
+fn git_path(repo_root: &Path, name: &str) -> Result<PathBuf> {
+    let out = run_git(repo_root, &["rev-parse", "--git-path", name])?;
+    let path = PathBuf::from(out.trim());
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    })
+}
+
+/// A git command against another index file than the checkout's own, with
+/// optional stdin, under the same supervision as every other call.
+fn run_git_on_index(
+    dir: &Path,
+    index: &Path,
+    args: &[&str],
+    input: Option<&[u8]>,
+) -> Result<String> {
+    let mut cmd = git_command(dir);
+    cmd.env("GIT_INDEX_FILE", index)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+    let mut child = cmd.spawn()?;
+    if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
+        let bytes = bytes.to_vec();
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&bytes);
+        });
+    }
+    let output = supervise(child)?;
+    if !output.status.success() {
+        return Err(command_failure(
+            dir,
+            args,
+            &String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// The oid of the empty tree, used as the base when the repository is younger
 /// than the requested window: every file is then genuinely new within it.
 /// Derived from the repo's hash algorithm rather than hardcoded to sha1.
-fn empty_tree_oid(repo_root: &Path) -> String {
+pub fn empty_tree_oid(repo_root: &Path) -> String {
     const SHA1_EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"; // pragma: allowlist secret
     const SHA256_EMPTY_TREE: &str =
         "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"; // pragma: allowlist secret
@@ -480,6 +608,12 @@ fn command_failure(repo_root: &Path, args: &[&str], stderr: &str) -> GitError {
 }
 
 pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
+    run_git_bytes(repo_root, args).map(|out| String::from_utf8_lossy(&out).into_owned())
+}
+
+/// `run_git` for output that must reach git again byte for byte: a patch
+/// through a lossy decode no longer applies to a non-UTF-8 file.
+pub fn run_git_bytes(repo_root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let mut cmd = git_command(repo_root);
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -498,7 +632,7 @@ pub fn run_git(repo_root: &Path, args: &[&str]) -> Result<String> {
         return Err(command_failure(repo_root, args, &stderr));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(output.stdout)
 }
 
 /// What one git child may spend: the per-call ceiling cut to what the run
@@ -740,7 +874,9 @@ pub fn get_diff_text(
     diff_range: Option<&str>,
     pathspec: &[String],
 ) -> Result<String> {
-    let args = diff_args(&[], diff_range, pathspec)?;
+    // The context lines are what anchors a run and tells layout from
+    // content; a `diff.context` in the user's config must not move them.
+    let args = diff_args(&["--unified=3"], diff_range, pathspec)?;
     run_git(repo_root, &args)
 }
 
@@ -1291,17 +1427,26 @@ pub fn grep_files_with_word(
     word: &str,
     pathspec: &[String],
 ) -> Result<Vec<PathBuf>> {
-    let mut args: Vec<&str> = vec![
-        "grep",
-        "--untracked",
-        "-l",
-        "-z",
-        "-I",
-        "-w",
-        "-F",
-        "-e",
-        word,
-    ];
+    grep_files(repo_root, &["-w", "-F", "-e", word], pathspec)
+}
+
+/// The files with a line that declares `name`: `def name`, `class name`,
+/// `fn name`, `func (r T) name`, `const name =`, `name = function`.
+pub fn grep_files_with_declaration(
+    repo_root: &Path,
+    name: &str,
+    pathspec: &[String],
+) -> Result<Vec<PathBuf>> {
+    let name = regex::escape(name);
+    let pattern = format!(
+        r#"((def|class|fn|func|function|struct|interface|trait|enum|type|module|const|let|var|val|object|define)[[:space:]]+(\([^)]*\)[[:space:]]*)?["']?{name}([^[:alnum:]_$]|$))|((^|[^[:alnum:]_$.]){name}[[:space:]]*[:=][[:space:]]*(function|async|\())"#
+    );
+    grep_files(repo_root, &["-E", "-e", &pattern], pathspec)
+}
+
+fn grep_files(repo_root: &Path, pattern: &[&str], pathspec: &[String]) -> Result<Vec<PathBuf>> {
+    let mut args: Vec<&str> = vec!["grep", "--untracked", "-l", "-z", "-I"];
+    args.extend_from_slice(pattern);
     if !pathspec.is_empty() {
         validate_pathspec(pathspec)?;
         args.push("--");

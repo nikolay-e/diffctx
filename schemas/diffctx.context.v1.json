@@ -173,6 +173,11 @@
           "description": "A file whose header says it is generated.",
           "type": "string",
           "const": "generated"
+        },
+        {
+          "description": "Only whitespace, comments, quote style, trailing commas, semicolons\nor import order changed: a formatter run, not a change a caller sees.",
+          "type": "string",
+          "const": "layout"
         }
       ]
     },

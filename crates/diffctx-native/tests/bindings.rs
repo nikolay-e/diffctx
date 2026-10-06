@@ -553,7 +553,10 @@ fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
         .find(|c| c["symbol"] == "build")
         .unwrap_or_else(|| panic!("{doc}"));
     assert!(
-        build["unresolved"].as_str().unwrap().contains("defined in"),
+        build["unresolved"]
+            .as_str()
+            .unwrap()
+            .contains("has 3 rust definitions"),
         "{doc}"
     );
     let out = run(
@@ -610,5 +613,121 @@ fn a_function_nothing_references_is_reported_within_its_scope() {
     assert!(
         text.contains("No resolved static callers outside the diff in the analysed scope."),
         "{text}"
+    );
+}
+
+/// #372: an app's own tsconfig (`tsconfig.app.json`, reached through
+/// `extends`) maps `@pkg/*` to a shared directory; there is no root tsconfig.
+#[test]
+fn a_path_alias_in_the_importers_own_tsconfig_resolves() {
+    let tmp = repo(
+        &[
+            (
+                "shared/pkg/auto-update.ts",
+                "export function installAutoUpdate(minutes: number): number {\n  return minutes * 60;\n}\n",
+            ),
+            (
+                "apps/web/tsconfig.json",
+                "{\n  // the app config carries the aliases\n  \"extends\": \"./tsconfig.app.json\",\n}\n",
+            ),
+            (
+                "apps/web/tsconfig.app.json",
+                "{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": { \"@pkg/*\": [\"../../shared/pkg/*\"] }\n  }\n}\n",
+            ),
+            (
+                "apps/web/src/main.ts",
+                "import { installAutoUpdate } from '@pkg/auto-update';\n\nexport function boot(): number {\n  return installAutoUpdate(15);\n}\n",
+            ),
+        ],
+        &[(
+            "shared/pkg/auto-update.ts",
+            "export function installAutoUpdate(minutes: number): number {\n  return minutes * 60 * 1000;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "installAutoUpdate", "resolved"),
+        vec!["apps/web/src/main.ts::boot"],
+        "{doc}"
+    );
+}
+
+/// A root `"baseUrl": "."` is the repository root, not "no baseUrl": a bare
+/// `src/…` specifier resolves through it. Overlapping `paths` patterns pick
+/// the longest prefix, as tsc does (#414).
+#[test]
+fn a_root_base_url_and_the_longest_paths_prefix_resolve() {
+    let tmp = repo(
+        &[
+            (
+                "tsconfig.json",
+                "{\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": { \"@/*\": [\"src/*\"], \"@/components/*\": [\"src/ui/*\"] }\n  }\n}\n",
+            ),
+            (
+                "src/components/Button.ts",
+                "export function button(): number {\n  return 1;\n}\n",
+            ),
+            (
+                "src/ui/Button.ts",
+                "export function button(): number {\n  return 2;\n}\n",
+            ),
+            (
+                "src/money.ts",
+                "export function cents(x: number): number {\n  return x * 100;\n}\n",
+            ),
+            (
+                "app/page.ts",
+                "import { cents } from 'src/money';\nimport { button } from '@/components/Button';\n\nexport function render(): number {\n  return cents(button());\n}\n",
+            ),
+        ],
+        &[
+            (
+                "src/money.ts",
+                "export function cents(x: number): number {\n  return Math.round(x * 100);\n}\n",
+            ),
+            (
+                "src/ui/Button.ts",
+                "export function button(): number {\n  return 3;\n}\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "cents", "resolved"),
+        vec!["app/page.ts::render"],
+        "{doc}"
+    );
+    assert_eq!(
+        callers(&doc, "button", "resolved"),
+        vec!["app/page.ts::render"],
+        "{doc}"
+    );
+}
+
+/// `...name(...)` spreads a call's result; the dots are no receiver. Every
+/// Vite config spreading `...workboxPolicy({..})` was a rejected binding.
+#[test]
+fn a_spread_call_of_an_imported_function_is_a_caller() {
+    let tmp = repo(
+        &[
+            (
+                "shared/pwa/workbox-policy.js",
+                "export function workboxPolicy(o) {\n  return o;\n}\n",
+            ),
+            (
+                "app/vite.config.ts",
+                "import { workboxPolicy } from \"../shared/pwa/workbox-policy.js\";\n\nexport default function config() {\n  return { ...workboxPolicy({ a: 1 }) };\n}\n",
+            ),
+        ],
+        &[(
+            "shared/pwa/workbox-policy.js",
+            "export function workboxPolicy(o) {\n  return { ...o };\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "workboxPolicy", "resolved"),
+        vec!["app/vite.config.ts::config"],
+        "{doc}"
     );
 }
