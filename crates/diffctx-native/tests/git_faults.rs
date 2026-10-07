@@ -45,6 +45,7 @@ case "$FAKE_GIT_MODE" in
   malformed) read -r _; echo 'this is not a header'; exec sleep 600 ;;
   early_eof) exit 0 ;;
   fail) echo 'fatal: simulated failure' >&2; exit 128 ;;
+  fail_after_first) [ $(wc -l < "$FAKE_GIT_PIDS") -gt 1 ] || exec "$REAL_GIT" "$@"; echo 'fatal: detected dubious ownership in repository' >&2; exit 128 ;;
   descendant_holds_stdout) sleep 600 & echo $! >> "$FAKE_GIT_PIDS"; exec "$REAL_GIT" "$@" ;;
   stderr_flood) head -c 4000000 /dev/zero | tr '\0' 'e' >&2; exec "$REAL_GIT" "$@" ;;
 esac
@@ -458,6 +459,46 @@ fn a_policy_the_deadline_left_unread_still_withholds() {
         assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
         let doc = json(&out).to_string();
         assert!(!doc.contains("vault.py"), "{mode}: {doc}");
+    }
+    fx.assert_no_survivors();
+}
+
+/// git refusing to say whether this is a repository once the run is under
+/// way — dubious ownership, a broken config, git gone — leaves the policy
+/// unread just as the deadline does, and the path it withholds stays
+/// withheld.
+#[test]
+fn a_policy_git_refused_to_read_still_withholds() {
+    for mode in ["impact", "pack"] {
+        let fx = withheld_change();
+        let (out, _) = if mode == "impact" {
+            fx.impact("--git-dir", "fail_after_first")
+        } else {
+            fx.pack("--git-dir", "fail_after_first", &[])
+        };
+        let doc = json(&out).to_string();
+        assert!(!doc.contains("vault.py"), "{mode}: {doc}");
+        let refusals = std::fs::read_to_string(fx.pids_file()).unwrap_or_default();
+        assert!(
+            refusals.lines().count() > 1,
+            "{mode}: git never refused, the test measured nothing"
+        );
+    }
+}
+
+/// A run the deadline stopped before it found anything has not found a
+/// clean tree: it exits 0 with its partial artifact and names the limit,
+/// where it exited 4 with "check the range with: git diff --stat".
+#[test]
+fn a_deadline_that_found_nothing_names_the_limit_not_a_clean_tree() {
+    let fx = untracked_change();
+    for (mode, extra) in [("pack", &[][..]), ("locate", &["--mode", "locate"][..])] {
+        let (out, elapsed) = fx.pack("--others", "stall_before_read", extra);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
+        assert_eq!(out.status.code(), Some(0), "{mode}: {stderr}");
+        assert!(stderr.contains("deadline"), "{mode}: {stderr}");
+        assert!(!stderr.contains("no semantic context"), "{mode}: {stderr}");
     }
     fx.assert_no_survivors();
 }

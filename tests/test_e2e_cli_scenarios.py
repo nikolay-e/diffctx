@@ -32,6 +32,13 @@ EXIT_ENVIRONMENT = 3
 EXIT_EMPTY_DIFF = 4
 EXIT_TIMEOUT = 124
 
+_STALLING_UNTRACKED_SCAN = """#!/bin/sh
+for a in "$@"; do
+  if [ "$a" = --others ]; then exec sleep 600; fi
+done
+exec "$REAL_GIT" "$@"
+"""
+
 
 @pytest.fixture
 def diff_repo(tmp_path):
@@ -408,6 +415,38 @@ class TestDiffModeJourneys:
         result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, timeout=30, check=False)
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "partial"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="the stalling git is a POSIX shell script")
+    @pytest.mark.parametrize("mode", ["pack", "locate"])
+    def test_a_deadline_that_found_nothing_names_the_limit_not_a_clean_tree(self, tmp_path, mode):
+        """The one change is untracked and listing it outlives --timeout: the
+        run is partial, exit 0 with the limit named, never exit 4 with "the
+        working tree matches HEAD" (#408)."""
+        repo = Pygit2Repo(tmp_path / "repo")
+        repo.add_file("pricing.py", "def total(items):\n    return sum(items)\n")
+        repo.commit("initial")
+        repo.add_file("refund.py", "from pricing import total\n\n\ndef refund(cart):\n    return -total(cart)\n")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "git"
+        fake.write_text(_STALLING_UNTRACKED_SCAN, encoding="utf-8")
+        fake.chmod(0o755)
+        env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "REAL_GIT": shutil.which("git") or "git"}
+        args = [".", "--diff", "--timeout", "3", "-f", "json", "-q", *(["--mode", "locate"] if mode == "locate" else [])]
+        result = run_diffctx_subprocess(args, cwd=repo.path, env=env, timeout=60)
+        assert result.returncode == EXIT_OK, result.stderr
+        assert "deadline" in result.stderr
+        assert "no semantic context" not in result.stderr
+        assert "deadline" in json.loads(result.stdout)["coverage"]["limit_reasons"]
+
+    @pytest.mark.parametrize("spec", ["staged", "--cached"])
+    def test_an_empty_staged_pack_names_a_command_git_accepts(self, diff_repo, spec):
+        """Nothing staged: the hint is `git diff --cached --stat`, not a range
+        git rejects or a duration window that does not exist (#409)."""
+        diff_repo.add_file("src/calc.py", "def add(a, b):\n    return b + a\n")
+        result = run_diffctx_subprocess([".", f"--diff={spec}"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_EMPTY_DIFF, result.stderr
+        assert "git diff --cached --stat" in result.stderr
 
     def test_diff_to_clipboard_writes_file_too(self, diff_repo, tmp_path):
         out = tmp_path / "diff.yaml"

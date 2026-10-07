@@ -18,6 +18,7 @@ use _diffctx::config::limits::{
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
 use _diffctx::render::DiffContextOutput;
+use _diffctx::resource::LimitReason;
 use _diffctx::tokenizer::count_tokens;
 
 /// Mirrors `_UNLIMITED_BUDGET` in src/diffctx/_native/pipeline.py so `--budget -1`
@@ -294,7 +295,14 @@ where
 // Both entry points end the same way, and the exit code is part of the CLI
 // contract: an empty diff must still print, still summarize, and still exit
 // EXIT_EMPTY_DIFF rather than 0.
-fn emit(cli: &Cli, rendered: &str, is_empty: bool, changed_files: &[String]) -> Result<()> {
+fn emit(
+    cli: &Cli,
+    rendered: &str,
+    found_nothing: bool,
+    limits: &[LimitReason],
+    changed_files: &[String],
+) -> Result<()> {
+    let is_empty = found_nothing && !disclose_early_stop(limits);
     if is_empty {
         eprintln!(
             "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
@@ -315,6 +323,26 @@ fn emit(cli: &Cli, rendered: &str, is_empty: bool, changed_files: &[String]) -> 
         std::process::exit(EXIT_EMPTY_DIFF);
     }
     Ok(())
+}
+
+/// Whether the deadline or a cancellation stopped the run, said on stderr by
+/// the names its coverage gives them. A run that found nothing before it
+/// stopped is partial, not a clean tree, and exits 0 as every partial
+/// artifact does (#408).
+fn disclose_early_stop(limits: &[LimitReason]) -> bool {
+    let stopped: Vec<String> = limits
+        .iter()
+        .filter(|r| matches!(r, LimitReason::Deadline | LimitReason::Cancelled))
+        .filter_map(|r| serde_json::to_value(r).ok()?.as_str().map(str::to_string))
+        .collect();
+    if !stopped.is_empty() {
+        eprintln!(
+            "diffctx: the run stopped early ({}) before it found any context; the output is \
+             partial, not a clean tree: raise --timeout or narrow the range",
+            stopped.join(", ")
+        );
+    }
+    !stopped.is_empty()
 }
 
 /// A reader that stopped reading (`| head`) is not an error: exit the way a
@@ -367,6 +395,9 @@ fn empty_diff_hint(
         _ if diff_ref == "HEAD" && working_tree_is_clean(root) => {
             "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
         }
+        _ if _diffctx::git::is_staged_keyword(diff_ref) => {
+            "check the staged changes with: git diff --cached --stat".to_string()
+        }
         _ if is_duration_window(root, diff_ref) => {
             format!("nothing changed in the last {diff_ref}; widen the window (e.g. --diff 7d)")
         }
@@ -409,13 +440,19 @@ fn run_locate(
     })?;
 
     let rendered = format!("{}\n", serde_json::to_string(&output)?);
-    let is_empty = output.item_count == 0
+    let found_nothing = output.item_count == 0
         && output.deleted_files.is_empty()
         && output.renamed_files.is_empty()
         && output.lockfile_changes.is_empty()
         && output.ignored_changes.is_empty()
         && output.policy_excluded_count == 0;
-    emit(cli, &rendered, is_empty, &[])
+    emit(
+        cli,
+        &rendered,
+        found_nothing,
+        &output.coverage.limit_reasons,
+        &[],
+    )
 }
 
 fn run_impact(
@@ -590,6 +627,10 @@ fn real_main() -> Result<()> {
         &cli,
         &rendered,
         diff_result_is_empty(&output),
+        output
+            .coverage
+            .as_ref()
+            .map_or(&[][..], |c| c.limit_reasons.as_slice()),
         &output.changed_files,
     )
 }

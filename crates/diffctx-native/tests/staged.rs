@@ -311,6 +311,28 @@ fn an_empty_index_diff_is_an_empty_change_set() {
     assert!(!text.contains("No resolved static callers"), "{text}");
 }
 
+/// Nothing staged is an empty pack whose hint names a command git accepts;
+/// `git diff --stat staged` is not one (#409).
+#[test]
+fn an_empty_staged_pack_points_at_the_index() {
+    let tmp = shop();
+    let repo = tmp.path();
+    write(repo, "shop/pricing.py", TOTAL_CHANGED);
+    for args in [
+        &[".", "--diff", "staged"][..],
+        &[".", "--diff=--cached"][..],
+        &[".", "--diff", "staged", "--mode", "locate"][..],
+    ] {
+        let out = run(repo, args);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(4), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains("git diff --cached --stat"),
+            "{args:?}: {stderr}"
+        );
+    }
+}
+
 /// `write-tree` on the real index takes its lock; a `git add` running
 /// beside the review used to fail it as "unmerged entries?".
 #[test]
