@@ -142,6 +142,13 @@ pub struct ImpactOutput {
     #[serde(skip)]
     #[schemars(skip)]
     pub cap: u32,
+    /// `(path, symbol)` of every changed definition whose callers were
+    /// looked for and none found. A changed definition neither here nor in
+    /// `changed` was never analysed — withheld, only reformatted, the
+    /// container of another — and nothing is known of its callers (#401).
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub uncalled: Vec<(String, String)>,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -1464,6 +1471,7 @@ pub fn build_impact(
     };
     let mut untested_definitions = 0usize;
     let mut untested_unlisted: Vec<String> = Vec::new();
+    let mut uncalled: Vec<(String, String)> = Vec::new();
 
     // A hunk inside a function body seeds a nested fragment — a `let`, an
     // inner block — that nobody calls; the symbol a reader knows, and the one
@@ -1976,6 +1984,9 @@ pub fn build_impact(
                     &lines_of(&core.id),
                 ));
             }
+            if let Some(name) = &core.symbol_name {
+                uncalled.push((rel(state, core.path()), name.clone()));
+            }
             continue;
         }
         changed.push(ChangedSymbol {
@@ -2094,6 +2105,7 @@ pub fn build_impact(
         untested_unlisted,
         withheld_files: state.policy_excluded_count,
         cap: IMPACT_TOKEN_CAP,
+        uncalled,
     };
     fit_to_cap(&mut output);
     output
