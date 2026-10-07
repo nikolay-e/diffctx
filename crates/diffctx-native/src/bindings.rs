@@ -1056,8 +1056,9 @@ impl Resolver<'_> {
                 return direct;
             }
         }
+        let python = lang_of(site.path) == Some(Lang::Python);
         if let Some(ctor) =
-            constructed_as(site.content, head).or_else(|| annotated_as(site.content, head))
+            constructed_as(site.content, head, python).or_else(|| annotated_as(site.content, head))
         {
             return self.constructor_is(site, &ctor, def, class);
         }
@@ -1255,24 +1256,88 @@ fn bases_of(header: &str) -> Vec<String> {
         .collect()
 }
 
-/// `x = Bot(...)`, `const x = new Bot(...)`: the constructor `x` holds.
-fn constructed_as(content: &str, var: &str) -> Option<String> {
+/// `x = Bot(...)`, `const x = new Bot(...)`, `with Bot(...) as x`: the
+/// constructor `x` holds. A binding is read within one line: across a
+/// newline, `as srv:` and the next line's `result = srv.call_tool(...)`
+/// read as an annotated assignment from `srv.call_tool` (#399).
+fn constructed_as(content: &str, var: &str, python: bool) -> Option<String> {
     let re = Regex::new(&format!(
-        r"(?:^|[^\w$.]){}\s*(?::\s*[\w$.\[\]<>]+\s*)?=\s*(?:new\s+|await\s+)?([\w$.]+)\s*\(",
+        r"(?:^|[^\w$.])({})\s*(?::\s*[\w$.\[\]<>]+\s*)?=\s*(?:new\s+|await\s+)?([\w$.]+)\s*\(",
         regex::escape(var)
     ))
     .ok()?;
-    re.captures(content).map(|c| c[1].to_string())
+    let mut triple = None;
+    content.lines().find_map(|line| {
+        let code = crate::impact::mask_code(line, python, &mut triple);
+        entered_as(&code, var).or_else(|| {
+            re.captures_iter(&code)
+                .find(|c| c.get(1).is_some_and(|v| !after_as(&code, v.start())))
+                .map(|c| c[2].to_string())
+        })
+    })
 }
 
-/// `x: Bot` in a signature or a declaration.
+/// Whether the name at `at` is the target of an `as` (`with … as x`,
+/// `except E as x`), where a `:` after it ends the statement's head.
+fn after_as(code: &str, at: usize) -> bool {
+    code[..at]
+        .trim_end()
+        .strip_suffix("as")
+        .is_some_and(|rest| rest.is_empty() || rest.ends_with([' ', '\t', ')']))
+}
+
+/// `with Bot(...) as x`, `async with Bot(...) as x`, `case Bot() as x`: an
+/// instance of the class the call constructs. A function's context
+/// (`open(p)`, `closing(conn)`) says nothing of what it yields.
+fn entered_as(code: &str, var: &str) -> Option<String> {
+    let bytes = code.as_bytes();
+    code.match_indices(var).find_map(|(at, _)| {
+        let end = at + var.len();
+        let embedded = at.checked_sub(1).is_some_and(|j| is_word(bytes[j]))
+            || bytes.get(end).copied().is_some_and(is_word);
+        if embedded || !after_as(code, at) {
+            return None;
+        }
+        let call = code[..at]
+            .trim_end()
+            .strip_suffix("as")?
+            .trim_end()
+            .strip_suffix(')')?;
+        let mut depth = 1;
+        let open = call.char_indices().rev().find_map(|(i, c)| {
+            match c {
+                ')' => depth += 1,
+                '(' => depth -= 1,
+                _ => {}
+            }
+            (depth == 0).then_some(i)
+        })?;
+        let head = call[..open].trim_end();
+        let start = head
+            .rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$' || c == '.'))
+            .map_or(0, |i| i + 1);
+        let callee = head[start..].trim_matches('.');
+        callee
+            .rsplit('.')
+            .next()
+            .is_some_and(|class| class.starts_with(|c: char| c.is_ascii_uppercase()))
+            .then(|| callee.to_string())
+    })
+}
+
+/// `x: Bot` in a signature or a declaration, within one line; the `:` after
+/// `as x` ends a `with` or `except` head and annotates nothing.
 fn annotated_as(content: &str, var: &str) -> Option<String> {
     let re = Regex::new(&format!(
-        r#"(?:^|[^\w$.]){}\s*:\s*["']?([A-Z][\w$.]*)"#,
+        r#"(?:^|[^\w$.])({})\s*:\s*["']?([A-Z][\w$.]*)"#,
         regex::escape(var)
     ))
     .ok()?;
-    re.captures(content).map(|c| c[1].to_string())
+    content.lines().find_map(|line| {
+        re.captures_iter(line)
+            .find(|c| c.get(1).is_some_and(|v| !after_as(line, v.start())))
+            .map(|c| c[2].to_string())
+    })
 }
 
 impl Resolver<'_> {
