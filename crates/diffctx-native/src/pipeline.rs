@@ -12,7 +12,7 @@ use crate::config::budget::BUDGET;
 use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::core::{compute_seed_weights, identify_core_fragments};
+use crate::core::{compute_changed_lines, compute_seed_weights, identify_core_fragments};
 use crate::discovery::{
     BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
     ReverseReferenceDiscovery, TestFileDiscovery,
@@ -390,35 +390,56 @@ fn collect_hunks_with_untracked(
     diff_range: Option<&str>,
     pathspec: &[String],
     is_working_tree_diff: bool,
+    run: Option<&crate::resource::RunContext>,
 ) -> Result<(Vec<crate::types::DiffHunk>, Vec<PathBuf>)> {
     let mut hunks = git::parse_diff(root_dir, diff_range, pathspec)?;
-    let mut untracked_files: Vec<PathBuf> = Vec::new();
-    if is_working_tree_diff {
-        if let Ok(mut files) = git::get_untracked_files(root_dir, pathspec) {
-            // The untracked scan is the one path that READS a working-tree
-            // name before anything else has vetted it, so containment is
-            // re-asked here in its canonicalising form: `evil -> /etc/shadow`
-            // is lexically inside the root and would otherwise be line-counted
-            // and then fragmented out of the file it points at.
-            files.retain(|f| crate::paths::resolve_within(root_dir, f).is_some());
-            for f in &files {
-                if let Some(line_count) = count_text_lines(f) {
-                    if line_count > 0 {
-                        let path_str: Arc<str> = Arc::from(f.to_string_lossy().as_ref());
-                        hunks.push(crate::types::DiffHunk {
-                            path: path_str,
-                            new_start: 1,
-                            new_len: line_count,
-                            old_start: 0,
-                            old_len: 0,
-                        });
-                    }
-                }
+    if !is_working_tree_diff {
+        return Ok((hunks, Vec::new()));
+    }
+    let mut untracked_files = unless_cut_short(run, git::get_untracked_files(root_dir, pathspec))?;
+    // The untracked scan is the one path that READS a working-tree name
+    // before anything else has vetted it, so containment is re-asked here in
+    // its canonicalising form: `evil -> /etc/shadow` is lexically inside the
+    // root and would otherwise be line-counted and then fragmented out of the
+    // file it points at.
+    untracked_files.retain(|f| crate::paths::resolve_within(root_dir, f).is_some());
+    for f in &untracked_files {
+        if let Some(line_count) = count_text_lines(f) {
+            if line_count > 0 {
+                let path_str: Arc<str> = Arc::from(f.to_string_lossy().as_ref());
+                hunks.push(crate::types::DiffHunk {
+                    path: path_str,
+                    new_start: 1,
+                    new_len: line_count,
+                    old_start: 0,
+                    old_len: 0,
+                });
             }
-            untracked_files = files;
         }
     }
     Ok((hunks, untracked_files))
+}
+
+/// A listing of what the change touches. The run's own deadline or
+/// cancellation cutting it short leaves it empty with the reason noted, so
+/// the artifact says it is partial; anything else is git refusing to answer
+/// and stays an error, as an interruption does outside a run (`--full` has
+/// no partial form). Swallowed, either one read as "nothing changed" (#408).
+fn unless_cut_short<T: Default>(
+    run: Option<&crate::resource::RunContext>,
+    answer: git::Result<T>,
+) -> Result<T> {
+    match (answer, run) {
+        (Ok(answer), _) => Ok(answer),
+        (Err(e), Some(run)) if e.is_interruption() => {
+            run.note(match e {
+                git::GitError::Cancelled => crate::resource::LimitReason::Cancelled,
+                _ => crate::resource::LimitReason::Deadline,
+            });
+            Ok(T::default())
+        }
+        (Err(e), _) => Err(e.into()),
+    }
 }
 
 /// Secret-classified changed paths are withheld like `.diffctx/ignore` ones,
@@ -484,14 +505,17 @@ fn hunkless_changed_files(
     diff_range: Option<&str>,
     pathspec: &[String],
     untracked_files: Vec<PathBuf>,
-) -> Vec<PathBuf> {
-    let mut changed = git::get_changed_files(root_dir, diff_range, pathspec).unwrap_or_default();
+    run: Option<&crate::resource::RunContext>,
+) -> Result<Vec<PathBuf>> {
+    let mut changed =
+        unless_cut_short(run, git::get_changed_files(root_dir, diff_range, pathspec))?;
     changed.extend(untracked_files);
     if changed.is_empty() {
-        return changed;
+        return Ok(changed);
     }
-    let deleted = git::get_deleted_files(root_dir, diff_range, pathspec).unwrap_or_default();
-    let renamed_old = git::get_renamed_paths(root_dir, diff_range, pathspec).unwrap_or_default();
+    let deleted = unless_cut_short(run, git::get_deleted_files(root_dir, diff_range, pathspec))?;
+    let renamed_old =
+        unless_cut_short(run, git::get_renamed_paths(root_dir, diff_range, pathspec))?;
     let excluded: FxHashSet<PathBuf> = deleted.into_iter().chain(renamed_old).collect();
     let rel_paths: Vec<String> = changed
         .iter()
@@ -504,7 +528,7 @@ fn hunkless_changed_files(
     });
     changed.sort();
     changed.dedup();
-    changed
+    Ok(changed)
 }
 
 fn resolve_change_set(
@@ -513,15 +537,27 @@ fn resolve_change_set(
     staged: Option<&git::StagedSnapshot>,
     pathspec: &[String],
     is_working_tree_diff: bool,
+    run: &crate::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
-    let (mut hunks, untracked_files) =
-        collect_hunks_with_untracked(root_dir, diff_range, pathspec, is_working_tree_diff)?;
+    let (mut hunks, untracked_files) = collect_hunks_with_untracked(
+        root_dir,
+        diff_range,
+        pathspec,
+        is_working_tree_diff,
+        Some(run),
+    )?;
     let secret_excluded_paths = withhold_secret_hunks(root_dir, &mut hunks);
 
     if hunks.is_empty() {
         return Ok(ChangeSet::Empty {
-            changed_files: hunkless_changed_files(root_dir, diff_range, pathspec, untracked_files),
+            changed_files: hunkless_changed_files(
+                root_dir,
+                diff_range,
+                pathspec,
+                untracked_files,
+                Some(run),
+            )?,
             lockfile_changes: Vec::new(),
             ignored_changes: Vec::new(),
             policy_excluded_count: secret_excluded_paths.len(),
@@ -550,7 +586,13 @@ fn resolve_change_set(
 
     if hunks.is_empty() {
         return Ok(ChangeSet::Empty {
-            changed_files: hunkless_changed_files(root_dir, diff_range, pathspec, untracked_files),
+            changed_files: hunkless_changed_files(
+                root_dir,
+                diff_range,
+                pathspec,
+                untracked_files,
+                Some(run),
+            )?,
             lockfile_changes: lockfile_display,
             ignored_changes: ignored_display,
             policy_excluded_count: policy_excluded,
@@ -579,7 +621,7 @@ fn resolve_change_set(
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
     let (deleted_display, renamed_display) =
-        deletion_rename_displays(root_dir, diff_range, pathspec);
+        deletion_rename_displays(root_dir, diff_range, pathspec, Some(run))?;
     let excluded: FxHashSet<PathBuf> = deleted_files.into_iter().chain(renamed_old).collect();
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
@@ -985,6 +1027,7 @@ fn resolve_anchor(
                 resolved.staged.as_ref(),
                 scope,
                 is_working_tree_diff,
+                run,
                 t_entry,
             )?;
             Ok((resolved.range, resolved.staged, change_set))
@@ -1034,7 +1077,8 @@ pub fn compute_scored_state_anchored(
             ignored_changes,
             policy_excluded_count,
         } => {
-            let mut state = empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout);
+            let mut state =
+                empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout, run)?;
             state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], &[], &[]);
             state.changed_files = changed_files;
             state.lockfile_changes = lockfile_changes;
@@ -1042,7 +1086,6 @@ pub fn compute_scored_state_anchored(
             state.policy_excluded_count = policy_excluded_count;
             state.index_tree = index_tree;
             state.analysed_range = resolved_range.clone();
-            state.run.set_source(run.source());
             state.envelope_tokens = envelope_tokens_of(&state);
             return Ok(state);
         }
@@ -1405,6 +1448,7 @@ pub fn score_from_fragments(
     let tokenization_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     let seed_weights = compute_seed_weights(hunks, &core_ids, &all_fragments);
+    let changed_lines = compute_changed_lines(hunks, &core_ids, &all_fragments);
 
     let strategy = create_scoring_strategy(config);
     let scoring_result = strategy.score_and_filter(
@@ -1438,7 +1482,7 @@ pub fn score_from_fragments(
         scoring_result,
         needs,
         tokenization_ms,
-        changed_lines: seed_weights,
+        changed_lines,
     }
 }
 
@@ -1498,36 +1542,44 @@ pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<
     trimmed
 }
 
-/// The evidence floor's ordering: the class of every changed file keyed by
-/// the path its fragments carry.
-/// The order changed files earn budget in when not all of them fit:
-/// production code, then its tests, then config and docs, then mechanical
-/// or layout-only edits, then generated files. A test stub printed whole
-/// while the migration it exercises was omitted is the inversion (#311).
+/// Every changed file's evidence tier, keyed by the path its fragments carry.
 pub(crate) fn evidence_priority_of(
     changed_files: &[PathBuf],
     change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
 ) -> FxHashMap<Arc<str>, u8> {
-    use crate::change_class::ChangeClass;
     changed_files
         .iter()
         .zip(change_classes)
-        .map(|(path, (_, class, _))| {
-            let ext = crate::edges::base::file_ext(path);
-            let tier = match class {
-                ChangeClass::Generated => 4,
-                ChangeClass::Mechanical | ChangeClass::Layout => 3,
-                _ if crate::testfiles::is_test_path(path) => 1,
-                _ if crate::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
-                    || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
-                {
-                    2
-                }
-                _ => 0,
-            };
-            (Arc::from(path.to_string_lossy().as_ref()), tier)
+        .map(|(path, (display, class, _))| {
+            (
+                Arc::from(path.to_string_lossy().as_ref()),
+                evidence_tier(display, *class),
+            )
         })
         .collect()
+}
+
+/// The order changed files earn budget in when not all of them fit, and the
+/// renderer cuts them in reverse: production code (0), then its tests,
+/// then config and docs, then mechanical or layout-only edits, then
+/// generated files (4). A test stub printed whole while the migration it
+/// exercises was omitted is the inversion (#311). Read on the repository
+/// path: an absolute one under a `tests/` directory made every file a test.
+pub(crate) fn evidence_tier(repo_path: &str, class: crate::change_class::ChangeClass) -> u8 {
+    use crate::change_class::ChangeClass;
+    let path = Path::new(repo_path);
+    let ext = crate::edges::base::file_ext(path);
+    match class {
+        ChangeClass::Generated => 4,
+        ChangeClass::Mechanical | ChangeClass::Layout => 3,
+        _ if crate::testfiles::is_test_path(path) => 1,
+        _ if crate::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
+            || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
+        {
+            2
+        }
+        _ => 0,
+    }
 }
 
 impl SelectionOutcome {
@@ -2319,8 +2371,8 @@ fn full_empty_output(
     pathspec: &[String],
     changed_files: &[PathBuf],
     withheld: &FullWithheld,
-) -> DiffContextOutput {
-    let (deleted, renamed) = deletion_rename_displays(root_dir, diff_range, pathspec);
+) -> Result<DiffContextOutput> {
+    let (deleted, renamed) = deletion_rename_displays(root_dir, diff_range, pathspec, None)?;
     let mut output = empty_output(root_dir);
     output.deleted_files = deleted;
     output.renamed_files = renamed;
@@ -2331,7 +2383,7 @@ fn full_empty_output(
         &classify_changes(root_dir, changed_files, &[], &[], &[]),
         &fragmentless_changed_files(root_dir, changed_files, &[]),
     );
-    output
+    Ok(output)
 }
 
 /// The inventory of an output that selected nothing: every changed path, each
@@ -2368,7 +2420,7 @@ fn build_diff_context_full(
     let diff_range = resolved.range.as_deref();
     let is_working_tree_diff = resolved.from_duration || is_working_tree_range(diff_range);
     let (mut hunks, untracked_files) =
-        collect_hunks_with_untracked(&root_dir, diff_range, &scope, is_working_tree_diff)?;
+        collect_hunks_with_untracked(&root_dir, diff_range, &scope, is_working_tree_diff, None)?;
     let secret_excluded_paths = withhold_secret_hunks(&root_dir, &mut hunks);
     // What `--full` withholds, it must still own up to. It used to drop secret
     // and policy-excluded paths in silence, so a run that had removed files
@@ -2380,10 +2432,8 @@ fn build_diff_context_full(
         ignored_changes: Vec::new(),
     };
     if hunks.is_empty() {
-        let listed = hunkless_changed_files(&root_dir, diff_range, &scope, untracked_files);
-        return Ok(full_empty_output(
-            &root_dir, diff_range, &scope, &listed, &withheld,
-        ));
+        let listed = hunkless_changed_files(&root_dir, diff_range, &scope, untracked_files, None)?;
+        return full_empty_output(&root_dir, diff_range, &scope, &listed, &withheld);
     }
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
     let (ignored_display, policy_excluded_paths) =
@@ -2392,23 +2442,15 @@ fn build_diff_context_full(
     withheld.policy_excluded_count += policy_excluded_paths.len();
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
     if hunks.is_empty() {
-        let listed = hunkless_changed_files(&root_dir, diff_range, &scope, untracked_files);
-        return Ok(full_empty_output(
-            &root_dir, diff_range, &scope, &listed, &withheld,
-        ));
+        let listed = hunkless_changed_files(&root_dir, diff_range, &scope, untracked_files, None)?;
+        return full_empty_output(&root_dir, diff_range, &scope, &listed, &withheld);
     }
     let mut changed_files = git::get_changed_files(&root_dir, diff_range, &scope)?;
     changed_files.extend(untracked_files);
     changed_files.retain(|f| !is_withheld(&root_dir, f, &ignored_rel_paths));
     changed_files.dedup();
     if changed_files.is_empty() {
-        return Ok(full_empty_output(
-            &root_dir,
-            diff_range,
-            &scope,
-            &[],
-            &withheld,
-        ));
+        return full_empty_output(&root_dir, diff_range, &scope, &[], &withheld);
     }
     let (base_rev, head_rev) = diff_range
         .map(git::split_diff_range)
@@ -2447,7 +2489,7 @@ fn build_diff_context_full(
                 .map(str::to_string)
         });
     let (deleted_display, renamed_display) =
-        deletion_rename_displays(&root_dir, diff_range, &scope);
+        deletion_rename_displays(&root_dir, diff_range, &scope, None)?;
     let change = render::ChangeSummary {
         commit_count: 0,
         commit_message,
@@ -2482,16 +2524,15 @@ fn deletion_rename_displays(
     root_dir: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
-) -> (Vec<String>, Vec<(String, String)>) {
-    let mut deleted: Vec<String> = git::get_deleted_files(root_dir, diff_range, pathspec)
-        .map(|set| {
-            set.iter()
-                .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
-                .collect()
-        })
-        .unwrap_or_default();
+    run: Option<&crate::resource::RunContext>,
+) -> Result<(Vec<String>, Vec<(String, String)>)> {
+    let mut deleted: Vec<String> =
+        unless_cut_short(run, git::get_deleted_files(root_dir, diff_range, pathspec))?
+            .iter()
+            .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+            .collect();
     deleted.sort();
-    let mut renamed = git::get_rename_pairs(root_dir, diff_range, pathspec).unwrap_or_default();
+    let mut renamed = unless_cut_short(run, git::get_rename_pairs(root_dir, diff_range, pathspec))?;
     // A deletion or rename of a withheld file is no exception to withholding
     // it: the header would otherwise publish the path the policy hides.
     let named: Vec<String> = deleted
@@ -2504,24 +2545,33 @@ fn deletion_rename_displays(
         deleted.retain(|p| !hidden.contains(p));
         renamed.retain(|(a, b)| !hidden.contains(a) && !hidden.contains(b));
     }
-    (deleted, renamed)
+    Ok((deleted, renamed))
 }
 
+/// Keeps the run that listed the change, not a fresh one: what it noted on
+/// the way (a deadline that cut a listing short) is what the empty artifact
+/// must still report.
 fn empty_scored_state_with_changes(
     root_dir: PathBuf,
     diff_range: Option<&str>,
     pathspec: &[String],
     timeout: u64,
-) -> ScoredState {
-    let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range, pathspec);
-    let mut state = empty_scored_state(root_dir, diff_range, timeout);
+    run: crate::resource::RunContext,
+) -> Result<ScoredState> {
+    let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range, pathspec, Some(&run))?;
+    let mut state = empty_scored_state(root_dir, diff_range, timeout, run);
     state.deleted_files = deleted;
     state.renamed_files = renamed;
     state.envelope_tokens = envelope_tokens_of(&state);
-    state
+    Ok(state)
 }
 
-fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64) -> ScoredState {
+fn empty_scored_state(
+    root_dir: PathBuf,
+    diff_range: Option<&str>,
+    timeout: u64,
+    run: crate::resource::RunContext,
+) -> ScoredState {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
     let provenance = crate::run_provenance::RunProvenance::new(
         &root_dir,
@@ -2533,7 +2583,7 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
         root_dir,
         config,
         provenance,
-        run: crate::resource::RunContext::unbounded(),
+        run,
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),

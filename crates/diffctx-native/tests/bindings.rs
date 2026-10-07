@@ -731,3 +731,57 @@ fn a_spread_call_of_an_imported_function_is_a_caller() {
         "{doc}"
     );
 }
+
+/// `with Server() as srv:` binds `srv` to what `Server` constructs, and no
+/// binding is read across a line: `as srv:` followed by `result =
+/// srv.call_tool(...)` on the next line made the call its own constructor
+/// and dropped the caller (#399). An MCP client's `session.call_tool` is
+/// another class's method.
+#[test]
+fn a_context_manager_binds_its_target_and_no_binding_spans_lines() {
+    let tmp = repo(
+        &[
+            ("server/src/srv/__init__.py", ""),
+            (
+                "server/src/srv/app.py",
+                "class Server:\n    def __init__(self):\n        self.tools = {}\n\n    def call_tool(self, name, arguments):\n        return self.tools[name](**arguments)\n",
+            ),
+            (
+                "server/tests/test_app.py",
+                "from srv.app import Server\n\n\ndef test_call_tool():\n    s = Server()\n    assert s.call_tool(\"echo\", {}) == \"hi\"\n",
+            ),
+            (
+                "server/tests/test_ctx.py",
+                "from srv.app import Server\n\n\ndef test_call_tool_in_context():\n    with Server() as srv:\n        result = srv.call_tool(\"echo\", {\"text\": \"hi\"})\n    assert result == \"hi\"\n\n\ndef test_call_tool_returned():\n    with Server() as srv:\n        return srv.call_tool(\"echo\", {\"text\": \"hi\"})\n",
+            ),
+            ("client/src/cli/__init__.py", ""),
+            (
+                "client/src/cli/run.py",
+                "from mcp import ClientSession\n\n\nasync def ask(read, write, name):\n    async with ClientSession(read, write) as session:\n        await session.initialize()\n        return await session.call_tool(name, {})\n",
+            ),
+            (
+                "client/tests/test_run.py",
+                "from mcp import ClientSession\n\n\nasync def test_session_calls_a_tool(read, write):\n    async with ClientSession(read, write) as session:\n        result = await session.call_tool(\"echo\", {})\n    assert result\n\n\nasync def test_fixture_session(session):\n    assert await session.call_tool(\"echo\", {})\n",
+            ),
+        ],
+        &[(
+            "server/src/srv/app.py",
+            "class Server:\n    def __init__(self):\n        self.tools = {}\n\n    def call_tool(self, name, arguments):\n        tool = self.tools[name]\n        return tool(**arguments)\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "call_tool", "resolved"),
+        vec![
+            "server/tests/test_app.py::test_call_tool",
+            "server/tests/test_ctx.py::test_call_tool_in_context",
+            "server/tests/test_ctx.py::test_call_tool_returned",
+        ],
+        "{doc}"
+    );
+    assert_eq!(
+        callers(&doc, "call_tool", "candidate"),
+        vec!["client/tests/test_run.py::test_fixture_session"],
+        "a parameter nothing types stays possible: {doc}"
+    );
+}

@@ -124,6 +124,8 @@ def _empty_diff_hint(args: ParsedArgs) -> str:
         if _working_tree_is_dirty(args.root_dir):
             return "the changes carry no text hunks (mode-only, submodule or binary); see changed_files, or use --full"
         return "the working tree matches HEAD; try --diff HEAD~1 for the last commit"
+    if args.diff_range and args.diff_range.strip() in ("staged", "--cached"):
+        return "check the staged changes with: git diff --cached --stat"
     if _is_duration_range(args):
         return f"nothing changed in the last {args.diff_range}; widen the window (e.g. --diff 7d)"
     return f"check the range with: git diff --stat {args.diff_range}"
@@ -163,13 +165,30 @@ def _report_redactions(result: dict[str, Any], prog: str) -> None:
         print(f"{prog}: {count} credential-shaped string(s) redacted", file=sys.stderr)
 
 
-def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
-    if _diff_result_is_empty(result):
+# A run the deadline or a cancellation stopped before it found anything is
+# partial, not a clean tree, and exits 0 as every partial artifact does (#408).
+def _disclose_early_stop(result: dict[str, Any], prog: str) -> bool:
+    coverage = result.get("coverage")
+    reasons = coverage.get("limit_reasons") if isinstance(coverage, dict) else None
+    stopped = [str(r) for r in reasons or [] if r in ("deadline", "cancelled")]
+    if stopped:
+        print(
+            f"{prog}: the run stopped early ({', '.join(stopped)}) before it found any context; "
+            "the output is partial, not a clean tree: raise --timeout or narrow the range",
+            file=sys.stderr,
+        )
+    return bool(stopped)
+
+
+def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> bool:
+    is_empty = _diff_result_is_empty(result) and not _disclose_early_stop(result, prog)
+    if is_empty:
         print(
             f"{prog}: diff produced no semantic context "
             f"(clean working tree, binary-only, or files over the size cap); {_empty_diff_hint(args)}",
             file=sys.stderr,
         )
+    return is_empty
 
 
 def _log_latency(result: dict[str, Any]) -> None:
@@ -527,12 +546,12 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         # fragments the engine's estimate admitted, and emptiness is judged
         # on what is actually emitted.
         directory_tree, output_content = fit_to_budget(_build_diff_tree(args, prog), args.output_format)
-        _warn_empty_diff_result(directory_tree, prog, args)
+        is_empty_diff_result = _warn_empty_diff_result(directory_tree, prog, args)
         _log_latency(directory_tree)
     else:
         directory_tree = _build_standard_tree(args)
         output_content = tree_to_string(directory_tree, args.output_format)
-    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
+        is_empty_diff_result = False
     if not args.quiet:
         print_token_summary(output_content)
         _report_redactions(directory_tree, prog)
@@ -613,6 +632,7 @@ def _run_locate_mode(args: ParsedArgs, prog: str) -> None:
         and not doc.get("lockfile_changes")
         and not doc.get("ignored_changes")
         and not doc.get("policy_excluded_count")
+        and not _disclose_early_stop(doc, prog)
     )
     if is_empty:
         print(

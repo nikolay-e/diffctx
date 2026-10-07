@@ -111,6 +111,13 @@
       "format": "uint",
       "minimum": 0
     },
+    "untested_unlisted": {
+      "description": "The changed definitions of that count which nothing calls, so they\nare not among `changed`: `path::symbol (lines)` each.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "withheld_files": {
       "description": "Files the run withheld (`.diffctx/ignore`, gitignore, secret names):\nchanged files of the range, or files naming the queried symbol. Their\ncalls and tests were not read, so a zero says nothing about them\n(#392).",
       "type": "integer",

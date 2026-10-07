@@ -241,8 +241,31 @@ fn collect_capped_edges_from(
         // (a stdlib module name, a keyword) is no reference (#286). The
         // fallback stands in only for a language nobody parses here, or a
         // file the parser could not read.
-        let ext_of = |p: &str| crate::edges::base::file_ext(std::path::Path::new(p));
-        let covered_exts: FxHashSet<String> = dedicated_files.iter().map(|p| ext_of(p)).collect();
+        //
+        // An extensionless file is the language its name or shebang declares
+        // (Makefile, Dockerfile, `#!/bin/sh`) and shares its kind with no
+        // other file when neither declares one: read off the empty extension,
+        // one sourced shell script's edge took the fallback from every
+        // Makefile (#412).
+        let shebang_languages: FxHashMap<&str, &str> = fragments
+            .iter()
+            .filter(|f| f.id.start_line == 1 && Path::new(f.path()).extension().is_none())
+            .filter_map(|f| {
+                let language = crate::languages::sniff_language(f.path(), &f.content)?;
+                Some((f.path(), language))
+            })
+            .collect();
+        let kind_of = |p: &str| -> Option<String> {
+            let path = Path::new(p);
+            if path.extension().is_some() {
+                return Some(crate::edges::base::file_ext(path));
+            }
+            crate::languages::get_language_for_file(p)
+                .or_else(|| shebang_languages.get(p).copied())
+                .map(str::to_owned)
+        };
+        let covered_kinds: FxHashSet<String> =
+            dedicated_files.iter().filter_map(|p| kind_of(p)).collect();
         let parsed_files: FxHashSet<&str> = fragments
             .iter()
             .filter(|f| f.kind.is_definition_kind())
@@ -256,11 +279,12 @@ fn collect_capped_edges_from(
             ".json", ".toml", ".graphql", ".proto", ".prisma", ".xml",
         ];
         let needs_fallback = |p: &str| {
-            let ext = ext_of(p);
             !dedicated_files.contains(p)
-                && (DECLARATIVE.contains(&ext.as_str())
-                    || !covered_exts.contains(&ext)
-                    || !parsed_files.contains(p))
+                && kind_of(p).is_none_or(|kind| {
+                    DECLARATIVE.contains(&kind.as_str())
+                        || !covered_kinds.contains(&kind)
+                        || !parsed_files.contains(p)
+                })
         };
         for (builder_idx, log) in per_builder_log.iter_mut().enumerate() {
             if !fallback_flags[builder_idx] {
@@ -549,9 +573,9 @@ mod fallback_gate_tests {
 
     #[test]
     fn tags_edges_survive_only_where_dedicated_builders_came_back_empty() {
-        // a.py <-> b.py carry a dedicated import edge; a.py and c.py share an
-        // identifier but nothing imports between them. Two .xyz files have no
-        // dedicated builder at all and share the same identifier.
+        // a.c and c.c each include a header (a dedicated edge) and share an
+        // identifier, but nothing includes between them. Two .xyz files have
+        // no dedicated builder at all and share the same identifier.
         let fragments = vec![
             frag(
                 "proj/a.c",
@@ -574,26 +598,143 @@ mod fallback_gate_tests {
             false,
             &crate::resource::RunContext::unbounded(),
         );
-        let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
-        // Category matters: a.py and c.py legitimately share a structural
-        // sibling edge; the class under test is the SEMANTIC tags link.
-        let has = |a: &str, b: &str| {
-            capped.edges.iter().any(|e| {
-                if e.category != EdgeCategory::Semantic {
-                    return false;
-                }
-                let s = node_path(e.src);
-                let d = node_path(e.dst);
-                (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
-            })
-        };
         assert!(
-            has("u1.xyz", "u2.xyz"),
+            has_semantic_pair(&capped, "u1.xyz", "u2.xyz"),
             "fallback must still connect files no dedicated builder covers"
         );
         assert!(
-            !has("a.c", "c.c"),
+            !has_semantic_pair(&capped, "a.c", "c.c"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
+        );
+    }
+
+    // Category matters: two files in one directory legitimately share a
+    // structural sibling edge; the class under test is the SEMANTIC tags link.
+    fn has_semantic_pair(capped: &CappedEdges, a: &str, b: &str) -> bool {
+        let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
+        capped.edges.iter().any(|e| {
+            if e.category != EdgeCategory::Semantic {
+                return false;
+            }
+            let s = node_path(e.src);
+            let d = node_path(e.dst);
+            (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
+        })
+    }
+
+    /// `proj/a.c` is dedicated (it includes a header) and shares one name with
+    /// each other file, so that file alone decides whether its tags edge
+    /// stands. `.c`, `.proto` and shell are covered by the dedicated edges of
+    /// `a.c`, `s1.proto` and `bin/run`.
+    #[test]
+    fn each_branch_of_the_gate_decides_the_pair_it_owns() {
+        let unread = |path: &str, content: &str, idents: &[&str]| Fragment {
+            kind: crate::types::FragmentKind::Chunk,
+            ..frag(path, content, idents)
+        };
+        let fragments = vec![
+            frag(
+                "proj/a.c",
+                "#include \"bdep.h\"\n",
+                &["zzparsedzz", "zzunreadzz", "zzdeclzz", "zzscriptzz"],
+            ),
+            frag("proj/bdep.h", "int bdecl(void);\n", &[]),
+            frag("proj/s1.proto", "import \"s2.proto\";\n", &[]),
+            frag("proj/s2.proto", "message Bar {}\n", &[]),
+            frag("bin/run", "#!/bin/sh\n. ./lib/env.sh\n", &[]),
+            frag("lib/env.sh", "export LEVEL=1\n", &[]),
+            frag("proj/e.c", "int zzparsedzz;\n", &["zzparsedzz"]),
+            unread("proj/f.c", "int zzunreadzz\n", &["zzunreadzz"]),
+            frag("proj/g.proto", "message Foo {}\n", &["zzdeclzz"]),
+            frag("bin/other", "#!/bin/sh\nzzscriptzz\n", &["zzscriptzz"]),
+        ];
+        let capped = collect_capped_edges(
+            &fragments,
+            None,
+            false,
+            &crate::resource::RunContext::unbounded(),
+        );
+        assert!(
+            !has_semantic_pair(&capped, "proj/a.c", "proj/e.c"),
+            "a parsed file of a covered language: no edge is its builder's answer (#286)"
+        );
+        assert!(
+            has_semantic_pair(&capped, "proj/a.c", "proj/f.c"),
+            "a file its parser could not read keeps the fallback"
+        );
+        assert!(
+            has_semantic_pair(&capped, "proj/a.c", "proj/g.proto"),
+            "a declarative file keeps the fallback in a covered language"
+        );
+        assert!(
+            !has_semantic_pair(&capped, "proj/a.c", "bin/other"),
+            "an extensionless script is the language its shebang names, covered by `bin/run`"
+        );
+    }
+
+    fn semantic_edges_touching(
+        path: &str,
+        files: &[(&str, &str)],
+    ) -> std::collections::BTreeSet<String> {
+        let fragments: Vec<Fragment> = files
+            .iter()
+            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .collect();
+        let capped = collect_capped_edges(
+            &fragments,
+            None,
+            false,
+            &crate::resource::RunContext::unbounded(),
+        );
+        let node = |idx: u32| &capped.idx_to_node[idx as usize];
+        let name = |idx: u32| {
+            let id = node(idx);
+            format!("{}:{}-{}", id.path, id.start_line, id.end_line)
+        };
+        capped
+            .edges
+            .iter()
+            .filter(|e| e.category == EdgeCategory::Semantic)
+            .filter(|e| node(e.src).path.as_ref() == path || node(e.dst).path.as_ref() == path)
+            .map(|e| format!("{} -> {}", name(e.src), name(e.dst)))
+            .collect()
+    }
+
+    /// #412: every extensionless file used to be of kind "", so the shell edge
+    /// `bin/deploy` gets from sourcing `lib/common.sh` marked the Makefile's
+    /// kind as covered and took the fallback edges from it.
+    #[test]
+    fn an_unrelated_shell_script_leaves_a_makefile_its_fallback_edges() {
+        let project = [
+            (
+                "Makefile",
+                "release:\n\tpython3 tools/publish.py publish_release_artifact\n\nclean:\n\trm -rf dist\n",
+            ),
+            (
+                "tools/cli.py",
+                "from tools.publish import publish_release_artifact\n\n\ndef main():\n    return publish_release_artifact()\n",
+            ),
+            (
+                "tools/publish.py",
+                "import sys\n\n\ndef publish_release_artifact():\n    return \"dist/app.whl\"\n\n\nif __name__ == \"__main__\":\n    print(publish_release_artifact())\n",
+            ),
+        ];
+        let script = [
+            ("bin/deploy", "#!/bin/sh\n. ./lib/common.sh\nsay_hello\n"),
+            ("lib/common.sh", "say_hello() {\n  echo hello\n}\n"),
+        ];
+        let alone = semantic_edges_touching("Makefile", &project);
+        assert!(
+            alone
+                .iter()
+                .any(|e| e.starts_with("Makefile:") && e.contains(" -> tools/publish.py:")),
+            "the shared name is what links the Makefile to the function it runs: {alone:#?}"
+        );
+        let beside_a_script =
+            semantic_edges_touching("Makefile", &[&project[..], &script[..]].concat());
+        assert_eq!(
+            beside_a_script, alone,
+            "a shell script sourcing a library elsewhere changed the Makefile's edges"
         );
     }
 }

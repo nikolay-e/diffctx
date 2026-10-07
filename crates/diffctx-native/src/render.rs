@@ -149,11 +149,9 @@ impl DiffContextOutput {
     /// The rendered document is what `--budget` bounds and the engine's
     /// envelope charge is an estimate, so the renderer drops fragments until
     /// the document fits (the same loop as `writer.fit_to_budget` on the
-    /// Python side, so both CLIs deliver the same set). Context from the tail
-    /// first; then a changed file's second fragment; then witnesses,
-    /// generated and mechanical bumps before hand-written content. The
-    /// inventory, coverage and provenance are never dropped. Returns `false`
-    /// once nothing is left to drop.
+    /// Python side, so both CLIs deliver the same set), in the order
+    /// `drop_index` gives. The inventory, coverage and provenance are never
+    /// dropped. Returns `false` once nothing is left to drop.
     pub fn drop_one_fragment(&mut self) -> bool {
         let Some(index) = drop_index(&self.fragments, &self.changes) else {
             return false;
@@ -246,6 +244,14 @@ fn halve_witness(fragment: &mut FragmentEntry) -> bool {
     true
 }
 
+/// What goes next when the document is over its budget: context from the
+/// tail; then a changed file's second fragment, before any file loses its
+/// last; then those last witnesses. Changed fragments go lowest evidence
+/// tier first — generated files, mechanical bumps, config and docs, tests,
+/// production last — the reverse of the order the selection placed them
+/// in, and from the tail within a tier. By position alone the production
+/// file went first because `zsrc/` sorts after `README.md` and `tests/`
+/// (#411).
 fn drop_index(fragments: &[FragmentEntry], changes: &[ChangeEntry]) -> Option<usize> {
     if let Some(i) = fragments
         .iter()
@@ -253,26 +259,25 @@ fn drop_index(fragments: &[FragmentEntry], changes: &[ChangeEntry]) -> Option<us
     {
         return Some(i);
     }
+    let class_of: FxHashMap<&str, crate::change_class::ChangeClass> =
+        changes.iter().map(|c| (c.path.as_str(), c.class)).collect();
+    let tier = |f: &FragmentEntry| {
+        let class = class_of
+            .get(f.path.as_str())
+            .copied()
+            .unwrap_or(crate::change_class::ChangeClass::Content);
+        crate::pipeline::evidence_tier(&f.path, class)
+    };
     let mut per_file: FxHashMap<&str, usize> = FxHashMap::default();
     for f in fragments {
         *per_file.entry(f.path.as_str()).or_default() += 1;
     }
-    if let Some(i) = fragments
-        .iter()
-        .rposition(|f| per_file[f.path.as_str()] > 1)
-    {
-        return Some(i);
-    }
-    let class_of: FxHashMap<&str, crate::change_class::ChangeClass> =
-        changes.iter().map(|c| (c.path.as_str(), c.class)).collect();
-    (0..fragments.len()).max_by_key(|&i| {
-        (
-            class_of
-                .get(fragments[i].path.as_str())
-                .map_or(0, |c| c.priority()),
-            i,
-        )
-    })
+    let lowest_from_the_tail = |second: bool| {
+        (0..fragments.len())
+            .filter(|&i| !second || per_file[fragments[i].path.as_str()] > 1)
+            .max_by_key(|&i| (tier(&fragments[i]), i))
+    };
+    lowest_from_the_tail(true).or_else(|| lowest_from_the_tail(false))
 }
 
 /// JSON Schema 2020-12 for `diffctx.context.v1`, generated from the type —

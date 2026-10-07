@@ -1794,17 +1794,36 @@ fn find_ignored_paths_inner(
     }
 
     let scratch = scratch_git_dir(repo_root);
-    // A plain directory whose scratch `git init` failed (read-only TMPDIR)
-    // has no policy to read: without a git dir, `ls-files` cannot run, and
-    // treating that as "policy unreadable" withheld every file of a folder
-    // that never declared one. Gitignore filtering is skipped, as before
-    // #228, and secret-by-name still applies through `is_withheld`.
-    if scratch.is_none() && !is_git_repo(repo_root).unwrap_or(false) {
-        tracing::warn!(
-            "no git dir and no scratch dir for {}; ignore rules skipped",
-            repo_root.display()
-        );
-        return rustc_hash::FxHashMap::default();
+    if scratch.is_none() {
+        match is_git_repo(repo_root) {
+            Ok(true) => {}
+            // git did not answer — cut short by the run's deadline, or
+            // refusing to start (dubious ownership, a broken config, git
+            // gone): the policy is unread, not absent. Read as "no git dir",
+            // it published a withheld path (#408).
+            Err(e) => {
+                tracing::error!(
+                    "could not ask git about {} ({e}); all {} queried paths are treated as \
+                     ignored rather than risk publishing them",
+                    repo_root.display(),
+                    rel_paths.len()
+                );
+                return all_withheld(rel_paths);
+            }
+            // A plain directory whose scratch `git init` failed (read-only
+            // TMPDIR) has no policy to read: without a git dir, `ls-files`
+            // cannot run, and treating that as "policy unreadable" withheld
+            // every file of a folder that never declared one. Gitignore
+            // filtering is skipped, as before #228, and secret-by-name still
+            // applies through `is_withheld`.
+            Ok(false) => {
+                tracing::warn!(
+                    "no git dir and no scratch dir for {}; ignore rules skipped",
+                    repo_root.display()
+                );
+                return rustc_hash::FxHashMap::default();
+            }
+        }
     }
     let diffctx_patterns = match collect_diffctx_ignore_patterns(repo_root, scratch.as_deref()) {
         Ok(patterns) => patterns,
@@ -1817,10 +1836,7 @@ fn find_ignored_paths_inner(
             if let Some(dir) = scratch {
                 let _ = std::fs::remove_dir_all(dir);
             }
-            return rel_paths
-                .iter()
-                .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
-                .collect();
+            return all_withheld(rel_paths);
         }
     };
     let temp_excludes = if diffctx_patterns.is_empty() {
@@ -1959,10 +1975,7 @@ fn find_ignored_paths_inner(
                 diffctx_patterns.len(),
                 rel_paths.len()
             );
-            rel_paths
-                .iter()
-                .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
-                .collect()
+            all_withheld(rel_paths)
         } else {
             tracing::warn!(
                 "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
@@ -1971,6 +1984,14 @@ fn find_ignored_paths_inner(
             rustc_hash::FxHashMap::default()
         }
     })
+}
+
+/// The answer when the policy could not be read: every queried path withheld.
+fn all_withheld(rel_paths: &[String]) -> rustc_hash::FxHashMap<String, IgnoreSource> {
+    rel_paths
+        .iter()
+        .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
+        .collect()
 }
 
 /// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the

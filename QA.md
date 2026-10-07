@@ -259,6 +259,20 @@ silently:
   fragments of `package.json`); and the action pins a diffctx **release**
   SHA, so every repo needs a bump when a release ships (#261).
 
+## Real usage is the oracle
+
+The YAML corpus is a regression gate over mostly synthetic, LLM-written
+expectations and has no impact-mode cases, so a pass that judges impact
+runs it on real history: `--mode impact` over the last ~30 commits of a
+few sibling repos (read-only, `DIFFCTX_NO_MARKER=1`), each changed symbol's
+callers compared with `git grep -w` at that commit. Read every grep "miss"
+before calling it one. On 2026-10-06 almost all of them were the answer
+truncated at the 2k cap (`truncated`), files the consumer repo's own
+`.diffctx/ignore` withholds (`withheld_files`), or same-name methods. Two
+were real: a spread call read as a member access, and a silent zero for
+withheld callers. A failing corpus case gets the same question first:
+is the case right?
+
 ## Bug channels (enumerated 2026-08-05)
 
 1. GitHub issues (`gh issue list`) — canonical tracker, takes `Fixes #N`.

@@ -47,7 +47,6 @@ const MAX_DEFINITIONS: usize = 2;
 const SCHEMA_DIRECTORIES: &[&str] = &[
     "migrations",
     "migration",
-    "versions",
     "schema",
     "schemas",
     "openapi",
@@ -129,6 +128,10 @@ pub struct ImpactOutput {
     /// a change nobody calls can still be a change nothing tests.
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub untested_definitions: usize,
+    /// The changed definitions of that count which nothing calls, so they
+    /// are not among `changed`: `path::symbol (lines)` each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub untested_unlisted: Vec<String>,
     /// Files the run withheld (`.diffctx/ignore`, gitignore, secret names):
     /// changed files of the range, or files naming the queried symbol. Their
     /// calls and tests were not read, so a zero says nothing about them
@@ -652,17 +655,14 @@ fn rust_module_is_public(state: &ScoredState, path: &str) -> bool {
         return true;
     }
     let source = state.run.source();
-    let read = |p: &Path| {
-        source
-            .read_to_string(p)
-            .or_else(|| std::fs::read_to_string(p).ok())
-    };
+    // The run's own source only: a snapshot's module tree, not the disk's
+    // (an uncommitted `mod.rs` -> `m.rs` move flipped a commit's verdict).
+    let read = |p: &Path| source.read_to_string(p);
     let file = Path::new(path);
     let Some(src_dir) = file.ancestors().find(|d| {
         d.file_name().is_some_and(|n| n == "src")
-            && d.parent().is_some_and(|c| {
-                c.join("Cargo.toml").exists() || read(&c.join("Cargo.toml")).is_some()
-            })
+            && d.parent()
+                .is_some_and(|c| read(&c.join("Cargo.toml")).is_some())
     }) else {
         return true;
     };
@@ -711,13 +711,34 @@ fn rust_module_is_public(state: &ScoredState, path: &str) -> bool {
             dir.join(parent.file_stem().unwrap_or_default())
         };
         let flat = base.join(format!("{seg}.rs"));
-        parent = if flat.exists() || read(&flat).is_some() {
+        parent = if read(&flat).is_some() {
             flat
         } else {
             base.join(seg).join("mod.rs")
         };
     }
     true
+}
+
+/// An added run whose lines, blank ones aside, are a run removed elsewhere in
+/// the same file: the definition moved, its text and indentation did not.
+fn moved_verbatim(
+    run: &crate::change_class::HunkText,
+    hunks: &[crate::change_class::HunkText],
+) -> bool {
+    let text = |lines: &[String]| -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.trim_end().to_string())
+            .collect()
+    };
+    let added = text(&run.added);
+    run.removed.is_empty()
+        && !added.is_empty()
+        && hunks
+            .iter()
+            .any(|h| h.path == run.path && h.added.is_empty() && text(&h.removed) == added)
 }
 
 /// A line without the `#[cfg(..)]`-style attributes written before its item.
@@ -758,11 +779,21 @@ fn is_schema_file(path: &str) -> bool {
         d.components()
             .any(|c| SCHEMA_DIRECTORIES.contains(&c.as_os_str().to_str().unwrap_or("")))
     });
-    // A migration is code by extension and a schema by where it lives.
+    // A migration is code by extension and a schema by where it lives; so is
+    // the Rails schema dump. A bare `versions/` is not one (`.yarn/versions`),
+    // alembic's is named whole.
+    let in_db = |name: &str| {
+        p.parent()
+            .and_then(|d| d.file_name())
+            .is_some_and(|d| d == name)
+    };
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let migration = p
         .components()
         .any(|c| matches!(c.as_os_str().to_str(), Some("migrations" | "migration")))
-        || lower.contains("/alembic/versions/");
+        || lower.contains("/alembic/versions/")
+        || lower.contains("db/migrate/")
+        || (in_db("db") && matches!(stem, "schema" | "structure"));
     if migration {
         return true;
     }
@@ -1081,11 +1112,7 @@ fn dispatched_trait(state: &ScoredState, core: &Fragment) -> Option<String> {
     if !core.path().ends_with(".rs") {
         return None;
     }
-    let text = state
-        .run
-        .source()
-        .read_to_string(Path::new(core.path()))
-        .or_else(|| std::fs::read_to_string(core.path()).ok())?;
+    let text = state.run.source().read_to_string(Path::new(core.path()))?;
     let indent = |l: &str| l.len() - l.trim_start().len();
     let lines: Vec<&str> = text.lines().collect();
     let own = lines
@@ -1196,6 +1223,28 @@ const SHAPING_DECORATORS: &[&str] = &[
     "Deprecated",
     "SuppressWarnings",
     "FunctionalInterface",
+    // `@value.setter`, `@attr.s`, `@define`, `@enum.unique`, Lombok: they
+    // shape what they decorate and register it nowhere (#414).
+    "setter",
+    "getter",
+    "deleter",
+    "s",
+    "attrs",
+    "define",
+    "frozen",
+    "mutable",
+    "unique",
+    "Data",
+    "Value",
+    "Getter",
+    "Setter",
+    "Builder",
+    "Slf4j",
+    "ToString",
+    "EqualsAndHashCode",
+    "NoArgsConstructor",
+    "AllArgsConstructor",
+    "RequiredArgsConstructor",
 ];
 
 /// The decorator that hands a definition to a registry, a router or a
@@ -1411,6 +1460,7 @@ pub fn build_impact(
             .collect()
     };
     let mut untested_definitions = 0usize;
+    let mut untested_unlisted: Vec<String> = Vec::new();
 
     // A hunk inside a function body seeds a nested fragment — a `let`, an
     // inner block — that nobody calls; the symbol a reader knows, and the one
@@ -1640,8 +1690,14 @@ pub fn build_impact(
             break;
         }
         let core_hunks = hunks_in(core);
-        // A formatter run or a comment changes nothing a caller sees (#370).
-        if query.is_none() && !core_hunks.is_empty() && core_hunks.iter().all(|h| h.is_layout()) {
+        // A formatter run or a comment changes nothing a caller sees (#370),
+        // and neither does a definition moved verbatim within its file.
+        if query.is_none()
+            && !core_hunks.is_empty()
+            && core_hunks
+                .iter()
+                .all(|h| h.is_layout() || moved_verbatim(h, &state.hunk_texts))
+        {
             continue;
         }
         if query.is_none() && bordering.contains(&core.id) {
@@ -1908,6 +1964,15 @@ pub fn build_impact(
             && query.is_none()
             && unresolved.is_none()
         {
+            // Counted in the header, so named: a count of nothing listed
+            // tells the reader neither where nor what (#398).
+            if untested {
+                untested_unlisted.push(label(
+                    &rel(state, core.path()),
+                    core.symbol_name.as_deref(),
+                    &lines_of(&core.id),
+                ));
+            }
             continue;
         }
         changed.push(ChangedSymbol {
@@ -2023,6 +2088,7 @@ pub fn build_impact(
         limits,
         tests_known: tests.any(),
         untested_definitions,
+        untested_unlisted,
         withheld_files: state.policy_excluded_count,
         cap: IMPACT_TOKEN_CAP,
     };
@@ -2199,12 +2265,31 @@ fn removed_definitions(
             }
         }
     }
+    // One grep for every removed name, its lines handed to the names they
+    // spell as a word: a deleted 1000-function module ran 1000 greps and
+    // outlived the deadline.
+    let names: Vec<String> = removed.iter().map(|(n, _, _)| n.clone()).collect();
+    let wanted: FxHashSet<&str> = names.iter().map(String::as_str).collect();
+    let mut hits_of: FxHashMap<&str, Vec<(String, u32, String)>> = FxHashMap::default();
+    let all_hits = crate::git::grep_lines(&state.root_dir, &names, head).unwrap_or_default();
+    for (path, line, text) in all_hits {
+        let spelled: FxHashSet<&str> = text
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .filter_map(|w| wanted.get(w).copied())
+            .collect();
+        for name in spelled {
+            hits_of
+                .entry(name)
+                .or_default()
+                .push((path.clone(), line, text.clone()));
+        }
+    }
     let mut out = Vec::new();
     for (name, h, exported) in removed {
-        let Ok(hits) = crate::git::grep_lines(&state.root_dir, std::slice::from_ref(&name), head)
-        else {
-            continue;
-        };
+        if !state.run.check() {
+            break;
+        }
+        let hits = hits_of.remove(name.as_str()).unwrap_or_default();
         let mut callers: Vec<Caller> = Vec::new();
         // Defined again elsewhere: only the lines still bound to the old
         // module are broken; the rest already reach the new definition.
@@ -2668,6 +2753,11 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
     let mut out = String::new();
     write_header(&mut out, output);
     if output.empty && output.changed_files.is_empty() && output.deleted_files.is_empty() {
+        // Every change withheld is not a clean tree: the header already says
+        // how many files were withheld and that none was read.
+        if output.withheld_files > 0 {
+            return out;
+        }
         // `HEAD` is the uncommitted work, so on a clean tree it reads as
         // "nothing is reached" while the last commit may reach a lot (#368).
         let working_tree = output.index_tree.is_none()
@@ -2689,6 +2779,7 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
             out,
             "No resolved static callers outside the diff in the analysed scope."
         );
+        write_untested_unlisted(&mut out, output);
         return out;
     }
     for sym in &output.changed {
@@ -2933,7 +3024,28 @@ fn write_candidate_callers(out: &mut String, sym: &ChangedSymbol, compact: bool)
     }
 }
 
+/// Unlisted definitions shown by name before they are counted.
+const MAX_UNTESTED_NAMED: usize = 8;
+
+fn write_untested_unlisted(out: &mut String, output: &ImpactOutput) {
+    if !output.tests_known || output.untested_unlisted.is_empty() {
+        return;
+    }
+    let _ = writeln!(out, "Changed, nothing calls them, no static test link:");
+    for name in output.untested_unlisted.iter().take(MAX_UNTESTED_NAMED) {
+        let _ = writeln!(out, "  - {name}");
+    }
+    if output.untested_unlisted.len() > MAX_UNTESTED_NAMED {
+        let _ = writeln!(
+            out,
+            "  - and {} more",
+            output.untested_unlisted.len() - MAX_UNTESTED_NAMED
+        );
+    }
+}
+
 fn write_tail(out: &mut String, output: &ImpactOutput) {
+    write_untested_unlisted(out, output);
     if !output.stale_references.is_empty() {
         let _ = writeln!(out, "Still naming a deleted or renamed path:");
         for r in &output.stale_references {
