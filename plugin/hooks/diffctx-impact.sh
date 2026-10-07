@@ -71,7 +71,7 @@ else
     log_failure no-uvx
     exit 0
   }
-  launch=(uvx -q --offline -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.3")
+  launch=(uvx -q --offline -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.4")
 fi
 
 # A release without the subcommand, or a cache uv has not filled yet, exits

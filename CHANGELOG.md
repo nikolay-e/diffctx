@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.4] - 2026-10-07
+
 ### Security
 
 - Impact no longer names a file the run withholds (`.diffctx/ignore`, a
@@ -2036,7 +2038,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.3...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.18.4...HEAD
+[1.18.4]: https://github.com/nikolay-e/diffctx/compare/v1.18.3...v1.18.4
 [1.18.3]: https://github.com/nikolay-e/diffctx/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/nikolay-e/diffctx/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/nikolay-e/diffctx/compare/v1.18.0...v1.18.1

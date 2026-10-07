@@ -17,8 +17,8 @@ fi
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 command -v uvx >/dev/null 2>&1 || exit 0
 
-(uvx -q -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.3" --version \
+(uvx -q -c "${CLAUDE_PLUGIN_ROOT:-.}/constraints.txt" "diffctx[mcp]==1.18.4" --version \
   </dev/null >/dev/null 2>&1 &)
 
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.3 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To find who calls a name and which tests reach it without a pending change: uvx diffctx==1.18.3 . --symbol NAME -f md. The plugin also injects this before git commit/merge/push and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.18.4 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To find who calls a name and which tests reach it without a pending change: uvx diffctx==1.18.4 . --symbol NAME -f md. The plugin also injects this before git commit/merge/push and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself."}}'
 exit 0
