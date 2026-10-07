@@ -152,6 +152,7 @@ jobs:
           # plugin directory only runs code in the repository or a package
           # pinned to an exact version.
           for hook in (
+              "plugin/pyproject.toml",
               "plugin/hooks/diffctx-impact.sh",
               "plugin/hooks/diffctx-session.sh",
               "plugin/skills/commit/SKILL.md",
@@ -244,18 +245,6 @@ jobs:
           PY
           grep -n -m3 -E '^## \[' CHANGELOG.md
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
-
-      # The plugin's uvx launcher pins diffctx; this pins what diffctx pulls
-      # in, to the set CI installed from uv.lock, so an installed plugin runs
-      # the dependency versions this release was tested with.
-      - name: Pin the plugin's dependency set from uv.lock
-        run: |
-          uv export --frozen --no-dev --extra mcp --no-emit-project --no-hashes \
-            --no-header --no-annotate -q > plugin/constraints.txt
-          wc -l plugin/constraints.txt
-
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
         env:
@@ -264,7 +253,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
-            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/constraints.txt \
+            server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/pyproject.toml \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
             plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
             docs/product/github-action.md CITATION.cff \
@@ -1062,17 +1051,44 @@ jobs:
           cd repo
           git checkout "$COMMIT_SHA"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up uv
+        if: github.event.inputs.publish_to_pypi == 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+
+      # The plugin directory reads a uv.lock beside .mcp.json as the uvx
+      # launcher's whole dependency tree, and a lock can hash only what PyPI
+      # already serves, so it lands here, one commit on top of the release.
+      # Seeded with the root uv.lock, uv keeps every version CI tested.
+      - name: Lock the plugin to the published release
+        if: github.event.inputs.publish_to_pypi == 'true'
+        working-directory: ./repo
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          cp uv.lock plugin/uv.lock
+          deadline=$((SECONDS + 600))
+          until uv lock --directory plugin --refresh-package diffctx -q; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::diffctx ${VERSION} did not resolve for uv lock within 10 minutes"
+              exit 1
+            fi
+            sleep 30
+          done
+          git add plugin/uv.lock
+          git commit -m "chore: lock the plugin to ${VERSION}"
 
       - name: Push commit and tag to main
         working-directory: ./repo
         env:
           TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           REMOTE_MAIN=$(git rev-parse origin/main)
-          OUR_PARENT=$(git rev-parse HEAD^)
+          OUR_PARENT=$(git rev-parse "${COMMIT_SHA}^")
           if [ "$REMOTE_MAIN" != "$OUR_PARENT" ]; then
             echo "Error: Remote main has changed since release started."
             echo "Expected parent: $OUR_PARENT"
@@ -1082,6 +1098,15 @@ jobs:
           git push origin HEAD:main
           git push origin "$TAG_NAME"
           echo "Successfully pushed version commit and tag"
+
+      # The plugin directory follows this branch, not main: it scans every
+      # commit on its tracked branch as a version and holds each one for a
+      # reviewer, so only a release should be one. Forced, because an epoch
+      # squash of main leaves the previous release off the new history.
+      - name: Point the plugin directory at the release
+        if: github.event.inputs.publish_to_pypi == 'true'
+        working-directory: ./repo
+        run: git push --force origin HEAD:refs/heads/plugin-release
 
       - name: Download standalone binary artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1

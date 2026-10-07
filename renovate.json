@@ -8,8 +8,8 @@
       "allowedVersions": "<3.15"
     },
     {
-      "description": "plugin/constraints.txt is exported from uv.lock by cd.yml at release: the set CI tested. A bump here alone pins versions CI never ran, one package at a time (pydantic without its pydantic-core)",
-      "matchFileNames": ["plugin/constraints.txt"],
+      "description": "plugin/uv.lock is written by cd.yml once PyPI serves a release, seeded with uv.lock: the set CI tested. A bump here locks versions CI never ran, and plugin/pyproject.toml's diffctx pin moves only with a release",
+      "matchFileNames": ["plugin/**"],
       "enabled": false
     }
   ]

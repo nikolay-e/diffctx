@@ -85,8 +85,8 @@ silently:
   exempt and still compiles through maturin. Renovate owns this pair too since
   2026-09-29 (`0d75e73a` removed Dependabot and `automerge.yml`); a Dependabot
   alert on a transitive pin (PyJWT, 2026-09-29) is closed by
-  `uv lock --upgrade-package <name>` plus the `plugin/constraints.txt` export
-  from cd.yml, by hand.
+  `uv lock --upgrade-package <name>`; `plugin/uv.lock` follows at the next
+  release.
 - **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
   research harness's Python deps. One resolver for the whole repo; the
   separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
@@ -98,10 +98,12 @@ silently:
   again (all ten sat on `f047eeae` for two days, 2026-09-30). Tick their
   `rebase-branch` boxes in the dashboard body after every rewrite; the next
   daily run rebuilds them on `main`. Never hand-merge a conflicted bot branch.
-- **`plugin/constraints.txt` is not Renovate's.** cd.yml exports it from
-  `uv.lock` at release — the set CI tested. Renovate used to bump it one
-  package at a time (pydantic and pydantic-core as two PRs, either alone
-  unresolvable); `renovate.json` disables the file since 2026-10-04.
+- **`plugin/` is not Renovate's.** cd.yml writes `plugin/uv.lock` once PyPI
+  serves the release, seeded with `uv.lock` so it locks the set CI tested,
+  and bumps the launcher pin in `plugin/pyproject.toml` with the version.
+  Renovate bumped the former `constraints.txt` one package at a time
+  (pydantic and pydantic-core as two PRs, either alone unresolvable);
+  `renovate.json` disables `plugin/**`.
 - **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
   pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
   0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
@@ -468,13 +470,19 @@ is the case right?
 - **The Claude plugin runs nothing it downloaded.** The directory refused
   1.18.1 for fetching the release binary at session start; it runs only code
   in the reviewed repository or a package pinned to an exact version. The
-  hooks run `uvx -c constraints.txt "diffctx[mcp]==X" hook <event>` — the MCP
-  server's own launch — with the version written plainly in each script
-  (cd.yml bumps it, `test_publishing_manifests` pins it). Probe a hook change
-  with `tests/test_plugin_hook.py` (it drives the script under `/bin/bash`),
-  and remember a manual `--mode impact` run silences the hook on the same
-  content for 15 minutes: use `DIFFCTX_NO_MARKER=1` or a scratch
-  `DIFFCTX_CACHE_DIR` when comparing the two.
+  hooks run `uvx "diffctx[mcp]==X" hook <event>` — the MCP server's own
+  launch — with the version written plainly in each script (cd.yml bumps it,
+  `test_publishing_manifests` pins it). The directory reads `.mcp.json`'s
+  `uvx <package>==<version>` as a locked launch only with no option but `-q`,
+  `--from` and `--python`, against a `uv.lock` beside it: `-c constraints.txt`
+  was "Launcher lock invalid". The "Runs a pinned npx or uvx package" hold
+  stays on every version regardless, and every commit on the tracked branch
+  is one more held version (~80 from 2026-09-26 to 1.18.4), which is why the
+  directory follows `plugin-release`, moved by cd.yml at release, not `main`.
+  Probe a hook change with `tests/test_plugin_hook.py` (it drives the script
+  under `/bin/bash`), and remember a manual `--mode impact` run silences the
+  hook on the same content for 15 minutes: use `DIFFCTX_NO_MARKER=1` or a
+  scratch `DIFFCTX_CACHE_DIR` when comparing the two.
 - **Every child process gets a null stdin.** Under an MCP client the server's
   stdin is the JSON-RPC pipe the client holds open; a git that inherited it
   never exited on Windows and every tool call reaching git hung (fixed

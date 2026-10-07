@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -66,31 +67,36 @@ class TestClaudePlugin:
         installed plugin must start the version it was reviewed at."""
         server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
         assert server["command"] == "uvx"
-        # `uvx <package>==<version> <subcommand>`: the pin is the package
-        # argument itself, the form the directory's scanner reads; the `--from`
-        # spelling was reported as an unconfirmed pin and held for review.
-        assert server["args"] == [
-            "-c",
-            "${CLAUDE_PLUGIN_ROOT}/constraints.txt",
-            f"diffctx[mcp]=={__version__}",
-            "mcp",
-        ]
+        # `uvx <package>==<version> <subcommand>` and no option: the only shape
+        # the directory reads as a locked launch. `-c constraints.txt` made it
+        # report "Launcher lock invalid"; `--from` read as an unconfirmed pin.
+        assert server["args"] == [f"diffctx[mcp]=={__version__}", "mcp"]
 
-    def test_plugin_constraints_pin_every_dependency_exactly(self):
-        """The launcher pin fixes diffctx alone; its dependencies would resolve
-        fresh on every install. The constraints file pins all of them to the
-        uv.lock set the release was tested with."""
-        lines = (PROJECT_ROOT / "plugin" / "constraints.txt").read_text(encoding="utf-8").splitlines()
-        pins = {}
-        for line in lines:
-            spec = line.split(";")[0].strip()
-            name, sep, version = spec.partition("==")
-            assert sep, line
-            assert version, line
-            assert not re.search(r"[<>~!*,]", version), line
-            pins.setdefault(name.lower(), set()).add(version)
-        assert {"mcp", "pathspec", "pydantic", "anyio"} <= pins.keys()
-        assert "diffctx" not in pins
+    def test_plugin_uv_lock_pins_the_launcher_tree_from_pypi(self):
+        """The directory takes the uv.lock beside .mcp.json as the launcher's
+        dependency tree: exact versions, a registry source and hashes for every
+        package, the launched one at the version the launcher names."""
+        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
+
+        plugin = PROJECT_ROOT / "plugin"
+        project = tomllib.loads((plugin / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert project["dependencies"] == [f"diffctx[mcp]=={__version__}"]
+
+        lock_path = plugin / "uv.lock"
+        # Past 256 KiB the directory does not read a file and holds the version.
+        assert lock_path.stat().st_size < 256 * 1024
+        packages = tomllib.loads(lock_path.read_text(encoding="utf-8"))["package"]
+        [root] = [p for p in packages if p["source"] == {"virtual": "."}]
+        assert root["name"] == project["name"]
+        locked = [p for p in packages if p is not root]
+        assert {"diffctx", "mcp", "pathspec", "pydantic", "anyio"} <= {p["name"] for p in locked}
+        for package in locked:
+            assert package["source"] == {"registry": "https://pypi.org/simple"}, package["name"]
+            artifacts = package.get("wheels", []) + ([package["sdist"]] if "sdist" in package else [])
+            assert artifacts, package["name"]
+            assert all(a["hash"].startswith("sha256:") for a in artifacts), package["name"]
+        [diffctx] = [p for p in locked if p["name"] == "diffctx"]
+        assert diffctx["version"] == __version__
 
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]
@@ -178,13 +184,13 @@ class TestPluginHook:
         pin = f'"diffctx[mcp]=={__version__}"'
         for name in ("diffctx-impact.sh", "diffctx-session.sh"):
             text = (self.HOOKS / name).read_text(encoding="utf-8")
-            for fetcher in ("curl", "wget", "releases/download", "checksums"):
+            for fetcher in ("curl", "wget", "releases/download", "checksums", "constraints"):
                 assert fetcher not in text, (name, fetcher)
-            assert f'-c "${{CLAUDE_PLUGIN_ROOT:-.}}/constraints.txt" {pin}' in text, name
         impact = (self.HOOKS / "diffctx-impact.sh").read_text(encoding="utf-8")
-        assert "uvx -q --offline" in impact
+        assert f"uvx -q --offline {pin}" in impact
         assert '"${args[@]}"' in impact
         session = (self.HOOKS / "diffctx-session.sh").read_text(encoding="utf-8")
+        assert f"uvx -q {pin} --version" in session
         assert f"uvx diffctx=={__version__} . --diff --mode impact -f md" in session
         assert f"uvx diffctx=={__version__} . --symbol NAME -f md" in session
         assert "&)" in session
