@@ -131,6 +131,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing: the header says `N more withheld by ignore rules` for a range and
   `N file(s) naming it withheld` for `--symbol`, and that their calls and
   tests were not read (`withheld_files` in the JSON) (#392).
+- Impact: a definition moved within its file with its text unchanged lists
+  no callers, as a formatting-only edit does; moved and edited, it still
+  does. `@value.setter`, `@attr.s`, `@define`, `@enum.unique` and Lombok
+  annotations shape a definition and register it nowhere, so an untested
+  setter reads untested instead of "registered by" (#414).
 - The CLI and the MCP server report only the engine's own "nothing defines
   it" as a refusal; a `KeyError` or `IndexError` is an internal error with its
   traceback. Git output is decoded as UTF-8 on every platform.

@@ -526,12 +526,25 @@ fn select_core_fragments(
     // one file and 6 of 15 changed files never got a fragment (#238) — the
     // ceiling in the first pass had deferred them here precisely so the other
     // files could take their turn first.
-    if !skipped.is_empty() {
-        skipped.sort_by(|(_, ca, a), (_, cb, b)| order.cmp((ca, a), (cb, b)));
+    //
+    // Both rounds and the stand-in upgrades run tier by tier: a tier's skipped
+    // cores are placed and its stubs upgraded before a lower tier spends
+    // anything. Swept all at once, the stub the first pass made of a rewritten
+    // production function waited while the sweep printed nine test functions
+    // whole, and its upgrade found the budget gone (#327).
+    skipped.sort_by(|(_, ca, a), (_, cb, b)| order.cmp((ca, a), (cb, b)));
+    let mut tiers: Vec<u8> = core_fragments.iter().map(|c| order.tier(c)).collect();
+    tiers.sort_unstable();
+    tiers.dedup();
+    for tier in tiers {
         let mut blocked: Vec<(FragmentId, &Fragment, &Fragment)> = Vec::new();
         for round in 0..2u8 {
-            let queue = if round == 0 {
-                std::mem::take(&mut skipped)
+            let queue: Vec<(FragmentId, &Fragment, &Fragment)> = if round == 0 {
+                skipped
+                    .iter()
+                    .filter(|(_, core, _)| order.tier(core) == tier)
+                    .cloned()
+                    .collect()
             } else {
                 std::mem::take(&mut blocked)
             };
@@ -572,26 +585,25 @@ fn select_core_fragments(
                 }
             }
         }
+        upgrade_stand_ins(
+            core_fragments.iter().filter(|c| order.tier(c) == tier),
+            rel,
+            needs,
+            state,
+            sig_lookup,
+            core_excerpts,
+            order,
+        );
     }
-
-    upgrade_stand_ins(
-        core_fragments,
-        rel,
-        needs,
-        state,
-        sig_lookup,
-        core_excerpts,
-        order,
-    );
     satisfied
 }
 
 /// A core the first pass could only place as its signature stub or a
 /// clipped head — its file was at its share then — gets its body once every
-/// core has had its turn, if the difference fits. Left as a stub, a 60-line
-/// rewrite read as one line while the budget went to context (#327).
-fn upgrade_stand_ins(
-    core_fragments: &[Fragment],
+/// core of its tier has had its turn, if the difference fits. Left as a stub,
+/// a 60-line rewrite read as one line while the budget went to context (#327).
+fn upgrade_stand_ins<'a>(
+    cores: impl Iterator<Item = &'a Fragment>,
     rel: &FxHashMap<FragmentId, f64>,
     needs: &[InformationNeed],
     state: &mut SelectionState,
@@ -599,8 +611,7 @@ fn upgrade_stand_ins(
     core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
     order: &ChangeOrder,
 ) {
-    let mut cores: Vec<&Fragment> = core_fragments
-        .iter()
+    let mut cores: Vec<&Fragment> = cores
         .filter(|c| !state.selected_ids.contains(&c.id))
         .collect();
     cores.sort_by(|a, b| {

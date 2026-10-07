@@ -44,6 +44,7 @@ case "$FAKE_GIT_MODE" in
   stall_in_oversized) read -r _; printf '%s blob 99000000\n0123456789' 0123456789012345678901234567890123456789; exec sleep 600 ;;
   malformed) read -r _; echo 'this is not a header'; exec sleep 600 ;;
   early_eof) exit 0 ;;
+  fail) echo 'fatal: simulated failure' >&2; exit 128 ;;
   descendant_holds_stdout) sleep 600 & echo $! >> "$FAKE_GIT_PIDS"; exec "$REAL_GIT" "$@" ;;
   stderr_flood) head -c 4000000 /dev/zero | tr '\0' 'e' >&2; exec "$REAL_GIT" "$@" ;;
 esac
@@ -104,6 +105,22 @@ impl Fixture {
                 &timeout,
             ],
         )
+    }
+
+    fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> (Output, Duration) {
+        let timeout = TIMEOUT_SECS.to_string();
+        let mut args = vec![
+            ".",
+            "--diff",
+            &self.range,
+            "-f",
+            "json",
+            "-q",
+            "--timeout",
+            &timeout,
+        ];
+        args.extend_from_slice(extra);
+        self.run(target, mode, &args)
     }
 
     /// Every pid the fake git recorded is gone: killed and reaped, or
@@ -339,4 +356,108 @@ fn a_control_character_path_still_reads_its_own_content() {
     let mut callers = callers_of_total(&json(&out));
     callers.sort();
     assert_eq!(callers, vec!["charge".to_string(), "weird".to_string()]);
+}
+
+/// The working tree's one change is a file git does not track, so all the
+/// run can say about it comes from `ls-files --others` (#408).
+fn untracked_change() -> Fixture {
+    let mut fx = fixture();
+    std::fs::write(
+        fx.repo().join("refund.py"),
+        "from pricing import total\n\n\ndef refund(cart):\n    return -total(cart)\n",
+    )
+    .unwrap();
+    fx.range = "HEAD".to_string();
+    fx
+}
+
+/// An untracked listing git refused is an error in git's own words, never
+/// the clean tree an empty listing reads as.
+#[test]
+fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
+    let fx = untracked_change();
+    for (mode, (out, elapsed)) in [
+        ("pack", fx.pack("--others", "fail", &[])),
+        ("full", fx.pack("--others", "fail", &["--full"])),
+        ("impact", fx.impact("--others", "fail")),
+    ] {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
+        assert_eq!(
+            out.status.code(),
+            Some(3),
+            "{mode}: stderr={stderr} stdout={}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        assert!(
+            stderr.contains("ls-files") && stderr.contains("simulated failure"),
+            "{mode}: {stderr}"
+        );
+    }
+}
+
+/// An untracked listing the deadline cut short leaves an answer that names
+/// the deadline: `empty`, or a coverage claiming completeness, would vouch
+/// for a change the run never saw. `--full` has no partial form, so there
+/// the cut is an error.
+#[test]
+fn a_stalled_untracked_scan_is_disclosed_as_partial() {
+    let fx = untracked_change();
+    let (out, elapsed) = fx.impact("--others", "stall_before_read");
+    assert!(elapsed < BOUND, "impact: took {elapsed:?}");
+    let doc = json(&out);
+    assert_eq!(doc["empty"], false, "{doc}");
+    assert!(doc["limits"].to_string().contains("deadline"), "{doc}");
+
+    let (out, elapsed) = fx.pack("--others", "stall_before_read", &[]);
+    assert!(elapsed < BOUND, "pack: took {elapsed:?}");
+    let doc = json(&out);
+    assert_eq!(doc["coverage"]["status"], "partial", "{doc}");
+    assert!(
+        doc["coverage"]["limit_reasons"]
+            .to_string()
+            .contains("deadline"),
+        "{doc}"
+    );
+
+    let (out, elapsed) = fx.pack("--others", "stall_before_read", &["--full"]);
+    assert!(elapsed < BOUND, "full: took {elapsed:?}");
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    fx.assert_no_survivors();
+}
+
+/// The last commit edits `vault.py`, which `.diffctx/ignore` withholds.
+fn withheld_change() -> Fixture {
+    let fx = fixture();
+    let repo = fx.repo();
+    std::fs::create_dir_all(repo.join(".diffctx")).unwrap();
+    std::fs::write(repo.join(".diffctx/ignore"), "vault.py\n").unwrap();
+    std::fs::write(repo.join("vault.py"), "TOKEN = 1\n").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "vault"]);
+    std::fs::write(repo.join("vault.py"), "TOKEN = 2\n").unwrap();
+    git(&repo, &["commit", "-qam", "rotate"]);
+    fx
+}
+
+/// A listing the deadline cut short leaves the ignore check that follows
+/// unable to ask git anything either. The path the policy withholds stays
+/// withheld; it used to be published beside the count saying it was not.
+#[test]
+fn a_policy_the_deadline_left_unread_still_withholds() {
+    let fx = withheld_change();
+    for (mode, (out, elapsed)) in [
+        ("impact", fx.impact("--diff-filter=R", "stall_before_read")),
+        ("pack", fx.pack("--diff-filter=R", "stall_before_read", &[])),
+    ] {
+        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
+        let doc = json(&out).to_string();
+        assert!(!doc.contains("vault.py"), "{mode}: {doc}");
+    }
+    fx.assert_no_survivors();
 }

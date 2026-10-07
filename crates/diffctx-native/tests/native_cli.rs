@@ -1476,6 +1476,287 @@ fn rewritten_functions_are_placed_whole_before_the_budget_goes_elsewhere() {
     }
 }
 
+/// #308, #326: an added module is one hunk over every fragment in it, locals
+/// included. Under a budget that cannot hold the module, its exported
+/// functions are shown — whole or as signatures — and a one-line local never
+/// stands in for a function that is itself left out.
+#[test]
+fn an_added_module_shows_its_functions_not_their_locals() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::create_dir_all(repo.join("src")).expect("mkdir");
+    std::fs::write(
+        repo.join("src/graph.ts"),
+        "export interface Graph { edges: Map<number, number[]>; }\n",
+    )
+    .expect("write");
+    commit_all(repo, "base");
+    let function = |i: usize| {
+        format!(
+            "export function order{i}(graph: Graph, sink: number, limit: number): number[] {{\n  const queue = [sink];\n  const seen = new Set<number>();\n  const order: number[] = [];\n  let depth = 0;\n  while (queue.length > 0 && depth < limit) {{\n    const v = queue.shift()!;\n    if (seen.has(v)) continue;\n    seen.add(v);\n    const deps = graph.edges.get(v) ?? [];\n    for (const d of deps) {{\n      queue.push(d + {i});\n    }}\n    order.push(v);\n    depth += 1;\n  }}\n  return order;\n}}\n"
+        )
+    };
+    let functions: Vec<String> = (0..8).map(function).collect();
+    let module = format!(
+        "import type {{ Graph }} from './graph';\n\n{}",
+        functions.join("\n")
+    );
+    std::fs::write(repo.join("src/engine.ts"), &module).expect("write");
+    commit_all(repo, "add engine");
+
+    let mut spans: Vec<(u32, u32)> = Vec::new();
+    for (n, line) in module.lines().enumerate() {
+        let n = n as u32 + 1;
+        if line.starts_with("export function") {
+            spans.push((n, n));
+        } else if line == "}" {
+            spans.last_mut().expect("a function is open").1 = n;
+        }
+    }
+    let range = |lines: &str| -> (u32, u32) {
+        let (a, b) = lines.split_once('-').expect("a line range");
+        (a.parse().expect("start"), b.parse().expect("end"))
+    };
+    for (mode, list) in [("pack", "fragments"), ("locate", "items")] {
+        let out = run(
+            repo,
+            &[
+                ".",
+                "--diff",
+                "HEAD~1..HEAD",
+                "--mode",
+                mode,
+                "--budget",
+                "1200",
+                "-f",
+                "json",
+                "-q",
+            ],
+        );
+        let doc = json_doc(&out);
+        let shown: Vec<(String, (u32, u32))> = doc[list]
+            .as_array()
+            .expect("a list")
+            .iter()
+            .filter(|f| f["path"] == "src/engine.ts")
+            .map(|f| {
+                (
+                    f["kind"].as_str().unwrap_or("").to_string(),
+                    range(f["lines"].as_str().unwrap_or("")),
+                )
+            })
+            .collect();
+        let represented =
+            |(start, _): (u32, u32)| shown.iter().any(|(_, (a, b))| *a <= start && start <= *b);
+        let functions_shown = spans.iter().filter(|s| represented(**s)).count();
+        assert!(
+            functions_shown >= 3,
+            "{mode}: {functions_shown} of 8 exported functions shown: {shown:?}"
+        );
+        for (kind, (a, b)) in &shown {
+            let around = spans.iter().find(|(s, e)| s < a && b <= e);
+            if let Some(function) = around {
+                assert!(
+                    represented(*function),
+                    "{mode}: a {kind} at {a}-{b} stands in for the function at {function:?}: {shown:?}"
+                );
+            }
+        }
+    }
+}
+
+/// #327: a budget that cannot hold the whole change shows the rewritten
+/// production function whole, not as its signature beside whole test
+/// functions. The first pass had stubbed it to leave room, and the sweep spent
+/// the rest on the tests before the stub's upgrade ran.
+#[test]
+fn a_rewritten_production_function_is_whole_before_its_tests() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let write = |path: &str, text: &str| {
+        let full = repo.join(path);
+        std::fs::create_dir_all(full.parent().expect("a parent")).expect("mkdir");
+        std::fs::write(full, text).expect("write");
+    };
+    let tests = |decimal: bool| -> String {
+        let cases: Vec<String> = (0..12)
+            .map(|i| {
+                let (quantity, price) = (i + 1, i + 10);
+                if decimal {
+                    let discountable = if i % 2 == 0 { "True" } else { "False" };
+                    format!(
+                        "def test_invoice_total_case_{i}():\n    class Line:\n        quantity = {quantity}\n        unit_price = {price}\n        discountable = {discountable}\n    assert invoice_total([Line()], Decimal('0.19'), discount=Decimal('0.1')) > 0\n"
+                    )
+                } else {
+                    format!(
+                        "def test_invoice_total_case_{i}():\n    class Line:\n        quantity = {quantity}\n        unit_price = {price}\n    assert invoice_total([Line()], 0.0) == {}\n",
+                        quantity * price
+                    )
+                }
+            })
+            .collect();
+        let imports = if decimal {
+            "from decimal import Decimal\nfrom shop.billing import invoice_total\n"
+        } else {
+            "from shop.billing import invoice_total\n"
+        };
+        format!("{imports}\n{}", cases.join("\n"))
+    };
+    write("shop/__init__.py", "");
+    write("shop/migrations/__init__.py", "");
+    write(
+        "shop/migrations/0001_initial.py",
+        "from django.db import migrations, models\n\n\nclass Migration(migrations.Migration):\n    initial = True\n    dependencies = []\n    operations = [\n        migrations.CreateModel(\n            name=\"Invoice\",\n            fields=[\n                (\"id\", models.AutoField(primary_key=True)),\n                (\"total\", models.DecimalField(max_digits=12, decimal_places=2)),\n            ],\n        ),\n    ]\n",
+    );
+    write(
+        "shop/billing.py",
+        "def invoice_total(lines, tax_rate):\n    subtotal = 0\n    for line in lines:\n        subtotal += line.quantity * line.unit_price\n    return subtotal * (1 + tax_rate)\n",
+    );
+    write(
+        "docs/billing.md",
+        "# Billing\n\nInvoices sum their lines and apply the tax rate.\n\n## Rounding\n\nTotals are not rounded.\n",
+    );
+    write("tests/test_billing.py", &tests(false));
+    commit_all(repo, "base");
+    write(
+        "shop/billing.py",
+        "from decimal import Decimal, ROUND_HALF_UP\n\n\ndef invoice_total(lines, tax_rate, discount=None, currency=\"EUR\"):\n    subtotal = Decimal(\"0\")\n    for line in lines:\n        amount = Decimal(str(line.quantity)) * Decimal(str(line.unit_price))\n        if getattr(line, \"discountable\", True) and discount is not None:\n            amount = amount * (Decimal(\"1\") - Decimal(str(discount)))\n        subtotal += amount\n    taxed = subtotal * (Decimal(\"1\") + Decimal(str(tax_rate)))\n    quantum = Decimal(\"1\") if currency == \"JPY\" else Decimal(\"0.01\")\n    return taxed.quantize(quantum, rounding=ROUND_HALF_UP)\n",
+    );
+    write(
+        "shop/migrations/0002_invoice_currency_discount.py",
+        "from django.db import migrations, models\n\n\nclass Migration(migrations.Migration):\n    dependencies = [(\"shop\", \"0001_initial\")]\n    operations = [\n        migrations.AddField(\n            model_name=\"invoice\",\n            name=\"currency\",\n            field=models.CharField(default=\"EUR\", max_length=3),\n        ),\n        migrations.AddField(\n            model_name=\"invoice\",\n            name=\"discount\",\n            field=models.DecimalField(null=True, max_digits=5, decimal_places=4),\n        ),\n    ]\n",
+    );
+    write("tests/test_billing.py", &tests(true));
+    write(
+        "docs/billing.md",
+        "# Billing\n\nInvoices sum their lines, apply an optional discount to discountable lines and then the tax rate.\n\n## Rounding\n\nTotals are rounded half-up to the currency's minor unit (whole yen for JPY).\n",
+    );
+    commit_all(repo, "decimal invoice totals with discount and currency");
+
+    let out = run(
+        repo,
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "--budget",
+            "1500",
+            "-f",
+            "json",
+            "-q",
+        ],
+    );
+    let doc = json_doc(&out);
+    let shown: Vec<(String, String)> = doc["fragments"]
+        .as_array()
+        .expect("fragments")
+        .iter()
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap_or("").to_string(),
+                f["lines"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    let covers = |path: &str, from: u32, to: u32| {
+        shown.iter().any(|(p, lines)| {
+            p == path
+                && lines.split_once('-').is_some_and(|(a, b)| {
+                    a.parse::<u32>().is_ok_and(|a| a <= from)
+                        && b.parse::<u32>().is_ok_and(|b| b >= to)
+                })
+        })
+    };
+    assert!(
+        covers("shop/billing.py", 4, 13),
+        "invoice_total (4-13) is not whole: {shown:?}"
+    );
+    assert!(
+        shown.iter().any(|(p, _)| p == "tests/test_billing.py"),
+        "the changed tests stay in: {shown:?}"
+    );
+}
+
+/// #411: fitting the document to its budget cuts docs before tests and tests
+/// before production code. By position alone `zsrc/x.py` went first, since
+/// it sorts after `README.md` and `tests/`, and the rewritten production
+/// function was the one change missing from the artifact.
+#[test]
+fn fitting_the_budget_cuts_docs_and_tests_before_production() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let steps = |field: &str| -> String {
+        (0..12)
+            .map(|k| format!("    step_{k} = ledger.lookup(order.item_{k}, order.{field}_{k})\n"))
+            .collect()
+    };
+    let docs = |what: &str| -> String {
+        let lines: String = (0..12)
+            .map(|k| format!("Line {k} of the documentation for the ledger {what} process.\n"))
+            .collect();
+        format!("# Ledger\n\n{lines}")
+    };
+    let write = |field: &str, what: &str| {
+        for dir in ["zsrc", "tests"] {
+            std::fs::create_dir_all(repo.join(dir)).expect("mkdir");
+        }
+        std::fs::write(
+            repo.join("zsrc/x.py"),
+            format!(
+                "def settle_order(order, ledger):\n{}    return step_0\n",
+                steps(field)
+            ),
+        )
+        .expect("write");
+        std::fs::write(
+            repo.join("tests/test_x.py"),
+            format!(
+                "from zsrc.x import settle_order\n\n\ndef test_settle_order():\n{}    return step_0\n",
+                steps(field)
+            ),
+        )
+        .expect("write");
+        std::fs::write(repo.join("README.md"), docs(what)).expect("write");
+    };
+    write("qty", "settlement");
+    commit_all(repo, "A");
+    write("quantity", "settlement and reconciliation");
+    commit_all(repo, "B");
+
+    let out = run(
+        repo,
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "--budget",
+            "900",
+            "-f",
+            "json",
+            "-q",
+        ],
+    );
+    let doc = json_doc(&out);
+    let shown: Vec<(String, String)> = doc["fragments"]
+        .as_array()
+        .expect("fragments")
+        .iter()
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap_or("").to_string(),
+                f["lines"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    assert!(
+        shown.contains(&("zsrc/x.py".to_string(), "1-14".to_string())),
+        "the production function is not whole: {shown:?}"
+    );
+}
+
 /// #311: a Django migration says "Generated by Django" in its header, but it
 /// is the range's schema change, not generated output to rank last.
 #[test]

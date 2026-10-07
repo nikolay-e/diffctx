@@ -360,6 +360,51 @@ fn a_test_named_for_a_schema_is_not_a_schema_contract() {
     assert!(!contracts.iter().any(|c| c["kind"] == "schema"), "{doc}");
 }
 
+/// #413: the Rails schema dump and its migrations are schema contracts; a
+/// package manager's `versions/` directory is not.
+#[test]
+fn rails_schema_and_migrations_are_contracts_and_yarn_versions_are_not() {
+    let schema_kinds = |files: &[(&str, &str, &str)]| {
+        let tmp = repo_of(
+            &files.iter().map(|(p, a, _)| (*p, *a)).collect::<Vec<_>>(),
+            &files.iter().map(|(p, _, b)| (*p, *b)).collect::<Vec<_>>(),
+        );
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        doc.get("contracts")
+            .and_then(|c| c.as_array())
+            .map(|c| {
+                c.iter()
+                    .filter(|c| c["kind"] == "schema")
+                    .filter_map(|c| c["path"].as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let kinds = schema_kinds(&[
+        (
+            "db/schema.rb",
+            "create_table :users do |t|\nend\n",
+            "create_table :users do |t|\n  t.string :name\nend\n",
+        ),
+        (
+            "db/migrate/20240101_add_name.rb",
+            "class AddName\nend\n",
+            "class AddName\n  def change\n  end\nend\n",
+        ),
+        (
+            ".yarn/versions/abc123.yml",
+            "releases: {}\n",
+            "releases:\n  a: patch\n",
+        ),
+    ]);
+    assert!(kinds.contains(&"db/schema.rb".to_string()), "{kinds:?}");
+    assert!(
+        kinds.contains(&"db/migrate/20240101_add_name.rb".to_string()),
+        "{kinds:?}"
+    );
+    assert!(!kinds.iter().any(|k| k.starts_with(".yarn/")), "{kinds:?}");
+}
+
 fn ts_repo_with_panel() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
     let repo = tmp.path();
@@ -1053,6 +1098,16 @@ fn a_changed_definition_no_test_reaches_is_counted() {
         header(&md).contains("1 changed definition(s) without a static test link"),
         "{md}"
     );
+    // #398: what the header counts, the answer names.
+    assert!(md.contains("  - shop/report.py::summarize ("), "{md}");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    assert_eq!(
+        doc["untested_unlisted"][0]
+            .as_str()
+            .map(|s| s.starts_with("shop/report.py::summarize")),
+        Some(true),
+        "{doc:#}"
+    );
 }
 
 /// #387: callers that could not be resolved are not "0 callers".
@@ -1382,6 +1437,103 @@ fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
     );
 }
 
+/// A class moved within its file, text unchanged, changes nothing a caller
+/// sees; moved and edited, it does.
+#[test]
+fn a_definition_moved_verbatim_is_no_change_and_moved_edited_is() {
+    let conf = |token: &str, moved: bool| {
+        let backend =
+            format!("@dataclass\nclass Backend:\n    url: str\n    token: str = \"{token}\"\n");
+        let rest = "def backend():\n    return Backend(\"http://x\")\n\n\ndef client(b):\n    a = 1\n    c = 2\n    d = 3\n    return b.url\n";
+        if moved {
+            format!("from dataclasses import dataclass\n\n\n{rest}\n\n{backend}")
+        } else {
+            format!("from dataclasses import dataclass\n\n\n{backend}\n\n{rest}")
+        }
+    };
+    let caller = (
+        "use.py",
+        "from pkg.conf import Backend\n\n\ndef make():\n    return Backend(\"u\")\n",
+    );
+    for (token, listed) in [("", false), ("t", true)] {
+        let after = conf(token, true);
+        let tmp = repo_of(
+            &[
+                ("pkg/__init__.py", ""),
+                ("pkg/conf.py", &conf("", false)),
+                caller,
+            ],
+            &[("pkg/conf.py", &after)],
+        );
+        let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+        assert_eq!(md.contains("called from use.py::make"), listed, "{md}");
+    }
+}
+
+/// A working tree whose only change is withheld is no clean tree: the
+/// answer says the change was withheld, never "the working tree matches HEAD".
+#[test]
+fn a_change_entirely_withheld_is_not_called_a_clean_tree() {
+    let tmp = repo_of(
+        &[
+            (".diffctx/ignore", "tests/\n"),
+            ("tests/conftest.py", "X = 1\n"),
+            ("app.py", "def run():\n    return 1\n"),
+        ],
+        &[],
+    );
+    write(tmp.path(), "tests/conftest.py", "X = 2\n");
+    let md = impact_markdown(tmp.path(), "HEAD");
+    assert!(!md.contains("matches HEAD"), "{md}");
+    assert!(
+        header(&md).contains("1 more withheld by ignore rules"),
+        "{md}"
+    );
+}
+
+/// One grep serves every removed definition; each still-called name keeps
+/// exactly its own callers.
+#[test]
+fn each_removed_definition_of_a_deleted_module_keeps_its_own_callers() {
+    let module: String = (0..40)
+        .map(|i| format!("export function fn_{i}(x) {{\n  return x + {i};\n}}\n\n"))
+        .collect();
+    let tmp = repo_of(
+        &[
+            ("src/many.js", &module),
+            (
+                "src/a.js",
+                "import { fn_3 } from './many.js';\nexport function useA(x) {\n  return fn_3(x);\n}\n",
+            ),
+            (
+                "src/b.js",
+                "import { fn_17 } from './many.js';\nexport function useB(x) {\n  return fn_17(x);\n}\n",
+            ),
+        ],
+        &[],
+    );
+    std::fs::remove_file(tmp.path().join("src/many.js")).expect("rm");
+    commit_all(tmp.path(), "delete the module");
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let callers_of = |name: &str| -> Vec<String> {
+        doc["changed"]
+            .as_array()
+            .and_then(|c| c.iter().find(|c| c["symbol"] == name))
+            .and_then(|c| c["callers"].as_array())
+            .map(|c| {
+                let mut paths: Vec<String> = c
+                    .iter()
+                    .filter_map(|c| c["path"].as_str().map(str::to_string))
+                    .collect();
+                paths.dedup();
+                paths
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(callers_of("fn_3"), vec!["src/a.js"], "{doc:#}");
+    assert_eq!(callers_of("fn_17"), vec!["src/b.js"], "{doc:#}");
+}
+
 /// #414: in Python `//` is floor division; the call after it is a caller.
 #[test]
 fn a_call_after_python_floor_division_is_a_caller() {
@@ -1527,6 +1679,30 @@ fn a_caller_registered_by_a_decorator_is_not_called_untested() {
     );
 }
 
+/// #414: a decorator that shapes its definition registers it nowhere, so an
+/// untested setter or `attr.s` class is untested, not "registered by".
+#[test]
+fn shaping_decorators_are_not_registries() {
+    let tmp = repo_of(
+        &[
+            ("util.py", "def clamp(v):\n    return max(0, v)\n"),
+            (
+                "meter.py",
+                "import attr\nfrom util import clamp\n\n\nclass Meter:\n    @property\n    def value(self):\n        return self._v\n\n    @value.setter\n    def value(self, v):\n        self._v = clamp(v)\n\n\n@attr.s\nclass Gauge:\n    def read(self, v):\n        return clamp(v)\n",
+            ),
+            (
+                "tests/test_other.py",
+                "def test_nothing_here():\n    assert True\n",
+            ),
+        ],
+        &[("util.py", "def clamp(v):\n    return max(0, min(v, 100))\n")],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("meter.py"), "{md}");
+    assert!(!md.contains("registered by"), "{md}");
+    assert!(md.contains("no static test link"), "{md}");
+}
+
 /// #370: a formatter run and a comment are no contract and reach no caller.
 #[test]
 fn a_formatting_only_change_is_neither_a_contract_nor_a_caller_list() {
@@ -1623,6 +1799,35 @@ fn pub_items_of_a_crate_private_module_are_not_public_api() {
     for public in ["public_api g", "public_api t", "public_api k"] {
         assert!(contracts.contains(&public.to_string()), "{contracts:?}");
     }
+    assert!(
+        !contracts.contains(&"public_api f".to_string()),
+        "{contracts:?}"
+    );
+}
+
+/// #408: a range's module visibility is read from the range, not the disk:
+/// an uncommitted `a/mod.rs` -> `a.rs` move made a private module public.
+#[test]
+fn module_visibility_of_a_range_ignores_the_working_tree() {
+    let tmp = repo_of(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"k\"\nversion = \"0.1.0\"\n",
+            ),
+            ("src/lib.rs", "pub mod a;\n"),
+            ("src/a/mod.rs", "mod b;\n"),
+            ("src/a/b.rs", "pub fn f(x: u32) -> u32 {\n    x\n}\n"),
+        ],
+        &[(
+            "src/a/b.rs",
+            "pub fn f(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+        )],
+    );
+    let repo = tmp.path();
+    git(repo, &["mv", "src/a/mod.rs", "src/a.rs"]);
+    write(repo, "src/a.rs", "pub mod b;\n");
+    let contracts = contract_symbols(&impact(repo, "HEAD~1..HEAD"));
     assert!(
         !contracts.contains(&"public_api f".to_string()),
         "{contracts:?}"

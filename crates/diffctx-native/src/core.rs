@@ -129,17 +129,22 @@ fn map_hunks_to_fragments(
     hunks: &[DiffHunk],
     core_ids: &FxHashSet<FragmentId>,
     all_fragments: &[Fragment],
+    clip_to_fragment: bool,
 ) -> FxHashMap<FragmentId, f64> {
     let mut result: FxHashMap<FragmentId, f64> = FxHashMap::default();
     for h in hunks {
         let (h_start, h_end) = h.core_selection_range();
-        let hunk_size = (h_end as i64 - h_start as i64 + 1).max(1) as f64;
         for frag in all_fragments {
             if !core_ids.contains(&frag.id) || frag.path() != h.path.as_ref() {
                 continue;
             }
             if frag.start_line() <= h_end && frag.end_line() >= h_start {
-                *result.entry(frag.id.clone()).or_insert(0.0) += hunk_size;
+                let (start, end) = if clip_to_fragment {
+                    (h_start.max(frag.start_line()), h_end.min(frag.end_line()))
+                } else {
+                    (h_start, h_end)
+                };
+                *result.entry(frag.id.clone()).or_insert(0.0) += f64::from(end - start + 1);
             }
         }
     }
@@ -207,12 +212,36 @@ fn fill_missing_core_weights(
     }
 }
 
+/// PPR's seed mass: every core a hunk overlaps carries the whole hunk.
 pub fn compute_seed_weights(
     hunks: &[DiffHunk],
     core_ids: &FxHashSet<FragmentId>,
     all_fragments: &[Fragment],
 ) -> FxHashMap<FragmentId, f64> {
-    let mut frag_hunk_lines = map_hunks_to_fragments(hunks, core_ids, all_fragments);
+    hunk_lines_per_core(hunks, core_ids, all_fragments, false)
+}
+
+/// The changed lines inside each core, which order changed code when the
+/// budget cannot hold all of it. A hunk counts only where it overlaps the
+/// core: an added module is one hunk overlapping every fragment in it, and
+/// charging each its whole size ranked a one-line local above the function
+/// around it (#308).
+pub fn compute_changed_lines(
+    hunks: &[DiffHunk],
+    core_ids: &FxHashSet<FragmentId>,
+    all_fragments: &[Fragment],
+) -> FxHashMap<FragmentId, f64> {
+    hunk_lines_per_core(hunks, core_ids, all_fragments, true)
+}
+
+fn hunk_lines_per_core(
+    hunks: &[DiffHunk],
+    core_ids: &FxHashSet<FragmentId>,
+    all_fragments: &[Fragment],
+    clip_to_fragment: bool,
+) -> FxHashMap<FragmentId, f64> {
+    let mut frag_hunk_lines =
+        map_hunks_to_fragments(hunks, core_ids, all_fragments, clip_to_fragment);
     if frag_hunk_lines.is_empty() {
         return FxHashMap::default();
     }
