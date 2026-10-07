@@ -912,13 +912,16 @@ struct TestIndex<'a> {
     /// Source path -> one test path linked to it by a test edge.
     by_path: FxHashMap<String, String>,
     test_fragments: Vec<&'a Fragment>,
+    /// Tests in a file no test path names: Rust `#[cfg(test)]` modules and
+    /// `#[test]` functions beside the code they test.
+    inline: FxHashSet<&'a FragmentId>,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: std::cell::RefCell<FxHashMap<FragmentId, Option<(String, Option<String>)>>>,
 }
 
 impl<'a> TestIndex<'a> {
-    fn build(state: &'a ScoredState) -> Self {
+    fn build(state: &'a ScoredState, inline: FxHashSet<&'a FragmentId>) -> Self {
         let graph = &state.scoring_result.graph;
         let mut by_path: FxHashMap<String, String> = FxHashMap::default();
         graph.for_each_categorized_edge(|src, dst, cat| {
@@ -939,11 +942,14 @@ impl<'a> TestIndex<'a> {
         let test_fragments = state
             .all_fragments
             .iter()
-            .filter(|f| crate::testfiles::is_test_path(Path::new(f.path())))
+            .filter(|f| {
+                crate::testfiles::is_test_path(Path::new(f.path())) || inline.contains(&f.id)
+            })
             .collect();
         Self {
             by_path,
             test_fragments,
+            inline,
             memo: std::cell::RefCell::default(),
         }
     }
@@ -952,13 +958,17 @@ impl<'a> TestIndex<'a> {
         !self.test_fragments.is_empty() || !self.by_path.is_empty()
     }
 
+    fn is_test(&self, f: &Fragment) -> bool {
+        crate::testfiles::is_test_path(Path::new(f.path())) || self.inline.contains(&f.id)
+    }
+
     /// A test guards a caller when it names the caller's symbol in code and
     /// reaches the caller's module — the same bar a caller has to clear. A
     /// bare name match (`render` in a Rust test, `render()` in a Python
     /// script) attributed guards to tests that never import the file (#312),
     /// and a test edge to the file proves the file is tested, not the caller.
     fn direct(&self, caller: &Fragment, link: &Link) -> Option<String> {
-        if crate::testfiles::is_test_path(Path::new(caller.path())) {
+        if self.is_test(caller) {
             return Some(caller.path().to_string());
         }
         // A chunk inside a long function is named `main[88]`; the test
@@ -982,14 +992,13 @@ impl<'a> TestIndex<'a> {
     fn tested_by(
         &self,
         caller: &'a Fragment,
-        state: &ScoredState,
-        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
+        ups: &Ups<'a, '_>,
         link: &Link,
     ) -> Option<(String, Option<String>)> {
         if let Some(known) = self.memo.borrow().get(&caller.id) {
             return known.clone();
         }
-        let answer = self.walk_up(caller, state, by_id, link);
+        let answer = self.walk_up(caller, ups, link);
         self.memo
             .borrow_mut()
             .insert(caller.id.clone(), answer.clone());
@@ -999,35 +1008,25 @@ impl<'a> TestIndex<'a> {
     fn walk_up(
         &self,
         caller: &'a Fragment,
-        state: &ScoredState,
-        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
+        ups: &Ups<'a, '_>,
         link: &Link,
     ) -> Option<(String, Option<String>)> {
         if let Some(test) = self.direct(caller, link) {
             return Some((test, None));
         }
-        let graph = &state.scoring_result.graph;
         let mut frontier: Vec<&Fragment> = vec![caller];
         let mut seen: FxHashSet<&FragmentId> = FxHashSet::from_iter([&caller.id]);
         for _ in 0..MAX_TEST_HOPS {
             let mut next = Vec::new();
             for f in &frontier {
-                graph.for_each_reverse_neighbor(&f.id, |src, _| {
-                    if graph.edge_category(src, &f.id) != Some(EdgeCategory::Semantic)
-                        || !graph.is_forward(src, &f.id)
-                    {
-                        return;
-                    }
-                    let Some(up) = by_id.get(src).copied() else {
-                        return;
-                    };
-                    if link(up, f) && seen.insert(&up.id) {
+                for up in ups(f) {
+                    if seen.insert(&up.id) {
                         next.push(up);
                     }
-                });
+                }
             }
             for up in &next {
-                if crate::testfiles::is_test_path(Path::new(up.path())) {
+                if self.is_test(up) {
                     return Some((up.path().to_string(), None));
                 }
                 if let Some(test) = self.direct(up, link) {
@@ -1053,6 +1052,10 @@ impl<'a> TestIndex<'a> {
 /// a resolved binding in the languages that have a binding model, through
 /// the lexical model elsewhere.
 type Link<'l> = dyn Fn(&Fragment, &Fragment) -> bool + 'l;
+
+/// The fragments one call up from a fragment: a forward semantic edge into
+/// it, or into the type a Rust method belongs to, and a link back to it.
+type Ups<'a, 'l> = dyn Fn(&'a Fragment) -> Vec<&'a Fragment> + 'l;
 
 /// How far up the call graph a test may sit and still count as reaching a
 /// caller: the test, a function it calls, and one more.

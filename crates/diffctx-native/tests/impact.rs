@@ -1834,6 +1834,168 @@ fn module_visibility_of_a_range_ignores_the_working_tree() {
     );
 }
 
+const RUST_MANIFEST: (&str, &str) = (
+    "Cargo.toml",
+    "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+);
+
+/// `path::caller` for each caller of the changed `symbol`, sorted.
+fn callers_of(doc: &serde_json::Value, symbol: &str) -> Vec<String> {
+    let mut callers: Vec<String> = doc["changed"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["symbol"] == symbol))
+        .and_then(|c| c["callers"].as_array())
+        .map(|c| {
+            c.iter()
+                .map(|c| {
+                    format!(
+                        "{}::{}",
+                        c["path"].as_str().unwrap_or(""),
+                        c["symbol"].as_str().unwrap_or("")
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    callers.sort();
+    callers
+}
+
+/// #391: `TsConfigs::read(p)` calls the method — the builder links that path
+/// to the type, never to the method — and a closure that happens to be bound
+/// to `read` is called as itself, in a diff and for a `--symbol`.
+#[test]
+fn a_rust_method_is_called_through_its_type_path_not_by_a_local_of_its_name() {
+    let configs = |len: &str| {
+        format!(
+            "pub struct TsConfigs {{\n    pub n: usize,\n}}\n\nimpl TsConfigs {{\n    pub fn read(path: &str) -> TsConfigs {{\n        TsConfigs {{ n: {len} }}\n    }}\n}}\n\npub fn resolver_new(p: &str) -> usize {{\n    let c = TsConfigs::read(p);\n    c.n\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            RUST_MANIFEST,
+            (
+                "src/lib.rs",
+                "pub mod bindings;\npub mod impact;\npub mod other;\n",
+            ),
+            ("src/bindings.rs", &configs("path.len()")),
+            (
+                "src/other.rs",
+                "use crate::bindings::TsConfigs;\n\npub fn load(p: &str) -> usize {\n    TsConfigs::read(p).n\n}\n",
+            ),
+            (
+                "src/impact.rs",
+                "use crate::bindings::TsConfigs;\n\npub fn rust_module_is_public(path: &str) -> bool {\n    let read = |p: &str| std::fs::read_to_string(p).ok();\n    read(path).is_some()\n}\n\npub fn configs_len(path: &str) -> usize {\n    let c: TsConfigs = TsConfigs { n: 0 };\n    c.n + path.len()\n}\n",
+            ),
+        ],
+        &[("src/bindings.rs", &configs("path.len() + 1"))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        callers_of(&doc, "read"),
+        vec!["src/bindings.rs::resolver_new", "src/other.rs::load"],
+        "{doc:#}"
+    );
+    let out = Command::new(&*BIN)
+        .current_dir(tmp.path())
+        .args(["--symbol", "TsConfigs::read", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let md = String::from_utf8_lossy(&out.stdout);
+    assert!(md.contains("called from src/other.rs::load"), "{md}");
+    assert!(
+        md.contains("called from src/bindings.rs::resolver_new"),
+        "{md}"
+    );
+    assert!(!md.contains("rust_module_is_public"), "{md}");
+}
+
+/// #391: a free function is called through its module or by its bare name,
+/// except where a local binding of that name — `let read = …`, a closure or a
+/// fn parameter — is what the bare name means.
+#[test]
+fn a_local_binding_named_like_a_rust_function_is_not_its_caller() {
+    let io = |len: &str| format!("pub fn read(path: &str) -> usize {{\n    {len}\n}}\n");
+    let tmp = repo_of(
+        &[
+            RUST_MANIFEST,
+            (
+                "src/lib.rs",
+                "pub mod io_util;\npub mod report;\npub mod walk;\n",
+            ),
+            ("src/io_util.rs", &io("path.len()")),
+            (
+                "src/report.rs",
+                "use crate::io_util;\n\npub fn total(p: &str) -> usize {\n    io_util::read(p) + 1\n}\n\npub fn summary(p: &str) -> usize {\n    let read = |q: &str| q.len() * 2;\n    read(p)\n}\n\npub fn sized(p: &str, read: impl Fn(&str) -> usize) -> usize {\n    read(p)\n}\n",
+            ),
+            (
+                "src/walk.rs",
+                "use crate::io_util::read;\n\npub fn first(p: &str) -> usize {\n    read(p)\n}\n",
+            ),
+        ],
+        &[("src/io_util.rs", &io("path.len() + 1"))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        callers_of(&doc, "read"),
+        vec!["src/report.rs::total", "src/walk.rs::first"],
+        "{doc:#}"
+    );
+}
+
+/// Rust keeps unit tests beside the code: a function inside a `#[cfg(test)]`
+/// module or carrying a test attribute (`#[test]`, `#[tokio::test]`) is a
+/// test that reaches what it calls, and the module is no untested definition.
+#[test]
+fn inline_rust_tests_guard_what_they_call() {
+    let case = |name: &str| {
+        format!(
+            "\n    #[test]\n    fn {name}() {{\n        let xs = [1, 2];\n        let total = collect(&xs);\n        assert_eq!(total, 3);\n    }}\n"
+        )
+    };
+    let gate = |sum: &str, added: &[&str]| {
+        let cases: String = ["sums", "sums_empty", "sums_one", "sums_many"]
+            .iter()
+            .chain(added)
+            .map(|n| case(n))
+            .collect();
+        format!(
+            "pub fn collect(xs: &[u32]) -> u32 {{\n    {sum}\n}}\n\npub fn collect_capped(xs: &[u32]) -> u32 {{\n    collect(xs).min(10)\n}}\n\n#[cfg(test)]\nmod gate_tests {{\n    use super::*;\n{cases}}}\n"
+        )
+    };
+    let run = |value: &str| {
+        format!(
+            "use crate::gate;\n\npub fn run() -> u32 {{\n    {value}\n}}\n\n#[tokio::test]\nasync fn run_runs() {{\n    assert_eq!(run(), 1);\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            RUST_MANIFEST,
+            ("src/lib.rs", "pub mod gate;\npub mod run;\n"),
+            ("src/gate.rs", &gate("xs.iter().sum()", &[])),
+            ("src/run.rs", &run("gate::collect_capped(&[1])")),
+            (
+                "tests/gate_test.rs",
+                "#[test]\nfn version_is_set() {\n    assert!(!env!(\"CARGO_PKG_VERSION\").is_empty());\n}\n",
+            ),
+        ],
+        &[
+            (
+                "src/gate.rs",
+                &gate("xs.iter().copied().sum()", &["sums_twice", "sums_zero"]),
+            ),
+            ("src/run.rs", &run("gate::collect_capped(&[1, 0])")),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["tests_known"], true, "{doc:#}");
+    assert!(doc.get("untested_definitions").is_none(), "{doc:#}");
+    assert!(doc.get("untested_unlisted").is_none(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("no static test link"), "{md}");
+    assert!(md.contains("called from src/run.rs::run_runs"), "{md}");
+}
+
 /// #374: a script named for a schema is not a schema.
 #[test]
 fn a_script_named_for_a_schema_is_not_a_schema_contract() {
