@@ -647,6 +647,98 @@ fn an_amend_that_lands_other_content_than_previewed_is_checked() {
     assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
 }
 
+/// A Claude Code transcript at `dir/b.jsonl` whose session edited `edited`;
+/// `by_subagent` was edited by a subagent of it, whose transcript sits in
+/// `dir/b/subagents/`.
+fn transcript(
+    dir: &Path,
+    edited: &[std::path::PathBuf],
+    by_subagent: &[std::path::PathBuf],
+) -> std::path::PathBuf {
+    let calls = |tool: &str, paths: &[std::path::PathBuf]| -> String {
+        let mut lines = vec![
+            serde_json::json!({"type": "user", "sessionId": "b", "message": {"role": "user", "content": "what changed?"}})
+                .to_string(),
+            serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t0", "name": "Bash", "input": {"command": "git status"}}
+            ]}})
+            .to_string(),
+        ];
+        lines.extend(paths.iter().map(|p| {
+            serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": tool, "input": {"file_path": p, "content": "x"}}
+            ]}})
+            .to_string()
+        }));
+        lines.join("\n") + "\n"
+    };
+    let main = dir.join("b.jsonl");
+    std::fs::write(&main, calls("Edit", edited)).unwrap();
+    let subagents = dir.join("b").join("subagents");
+    std::fs::create_dir_all(&subagents).unwrap();
+    std::fs::write(subagents.join("agent-1.jsonl"), calls("Write", by_subagent)).unwrap();
+    main
+}
+
+fn inspect_with_transcript(repo: &Path, command: &str, transcript: Option<&Path>) -> Hook {
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&payload_for("PostToolUse", repo, command)).unwrap();
+    if let Some(t) = transcript {
+        doc["transcript_path"] = serde_json::Value::String(t.to_string_lossy().to_string());
+    }
+    let cache = TempDir::new().unwrap();
+    hook_with(repo, cache.path(), "posttooluse", &[], &doc.to_string())
+}
+
+/// #404: in a checkout another session shares, an inspection reviews the
+/// files this session's own transcript edited and only counts the rest;
+/// without a transcript to tell, it says so.
+#[test]
+fn an_inspection_reviews_only_what_this_session_edited() {
+    // `pricing.total` is another session's uncommitted edit.
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let nothing = transcript(dir.path(), &[], &[]);
+    let h = inspect_with_transcript(repo, "git status", Some(&nothing));
+    assert_eq!(h.stdout, "", "this session edited nothing");
+
+    add_unrelated_edit(repo);
+    let inventory = repo.join("shop/inventory.py");
+    for (edited, by_subagent) in [(vec![inventory.clone()], vec![]), (vec![], vec![inventory])] {
+        let dir = TempDir::new().unwrap();
+        let own = transcript(dir.path(), &edited, &by_subagent);
+        let h = inspect_with_transcript(repo, "git diff", Some(&own));
+        assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+        assert!(
+            !h.stdout.contains("shop/checkout.py::charge"),
+            "{}",
+            h.stdout
+        );
+        assert!(
+            h.stdout
+                .contains("1 other changed file(s) were not edited in this session"),
+            "{}",
+            h.stdout
+        );
+    }
+
+    let missing = dir.path().join("gone.jsonl");
+    for transcript in [None, Some(missing.as_path())] {
+        let h = inspect_with_transcript(repo, "git diff", transcript);
+        assert!(
+            h.stdout.contains("shop/checkout.py::charge"),
+            "{}",
+            h.stdout
+        );
+        assert!(
+            h.stdout.contains("cannot tell this session's edits"),
+            "{}",
+            h.stdout
+        );
+    }
+}
+
 #[test]
 fn a_merge_reviews_the_branch_not_our_own_commits() {
     let tmp = repo_with_pending_change();

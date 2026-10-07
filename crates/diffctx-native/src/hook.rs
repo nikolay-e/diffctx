@@ -88,10 +88,22 @@ pub enum Trigger {
         head: Option<String>,
     },
     /// `git diff` / `git status` the agent ran itself: the working tree
-    /// (`--cached`/`--staged` narrows it to the index).
+    /// (`--cached`/`--staged` narrows it to the index). `own` is what this
+    /// session's transcript shows it edited, read once the repository is
+    /// known; `None` when no transcript could tell (#404).
     Inspect {
         staged: bool,
+        own: Option<Owned>,
     },
+}
+
+/// The changed files an inspecting session edited itself, in a checkout
+/// other sessions may share.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Owned {
+    pub files: Vec<String>,
+    /// Changed files no edit of this session touched: counted, not reviewed.
+    pub others: usize,
 }
 
 /// What `git commit` takes from the index at the moment it starts.
@@ -1063,9 +1075,13 @@ fn detect_statement(event: Event, st: &Statement) -> Option<Detected> {
             }
             Trigger::Inspect {
                 staged: has("--cached") || has("--staged"),
+                own: None,
             }
         }
-        (Event::PostToolUse, "status") if !st.piped_out => Trigger::Inspect { staged: false },
+        (Event::PostToolUse, "status") if !st.piped_out => Trigger::Inspect {
+            staged: false,
+            own: None,
+        },
         _ => return None,
     };
     Some(Detected {
@@ -1103,6 +1119,24 @@ fn staged_range(root: &Path, base: Option<&str>) -> Option<String> {
     Some(format!("{}..{}", base.unwrap_or(&staged.base), staged.tree))
 }
 
+/// This session's files as they stand (as staged, for `--cached`) and every
+/// other path as `HEAD` has it: the pending change without the edits other
+/// sessions left in the same checkout, captured on a copy of the index.
+fn own_range(root: &Path, staged: bool, files: &[String]) -> Option<String> {
+    let step = |args: &[&str], magic: &str| -> crate::git::PlanStep {
+        let paths = files.iter().map(|f| format!(":({magic}){f}"));
+        let args = args.iter().map(|a| a.to_string()).chain(paths).collect();
+        (root.to_path_buf(), args)
+    };
+    let mut plan = Vec::new();
+    if !staged {
+        plan.push(step(&["add", "-A", "--"], "literal"));
+    }
+    plan.push(step(&["reset", "-q", "--", ":/"], "exclude,literal"));
+    let snapshot = crate::git::capture_planned(root, crate::git::PlanStart::Index, &plan).ok()?;
+    Some(format!("{}..{}", snapshot.base, snapshot.tree))
+}
+
 /// Where the command line's statements run: the payload's `cwd`, and the
 /// directory a `cd` or `-C` named relative to it.
 fn resolve_dir(cwd: &Path, dir: Option<&str>) -> PathBuf {
@@ -1119,8 +1153,12 @@ fn resolve_dir(cwd: &Path, dir: Option<&str>) -> PathBuf {
 pub fn range_for(root: &Path, cwd: &Path, here: &Path, trigger: &Trigger) -> Option<String> {
     let parent = || git_out(root, &["rev-parse", "--verify", "--quiet", "HEAD~1"]);
     Some(match trigger {
-        Trigger::Inspect { staged: false } => "HEAD".to_string(),
-        Trigger::Inspect { staged: true } => staged_range(root, None)?,
+        Trigger::Inspect {
+            staged,
+            own: Some(own),
+        } if own.others > 0 => own_range(root, *staged, &own.files)?,
+        Trigger::Inspect { staged: false, .. } => "HEAD".to_string(),
+        Trigger::Inspect { staged: true, .. } => staged_range(root, None)?,
         Trigger::Commit {
             amend,
             staging: Staging::Worktree,
@@ -1680,6 +1718,7 @@ fn prepare(
         Trigger::Committed { amend, onto } => {
             *onto = Some(committed_just_now(&root, &head_before, *amend)?);
         }
+        Trigger::Inspect { staged, own } => *own = own_changes(&root, payload, *staged)?,
         _ if event == Event::PreToolUse => record_head(&root, &head_before),
         _ => {}
     }
@@ -1827,6 +1866,142 @@ fn committed_just_now(root: &Path, record: &str, amend: bool) -> Result<String, 
     }
 }
 
+/// Bytes of transcript read to tell this session's edits apart. A long
+/// session writes tens of megabytes; past this the answer says it cannot
+/// tell rather than miss an edit made early on.
+const TRANSCRIPT_BUDGET: u64 = 256 * 1024 * 1024;
+
+const EDIT_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+
+/// Which of the changed files an inspection shows this session edited, by
+/// its own transcript; `None` when no transcript can tell. Another session's
+/// uncommitted work in a shared checkout is not this one's pending change:
+/// a session that edited none of the changed files has nothing to review
+/// (#404).
+fn own_changes(
+    root: &Path,
+    payload: &serde_json::Value,
+    staged: bool,
+) -> Result<Option<Owned>, Silence> {
+    let changed = changed_paths(root, staged);
+    if changed.is_empty() {
+        return Err("clean");
+    }
+    let Some(edited) = payload["transcript_path"]
+        .as_str()
+        .and_then(|t| edited_files(Path::new(t)))
+    else {
+        return Ok(None);
+    };
+    let top = canonical(root);
+    let (files, others): (Vec<String>, Vec<String>) = changed
+        .into_iter()
+        .partition(|p| edited.contains(&top.join(p)));
+    if files.is_empty() {
+        return Err("not-this-session");
+    }
+    Ok(Some(Owned {
+        files,
+        others: others.len(),
+    }))
+}
+
+/// Every path the inspected snapshot changes: the index against `HEAD`, or
+/// the working tree with its untracked files.
+fn changed_paths(root: &Path, staged: bool) -> Vec<String> {
+    let args: &[&str] = if staged {
+        &["diff", "--cached", "--name-only", "-z", "--no-renames"]
+    } else {
+        &["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]
+    };
+    let mut paths = crate::git::run_git_z(root, args).unwrap_or_default();
+    if !staged {
+        let untracked = ["ls-files", "-o", "--exclude-standard", "-z"];
+        paths.extend(crate::git::run_git_z(root, &untracked).unwrap_or_default());
+    }
+    paths
+}
+
+/// The files this session's edit tools named, read from its transcript and
+/// from its subagents' beside it (`<transcript>/subagents/`), streamed line
+/// by line. `None` when they cannot be read whole within the budget.
+fn edited_files(transcript: &Path) -> Option<rustc_hash::FxHashSet<PathBuf>> {
+    use std::io::{BufRead as _, Read as _};
+    let mut sources = vec![transcript.to_path_buf()];
+    if let Ok(dir) = std::fs::read_dir(transcript.with_extension("").join("subagents")) {
+        sources.extend(
+            dir.filter_map(|e| Some(e.ok()?.path()))
+                .filter(|p| p.extension().is_some_and(|x| x == "jsonl")),
+        );
+    }
+    let mut left = TRANSCRIPT_BUDGET;
+    let mut edited = rustc_hash::FxHashSet::default();
+    let mut line = Vec::new();
+    for source in &sources {
+        let file = std::fs::File::open(source).ok()?;
+        let mut reader = std::io::BufReader::new(file.take(left + 1));
+        loop {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line).ok()?;
+            if read == 0 {
+                break;
+            }
+            left = left.checked_sub(read as u64)?;
+            let Ok(text) = std::str::from_utf8(&line) else {
+                continue;
+            };
+            if text.contains("\"tool_use\"")
+                && EDIT_TOOLS
+                    .iter()
+                    .any(|tool| text.contains(&format!("\"{tool}\"")))
+            {
+                edited.extend(edited_paths(text));
+            }
+        }
+    }
+    Some(edited)
+}
+
+/// The paths a transcript line's edit tool calls name.
+fn edited_paths(line: &str) -> Vec<PathBuf> {
+    let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+        return Vec::new();
+    };
+    entry["message"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|call| {
+            call["type"] == "tool_use"
+                && call["name"]
+                    .as_str()
+                    .is_some_and(|name| EDIT_TOOLS.contains(&name))
+        })
+        .filter_map(|call| {
+            let input = &call["input"];
+            input["file_path"]
+                .as_str()
+                .or_else(|| input["notebook_path"].as_str())
+        })
+        .map(|path| canonical(Path::new(path)))
+        .collect()
+}
+
+/// A path as the filesystem resolves it (`/var` is `/private/var` on
+/// macOS), through its directory when the file itself is gone.
+fn canonical(path: &Path) -> PathBuf {
+    dunce::canonicalize(path)
+        .ok()
+        .or_else(|| {
+            Some(
+                dunce::canonicalize(path.parent()?)
+                    .ok()?
+                    .join(path.file_name()?),
+            )
+        })
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
 fn reminder(headline: &str) -> String {
     let what = if headline.trim().is_empty() {
         "reviewed earlier".to_string()
@@ -1863,8 +2038,8 @@ struct Answer {
 /// request keeps the engine's own cap.
 const AUTOMATIC_TOKEN_CAP: u32 = 600;
 
-fn lead_of(event: Event, trigger: &Trigger) -> &'static str {
-    match (event, trigger) {
+fn lead_of(event: Event, trigger: &Trigger) -> String {
+    let lead = match (event, trigger) {
         (
             Event::PreToolUse,
             Trigger::Commit {
@@ -1881,8 +2056,18 @@ fn lead_of(event: Event, trigger: &Trigger) -> &'static str {
         (Event::PostToolUse, Trigger::Committed { .. }) => {
             "diffctx reviewed the commit that just landed, which is not what was reviewed before it."
         }
+        (Event::PostToolUse, Trigger::Inspect { own: None, .. }) => {
+            "diffctx reviewed every pending change in this checkout, which you just inspected; without a readable transcript it cannot tell this session's edits from another session's."
+        }
+        (Event::PostToolUse, Trigger::Inspect { own: Some(own), .. }) if own.others > 0 => {
+            return format!(
+                "diffctx reviewed the pending change this session made, which you just inspected; {} other changed file(s) were not edited in this session and are not analysed.",
+                own.others
+            );
+        }
         (Event::PostToolUse, _) => "diffctx reviewed the pending change you just inspected.",
-    }
+    };
+    lead.to_string()
 }
 
 fn impact_context(
@@ -2264,6 +2449,10 @@ mod tests {
         detect(Event::PostToolUse, command).map(|d| d.trigger)
     }
 
+    fn inspection(staged: bool) -> Trigger {
+        Trigger::Inspect { staged, own: None }
+    }
+
     /// A commit with no staging on its line: `-a` or the index.
     fn commit(all: bool, amend: bool) -> Trigger {
         Trigger::Commit {
@@ -2449,30 +2638,15 @@ mod tests {
 
     #[test]
     fn the_inspection_verbs_fire_only_after_the_tool_ran() {
-        assert_eq!(post("git diff"), Some(Trigger::Inspect { staged: false }));
-        assert_eq!(
-            post("git diff --cached"),
-            Some(Trigger::Inspect { staged: true })
-        );
-        assert_eq!(
-            post("git status --short"),
-            Some(Trigger::Inspect { staged: false })
-        );
+        assert_eq!(post("git diff"), Some(inspection(false)));
+        assert_eq!(post("git diff --cached"), Some(inspection(true)));
+        assert_eq!(post("git status --short"), Some(inspection(false)));
         assert!(post("git diff HEAD~3..HEAD").is_none());
         assert!(post("git diff HEAD~1 HEAD").is_none());
         assert!(post("git diff main").is_none());
-        assert_eq!(
-            post("git diff HEAD"),
-            Some(Trigger::Inspect { staged: false })
-        );
-        assert_eq!(
-            post("git diff -- src/"),
-            Some(Trigger::Inspect { staged: false })
-        );
-        assert_eq!(
-            post("git diff src/a.py"),
-            Some(Trigger::Inspect { staged: false })
-        );
+        assert_eq!(post("git diff HEAD"), Some(inspection(false)));
+        assert_eq!(post("git diff -- src/"), Some(inspection(false)));
+        assert_eq!(post("git diff src/a.py"), Some(inspection(false)));
         let committed = Some(Trigger::Committed {
             amend: false,
             onto: None,
@@ -2484,11 +2658,7 @@ mod tests {
             "git status && git diff --cached",
             "git status --short; git diff --staged",
         ] {
-            assert_eq!(
-                post(line),
-                Some(Trigger::Inspect { staged: true }),
-                "{line}"
-            );
+            assert_eq!(post(line), Some(inspection(true)), "{line}");
         }
         assert_eq!(post("git status && git commit -m x"), committed);
     }
