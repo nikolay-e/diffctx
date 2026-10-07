@@ -752,6 +752,9 @@ jobs:
           # their own index clients and caches, and a CDN edge can still answer
           # one of them with the pre-publish page after the other sees the
           # version. Wheels only: an sdist fallback would build from source.
+          # Every later step reuses what this gate proved — pip installs the
+          # probe download, uvx the index page cached here — because seconds
+          # later another edge can still answer with the pre-publish page.
           deadline=$((SECONDS + 600))
           until python -m pip download -q --no-cache-dir --no-deps --only-binary :all: \
                   -d "${RUNNER_TEMP}/probe" "diffctx==${VERSION}" &&
@@ -764,7 +767,8 @@ jobs:
             echo "diffctx ${VERSION} not resolvable for every installer yet; retrying in 30s"
             sleep 30
           done
-          python -m pip install --no-cache-dir --only-binary :all: "diffctx==${VERSION}"
+          python -m pip install --no-cache-dir --only-binary :all: \
+            --find-links "${RUNNER_TEMP}/probe" "diffctx==${VERSION}"
           # Not `| grep -q`: an early exit breaks the pipe and pipefail fails the step.
           [[ "$(python -m pip show diffctx | sed -n 's/^Version: //p')" == "${VERSION}" ]]
 
@@ -816,7 +820,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          uvx --refresh --python 3.13 --no-build "diffctx==${VERSION}" \
+          uvx --python 3.13 --no-build "diffctx==${VERSION}" \
             . --diff HEAD~1..HEAD -f md -o "${RUNNER_TEMP}/uvx.md"
           grep -q "def sub" "${RUNNER_TEMP}/uvx.md"
           echo "OK: uvx runs the published wheel"
@@ -833,7 +837,8 @@ jobs:
           python -m venv "${RUNNER_TEMP}/base"
           bin="${RUNNER_TEMP}/base/bin"
           [[ -d "$bin" ]] || bin="${RUNNER_TEMP}/base/Scripts"
-          "$bin/python" -m pip install --no-cache-dir --only-binary :all: "diffctx==${VERSION}"
+          "$bin/python" -m pip install --no-cache-dir --only-binary :all: \
+            --find-links "${RUNNER_TEMP}/probe" "diffctx==${VERSION}"
           test "$("$bin/diffctx-mcp" --version)" = "diffctx-mcp ${VERSION}"
           set +e
           "$bin/diffctx-mcp" --help >/dev/null 2>&1
@@ -860,7 +865,8 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install --no-cache-dir --only-binary :all: "diffctx[mcp]==${VERSION}"
+          python -m pip install --no-cache-dir --only-binary :all: \
+            --find-links "${RUNNER_TEMP}/probe" "diffctx[mcp]==${VERSION}"
           command -v diffctx-mcp
           python - <<'PY'
           import json, os, subprocess, sys, tempfile, threading
