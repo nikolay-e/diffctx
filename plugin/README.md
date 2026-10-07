@@ -28,10 +28,11 @@ context stops paying for itself, under a hard token budget.
 ## What it runs
 
 The MCP server starts with `uvx diffctx[mcp]==<version> mcp`,
-so [uv](https://docs.astral.sh/uv/) must be installed. `constraints.txt` pins
-every dependency to the exact set the release was tested with. On first
-start uv downloads those pinned packages from PyPI; after that nothing is
-fetched.
+so [uv](https://docs.astral.sh/uv/) must be installed. On first start uv
+downloads that release and its dependencies from PyPI; after that nothing is
+fetched. `uv.lock` lists the dependency set the release was tested with, each
+package with its PyPI hashes; uvx resolves the dependencies itself, within
+the ranges diffctx declares.
 
 The git hooks run that same pinned package, `diffctx hook <event>`, from uv's
 cache and never touch the network: a session start fills the cache in the

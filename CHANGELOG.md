@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Claude plugin: the MCP server and the hooks launch `uvx diffctx[mcp]==X`
+  with no other option, and `plugin/uv.lock` pins the release's whole
+  dependency tree with PyPI hashes, the shape the plugin directory reads as a
+  locked launch ("Launcher lock invalid" before). `constraints.txt` is gone:
+  uv resolves diffctx's dependencies within their declared ranges, as every
+  other uvx install already did.
+
 ## [1.18.4] - 2026-10-07
 
 ### Security
