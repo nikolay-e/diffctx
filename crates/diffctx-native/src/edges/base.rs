@@ -47,10 +47,19 @@ pub trait EdgeBuilder: Send + Sync {
 static INDEX_FILE_STEMS: Lazy<FxHashSet<&str>> =
     Lazy::new(|| ["__init__", "index", "mod"].iter().copied().collect());
 
+/// JVM source roots: `src/<source set>/<language>/` precedes the package
+/// path in Gradle and Maven layouts, so `src/test/kotlin/com/acme/FooTest`
+/// is the module `com.acme.FooTest`, the name its imports spell.
+const JVM_SOURCE_LANGUAGES: &[&str] = &["java", "kotlin", "scala", "groovy"];
+
 fn strip_source_prefix(parts: &[&str]) -> Vec<String> {
     for (i, part) in parts.iter().enumerate() {
         if *part == "src" || *part == "lib" || *part == "packages" {
-            return parts[i + 1..].iter().map(|s| s.to_string()).collect();
+            let mut rest = &parts[i + 1..];
+            if *part == "src" && rest.len() > 2 && JVM_SOURCE_LANGUAGES.contains(&rest[1]) {
+                rest = &rest[2..];
+            }
+            return rest.iter().map(|s| s.to_string()).collect();
         }
     }
     parts.iter().map(|s| s.to_string()).collect()

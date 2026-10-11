@@ -765,39 +765,37 @@ impl<'a> KotlinResolver<'a> {
             .find_map(|i| found(&i.path))
     }
 
-    /// Kotlin files that declare a type named `name`, at the run's snapshot.
+    /// Kotlin files that declare a type named `name`, at the run's snapshot:
+    /// one grep builds the repository's index of type declarations the first
+    /// time any name is asked for.
     fn files_declaring(&self, name: &str) -> Vec<String> {
-        if let Some(known) = self.type_files.borrow().get(name) {
-            return known.clone();
+        if self.type_files.borrow().is_empty() {
+            let mut index: FxHashMap<String, Vec<String>> = FxHashMap::default();
+            let rev = self.source.rev().map(str::to_string);
+            let declared = crate::git::grep_lines_matching(
+                self.root,
+                r"(class|interface|object|typealias)[[:space:]]+[A-Za-z_]",
+                rev.as_deref(),
+                &["*.kt", "*.kts"],
+            )
+            .unwrap_or_default();
+            for (path, _, text) in declared {
+                for name in declared_type_names(&text) {
+                    let files = index.entry(name).or_default();
+                    if files.last() != Some(&path) && files.len() < MAX_TYPE_FILES {
+                        files.push(path.clone());
+                    }
+                }
+            }
+            // An empty repository index still marks the lookup as done.
+            index.entry(String::new()).or_default();
+            *self.type_files.borrow_mut() = index;
         }
-        let needles: Vec<String> = ["class ", "interface ", "object ", "typealias "]
-            .iter()
-            .map(|k| format!("{k}{name}"))
-            .collect();
-        let rev = self.source.rev().map(str::to_string);
-        let mut paths: Vec<String> = crate::git::grep_lines(self.root, &needles, rev.as_deref())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(path, _, text)| {
-                is_kotlin(path)
-                    && needles.iter().any(|n| {
-                        text.match_indices(n.as_str()).any(|(at, _)| {
-                            text[at + n.len()..]
-                                .chars()
-                                .next()
-                                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
-                        })
-                    })
-            })
-            .map(|(path, _, _)| path)
-            .collect();
-        paths.sort();
-        paths.dedup();
-        paths.truncate(MAX_TYPE_FILES);
         self.type_files
-            .borrow_mut()
-            .insert(name.to_string(), paths.clone());
-        paths
+            .borrow()
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The Gradle or Maven project a file belongs to: the nearest directory
@@ -899,6 +897,20 @@ impl<'a> KotlinResolver<'a> {
             .insert(project.to_path_buf(), out.clone());
         out
     }
+}
+
+/// The type names a source line declares: the word after each `class`,
+/// `interface`, `object` or `typealias` keyword.
+fn declared_type_names(line: &str) -> Vec<String> {
+    let words: Vec<&str> = line
+        .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '`'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    words
+        .windows(2)
+        .filter(|w| matches!(w[0], "class" | "interface" | "object" | "typealias"))
+        .map(|w| w[1].trim_matches('`').to_string())
+        .collect()
 }
 
 /// How a use relates to the definition, `None` when the use cannot reach a

@@ -219,6 +219,13 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        },
+        "missed_in": {
+          "description": "Files in view that spell the name but were not fully analysed: a\ncaller there is not seen, so an empty `callers` says nothing about\nthem (#454).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnanalysedFile"
+          }
         }
       },
       "required": [
@@ -304,6 +311,37 @@
         "evidence"
       ]
     },
+    "UnanalysedFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read), or\n`parse_partial` (read but for the error lines).",
+          "type": "string"
+        },
+        "lines": {
+          "description": "Where the parse broke, the first few lines.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ]
+    },
     "Contract": {
       "type": "object",
       "properties": {
@@ -360,37 +398,6 @@
           "type": "string",
           "const": "cancelled"
         }
-      ]
-    },
-    "UnanalysedFile": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string"
-        },
-        "language": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "reason": {
-          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read), or\n`parse_partial` (read but for the error lines).",
-          "type": "string"
-        },
-        "lines": {
-          "description": "Where the parse broke, the first few lines.",
-          "type": "array",
-          "items": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          }
-        }
-      },
-      "required": [
-        "path",
-        "reason"
       ]
     }
   }

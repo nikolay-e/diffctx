@@ -1,0 +1,103 @@
+name: kotlin_002_gradle_caller_and_test_not_namesake
+tags:
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- distance:1hop
+- difficulty:medium
+repo:
+  initial_files:
+    settings.gradle.kts: |
+      include(":core", ":app")
+    core/build.gradle.kts: |
+      plugins { kotlin("jvm") }
+    app/build.gradle.kts: |
+      dependencies { implementation(project(":core")) }
+    core/src/main/kotlin/com/acme/core/Store.kt: |
+      package com.acme.core
+
+      interface Store {
+          fun apply(amount: Long): Long
+      }
+    core/src/main/kotlin/com/acme/core/Ledger.kt: |
+      package com.acme.core
+
+      class Ledger(private val store: Store) {
+          fun settle(amount: Long): Long {
+              return store.apply(amount)
+          }
+
+          fun balance(): Long = store.apply(0)
+      }
+    core/src/test/kotlin/com/acme/core/LedgerTest.kt: |
+      package com.acme.core
+
+      class LedgerTest {
+          private val store = object : Store {
+              override fun apply(amount: Long) = amount
+          }
+
+          fun settlesTheAmount() {
+              check(Ledger(store).settle(5) == 5L)
+          }
+      }
+    app/src/main/kotlin/com/acme/app/Checkout.kt: |
+      package com.acme.app
+
+      import com.acme.core.Ledger
+
+      class Checkout(private val ledger: Ledger) {
+          fun pay(cents: Long): Long = ledger.settle(cents)
+      }
+    app/src/main/kotlin/com/acme/app/Bank.kt: |
+      package com.acme.app
+
+      class Bank {
+          fun settle(amount: Long): Long = amount * 2
+      }
+
+      class Teller(private val bank: Bank) {
+          fun close(): Long = bank.settle(1)
+      }
+    app/src/main/kotlin/com/acme/app/Messages.kt: |
+      package com.acme.app
+
+      object Messages {
+          const val HINT = "settle the ledger before closing"
+      }
+  changed_files:
+    core/src/main/kotlin/com/acme/core/Ledger.kt: |
+      package com.acme.core
+
+      class Ledger(private val store: Store) {
+          fun settle(amount: Long): Long {
+              require(amount >= 0) { "negative" }
+              return store.apply(amount)
+          }
+
+          fun balance(): Long = store.apply(0)
+      }
+  commit_message: Refuse a negative settlement
+fragments:
+- id: checkout
+  selector:
+    path: app/src/main/kotlin/com/acme/app/Checkout.kt
+    anchor: ledger.settle(cents)
+- id: ledger_test
+  selector:
+    path: core/src/test/kotlin/com/acme/core/LedgerTest.kt
+    anchor: settle(5)
+- id: no_teller
+  selector:
+    path: app/src/main/kotlin/com/acme/app/Bank.kt
+    anchor: bank.settle(1)
+- id: no_messages
+  selector:
+    path: app/src/main/kotlin/com/acme/app/Messages.kt
+oracle:
+  required:
+  - checkout
+  - ledger_test
+  forbidden:
+  - no_teller
+  - no_messages

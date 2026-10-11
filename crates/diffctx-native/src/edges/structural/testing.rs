@@ -63,11 +63,27 @@ fn extract_target_name_from_test(test_name: &str) -> Option<String> {
     if test_name.ends_with("Tests") && test_name.len() > 5 {
         return Some(test_name[..test_name.len() - 5].to_lowercase());
     }
+    // Kotest/Spek `FooSpec`, Maven Failsafe `FooIT`.
+    if test_name.ends_with("Spec") && test_name.len() > 4 {
+        return Some(test_name[..test_name.len() - 4].to_lowercase());
+    }
+    if test_name.ends_with("IT")
+        && test_name.len() > 2
+        && test_name.as_bytes()[test_name.len() - 3].is_ascii_lowercase()
+    {
+        return Some(test_name[..test_name.len() - 2].to_lowercase());
+    }
     if test_name.ends_with("Test") && test_name.len() > 4 {
         return Some(test_name[..test_name.len() - 4].to_lowercase());
     }
     None
 }
+
+/// JVM test classes are named after their subject: `FooTest`, `FooTests`,
+/// `FooSpec`, `FooIT` (stems lower-cased).
+pub(crate) const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
+pub(crate) const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] =
+    &[".java", ".kt", ".kts", ".scala", ".groovy"];
 
 pub struct TestEdgeBuilder;
 
@@ -237,6 +253,17 @@ impl EdgeBuilder for TestEdgeBuilder {
                     for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
                         if base::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
+                        }
+                    }
+                }
+
+                if JVM_TEST_SUFFIX_EXTENSIONS.contains(&ext.as_str()) {
+                    for suffix in JVM_TEST_SUFFIXES {
+                        let test_stem = format!("{stem_lower}{suffix}");
+                        for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
+                            if base::file_ext(c) == ext && is_test_file(c) {
+                                discovered.push(c.clone());
+                            }
                         }
                     }
                 }

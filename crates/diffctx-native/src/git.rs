@@ -1421,6 +1421,33 @@ fn run_grep(repo_root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Every line matching the extended regex `pattern` at `rev` (the working
+/// tree when `None`) in the files `pathspec` names: (path, line, text).
+pub fn grep_lines_matching(
+    repo_root: &Path,
+    pattern: &str,
+    rev: Option<&str>,
+    pathspec: &[&str],
+) -> Result<Vec<(String, u32, String)>> {
+    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-E", "-e", pattern];
+    args.extend(rev);
+    if !pathspec.is_empty() {
+        args.push("--");
+        args.extend_from_slice(pathspec);
+    }
+    let prefix = rev.map(|r| format!("{r}:")).unwrap_or_default();
+    Ok(run_grep(repo_root, &args)?
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, '\0');
+            let path = parts.next()?;
+            let path = path.strip_prefix(prefix.as_str()).unwrap_or(path);
+            let no = parts.next()?.parse().ok()?;
+            Some((path.to_string(), no, parts.next()?.to_string()))
+        })
+        .collect())
+}
+
 /// Tracked and unignored untracked files holding `word` as a whole word.
 pub fn grep_files_with_word(
     repo_root: &Path,
@@ -1439,7 +1466,7 @@ pub fn grep_files_with_declaration(
 ) -> Result<Vec<PathBuf>> {
     let name = regex::escape(name);
     let pattern = format!(
-        r#"((def|class|fn|func|function|struct|interface|trait|enum|type|module|const|let|var|val|object|define)[[:space:]]+(\([^)]*\)[[:space:]]*)?["']?{name}([^[:alnum:]_$]|$))|((^|[^[:alnum:]_$.]){name}[[:space:]]*[:=][[:space:]]*(function|async|\())"#
+        r#"((def|class|fn|fun|func|function|struct|interface|trait|enum|type|typealias|module|const|let|var|val|object|define)[[:space:]]+(\([^)]*\)[[:space:]]*)?["']?{name}([^[:alnum:]_$]|$))|((^|[^[:alnum:]_$.]){name}[[:space:]]*[:=][[:space:]]*(function|async|\())"#
     );
     grep_files(repo_root, &["-E", "-e", &pattern], pathspec)
 }

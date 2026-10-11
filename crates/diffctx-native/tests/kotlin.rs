@@ -505,3 +505,122 @@ fn a_surviving_definition_does_not_hide_a_broken_parse() {
     assert_eq!(files[0]["reason"], "parse_partial", "{doc:#}");
     assert_eq!(doc["empty"], false);
 }
+
+/// A `FooTest` beside `Foo` is a related file, not a guard: a changed
+/// method its tests never call has no static test link, and one they call
+/// does — with no import, through the shared package of main and test.
+#[test]
+fn a_test_class_guards_the_methods_it_calls_and_only_those() {
+    let foo = |body: &str| {
+        format!(
+            "package a\n\nclass Foo {{\n    fun changed() = {body}\n\n    fun other() = 1\n}}\n"
+        )
+    };
+    let with_test = |calls: &str| {
+        repo_of(
+            &[
+                ("src/main/kotlin/a/Foo.kt", &foo("1")),
+                (
+                    "src/test/kotlin/a/FooTest.kt",
+                    &format!(
+                        "package a\n\nclass FooTest {{\n    fun works() {{\n        Foo().{calls}()\n    }}\n}}\n"
+                    ),
+                ),
+            ],
+            &[("src/main/kotlin/a/Foo.kt", &foo("2"))],
+        )
+    };
+    let unguarded = impact(with_test("other").path());
+    let unlisted: Vec<&str> = unguarded["untested_unlisted"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    assert!(
+        unlisted.iter().any(|u| u.contains("Foo.kt::changed")),
+        "{unguarded:#}"
+    );
+    let guarded = impact(with_test("changed").path());
+    assert_eq!(
+        callers(&guarded, "changed"),
+        ["src/test/kotlin/a/FooTest.kt::works resolved call"],
+        "{guarded:#}"
+    );
+    assert!(
+        guarded["untested_unlisted"].is_null(),
+        "a called method is guarded: {guarded:#}"
+    );
+}
+
+/// A file in view that spells the changed name but did not parse cleanly
+/// may hold a caller nobody saw: the symbol says so instead of reading as
+/// one nothing calls. A clean file naming it in a comment is not such a file.
+#[test]
+fn a_namer_that_did_not_parse_is_named_where_a_caller_may_hide() {
+    let ledger =
+        |body: &str| format!("package a\n\nclass Ledger {{\n    fun settle(x: Int) = {body}\n}}\n");
+    let tmp = repo_of(
+        &[
+            ("src/main/kotlin/a/Ledger.kt", &ledger("x")),
+            (
+                "src/main/kotlin/a/Broken.kt",
+                "package a\n\nclass Broken(private val l: Ledger) {\n    fun go() = l.settle(1)\n    fun half(: Int {\n}\n",
+            ),
+            (
+                "src/main/kotlin/a/Notes.kt",
+                "package a\n\n// settle is called by the checkout\nclass Notes\n",
+            ),
+        ],
+        &[("src/main/kotlin/a/Ledger.kt", &ledger("x + 1"))],
+    );
+    let doc = impact(tmp.path());
+    let sym = doc["changed"]
+        .as_array()
+        .and_then(|a| a.iter().find(|c| c["symbol"] == "settle"))
+        .unwrap_or_else(|| panic!("settle listed: {doc:#}"));
+    let missed: Vec<&str> = sym["missed_in"]
+        .as_array()
+        .expect("missed_in")
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(missed, ["src/main/kotlin/a/Broken.kt"], "{doc:#}");
+    assert_eq!(doc["empty"], false);
+}
+
+/// `--symbol` reads Kotlin's qualifiers from the syntax: an extension by its
+/// receiver, a companion member by its companion; a member of the same name
+/// on another class is not what the query names.
+#[test]
+fn a_symbol_query_takes_receivers_and_companions_from_the_syntax() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/main/kotlin/a/Pad.kt",
+                "package a\n\nfun String.pad(n: Int): String = padStart(n)\n\nclass Cell {\n    fun pad(n: Int) = n\n}\n\nclass Worker {\n    companion object {\n        fun create() = Worker()\n    }\n}\n",
+            ),
+            (
+                "src/main/kotlin/a/Use.kt",
+                "package a\n\nfun ok(s: String) = s.pad(3)\n\nfun make() = Worker.create()\n",
+            ),
+        ],
+        &[],
+    );
+    let pad = symbol(tmp.path(), "String.pad");
+    let defs: Vec<&str> = pad["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["lines"].as_str().unwrap())
+        .collect();
+    assert_eq!(defs, ["3-3"], "the extension, not Cell.pad: {pad:#}");
+    assert_eq!(
+        callers(&pad, "pad"),
+        ["src/main/kotlin/a/Use.kt::ok resolved call"]
+    );
+    let create = symbol(tmp.path(), "Worker.Companion.create");
+    assert_eq!(
+        callers(&create, "create"),
+        ["src/main/kotlin/a/Use.kt::make resolved call"],
+        "{create:#}"
+    );
+}

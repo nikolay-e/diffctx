@@ -181,6 +181,11 @@ pub struct ChangedSymbol {
     /// parameters with defaults, so they are counted, not listed (#388).
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub compatible_callers: usize,
+    /// Files in view that spell the name but were not fully analysed: a
+    /// caller there is not seen, so an empty `callers` says nothing about
+    /// them (#454).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missed_in: Vec<UnanalysedFile>,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -680,6 +685,36 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             .cmp(&b.language)
             .then_with(|| a.path.cmp(&b.path))
     });
+    out
+}
+
+/// Files in view, other than the definition's own, that spell `name` but
+/// whose definitions were not all read: a caller there is not seen.
+fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> Vec<UnanalysedFile> {
+    let source = state.run.source();
+    let mut out: Vec<UnanalysedFile> = files
+        .identifiers
+        .iter()
+        .filter(|(path, words)| **path != own && words.contains(name))
+        .filter_map(|(path, _)| {
+            let rel_path = rel(state, path);
+            let has_definition = files
+                .fragments
+                .get(path)
+                .is_some_and(|frags| frags.iter().any(|f| f.kind.is_definition_kind()));
+            let (reason, lines) =
+                crate::parsers::unanalysed_reason(&rel_path, has_definition, || {
+                    source.read_bytes(Path::new(path))
+                })?;
+            Some(UnanalysedFile {
+                language: crate::languages::get_language_for_file(&rel_path),
+                path: rel_path,
+                reason,
+                lines,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.cmp(&b.path));
     out
 }
 
@@ -2240,11 +2275,15 @@ pub fn build_impact(
         } else {
             0
         };
+        let missed_in = symbol
+            .map(|s| missed_namers(state, &files, s, core.path()))
+            .unwrap_or_default();
         if callers.is_empty()
             && compatible_callers == 0
             && commits < 2
             && query.is_none()
             && unresolved.is_none()
+            && missed_in.is_empty()
         {
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
@@ -2267,6 +2306,7 @@ pub fn build_impact(
             unresolved,
             untested,
             compatible_callers,
+            missed_in,
         });
     }
     if query.is_none() && state.run.check() {
@@ -2608,6 +2648,7 @@ fn removed_kotlin(
                 unresolved: None,
                 untested: false,
                 compatible_callers: 0,
+                missed_in: Vec::new(),
             },
             contract,
         ));
@@ -2834,6 +2875,7 @@ fn removed_definitions(
                 unresolved: None,
                 untested: false,
                 compatible_callers: 0,
+                missed_in: Vec::new(),
             },
             contract,
         ));
@@ -3476,6 +3518,33 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     );
     if let Some(note) = &sym.unresolved {
         let _ = writeln!(out, "  - callers not resolved: {note}");
+    }
+    if !sym.missed_in.is_empty() {
+        let shown: Vec<String> = sym
+            .missed_in
+            .iter()
+            .take(UNANALYSED_EXAMPLES)
+            .map(|f| {
+                let at = f.lines.first().map(|l| format!(":{l}")).unwrap_or_default();
+                format!(
+                    "{}{at} ({})",
+                    f.path,
+                    crate::parsers::unanalysed_text(f.reason)
+                )
+            })
+            .collect();
+        let more = sym.missed_in.len().saturating_sub(UNANALYSED_EXAMPLES);
+        let _ = writeln!(
+            out,
+            "  - callers may be missing: named in {} file(s) not fully analysed: {}{}",
+            sym.missed_in.len(),
+            shown.join(", "),
+            if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            }
+        );
     }
     if sym.compatible_callers > 0 {
         let _ = writeln!(

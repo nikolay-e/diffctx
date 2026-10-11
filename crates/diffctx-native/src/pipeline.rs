@@ -901,7 +901,25 @@ fn resolve_symbol_change_set(
                     .max_by_key(|c| c.start_line())
             })
     };
+    // Kotlin states its owners and receivers in the syntax facts: `Obj.f`,
+    // `C.Companion.f` and an extension's `String.pad` are read there, not
+    // guessed from indentation.
+    let kotlin_owned = |def: &Fragment, owner: &str| -> Option<bool> {
+        if !crate::kotlin_bindings::is_kotlin(def.path()) {
+            return None;
+        }
+        let text = run.source().read_to_string(Path::new(def.path()))?;
+        let facts = crate::facts::kotlin::facts(&text)?;
+        let decl = facts.declaration_named(def.symbol_name.as_deref()?, def.start_line())?;
+        Some(
+            decl.owners.last().map(String::as_str) == Some(owner)
+                || decl.receiver.as_deref() == Some(owner),
+        )
+    };
     let owned_by = |def: &Fragment, owner: &str| {
+        if let Some(owned) = kotlin_owned(def, owner) {
+            return owned;
+        }
         Path::new(def.path())
             .file_stem()
             .is_some_and(|stem| stem.to_string_lossy() == owner)

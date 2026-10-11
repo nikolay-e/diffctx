@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered entry point (which hid its missing test link); method-level
   entry points (`@GetMapping`, `@Scheduled`, `@Bean`, …) count only when the
   file imports them from a framework package.
+- A changed symbol whose name is spelled in a file in view that did not
+  parse cleanly lists that file (`missed_in`, "callers may be missing")
+  instead of reading as one nothing calls (#454).
+- JVM tests pair with their subject the way JVM projects name them:
+  `FooTest`, `FooTests`, `FooSpec` and `FooIT` beside `Foo` are discovered
+  and linked in both directions, and `src/<set>/<java|kotlin|scala|groovy>/`
+  is a source root, so a test importing `com.acme.Foo` reaches
+  `src/main/kotlin/com/acme/Foo.kt`. A related test file is not a guard: a
+  method its tests never call keeps "no static test link".
+- `--symbol Owner.name` reads Kotlin's owners and receivers from the syntax:
+  `String.pad` names the extension, `Worker.Companion.create` the companion
+  member; and the declaration search that keeps a capped query's definition
+  file knows `fun` and `typealias`.
 - The parse outcome is recorded when the fragmenter parses a file, not
   inferred from the fragments that came out: a file that parsed with errors
   is reported as analysed only in part even when a definition survived, and
