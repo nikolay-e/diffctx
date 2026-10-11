@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementations of a changed abstract member are their own relation, a
   removed declaration is found by comparing the file's declarations at the
   base and the head, and a public contract changes when the header does —
-  parameter defaults and all.
+  parameter defaults and all. In the context graph a Kotlin member use links
+  only to the definition it resolves to: a candidate suggests, it does not
+  link.
 
 ### Fixed
 

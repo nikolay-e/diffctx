@@ -494,10 +494,6 @@ impl EdgeBuilder for JVMEdgeBuilder {
             return FxHashMap::default();
         };
         let source = crate::source::current();
-        let kotlin_facts = |f: &Fragment| {
-            crate::source::read_to_string(Path::new(f.path()))
-                .and_then(|text| crate::facts::kotlin::facts(&text))
-        };
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
@@ -771,9 +767,10 @@ impl EdgeBuilder for JVMEdgeBuilder {
         }
 
         // Kotlin users bind through their syntax facts: a member use links to
-        // the definitions the Kotlin binding model does not reject, whatever
-        // the length of the name, and a spelling in a string or a comment,
-        // or a receiver of another type, links nothing.
+        // the definitions the Kotlin binding model resolves it to, whatever
+        // the length of the name. A candidate (an untyped receiver, an
+        // overload) is no edge — a guess suggests, it does not link — and a
+        // spelling in a string or a comment links nothing.
         let kotlin_defs: FxHashMap<&str, Vec<&Fragment>> = {
             let mut m: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
             for f in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
@@ -795,15 +792,17 @@ impl EdgeBuilder for JVMEdgeBuilder {
                     .map(|r| r.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_else(|_| p.to_string())
             };
+            let mut defs_of: FxHashMap<&FragmentId, Option<crate::kotlin_bindings::KDef>> =
+                FxHashMap::default();
             for jf in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
-                let Some(facts) = kotlin_facts(jf) else {
+                let user = rel(jf.path());
+                let Some(facts) = resolver.facts(&user) else {
                     continue;
                 };
-                let user = rel(jf.path());
-                let mut names: Vec<&str> = facts
-                    .uses
+                let first = facts.uses.partition_point(|u| u.line < jf.start_line());
+                let mut names: Vec<&str> = facts.uses[first..]
                     .iter()
-                    .filter(|u| u.line >= jf.start_line() && u.line <= jf.end_line())
+                    .take_while(|u| u.line <= jf.end_line())
                     .map(|u| u.name.as_str())
                     .collect();
                 names.sort_unstable();
@@ -820,13 +819,18 @@ impl EdgeBuilder for JVMEdgeBuilder {
                         if d.id == jf.id || crate::container::within(&jf.id, d) {
                             continue;
                         }
-                        let Some(def) = resolver.definition(&rel(d.path()), name, d.start_line())
+                        let Some(def) = defs_of
+                            .entry(&d.id)
+                            .or_insert_with(|| {
+                                resolver.definition(&rel(d.path()), name, d.start_line())
+                            })
+                            .as_ref()
                         else {
                             continue;
                         };
                         if resolver
-                            .classify(&user, (jf.start_line(), jf.end_line()), &def)
-                            .is_some()
+                            .classify(&user, (jf.start_line(), jf.end_line()), def)
+                            .is_some_and(|f| f.evidence == crate::bindings::Evidence::Resolved)
                         {
                             add_edge(&mut edges, &jf.id, &d.id, member_weight, reverse_factor);
                         }

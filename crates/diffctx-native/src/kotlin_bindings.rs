@@ -73,6 +73,11 @@ pub struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
+    /// Facts of other revisions, by (revision, path): the base side of a
+    /// range is asked for once per changed definition.
+    facts_at: RefCell<FxHashMap<(String, String), Option<Arc<KotlinFacts>>>>,
+    /// One `git cat-file --batch` for those reads, not a process per file.
+    batch: RefCell<Option<crate::git::CatFileBatch>>,
     type_files: RefCell<FxHashMap<String, Vec<String>>>,
     projects: RefCell<FxHashMap<PathBuf, Option<PathBuf>>>,
     deps: RefCell<FxHashMap<PathBuf, Vec<PathBuf>>>,
@@ -84,6 +89,8 @@ impl<'a> KotlinResolver<'a> {
             root,
             source,
             facts: RefCell::default(),
+            facts_at: RefCell::default(),
+            batch: RefCell::default(),
             type_files: RefCell::default(),
             projects: RefCell::default(),
             deps: RefCell::default(),
@@ -120,8 +127,23 @@ impl<'a> KotlinResolver<'a> {
 
     /// The facts of `rel` at another revision of the repository.
     pub fn facts_at(&self, rev: &str, rel: &str) -> Option<Arc<KotlinFacts>> {
-        let text = crate::git::show_file_at_revision(self.root, rev, Path::new(rel)).ok()?;
-        crate::facts::kotlin::facts(&text)
+        let key = (rev.to_string(), rel.to_string());
+        if let Some(known) = self.facts_at.borrow().get(&key) {
+            return known.clone();
+        }
+        let read = {
+            let mut batch = self.batch.borrow_mut();
+            if batch.is_none() {
+                *batch = crate::git::CatFileBatch::new(self.root).ok();
+            }
+            batch
+                .as_mut()
+                .and_then(|b| b.get(rev, Path::new(rel)).ok())
+                .or_else(|| crate::git::show_file_at_revision(self.root, rev, Path::new(rel)).ok())
+        }
+        .and_then(|text| crate::facts::kotlin::facts(&text));
+        self.facts_at.borrow_mut().insert(key, read.clone());
+        read
     }
 
     /// The lines of `rel` where a use could reach `def` by spelling: its
@@ -147,10 +169,11 @@ impl<'a> KotlinResolver<'a> {
         let facts = self.facts(rel)?;
         let names = self.names_for(&facts, def);
         let mut best: Option<Finding> = None;
-        for u in facts
-            .uses
+        let first = facts.uses.partition_point(|u| u.line < lines.0);
+        for u in facts.uses[first..]
             .iter()
-            .filter(|u| u.line >= lines.0 && u.line <= lines.1 && names.contains(&u.name))
+            .take_while(|u| u.line <= lines.1)
+            .filter(|u| names.contains(&u.name))
         {
             // The definition's own declaration is no use of it.
             if rel == def.path && def.decl.span.contains(&u.at) {
@@ -802,11 +825,14 @@ impl<'a> KotlinResolver<'a> {
     /// above it holding a build file.
     fn project_of(&self, rel: &str) -> Option<PathBuf> {
         let mut dir = Path::new(rel).parent()?.to_path_buf();
-        let start = dir.clone();
-        if let Some(known) = self.projects.borrow().get(&start) {
-            return known.clone();
-        }
+        // Every directory walked through shares the answer, so a sibling
+        // file stops at the first directory already asked about.
+        let mut walked: Vec<PathBuf> = Vec::new();
         let found = loop {
+            if let Some(known) = self.projects.borrow().get(&dir) {
+                break known.clone();
+            }
+            walked.push(dir.clone());
             let has_build = ["build.gradle.kts", "build.gradle", "pom.xml"]
                 .iter()
                 .any(|b| {
@@ -821,7 +847,10 @@ impl<'a> KotlinResolver<'a> {
                 break None;
             }
         };
-        self.projects.borrow_mut().insert(start, found.clone());
+        let mut projects = self.projects.borrow_mut();
+        for d in walked {
+            projects.insert(d, found.clone());
+        }
         found
     }
 
