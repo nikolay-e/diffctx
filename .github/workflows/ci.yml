@@ -80,10 +80,11 @@ jobs:
         run: cargo audit
 
   # ============================================================================
-  # Cargo.toml splits 39 tree-sitter grammars into lang-core/lang-extra, but
+  # Cargo.toml splits the tree-sitter grammars into lang-core/lang-extra, but
   # only the default (both) feature set was ever compiled. Under lang-core
-  # alone 21 LANG_CONFIGS entries resolve to no grammar and silently degrade to
-  # generic chunking, and nothing would have caught the build breaking outright.
+  # alone every lang-extra LANG_CONFIGS entry resolves to no grammar and
+  # degrades to generic chunking, and nothing would have caught the build
+  # breaking outright.
   # ============================================================================
   cargo-feature-sets:
     name: Rust builds without default features

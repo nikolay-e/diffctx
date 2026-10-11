@@ -1467,8 +1467,19 @@ pub fn build_impact(
     deadline: Option<Instant>,
 ) -> ImpactOutput {
     let graph = &state.scoring_result.graph;
-    let by_id: FxHashMap<&FragmentId, &Fragment> =
-        state.all_fragments.iter().map(|f| (&f.id, f)).collect();
+    // A signature variant as long as its fragment shares its id (a Kotlin
+    // class header ending `) {`); the id names the fragment, not its stub.
+    let mut by_id: FxHashMap<&FragmentId, &Fragment> = FxHashMap::default();
+    for f in &state.all_fragments {
+        by_id
+            .entry(&f.id)
+            .and_modify(|seen| {
+                if seen.kind.is_signature() && !f.kind.is_signature() {
+                    *seen = f;
+                }
+            })
+            .or_insert(f);
+    }
     let changed_paths: FxHashSet<&str> = state
         .changed_files
         .iter()

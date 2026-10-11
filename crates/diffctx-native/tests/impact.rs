@@ -2548,3 +2548,37 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
     assert!(err.contains("no definition"), "{err}");
     assert!(!err.contains("read as text"), "{err}");
 }
+
+/// A Kotlin class whose header is exactly its signature — a multi-line
+/// primary constructor ending `) {` — shares its id with the signature
+/// variant; the definition is still the class, with its callers.
+#[test]
+fn a_class_whose_header_is_its_signature_keeps_its_definition() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/main/kotlin/a/Turns.kt",
+                "package a\n\nclass Turns(\n    private val api: String,\n    private val namespace: String,\n    private val token: () -> String,\n    private val poll: Long = 10,\n) {\n    fun turn(): Boolean = true\n}\n",
+            ),
+            (
+                "src/main/kotlin/a/User.kt",
+                "package a\n\nclass User {\n    fun make() = Turns(\"x\", \"y\", { \"t\" })\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let out = Command::new(&*BIN)
+        .current_dir(tmp.path())
+        .args(["--symbol", "Turns", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let md = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(header(&md).contains("1 definition(s)"), "{md}");
+    assert!(md.contains("Turns.kt::Turns (3-8)"), "{md}");
+    assert!(md.contains("User.kt::make"), "{md}");
+}

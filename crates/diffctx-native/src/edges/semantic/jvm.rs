@@ -72,6 +72,9 @@ static SCALA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
 static ANNOTATION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"@([A-Z]\w*)").unwrap());
 static MEMBER_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\.\s*([a-zA-Z_]\w{2,})").unwrap());
+/// `UI.DP`: a member too short for the bare channel, spelled with its owner.
+static QUALIFIED_SHORT_USE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\s*\.\s*([A-Za-z_]\w?)\b").unwrap());
 static KOTLIN_EXTENDS_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?:class|interface|object)\s+\w+(?:<[^>]*>)?(?:\([^)]*\))?\s*:\s*([^{]+)").unwrap()
 });
@@ -392,6 +395,28 @@ fn is_member_def(f: &Fragment) -> bool {
     matches!(f.kind, FragmentKind::Function | FragmentKind::Property)
 }
 
+/// The container a member is declared in: the nearest container above it at
+/// a shallower indent, since a split class keeps only its header fragment.
+fn owner_of<'a>(member: &Fragment, frags: &[&'a Fragment]) -> Option<&'a str> {
+    let indent = |f: &Fragment| {
+        f.content
+            .lines()
+            .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
+            .map_or(0, |l| l.len() - l.trim_start().len())
+    };
+    let own = indent(member);
+    frags
+        .iter()
+        .filter(|c| {
+            c.kind.is_container()
+                && c.path() == member.path()
+                && c.start_line() < member.start_line()
+                && indent(c) < own
+        })
+        .max_by_key(|c| c.start_line())
+        .and_then(|c| c.symbol_name.as_deref())
+}
+
 struct FileRelations<'a> {
     file_pkg: FxHashMap<&'a str, String>,
     import_files: FxHashMap<&'a str, FxHashSet<&'a str>>,
@@ -490,6 +515,10 @@ impl EdgeBuilder for JVMEdgeBuilder {
         let mut fqn_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut member_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut member_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        // Members whose name is too short to link by name alone, keyed by
+        // the container they are declared in: `object UI { const val DP }`.
+        let mut owned_short_members: FxHashMap<(String, String), Vec<FragmentId>> =
+            FxHashMap::default();
 
         for f in &jvm_frags {
             let path = Path::new(f.path());
@@ -512,7 +541,14 @@ impl EdgeBuilder for JVMEdgeBuilder {
             }
             if is_member_def(f) {
                 if let Some(name) = f.symbol_name.as_deref() {
-                    if name.len() >= 3 {
+                    if name.len() < 3 {
+                        if let Some(owner) = owner_of(f, &jvm_frags) {
+                            owned_short_members
+                                .entry((owner.to_lowercase(), name.to_lowercase()))
+                                .or_default()
+                                .push(f.id.clone());
+                        }
+                    } else {
                         let lower = name.to_lowercase();
                         member_defs
                             .entry(lower.clone())
@@ -750,6 +786,14 @@ impl EdgeBuilder for JVMEdgeBuilder {
                         continue;
                     }
                     if rel.confirmed(jf.path(), dst_path) {
+                        add_edge(&mut edges, &jf.id, d, member_weight, reverse_factor);
+                    }
+                }
+            }
+            for cap in QUALIFIED_SHORT_USE_RE.captures_iter(&jf.content) {
+                let key = (cap[1].to_lowercase(), cap[2].to_lowercase());
+                for d in owned_short_members.get(&key).into_iter().flatten() {
+                    if d.path.as_ref() != jf.path() && rel.confirmed(jf.path(), d.path.as_ref()) {
                         add_edge(&mut edges, &jf.id, d, member_weight, reverse_factor);
                     }
                 }
