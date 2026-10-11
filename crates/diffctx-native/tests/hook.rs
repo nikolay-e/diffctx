@@ -311,7 +311,8 @@ fn comments_subshell_cds_cd_dash_and_heredoc_messages_keep_their_commit() {
         "def restock(item):\n    return item.count + 5\n",
     );
     let cache = TempDir::new().unwrap();
-    let command = format!("(cd {} && git commit -am x)", other.path().display());
+    // Quoted as a shell carries it: a Windows path's backslashes are not escapes.
+    let command = format!("(cd '{}' && git commit -am x)", other.path().display());
     let h = hook(repo, cache.path(), &payload(repo, &command));
     let context = context_of(&h);
     assert!(context.contains("shop/shelf.py::refill"), "{context}");
@@ -1022,7 +1023,7 @@ fn the_git_dash_c_directory_wins_over_cwd() {
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
     let elsewhere = TempDir::new().unwrap();
-    let command = format!("git -C {} commit -am vat", repo.to_string_lossy());
+    let command = format!("git -C '{}' commit -am vat", repo.to_string_lossy());
     let h = hook(
         elsewhere.path(),
         cache.path(),
