@@ -698,6 +698,14 @@ pub fn has_grammar(path: &str) -> bool {
     find_lang_config(path).is_some_and(|c| LANGUAGE_CACHE.contains_key(c.ts_name))
 }
 
+/// The file's grammar parses `content` within the fragmenter's bound and
+/// without an error node.
+pub fn parses_cleanly(path: &str, content: &str) -> bool {
+    find_lang_config(path)
+        .and_then(|c| parse_tree(c.ts_name, content))
+        .is_some_and(|tree| !tree.root_node().has_error())
+}
+
 /// A parse of `content` under the named grammar, from the same thread-local
 /// parser cache and under the same wall-clock bound the fragmenter uses.
 /// `None` when the grammar is not compiled in or the parse timed out.

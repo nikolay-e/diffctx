@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Impact names the changed code files it could not read for definitions —
+  no grammar for the language in this build, or a parse that broke — in its
+  header and in `unanalysed_files`, and never calls such a change empty: a
+  Kotlin-only commit read "0 callers outside the diff" and the commit hook
+  stayed silent (#454). A script that parses cleanly and defines nothing is
+  not listed.
+- `--symbol` no longer answers only "no definition found" when the files
+  naming the symbol were read as text: it names them and the reason, so an
+  unparsed definition is not mistaken for a missing one (#454).
+
+### Changed
+
+- CI and the pre-commit hook run the `impact`, `hook`, `bindings`, `staged`,
+  `git_faults`, `in_memory` and `context_schema` test targets, which no gate
+  ran before.
+
 ## [1.18.4] - 2026-10-07
 
 ### Security

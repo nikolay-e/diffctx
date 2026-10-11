@@ -317,6 +317,8 @@ repos:
           cargo test --lib --features python &&
           cargo test --test native_cli &&
           cargo test --test fragment_snapshot &&
+          cargo test --test impact --test hook --test bindings --test staged \
+            --test git_faults --test in_memory --test context_schema &&
           DIFFCTX_YAML_CASES_LIMIT=48 cargo test --release --test yaml_cases'
         pass_filenames: false
         # 48 >= the corpus's stratum count, so round 0 of the stratified sample

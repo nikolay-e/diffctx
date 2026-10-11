@@ -367,6 +367,31 @@ fn a_manual_impact_run_counts_as_the_review() {
     );
 }
 
+/// #454: a commit of code this build reads as text is not silence — the
+/// hook saying nothing read as "nothing outside the diff is reached".
+#[test]
+fn a_commit_of_unparsed_code_says_it_was_not_analysed() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
+    write(repo, "num/solver.f90", "module solver\nend module solver\n");
+    commit_all(repo, "solver");
+    write(
+        repo,
+        "num/solver.f90",
+        "module solver\ncontains\n  subroutine step(x)\n    real :: x\n  end subroutine step\nend module solver\n",
+    );
+    let h = hook(repo, cache.path(), &payload(repo, "git commit -am solver"));
+    assert_eq!(h.code, Some(0));
+    let context = context_of(&h);
+    assert!(context.contains("1 not analysed"), "{context}");
+    assert!(
+        context.contains("fortran (no grammar in this build): num/solver.f90"),
+        "{context}"
+    );
+}
+
 #[test]
 fn a_change_nothing_depends_on_is_silence() {
     let tmp = repo_with_pending_change();

@@ -2442,3 +2442,109 @@ fn local_functions_and_untyped_attribute_reads_are_not_callers() {
         "an untyped call stays possible: {md}"
     );
 }
+
+/// #454: a change this build cannot read for definitions — no grammar for
+/// its language, or a parse that broke — is named as not analysed, and the
+/// answer is never the all-clear a hook stays silent on. A script that
+/// parses cleanly and defines nothing is analysed: there was nothing to miss.
+#[test]
+fn a_code_change_without_a_parse_is_not_analysed_not_an_all_clear() {
+    let solver = |k: &str| {
+        format!(
+            "module solver\ncontains\n  subroutine step(x)\n    real :: x\n    x = x * {k}\n  end subroutine step\nend module solver\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            ("num/solver.f90", &solver("2.0")),
+            ("tools/run.py", "print(\"run\")\n"),
+            ("tools/broken.py", "value = (1,\n"),
+            ("tools/gone.f90", "program gone\nend program gone\n"),
+        ],
+        &[
+            ("num/solver.f90", &solver("3.0")),
+            ("tools/run.py", "print(\"run again\")\n"),
+            ("tools/broken.py", "value = (2,\n"),
+        ],
+    );
+    git(tmp.path(), &["rm", "-q", "tools/gone.f90"]);
+    commit_all(tmp.path(), "drop gone");
+    let doc = impact(tmp.path(), "HEAD~2..HEAD");
+    assert_eq!(doc["empty"], false, "{doc}");
+    let unanalysed: Vec<(String, String)> = doc["unanalysed_files"]
+        .as_array()
+        .expect("unanalysed_files")
+        .iter()
+        .map(|f| {
+            (
+                f["path"].as_str().unwrap().to_string(),
+                f["reason"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        unanalysed,
+        vec![
+            ("num/solver.f90".to_string(), "no_grammar".to_string()),
+            ("tools/broken.py".to_string(), "parse_failed".to_string()),
+        ],
+        "{doc}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~2..HEAD");
+    assert!(header(&md).contains("2 not analysed"), "{md}");
+    assert!(header(&md).contains("in the analysed files"), "{md}");
+    assert!(
+        md.contains("1 fortran (no grammar in this build): num/solver.f90"),
+        "{md}"
+    );
+    assert!(
+        md.contains("1 python (parse failed): tools/broken.py"),
+        "{md}"
+    );
+    assert!(!md.contains("No resolved static callers"), "{md}");
+}
+
+/// #454: "no definition found" reads as "the name does not exist". When the
+/// only files naming it were read as text, the answer says which and why;
+/// a name nobody spells keeps the plain answer.
+#[test]
+fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
+    let tmp = repo_of(
+        &[
+            (
+                "num/solver.f90",
+                "module solver\ncontains\n  subroutine relax_step(x)\n    real :: x\n  end subroutine relax_step\nend module solver\n",
+            ),
+            (
+                "num/use.f90",
+                "program use\n  call relax_step(1.0)\nend program use\n",
+            ),
+            ("app.py", "def main():\n    return 1\n"),
+        ],
+        &[],
+    );
+    let symbol = |name: &str| {
+        Command::new(&*BIN)
+            .current_dir(tmp.path())
+            .args(["--symbol", name, "-q", "-f", "md"])
+            .output()
+            .expect("run diffctx")
+    };
+    let unparsed = symbol("relax_step");
+    assert!(!unparsed.status.success());
+    let err = String::from_utf8_lossy(&unparsed.stderr);
+    assert!(
+        err.contains("2 file(s) naming it were read as text"),
+        "{err}"
+    );
+    assert!(err.contains("fortran: no grammar in this build"), "{err}");
+    assert!(
+        err.contains("num/solver.f90") && err.contains("num/use.f90"),
+        "{err}"
+    );
+
+    let missing = symbol("nowhere_spelled");
+    let err = String::from_utf8_lossy(&missing.stderr);
+    assert!(err.contains("no definition"), "{err}");
+    assert!(!err.contains("read as text"), "{err}");
+}

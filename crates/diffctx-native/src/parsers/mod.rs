@@ -27,6 +27,28 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
 
 pub(crate) use tree_sitter_strategy::{has_grammar, parse_tree};
 
+/// Why a code file's definitions were not read (#454): `no_grammar` when
+/// this build has no grammar for its language, `parse_failed` when the parse
+/// timed out or broke and the fragmenter found no definition in it. `None`
+/// when its definitions were read, or a clean parse found none to read.
+/// Prose, config and data files have no definitions to miss.
+pub fn unanalysed_reason(
+    path: &str,
+    has_definition: bool,
+    content: impl FnOnce() -> Option<Vec<u8>>,
+) -> Option<&'static str> {
+    let ext = crate::edges::base::file_ext(std::path::Path::new(path));
+    if has_definition || !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
+        return None;
+    }
+    if !has_grammar(path) {
+        return Some("no_grammar");
+    }
+    let content = content()?;
+    (!tree_sitter_strategy::parses_cleanly(path, &String::from_utf8_lossy(&content)))
+        .then_some("parse_failed")
+}
+
 pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {

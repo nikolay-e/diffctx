@@ -40,6 +40,10 @@ const CALLER_LOSING_LIMITS: &[crate::resource::LimitReason] = &[
 ];
 /// Paths listed before the rest fold into a count: the reader has the diff.
 const MAX_CHANGED_FILES_LISTED: usize = 24;
+/// Unanalysed files kept when the answer must shrink; the rest are counted.
+const MAX_UNANALYSED_LISTED: usize = 6;
+/// Unanalysed paths the text names per language; the reader holds the diff.
+const UNANALYSED_EXAMPLES: usize = 2;
 
 /// A symbol name with more definitions than this cannot be traced by name.
 const MAX_DEFINITIONS: usize = 2;
@@ -138,6 +142,13 @@ pub struct ImpactOutput {
     /// (#392).
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub withheld_files: usize,
+    /// Changed code files whose definitions were not read — no grammar for
+    /// the language in this build, or a parse that failed — so their callers
+    /// and contracts are not counted, and `empty` is never claimed (#454).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unanalysed_files: Vec<UnanalysedFile>,
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub unanalysed_files_omitted: usize,
     /// The token cap the answer was fitted to.
     #[serde(skip)]
     #[schemars(skip)]
@@ -222,6 +233,15 @@ pub struct StaleReference {
     pub target: String,
     /// `deleted`, or `renamed to <new path>`.
     pub kind: String,
+}
+
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct UnanalysedFile {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<&'static str>,
+    /// `no_grammar` or `parse_failed`.
+    pub reason: &'static str,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -621,6 +641,39 @@ fn is_import_block(content: &str) -> bool {
         }
     }
     !saw_code
+}
+
+/// The changed code files whose definitions this run did not read (#454),
+/// ordered by language then path so the listed ones and the counted rest are
+/// stable.
+fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFile> {
+    let mut fragmented: FxHashMap<String, bool> = FxHashMap::default();
+    for f in &state.all_fragments {
+        *fragmented.entry(rel(state, f.path())).or_default() |= f.kind.is_definition_kind();
+    }
+    let source = state.run.source();
+    let mut out: Vec<UnanalysedFile> = changed
+        .iter()
+        .filter_map(|path| {
+            // No fragment at all: deleted, withheld or never read, which the
+            // answer already says another way.
+            let has_definition = *fragmented.get(path)?;
+            let reason = crate::parsers::unanalysed_reason(path, has_definition, || {
+                source.read_bytes(&state.root_dir.join(path))
+            })?;
+            Some(UnanalysedFile {
+                path: path.clone(),
+                language: crate::languages::get_language_for_file(path),
+                reason,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        a.language
+            .cmp(&b.language)
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    out
 }
 
 fn rel(state: &ScoredState, path: &str) -> String {
@@ -2063,7 +2116,16 @@ pub fn build_impact(
     } else {
         (Vec::new(), 0)
     };
-    let empty = changed.is_empty() && contracts.is_empty() && limits.is_empty() && stale.is_empty();
+    let unanalysed = if query.is_none() {
+        unanalysed_files(state, &changed_files)
+    } else {
+        Vec::new()
+    };
+    let empty = changed.is_empty()
+        && contracts.is_empty()
+        && limits.is_empty()
+        && stale.is_empty()
+        && unanalysed.is_empty();
     let mut output = ImpactOutput {
         schema: IMPACT_SCHEMA,
         name: state
@@ -2090,6 +2152,8 @@ pub fn build_impact(
         untested_definitions,
         untested_unlisted,
         withheld_files: state.policy_excluded_count,
+        unanalysed_files: unanalysed,
+        unanalysed_files_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
     };
     fit_to_cap(&mut output);
@@ -2628,7 +2692,8 @@ fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput)
         && output.stale_references_omitted == 0
         && output.truncated == 0
         && output.contracts_omitted == 0
-        && output.limits.is_empty();
+        && output.limits.is_empty()
+        && output.unanalysed_files.is_empty();
 }
 
 /// One step of shedding, least needed first; `false` once nothing more can
@@ -2638,6 +2703,11 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     if output.changed_files.len() > MAX_CHANGED_FILES_LISTED {
         output.changed_files_omitted += output.changed_files.len() - MAX_CHANGED_FILES_LISTED;
         output.changed_files.truncate(MAX_CHANGED_FILES_LISTED);
+        return true;
+    }
+    if output.unanalysed_files.len() > MAX_UNANALYSED_LISTED {
+        output.unanalysed_files_omitted += output.unanalysed_files.len() - MAX_UNANALYSED_LISTED;
+        output.unanalysed_files.truncate(MAX_UNANALYSED_LISTED);
         return true;
     }
     if output.contracts.pop().is_some() {
@@ -2818,6 +2888,55 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
     phrase
 }
 
+/// Which changed files were read as text and why: their callers, the
+/// definitions in them and the contracts they move are all missing from the
+/// counts above, and the reader has to know that to read a zero (#454).
+fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
+    if output.unanalysed_files.is_empty() {
+        return;
+    }
+    let mut groups: Vec<(Option<&str>, &str, Vec<&str>)> = Vec::new();
+    for f in &output.unanalysed_files {
+        match groups
+            .iter_mut()
+            .find(|(l, r, _)| *l == f.language && *r == f.reason)
+        {
+            Some((_, _, paths)) => paths.push(&f.path),
+            None => groups.push((f.language, f.reason, vec![&f.path])),
+        }
+    }
+    let groups: Vec<String> = groups
+        .into_iter()
+        .map(|(language, reason, paths)| {
+            let why = match reason {
+                "no_grammar" => "no grammar in this build",
+                _ => "parse failed",
+            };
+            let examples = paths[..paths.len().min(UNANALYSED_EXAMPLES)].join(", ");
+            let rest = if paths.len() > UNANALYSED_EXAMPLES {
+                ", …"
+            } else {
+                ""
+            };
+            format!(
+                "{} {} ({why}): {examples}{rest}",
+                paths.len(),
+                language.unwrap_or("code"),
+            )
+        })
+        .collect();
+    let more = if output.unanalysed_files_omitted > 0 {
+        format!(" and {} more", output.unanalysed_files_omitted)
+    } else {
+        String::new()
+    };
+    let _ = writeln!(
+        out,
+        "(not analysed, read as text — definitions, callers and tests in them are not counted: {}{more})",
+        groups.join("; ")
+    );
+}
+
 fn write_header(out: &mut String, output: &ImpactOutput) {
     let range = range_label(output.range.as_deref(), output.index_tree.as_deref());
     let all = || output.changed.iter().flat_map(|c| &c.callers);
@@ -2839,14 +2958,18 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         ));
     }
     let withheld = |what: &str| {
-        if output.withheld_files == 0 {
-            String::new()
-        } else {
-            format!(
+        let mut clause = String::new();
+        if output.withheld_files > 0 {
+            clause = format!(
                 ", {} {what} withheld by ignore rules",
                 output.withheld_files
-            )
+            );
         }
+        let unanalysed = output.unanalysed_files.len() + output.unanalysed_files_omitted;
+        if unanalysed > 0 {
+            clause.push_str(&format!(", {unanalysed} not analysed"));
+        }
+        clause
     };
     match &output.symbol {
         Some(symbol) => {
@@ -2871,10 +2994,19 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                     format!(" ({} deleted)", output.deleted_files.len())
                 },
                 withheld("more"),
-                callers_phrase(output, callers, " outside the diff"),
+                callers_phrase(
+                    output,
+                    callers,
+                    if output.unanalysed_files.is_empty() {
+                        " outside the diff"
+                    } else {
+                        " outside the diff in the analysed files"
+                    }
+                ),
             );
         }
     }
+    write_unanalysed(out, output);
     if output.withheld_files > 0 {
         let _ = writeln!(
             out,

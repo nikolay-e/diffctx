@@ -282,6 +282,11 @@ jobs:
           cargo test --lib --features python
           cargo test --test native_cli
           cargo test --test fragment_snapshot
+          # The binary-level suites: impact, the hook, bindings, staged
+          # snapshots, git failures. They ran in no job until 2026-10-11, so
+          # their regression tests (#387 among them) guarded nothing.
+          cargo test --test impact --test hook --test bindings --test staged \
+            --test git_faults --test in_memory --test context_schema
           cargo build --release --examples
           # --release, the profile the wheel ships: it unwinds, so the corpus
           # exercises the same panic strategy production runs under.
@@ -324,6 +329,8 @@ jobs:
           cargo test --lib --features python
           cargo test --test native_cli
           cargo test --test fragment_snapshot
+          cargo test --test impact --test hook --test bindings --test staged \
+            --test git_faults --test in_memory --test context_schema
           cargo test --release --test yaml_cases
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the

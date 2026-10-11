@@ -123,6 +123,18 @@
       "type": "integer",
       "format": "uint",
       "minimum": 0
+    },
+    "unanalysed_files": {
+      "description": "Changed code files whose definitions were not read — no grammar for\nthe language in this build, or a parse that failed — so their callers\nand contracts are not counted, and `empty` is never claimed (#454).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/UnanalysedFile"
+      }
+    },
+    "unanalysed_files_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
     }
   },
   "required": [
@@ -348,6 +360,28 @@
           "type": "string",
           "const": "cancelled"
         }
+      ]
+    },
+    "UnanalysedFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "`no_grammar` or `parse_failed`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
       ]
     }
   }
