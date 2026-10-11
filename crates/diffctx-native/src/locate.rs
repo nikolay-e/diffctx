@@ -349,17 +349,6 @@ fn reasons_for(
     reasons
 }
 
-/// Fragment kinds that mean "the parser produced structure here".
-///
-/// `Chunk` is the fallback for a file no grammar could parse; `Excerpt` is a
-/// budget stand-in for a core, not evidence of parsing. `Section` is neither —
-/// it is the markdown parser's genuine structural output, and counting it as a
-/// degradation reported every documentation file in a diff as a blind spot.
-fn is_structural(kind: crate::types::FragmentKind) -> bool {
-    use crate::types::FragmentKind as K;
-    !matches!(kind, K::Chunk | K::Excerpt)
-}
-
 fn build_coverage(
     state: &ScoredState,
     outcome: &SelectionOutcome,
