@@ -1627,6 +1627,9 @@ fn staging_the_line_does_by_other_means_previews_the_working_tree() {
     let repo = tmp.path();
     let diff = Command::new("git")
         .current_dir(repo)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
         .args(["diff"])
         .output()
         .unwrap();
@@ -1762,6 +1765,9 @@ fn a_fast_forward_to_the_upstream_is_silence() {
     let branch = String::from_utf8(
         Command::new("git")
             .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .output()
             .unwrap()

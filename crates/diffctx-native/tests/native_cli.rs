@@ -1291,6 +1291,9 @@ fn a_historical_range_ignores_history_after_its_head() {
     let range = {
         let out = Command::new("git")
             .current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
             .args(["rev-parse", "HEAD~1", "HEAD"])
             .output()
             .expect("rev-parse");
