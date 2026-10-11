@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--symbol` no longer answers only "no definition found" when the files
   naming the symbol were read as text: it names them and the reason, so an
   unparsed definition is not mistaken for a missing one (#454).
+- Locate's `unparsed_files` uses the same test: code with no grammar in this
+  build (Kotlin, F#, Fortran) or a broken parse is listed and lowers
+  confidence; a script that parses cleanly and defines nothing (a
+  `build.gradle.kts`, a Python script of top-level statements) no longer is.
+  Data files (`.sql`, `.toml`, `.txt`) stay unlisted (#330).
 
 ### Changed
 

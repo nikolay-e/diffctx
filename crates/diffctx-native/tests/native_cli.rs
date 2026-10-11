@@ -1226,23 +1226,33 @@ fn a_locate_answer_fits_its_budget() {
     assert!(doc["item_count"].as_u64().unwrap() >= 1);
 }
 
-/// #330: a language this build has no grammar for is read as text by design;
-/// listing it as unparsed dropped confidence to 0 on every SQL or Kotlin
-/// change. A file with a grammar and no structure still is a blind spot.
+/// #330, #454: a blind spot is code whose definitions were not read — no
+/// grammar for it in this build, or a parse that broke. A data file has no
+/// definitions to miss, and neither has a script that parses cleanly and
+/// defines none, so neither lowers the confidence.
 #[test]
-fn a_file_without_a_grammar_is_not_a_blind_spot() {
+fn only_code_whose_definitions_were_not_read_is_a_blind_spot() {
     let tmp = TempDir::new().expect("tempdir");
     let repo = tmp.path();
     init_repo(repo);
-    std::fs::write(repo.join("schema.sql"), "CREATE TABLE t (id int);\n").expect("write");
-    std::fs::write(repo.join("App.kt"), "fun main() {}\n").expect("write");
+    let files = |k: &str| {
+        [
+            ("schema.sql", format!("CREATE TABLE t (id int{k});\n")),
+            (
+                "solver.f90",
+                format!("module solver\n  real :: k = 1.0{k}\nend module solver\n"),
+            ),
+            ("run.py", format!("print(\"run{k}\")\n")),
+            ("broken.py", format!("value = (1{k},\n")),
+        ]
+    };
+    for (name, content) in files("") {
+        std::fs::write(repo.join(name), content).expect("write");
+    }
     commit_all(repo, "initial");
-    std::fs::write(
-        repo.join("schema.sql"),
-        "CREATE TABLE t (id int, name text);\n",
-    )
-    .expect("write");
-    std::fs::write(repo.join("App.kt"), "fun main() { println(1) }\n").expect("write");
+    for (name, content) in files("2") {
+        std::fs::write(repo.join(name), content).expect("write");
+    }
     commit_all(repo, "change");
     let out = run(
         repo,
@@ -1254,8 +1264,12 @@ fn a_file_without_a_grammar_is_not_a_blind_spot() {
         String::from_utf8_lossy(&out.stderr)
     );
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
-    let unparsed = &doc["coverage"]["unparsed_files"];
-    assert!(unparsed.is_null(), "{:#}", doc["coverage"]);
+    assert_eq!(
+        doc["coverage"]["unparsed_files"],
+        serde_json::json!(["broken.py", "solver.f90"]),
+        "{:#}",
+        doc["coverage"]
+    );
 }
 
 /// #340: co-change history is read before the range's head, not before the

@@ -401,11 +401,16 @@ fn build_coverage(
             // a parse failure would be a second, wrong story about it.
             continue;
         }
-        // Only where structure was expected. A `.md` or `.json` file has no
-        // symbols to find, so listing it as a blind spot is true and useless:
-        // there is nothing for the caller to grep for.
-        let parseable = crate::parsers::has_grammar(file);
-        if parseable && !frags.iter().any(|f| is_structural(f.kind)) {
+        // Only where definitions could be missed: code with no grammar in
+        // this build, or a parse that broke. A `.md`, `.json` or `.sql` file,
+        // or a script that parses cleanly and defines nothing, has none to
+        // miss — listing it is true and useless (#330, #454).
+        let has_definition = frags.iter().any(|f| f.kind.is_definition_kind());
+        if crate::parsers::unanalysed_reason(file, has_definition, || {
+            state.run.source().read_bytes(&state.root_dir.join(file))
+        })
+        .is_some()
+        {
             unparsed.push(file.clone());
         }
         let linked = frags.iter().any(|f| {
