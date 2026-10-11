@@ -342,9 +342,41 @@ fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
         .declarations
         .sort_by_key(|d| (d.span.start, std::cmp::Reverse(d.span.end)));
     facts.uses.sort_by_key(|u| u.at);
+    // A grammar can misread a declaration without an error node (a bodyless
+    // annotated class swallowed the next one in tree-sitter-kotlin-sg): a
+    // type the text declares at the start of a line that the tree lacks is
+    // a line the parse did not read.
+    facts.error_lines.extend(unread_type_lines(bytes, &facts));
     facts.error_lines.sort_unstable();
     facts.error_lines.dedup();
     facts
+}
+
+static TYPE_LINE: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(
+        r"(?m)^[ \t]*(?:@\w+(?:\([^)\n]*\))?[ \t]+)*(?:(?:public|private|internal|protected|abstract|open|sealed|data|enum|annotation|inner|value|final|fun|expect|actual)[ \t]+)*(?:class|interface|object)[ \t]+([A-Za-z_]\w*)",
+    )
+    .expect("type line regex")
+});
+
+fn unread_type_lines(bytes: &[u8], facts: &KotlinFacts) -> Vec<u32> {
+    let text = String::from_utf8_lossy(bytes);
+    // Local classes are bindings, not exported declarations, yet read.
+    let declared: std::collections::HashSet<&str> = facts
+        .declarations
+        .iter()
+        .filter(|d| d.is_type())
+        .map(|d| d.name.as_str())
+        .chain(facts.bindings.iter().map(|b| b.name.as_str()))
+        .collect();
+    TYPE_LINE
+        .captures_iter(&text)
+        .filter_map(|c| {
+            let name = c.get(1)?;
+            (!facts.is_text(name.start()) && !declared.contains(name.as_str()))
+                .then(|| text[..name.start()].matches('\n').count() as u32 + 1)
+        })
+        .collect()
 }
 
 /// The declaration's name: its first identifier child, backticks dropped.
@@ -1191,6 +1223,17 @@ fun `weird name`() = 1 // tagFor in a comment\n";
             f.uses.iter().all(|u| u.name != "tagFor"),
             "a comment is no use"
         );
+    }
+
+    #[test]
+    fn a_type_the_tree_did_not_read_is_a_parse_gap_and_a_clean_file_has_none() {
+        let clean = facts("package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n")
+            .expect("kotlin grammar");
+        assert!(!clean.partial(), "{:?}", clean.error_lines);
+        let mut gap = (*clean).clone();
+        gap.declarations.retain(|d| d.name != "A");
+        let source = "package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n";
+        assert_eq!(unread_type_lines(source.as_bytes(), &gap), [9]);
     }
 
     #[test]

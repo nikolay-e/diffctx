@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `String.pad` names the extension, `Worker.Companion.create` the companion
   member; and the declaration search that keeps a capped query's definition
   file knows `fun` and `typealias`.
+- A Kotlin type the text declares at the start of a line but the parse did
+  not read — a grammar's silent misreading, with no error node — marks the
+  file analysed only in part (0 of yay-tsa's 1,036 files with the shipped
+  grammar; local classes count as read).
 - The parse outcome is recorded when the fragmenter parses a file, not
   inferred from the fragments that came out: a file that parsed with errors
   is reported as analysed only in part even when a definition survived, and
