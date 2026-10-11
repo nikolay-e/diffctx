@@ -375,8 +375,17 @@
           ]
         },
         "reason": {
-          "description": "`no_grammar` or `parse_failed`.",
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read), or\n`parse_partial` (read but for the error lines).",
           "type": "string"
+        },
+        "lines": {
+          "description": "Where the parse broke, the first few lines.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
         }
       },
       "required": [

@@ -8,6 +8,7 @@
 //! carries what the grammar knows: a brace group spanning lines, a rename,
 //! an import inside a comment that is not an import at all.
 
+pub mod kotlin;
 pub mod scala;
 
 use rustc_hash::FxHashSet;

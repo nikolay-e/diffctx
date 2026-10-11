@@ -45,6 +45,7 @@ pub(crate) mod utility;
 // Output.
 pub mod hook;
 pub mod impact;
+pub mod kotlin_bindings;
 pub mod locate;
 pub mod render;
 

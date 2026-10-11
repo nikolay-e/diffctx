@@ -95,6 +95,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
+name = "brokk-tree-sitter-kotlin"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11536d4605247354ad8992b7ae605e85508c07d64ed0710ff8494558660e40d0"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "bstr"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -107,9 +117,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.60"
+version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43c5703da9466b66a946814e1adf53ea2c90f10063b86290cc9eb67ce3478a20"
+checksum = "aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -198,6 +208,7 @@ version = "1.18.4"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "brokk-tree-sitter-kotlin",
  "clap",
  "dunce",
  "glob",
@@ -240,7 +251,6 @@ dependencies = [
  "tree-sitter-javascript",
  "tree-sitter-json",
  "tree-sitter-julia",
- "tree-sitter-kotlin-sg",
  "tree-sitter-lua",
  "tree-sitter-make",
  "tree-sitter-nix",
@@ -1199,16 +1209,6 @@ name = "tree-sitter-julia"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4144731a178812ee867619b1e98b3b91e54c1652304b26e5ebe3175b701de323"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-kotlin-sg"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c06ec43ae3c12165d4ac08afe4e1f5fc6757ffe274fa7bd5af9007ef11ba4319"
 dependencies = [
  "cc",
  "tree-sitter-language",

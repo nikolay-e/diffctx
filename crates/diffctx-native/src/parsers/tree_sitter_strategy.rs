@@ -625,8 +625,8 @@ static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
     #[cfg(feature = "tree-sitter-swift")]
     m.insert("swift", Language::new(tree_sitter_swift::LANGUAGE));
 
-    #[cfg(feature = "tree-sitter-kotlin-sg")]
-    m.insert("kotlin", Language::new(tree_sitter_kotlin_sg::LANGUAGE));
+    #[cfg(feature = "brokk-tree-sitter-kotlin")]
+    m.insert("kotlin", Language::new(brokk_tree_sitter_kotlin::LANGUAGE));
 
     #[cfg(feature = "tree-sitter-html")]
     m.insert("html", Language::new(tree_sitter_html::LANGUAGE));
@@ -714,12 +714,81 @@ pub fn has_grammar(path: &str) -> bool {
     find_lang_config(path).is_some_and(|c| LANGUAGE_CACHE.contains_key(c.ts_name))
 }
 
-/// The file's grammar parses `content` within the fragmenter's bound and
-/// without an error node.
-pub fn parses_cleanly(path: &str, content: &str) -> bool {
-    find_lang_config(path)
-        .and_then(|c| parse_tree(c.ts_name, content))
-        .is_some_and(|tree| !tree.root_node().has_error())
+/// How a file's grammar read it: the fragmenter records it for the bytes it
+/// parsed, so a reader asking later learns what happened rather than
+/// guessing from the fragments that came out (#454).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseOutcome {
+    Clean,
+    /// Error or missing nodes on these lines (the first few); what sits
+    /// elsewhere was read.
+    Partial(Vec<u32>),
+    TimedOut,
+}
+
+const OUTCOME_LIMIT: usize = 16_384;
+const ERROR_LINES_KEPT: usize = 3;
+
+static OUTCOMES: Lazy<std::sync::Mutex<FxHashMap<u64, ParseOutcome>>> =
+    Lazy::new(|| std::sync::Mutex::new(FxHashMap::default()));
+
+fn content_key(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = rustc_hash::FxHasher::default();
+    content.hash(&mut h);
+    h.finish()
+}
+
+fn remember_outcome(content: &str, outcome: ParseOutcome) {
+    if let Ok(mut map) = OUTCOMES.lock() {
+        if map.len() >= OUTCOME_LIMIT {
+            map.clear();
+        }
+        map.insert(content_key(content), outcome);
+    }
+}
+
+fn outcome_of(tree: &Tree) -> ParseOutcome {
+    let root = tree.root_node();
+    if !root.has_error() {
+        return ParseOutcome::Clean;
+    }
+    let mut lines = Vec::new();
+    let mut stack = vec![root];
+    while let Some(n) = stack.pop() {
+        if n.is_error() || n.is_missing() {
+            lines.push(n.start_position().row as u32 + 1);
+            continue;
+        }
+        if n.has_error() {
+            let mut cursor = n.walk();
+            stack.extend(n.children(&mut cursor));
+        }
+    }
+    lines.sort_unstable();
+    lines.dedup();
+    lines.truncate(ERROR_LINES_KEPT);
+    ParseOutcome::Partial(lines)
+}
+
+/// What the file's grammar made of `content`: the fragmenter's own record
+/// of those bytes, else a parse of them. `None` without a grammar.
+pub fn parse_outcome(path: &str, content: &str) -> Option<ParseOutcome> {
+    let config = find_lang_config(path)?;
+    if !LANGUAGE_CACHE.contains_key(config.ts_name) {
+        return None;
+    }
+    if let Some(known) = OUTCOMES
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&content_key(content)).cloned())
+    {
+        return Some(known);
+    }
+    let outcome = parse_tree(config.ts_name, content)
+        .map_or(ParseOutcome::TimedOut, |tree| outcome_of(&tree));
+    remember_outcome(content, outcome.clone());
+    Some(outcome)
 }
 
 /// A parse of `content` under the named grammar, from the same thread-local
@@ -940,44 +1009,22 @@ fn first_child_def_line(node: &Node, definition_types: &[&str], depth: u32) -> O
     })
 }
 
-/// Kotlin through the fwcd grammar, which names nothing by field: the name
-/// is the declaration's first identifier child. These rules are keyed on
-/// the grammar, so another grammar's `class_declaration` is left alone.
+/// Kotlin through the fwcd grammar: names, scope and spans come from the
+/// shared Kotlin facts (`facts::kotlin`), so the fragments and every later
+/// reader of the file agree on what each declaration is called and owns.
 mod kotlin {
-    use super::{children, node_end_line};
+    use crate::facts::kotlin as facts;
     use tree_sitter::Node;
 
-    fn identifier(node: &Node, source: &[u8]) -> Option<String> {
-        children(node)
-            .find(|c| matches!(c.kind(), "simple_identifier" | "type_identifier"))
-            .and_then(|c| c.utf8_text(source).ok())
-            .map(|t| t.trim_matches('`').to_string())
-    }
-
     pub(super) fn symbol_name(node: &Node, source: &[u8]) -> Option<String> {
-        match node.kind() {
-            "property_declaration" => children(node)
-                .find(|c| c.kind() == "variable_declaration")
-                .and_then(|v| identifier(&v, source)),
-            // `companion object { … }` is named `Companion` by the language.
-            "companion_object" => {
-                identifier(node, source).or_else(|| Some("Companion".to_string()))
-            }
-            // Java's convention: a constructor is named after its class.
-            "secondary_constructor" => std::iter::successors(node.parent(), Node::parent)
-                .find(|p| matches!(p.kind(), "class_declaration" | "object_declaration"))
-                .and_then(|owner| identifier(&owner, source)),
-            _ => identifier(node, source),
-        }
+        facts::declared_name(node, source)
     }
 
     pub(super) fn kind(node: &Node) -> Option<&'static str> {
-        match node.kind() {
-            "object_declaration" | "companion_object" => Some("class"),
-            "secondary_constructor" => Some("function"),
-            "class_declaration" if children(node).any(|c| c.kind() == "interface") => {
-                Some("interface")
-            }
+        match facts::declaration_kind(node)? {
+            "object" | "companion" => Some("class"),
+            "constructor" => Some("function"),
+            "interface" => Some("interface"),
             _ => None,
         }
     }
@@ -985,36 +1032,11 @@ mod kotlin {
     /// A `val` inside a function, a lambda, an `init` block or an accessor
     /// is a local, not a member anyone outside can reach.
     pub(super) fn is_local_property(node: &Node) -> bool {
-        node.kind() == "property_declaration"
-            && std::iter::successors(node.parent(), Node::parent)
-                .take_while(|p| {
-                    !matches!(p.kind(), "class_body" | "enum_class_body" | "source_file")
-                })
-                .any(|p| {
-                    matches!(
-                        p.kind(),
-                        "function_body"
-                            | "lambda_literal"
-                            | "anonymous_initializer"
-                            | "getter"
-                            | "setter"
-                            | "secondary_constructor"
-                    )
-                })
+        node.kind() == "property_declaration" && facts::is_local(node)
     }
 
-    /// The grammar leaves a property's `get()`/`set()` as its next siblings;
-    /// the property spans them, as a reader does.
     pub(super) fn end_with_accessors(node: &Node) -> u32 {
-        let mut end = node_end_line(node);
-        if node.kind() == "property_declaration" {
-            let mut next = node.next_named_sibling();
-            while let Some(n) = next.filter(|n| matches!(n.kind(), "getter" | "setter")) {
-                end = node_end_line(&n);
-                next = n.next_named_sibling();
-            }
-        }
-        end
+        facts::end_with_accessors(node).0
     }
 
     /// A function body wraps its statements in one `statements` node.
@@ -1249,10 +1271,14 @@ impl FragmentationStrategy for TreeSitterStrategy {
             None => return Vec::new(),
         };
 
-        let tree = match parse_with_cached_parser(config.ts_name, &language, content) {
-            Some(t) => t,
-            None => return Vec::new(),
+        let Some(tree) = parse_with_cached_parser(config.ts_name, &language, content) else {
+            remember_outcome(content, ParseOutcome::TimedOut);
+            return Vec::new();
         };
+        remember_outcome(content, outcome_of(&tree));
+        if config.ts_name == "kotlin" {
+            crate::facts::kotlin::record(&tree, content);
+        }
 
         let source = content.as_bytes();
         let lines: Vec<&str> = content.split('\n').collect();

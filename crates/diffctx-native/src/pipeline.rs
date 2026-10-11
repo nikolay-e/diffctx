@@ -777,7 +777,7 @@ fn unanalysed_namers(
         let has_definition = fragments
             .iter()
             .any(|f| Path::new(f.path()) == file.as_path() && f.kind.is_definition_kind());
-        let Some(reason) =
+        let Some((reason, _)) =
             crate::parsers::unanalysed_reason(&rel, has_definition, || source.read_bytes(file))
         else {
             continue;
@@ -787,11 +787,7 @@ fn unanalysed_namers(
             crate::languages::get_language_for_file(&rel)
                 .map(|l| format!("{l}: "))
                 .unwrap_or_default(),
-            if reason == "no_grammar" {
-                "no grammar in this build"
-            } else {
-                "parse failed"
-            }
+            crate::parsers::unanalysed_text(reason)
         );
         total += 1;
         match groups.iter_mut().find(|(w, _)| *w == why) {

@@ -10,17 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Kotlin (`.kt`, `.kts`) parses with tree-sitter, through
-  `tree-sitter-kotlin-sg` 0.4.1 — the fwcd grammar as ast-grep publishes it,
-  since fwcd's own crate still pins tree-sitter < 0.23. Classes, interfaces,
-  objects, companions (`Companion` when unnamed), functions, extension
-  functions, secondary constructors (named after their class), properties (a
-  property spans its getter and setter; a local `val` is not a member) and
-  type aliases become fragments, so `--symbol`, impact and the JVM member
-  edges reach Kotlin (#303). This reverses the 1.7.0 removal, which dropped
-  `.kt` read through the Java grammar, not a Kotlin one. Chosen over
-  `tree-sitter-kotlin-ng` on 1,036 real files: each broke on five, but ng's
-  errors swallowed whole classes on a `get(...)` or `set(...)` call, while
-  sg's stay local to Compose's annotated function types.
+  `brokk-tree-sitter-kotlin` 0.4.6 — the fwcd grammar as its maintained fork
+  publishes it, since fwcd's own crate still pins tree-sitter < 0.23. On
+  1,036 real files it lost no declaration and broke on none;
+  `tree-sitter-kotlin-sg` 0.4.1 silently dropped seven classes (a bodyless
+  annotated class swallowed the next one) and `tree-sitter-kotlin-ng` broke
+  whole classes on a `get(...)` call. Classes, interfaces, objects,
+  companions (`Companion` when unnamed), functions, extension functions,
+  secondary constructors (named after their class), properties (a property
+  spans its getter and setter; a local `val` is not a member) and type
+  aliases become fragments (#303). This reverses the 1.7.0 removal, which
+  dropped `.kt` read through the Java grammar, not a Kotlin one.
+- Kotlin has a binding model, read off shared syntax facts (one parse per
+  blob, shared by the fragmenter, `--symbol` and impact): a use binds through
+  its import or alias, the declared package (not the directory), the
+  receiver's declared type — a local, a parameter, a property of the class
+  or of a source-visible base class, a constructor or a function with a
+  written return type — an object or companion qualifier, or the implicit
+  `this`. What the syntax cannot settle stays a candidate with its reason
+  (`receiver_unresolved`, `overloaded`, `wildcard_import`, `dispatch`,
+  `project_dependency_unknown`); `internal` stops at the project, which its
+  test source set shares. Callable references (`Obj::f`) are references,
+  implementations of a changed abstract member are their own relation, a
+  removed declaration is found by comparing the file's declarations at the
+  base and the head, and a public contract changes when the header does —
+  parameter defaults and all.
 
 ### Fixed
 
@@ -31,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JVM builder links an owner-qualified short member (`UI.DP`) to its
   declaration. Names under three characters never linked by name, so a
   constant read through its object was missed.
+- A JVM framework annotation registers what it annotates and nothing else:
+  a class-level `@Component` or `@Service` no longer marks every method a
+  registered entry point (which hid its missing test link); method-level
+  entry points (`@GetMapping`, `@Scheduled`, `@Bean`, …) count only when the
+  file imports them from a framework package.
+- The parse outcome is recorded when the fragmenter parses a file, not
+  inferred from the fragments that came out: a file that parsed with errors
+  is reported as analysed only in part even when a definition survived, and
+  a timed-out parse is named as such.
 
 - Impact names the changed code files it could not read for definitions —
   no grammar for the language in this build, or a parse that broke — in its

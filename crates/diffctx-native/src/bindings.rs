@@ -747,6 +747,8 @@ impl Evidence {
 pub enum Relation {
     Call,
     Reference,
+    /// A class that implements the changed abstract member.
+    Implementation,
 }
 
 /// The changed definition: `name` in `path`, a method of `class` when it
