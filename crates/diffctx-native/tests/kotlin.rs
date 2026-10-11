@@ -624,3 +624,41 @@ fn a_symbol_query_takes_receivers_and_companions_from_the_syntax() {
         "{create:#}"
     );
 }
+
+/// A caller long enough to have a signature variant is the whole definition:
+/// a use in its body is one of its sites, not lost to the signature.
+#[test]
+fn a_caller_with_a_signature_variant_keeps_the_sites_in_its_body() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/main/kotlin/a/Turns.kt",
+                "package a\n\nclass Turns(val api: String)\n",
+            ),
+            (
+                "src/main/kotlin/a/Config.kt",
+                "package a\n\nclass Config {\n    fun turns(\n        api: String,\n        namespace: String,\n        job: String,\n        token: String,\n    ): Turns {\n        val joined = api + namespace + job + token\n        return Turns(joined)\n    }\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let doc = symbol(tmp.path(), "Turns");
+    let sym = doc["changed"]
+        .as_array()
+        .and_then(|a| a.iter().find(|c| c["symbol"] == "Turns"))
+        .expect("Turns");
+    let caller = sym["callers"]
+        .as_array()
+        .and_then(|a| a.iter().find(|c| c["symbol"] == "turns"))
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    let sites: Vec<u64> = caller["sites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap())
+        .collect();
+    assert!(
+        sites.contains(&11),
+        "the constructor call in the body: {doc:#}"
+    );
+}

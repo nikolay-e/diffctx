@@ -1990,6 +1990,22 @@ pub fn build_impact(
         // question first.
         let mut dropped: FxHashMap<&'static str, usize> = FxHashMap::default();
         graph.for_each_reverse_neighbor(&core.id, |src, weight| {
+            // A signature variant stands for its fragment: the caller is the
+            // whole definition, and its call sites sit in the body.
+            let src = by_id
+                .get(src)
+                .filter(|f| f.kind.is_signature())
+                .and_then(|sig| {
+                    file_of(sig)
+                        .iter()
+                        .filter(|f| {
+                            !f.kind.is_signature()
+                                && f.start_line() == sig.start_line()
+                                && f.end_line() >= sig.end_line()
+                        })
+                        .min_by_key(|f| f.line_count())
+                })
+                .map_or(src, |f| &f.id);
             let reason = if ambiguous {
                 "ambiguous_name"
             } else if (state.core_ids.contains(src) && !bordering.contains(src))

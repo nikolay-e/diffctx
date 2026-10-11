@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered entry point (which hid its missing test link); method-level
   entry points (`@GetMapping`, `@Scheduled`, `@Bean`, …) count only when the
   file imports them from a framework package.
+- Impact names a caller by its whole definition, not by the signature
+  variant the graph linked: a use in the body — a constructor call after a
+  long parameter list — was dropped from the caller's sites.
 - A name shared across runtimes no runtime crosses is neither a caller nor
   a test link: a Kotlin test no longer reads as guarding a Swift function of
   the same name, and a Kotlin or Swift spelling of a Python or TypeScript
