@@ -718,6 +718,31 @@ fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> V
     out
 }
 
+/// The runtime a language runs in, for the languages that call across
+/// their own boundary: JVM languages call each other, JavaScript runs the
+/// HTML and single-file components that embed it, Swift, Objective-C, C and
+/// C++ bridge and link. Anything else is its own runtime.
+fn runtime_of(path: &str) -> String {
+    let language = crate::languages::get_language_for_file(path).unwrap_or("");
+    match language {
+        "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
+        "javascript" | "typescript" | "tsx" | "jsx" | "html" | "svelte" | "vue" => "js",
+        "python" | "cython" => "python",
+        "csharp" | "c_sharp" | "fsharp" => "dotnet",
+        "swift" | "objectivec" | "c" | "cpp" => "native",
+        other => other,
+    }
+    .to_string()
+}
+
+/// No runtime crosses from one to the other: a Kotlin test cannot run a
+/// Swift function, and a Python name in a Kotlin file is not a call of it
+/// (#458, #487).
+fn same_runtime(a: &str, b: &str) -> bool {
+    let (ra, rb) = (runtime_of(a), runtime_of(b));
+    ra.is_empty() || rb.is_empty() || ra == rb
+}
+
 fn rel(state: &ScoredState, path: &str) -> String {
     crate::paths::display_rel_or_abs(&state.root_dir, Path::new(path))
 }
@@ -1842,6 +1867,9 @@ pub fn build_impact(
         let Some(name) = used.symbol_name.as_deref().map(base_symbol) else {
             return false;
         };
+        if !same_runtime(user.path(), used.path()) {
+            return false;
+        }
         if modelled(user, used) {
             finding(user, used, name).is_some_and(|f| f.evidence == Evidence::Resolved)
         } else {
@@ -1851,6 +1879,9 @@ pub fn build_impact(
         }
     };
     let reaches_file = |test: &Fragment, caller: &Fragment| -> bool {
+        if !same_runtime(test.path(), caller.path()) {
+            return false;
+        }
         if modelled(test, caller) {
             resolver.imports_file(&rel(state, test.path()), &rel(state, caller.path()))
         } else {
@@ -2017,6 +2048,8 @@ pub fn build_impact(
                     && symbol.is_some_and(|s| defined_in.contains(&(s.to_string(), frag.path())));
                 if frag.kind == FragmentKind::Excerpt {
                     "excerpt"
+                } else if !same_runtime(frag.path(), core.path()) {
+                    "other_runtime"
                 } else if shadowed && !binding_model {
                     "defines_same_name"
                 } else if is_import_block(&frag.content) {

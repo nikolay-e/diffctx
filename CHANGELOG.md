@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered entry point (which hid its missing test link); method-level
   entry points (`@GetMapping`, `@Scheduled`, `@Bean`, …) count only when the
   file imports them from a framework package.
+- A name shared across runtimes no runtime crosses is neither a caller nor
+  a test link: a Kotlin test no longer reads as guarding a Swift function of
+  the same name, and a Kotlin or Swift spelling of a Python or TypeScript
+  name is not its caller. JVM languages still call each other, JavaScript
+  its HTML and components, Swift and Objective-C their C (#487, #458).
 - A changed symbol whose name is spelled in a file in view that did not
   parse cleanly lists that file (`missed_in`, "callers may be missing")
   instead of reading as one nothing calls (#454).

@@ -2280,39 +2280,54 @@ fn a_deletion_below_a_definition_does_not_change_it() {
 /// not tests: a lexical test link stops at the project a manifest marks.
 #[test]
 fn a_sibling_project_s_test_does_not_guard_a_caller() {
+    // One runtime with no binding model, so the link is the lexical one the
+    // manifest stop governs (a test in another runtime links nothing, #487).
+    // `quiz` names its own `Config`, never importing `web.Config`.
     let files = |root_manifest: bool| {
         let mut f = vec![
-            ("web/package.json", "{\"name\": \"web\"}\n"),
             (
-                "web/src/contracts.ts",
-                "export const CONTRACTS = { theme: 'dark' };\n",
+                "web/pom.xml",
+                "<project><artifactId>web</artifactId></project>\n",
             ),
             (
-                "web/src/config.ts",
-                "import { CONTRACTS } from './contracts';\n\nexport function generated(): string {\n  return CONTRACTS.theme;\n}\n",
+                "web/src/main/java/web/Contracts.java",
+                "package web;\n\npublic class Contracts {\n    public static String theme() {\n        return \"dark\";\n    }\n}\n",
             ),
             (
-                "quiz/tests/conftest.py",
-                "import config\n\nCONTRACTS = {}\n\n\ndef test_generated():\n    assert config.generated() == CONTRACTS\n",
+                "web/src/main/java/web/Config.java",
+                "package web;\n\npublic class Config {\n    public static String generated() {\n        return Contracts.theme();\n    }\n}\n",
+            ),
+            (
+                "quiz/src/test/java/quiz/ConfigTest.java",
+                "package quiz;\n\npublic class ConfigTest {\n    public void testGenerated() {\n        assert Config.generated().equals(\"dark\");\n    }\n}\n",
             ),
         ];
         if root_manifest {
-            f.push(("quiz/pyproject.toml", "[project]\nname = \"quiz\"\n"));
+            f.push((
+                "quiz/pom.xml",
+                "<project><artifactId>quiz</artifactId></project>\n",
+            ));
         }
         f
     };
     let change = [(
-        "web/src/contracts.ts",
-        "export const CONTRACTS = { theme: 'light' };\n",
+        "web/src/main/java/web/Contracts.java",
+        "package web;\n\npublic class Contracts {\n    public static String theme() {\n        return \"light\";\n    }\n}\n",
     )];
     // One project: the lexical link stands, so the probe below is not vacuous.
     let together = repo_of(&files(false), &change);
     let md = impact_markdown(together.path(), "HEAD~1..HEAD");
-    assert!(md.contains("quiz/tests/conftest.py"), "{md}");
+    assert!(
+        md.contains("quiz/src/test/java/quiz/ConfigTest.java"),
+        "{md}"
+    );
     let apart = repo_of(&files(true), &change);
     let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
-    assert!(md.contains("web/src/config.ts::generated"), "{md}");
-    assert!(!md.contains("quiz/tests/conftest.py"), "{md}");
+    assert!(
+        md.contains("web/src/main/java/web/Config.java::generated"),
+        "{md}"
+    );
+    assert!(!md.contains("ConfigTest.java"), "{md}");
 }
 
 /// A sibling module of one language that imports the definition by its
@@ -2581,4 +2596,48 @@ fn a_class_whose_header_is_its_signature_keeps_its_definition() {
     assert!(header(&md).contains("1 definition(s)"), "{md}");
     assert!(md.contains("Turns.kt::Turns (3-8)"), "{md}");
     assert!(md.contains("User.kt::make"), "{md}");
+}
+
+/// #487: no runtime crosses from Kotlin to Swift. A Swift function that
+/// shares a name with the Kotlin client's is not reachable from the Kotlin
+/// test that reaches the Kotlin one.
+#[test]
+fn a_test_in_another_runtime_does_not_guard_a_namesake() {
+    let tmp = repo_of(
+        &[
+            (
+                "android/app/src/main/java/a/ApiClient.kt",
+                "package a\n\ndata class UserPreferences(val theme: String)\n\nclass ApiClient {\n    fun fetchUserPreferences(): UserPreferences = UserPreferences(\"dark\")\n}\n",
+            ),
+            (
+                "ios/Sources/APIClient.swift",
+                "import Foundation\n\nstruct UserPreferences {\n    let theme: String\n}\n\nclass APIClient {\n    func fetchUserPreferences() -> UserPreferences {\n        return UserPreferences(theme: \"dark\")\n    }\n}\n",
+            ),
+            (
+                "android/app/src/test/java/a/ApiClientAdminTest.kt",
+                "package a\n\nclass ApiClientAdminTest {\n    fun prefs() {\n        val apiClient = ApiClient()\n        check(apiClient.fetchUserPreferences().theme == \"dark\")\n    }\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let out = Command::new(&*BIN)
+        .current_dir(tmp.path())
+        .args(["--symbol", "UserPreferences", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let md = String::from_utf8_lossy(&out.stdout);
+    let line = |path: &str| {
+        md.lines()
+            .find(|l| l.contains(path) && l.contains("fetchUserPreferences"))
+            .unwrap_or_else(|| panic!("{path}: {md}"))
+            .to_string()
+    };
+    assert!(
+        line("ApiClient.kt").contains("ApiClientAdminTest.kt"),
+        "{md}"
+    );
+    assert!(
+        !line("APIClient.swift").contains("ApiClientAdminTest"),
+        "{md}"
+    );
 }
