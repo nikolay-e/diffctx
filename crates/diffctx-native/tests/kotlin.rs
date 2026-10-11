@@ -198,21 +198,25 @@ fn the_declared_package_decides_not_the_directory() {
     );
 }
 
-/// A call on the implicit `this` reaches the member; a local of the same
-/// name, a string and a comment do not.
+/// A call on the implicit `this` reaches the member, also from the
+/// initializer of a local of the same name (`val p = p()`); a call of that
+/// local, a string and a comment do not.
 #[test]
 fn implicit_this_binds_and_a_local_a_string_and_a_comment_do_not() {
     let tmp = repo_of(
         &[(
             "src/main/kotlin/a/Resolver.kt",
-            "package a\n\nclass Resolver {\n    fun tagFor(id: Int) = id\n\n    fun tagsFor(ids: List<Int>) = ids.map { tagFor(it) }\n\n    fun shadowed() {\n        val tagFor = { x: Int -> x }\n        tagFor(1)\n    }\n\n    // tagFor(2) in a comment\n    fun quoted() = \"tagFor(3)\"\n}\n",
+            "package a\n\nclass Resolver {\n    fun tagFor(id: Int) = id\n\n    fun tagsFor(ids: List<Int>) = ids.map { tagFor(it) }\n\n    fun shadowed() {\n        val tagFor = { x: Int -> x }\n        tagFor(1)\n    }\n\n    fun named(): Int {\n        val tagFor = tagFor(4)\n        return tagFor + 1\n    }\n\n    // tagFor(2) in a comment\n    fun quoted() = \"tagFor(3)\"\n}\n",
         )],
         &[],
     );
     let doc = symbol(tmp.path(), "tagFor");
     assert_eq!(
         callers(&doc, "tagFor"),
-        ["src/main/kotlin/a/Resolver.kt::tagsFor resolved call"],
+        [
+            "src/main/kotlin/a/Resolver.kt::named resolved call",
+            "src/main/kotlin/a/Resolver.kt::tagsFor resolved call",
+        ],
         "{doc:#}"
     );
 }
@@ -366,6 +370,75 @@ fn internal_reaches_its_own_tests_and_stops_at_another_project() {
         callers(&doc, "settle"),
         ["core/src/test/kotlin/a/LedgerTest.kt::settles resolved call"],
         "{doc:#}"
+    );
+}
+
+/// An override in a private nested class is reachable only from its file:
+/// the call there binds, an untyped `close()` in another file is not even a
+/// candidate.
+#[test]
+fn an_override_in_a_private_class_stays_in_its_file() {
+    let tmp = repo_of(
+        &[
+            (
+                "src/test/kotlin/a/SchedulingTest.kt",
+                "package a\n\nclass SchedulingTest {\n    private class FakeCluster : AutoCloseable {\n        override fun close() {}\n    }\n\n    fun uses() {\n        FakeCluster().close()\n    }\n}\n",
+            ),
+            (
+                "src/test/kotlin/a/CleanupTest.kt",
+                "package a\n\nclass CleanupTest {\n    fun cleans() {\n        val listener = open()\n        listener.close()\n    }\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let doc = symbol(tmp.path(), "FakeCluster.close");
+    assert_eq!(
+        callers(&doc, "close"),
+        ["src/test/kotlin/a/SchedulingTest.kt::uses resolved call"],
+        "{doc:#}"
+    );
+}
+
+/// `val x = store.find(…)` takes the declared return type of the method it
+/// calls, so an extension on that type binds; the same call on another
+/// store types `x` as that store's result and rejects it.
+#[test]
+fn a_value_takes_the_return_type_of_the_member_it_is_initialized_by() {
+    let tmp = repo_of(
+        &[(
+            "src/main/kotlin/a/Lyrics.kt",
+            "package a\n\nclass Lyrics\n\nclass Cover\n\ninterface LyricsStore {\n    fun find(id: Int): Lyrics?\n}\n\ninterface CoverStore {\n    fun find(id: Int): Cover?\n}\n\nprivate fun Lyrics?.settles(x: Int) = x > 0\n\nprivate fun Cover?.settles(x: Int) = x < 0\n\nclass Resolver(private val lyrics: LyricsStore, private val covers: CoverStore) {\n    fun look(): Boolean {\n        val stored = lyrics.find(1)\n        return stored.settles(2)\n    }\n\n    fun cover(): Boolean {\n        val stored = covers.find(1)\n        return stored.settles(3)\n    }\n}\n",
+        )],
+        &[],
+    );
+    let doc = symbol(tmp.path(), "Lyrics.settles");
+    assert_eq!(
+        callers(&doc, "settles"),
+        ["src/main/kotlin/a/Lyrics.kt::look resolved call"],
+        "{doc:#}"
+    );
+}
+
+/// An `inner class` reaches the instance that holds it: the outer property
+/// types its receiver and the outer method is its implicit `this`. A nested
+/// class's own property of another type, and another class's method of the
+/// same name, are not it.
+#[test]
+fn an_inner_class_reaches_its_outer_instance() {
+    let tmp = repo_of(
+        &[(
+            "src/main/kotlin/a/Scanner.kt",
+            "package a\n\nclass Writer {\n    fun upsert(x: Int) = x\n}\n\nclass Other {\n    fun upsert(x: Int) = x\n}\n\nclass Scanner(private val writer: Writer) {\n    fun begin() = 1\n\n    private inner class Visitor {\n        fun visit() {\n            writer.upsert(1)\n            begin()\n        }\n    }\n\n    private class Detached {\n        val writer = Other()\n        fun go() = writer.upsert(2)\n    }\n}\n\nclass Unrelated {\n    fun begin() = 2\n    fun run() = begin()\n}\n",
+        )],
+        &[],
+    );
+    assert_eq!(
+        callers(&symbol(tmp.path(), "Writer.upsert"), "upsert"),
+        ["src/main/kotlin/a/Scanner.kt::visit resolved call"]
+    );
+    assert_eq!(
+        callers(&symbol(tmp.path(), "Scanner.begin"), "begin"),
+        ["src/main/kotlin/a/Scanner.kt::visit resolved call"]
     );
 }
 

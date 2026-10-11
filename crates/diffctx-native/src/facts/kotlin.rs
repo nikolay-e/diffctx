@@ -65,8 +65,8 @@ pub struct Declaration {
     pub receiver: Option<String>,
     /// A property's or a function's declared type, outer name only.
     pub type_name: Option<String>,
-    /// A property with no written type, initialized by a call: its callee.
-    pub init_call: Option<String>,
+    /// A property with no written type, initialized by a call.
+    pub init_call: Option<InitCall>,
     /// What the declaration states itself.
     pub visibility: Option<Visibility>,
     /// What its owners allow on top: the narrowest of all. `None` for an
@@ -74,6 +74,8 @@ pub struct Declaration {
     /// not show.
     pub effective: Option<Visibility>,
     pub is_override: bool,
+    /// An `inner class`, which sees the instance that holds it.
+    pub inner: bool,
     /// A member with no body: an interface or `abstract` method, which every
     /// implementation has to provide.
     pub abstract_member: bool,
@@ -151,13 +153,21 @@ pub struct Use {
 
 /// A local name — a parameter, a local `val`, a lambda or loop variable —
 /// visible from `start` to the end of `scope`.
+/// `val x = Make(…)`, `val x = make(…)` or `val x = repo.find(…)`: the call
+/// a value with no written type takes its type from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitCall {
+    /// A plain name the callee is called on.
+    pub receiver: Option<String>,
+    pub callee: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct Binding {
     pub name: String,
     pub type_name: Option<String>,
-    /// `val x = Make(…)` or `val x = make(…)`: the callee that types it
-    /// when no type is written.
-    pub init_call: Option<String>,
+    /// The call that types it when no type is written.
+    pub init_call: Option<InitCall>,
     pub start: usize,
     pub scope: Range<usize>,
 }
@@ -481,6 +491,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
         visibility,
         effective,
         is_override,
+        inner: modifiers.is_some_and(|m| has_word(m, bytes, "inner")),
         abstract_member,
         annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
         required_params,
@@ -505,16 +516,17 @@ fn effective_visibility(
     is_override: bool,
     owners: &Owners,
 ) -> Option<Visibility> {
-    let own = match (own, is_override) {
-        (Some(v), _) => v,
-        (None, true) => return None,
-        (None, false) => Visibility::Public,
-    };
-    owners
+    let bound = owners
         .iter()
         .map(|(_, v)| v.unwrap_or(Visibility::Public))
-        .chain(std::iter::once(own))
         .min()
+        .unwrap_or(Visibility::Public);
+    match (own, is_override) {
+        // An override inherits a visibility the file does not spell, but
+        // never reaches past its owners.
+        (None, true) => (bound < Visibility::Public).then_some(bound),
+        (own, _) => Some(own.unwrap_or(Visibility::Public).min(bound)),
+    }
 }
 
 /// `class C(private val repo: Repo)`: a `val`/`var` parameter is a property
@@ -539,6 +551,7 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
         visibility,
         effective: effective_visibility(visibility, is_override, owners),
         is_override,
+        inner: false,
         abstract_member: false,
         annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
         required_params: None,
@@ -559,11 +572,18 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     let Some(scope) = enclosing_scope(node) else {
         return;
     };
+    // A local `val` is not in scope in its own initializer, so
+    // `val p = p(…)` calls the outer `p`; a local `fun` is, for recursion.
+    let start = if node.kind() == "property_declaration" {
+        node.end_byte()
+    } else {
+        node.start_byte()
+    };
     bindings.push(Binding {
         name,
         type_name: declared_type(node, bytes),
         init_call: initializer_call(node, bytes),
-        start: node.start_byte(),
+        start,
         scope,
     });
 }
@@ -891,7 +911,7 @@ fn declared_type(node: &Node, bytes: &[u8]) -> Option<String> {
 }
 
 /// `val x = Make(…)`: the callee of an initializer that is a plain call.
-fn initializer_call(node: &Node, bytes: &[u8]) -> Option<String> {
+fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
     if node.kind() != "property_declaration" {
         return None;
     }
@@ -906,10 +926,25 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<String> {
     } else {
         return None;
     };
-    let callee = call
-        .named_child(0)
-        .filter(|c| c.kind() == "simple_identifier")?;
-    text(callee, bytes).map(str::to_string)
+    let head = call.named_child(0)?;
+    match head.kind() {
+        "simple_identifier" => Some(InitCall {
+            receiver: None,
+            callee: text(head, bytes)?.to_string(),
+        }),
+        "navigation_expression" => {
+            let receiver = head
+                .named_child(0)
+                .filter(|r| r.kind() == "simple_identifier")?;
+            let callee =
+                child(head, "navigation_suffix").and_then(|s| child(s, "simple_identifier"))?;
+            Some(InitCall {
+                receiver: Some(text(receiver, bytes)?.to_string()),
+                callee: text(callee, bytes)?.to_string(),
+            })
+        }
+        _ => None,
+    }
 }
 
 fn first_child_type(node: &Node, bytes: &[u8]) -> Option<String> {
@@ -1128,7 +1163,11 @@ fun `weird name`() = 1 // tagFor in a comment\n";
         );
         assert_eq!(execute.required_params, Some(0));
         assert_eq!(execute.params, Some(2));
-        assert_eq!(decl(&f, "run").effective, None, "an override inherits");
+        assert_eq!(
+            decl(&f, "run").effective,
+            Some(Visibility::Internal),
+            "an override inherits, but not past its internal owner"
+        );
         let pad = decl(&f, "pad");
         assert_eq!(pad.receiver.as_deref(), Some("String"));
         assert_eq!(pad.owners, ["Worker"]);

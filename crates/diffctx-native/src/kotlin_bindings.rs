@@ -12,14 +12,16 @@
 //! the declaration is rejected. Compiler-grade typing is out of reach here:
 //! a receiver typed by inference is unresolved, never guessed.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::bindings::{Evidence, Finding, Relation};
-use crate::facts::kotlin::{Declaration, KotlinFacts, Receiver, Use, UseKind, Visibility};
+use crate::facts::kotlin::{
+    Declaration, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
+};
 use crate::source::Source;
 
 /// Supertype hops followed to find an inherited member.
@@ -28,6 +30,8 @@ const MAX_INHERITANCE_DEPTH: usize = 6;
 const MAX_TYPE_FILES: usize = 24;
 /// Project references followed to establish a dependency.
 const MAX_PROJECT_HOPS: usize = 6;
+/// Initializers followed through their receivers to type one value.
+const MAX_TYPING_DEPTH: usize = 4;
 
 pub fn is_kotlin(path: &str) -> bool {
     Path::new(path)
@@ -81,6 +85,7 @@ pub struct KotlinResolver<'a> {
     type_files: RefCell<FxHashMap<String, Vec<String>>>,
     projects: RefCell<FxHashMap<PathBuf, Option<PathBuf>>>,
     deps: RefCell<FxHashMap<PathBuf, Vec<PathBuf>>>,
+    typing_depth: Cell<usize>,
 }
 
 impl<'a> KotlinResolver<'a> {
@@ -94,6 +99,7 @@ impl<'a> KotlinResolver<'a> {
             type_files: RefCell::default(),
             projects: RefCell::default(),
             deps: RefCell::default(),
+            typing_depth: Cell::default(),
         }
     }
 
@@ -426,7 +432,15 @@ impl<'a> KotlinResolver<'a> {
             return Evidence::Candidate("receiver_unresolved");
         };
         let actual = match &u.receiver {
-            None | Some(Receiver::This) => self.enclosing_type(rel, facts, u.at),
+            None => {
+                let implicit = self.implicit_receivers(rel, facts, u.at);
+                implicit
+                    .iter()
+                    .find(|t| **t == owner || self.is_subtype(t, &owner, 0))
+                    .or_else(|| implicit.first())
+                    .cloned()
+            }
+            Some(Receiver::This) => self.enclosing_type(rel, facts, u.at),
             Some(r) => self.receiver_type(rel, facts, u, r),
         };
         let Some(actual) = actual else {
@@ -546,16 +560,30 @@ impl<'a> KotlinResolver<'a> {
 
     /// The innermost type around a byte of `rel`.
     fn enclosing_type(&self, rel: &str, facts: &KotlinFacts, at: usize) -> Option<TypeRef> {
-        let d = facts
+        self.implicit_receivers(rel, facts, at).into_iter().next()
+    }
+
+    /// The instances a bare name reaches at `at`: the innermost class and,
+    /// through each `inner class`, the instance that holds it.
+    fn implicit_receivers(&self, rel: &str, facts: &KotlinFacts, at: usize) -> Vec<TypeRef> {
+        let mut holders: Vec<&Declaration> = facts
             .declarations
             .iter()
             .filter(|d| d.is_type() && d.kind != "typealias" && d.span.contains(&at))
-            .min_by_key(|d| d.span.len())?;
-        Some(TypeRef {
-            path: rel.to_string(),
-            name: d.name.clone(),
-            owners: d.owners.clone(),
-        })
+            .collect();
+        holders.sort_by_key(|d| d.span.len());
+        let mut out = Vec::new();
+        for d in holders {
+            out.push(TypeRef {
+                path: rel.to_string(),
+                name: d.name.clone(),
+                owners: d.owners.clone(),
+            });
+            if !d.inner {
+                break;
+            }
+        }
+        out
     }
 
     /// The type a receiver expression has, as far as declarations say.
@@ -591,13 +619,17 @@ impl<'a> KotlinResolver<'a> {
     /// or a type named as a qualifier (`Obj.f()`, `Companion.f()`).
     fn name_type(&self, rel: &str, facts: &KotlinFacts, name: &str, at: usize) -> Option<TypeRef> {
         if let Some(b) = facts.binding_at(name, at) {
-            return match (&b.type_name, &b.init_call) {
-                (Some(t), _) => Some(self.type_or_external(rel, facts, t)),
-                (None, Some(callee)) => self.call_type(rel, facts, callee, at),
-                _ => None,
-            };
+            // The initializer reads names from before the binding.
+            let from = b.start.saturating_sub(1);
+            return self.value_type(
+                rel,
+                facts,
+                b.type_name.as_deref(),
+                b.init_call.as_ref(),
+                from,
+            );
         }
-        if let Some(class) = self.enclosing_type(rel, facts, at) {
+        for class in self.implicit_receivers(rel, facts, at) {
             if let Some(t) = self.property_type(&class, name, 0) {
                 return Some(t);
             }
@@ -607,11 +639,7 @@ impl<'a> KotlinResolver<'a> {
             .iter()
             .find(|d| d.kind == "property" && d.owners.is_empty() && d.name == name)
         {
-            return match (&p.type_name, &p.init_call) {
-                (Some(t), _) => Some(self.type_or_external(rel, facts, t)),
-                (None, Some(callee)) => self.call_type(rel, facts, callee, at),
-                _ => None,
-            };
+            return self.value_type(rel, facts, p.type_name.as_deref(), p.init_call.as_ref(), at);
         }
         if name.chars().next().is_some_and(char::is_uppercase) {
             return self.resolve_type(rel, facts, name);
@@ -627,11 +655,46 @@ impl<'a> KotlinResolver<'a> {
             return None;
         }
         let facts = self.facts(&decl_path)?;
-        match (&decl.type_name, &decl.init_call) {
-            (Some(t), _) => Some(self.type_or_external(&decl_path, &facts, t)),
-            (None, Some(callee)) => self.call_type(&decl_path, &facts, callee, decl.span.start),
-            _ => None,
+        self.value_type(
+            &decl_path,
+            &facts,
+            decl.type_name.as_deref(),
+            decl.init_call.as_ref(),
+            decl.span.start,
+        )
+    }
+
+    /// A value's written type or, failing that, what its initializer returns:
+    /// a plain call, or a call on a name whose type is known.
+    fn value_type(
+        &self,
+        rel: &str,
+        facts: &KotlinFacts,
+        written: Option<&str>,
+        init: Option<&InitCall>,
+        at: usize,
+    ) -> Option<TypeRef> {
+        if let Some(t) = written {
+            return Some(self.type_or_external(rel, facts, t));
         }
+        let init = init?;
+        let Some(receiver) = &init.receiver else {
+            return self.call_type(rel, facts, &init.callee, at);
+        };
+        // `val a = b.f()` beside `val b = a.g()` does not compile, but must
+        // not recurse forever when it is written.
+        if self.typing_depth.get() >= MAX_TYPING_DEPTH {
+            return None;
+        }
+        self.typing_depth.set(self.typing_depth.get() + 1);
+        let held = self.name_type(rel, facts, receiver, at);
+        self.typing_depth.set(self.typing_depth.get() - 1);
+        let (path, decl) = self
+            .member_of(&held?, &init.callee, 0)
+            .filter(|(_, d)| d.kind == "fun")?;
+        let returned = decl.type_name.as_deref()?;
+        let decl_facts = self.facts(&path)?;
+        Some(self.type_or_external(&path, &decl_facts, returned))
     }
 
     /// A written type: the repository's declaration of it, or the bare name
@@ -660,9 +723,12 @@ impl<'a> KotlinResolver<'a> {
             return self.resolve_type(rel, facts, callee);
         }
         let function = self
-            .enclosing_type(rel, facts, at)
-            .and_then(|class| self.member_of(&class, callee, 0))
-            .filter(|(_, d)| d.kind == "fun")
+            .implicit_receivers(rel, facts, at)
+            .iter()
+            .find_map(|class| {
+                self.member_of(class, callee, 0)
+                    .filter(|(_, d)| d.kind == "fun")
+            })
             .or_else(|| {
                 facts
                     .declarations

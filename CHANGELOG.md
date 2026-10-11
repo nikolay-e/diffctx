@@ -26,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its import or alias, the declared package (not the directory), the
   receiver's declared type — a local, a parameter, a property of the class
   or of a source-visible base class, a constructor or a function with a
-  written return type — an object or companion qualifier, or the implicit
-  `this`. What the syntax cannot settle stays a candidate with its reason
+  written return type, called plainly or on a typed name
+  (`val x = repo.find(id)`) — an object or companion qualifier, or the
+  implicit `this`, which in an `inner class` reaches the outer instance too.
+  What the syntax cannot settle stays a candidate with its reason
   (`receiver_unresolved`, `overloaded`, `wildcard_import`, `dispatch`,
   `project_dependency_unknown`); `internal` stops at the project, which its
   test source set shares. Callable references (`Obj::f`) are references,
