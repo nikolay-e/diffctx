@@ -2537,12 +2537,23 @@ const GENERIC_DIRECTORIES: &[&str] = &[
     "cmd", "include", "source", "sources",
 ];
 
+// Every supported language's `keyword (…) {`: a control statement removed
+// from a body reads like a method header.
 const NOT_MEMBER_NAMES: &[&str] = &[
     "if",
     "for",
     "while",
     "switch",
     "catch",
+    "match",
+    "when",
+    "try",
+    "synchronized",
+    "using",
+    "lock",
+    "fixed",
+    "foreach",
+    "elseif",
     "return",
     "function",
     "super",

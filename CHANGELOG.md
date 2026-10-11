@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A control statement removed from a method body is no removed member:
+  `match (a, b) {` in a Rust `impl` read as a removed API `match`, and
+  every file spelling the keyword became its caller. `when`, `try`,
+  `synchronized`, `using`, `lock`, `fixed`, `foreach` and `elseif` are
+  filtered with it (#492).
 - Impact looks a fragment id up as the fragment, not as the signature
   variant that shares its id when the signature spans the whole fragment: a
   Kotlin class whose header ends in `) {` answered `--symbol` with "0

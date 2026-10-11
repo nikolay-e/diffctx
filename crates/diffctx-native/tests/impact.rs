@@ -1260,6 +1260,38 @@ fn a_deleted_call_inside_a_method_is_no_removed_member() {
     assert!(contract_symbols(&doc).is_empty(), "{doc:#}");
 }
 
+/// A control statement removed from a method body declares nothing:
+/// `match (a, b) {` inside a Rust `impl` read as a removed member `match`,
+/// and every file spelling the keyword became its caller.
+#[test]
+fn a_removed_control_statement_is_no_removed_member() {
+    let shape = |body: &str| {
+        format!(
+            "pub struct Shape;\n\nimpl Shape {{\n    pub fn area(&self, a: u32, b: u32) -> u32 {{\n{body}        a * b\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[
+            (
+                "src/shape.rs",
+                &shape(
+                    "        match (a, b) {\n            (0, _) => return 0,\n            _ => {}\n        }\n",
+                ),
+            ),
+            (
+                "src/other.rs",
+                "pub fn pick(x: u32) -> u32 {\n    match (x, 1) {\n        (0, _) => 0,\n        _ => 1,\n    }\n}\n",
+            ),
+        ],
+        &[("src/shape.rs", &shape(""))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        !changed_symbols(&doc).contains(&"match".to_string()),
+        "{doc:#}"
+    );
+}
+
 /// Deleting the function right under a caller leaves that caller outside
 /// the diff: a pure removal is anchored on the line above it.
 #[test]
