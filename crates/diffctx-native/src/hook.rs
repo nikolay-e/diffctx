@@ -2451,6 +2451,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let path = dir.join("hook.log");
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_MAX_BYTES) {
         let _ = std::fs::rename(&path, dir.join("hook.log.1"));
+        sweep_seen(&dir.join("seen"));
     }
     let session = file_safe(trace.session.as_deref());
     let line = format!(
@@ -2475,6 +2476,33 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
         .append(true)
         .open(&path)
         .and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
+/// Markers in `seen/` are never read once their TTL has passed, so a
+/// long-lived cache otherwise grows without bound (#569). Swept when
+/// `hook.log` rotates: once every tens of thousands of runs, and nothing on
+/// the hot path.
+fn sweep_seen(seen: &Path) {
+    let Ok(entries) = std::fs::read_dir(seen) else {
+        return;
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let ttl = if entry.file_name().to_string_lossy().starts_with("upgrade-") {
+            UPGRADE_NOTICE_TTL
+        } else {
+            SEEN_TTL
+        };
+        let expired = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age >= ttl);
+        if expired {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// The hook's answer, or `None` for silence; every failure path is silence,
