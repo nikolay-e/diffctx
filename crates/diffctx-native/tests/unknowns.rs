@@ -444,3 +444,296 @@ fn named_by_never_displaces_a_caller() {
     let md = impact_markdown(named.path());
     assert!(md.contains("jobs/run1.yml:2 names lib.py"), "{md}");
 }
+
+fn impact_json(repo: &Path) -> serde_json::Value {
+    let out = Command::new(&*BIN)
+        .current_dir(repo)
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "-f",
+            "json",
+        ])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("impact JSON")
+}
+
+/// #559: only the lines naming a file by path are searched for a changed
+/// file outside code, so a config, template, query or stylesheet whose
+/// content something reads is named as not followed, never a clean zero. A
+/// document or a binary is found by its path alone, a comment edit reaches
+/// no reader, and code keeps its callers' answer: each control stays empty.
+#[test]
+fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
+    let untraced: &[(&str, &str, &str)] = &[
+        (
+            "template.yaml",
+            "spec:\n  synchronization:\n    mutexes:\n      - name: build\n  entrypoint: main\n",
+            "spec:\n  entrypoint: main\n",
+        ),
+        ("settings.json", "{\"retries\": 3}\n", "{\"retries\": 5}\n"),
+        ("app.toml", "[pool]\nsize = 4\n", "[pool]\nsize = 8\n"),
+        (
+            "web/index.html",
+            "<div id=\"cart\"></div>\n",
+            "<div id=\"basket\"></div>\n",
+        ),
+        (
+            "ui/site.css",
+            ".btn { color: red; }\n",
+            ".button { color: red; }\n",
+        ),
+        (
+            "Dockerfile",
+            "FROM alpine\nENV PORT=80\n",
+            "FROM alpine\nENV PORT=8080\n",
+        ),
+        ("mail/body.j2", "Hello {{ user }}\n", "Hello {{ name }}\n"),
+        ("requirements.txt", "requests==2.31\n", "requests==2.32\n"),
+        (
+            "CMakeLists.txt",
+            "add_compile_definitions(MAX_USERS=10)\n",
+            "add_compile_definitions(MAX_USERS=20)\n",
+        ),
+    ];
+    let reader = (
+        "healer.py",
+        "def blocked(wf):\n    return wf.get(\"synchronization\")\n",
+    );
+    for (path, before, after) in untraced {
+        let tmp = repo(&[(path, before), reader], &[(path, after)]);
+        let json = impact_json(tmp.path());
+        assert_eq!(json["empty"], false, "{path}: {json}");
+        let listed = json["unanalysed_files"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            listed
+                .iter()
+                .any(|f| f["path"] == *path && f["reason"] == "content_untraced"),
+            "{path}: {json}"
+        );
+        let md = impact_markdown(tmp.path());
+        assert!(md.contains("not followed"), "{path}: {md}");
+        assert!(!md.contains("No resolved static callers"), "{path}: {md}");
+    }
+
+    let png_before = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01".to_vec();
+    let mut png_after = png_before.clone();
+    png_after.push(0x02);
+    let png_before = String::from_utf8_lossy(&png_before).into_owned();
+    let png_after = String::from_utf8_lossy(&png_after).into_owned();
+    let controls: &[(&str, &str, &str)] = &[
+        ("README.md", "# shop\n", "# shop\n\nVAT included.\n"),
+        ("logo.png", &png_before, &png_after),
+        (
+            "ci.yaml",
+            "jobs:\n  test:\n    run: make\n",
+            "# the only job\njobs:\n  test:\n    run: make\n",
+        ),
+        (
+            "lib.py",
+            "def f():\n    return 1\n",
+            "def f():\n    return 2\n",
+        ),
+    ];
+    for (path, before, after) in controls {
+        let tmp = repo(&[(path, before)], &[(path, after)]);
+        let json = impact_json(tmp.path());
+        assert_eq!(json["empty"], true, "{path}: {json}");
+        assert!(json.get("unanalysed_files").is_none(), "{path}: {json}");
+    }
+}
+
+/// #563: a changed document is named by the config or code that reads it
+/// by path. A document naming it — a prose mention, an address with an `@`,
+/// even an `@AGENTS.md` import that loads it — is left out: on every edit of
+/// the file the same line would repeat (#564).
+#[test]
+fn a_document_is_named_by_what_reads_it_not_by_other_documents() {
+    let tmp = repo(
+        &[
+            ("AGENTS.md", "# Agents\nRule one.\n"),
+            ("CLAUDE.md", "@AGENTS.md\n"),
+            ("docs/guide.md", "# Guide\n"),
+            ("refs.yaml", "docs: docs/guide.md\nagents: AGENTS.md\n"),
+            ("NOTES.md", "Read docs/guide.md and AGENTS.md first.\n"),
+            ("CONTACT.md", "Write to ops@AGENTS.md.\n"),
+            ("tool.py", "def run():\n    return 1\n"),
+            ("README.md", "Run tool.py to start.\n"),
+        ],
+        &[
+            ("AGENTS.md", "# Agents\nRule two.\n"),
+            ("docs/guide.md", "# Guide\nx\n"),
+            ("tool.py", "def run():\n    return 2\n"),
+        ],
+    );
+    let md = impact_markdown(tmp.path());
+    for named in [
+        "refs.yaml:1 names docs/guide.md",
+        "refs.yaml:2 names AGENTS.md",
+    ] {
+        assert!(md.contains(named), "{named}: {md}");
+    }
+    for decoy in ["CLAUDE.md", "NOTES.md", "CONTACT.md", "README.md"] {
+        assert!(!md.contains(decoy), "{decoy}: {md}");
+    }
+}
+
+/// #538: a name five Java classes define is ambiguous across files, not
+/// inside the definition's own: `findOne` calling `toReport` in the same
+/// class is that class's call, and the test reaching `findOne` reaches it.
+/// A same-named method in another class stays unresolved, never listed.
+#[test]
+fn an_ambiguous_name_still_resolves_inside_its_own_file() {
+    let service = |name: &str, body: &str| {
+        format!(
+            "package com.example;\n\npublic class {name} {{\n    public Report findOne(String id) {{ return toReport(id); }}\n    private Report toReport(String id) {{\n        return {body};\n    }}\n}}\n"
+        )
+    };
+    let mut base: Vec<(String, String)> = vec![
+        (
+            "src/main/java/com/example/ReportService.java".into(),
+            service("ReportService", "new Report(id)"),
+        ),
+        (
+            "src/test/java/com/example/ReportServiceTest.java".into(),
+            "package com.example;\n\nclass ReportServiceTest {\n    @Test\n    void findsOne() {\n        new ReportService().findOne(\"1\");\n    }\n}\n".into(),
+        ),
+    ];
+    for other in ["Alpha", "Beta", "Gamma", "Delta"] {
+        base.push((
+            format!("src/main/java/com/example/{other}Service.java"),
+            service(&format!("{other}Service"), "new Report(id)"),
+        ));
+    }
+    let changed = service("ReportService", "new Report(id.trim())");
+    let base: Vec<(&str, &str)> = base.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let tmp = repo(
+        &base,
+        &[("src/main/java/com/example/ReportService.java", &changed)],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(
+        md.contains("called from src/main/java/com/example/ReportService.java::findOne"),
+        "{md}"
+    );
+    assert!(md.contains("ReportServiceTest.java"), "{md}");
+    assert!(
+        md.contains("callers outside its own file are not resolved"),
+        "{md}"
+    );
+    assert!(!md.contains("AlphaService"), "{md}");
+}
+
+/// #566: a member a supertype, an interface or the runtime can call is not
+/// one nothing calls. With no direct caller, each language's route is named
+/// instead of a clean zero; a private helper, a free function and a method
+/// with a direct caller keep the answer they had.
+#[test]
+fn a_member_only_dispatch_can_reach_is_named_never_dead() {
+    let dispatched: &[(&str, &str, &str, &str)] = &[
+        (
+            "src/Square.java",
+            "public class Square implements Shape {\n    @Override\n    public double area() {\n        return 1.0;\n    }\n}\n",
+            "public class Square implements Shape {\n    @Override\n    public double area() {\n        return 2.0;\n    }\n}\n",
+            "`Shape`",
+        ),
+        (
+            "money.py",
+            "class Money:\n    def __eq__(self, other):\n        return True\n",
+            "class Money:\n    def __eq__(self, other):\n        return False\n",
+            "`__eq__`",
+        ),
+        (
+            "writer.go",
+            "package main\n\ntype Upper struct{}\n\nfunc (u Upper) Write(p []byte) (int, error) {\n\treturn 1, nil\n}\n",
+            "package main\n\ntype Upper struct{}\n\nfunc (u Upper) Write(p []byte) (int, error) {\n\treturn 2, nil\n}\n",
+            "interface",
+        ),
+        (
+            "html.ts",
+            "export class HtmlRenderer implements Renderer {\n  render(x: number): string {\n    return `<b>${x}</b>`;\n  }\n}\n",
+            "export class HtmlRenderer implements Renderer {\n  render(x: number): string {\n    return `<i>${x}</i>`;\n  }\n}\n",
+            "`Renderer`",
+        ),
+        (
+            "Worker.kt",
+            "class Worker(val n: Int) : Runnable {\n    override fun run() {\n        println(n)\n    }\n}\n",
+            "class Worker(val n: Int) : Runnable {\n    override fun run() {\n        println(n + 1)\n    }\n}\n",
+            "`Runnable`",
+        ),
+    ];
+    for (path, before, after, via) in dispatched {
+        let tmp = repo(&[(path, before)], &[(path, after)]);
+        let json = impact_json(tmp.path());
+        assert_eq!(json["empty"], false, "{path}: {json}");
+        let unresolved = json["changed"][0]["unresolved"].as_str().unwrap_or("");
+        assert!(
+            unresolved.contains(via) && unresolved.contains("not traced"),
+            "{path}: {json}"
+        );
+    }
+
+    let controls: &[(&str, &str, &str)] = &[
+        (
+            "src/Square.java",
+            "public class Square implements Shape {\n    private double helper() {\n        return 1.0;\n    }\n}\n",
+            "public class Square implements Shape {\n    private double helper() {\n        return 2.0;\n    }\n}\n",
+        ),
+        (
+            "money.py",
+            "class Money(Base):\n    def _helper(self):\n        return 1\n",
+            "class Money(Base):\n    def _helper(self):\n        return 2\n",
+        ),
+        (
+            "util.go",
+            "package main\n\nfunc helper() int {\n\treturn 1\n}\n",
+            "package main\n\nfunc helper() int {\n\treturn 2\n}\n",
+        ),
+        (
+            "util.ts",
+            "export function helper(): number {\n  return 1;\n}\n",
+            "export function helper(): number {\n  return 2;\n}\n",
+        ),
+    ];
+    for (path, before, after) in controls {
+        let tmp = repo(&[(path, before)], &[(path, after)]);
+        let json = impact_json(tmp.path());
+        assert_eq!(json["empty"], true, "{path}: {json}");
+    }
+
+    let tmp = repo(
+        &[
+            (
+                "shop/money.py",
+                "class Money(Base):\n    def total(self):\n        return 1\n",
+            ),
+            (
+                "shop/cart.py",
+                "from shop.money import Money\n\n\ndef pay():\n    return Money().total()\n",
+            ),
+        ],
+        &[(
+            "shop/money.py",
+            "class Money(Base):\n    def total(self):\n        return 2\n",
+        )],
+    );
+    let json = impact_json(tmp.path());
+    let total = &json["changed"][0];
+    assert!(
+        total["callers"].as_array().is_some_and(|c| !c.is_empty()),
+        "{json}"
+    );
+    assert!(total.get("unresolved").is_none(), "{json}");
+}

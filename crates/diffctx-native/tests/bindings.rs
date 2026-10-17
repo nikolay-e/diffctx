@@ -556,7 +556,7 @@ fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
         build["unresolved"]
             .as_str()
             .unwrap()
-            .contains("has 3 rust definitions"),
+            .contains("`build` is ambiguous: 3 rust definitions"),
         "{doc}"
     );
     let out = run(

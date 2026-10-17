@@ -399,7 +399,7 @@
           ]
         },
         "reason": {
-          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap) or `unreadable`.",
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, or `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched.",
           "type": "string"
         },
         "lines": {

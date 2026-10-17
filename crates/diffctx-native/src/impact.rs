@@ -200,6 +200,10 @@ pub struct ImpactOutput {
     pub unanalysed_files: Vec<UnanalysedFile>,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub unanalysed_files_omitted: usize,
+    /// Of `unanalysed_files_omitted`, the `content_untraced` ones.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub untraced_omitted: usize,
     /// The token cap the answer was fitted to.
     #[serde(skip)]
     #[schemars(skip)]
@@ -255,6 +259,9 @@ pub enum Unknown {
     CommonWord { name: String, lines: usize },
     /// Reads of a member through a receiver nothing types.
     UnresolvedReads { name: String, reads: usize },
+    /// A member with no direct caller that a supertype, an interface or the
+    /// runtime can call: `via` names that route, which nothing traces.
+    Overridable { via: String },
 }
 
 impl std::fmt::Display for Unknown {
@@ -270,7 +277,7 @@ impl std::fmt::Display for Unknown {
                 language,
             } => write!(
                 f,
-                "`{name}` has {definitions} {language} definitions and this language has no binding model here"
+                "`{name}` is ambiguous: {definitions} {language} definitions and no binding model to tell them apart, so callers outside its own file are not resolved"
             ),
             Self::CommonWord { name, lines } => write!(
                 f,
@@ -280,6 +287,12 @@ impl std::fmt::Display for Unknown {
                 f,
                 "{reads} read(s) of `.{name}` through a receiver the binding model cannot type"
             ),
+            Self::Overridable { via } => {
+                write!(
+                    f,
+                    "calls through {via} are not traced, and no direct caller was found"
+                )
+            }
         }
     }
 }
@@ -359,7 +372,9 @@ pub struct UnanalysedFile {
     pub language: Option<&'static str>,
     /// `no_grammar`, `parse_timeout`, `parse_failed` (nothing read),
     /// `parse_partial` (read but for the error lines), `too_large` (over the
-    /// size cap) or `unreadable`.
+    /// size cap), `unreadable`, or `content_untraced`: a file outside code
+    /// whose keys, values or rules something may read, of which only the
+    /// lines naming the file by path were searched.
     pub reason: &'static str,
     /// Where the parse broke, the first few lines.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -679,7 +694,21 @@ fn is_import_block(content: &str) -> bool {
     !saw_code
 }
 
-/// The changed code files whose definitions this run did not read (#454),
+fn extension(path: &str) -> String {
+    path.rsplit_once('.')
+        .map_or("", |(_, e)| e)
+        .to_ascii_lowercase()
+}
+
+/// A file read for its prose, whose consumers find it by its path. Not
+/// `.txt`: `requirements.txt` and `CMakeLists.txt` are read by tools.
+fn is_document(path: &str) -> bool {
+    matches!(extension(path).as_str(), "md" | "markdown" | "rst" | "adoc")
+}
+
+/// The changed files this run did not read whole (#454), and the changed
+/// files outside code whose content something reads — config keys, a
+/// template, a query, a stylesheet — which nothing here traces (#559),
 /// ordered by language then path so the listed ones and the counted rest are
 /// stable.
 fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFile> {
@@ -695,18 +724,45 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
         .filter(|f| f.reason == crate::resource::LimitReason::FileTooLarge)
         .map(|f| f.path)
         .collect();
+    let layout: FxHashSet<&str> = state
+        .change_classes
+        .iter()
+        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
+        .map(|(p, _, _)| p.as_str())
+        .collect();
     let mut out: Vec<UnanalysedFile> = state
         .run
         .bounded(changed)
         .filter_map(|path| {
+            // Only the lines naming the file by path are searched for it. A
+            // document or a binary has no other consumer, a schema is listed
+            // as a contract and a layout edit reaches no reader; anything
+            // else read as a clean zero while its readers went unsearched.
+            if !is_code_file(path) {
+                let binary = || {
+                    source
+                        .read_bytes(&state.root_dir.join(path))
+                        .is_some_and(|b| b.iter().take(8000).any(|&c| c == 0))
+                };
+                if is_document(path)
+                    || is_schema_file(path)
+                    || layout.contains(path.as_str())
+                    || binary()
+                {
+                    return None;
+                }
+                return Some(UnanalysedFile {
+                    path: path.clone(),
+                    language: crate::languages::get_language_for_file(path),
+                    reason: "content_untraced",
+                    lines: Vec::new(),
+                });
+            }
             // No fragment at all. A deleted or withheld file never reaches
             // `changed`; a code file over the size cap or one that could not
             // be read was never analysed, and saying nothing made its callers
             // a clean zero. An empty file has nothing to analyse.
             let Some(&has_definition) = fragmented.get(path) else {
-                if !is_code_file(path) {
-                    return None;
-                }
                 let reason = if too_large.contains(path) {
                     "too_large"
                 } else if source.read_bytes(&state.root_dir.join(path)).is_none() {
@@ -1512,6 +1568,131 @@ fn dispatched_trait(state: &ScoredState, core: &Fragment) -> Option<String> {
     let name = name.rsplit("::").next().unwrap_or(name);
     let name = name.split(':').next().unwrap_or(name);
     (!name.is_empty()).then(|| name.to_string())
+}
+
+/// What can call a member nothing calls directly, in a language whose model
+/// does not trace dispatch: the supertype it overrides or implements, the
+/// runtime for a Python operator, any interface a Go method set satisfies.
+/// Read as "nothing calls them", an override of `Runnable.run` or an
+/// `__eq__` a test exercises was reported as dead (#566). A private or
+/// static member is reached only directly, so its zero stands.
+fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> Option<String> {
+    let name = base_symbol(core.symbol_name.as_deref()?);
+    let ext = Path::new(core.path())
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        // Traits are `dispatched_trait`'s.
+        "rs" => return None,
+        "go" => {
+            return core
+                .content
+                .trim_start()
+                .starts_with("func (")
+                .then(|| "any interface its type's method set satisfies".to_string());
+        }
+        "py" | "pyi" if name.len() > 4 && name.starts_with("__") && name.ends_with("__") => {
+            return Some(format!(
+                "the operator or protocol the runtime maps to `{name}`"
+            ));
+        }
+        "py" | "pyi" if name.starts_with('_') => return None,
+        _ => {}
+    }
+    if !is_member(core, file) {
+        return None;
+    }
+    let text = state.run.source().read_to_string(Path::new(core.path()))?;
+    let lines: Vec<&str> = text.lines().collect();
+    let first = core.start_line().saturating_sub(1) as usize;
+    let above = lines[..first.min(lines.len())]
+        .iter()
+        .rev()
+        .take_while(|l| l.trim_start().starts_with('@'))
+        .copied();
+    let declaration = lines.get(first).copied().unwrap_or("");
+    let head: String = above.chain([declaration]).collect::<Vec<_>>().join(" ");
+    let words: Vec<&str> = head
+        .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '@'))
+        .collect();
+    if words
+        .iter()
+        .any(|w| matches!(*w, "private" | "static" | "@staticmethod"))
+    {
+        return None;
+    }
+    let supers = enclosing_class(core, file)
+        .map(|c| supertypes(&c.content, &ext))
+        .unwrap_or_default();
+    let quoted = || format!("`{}`", supers.join("`, `"));
+    if words.iter().any(|w| matches!(*w, "@Override" | "override")) {
+        return Some(if supers.is_empty() {
+            "the supertype it overrides".to_string()
+        } else {
+            quoted()
+        });
+    }
+    (!supers.is_empty()).then(quoted)
+}
+
+/// The types a class header names as its supertypes: `extends`,
+/// `implements` and `with` clauses, a Python base list, a Kotlin, Swift or
+/// C# `: Base` after the primary constructor. The root types every class
+/// has are not routes.
+fn supertypes(class: &str, ext: &str) -> Vec<String> {
+    let Some(at) = class.find("class ") else {
+        return Vec::new();
+    };
+    let header = &class[at..];
+    let python = matches!(ext, "py" | "pyi");
+    let header = header
+        .split(if python { ":\n" } else { "{" })
+        .next()
+        .unwrap_or(header);
+    let clause: String = if python {
+        header
+            .split_once('(')
+            .and_then(|(_, rest)| rest.rsplit_once(')'))
+            .map(|(bases, _)| bases.to_string())
+            .unwrap_or_default()
+    } else {
+        // A primary constructor's `(x: Int)` holds colons of its own.
+        let mut depth = 0usize;
+        let flat: String = header
+            .chars()
+            .filter(|c| {
+                match c {
+                    '(' | '<' => depth += 1,
+                    ')' | '>' => depth = depth.saturating_sub(1),
+                    _ => return depth == 0,
+                }
+                false
+            })
+            .collect();
+        let after = ["extends ", "implements ", " with ", ":"]
+            .iter()
+            .filter_map(|k| flat.find(k).map(|i| i + k.len()))
+            .min();
+        after.map(|i| flat[i..].to_string()).unwrap_or_default()
+    };
+    clause
+        .split([',', ' ', '\n', '\t'])
+        .map(|t| t.trim().trim_end_matches(':'))
+        .filter(|t| {
+            !t.is_empty()
+                && !t.contains('=')
+                && !matches!(
+                    *t,
+                    "extends" | "implements" | "with" | "object" | "Object" | "Any" | "AnyObject"
+                )
+                && t.chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+        })
+        .map(|t| t.rsplit('.').next().unwrap_or(t).to_string())
+        .take(2)
+        .collect()
 }
 
 /// `<T: Clone> Iterator<Item = T>` without its leading parameter list.
@@ -2431,7 +2612,10 @@ pub fn build_impact(
             if inside_the_diff(src) {
                 in_diff.insert(src.clone());
             }
-            let reason = if ambiguous {
+            // Ambiguity is across files: inside the definition's own file a
+            // name is that file's own, as a file defining the same name
+            // calls its own (#538).
+            let reason = if ambiguous && src.path != core.id.path {
                 "ambiguous_name"
             } else if within(src, core) {
                 "own_body"
@@ -2831,6 +3015,13 @@ pub fn build_impact(
                     name: symbol.map(base_symbol).unwrap_or("").to_string(),
                     reads,
                 })
+            })
+            .or_else(|| {
+                callers
+                    .is_empty()
+                    .then(|| dispatch_route(state, core, file_of(core)))
+                    .flatten()
+                    .map(|via| Unknown::Overridable { via })
             });
         let untested = query.is_none()
             && tests.any()
@@ -3060,6 +3251,7 @@ pub fn build_impact(
         withheld_files: state.policy_excluded_count + state.run.withheld_count(),
         unanalysed_files: unanalysed,
         unanalysed_files_omitted: 0,
+        untraced_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
     };
     output.empty = proves_empty(&output);
@@ -3757,24 +3949,13 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
 /// #523). An import is a caller, which the binding model answers; a
 /// document or a comment only mentions the file.
 fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathReference>, usize) {
-    // A document or a data file mentions paths without consuming them.
-    let document = |p: &str| {
-        let ext = p
-            .rsplit_once('.')
-            .map_or("", |(_, e)| e)
-            .to_ascii_lowercase();
-        matches!(
-            ext.as_str(),
-            "md" | "markdown" | "rst" | "txt" | "adoc" | "diff" | "patch"
-        )
-    };
     // Every build step names a project manifest; that it changed is said
     // where dependencies are.
     let targets: Vec<String> = state
         .changed_files
         .iter()
         .map(|p| rel(state, &p.to_string_lossy()))
-        .filter(|t| !document(t) && !PROJECT_MANIFESTS.contains(&t.rsplit('/').next().unwrap_or(t)))
+        .filter(|t| !PROJECT_MANIFESTS.contains(&t.rsplit('/').next().unwrap_or(t)))
         .collect();
     if targets.is_empty() {
         return (Vec::new(), 0);
@@ -3816,7 +3997,12 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
     let mut per_target: FxHashMap<&str, usize> = FxHashMap::default();
     let mut omitted = 0;
     for (path, line, text) in state.run.bounded(&grepped.rows) {
-        if document(path)
+        // A document or a patch mentions paths without consuming them. A
+        // document importing another (`@AGENTS.md`) does load it, but says
+        // so on every edit of it, a constant line that teaches the reader to
+        // skip the block (#563, #564).
+        if is_document(path)
+            || matches!(extension(path).as_str(), "diff" | "patch")
             || commented(text)
             || crate::bindings::is_import_line(text)
             || written.contains(&(path.as_str(), text.trim()))
@@ -3960,6 +4146,10 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     }
     if output.unanalysed_files.len() > MAX_UNANALYSED_LISTED {
         output.unanalysed_files_omitted += output.unanalysed_files.len() - MAX_UNANALYSED_LISTED;
+        output.untraced_omitted += output.unanalysed_files[MAX_UNANALYSED_LISTED..]
+            .iter()
+            .filter(|f| f.reason == "content_untraced")
+            .count();
         output.unanalysed_files.truncate(MAX_UNANALYSED_LISTED);
         return true;
     }
@@ -4286,8 +4476,13 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
                 } else {
                     ""
                 };
+                let why = if reason == "content_untraced" {
+                    String::new()
+                } else {
+                    format!(" ({why})")
+                };
                 format!(
-                    "{} {} ({why}): {examples}{rest}",
+                    "{} {}{why}: {examples}{rest}",
                     paths.len(),
                     language.unwrap_or("code"),
                 )
@@ -4300,22 +4495,29 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
         };
         Some(format!("({lead}: {}{more})", groups.join("; ")))
     };
+    let untraced = |f: &&UnanalysedFile| f.reason == "content_untraced";
     let whole: Vec<&UnanalysedFile> = output
         .unanalysed_files
         .iter()
-        .filter(|f| !partial(f))
+        .filter(|f| !partial(f) && !untraced(f))
         .collect();
     let parts: Vec<&UnanalysedFile> = output.unanalysed_files.iter().filter(partial).collect();
+    let content: Vec<&UnanalysedFile> = output.unanalysed_files.iter().filter(untraced).collect();
     for text in [
         line(
             whole,
             "not analysed — definitions, callers and tests in them are not counted",
-            output.unanalysed_files_omitted,
+            output.unanalysed_files_omitted - output.untraced_omitted,
         ),
         line(
             parts,
             "analysed only in part — what sits on the lines the parse broke on is not counted",
             0,
+        ),
+        line(
+            content,
+            "not followed — only lines naming these files by path were searched; search for the keys and values the change touched",
+            output.untraced_omitted,
         ),
     ]
     .into_iter()
@@ -4356,17 +4558,25 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                 output.withheld_files
             );
         }
-        let partial = output
-            .unanalysed_files
-            .iter()
-            .filter(|f| f.reason == "parse_partial")
-            .count();
-        let unanalysed = output.unanalysed_files.len() + output.unanalysed_files_omitted - partial;
+        let count = |reason: &str| {
+            output
+                .unanalysed_files
+                .iter()
+                .filter(|f| f.reason == reason)
+                .count()
+        };
+        let partial = count("parse_partial");
+        let untraced = count("content_untraced") + output.untraced_omitted;
+        let unanalysed =
+            output.unanalysed_files.len() + output.unanalysed_files_omitted - partial - untraced;
         if unanalysed > 0 {
             clause.push_str(&format!(", {unanalysed} not analysed"));
         }
         if partial > 0 {
             clause.push_str(&format!(", {partial} analysed only in part"));
+        }
+        if untraced > 0 {
+            clause.push_str(&format!(", {untraced} not followed"));
         }
         clause
     };

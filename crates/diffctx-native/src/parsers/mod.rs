@@ -65,6 +65,7 @@ pub fn unanalysed_text(reason: &str) -> &'static str {
         "too_large" => "over the size cap",
         "embedded_code" => "its embedded code is not analysed",
         "unreadable" => "could not be read",
+        "content_untraced" => "what reads its content is not traced",
         _ => "parse failed",
     }
 }
