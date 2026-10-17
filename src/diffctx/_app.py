@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from .version import __version__
+from ._diffctx import BUILD_LABEL as _BUILD_LABEL
 
 if TYPE_CHECKING:
     from .cli import ParsedArgs
@@ -521,7 +521,7 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
     return "\n".join(parts) + "\n" if parts else ""
 
 
-def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = __version__) -> None:
+def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = _BUILD_LABEL) -> None:
     from .cli import parse_args
     from .logger import setup_logging
     from .tokens import print_token_summary
@@ -722,7 +722,7 @@ def _git_error_type() -> type[BaseException]:
 
 def run(argv: list[str] | None = None, *, prog: str | None = None, version: str | None = None) -> None:
     prog = prog or "diffctx"
-    version = version or __version__
+    version = version or _BUILD_LABEL
     _configure_windows_utf8()
     try:
         _run(argv, prog=prog, version=version)

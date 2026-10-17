@@ -16,8 +16,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from diffctx._diffctx import BUILD_LABEL, CancelToken, fit_artifact
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
-from diffctx._diffctx import CancelToken, fit_artifact
 
 # Every module a tool call needs is imported here, at startup, never inside the
 # call: a running server whose package is replaced on disk (`uv tool install
@@ -25,7 +25,6 @@ from diffctx._diffctx import CancelToken, fit_artifact
 from diffctx._native import GitError, build_diff_context, build_impact, build_locate
 from diffctx.clipboard import ClipboardError, copy_to_clipboard
 from diffctx.tokens import count_tokens
-from diffctx.version import __version__
 
 from .fetch import fetch_result
 from .security import validate_repo_path, validate_scope
@@ -274,7 +273,7 @@ async def _copy_or_degrade(content: str) -> str | None:
 # description, decide whether the tool is ever reached for (#289).
 mcp = MCPServer(
     "diffctx",
-    version=__version__,
+    version=BUILD_LABEL,
     instructions=(
         "Before reviewing, committing, merging or pushing a change, or when asked what it "
         "affects, call diffctx_context. mode=impact names the callers, tests and contracts "

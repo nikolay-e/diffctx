@@ -902,6 +902,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // --scoring values in its own literal and fell out of step the moment a mode
     // was added, so `pit` parsed everywhere except the two CLIs.
     m.add("SCORING_MODES", crate::mode::SCORING_MODE_NAMES.to_vec())?;
+    m.add("BUILD_LABEL", crate::run_provenance::BUILD_LABEL)?;
     m.add("GitError", m.py().get_type::<GitError>())?;
     m.add(
         "ComputeTimeoutError",

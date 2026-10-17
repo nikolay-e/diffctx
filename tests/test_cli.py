@@ -65,11 +65,16 @@ def test_run_injects_version(capsys):
 
 
 def test_run_defaults_to_diffctx_identity(capsys):
+    """A build no release pipeline made says so (#570): it carries its
+    release's version, and only the mark tells it from the release."""
+    from diffctx._diffctx import BUILD_LABEL
+
     with pytest.raises(SystemExit) as exc:
         diffctx.run(["--version"])
     assert exc.value.code == 0
     out = capsys.readouterr().out.strip()
-    assert out == f"diffctx {diffctx.__version__}"
+    assert out == f"diffctx {BUILD_LABEL}"
+    assert BUILD_LABEL in (diffctx.__version__, f"{diffctx.__version__}+source")
 
 
 def test_run_executes_tree_mode(temp_project):

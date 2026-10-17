@@ -2451,8 +2451,8 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let path = dir.join("hook.log");
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_MAX_BYTES) {
         let _ = std::fs::rename(&path, dir.join("hook.log.1"));
-        sweep_seen(&dir.join("seen"));
     }
+    sweep_seen_daily(&dir.join("seen"));
     let session = file_safe(trace.session.as_deref());
     let line = format!(
         "{} {} {} {} {} {outcome} {}ms {} {}\n",
@@ -2468,7 +2468,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
             || "-".to_string(),
             |r| r.to_string_lossy().replace(['\n', '\r'], "?")
         ),
-        env!("CARGO_PKG_VERSION"),
+        crate::run_provenance::BUILD_LABEL,
     );
     let _ = std::fs::create_dir_all(&dir);
     let _ = std::fs::OpenOptions::new()
@@ -2479,9 +2479,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
 }
 
 /// Markers in `seen/` are never read once their TTL has passed, so a
-/// long-lived cache otherwise grows without bound (#569). Swept when
-/// `hook.log` rotates: once every tens of thousands of runs, and nothing on
-/// the hot path.
+/// long-lived cache otherwise grows without bound (#569).
 fn sweep_seen(seen: &Path) {
     let Ok(entries) = std::fs::read_dir(seen) else {
         return;
@@ -2524,6 +2522,21 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
         (answer, None) => answer,
         (None, Some(notice)) => Some(hook_json(event, &notice, false)),
         (Some(answer), Some(notice)) => Some(with_notice(&answer, &notice)),
+    }
+}
+
+/// The sweep runs once a day on a stamp of its own. The log's rotation is no
+/// clock for it: an older pin cuts the same log at a quarter of the size, so
+/// while one is in use the log never reaches the size that rotates it here.
+fn sweep_seen_daily(seen: &Path) {
+    let stamp = seen.join(".swept");
+    let fresh = std::fs::metadata(&stamp)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|m| SystemTime::now().duration_since(m).ok())
+        .is_some_and(|age| age < SEEN_TTL);
+    if !fresh && std::fs::write(&stamp, "").is_ok() {
+        sweep_seen(seen);
     }
 }
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from diffctx.version import __version__
+from diffctx._diffctx import BUILD_LABEL
 
 # The base package installs diffctx-mcp although anyio and mcp come only with
 # the [mcp] extra (#333). Hiding them through sys.modules reproduces a base
@@ -39,7 +39,7 @@ def test_missing_extra_is_an_instruction_not_a_traceback(entry):
 def test_version_needs_no_extra(entry, flag):
     result = _run(_WITHOUT_EXTRA + _ENTRYPOINTS[entry], flag)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == f"{entry} {__version__}"
+    assert result.stdout.strip() == f"{entry} {BUILD_LABEL}"
 
 
 @pytest.mark.parametrize("entry", list(_ENTRYPOINTS))
@@ -56,4 +56,4 @@ def test_installed_script_reports_the_same_version_as_the_cli():
         pytest.skip("the console scripts are not installed beside this interpreter")
     mcp_version = subprocess.run([script, "--version"], capture_output=True, text=True, timeout=60, check=True).stdout
     cli_version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=60, check=True).stdout
-    assert mcp_version.split()[-1] == cli_version.split()[-1] == __version__
+    assert mcp_version.split()[-1] == cli_version.split()[-1] == BUILD_LABEL

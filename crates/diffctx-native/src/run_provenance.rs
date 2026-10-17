@@ -10,6 +10,15 @@ use serde::Serialize;
 
 use crate::effective_config::EffectiveConfigV1;
 
+/// The version, marked `+source` on a build no release pipeline made: one
+/// shares its release's version, so a `uv tool install` of a checkout
+/// satisfied the plugin's `==X.Y.Z` launch and two days of unreleased runs
+/// read as the release (#570).
+pub const BUILD_LABEL: &str = match option_env!("DIFFCTX_BUILD_SHA") {
+    Some(_) => env!("CARGO_PKG_VERSION"),
+    None => concat!(env!("CARGO_PKG_VERSION"), "+source"),
+};
+
 pub const SCHEMA: &str = "diffctx.provenance.v1";
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]

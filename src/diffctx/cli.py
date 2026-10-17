@@ -9,13 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
+from diffctx._diffctx import BUILD_LABEL as _BUILD_LABEL
 from diffctx._diffctx import DEFAULT_ALPHA as _ENGINE_DEFAULT_ALPHA
 from diffctx._diffctx import DEFAULT_SCORING as _ENGINE_DEFAULT_SCORING
 from diffctx._diffctx import DEFAULT_TAU as _ENGINE_DEFAULT_TAU
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 from diffctx._diffctx import SCORING_MODES as _ENGINE_SCORING_MODES
-
-from .version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +377,10 @@ def _run_mcp_server() -> None:
     # land on this entry point rather than diffctx-mcp; without this branch they
     # would start a tree-mapping run and flood the transport with the whole
     # working directory instead of speaking the protocol.
-    if Path("mcp").is_dir():
+    # The hint is for someone at a terminal; an MCP client pipes stdin, and
+    # the warning landed in its server log as an error on every start in a
+    # repository with an mcp/ directory.
+    if Path("mcp").is_dir() and sys.stdin.isatty():
         _warn("'mcp' is the subcommand; to map the directory ./mcp, run: diffctx ./mcp")
 
     from .mcp.launch import main as mcp_main
@@ -543,7 +545,7 @@ def _build_graph_parser(prog: str = "diffctx graph") -> argparse.ArgumentParser:
     return graph_parser
 
 
-def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> argparse.ArgumentParser:
+def _build_main_parser(prog: str = "diffctx", version: str = _BUILD_LABEL) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
         description=(
@@ -941,7 +943,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
     )
 
 
-def parse_args(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = __version__) -> ParsedArgs:
+def parse_args(argv: list[str] | None = None, *, prog: str = "diffctx", version: str = _BUILD_LABEL) -> ParsedArgs:
     global _current_prog
     _current_prog = prog
     raw_args = sys.argv[1:] if argv is None else argv

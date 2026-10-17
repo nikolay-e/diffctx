@@ -42,7 +42,7 @@ enum OutputFormat {
 #[derive(Parser)]
 #[command(
     name = "diffctx",
-    version,
+    version = _diffctx::run_provenance::BUILD_LABEL,
     about = "Semantic diff context selector",
     disable_version_flag = true,
     args_conflicts_with_subcommands = true

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from diffctx.version import __version__
+from diffctx._diffctx import BUILD_LABEL
 from tests.framework.pygit2_backend import Pygit2Repo
 
 pytest.importorskip("mcp")
@@ -122,7 +122,7 @@ def _snapshot(tools) -> dict:
 @pytest.mark.asyncio
 async def test_the_default_surface_over_real_stdio(argv, workspace):
     async with _session(argv, workspace) as (session, init):
-        assert init.server_info.version == __version__
+        assert init.server_info.version == BUILD_LABEL
         assert _snapshot((await _step("list_tools", session.list_tools())).tools) == _TOOL_SNAPSHOT
 
         outside = await _step(
@@ -154,11 +154,9 @@ async def test_the_default_surface_over_real_stdio(argv, workspace):
         assert doc["schema"] == "diffctx.locate.v1"
         assert any(item["path"] == "src/calc.py" for item in doc["items"])
 
-    stderr = workspace["stderr"].read_text(encoding="utf-8")
-    if argv[1:] == ["-m", "diffctx", "mcp"]:
-        assert _CWD_WARNING in stderr
-    else:
-        assert _CWD_WARNING not in stderr
+    # The server runs in a directory holding mcp/: a client launching it is
+    # not someone who meant that directory, and gets no hint about it.
+    assert _CWD_WARNING not in workspace["stderr"].read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("argv", _launchers())
@@ -241,7 +239,7 @@ def test_a_client_that_probes_with_server_discover_first_gets_an_answer(workspac
             }
             discover = _rpc(proc, {"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": probe})
             assert "2026-07-28" in discover["result"]["supportedVersions"], discover
-            assert discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == __version__, discover
+            assert discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"] == BUILD_LABEL, discover
             listed = _rpc(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": probe})
             assert [t["name"] for t in listed["result"]["tools"]] == ["diffctx_context"], listed
         finally:

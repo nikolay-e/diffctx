@@ -363,9 +363,13 @@ fn an_older_pin_says_once_per_session_that_a_newer_one_is_installed() {
     );
     assert_eq!(quiet.stdout, "", "nothing newer, nothing said");
 
+    // A build no release pipeline made says so: it shares the release's
+    // version, and only the mark tells its runs from the release's (#570).
+    let label = _diffctx::run_provenance::BUILD_LABEL;
+    assert!(label == running || label == format!("{running}+source"));
     let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
     assert!(
-        log.lines().all(|l| l.split(' ').last() == Some(running)),
+        log.lines().all(|l| l.split(' ').last() == Some(label)),
         "{log}"
     );
 }
@@ -2114,3 +2118,36 @@ fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
     assert!(seen.join("id-fresh.s1").is_file(), "fresh marker kept");
 }
 
+/// The sweep does not wait for the log to rotate: an older pin cuts the
+/// shared log at a quarter of the size, so it may never rotate here. It runs
+/// once a day on its own stamp, not on every hook run.
+#[test]
+fn the_marker_sweep_runs_daily_without_a_rotation() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let seen = cache.path().join("diffctx").join("seen");
+    std::fs::create_dir_all(&seen).unwrap();
+    let aged = |name: &str| {
+        let path = seen.join(name);
+        std::fs::write(&path, "").unwrap();
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(then)
+            .unwrap();
+        path
+    };
+    let stale = aged("id-0123.s1");
+    run_line(tmp.path(), cache.path(), "git status");
+    assert!(
+        !cache.path().join("diffctx/hook.log.1").exists(),
+        "no rotation"
+    );
+    assert!(!stale.exists(), "swept without a rotation");
+
+    let later = aged("id-89ab.s1");
+    run_line(tmp.path(), cache.path(), "git status");
+    assert!(later.exists(), "one sweep a day, not one per run");
+}
