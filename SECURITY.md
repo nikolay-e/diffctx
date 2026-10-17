@@ -88,6 +88,10 @@ block with the count and the categories, and `sanitization_redaction` among
 the coverage limit reasons, so a consumer can tell a clean input from a
 scrubbed one.
 
+The pass reads emitted text, not identifiers: paths, symbol names and line
+numbers — everything impact mode and the hook emit — go out as they are, so a
+credential spelled as a file or function name passes through.
+
 This is defence in depth, not a guarantee. Only shapes that cannot plausibly
 be anything else are matched; a password in a config literal, a home-grown
 token format, or a secret split across lines passes through. A clean pass

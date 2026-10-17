@@ -18,7 +18,7 @@ algorithm/fragments/fragments_015_markdown_long_heading_truncation
 # Documented gap, not a regression: a deletion-only diff yields zero
 # fragments because pipeline.rs drops deleted paths before fragmenting, so
 # the unchanged caller of the deleted module never surfaces. Fixing it is a
-# selection change (Q-class) and is frozen with the evaluation cycle.
+# selection change (Q-class), tracked as #415.
 algorithm/deletion/deletion_001_caller_of_deleted_module
 config/yaml/yaml_016_pagination_config
 infrastructure/terraform/terraform_010_iam_policy
@@ -75,7 +75,7 @@ synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # `kind:`. Fixed; the builder emits again and at the shipped auto budget the Deployment's
 # `spec:` fragment IS pulled. What still fails here is the stopping rule at this corpus's own
 # budget: `calculate_budget` sizes ~800 tokens for this case, and below ~2000 the greedy stops
-# before a 0.069-scoring fragment. That is a calibration question, frozen for the v3 cycle.
+# before a 0.069-scoring fragment. That is a calibration question for the v3 cycle.
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
 # Builder load-bearing cases whose gold is reachable only through the
