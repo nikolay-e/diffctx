@@ -2068,3 +2068,49 @@ fn a_qualified_search_word_is_not_the_name_it_qualifies() {
         "an alternation branch naming `total` is a search for it"
     );
 }
+
+/// #569: markers past their TTL (`SEEN_TTL`, or `UPGRADE_NOTICE_TTL` for
+/// `upgrade-*`) cannot be read by any hook run; rotating `hook.log` sweeps
+/// them while keeping live ones.
+#[test]
+fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let dir = cache.path().join("diffctx");
+    let seen = dir.join("seen");
+    std::fs::create_dir_all(&seen).unwrap();
+
+    let day = std::time::Duration::from_secs(24 * 60 * 60);
+    let stamp = |name: &str, age: std::time::Duration| {
+        let path = seen.join(name);
+        std::fs::write(&path, b"headline").unwrap();
+        let mtime = std::time::SystemTime::now() - age;
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+    };
+    stamp("id-stale.s1", day);
+    stamp("upgrade-0.9.0.s1", 40 * day);
+    stamp("upgrade-0.9.1.s1", 2 * day);
+    stamp("id-fresh.s1", std::time::Duration::from_secs(60));
+
+    std::fs::write(dir.join("hook.log"), vec![b'x'; 4 * 1024 * 1024 + 1]).unwrap();
+    let h = hook(tmp.path(), cache.path(), &payload(tmp.path(), "git status"));
+    assert_eq!(h.code, Some(0));
+
+    assert!(dir.join("hook.log.1").is_file(), "hook.log rotated");
+    assert!(!seen.join("id-stale.s1").exists(), "day-old marker swept");
+    assert!(
+        !seen.join("upgrade-0.9.0.s1").exists(),
+        "40-day upgrade notice swept"
+    );
+    assert!(
+        seen.join("upgrade-0.9.1.s1").is_file(),
+        "2-day upgrade notice kept"
+    );
+    assert!(seen.join("id-fresh.s1").is_file(), "fresh marker kept");
+}
+
