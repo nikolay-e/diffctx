@@ -1,8 +1,7 @@
 # diffctx — engineering QA notes
 
 Deep per-topic gotchas for working on diffctx. The entry playbook is the
-`/qa` skill plus root `QA.md` (applicability matrix, Sonar key, binary
-choice, triage discipline) — nothing from there is duplicated here.
+maintainers' `/qa` skill — nothing from there is duplicated here.
 
 ## Build & Install Layout
 
@@ -108,7 +107,7 @@ repo with the **pipx** binary until the first issue:
 
 ```bash
 cd test-repos/<repo> && git pull --ff-only
-/Users/nikolay/.local/bin/diffctx . --diff HEAD~1 --timeout 200
+diffctx . --diff HEAD~1 --timeout 200
 ```
 
 - The 12 newer clones are `--filter=tree:0` partial clones — first runs
@@ -157,9 +156,9 @@ value class instead of bounding it — the regex crate is linear-time.
 
 ## SonarQube — diffctx specifics
 
-Fix loop: push to Forgejo `main` → wait for `sonar-diffctx-*` in
-`argo-workflows` → re-fetch → mark FPs → gate. Project key and FP-remark
-gotcha live in root `QA.md`; analysis scope (tests, fixture and dataset
+Fix loop: push to Forgejo `main` → wait for the nightly Sonar scan →
+re-fetch → mark FPs → gate. The project key is
+`diffctx`; analysis scope (tests, fixture and dataset
 exclusions) in `sonar-project.properties`.
 
 - `eval/**` scripts are analyzed like any source — a new script there

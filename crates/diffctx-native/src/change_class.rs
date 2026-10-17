@@ -11,11 +11,13 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::DiffHunk;
 
-#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeClass {
     /// Hand-written, multi-line or otherwise substantive.

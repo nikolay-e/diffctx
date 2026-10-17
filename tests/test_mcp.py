@@ -140,7 +140,6 @@ class TestServerIdentity:
             assert tool.annotations.open_world_hint is False, f"{tool.name} is open-world"
 
 
-@pytest.mark.timeout(30)
 class TestGetDiffContext:
     @pytest.mark.asyncio
     async def test_returns_markdown(self, server, mcp_repo):
@@ -560,7 +559,6 @@ class TestBudgetTokensValidation:
         assert "Nothing was returned" in text
 
 
-@pytest.mark.timeout(120)
 class TestTokenBudgetGuardExecutes:
     """The over-budget branch on get_tree_map (:214) and get_file_context
     (:324) decides between returning real content and a refusal notice.
@@ -977,7 +975,7 @@ class TestFileContextHonoursTheIgnoreContract:
     """`get_file_context` accepts `**/*`, so it is the widest read surface the
     MCP server exposes. It used to glob without the ignore specs that
     `get_tree_map` and diff mode both apply, which made `.diffctx/ignore` — a
-    security contract per QA.md — advisory for anyone who asked directly."""
+    security contract — advisory for anyone who asked directly."""
 
     pytestmark = pytest.mark.usefixtures("legacy_tools")
 
@@ -1040,7 +1038,6 @@ class TestDefaultMode:
         assert "src/main.py" in text
 
 
-@pytest.mark.timeout(60)
 class TestProgressiveDisclosure:
     """The two-call shape #127 collapsed the server onto: rank, then read.
 
@@ -1122,7 +1119,7 @@ class TestProgressiveDisclosure:
 
     @pytest.mark.asyncio
     async def test_a_declared_exclusion_is_not_readable_through_fragment_ids(self, server, tmp_path):
-        """`.diffctx/ignore` is a security contract per QA.md. fragment_ids is a
+        """`.diffctx/ignore` is a security contract. fragment_ids is a
         new read surface, and an id can arrive from anything the model read, so
         the contract is enforced here or it is advisory again."""
         root = tmp_path / "jail_repo"

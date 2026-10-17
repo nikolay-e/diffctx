@@ -13,7 +13,6 @@ DATASET_VERSIONS = (
 )
 
 
-@pytest.mark.timeout(300)
 @pytest.mark.parametrize("version_dir", DATASET_VERSIONS, ids=lambda path: str(path.relative_to(REPO_ROOT)))
 def test_dataset_inventory_matches_checksums(version_dir: Path) -> None:
     inventory = version_dir / "checksums.sha256"

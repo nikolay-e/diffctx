@@ -63,6 +63,18 @@
       "format": "uint",
       "minimum": 0
     },
+    "named_by": {
+      "description": "Lines outside the change that name a changed file by its path from\nanother runtime or a config: a command line, a Dockerfile, a\nsettings entry that runs it (#393, #523). Imports are callers.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PathReference"
+      }
+    },
+    "named_by_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
     "commit_count": {
       "type": "integer",
       "format": "uint",
@@ -212,6 +224,28 @@
         "line",
         "target",
         "kind"
+      ]
+    },
+    "PathReference": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "target": {
+          "description": "The changed file the line names.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "target"
       ]
     },
     "ChangedSymbol": {
@@ -365,7 +399,7 @@
           ]
         },
         "reason": {
-          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap) or `unreadable`.",
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, or `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched.",
           "type": "string"
         },
         "lines": {

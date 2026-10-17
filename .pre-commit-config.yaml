@@ -306,20 +306,8 @@ repos:
       - id: cargo-test
         name: cargo test (Rust unit tests)
         language: system
-        # Dev profile for the harness-based targets (lib, native_cli): the
-        # release profile sets panic = "abort", and pulling the binary into a
-        # libtest target there mixes abort and unwind artifacts in
-        # target/release, which then breaks the harness-free yaml_cases build.
-        # yaml_cases stays on release (harness = false, so abort-safe).
-        entry: |
-          bash -c '
-          cd crates/diffctx-native &&
-          cargo test --lib --features python &&
-          cargo test --test native_cli &&
-          cargo test --test fragment_snapshot &&
-          cargo test --test impact --test hook --test bindings --test staged \
-            --test git_faults --test in_memory --test context_schema --test kotlin &&
-          DIFFCTX_YAML_CASES_LIMIT=48 cargo test --release --test yaml_cases'
+        # The suites CI runs, read off tests/ by the one script both call.
+        entry: env DIFFCTX_YAML_CASES_LIMIT=48 scripts/cargo-test-suites.sh
         pass_filenames: false
         # 48 >= the corpus's stratum count, so round 0 of the stratified sample
         # reaches every directory; at 20 the same first case of the first

@@ -31,7 +31,7 @@ pre-commit hooks need.
 
 1. Create a branch: `feature/description` or `fix/description`
 2. Make changes
-3. Run tests: `pytest` (and `cargo test --lib` for Rust changes)
+3. Run tests: `pytest` (and `scripts/cargo-test-suites.sh` for Rust changes)
 4. Run linting: `pre-commit run --all-files`
 5. Submit a pull request against `main`
 
@@ -46,9 +46,8 @@ pytest                          # run all Python tests
 pytest -x                       # stop on first failure
 pytest tests/test_basic.py      # run specific test file
 
-cd crates/diffctx-native
-cargo test --lib                                             # Rust inline units
-DIFFCTX_YAML_CASES_LIMIT=20 cargo test --test yaml_cases     # sampled YAML corpus
+scripts/cargo-test-suites.sh                                  # every Rust suite, as CI runs them
+DIFFCTX_YAML_CASES_LIMIT=48 scripts/cargo-test-suites.sh      # with a sampled YAML corpus
 ```
 
 CI gates the full YAML corpus per-case against

@@ -262,10 +262,6 @@ fn root_name(view: &ProjectGraphView<'_>) -> String {
         .to_string()
 }
 
-pub fn graph_to_json_string(view: &ProjectGraphView<'_>) -> Result<String, serde_json::Error> {
-    document_to_json(&graph_to_document(view))
-}
-
 pub fn document_to_json(doc: &GraphDocument) -> Result<String, serde_json::Error> {
     let mut out = serde_json::to_string_pretty(doc)?;
     out.push('\n');
@@ -286,10 +282,6 @@ fn escape_graphml(text: &str) -> String {
         }
     }
     out
-}
-
-pub fn graph_to_graphml_string(view: &ProjectGraphView<'_>) -> String {
-    document_to_graphml(&graph_to_document(view))
 }
 
 pub fn document_to_graphml(doc: &GraphDocument) -> String {
@@ -513,14 +505,14 @@ mod tests {
             root_dir: None,
         };
 
-        let json = graph_to_json_string(&view).expect("json ok");
+        let json = document_to_json(&graph_to_document(&view)).expect("json ok");
         assert!(json.contains("\"node_count\": 0"));
         assert!(json.contains("\"edge_count\": 0"));
         assert!(json.contains("\"nodes\": []"));
         assert!(json.contains("\"edges\": []"));
         assert!(json.ends_with('\n'));
 
-        let xml = graph_to_graphml_string(&view);
+        let xml = document_to_graphml(&graph_to_document(&view));
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(xml.contains("<graph id=\"unknown\" edgedefault=\"directed\">"));
         assert!(xml.contains("</graphml>"));
@@ -557,7 +549,7 @@ mod tests {
             root_dir: None,
         };
 
-        let json = graph_to_json_string(&view).expect("json ok");
+        let json = document_to_json(&graph_to_document(&view)).expect("json ok");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
 
         assert_eq!(parsed["type"], "project_graph");
@@ -627,7 +619,7 @@ mod tests {
             root_dir: None,
         };
 
-        let xml = graph_to_graphml_string(&view);
+        let xml = document_to_graphml(&graph_to_document(&view));
         assert!(xml.contains("ham&amp;eggs&lt;&quot;x&quot;&apos;&gt;"));
         assert!(xml.contains("src/&lt;weird&gt;.rs"));
         assert!(!xml.contains("ham&eggs"));
@@ -675,7 +667,7 @@ mod tests {
             "no capped-away phantom edge may be exported with weight 0.0"
         );
 
-        let xml = graph_to_graphml_string(&view);
+        let xml = document_to_graphml(&graph_to_document(&view));
         let xml_edge_count = xml.matches("<edge ").count();
         assert_eq!(
             xml_edge_count, doc.edge_count,

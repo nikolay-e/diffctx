@@ -219,6 +219,23 @@ jobs:
             npm publish --access public --provenance
           fi
 
+      # npm now answers a publish with "being processed and may take a few
+      # minutes": 1.19.1 became resolvable 7m12s after its publish, past the
+      # smoke's whole retry window, and all six cells failed on ETARGET. One
+      # runner waits for the registry here so the smoke cells test the package,
+      # not the registry's processing time.
+      - name: Wait until the registry serves the version
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if [ "$(npm view --prefer-online "diffctx@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "diffctx@$VERSION resolvable after attempt $attempt"; exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::diffctx@$VERSION was not resolvable 30 minutes after publish"; exit 1
+
   # install.js is the script every `npx diffctx` runs, and until 1.16.0 it ran
   # in one workflow on linux-x64 only: the PowerShell zip branch, the chmod
   # carry-over and four of the six platform-map entries executed nowhere, and

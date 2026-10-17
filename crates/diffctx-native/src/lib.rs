@@ -43,10 +43,12 @@ pub(crate) mod select;
 pub(crate) mod utility;
 
 // Output.
+pub mod artifact;
 pub mod go_bindings;
 pub mod hook;
 pub mod impact;
 pub mod kotlin_bindings;
+pub(crate) mod lang;
 pub mod locate;
 pub mod render;
 

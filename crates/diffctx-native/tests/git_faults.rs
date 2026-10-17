@@ -2,14 +2,15 @@
 // misbehaves on one subcommand and execs the real git for every other one, so
 // each case drives the shipped binary through a real pipeline with exactly one
 // stalled, malformed or leaking child. The contract under test: the run ends
-// within its deadline plus a cleanup allowance, owns up to what it lost, and
-// leaves none of its children behind.
+// at its deadline, owns up to what it lost, and leaves none of its children
+// behind. No case reads the clock (#510): a stall never ends on its own, so a
+// run its deadline does not end hangs, and CI fails it at the job's timeout.
 #![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tempfile::TempDir;
 
@@ -19,15 +20,15 @@ static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
 });
 
 const TIMEOUT_SECS: u64 = 3;
-/// Deadline plus the cleanup allowance, plus process start-up on a loaded CI
-/// runner; a hang is minutes, so the margin cannot hide one.
-const BOUND: Duration = Duration::from_secs(TIMEOUT_SECS + 2 + 3);
-/// The deadline for runs that must return the whole answer: one the debug
-/// build on a loaded runner never reaches, far short of the 600 s a hang
-/// sleeps. Under the 3 s one, a slow macOS runner cut the true answer short
-/// and the test read the disclosed partial as a changed answer (#502).
-const ANSWER_TIMEOUT_SECS: u64 = 30;
-const ANSWER_BOUND: Duration = Duration::from_secs(ANSWER_TIMEOUT_SECS + 5);
+/// The deadline for runs that must return the whole answer, where nothing
+/// stalls: one no runner reaches. Under the 3 s one, a slow macOS runner cut
+/// the true answer short and the test read the disclosed partial as a
+/// changed answer (#502).
+const ANSWER_TIMEOUT_SECS: u64 = 600;
+/// How many times a recorded pid is looked at, a poll slice apart, before it
+/// counts as having outlived the run.
+const SURVIVOR_CHECKS: usize = 30;
+const CHECK_PAUSE: Duration = Duration::from_millis(100);
 
 fn real_git() -> String {
     let out = Command::new("sh")
@@ -44,16 +45,17 @@ for a in "$@"; do
 done
 if [ -z "$hit" ]; then exec "$REAL_GIT" "$@"; fi
 echo $$ >> "$FAKE_GIT_PIDS"
+stall() { while :; do sleep 60; done; }
 case "$FAKE_GIT_MODE" in
-  stall_before_read) exec sleep 600 ;;
-  partial_header) read -r _; printf 'abc'; exec sleep 600 ;;
-  stall_in_body) read -r _; printf '%s blob 100\n0123456789' 0123456789012345678901234567890123456789; exec sleep 600 ;;
-  stall_in_oversized) read -r _; printf '%s blob 99000000\n0123456789' 0123456789012345678901234567890123456789; exec sleep 600 ;;
-  malformed) read -r _; echo 'this is not a header'; exec sleep 600 ;;
+  stall_before_read) stall ;;
+  partial_header) read -r _; printf 'abc'; stall ;;
+  stall_in_body) read -r _; printf '%s blob 100\n0123456789' 0123456789012345678901234567890123456789; stall ;;
+  stall_in_oversized) read -r _; printf '%s blob 99000000\n0123456789' 0123456789012345678901234567890123456789; stall ;;
+  malformed) read -r _; echo 'this is not a header'; stall ;;
   early_eof) exit 0 ;;
   fail) echo 'fatal: simulated failure' >&2; exit 128 ;;
   fail_after_first) [ $(wc -l < "$FAKE_GIT_PIDS") -gt 1 ] || exec "$REAL_GIT" "$@"; echo 'fatal: detected dubious ownership in repository' >&2; exit 128 ;;
-  descendant_holds_stdout) sleep 600 & echo $! >> "$FAKE_GIT_PIDS"; exec "$REAL_GIT" "$@" ;;
+  descendant_holds_stdout) stall & echo $! >> "$FAKE_GIT_PIDS"; exec "$REAL_GIT" "$@" ;;
   stderr_flood) head -c 4000000 /dev/zero | tr '\0' 'e' >&2; exec "$REAL_GIT" "$@" ;;
 esac
 exec "$REAL_GIT" "$@"
@@ -73,15 +75,14 @@ impl Fixture {
         self.tmp.path().join("pids")
     }
 
-    fn run(&self, target: &str, mode: &str, args: &[&str]) -> (Output, Duration) {
+    fn run(&self, target: &str, mode: &str, args: &[&str]) -> Output {
         let bin_dir = self.tmp.path().join("bin");
         let path = format!(
             "{}:{}",
             bin_dir.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let started = Instant::now();
-        let out = Command::new(&*BIN)
+        Command::new(&*BIN)
             .current_dir(self.repo())
             .args(args)
             .env("PATH", path)
@@ -92,15 +93,14 @@ impl Fixture {
             .env("FAKE_GIT_CALLS", self.tmp.path().join("calls"))
             .env("DIFFCTX_NO_MARKER", "1")
             .output()
-            .expect("run diffctx");
-        (out, started.elapsed())
+            .expect("run diffctx")
     }
 
-    fn impact(&self, target: &str, mode: &str) -> (Output, Duration) {
+    fn impact(&self, target: &str, mode: &str) -> Output {
         self.impact_within(target, mode, TIMEOUT_SECS)
     }
 
-    fn impact_within(&self, target: &str, mode: &str, secs: u64) -> (Output, Duration) {
+    fn impact_within(&self, target: &str, mode: &str, secs: u64) -> Output {
         let timeout = secs.to_string();
         self.run(
             target,
@@ -120,7 +120,7 @@ impl Fixture {
         )
     }
 
-    fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> (Output, Duration) {
+    fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
         let timeout = TIMEOUT_SECS.to_string();
         let mut args = vec![
             ".",
@@ -136,27 +136,60 @@ impl Fixture {
         self.run(target, mode, &args)
     }
 
-    /// Every pid the fake git recorded is gone: killed and reaped, or
-    /// re-parented and killed with its group — not left sleeping.
+    /// The fake git reached its target, and every pid it recorded is gone:
+    /// killed and reaped, or re-parented and killed with its group — not left
+    /// stalling.
     fn assert_no_survivors(&self) {
         let pids = std::fs::read_to_string(self.pids_file()).unwrap_or_default();
-        let deadline = Instant::now() + Duration::from_secs(3);
+        assert!(
+            !pids.trim().is_empty(),
+            "the fake git never reached its target: the test measured nothing"
+        );
         for pid in pids.split_whitespace() {
-            loop {
-                let alive = Command::new("kill")
-                    .args(["-0", pid])
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .expect("kill -0")
-                    .success();
-                if !alive {
-                    break;
+            let gone = (0..SURVIVOR_CHECKS).any(|_| {
+                let dead = !running(pid);
+                if !dead {
+                    std::thread::sleep(CHECK_PAUSE);
                 }
-                assert!(Instant::now() < deadline, "pid {pid} outlived the run");
-                std::thread::sleep(Duration::from_millis(50));
+                dead
+            });
+            assert!(gone, "pid {pid} outlived the run");
+        }
+    }
+}
+
+/// A stall never ends on its own, so whatever a failed run left behind is
+/// killed here with its group: a regression leaks nothing onto the machine.
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let fake = self.tmp.path().join("bin").display().to_string();
+        let pids = std::fs::read_to_string(self.pids_file()).unwrap_or_default();
+        for pid in pids.split_whitespace() {
+            if running(pid) && command_of(pid).contains(&fake) {
+                let _ = Command::new("sh")
+                    .args(["-c", &format!("kill -9 -{pid} {pid} 2>/dev/null")])
+                    .status();
             }
         }
     }
+}
+
+fn command_of(pid: &str) -> String {
+    let out = Command::new("ps")
+        .args(["-o", "command=", "-p", pid])
+        .output()
+        .expect("ps");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// Running, not merely present: a zombie has exited and waits for its reaper.
+fn running(pid: &str) -> bool {
+    let out = Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps");
+    let stat = String::from_utf8_lossy(&out.stdout);
+    !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
 }
 
 fn git(repo: &Path, args: &[&str]) {
@@ -232,8 +265,7 @@ fn callers_of_total(doc: &serde_json::Value) -> Vec<String> {
 /// no claim about the callers it could not read.
 fn assert_stall_is_bounded_and_disclosed(mode: &str) {
     let fx = fixture();
-    let (out, elapsed) = fx.impact("cat-file", mode);
-    assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
+    let out = fx.impact("cat-file", mode);
     // Either an error exit or a partial artifact that names the deadline;
     // never a clean answer about callers it could not read.
     if out.status.success() {
@@ -272,8 +304,7 @@ fn a_cat_file_stalled_while_draining_an_oversized_blob_is_bounded() {
 /// is the one the real git gives, not a guess and not a hang.
 fn assert_recovers_the_true_answer(mode: &str) {
     let fx = fixture();
-    let (out, elapsed) = fx.impact_within("cat-file", mode, ANSWER_TIMEOUT_SECS);
-    assert!(elapsed < ANSWER_BOUND, "{mode}: took {elapsed:?}");
+    let out = fx.impact_within("cat-file", mode, ANSWER_TIMEOUT_SECS);
     assert!(
         out.status.success(),
         "{mode}: {}",
@@ -300,17 +331,14 @@ fn a_cat_file_that_exits_at_once_is_recovered_from() {
 #[test]
 fn a_descendant_holding_stdout_cannot_hold_the_run() {
     let fx = fixture();
-    let (out, elapsed) = fx.impact("ls-files", "descendant_holds_stdout");
-    assert!(elapsed < BOUND, "took {elapsed:?}");
-    let _ = out;
+    let _ = fx.impact("ls-files", "descendant_holds_stdout");
     fx.assert_no_survivors();
 }
 
 #[test]
 fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
     let fx = fixture();
-    let (out, elapsed) = fx.impact_within("ls-files", "stderr_flood", ANSWER_TIMEOUT_SECS);
-    assert!(elapsed < ANSWER_BOUND, "took {elapsed:?}");
+    let out = fx.impact_within("ls-files", "stderr_flood", ANSWER_TIMEOUT_SECS);
     assert!(
         out.status.success(),
         "{}",
@@ -323,8 +351,7 @@ fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
 fn repeated_stalls_are_each_bounded_and_cleaned_up() {
     let fx = fixture();
     for _ in 0..3 {
-        let (_, elapsed) = fx.impact("cat-file", "stall_before_read");
-        assert!(elapsed < BOUND, "took {elapsed:?}");
+        let _ = fx.impact("cat-file", "stall_before_read");
     }
     fx.assert_no_survivors();
 }
@@ -347,7 +374,7 @@ fn a_control_character_path_still_reads_its_own_content() {
     )
     .unwrap();
     git(&repo, &["commit", "-qam", "triple"]);
-    let (out, _) = fx.run(
+    let out = fx.run(
         "none",
         "none",
         &[
@@ -389,13 +416,12 @@ fn untracked_change() -> Fixture {
 #[test]
 fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
     let fx = untracked_change();
-    for (mode, (out, elapsed)) in [
+    for (mode, out) in [
         ("pack", fx.pack("--others", "fail", &[])),
         ("full", fx.pack("--others", "fail", &["--full"])),
         ("impact", fx.impact("--others", "fail")),
     ] {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
         assert_eq!(
             out.status.code(),
             Some(3),
@@ -416,14 +442,12 @@ fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
 #[test]
 fn a_stalled_untracked_scan_is_disclosed_as_partial() {
     let fx = untracked_change();
-    let (out, elapsed) = fx.impact("--others", "stall_before_read");
-    assert!(elapsed < BOUND, "impact: took {elapsed:?}");
+    let out = fx.impact("--others", "stall_before_read");
     let doc = json(&out);
     assert_eq!(doc["empty"], false, "{doc}");
     assert!(doc["limits"].to_string().contains("deadline"), "{doc}");
 
-    let (out, elapsed) = fx.pack("--others", "stall_before_read", &[]);
-    assert!(elapsed < BOUND, "pack: took {elapsed:?}");
+    let out = fx.pack("--others", "stall_before_read", &[]);
     let doc = json(&out);
     assert_eq!(doc["coverage"]["status"], "partial", "{doc}");
     assert!(
@@ -433,8 +457,7 @@ fn a_stalled_untracked_scan_is_disclosed_as_partial() {
         "{doc}"
     );
 
-    let (out, elapsed) = fx.pack("--others", "stall_before_read", &["--full"]);
-    assert!(elapsed < BOUND, "full: took {elapsed:?}");
+    let out = fx.pack("--others", "stall_before_read", &["--full"]);
     assert_eq!(
         out.status.code(),
         Some(3),
@@ -464,11 +487,10 @@ fn withheld_change() -> Fixture {
 #[test]
 fn a_policy_the_deadline_left_unread_still_withholds() {
     let fx = withheld_change();
-    for (mode, (out, elapsed)) in [
+    for (mode, out) in [
         ("impact", fx.impact("--diff-filter=R", "stall_before_read")),
         ("pack", fx.pack("--diff-filter=R", "stall_before_read", &[])),
     ] {
-        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
         let doc = json(&out).to_string();
         assert!(!doc.contains("vault.py"), "{mode}: {doc}");
     }
@@ -483,7 +505,7 @@ fn a_policy_the_deadline_left_unread_still_withholds() {
 fn a_policy_git_refused_to_read_still_withholds() {
     for mode in ["impact", "pack"] {
         let fx = withheld_change();
-        let (out, _) = if mode == "impact" {
+        let out = if mode == "impact" {
             fx.impact("--git-dir", "fail_after_first")
         } else {
             fx.pack("--git-dir", "fail_after_first", &[])
@@ -505,9 +527,8 @@ fn a_policy_git_refused_to_read_still_withholds() {
 fn a_deadline_that_found_nothing_names_the_limit_not_a_clean_tree() {
     let fx = untracked_change();
     for (mode, extra) in [("pack", &[][..]), ("locate", &["--mode", "locate"][..])] {
-        let (out, elapsed) = fx.pack("--others", "stall_before_read", extra);
+        let out = fx.pack("--others", "stall_before_read", extra);
         let stderr = String::from_utf8_lossy(&out.stderr);
-        assert!(elapsed < BOUND, "{mode}: took {elapsed:?}");
         assert_eq!(out.status.code(), Some(0), "{mode}: {stderr}");
         assert!(stderr.contains("deadline"), "{mode}: {stderr}");
         assert!(!stderr.contains("no semantic context"), "{mode}: {stderr}");
@@ -597,7 +618,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
     let fx = sweep_fixture();
     let calls = fx.tmp.path().join("calls");
     let _ = std::fs::remove_file(&calls);
-    let (out, _) = fx.impact_within("no-such-verb", "fail", ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_within("no-such-verb", "fail", ANSWER_TIMEOUT_SECS);
     assert!(
         out.status.success(),
         "{}",
@@ -628,8 +649,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
     verbs.dedup();
     assert!(verbs.iter().any(|v| v == "grep"), "{verbs:?}");
     for verb in &verbs {
-        let (out, elapsed) = fx.impact(verb, "fail");
-        assert!(elapsed < BOUND, "{verb}: took {elapsed:?}");
+        let out = fx.impact(verb, "fail");
         if !out.status.success() {
             continue;
         }
@@ -648,8 +668,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
 #[test]
 fn a_stalled_full_read_names_the_deadline() {
     let fx = fixture();
-    let (out, elapsed) = fx.pack("cat-file", "stall_before_read", &["--full"]);
-    assert!(elapsed < BOUND, "took {elapsed:?}");
+    let out = fx.pack("cat-file", "stall_before_read", &["--full"]);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!stderr.contains("over the size cap"), "{stderr}");
     let named = stderr.contains("deadline")

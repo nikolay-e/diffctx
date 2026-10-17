@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The native binary, the Python CLI and the MCP server render the pack
+  artifact and fit it to `--budget` with one engine function, measured on
+  the text each delivers: one range, budget and format gives the same
+  document from each door that serves that format (#507).
+- YAML has one writer for both CLIs. A string a YAML 1.1 reader would take
+  for something else (`off`, `y`, `=`, a date) is quoted, so PyYAML reads a
+  symbol named `off` as a string; the native YAML changes style to match
+  (double quotes where needed, literal blocks). The Python CLI's YAML now
+  carries `commit_count`, `redactions`, an empty `fragments` list and the
+  schema's key order.
+
+### Fixed
+
+- Impact named a changed config, template, stylesheet, `requirements.txt`
+  or `CMakeLists.txt` as reaching nothing: a file outside code was dropped
+  from the answer when nothing named it by path, though nothing traced what
+  reads its keys and values. It is now listed as `content_untraced` ("not
+  followed"), and such an answer is not empty (#559). A prose document or a
+  binary is still found by its path alone, and a comment-only edit reaches
+  no reader.
+- A method a supertype, an interface or the runtime calls — a Java
+  `@Override`, a Kotlin `override`, a class implementing an interface, a
+  Python `__eq__`, a Go method — read as "nothing calls them" when no direct
+  caller was found, and a change to it as reaching nothing. It now says
+  which route is not traced (#566). A private or static method keeps its
+  zero.
+- A changed document was never "named by path": a config or code line naming
+  `docs/x.md` is now listed. A document naming it, an `@AGENTS.md` import
+  included, is not: on every edit the same line would repeat (#563, #564).
+- A name several files of a language without a binding model define (Java's
+  `findOne`, `toReport`) lost every caller, the one in its own file too. A
+  call inside the definition's own file is now that file's own, with the
+  tests that reach it; callers in other files stay "not resolved", worded as
+  the ambiguity it is (#538).
+- The hook never deleted an expired marker: one machine held 26,000 of them
+  after 13 days. A hook run sweeps them once a day (#569).
+- A build no release pipeline made says so: `diffctx --version`,
+  `diffctx-mcp --version`, the MCP server's reported version and every
+  `hook.log` line read `X.Y.Z+source`. A `uv tool install` of a checkout
+  satisfies the plugin's `==X.Y.Z` launch, and its runs read as the release
+  (#570).
+- The MCP server no longer warns that `mcp` is the subcommand when a client
+  launches it in a repository with an `mcp/` directory; the hint is for a
+  terminal (#571).
+- Impact counted what it had not looked at as a clean zero in more places:
+  untyped reads (#399), builtin and literal receivers (#389), code embedded
+  in shell scripts (#427), names too common to trace (#430), and callers the
+  graph's edge cap dropped (#547, #552) are now counted or named. The header
+  counts untested callers only beside a caller (#493).
+- Callers by language: a Python assignment or attribute a method sets is a
+  definition, a returned receiver is a possible caller and a test importing
+  through `sys.path` reaches the module (#398, #477, #525); JS/TS uses are
+  read off the syntax, with glob imports and Vite `resolve.alias` (#357,
+  #504); a Rust inline `#[test]` is a test link (#528), one trait's
+  dyn-dispatched methods fold into one line (#545), and a module split's
+  re-exports are not removals.
+- `named_by` lists the lines that run or ship a changed file by path (#393,
+  #523).
+- The hook answers a recording line from git's record (#527), reviews a line
+  whose last command fails (#532), says once when a newer plugin is
+  installed beside an older pin, and every `hook.log` line names its version
+  (#524).
+- The Windows test worker crash was pytest-timeout's thread method exiting
+  the xdist worker; the dependency is gone (#529).
+- A budget-bound `-f json`/`-f yaml` artifact from the Python CLI was cut by
+  position: production before docs, and the rewrite of a multi-fragment
+  file before its one-line bumps. A changed fragment is now shortened before
+  it is dropped, so a larger budget never shows less of the change (#438).
+- `--with-raw-diff` no longer spends `--budget`: the patch is not charged,
+  as documented, and the selection under a binding budget is the same with
+  and without it.
+- The plugin's hook launches the pinned package with no environment
+  assignment, since `diffctx hook` reads the `CLAUDE_PLUGIN_ROOT` Claude
+  Code already exports, and its version variable is no longer named `pin`.
+  The plugin directory has flagged every main-branch plugin since the change
+  that introduced both as reading a credential; whether this clears the
+  finding is read off the next directory scan (#565).
+
 ## [1.19.1] - 2026-10-14
 
 ### Added
@@ -295,8 +375,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file knows `fun` and `typealias`.
 - A Kotlin type the text declares at the start of a line but the parse did
   not read — a grammar's silent misreading, with no error node — marks the
-  file analysed only in part (0 of yay-tsa's 1,036 files with the shipped
-  grammar; local classes count as read).
+  file analysed only in part (0 of 1,036 files in a Kotlin codebase with the
+  shipped grammar; local classes count as read).
 - The parse outcome is recorded when the fragmenter parses a file, not
   inferred from the fragments that came out: a file that parsed with errors
   is reported as analysed only in part even when a definition survived, and

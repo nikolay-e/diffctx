@@ -208,10 +208,11 @@ fn hook_respond(
 ) -> PyResult<Option<String>> {
     let kind = match event {
         "pretooluse" => crate::hook::Event::PreToolUse,
-        "posttooluse" => crate::hook::Event::PostToolUse,
+        "posttooluse" => crate::hook::Event::PostToolUse { failed: false },
+        "posttoolusefailure" => crate::hook::Event::PostToolUse { failed: true },
         other => {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "unknown hook event {other:?}: pretooluse or posttooluse"
+                "unknown hook event {other:?}: pretooluse, posttooluse or posttoolusefailure"
             )));
         }
     };
@@ -391,6 +392,69 @@ fn diff_context_output_to_dict<'py>(
     json_to_py(py, &value)?
         .cast_into::<PyDict>()
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+/// The document as the Python CLI, the MCP server and the API deliver it:
+/// rendered in `format` and fitted by the same `artifact::fit` the binary
+/// runs, so every door cuts one way, on the text it returns (#507). The
+/// fitted document comes back beside its text.
+#[pyfunction]
+fn fit_artifact<'py>(
+    py: Python<'py>,
+    document: &Bound<'py, PyAny>,
+    format: &str,
+) -> PyResult<(Bound<'py, PyAny>, String)> {
+    let format = crate::artifact::Format::named(format).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown format {format:?}: yaml, json, md or txt"
+        ))
+    })?;
+    let mut doc = py_to_json(document)?;
+    let rendered = py.detach(|| crate::artifact::fit(&mut doc, format));
+    Ok((json_to_py(py, &doc)?, rendered))
+}
+
+/// The Python value a document dict holds, as the serde value it denotes:
+/// the inverse of `json_to_py`, key order kept.
+fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    use pyo3::types::{PyBool, PyFloat, PyInt, PyString, PyTuple};
+    use serde_json::Value;
+    if value.is_none() {
+        return Ok(Value::Null);
+    }
+    if let Ok(b) = value.cast::<PyBool>() {
+        return Ok(Value::Bool(b.is_true()));
+    }
+    if value.is_instance_of::<PyInt>() {
+        return Ok(match value.extract::<i64>() {
+            Ok(i) => i.into(),
+            Err(_) => value.extract::<u64>()?.into(),
+        });
+    }
+    if let Ok(f) = value.cast::<PyFloat>() {
+        return Ok(serde_json::Number::from_f64(f.value()).map_or(Value::Null, Value::Number));
+    }
+    if value.is_instance_of::<PyString>() {
+        return Ok(Value::String(value.extract()?));
+    }
+    if let Ok(dict) = value.cast::<PyDict>() {
+        let mut map = serde_json::Map::new();
+        for (k, v) in dict.iter() {
+            map.insert(k.str()?.extract()?, py_to_json(&v)?);
+        }
+        return Ok(Value::Object(map));
+    }
+    if value.is_instance_of::<PyList>() || value.is_instance_of::<PyTuple>() {
+        return value
+            .try_iter()?
+            .map(|item| py_to_json(&item?))
+            .collect::<PyResult<Vec<_>>>()
+            .map(Value::Array);
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(format!(
+        "a document holds no {}",
+        value.get_type().name()?
+    )))
 }
 
 /// A serde value as the Python object it denotes. The bridge used to spell
@@ -794,6 +858,7 @@ fn graph_summary<'py>(
 #[pymodule]
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
+    m.add_function(wrap_pyfunction!(fit_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(build_locate, m)?)?;
     m.add_function(wrap_pyfunction!(build_impact, m)?)?;
     m.add_function(wrap_pyfunction!(hook_respond, m)?)?;

@@ -12,18 +12,14 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
+use _diffctx::artifact::{Format, UNLIMITED_BUDGET_TOKENS};
 use _diffctx::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
 };
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
-use _diffctx::render::DiffContextOutput;
 use _diffctx::resource::LimitReason;
-use _diffctx::tokenizer::count_tokens;
-
-/// Mirrors `_UNLIMITED_BUDGET` in src/diffctx/_native/pipeline.py so `--budget -1`
-/// means the same thing in both CLIs.
-const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
+use serde_json::Value;
 
 /// Mirrors `_EXIT_EMPTY_DIFF` in src/diffctx/_app.py: a diff that yields no
 /// semantic context is an actionable result, not a success.
@@ -152,6 +148,9 @@ enum HookEvent {
     /// the impact of what it recorded; after a git diff or git status, the
     /// pending change's; after a search for a name the change edits, its callers
     Posttooluse,
+    /// Claude Code PostToolUseFailure: the same, for a line whose last
+    /// command exited non-zero; what it recorded landed all the same
+    Posttoolusefailure,
 }
 
 /// The hook contract is exit 0 with either the JSON answer or nothing: a
@@ -160,7 +159,10 @@ enum HookEvent {
 fn run_hook(event: &HookEvent) {
     let (kind, gate) = match event {
         HookEvent::Pretooluse { gate } => (_diffctx::hook::Event::PreToolUse, *gate),
-        HookEvent::Posttooluse => (_diffctx::hook::Event::PostToolUse, false),
+        HookEvent::Posttooluse => (_diffctx::hook::Event::PostToolUse { failed: false }, false),
+        HookEvent::Posttoolusefailure => {
+            (_diffctx::hook::Event::PostToolUse { failed: true }, false)
+        }
     };
     let mut input = String::new();
     let _ = io::Read::read_to_string(&mut io::stdin().lock(), &mut input);
@@ -369,14 +371,22 @@ fn write_stdout(rendered: &str) -> Result<()> {
 
 // Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
 // are real signal even with zero fragments, so only a result carrying neither
-// counts as empty.
-fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
-    output.deleted_files.is_empty()
-        && output.renamed_files.is_empty()
-        && output.lockfile_changes.is_empty()
-        && output.ignored_changes.is_empty()
-        && output.policy_excluded_count == 0
-        && output.fragment_count == 0
+// counts as empty. Judged on the fitted document, what is actually emitted.
+fn diff_result_is_empty(doc: &Value) -> bool {
+    [
+        "deleted_files",
+        "renamed_files",
+        "lockfile_changes",
+        "ignored_changes",
+    ]
+    .iter()
+    .all(|key| {
+        doc.get(*key)
+            .and_then(Value::as_array)
+            .is_none_or(Vec::is_empty)
+    }) && ["policy_excluded_count", "fragment_count"]
+        .iter()
+        .all(|key| doc.get(*key).and_then(Value::as_u64).unwrap_or(0) == 0)
 }
 
 fn empty_diff_hint(
@@ -623,38 +633,22 @@ fn real_main() -> Result<()> {
         )
     })?;
 
-    let mut output = output;
-    let mut rendered = render(cli.format, &output)?;
-    // `--budget` bounds the document, and the resolved budget (auto included)
-    // is what provenance recorded; an unlimited or zero budget renders as is.
-    let bound = output
-        .provenance
-        .as_ref()
-        .and_then(|p| p.selection.as_ref())
-        .map(|s| s.budget_tokens)
-        .filter(|&b| b > 0 && b < UNLIMITED_BUDGET_TOKENS);
-    if let Some(bound) = bound {
-        while count_tokens(&rendered) > bound && output.drop_one_fragment() {
-            rendered = render(cli.format, &output)?;
-        }
-    }
+    let format = match cli.format {
+        OutputFormat::Yaml => Format::Yaml,
+        OutputFormat::Json => Format::Json,
+        OutputFormat::Md => unreachable!("rejected before the pipeline runs"),
+    };
+    let mut doc = serde_json::to_value(&output)?;
+    let rendered = _diffctx::artifact::fit(&mut doc, format);
 
     emit(
         &cli,
         &rendered,
-        diff_result_is_empty(&output),
+        diff_result_is_empty(&doc),
         output
             .coverage
             .as_ref()
             .map_or(&[][..], |c| c.limit_reasons.as_slice()),
         &output.changed_files,
     )
-}
-
-fn render(format: OutputFormat, output: &DiffContextOutput) -> Result<String> {
-    Ok(match format {
-        OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(output)?),
-        OutputFormat::Yaml => serde_yaml::to_string(output)?,
-        OutputFormat::Md => unreachable!("rejected before the pipeline runs"),
-    })
 }

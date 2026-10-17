@@ -68,8 +68,8 @@ impl TokenCorpus {
         let hits = AtomicUsize::new(0);
         let tokenized = AtomicUsize::new(0);
         let docs: Vec<(PathBuf, DocTokens)> = ctx
-            .all_candidates
-            .par_iter()
+            .run
+            .bounded_par(&ctx.all_candidates)
             .filter(|f| !changed_set.contains(f.as_path()))
             .filter_map(|f| {
                 let oid = oids.get(f.as_path());

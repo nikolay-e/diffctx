@@ -9,6 +9,8 @@
 //!   After a `git diff` or `git status` the agent ran on its own, the impact
 //!   of the working tree it just asked about. After a text search for a name
 //!   the pending change edits, that name's callers.
+//! * `posttoolusefailure`: the same, for a line whose last command exited
+//!   non-zero (#532).
 //!
 //! Each reads the event on stdin and answers with `additionalContext`: the
 //! impact, a pointer when what landed was already shown, or one line when it
@@ -52,14 +54,20 @@ pub const PIPELINE_SECS: u64 = 20;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     PreToolUse,
-    PostToolUse,
+    /// `failed`: the line exited non-zero, which Claude Code reports as
+    /// `PostToolUseFailure`. What it recorded is in git's record all the
+    /// same, so it is answered like any other line that ran (#532).
+    PostToolUse {
+        failed: bool,
+    },
 }
 
 impl Event {
     fn name(self) -> &'static str {
         match self {
             Event::PreToolUse => "PreToolUse",
-            Event::PostToolUse => "PostToolUse",
+            Event::PostToolUse { failed: false } => "PostToolUse",
+            Event::PostToolUse { failed: true } => "PostToolUseFailure",
         }
     }
 }
@@ -964,7 +972,7 @@ fn detect_statement(event: Event, st: &Statement) -> Option<Detected> {
                 }),
             }
         }
-        (Event::PostToolUse, "diff") => {
+        (Event::PostToolUse { .. }, "diff") => {
             // A diff between revisions, or against one other than HEAD, is
             // history, not the pending change; a path before `--` is.
             if st.piped_out || is_summary_only(args) {
@@ -983,7 +991,7 @@ fn detect_statement(event: Event, st: &Statement) -> Option<Detected> {
                 own: None,
             }
         }
-        (Event::PostToolUse, "status") if !st.piped_out => Trigger::Inspect {
+        (Event::PostToolUse { .. }, "status") if !st.piped_out => Trigger::Inspect {
             staged: false,
             own: None,
         },
@@ -1967,16 +1975,16 @@ fn lead_of(event: Event, trigger: &Trigger) -> String {
             );
         }
         (Event::PreToolUse, _) => "diffctx reviewed the commits this pull request proposes.",
-        (Event::PostToolUse, Trigger::Inspect { own: None, .. }) => {
+        (Event::PostToolUse { .. }, Trigger::Inspect { own: None, .. }) => {
             "diffctx reviewed every pending change in this checkout, which you just inspected; without a readable transcript it cannot tell this session's edits from another session's."
         }
-        (Event::PostToolUse, Trigger::Inspect { own: Some(own), .. }) if own.others > 0 => {
+        (Event::PostToolUse { .. }, Trigger::Inspect { own: Some(own), .. }) if own.others > 0 => {
             return format!(
                 "diffctx reviewed the pending change this session and its subagents made, which you just inspected; {} other changed file(s) were not edited in this session or by its subagents and are not analysed.",
                 own.others
             );
         }
-        (Event::PostToolUse, _) => "diffctx reviewed the pending change you just inspected.",
+        (Event::PostToolUse { .. }, _) => "diffctx reviewed the pending change you just inspected.",
     };
     lead.to_string()
 }
@@ -2258,17 +2266,24 @@ fn decide(
     let payload: serde_json::Value =
         serde_json::from_str(stdin_json).map_err(|_| "error:payload")?;
     trace.session = payload["session_id"].as_str().map(str::to_string);
-    if event == Event::PostToolUse {
-        if let Some(search) = searched(&payload) {
-            trace.verb = Some("grep");
-            return search_answer(&payload, &search, started, trace)
-                .map(|c| hook_json(event, &c, false));
-        }
-    }
     let command = payload["tool_input"]["command"]
         .as_str()
         .unwrap_or_default();
     let recording = names_a_recording_verb(command);
+    let search = if matches!(event, Event::PostToolUse { .. }) {
+        searched(&payload)
+    } else {
+        None
+    };
+    // What a line recorded outranks a search on the same line: `git commit
+    // … ; grep … log` is a commit to review, not a lookup (#527).
+    let answer_search = |search: &Searched, trace: &mut Trace| {
+        trace.verb = Some("grep");
+        search_answer(&payload, search, started, trace).map(|c| hook_json(event, &c, false))
+    };
+    if let (Some(search), false) = (&search, recording) {
+        return answer_search(search, trace);
+    }
     if event == Event::PreToolUse && recording {
         let recorded = record_before(&payload, command, trace);
         let gated_commit = gate
@@ -2297,11 +2312,14 @@ fn decide(
             .to_string());
         }
     }
-    let prepared = match if event == Event::PostToolUse && recording {
-        prepare_landed(command, trace).or_else(|why| match why {
-            "no-record" | "nothing-landed" => prepare(event, &payload, trace),
-            why => Err(why),
-        })
+    let prepared = match if matches!(event, Event::PostToolUse { .. }) && recording {
+        match prepare_landed(command, trace) {
+            Err("no-record" | "nothing-landed") => match &search {
+                Some(search) => return answer_search(search, trace),
+                None => prepare(event, &payload, trace),
+            },
+            landed => landed,
+        }
     } else {
         prepare(event, &payload, trace)
     } {
@@ -2338,7 +2356,7 @@ fn decide(
             trace.noted = Some("reminder");
             return Ok(hook_json(event, &reminder(event, &d.headline), false));
         }
-        (Some(d), Event::PostToolUse) if !d.partial => return Err("seen"),
+        (Some(d), Event::PostToolUse { .. }) if !d.partial => return Err("seen"),
         _ => {}
     }
     let attempt = attempts(&prepared.tries_key);
@@ -2425,7 +2443,9 @@ const LOG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// One line per run in `<cache>/diffctx/hook.log` (#338): Claude Code keeps
 /// only hooks that print, so without it a silent hook that decided "nothing
 /// to say" and one that never got an answer look the same afterwards.
-/// `<unix ts> <session> <event> <verb> <range> <outcome> <ms>ms <repo>`.
+/// `<unix ts> <session> <event> <verb> <range> <outcome> <ms>ms <repo>
+/// <version>`: the version last, so an audit can tell an old pin's answer
+/// from the current one (#524) without moving the fields before it.
 fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let Some(dir) = cache_root() else { return };
     let path = dir.join("hook.log");
@@ -2434,7 +2454,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     }
     let session = file_safe(trace.session.as_deref());
     let line = format!(
-        "{} {} {} {} {} {outcome} {}ms {}\n",
+        "{} {} {} {} {} {outcome} {}ms {} {}\n",
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs()),
@@ -2447,6 +2467,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
             || "-".to_string(),
             |r| r.to_string_lossy().replace(['\n', '\r'], "?")
         ),
+        env!("CARGO_PKG_VERSION"),
     );
     let _ = std::fs::create_dir_all(&dir);
     let _ = std::fs::OpenOptions::new()
@@ -2471,7 +2492,56 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
         Err(why) => why,
     };
     log_outcome(event, &trace, outcome, started.elapsed());
-    answer.ok()
+    match (answer.ok(), upgrade_notice(trace.session.as_deref())) {
+        (answer, None) => answer,
+        (None, Some(notice)) => Some(hook_json(event, &notice, false)),
+        (Some(answer), Some(notice)) => Some(with_notice(&answer, &notice)),
+    }
+}
+
+/// How long a session is told about one newer version: once, for any
+/// session that lasts less than this.
+const UPGRADE_NOTICE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// #524: a session runs the plugin it started with, and a version installed
+/// since sits beside it in the plugin cache. Claude Code exports the plugin's
+/// root to its hooks (`CLAUDE_PLUGIN_ROOT`), so the wrapper forwards nothing;
+/// a newer `X.Y.Z` sibling is said once per session.
+fn upgrade_notice(session: Option<&str>) -> Option<String> {
+    let root = PathBuf::from(std::env::var_os("CLAUDE_PLUGIN_ROOT")?);
+    let running = env!("CARGO_PKG_VERSION");
+    let (newest_key, newest) = std::fs::read_dir(root.parent()?)
+        .ok()?
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter_map(|name| Some((release_key(&name)?, name)))
+        .max()?;
+    if newest_key <= release_key(running)? {
+        return None;
+    }
+    let key = session_key(&format!("upgrade-{newest}"), session);
+    if is_seen_within(&key, UPGRADE_NOTICE_TTL) {
+        return None;
+    }
+    mark_seen(&key);
+    Some(format!(
+        "diffctx {newest} is installed; this session runs {running}. Restart the session to pick up its fixes."
+    ))
+}
+
+fn release_key(name: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = name.split('.').map(|p| p.parse::<u64>().ok());
+    let key = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then_some(key)
+}
+
+fn with_notice(answer: &str, notice: &str) -> String {
+    let Ok(mut doc) = serde_json::from_str::<serde_json::Value>(answer) else {
+        return answer.to_string();
+    };
+    let context = &mut doc["hookSpecificOutput"]["additionalContext"];
+    let rest = context.as_str().unwrap_or_default();
+    *context = serde_json::Value::String(format!("{notice}\n\n{rest}"));
+    doc.to_string()
 }
 
 #[cfg(test)]
@@ -2483,7 +2553,7 @@ mod tests {
     }
 
     fn post(command: &str) -> Option<Trigger> {
-        detect(Event::PostToolUse, command).map(|d| d.trigger)
+        detect(Event::PostToolUse { failed: false }, command).map(|d| d.trigger)
     }
 
     fn inspection(staged: bool) -> Trigger {
@@ -2754,8 +2824,12 @@ mod tests {
                 .get("permissionDecision")
                 .is_none()
         );
-        let after: serde_json::Value =
-            serde_json::from_str(&hook_json(Event::PostToolUse, "ctx", true)).unwrap();
+        let after: serde_json::Value = serde_json::from_str(&hook_json(
+            Event::PostToolUse { failed: false },
+            "ctx",
+            true,
+        ))
+        .unwrap();
         assert!(
             after["hookSpecificOutput"]
                 .get("permissionDecision")

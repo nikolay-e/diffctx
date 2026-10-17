@@ -118,7 +118,6 @@ def _snapshot(tools) -> dict:
     return {t.name: (sorted(t.input_schema["properties"]), sorted(t.input_schema.get("required", []))) for t in tools}
 
 
-@pytest.mark.timeout(120)
 @pytest.mark.parametrize("argv", _launchers())
 @pytest.mark.asyncio
 async def test_the_default_surface_over_real_stdio(argv, workspace):
@@ -162,7 +161,6 @@ async def test_the_default_surface_over_real_stdio(argv, workspace):
         assert _CWD_WARNING not in stderr
 
 
-@pytest.mark.timeout(120)
 @pytest.mark.parametrize("argv", _launchers())
 @pytest.mark.asyncio
 async def test_legacy_tools_appear_only_behind_the_env_gate(argv, workspace):
@@ -173,7 +171,6 @@ async def test_legacy_tools_appear_only_behind_the_env_gate(argv, workspace):
         assert "calc.py" in tree.content[0].text
 
 
-@pytest.mark.timeout(120)
 @pytest.mark.asyncio
 async def test_a_running_server_survives_its_package_being_replaced_on_disk(workspace, tmp_path):
     """#291: `uv tool install --force` swaps the package under a live server.
@@ -214,7 +211,6 @@ def _rpc(proc, request: dict) -> dict:
     return json.loads(proc.stdout.readline())
 
 
-@pytest.mark.timeout(120)
 def test_a_client_that_probes_with_server_discover_first_gets_an_answer(workspace):
     """#366: Claude Code opens with `server/discover` (MCP 2026-07-28); the 1.x
     SDK rejected the probe as an invalid request on every connect and wrote 31

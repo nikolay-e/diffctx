@@ -35,6 +35,18 @@
           }
         ]
       }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/diffctx-impact.sh",
+            "timeout": 60
+          }
+        ]
+      }
     ]
   }
 }

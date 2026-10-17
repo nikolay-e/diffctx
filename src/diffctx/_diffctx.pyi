@@ -60,6 +60,7 @@ def build_diff_context(
     timeout: int = ...,
     paths: list[str] = ...,
 ) -> dict[str, Any]: ...
+def fit_artifact(document: dict[str, Any], format: str) -> tuple[dict[str, Any], str]: ...
 def build_locate(
     root_dir: str,
     diff_range: str,

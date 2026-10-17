@@ -546,12 +546,12 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         return
 
     if args.diff_range:
-        from .writer import fit_to_budget
+        from ._diffctx import fit_artifact
 
         # The rendered document is what `--budget` bounds; the fit may drop
         # fragments the engine's estimate admitted, and emptiness is judged
         # on what is actually emitted.
-        directory_tree, output_content = fit_to_budget(_build_diff_tree(args, prog), args.output_format)
+        directory_tree, output_content = fit_artifact(_build_diff_tree(args, prog), args.output_format)
         is_empty_diff_result = _warn_empty_diff_result(directory_tree, prog, args)
         _log_latency(directory_tree)
     else:

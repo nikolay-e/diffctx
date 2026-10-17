@@ -247,7 +247,7 @@ jobs:
   # Dogfood the *review*, not only the mechanism: the legs above prove the
   # action runs; this job produces the artifact a reviewer of THIS pull
   # request is meant to read instead of the raw diff, and pins it to the PR as
-  # one sticky comment. `/qa` reads it (QA.md § Diff-context review), and a
+  # one sticky comment. `/qa` reads it, and a
   # selection that looks wrong on our own PRs is a product finding before any
   # consumer sees it.
   pr-review-context:

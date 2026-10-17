@@ -5,7 +5,7 @@ import json
 import pytest
 
 import diffctx
-from diffctx._diffctx import count_tokens
+from diffctx._diffctx import count_tokens, fit_artifact
 from tests.framework.pygit2_backend import Pygit2Repo
 
 from .conftest import run_diffctx_subprocess
@@ -112,8 +112,6 @@ def test_a_larger_budget_never_shows_less_of_the_change(tmp_path, fmt):
 
 
 def test_budget_fitting_drops_context_whole_and_never_marks_it_as_the_change(tmp_path):
-    from diffctx.writer import fit_to_budget
-
     repo = Pygit2Repo(tmp_path / "ctx")
     body = "".join(f"    acc_{i} = rows[{i}] * {i}\n" for i in range(120))
     repo.add_file("lib/helpers.py", f"def compute_totals(rows):\n{body}    return acc_0\n")
@@ -130,7 +128,7 @@ def test_budget_fitting_drops_context_whole_and_never_marks_it_as_the_change(tmp
 
     changed_tokens = sum(count_tokens(f["content"]) for f in tree["fragments"] if f.get("role") == "changed")
     tree["provenance"]["selection"]["budget_tokens"] = count_tokens(json.dumps({**tree, "fragments": []})) + changed_tokens + 60
-    fitted, _ = fit_to_budget(tree, "json")
+    fitted, _ = fit_artifact(tree, "json")
     for fragment in fitted["fragments"]:
         if fragment.get("role") != "changed":
             assert "more lines of this change" not in fragment["content"], fragment

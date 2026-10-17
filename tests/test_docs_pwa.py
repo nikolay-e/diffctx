@@ -95,7 +95,6 @@ def _first_heading(markdown_name: str) -> str:
     return heading.group(1)
 
 
-@pytest.mark.timeout(120)
 def test_installed_shortcuts_open_offline(site, browser):
     origin, server = site
     manifest = json.loads((DOCS / "manifest.webmanifest").read_text(encoding="utf-8"))

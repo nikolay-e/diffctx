@@ -346,7 +346,7 @@ def main() -> None:
     run()
 
 
-_HOOK_USAGE = "usage: diffctx hook {pretooluse [--gate] | posttooluse} < event.json"
+_HOOK_USAGE = "usage: diffctx hook {pretooluse [--gate] | posttooluse | posttoolusefailure} < event.json"
 
 
 def _run_hook(argv: list[str]) -> NoReturn:
@@ -354,7 +354,7 @@ def _run_hook(argv: list[str]) -> NoReturn:
     # answer or nothing. A non-zero exit blocks the agent's tool call, so
     # everything past argument parsing is silence on failure.
     event, flags = (argv[0], argv[1:]) if argv else ("", [])
-    if event not in ("pretooluse", "posttooluse") or any(f != "--gate" for f in flags):
+    if event not in ("pretooluse", "posttooluse", "posttoolusefailure") or any(f != "--gate" for f in flags):
         _exit_usage_error(_HOOK_USAGE)
     if flags and event != "pretooluse":
         _exit_usage_error(_HOOK_USAGE)

@@ -93,6 +93,7 @@ pub fn build_diff_context_in_memory(
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
         source: crate::source::Source::WorkingTree,
+        run: crate::resource::RunContext::unbounded(),
     };
     let (discovered, _attribution) =
         crate::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);

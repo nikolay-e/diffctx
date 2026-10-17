@@ -21,6 +21,9 @@ pub struct DiscoveryContext {
     /// necessarily the disk. Carried here because the strategies run on
     /// rayon workers the run's context is not published to.
     pub source: crate::source::Source,
+    /// The run whose deadline ends every loop over the candidates; the
+    /// strategies run on rayon workers it is not published to.
+    pub run: crate::resource::RunContext,
 }
 
 impl DiscoveryContext {
@@ -96,7 +99,7 @@ fn expand_by_rare_identifiers(ctx: &DiscoveryContext) -> Vec<PathBuf> {
     let rare_threshold = crate::config::limits::LIMITS.rare_identifier_threshold;
 
     let mut ident_to_files: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
-    for (path, doc) in &ctx.shared_corpus().docs {
+    for (path, doc) in ctx.run.bounded(&ctx.shared_corpus().docs) {
         for ident in &ctx.expansion_concepts {
             if doc.term_counts.contains_key(ident) {
                 ident_to_files
@@ -201,7 +204,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
         let mut name_holders: FxHashMap<&str, usize> = FxHashMap::default();
         let mut strong: Vec<&PathBuf> = Vec::new();
         let mut weak: Vec<(&PathBuf, Vec<&str>)> = Vec::new();
-        for (path, doc) in &ctx.shared_corpus().docs {
+        for (path, doc) in ctx.run.bounded(&ctx.shared_corpus().docs) {
             if changed_set.contains(path.as_path()) {
                 continue;
             }
@@ -243,7 +246,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
         );
         let mut result: Vec<PathBuf> = Vec::new();
         let mut seen: FxHashSet<&PathBuf> = FxHashSet::default();
-        for f in strong {
+        for f in ctx.run.bounded(strong) {
             if result.len() >= MAX_REVERSE_FILES {
                 return result;
             }
@@ -252,7 +255,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
             }
         }
         weak.sort_by(|a, b| a.0.cmp(b.0));
-        for (f, named) in weak {
+        for (f, named) in ctx.run.bounded(weak) {
             if result.len() >= MAX_REVERSE_FILES {
                 break;
             }
@@ -326,7 +329,7 @@ impl DiscoveryStrategy for TestFileDiscovery {
         }
 
         let mut discovered: Vec<PathBuf> = Vec::new();
-        for candidate in &ctx.all_candidates {
+        for candidate in ctx.run.bounded(&ctx.all_candidates) {
             if changed_set.contains(candidate.as_path()) {
                 continue;
             }
@@ -402,7 +405,7 @@ impl DiscoveryStrategy for BM25Discovery {
         let mut df: FxHashMap<String, usize> = FxHashMap::default();
         let mut postings: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         let mut total_len: usize = 0;
-        for (doc_id, (_, doc)) in pairs.iter().enumerate() {
+        for (doc_id, (_, doc)) in ctx.run.bounded(pairs.iter().enumerate()) {
             total_len += doc.total_len as usize;
             for term in doc.term_counts.keys() {
                 *df.entry(term.clone()).or_insert(0) += 1;
@@ -439,8 +442,9 @@ impl DiscoveryStrategy for BM25Discovery {
         }
 
         let candidate_vec: Vec<usize> = candidate_ids.into_iter().collect();
-        let scored: Vec<(usize, f64)> = candidate_vec
-            .par_iter()
+        let scored: Vec<(usize, f64)> = ctx
+            .run
+            .bounded_par(&candidate_vec)
             .map(|&doc_id| {
                 let s = Self::bm25_score(&pairs[doc_id].1, &query_set, &idf, avgdl);
                 (doc_id, s)
@@ -488,6 +492,13 @@ impl DiscoveryStrategy for EnsembleDiscovery {
         &self,
         ctx: &DiscoveryContext,
     ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>) {
+        // Built before the fan-out, the corpus is only ever read from the
+        // pool. Built by the first strategy to ask, it parked the others'
+        // rayon workers on a lock whose holder runs rayon work; a builder
+        // waiting inside its build takes queued jobs, another run's parked
+        // strategy among them, and two runs each waiting on the other's
+        // corpus hang for good (#544).
+        ctx.shared_corpus();
         let per_strategy: Vec<(&'static str, Vec<PathBuf>)> = self
             .strategies
             .par_iter()
@@ -501,7 +512,7 @@ impl DiscoveryStrategy for EnsembleDiscovery {
         let mut result: Vec<PathBuf> = Vec::new();
         let mut attribution: Vec<(PathBuf, &'static str)> = Vec::new();
         for (source, paths) in per_strategy {
-            for path in paths {
+            for path in ctx.run.bounded(paths) {
                 if seen.insert(path.clone()) {
                     attribution.push((path.clone(), source));
                     result.push(path);
@@ -571,6 +582,7 @@ mod tests {
                 file_cache: FxHashMap::default(),
                 token_corpus,
                 source: crate::source::Source::WorkingTree,
+                run: crate::resource::RunContext::unbounded(),
             }
         }
     }
@@ -874,6 +886,70 @@ mod tests {
                 ("c.py".to_string(), "lexical"),
             ]
         );
+    }
+
+    /// #544: the strategies run as rayon jobs and share a corpus built inside
+    /// a rayon loop. Built by the first strategy to ask, it parked the
+    /// others' workers on its lock, where two runs could wait on each other
+    /// for good. Every strategy now starts with the corpus built, and the
+    /// lexical one still finds the caller and not the unrelated file.
+    #[test]
+    fn every_strategy_starts_with_the_shared_corpus_built() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Probe(Arc<AtomicUsize>, Arc<AtomicUsize>);
+        impl DiscoveryStrategy for Probe {
+            fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
+                let seen = if ctx.token_corpus.get().is_some() {
+                    &self.0
+                } else {
+                    &self.1
+                };
+                seen.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
+            fn name(&self) -> &'static str {
+                "probe"
+            }
+        }
+        let root = PathBuf::from("/repo");
+        let files = [
+            ("billing.py", "settle_invoice = 1\n"),
+            ("invoice.py", "settle_invoice()\n"),
+            ("weather.py", "forecast()\n"),
+        ];
+        let ctx = DiscoveryContext {
+            root_dir: root.clone(),
+            changed_files: vec![root.join("billing.py")],
+            all_candidates: files.iter().map(|(p, _)| root.join(p)).collect(),
+            diff_text: "+settle_invoice = 2\n".to_string(),
+            expansion_concepts: FxHashSet::default(),
+            file_cache: files
+                .iter()
+                .map(|(p, text)| (root.join(p), (*text).to_string()))
+                .collect(),
+            token_corpus: OnceLock::new(),
+            source: crate::source::Source::WorkingTree,
+            run: crate::resource::RunContext::unbounded(),
+        };
+        let (ready, unready) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let mut strategies: Vec<Box<dyn DiscoveryStrategy>> = (0..8)
+            .map(|_| {
+                Box::new(Probe(Arc::clone(&ready), Arc::clone(&unready)))
+                    as Box<dyn DiscoveryStrategy>
+            })
+            .collect();
+        strategies.push(Box::new(BM25Discovery::new(10)));
+        let found = EnsembleDiscovery::new(strategies).discover(&ctx);
+        assert_eq!(
+            (
+                ready.load(Ordering::Relaxed),
+                unready.load(Ordering::Relaxed)
+            ),
+            (8, 0),
+            "strategies that started before the corpus was built"
+        );
+        assert_eq!(names(&found), vec!["invoice.py"]);
     }
 
     /// A single strategy needs no bookkeeping: everything it returns, it found.

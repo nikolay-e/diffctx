@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse / PostToolUse: hands the tool event on stdin to `diffctx hook
+# PreToolUse / PostToolUse / PostToolUseFailure: hands the tool event on stdin to `diffctx hook
 # <event>` from the diffctx package pinned below, which prints the change's
 # impact as additionalContext or nothing. It is the same pinned uvx launch as
 # the MCP server, so the environment the server's start put in uv's cache is
@@ -16,6 +16,8 @@ payload=$(cat 2>/dev/null) || exit 0
 case "$payload" in
 *'"PreToolUse"'*) event=pretooluse hook_event=PreToolUse ;;
 *'"PostToolUse"'*) event=posttooluse hook_event=PostToolUse ;;
+# A line that exits non-zero; what it committed or pushed landed all the same (#532).
+*'"PostToolUseFailure"'*) event=posttoolusefailure hook_event=PostToolUseFailure ;;
 *) exit 0 ;;
 esac
 
@@ -46,8 +48,14 @@ searches_pending_change() {
 }
 case "$payload" in
 *'git '* | *'gh '*) ;;
-*) [[ $event == posttooluse ]] && searches_pending_change || exit 0 ;;
+*) [[ $event != pretooluse ]] && searches_pending_change || exit 0 ;;
 esac
+
+# The launched version for the log's last field, so an audit can tell an old
+# plugin (#524). The release rewrites it with the launch's literal below,
+# which stays written out in the command because the plugin directory
+# requires it. Not named `pin` (#565).
+spec="diffctx[mcp]==1.19.1"
 
 # The binary logs every run it gets (#338); a launch that never reached it
 # is logged here, or an audit could not tell it from a hook with nothing to say.
@@ -56,7 +64,7 @@ log_failure() {
   local re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]+)"'
   [[ $payload =~ $re ]] && session=${BASH_REMATCH[1]}
   mkdir -p "$dir" 2>/dev/null &&
-    printf '%s %s %s - - error:%s - -\n' "$(date +%s)" "$session" "$hook_event" "$1" >>"$dir/hook.log" 2>/dev/null
+    printf '%s %s %s - - error:%s - - %s\n' "$(date +%s)" "$session" "$hook_event" "$1" "${spec##*==}" >>"$dir/hook.log" 2>/dev/null
   return 0
 }
 

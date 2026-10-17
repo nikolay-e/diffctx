@@ -7,9 +7,12 @@
   listing in `mocks/diffctx/_tools.json` and the answers in
   `review-last-commit/mocks/diffctx/{impact,pack}.txt` were captured from the
   released server on that case's fixture, so re-capture them when a release
-  changes either. The rubric scores the per-caller test verdict that impact
-  reports; `impact-called` and `skill-fired` show whether the plugin was used
-  and are not scored.
+  changes either. The rubric scores the per-caller test verdict, and
+  `impact-called` is scored in both arms (`arm: both`): Grep alone finds
+  both callers on this fixture, so only a review that reached diffctx's
+  impact answer passes it, and the without-plugin arm scores below the
+  with-plugin one (#320). `skill-fired` shows the skill fired and is not
+  scored.
 - `breaking-caller`: the number under the product goal — with the change
   uncommitted and two callers about to break, does the agent handle or name
   them before `git commit`? It needs `--allow-tools Bash` and the hook's

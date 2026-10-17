@@ -602,11 +602,59 @@ fn start_supervisor() {
                     limit.as_secs(),
                     hung.join(", ")
                 );
+                dump_thread_stacks();
                 std::process::exit(101);
             }
         }
     });
 }
+
+/// Every thread's stack, printed before the supervisor ends the run, so a
+/// hang names the wait it sat in instead of only the cases (#544). A process
+/// cannot walk its other threads' stacks itself; a debugger attached to it
+/// can.
+fn dump_thread_stacks() {
+    let pid = std::process::id().to_string();
+    let dumpers: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
+        &[("sample", &[&pid, "1"])]
+    } else {
+        &[
+            ("gdb", &["-p", &pid, "-batch", "-ex", "thread apply all bt"]),
+            ("eu-stack", &["-p", &pid]),
+        ]
+    };
+    allow_a_debugger_to_attach();
+    for (tool, args) in dumpers {
+        match std::process::Command::new(tool).args(*args).output() {
+            Ok(out) if out.status.success() && !out.stdout.is_empty() => {
+                eprintln!(
+                    "yaml_cases: thread stacks ({tool}):\n{}",
+                    String::from_utf8_lossy(&out.stdout)
+                );
+                return;
+            }
+            Ok(out) => eprintln!(
+                "yaml_cases: {tool} could not dump the threads: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => eprintln!("yaml_cases: {tool} could not run: {e}"),
+        }
+    }
+}
+
+/// Yama's default lets a process be traced by its ancestors only, and the
+/// dumper is a child.
+#[cfg(target_os = "linux")]
+#[allow(unsafe_code)]
+fn allow_a_debugger_to_attach() {
+    // SAFETY: PR_SET_PTRACER takes plain integers and touches no memory.
+    unsafe {
+        libc::prctl(libc::PR_SET_PTRACER, libc::PR_SET_PTRACER_ANY, 0, 0, 0);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+const fn allow_a_debugger_to_attach() {}
 
 fn main() {
     let args = Arguments::from_args();

@@ -203,7 +203,7 @@ jobs:
           echo "server_ip=${SERVER_IP}" >> "${GITHUB_OUTPUT}"
           echo "${SERVER_ID}" > server_id.txt
           echo "Provisioned Hetzner CCX63 server_id=${SERVER_ID} ip=${SERVER_IP} name=${SERVER_NAME}"
-          SSHCMD="ssh root@${SERVER_IP} -i <(security find-generic-password -s diffctx-eval-ssh-key -a \$USER -w)"
+          SSHCMD="ssh root@${SERVER_IP}"
           echo "SSH: ${SSHCMD}"
 
       - name: Upload server_id for cleanup workflow

@@ -12,14 +12,11 @@ import os
 import time
 from pathlib import Path
 
-import tiktoken
-
+from diffctx.tokens import count_tokens
 from eval.harness.adapters import BenchmarkInstance, GoldenFragment
 from eval.harness.adapters.base import EvalResult
 from eval.harness.adapters.evaluator import SelectionOutput, UniversalEvaluator
 from eval.harness.adapters.runner import RunParams
-
-_TOKEN_ENC = tiktoken.get_encoding("o200k_base")
 
 _WORKER_STATE: dict = {}
 
@@ -36,7 +33,9 @@ def _compute_used_tokens(output: dict) -> int:
             continue
         content = f.get("content")
         if isinstance(content, str) and content:
-            total += len(_TOKEN_ENC.encode(content, disallowed_special=()))
+            # The engine's own o200k_base count: tiktoken fetched its tables
+            # from an outside host at import and failed collection offline.
+            total += count_tokens(content).count
     return total
 
 

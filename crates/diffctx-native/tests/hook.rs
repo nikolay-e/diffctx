@@ -100,6 +100,7 @@ fn hook_in_env(
     let mut child = Command::new(&*BIN)
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache)
+        .env_remove("CLAUDE_PLUGIN_ROOT")
         .envs(env.iter().copied())
         .args(["hook", event])
         .args(extra)
@@ -296,6 +297,99 @@ fn a_commit_with_an_outside_caller_gets_the_impact_once() {
     let again = run_line(repo, cache.path(), "git commit -am 'vat'");
     assert_eq!(again.code, Some(0));
     assert_eq!(again.stdout, "", "a line that records nothing says nothing");
+}
+
+/// #524: a session keeps the plugin it started with. Its hook says once per
+/// session that a newer version is installed beside it, without dropping the
+/// review, and every log line names the version that wrote it.
+#[test]
+fn an_older_pin_says_once_per_session_that_a_newer_one_is_installed() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let plugins = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let running = env!("CARGO_PKG_VERSION");
+    let root = plugins.path().join(running);
+    for dir in [running, "999.0.0", "1000.0", "not-a-version"] {
+        std::fs::create_dir_all(plugins.path().join(dir)).unwrap();
+    }
+    let env = [("CLAUDE_PLUGIN_ROOT", root.as_path())];
+    let notice = format!("diffctx 999.0.0 is installed; this session runs {running}.");
+    let pre = |session: &str| {
+        hook_in_env(
+            repo,
+            cache.path(),
+            "pretooluse",
+            &[],
+            &env,
+            &payload_in_session(session, repo, "git commit -am vat"),
+        )
+    };
+
+    let first = pre("s1");
+    assert!(context_of(&first).starts_with(&notice), "{}", first.stdout);
+
+    sh(repo, &[], "git commit -am vat");
+    let post = hook_in_env(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &env,
+        &in_session(
+            "s1",
+            &payload_for("PostToolUse", repo, "git commit -am vat"),
+        ),
+    );
+    let review = context_of(&post);
+    assert!(!review.contains(&notice), "once per session: {review}");
+    assert!(review.contains("shop/checkout.py::charge"), "{review}");
+
+    assert!(
+        context_of(&pre("s2")).starts_with(&notice),
+        "a new session hears it"
+    );
+
+    let same = TempDir::new().unwrap();
+    let current = same.path().join(running);
+    std::fs::create_dir_all(&current).unwrap();
+    let quiet = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &[("CLAUDE_PLUGIN_ROOT", current.as_path())],
+        &payload_in_session("s3", repo, "git status"),
+    );
+    assert_eq!(quiet.stdout, "", "nothing newer, nothing said");
+
+    let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
+    assert!(
+        log.lines().all(|l| l.split(' ').last() == Some(running)),
+        "{log}"
+    );
+}
+
+/// #527: a search later on the line (here over the commit's own log, a
+/// file outside git) must not take the answer from what the line recorded.
+#[test]
+fn a_commit_line_that_then_greps_its_log_is_still_reviewed() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let log = cache.path().join("commit.log");
+    let command = format!(
+        "git commit -am 'vat' > '{log}' 2>&1; echo \"exit=$?\"; grep -E 'Failed|modified' '{log}' | head; git log --oneline -1",
+        log = log.display()
+    );
+    let h = run_line(repo, cache.path(), &command);
+    assert_eq!(h.code, Some(0));
+    let context = context_of(&h);
+    assert!(
+        context.starts_with("diffctx reviewed what this commit recorded."),
+        "{context}"
+    );
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
 }
 
 /// #405: a subshell's parentheses are words of their own, and its `cd`

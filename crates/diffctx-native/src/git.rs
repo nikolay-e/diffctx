@@ -2055,7 +2055,7 @@ fn find_ignored_paths_inner(
     //
     // The returned set is "exclude these", so `unwrap_or_default()` answered a
     // failed check with "nothing is ignored" — the one answer that leaks, and
-    // QA.md calls `.diffctx/ignore` a security contract. But failing closed
+    // `.diffctx/ignore` is a security contract. But failing closed
     // unconditionally is too blunt: `check-ignore` cannot run in a bare clone at
     // all, and excluding everything turned a supported repo shape into empty
     // output.

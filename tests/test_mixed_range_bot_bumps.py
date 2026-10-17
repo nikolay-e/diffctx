@@ -17,7 +17,7 @@ import pytest
 
 import diffctx
 from diffctx import writer
-from diffctx._diffctx import count_tokens
+from diffctx._diffctx import count_tokens, fit_artifact
 from tests.framework.pygit2_backend import Pygit2Repo
 
 BOT_SUBJECT = "build: automatic update of image tags"
@@ -144,7 +144,7 @@ def test_a_reformatted_file_loses_its_witness_before_a_rewritten_one(tmp_path):
         **result,
         "provenance": {**result["provenance"], "selection": {**selection, "budget_tokens": count_tokens(full) - 20}},
     }
-    fitted, _ = writer.fit_to_budget(tight, "md")
+    fitted, _ = fit_artifact(tight, "md")
 
     def text_of(tree, path):
         return "".join(f["content"] for f in tree["fragments"] if f["path"] == path)

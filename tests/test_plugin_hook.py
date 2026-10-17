@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -132,7 +134,9 @@ def _bashes() -> list[str]:
     return sorted(set(found))
 
 
-def _script(tmp_path: Path, bash: str, gate: bool, event: str) -> subprocess.CompletedProcess[str]:
+def _script(
+    tmp_path: Path, bash: str, gate: bool, event: str, plugin_root: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     launcher = tmp_path / "diffctx"
     launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m diffctx "$@"\n', encoding="utf-8")
     launcher.chmod(0o755)
@@ -142,7 +146,7 @@ def _script(tmp_path: Path, bash: str, gate: bool, event: str) -> subprocess.Com
         "PYTHONPATH": str(SRC_DIR),
         "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
         "DIFFCTX_HOOK_BIN": str(launcher),
-        "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin"),
+        "CLAUDE_PLUGIN_ROOT": str(plugin_root or PROJECT_ROOT / "plugin"),
         "CLAUDE_PLUGIN_OPTION_IMPACT_GATE": "true" if gate else "false",
     }
     return subprocess.run(
@@ -167,6 +171,36 @@ def test_the_plugin_script_reaches_the_hook_around_an_add_and_commit_line(tmp_pa
     after = _script(tmp_path, bash, gate, _event(pending_change, "PostToolUse", line))
     assert after.returncode == 0, after.stderr
     assert "shop/checkout.py::charge" in _context(after.stdout)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_a_commit_line_that_ends_in_a_failing_command_is_still_reviewed(tmp_path, pending_change, bash):
+    # Claude Code reports a line that exits non-zero as PostToolUseFailure (#532).
+    line = "git commit -qam vat; git rev-parse --short HEAD no-such-ref"
+    before = _script(tmp_path, bash, False, _event(pending_change, "PreToolUse", line))
+    assert before.returncode == 0, before.stderr
+    _run(pending_change, line)
+    after = _script(tmp_path, bash, False, _event(pending_change, "PostToolUseFailure", line))
+    assert after.returncode == 0, after.stderr
+    answer = json.loads(after.stdout)["hookSpecificOutput"]
+    assert answer["hookEventName"] == "PostToolUseFailure"
+    assert "shop/checkout.py::charge" in answer["additionalContext"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_a_session_on_an_older_plugin_hears_once_that_a_newer_one_is_installed(tmp_path, pending_change, bash):
+    running = version("diffctx")
+    plugins = tmp_path / "plugins"
+    for name in (running, "999.0.0"):
+        (plugins / name).mkdir(parents=True)
+    event = _event(pending_change, "PreToolUse", "git diff")
+    first = _script(tmp_path, bash, False, event, plugins / running)
+    assert first.returncode == 0, first.stderr
+    assert _context(first.stdout).startswith(f"diffctx 999.0.0 is installed; this session runs {running}.")
+    again = _script(tmp_path, bash, False, event, plugins / running)
+    assert again.stdout == "", "once per session"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
@@ -311,3 +345,5 @@ def test_a_launch_that_fails_leaves_a_line_in_the_hook_log(tmp_path, pending_cha
     assert result.stdout == ""
     line = (tmp_path / "cache" / "diffctx" / "hook.log").read_text().split()
     assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]
+    launched = re.search(r'uvx -q --offline "diffctx\[mcp\]==([0-9.]+)"', IMPACT_SCRIPT.read_text()).group(1)
+    assert line[-1] == launched, "the line names the version that wrote it (#524)"

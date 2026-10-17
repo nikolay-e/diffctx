@@ -6,7 +6,7 @@
 //! languages keep the lexical model and say so (#343, #344, #349, #353).
 
 use std::cell::RefCell;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 use std::rc::Rc;
 
 use once_cell::sync::Lazy;
@@ -14,6 +14,13 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::source::Source;
+
+mod js;
+mod python;
+
+use js::TsConfigs;
+pub use js::js_bindings;
+pub use python::python_bindings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
@@ -47,223 +54,6 @@ pub struct FileBindings {
     pub star_from: Vec<String>,
 }
 
-static PY_IMPORT: Lazy<Regex> = Lazy::new(|| Regex::new(r"^import\s+(.+)$").unwrap());
-static PY_FROM: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^from\s+([.\w]+)\s+import\s+(.+)$").unwrap());
-
-/// Import statements as single logical lines: parenthesised and
-/// backslash-continued imports joined, comments dropped.
-fn paren_balance(line: &str) -> isize {
-    line.chars()
-        .map(|c| match c {
-            '(' => 1,
-            ')' => -1,
-            _ => 0,
-        })
-        .sum()
-}
-
-fn python_statements(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut pending: Option<String> = None;
-    let mut depth = 0isize;
-    for raw in text.lines() {
-        let line = raw.split('#').next().unwrap_or("").trim();
-        if let Some(acc) = pending.as_mut() {
-            acc.push(' ');
-            acc.push_str(line.trim_end_matches('\\'));
-            depth += paren_balance(line);
-            if depth <= 0 && !line.ends_with('\\') {
-                out.push(pending.take().unwrap_or_default());
-            }
-            continue;
-        }
-        if !(line.starts_with("import ") || line.starts_with("from ")) {
-            continue;
-        }
-        depth = paren_balance(line);
-        if depth > 0 || line.ends_with('\\') {
-            pending = Some(line.trim_end_matches('\\').to_string());
-        } else {
-            out.push(line.to_string());
-        }
-    }
-    out.extend(pending);
-    out
-}
-
-pub fn python_bindings(text: &str) -> FileBindings {
-    let mut b = FileBindings::default();
-    for stmt in python_statements(text) {
-        let stmt = stmt.replace(['(', ')'], " ");
-        if let Some(c) = PY_FROM.captures(stmt.trim()) {
-            for item in c[2].split(',') {
-                bind_from_item(&mut b, &c[1], item);
-            }
-        } else if let Some(c) = PY_IMPORT.captures(stmt.trim()) {
-            for item in c[1].split(',') {
-                bind_import_item(&mut b, item);
-            }
-        }
-    }
-    b
-}
-
-/// `x`, `x as y` or `*` of `from module import …`.
-fn bind_from_item(b: &mut FileBindings, module: &str, item: &str) {
-    let words: Vec<&str> = item.split_whitespace().collect();
-    let (name, local) = match words.as_slice() {
-        ["*"] => {
-            b.star_from.push(module.to_string());
-            return;
-        }
-        [name] => (*name, *name),
-        [name, "as", local] => (*name, *local),
-        _ => return,
-    };
-    b.names.insert(
-        local.to_string(),
-        Target::Member {
-            module: module.to_string(),
-            name: name.to_string(),
-        },
-    );
-}
-
-/// `a.b.c` (binds `a`) or `a.b as x` (binds `x` to `a.b`) of `import …`.
-fn bind_import_item(b: &mut FileBindings, item: &str) {
-    let words: Vec<&str> = item.split_whitespace().collect();
-    let (local, module) = match words.as_slice() {
-        [dotted] => {
-            let head = dotted.split('.').next().unwrap_or(dotted);
-            (head, head)
-        }
-        [dotted, "as", local] => (*local, *dotted),
-        _ => return,
-    };
-    b.names
-        .insert(local.to_string(), Target::Module(module.to_string()));
-}
-
-static JS_IMPORT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?s)\bimport\s+(type\s+)?([^'"`;]*?)\s+from\s+['"]([^'"]+)['"]"#).unwrap()
-});
-static JS_EXPORT_FROM: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?s)\bexport\s+(type\s+)?(\*|\*\s+as\s+\w+|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]"#)
-        .unwrap()
-});
-static JS_REQUIRE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"(?s)\b(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*(?:require|await\s+import)\(\s*['"]([^'"]+)['"]\s*\)"#,
-    )
-    .unwrap()
-});
-
-fn js_named(list: &str, module: &str, b: &mut FileBindings, separator: &str) {
-    for item in list.trim_matches(|c| c == '{' || c == '}').split(',') {
-        let item = item.trim().trim_start_matches("type ").trim();
-        if item.is_empty() {
-            continue;
-        }
-        let (name, local) = match item.split_once(separator) {
-            Some((n, l)) => (n.trim(), l.trim()),
-            None => (item, item),
-        };
-        if is_ident(name) && is_ident(local) {
-            b.names.insert(
-                local.to_string(),
-                Target::Member {
-                    module: module.to_string(),
-                    name: name.to_string(),
-                },
-            );
-        }
-    }
-}
-
-fn is_ident(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
-        && !s.starts_with(|c: char| c.is_ascii_digit())
-}
-
-/// `import('./x').then(m => …)`, `.then((m) => …)`, `.then(function (m)`:
-/// the callback's parameter is the module (#479, `React.lazy`).
-static JS_DYNAMIC_THEN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"\bimport\(\s*['"]([^'"]+)['"]\s*\)\s*\.then\(\s*(?:async\s+)?(?:function\s*)?\(?\s*([A-Za-z_$][\w$]*)"#,
-    )
-    .unwrap()
-});
-
-pub fn js_bindings(text: &str) -> FileBindings {
-    let mut b = FileBindings::default();
-    for c in JS_IMPORT.captures_iter(text) {
-        bind_js_import(&mut b, c[2].trim(), &c[3]);
-    }
-    for c in JS_EXPORT_FROM.captures_iter(text) {
-        bind_js_reexport(&mut b, c[2].trim(), &c[3]);
-    }
-    for c in JS_REQUIRE.captures_iter(text) {
-        let lhs = c[1].trim();
-        if lhs.starts_with('{') {
-            js_named(lhs, &c[2], &mut b, ":");
-        } else if is_ident(lhs) {
-            b.names
-                .insert(lhs.to_string(), Target::Module(c[2].to_string()));
-        }
-    }
-    for c in JS_DYNAMIC_THEN.captures_iter(text) {
-        b.names
-            .insert(c[2].to_string(), Target::Module(c[1].to_string()));
-    }
-    b
-}
-
-/// The clause of `import <clause> from 'module'`: a default, `* as ns`,
-/// `{ a, b as c }`, or a default followed by one of the others.
-fn bind_js_import(b: &mut FileBindings, clause: &str, module: &str) {
-    let (default, rest) = match clause.split_once(',') {
-        Some((d, r)) if !d.trim_start().starts_with('{') => (Some(d.trim()), r.trim()),
-        _ if !clause.starts_with('{') && !clause.starts_with('*') => (Some(clause), ""),
-        _ => (None, clause),
-    };
-    if let Some(d) = default.filter(|d| is_ident(d)) {
-        b.names.insert(
-            d.to_string(),
-            Target::Member {
-                module: module.to_string(),
-                name: "default".to_string(),
-            },
-        );
-    }
-    if rest.starts_with('{') {
-        js_named(rest, module, b, " as ");
-    } else if let Some(local) = namespace_local(rest) {
-        b.names
-            .insert(local.to_string(), Target::Module(module.to_string()));
-    }
-}
-
-/// The clause of `export <clause> from 'module'`.
-fn bind_js_reexport(b: &mut FileBindings, clause: &str, module: &str) {
-    if clause == "*" {
-        b.star_from.push(module.to_string());
-    } else if let Some(local) = namespace_local(clause) {
-        b.names
-            .insert(local.to_string(), Target::Module(module.to_string()));
-    } else {
-        js_named(clause, module, b, " as ");
-    }
-}
-
-/// `ns` of `* as ns`.
-fn namespace_local(clause: &str) -> Option<&str> {
-    let local = clause.strip_prefix('*')?.trim().strip_prefix("as")?.trim();
-    is_ident(local).then_some(local)
-}
-
 /// Where an import specifier lands in the analysed snapshot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Resolution {
@@ -275,249 +65,6 @@ pub enum Resolution {
     /// A form the resolver does not model (a bundler alias, a missing
     /// relative target): the binding is unknown, not absent.
     Unsupported,
-}
-
-const JS_PROBES: &[&str] = &[
-    "",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".mts",
-    ".cts",
-    ".d.ts",
-    "/index.ts",
-    "/index.tsx",
-    "/index.js",
-    "/index.jsx",
-    "/index.mjs",
-    "/index.cjs",
-];
-
-/// `compilerOptions.paths` of one tsconfig, its `extends` chain folded in,
-/// read as data: `"@/*": ["src/*"]`-style patterns with one `*`. Both
-/// directories are repo-relative, `""` the root: `base_url` is `baseUrl`
-/// from its config's directory, the only base a bare specifier resolves
-/// against; `paths_dir` is the directory of the config that declares
-/// `paths`, what their targets resolve against when there is no `baseUrl`.
-#[derive(Default, Clone)]
-struct TsPaths {
-    base_url: Option<String>,
-    paths_dir: Option<String>,
-    patterns: Vec<(String, Vec<String>)>,
-    readable: bool,
-}
-
-fn strip_json_comments(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match (c, chars.peek()) {
-            ('"', _) => copy_json_string(&mut chars, &mut out),
-            ('/', Some('/')) => {
-                if chars.by_ref().any(|n| n == '\n') {
-                    out.push('\n');
-                }
-            }
-            ('/', Some('*')) => {
-                chars.next();
-                let mut prev = ' ';
-                for n in chars.by_ref() {
-                    if prev == '*' && n == '/' {
-                        break;
-                    }
-                    prev = n;
-                }
-            }
-            _ => out.push(c),
-        }
-    }
-    static TRAILING_COMMA: Lazy<Regex> = Lazy::new(|| Regex::new(r",(\s*[}\]])").unwrap());
-    TRAILING_COMMA.replace_all(&out, "$1").into_owned()
-}
-
-/// A JSON string from its opening quote on, escapes kept: a `//` inside it
-/// is not a comment.
-fn copy_json_string(chars: &mut std::iter::Peekable<std::str::Chars>, out: &mut String) {
-    out.push('"');
-    while let Some(c) = chars.next() {
-        out.push(c);
-        match c {
-            '\\' => out.extend(chars.next()),
-            '"' => return,
-            _ => {}
-        }
-    }
-}
-
-/// Every tsconfig/jsconfig of the snapshot by directory: an import is
-/// resolved with the one nearest to it, as `tsc` and the bundlers do. A
-/// monorepo keeps its aliases in each app's `tsconfig.app.json`, and reading
-/// the root file alone left them all unresolved (#372).
-#[derive(Default)]
-struct TsConfigs {
-    by_dir: FxHashMap<String, TsPaths>,
-}
-
-fn is_tsconfig(path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    (name.starts_with("tsconfig") || name.starts_with("jsconfig")) && name.ends_with(".json")
-}
-
-impl TsConfigs {
-    fn read(source: &Source, root: &Path, files: &FxHashSet<String>) -> Self {
-        let mut by_dir: FxHashMap<String, TsPaths> = FxHashMap::default();
-        let mut configs: Vec<&String> = files.iter().filter(|f| is_tsconfig(f)).collect();
-        // `tsconfig.json` first: its patterns win a clash with a sibling
-        // config of the same directory.
-        configs.sort_by_key(|f| {
-            (
-                !f.ends_with("/tsconfig.json") && f.as_str() != "tsconfig.json",
-                f.as_str(),
-            )
-        });
-        for config in configs {
-            let dir = parent_dir(config).to_string();
-            let read = TsPaths::read_chain(source, root, files, config, 0);
-            let entry = by_dir.entry(dir).or_insert_with(|| TsPaths {
-                readable: true,
-                ..TsPaths::default()
-            });
-            if entry.base_url.is_none() {
-                entry.base_url = read.base_url;
-            }
-            if entry.paths_dir.is_none() {
-                entry.paths_dir = read.paths_dir;
-            }
-            for (pattern, targets) in read.patterns {
-                if !entry.patterns.iter().any(|(p, _)| *p == pattern) {
-                    entry.patterns.push((pattern, targets));
-                }
-            }
-            entry.readable &= read.readable;
-        }
-        Self { by_dir }
-    }
-
-    fn for_importer(&self, importer: &str) -> Option<&TsPaths> {
-        let mut dir = parent_dir(importer);
-        loop {
-            if let Some(found) = self.by_dir.get(dir) {
-                return Some(found);
-            }
-            if dir.is_empty() {
-                return None;
-            }
-            dir = parent_dir(dir);
-        }
-    }
-}
-
-impl TsPaths {
-    /// One config with its relative `extends` chain; a package `extends`
-    /// (`@tsconfig/node20`) cannot be read here, so the result is not
-    /// trusted to be complete.
-    fn read_chain(
-        source: &Source,
-        root: &Path,
-        files: &FxHashSet<String>,
-        config: &str,
-        depth: u8,
-    ) -> Self {
-        let parsed = source
-            .read_to_string(&root.join(config))
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&strip_json_comments(&t)).ok());
-        let Some(doc) = parsed else {
-            return Self::default();
-        };
-        let dir = parent_dir(config);
-        let mut inherited = Self {
-            readable: true,
-            ..Self::default()
-        };
-        let extends: Vec<&str> = match &doc["extends"] {
-            serde_json::Value::String(e) => vec![e.as_str()],
-            serde_json::Value::Array(a) => a.iter().filter_map(|e| e.as_str()).collect(),
-            _ => Vec::new(),
-        };
-        for parent in extends {
-            let local = parent.starts_with('.');
-            let path = normalize(&Path::new(dir).join(parent));
-            let path = if path.ends_with(".json") {
-                path
-            } else {
-                format!("{path}.json")
-            };
-            if local && depth < 8 && files.contains(&path) {
-                let base = Self::read_chain(source, root, files, &path, depth + 1);
-                inherited.readable &= base.readable;
-                if base.base_url.is_some() {
-                    inherited.base_url = base.base_url;
-                }
-                if base.paths_dir.is_some() {
-                    inherited.paths_dir = base.paths_dir;
-                }
-                for p in base.patterns {
-                    inherited.patterns.retain(|(k, _)| *k != p.0);
-                    inherited.patterns.push(p);
-                }
-            } else {
-                inherited.readable = false;
-            }
-        }
-        let opts = &doc["compilerOptions"];
-        if let Some(b) = opts["baseUrl"].as_str() {
-            inherited.base_url = Some(normalize(&Path::new(dir).join(b)));
-        }
-        if let Some(m) = opts["paths"].as_object() {
-            inherited.paths_dir = Some(normalize(Path::new(dir)));
-            inherited.patterns = m
-                .iter()
-                .map(|(k, v)| {
-                    let targets = v
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|t| t.as_str().map(str::to_string))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    (k.clone(), targets)
-                })
-                .collect();
-        }
-        inherited
-    }
-
-    /// The targets of the pattern tsc picks: an exact one, else the one with
-    /// the longest prefix before its `*`, the first on a tie.
-    fn expand(&self, spec: &str) -> Option<Vec<String>> {
-        let (_, star, targets) = self
-            .patterns
-            .iter()
-            .rev()
-            .filter_map(|(pattern, targets)| match pattern.split_once('*') {
-                Some((pre, post)) => spec
-                    .strip_prefix(pre)
-                    .and_then(|r| r.strip_suffix(post))
-                    .map(|star| (pre.len(), star.to_string(), targets)),
-                None => (spec == pattern).then(|| (usize::MAX, String::new(), targets)),
-            })
-            .max_by_key(|(rank, _, _)| *rank)?;
-        let base = self.base_url.as_ref().or(self.paths_dir.as_ref());
-        Some(
-            targets
-                .iter()
-                .map(|t| {
-                    normalize(
-                        &Path::new(base.map_or("", String::as_str)).join(t.replace('*', &star)),
-                    )
-                })
-                .collect(),
-        )
-    }
 }
 
 /// A repo-relative path with `.` and `..` folded, `/`-separated.
@@ -580,6 +127,11 @@ pub struct Resolver<'a> {
     resolved: RefCell<FxHashMap<(String, String), Resolution>>,
     /// The repository's own npm packages, by name: (directory, entries).
     workspace: std::cell::OnceCell<FxHashMap<String, (String, Vec<String>)>>,
+    /// Whole files, for the module-level bindings a function reads.
+    texts: RefCell<FxHashMap<String, Option<Rc<str>>>>,
+    /// The directories a Python file puts on `sys.path`, by importer.
+    python_roots: RefCell<FxHashMap<String, Rc<[String]>>>,
+    js_facts: RefCell<FxHashMap<String, Option<Rc<js::JsFacts>>>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -593,6 +145,9 @@ impl<'a> Resolver<'a> {
             cache: RefCell::default(),
             resolved: RefCell::default(),
             workspace: std::cell::OnceCell::new(),
+            texts: RefCell::default(),
+            python_roots: RefCell::default(),
+            js_facts: RefCell::default(),
         }
     }
 
@@ -626,172 +181,15 @@ impl<'a> Resolver<'a> {
         self.resolved.borrow_mut().insert(key, answer.clone());
         answer
     }
-
-    fn python_module_files(&self, rel: &str) -> [String; 2] {
-        [format!("{rel}.py"), format!("{rel}/__init__.py")]
-    }
-
-    fn resolve_python(&self, importer: &str, spec: &str) -> Resolution {
-        let dots = spec.chars().take_while(|c| *c == '.').count();
-        let rest = spec[dots..].replace('.', "/");
-        if dots > 0 {
-            return self.resolve_python_relative(importer, dots, &rest);
-        }
-        let [module_file, package_file] = self.python_module_files(&rest);
-        let matches: Vec<&String> = self
-            .files
-            .iter()
-            .filter(|f| {
-                [&module_file, &package_file].into_iter().any(|suffix| {
-                    f.as_str() == suffix.as_str() || f.ends_with(&format!("/{suffix}"))
-                })
-            })
-            .collect();
-        match matches.as_slice() {
-            [] => Resolution::External,
-            [one] => Resolution::File((*one).clone()),
-            _ => narrow_to_root(importer, &matches, &[&module_file, &package_file]),
-        }
-    }
-
-    fn resolve_python_relative(&self, importer: &str, dots: usize, rest: &str) -> Resolution {
-        let mut dir = parent_dir(importer).to_string();
-        for _ in 1..dots {
-            dir = parent_dir(&dir).to_string();
-        }
-        let base = match (dir.is_empty(), rest.is_empty()) {
-            (_, true) => dir,
-            (true, false) => rest.to_string(),
-            (false, false) => format!("{dir}/{rest}"),
-        };
-        let found: Vec<String> = if base.is_empty() {
-            vec!["__init__.py".to_string()]
-        } else {
-            self.python_module_files(&base).into()
-        };
-        found
-            .into_iter()
-            .find(|f| self.files.contains(f))
-            .map_or(Resolution::Unsupported, Resolution::File)
-    }
-
-    fn probe_js(&self, base: &str) -> Option<String> {
-        let stem = base
-            .strip_suffix(".js")
-            .or_else(|| base.strip_suffix(".jsx"))
-            .or_else(|| base.strip_suffix(".mjs"))
-            .unwrap_or(base);
-        JS_PROBES
-            .iter()
-            .map(|ext| format!("{base}{ext}"))
-            .chain(
-                (stem != base)
-                    .then(|| [".ts", ".tsx", ".mts"].map(|e| format!("{stem}{e}")))
-                    .into_iter()
-                    .flatten(),
-            )
-            .find(|p| self.files.contains(p))
-    }
-
-    /// A specifier naming one of the repository's own packages — an npm
-    /// workspace member — resolves into its source, not to an external
-    /// dependency (#474).
-    fn workspace_package(&self, spec: &str) -> Option<String> {
-        let packages = self.workspace.get_or_init(|| {
-            let mut out = FxHashMap::default();
-            for file in self.files.iter().filter(|f| {
-                (f.as_str() == "package.json" || f.ends_with("/package.json"))
-                    && !f.contains("node_modules/")
-            }) {
-                let Some(doc) = self
-                    .source
-                    .read_to_string(&self.root.join(file))
-                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                else {
-                    continue;
-                };
-                let Some(name) = doc["name"].as_str() else {
-                    continue;
-                };
-                let exports = &doc["exports"];
-                let dot = exports.get(".").unwrap_or(exports);
-                let entries: Vec<String> = [
-                    doc["source"].as_str(),
-                    dot.as_str(),
-                    dot["import"].as_str(),
-                    dot["default"].as_str(),
-                    doc["module"].as_str(),
-                    doc["main"].as_str(),
-                ]
-                .into_iter()
-                .flatten()
-                .map(|e| e.trim_start_matches("./").to_string())
-                .collect();
-                out.insert(name.to_string(), (parent_dir(file).to_string(), entries));
-            }
-            out
-        });
-        let (name, (dir, entries)) = packages
-            .iter()
-            .filter(|(n, _)| spec == n.as_str() || spec.starts_with(&format!("{n}/")))
-            .max_by_key(|(n, _)| n.len())?;
-        let at = |rel: &str| normalize(&Path::new(dir).join(rel));
-        let sub = spec[name.len()..].trim_start_matches('/');
-        if sub.is_empty() {
-            entries
-                .iter()
-                .map(|e| at(e))
-                .chain(["src/index", "index"].map(at))
-                .find_map(|p| self.probe_js(&p))
-        } else {
-            [at(sub), at(&format!("src/{sub}"))]
-                .iter()
-                .find_map(|p| self.probe_js(p))
-        }
-    }
-
-    fn resolve_js(&self, importer: &str, spec: &str) -> Resolution {
-        if spec.starts_with("./") || spec.starts_with("../") || spec == "." || spec == ".." {
-            let joined = normalize(&PathBuf::from(parent_dir(importer)).join(spec));
-            return self
-                .probe_js(&joined)
-                .map_or(Resolution::Unsupported, Resolution::File);
-        }
-        let none = TsPaths {
-            readable: true,
-            ..TsPaths::default()
-        };
-        let ts = self.ts_configs.for_importer(importer).unwrap_or(&none);
-        if let Some(targets) = ts.expand(spec) {
-            return targets
-                .iter()
-                .find_map(|t| self.probe_js(t))
-                .map_or(Resolution::Unsupported, Resolution::File);
-        }
-        if let Some(base) = &ts.base_url {
-            let based = normalize(&Path::new(base).join(spec));
-            if let Some(found) = self.probe_js(&based) {
-                return Resolution::File(found);
-            }
-        }
-        if let Some(found) = self.workspace_package(spec) {
-            return Resolution::File(found);
-        }
-        let alias_like = spec.starts_with("@/")
-            || spec.starts_with("~/")
-            || spec.starts_with('#')
-            || spec.starts_with('/');
-        if alias_like || !ts.readable {
-            Resolution::Unsupported
-        } else {
-            Resolution::External
-        }
-    }
 }
 
 /// The owner of a method the syntax does not name: an object built inside a
 /// call. A call through any receiver may reach it.
 pub(crate) const UNKNOWN_OWNER: &str = "<object>";
+
+/// A read of a member through a receiver nothing types: not listed as a
+/// caller, and not nothing either (#399).
+pub(crate) const UNRESOLVED_READ: &str = "unresolved_read";
 
 /// How a reference relates to the changed definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -809,8 +207,10 @@ impl Evidence {
     fn rank(self) -> u8 {
         match self {
             Self::Rejected => 0,
-            Self::Candidate(_) => 1,
-            Self::Resolved => 2,
+            // A call through the same receiver says more than a read of it.
+            Self::Candidate(UNRESOLVED_READ) => 1,
+            Self::Candidate(_) => 2,
+            Self::Resolved => 3,
         }
     }
 
@@ -983,6 +383,9 @@ impl Resolver<'_> {
     }
 
     fn default_export_is(&self, path: &str, name: &str) -> bool {
+        if let Some(facts) = self.js_facts(path) {
+            return facts.default_names.iter().any(|n| n == name);
+        }
         let text = self
             .source
             .read_to_string(&self.root.join(path))
@@ -1111,7 +514,9 @@ impl Resolver<'_> {
                 }
                 s
             }
-            Target::Member { .. } => return Evidence::Rejected,
+            Target::Member { module, name } => {
+                return self.js_namespace_is(site.path, module, name, path, 0);
+            }
         };
         self.module_is(site.path, &spec, path)
     }
@@ -1151,7 +556,38 @@ impl Resolver<'_> {
         {
             return self.constructor_is(site, &ctor, def, class);
         }
+        if assigned_literal(site.path, site.content, head) {
+            return Evidence::Rejected;
+        }
+        // A module-level binding the function reads: `const m = new Map()`.
+        if let Some(text) = self.text(site.path) {
+            let top: String = text
+                .lines()
+                .filter(|l| !l.starts_with([' ', '\t']))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if let Some(ctor) = constructed_as(site.path, &top, head) {
+                return self.constructor_is(site, &ctor, def, class);
+            }
+            if assigned_literal(site.path, &top, head) {
+                return Evidence::Rejected;
+            }
+        }
         Evidence::Candidate("receiver_unresolved")
+    }
+
+    fn text(&self, path: &str) -> Option<Rc<str>> {
+        if let Some(known) = self.texts.borrow().get(path) {
+            return known.clone();
+        }
+        let text = self
+            .source
+            .read_to_string(&self.root.join(path))
+            .map(|t| Rc::from(t.as_str()));
+        self.texts
+            .borrow_mut()
+            .insert(path.to_string(), text.clone());
+        text
     }
 
     /// Whether `ctor` (`Bot`, `bots.Bot`) constructs `class`. A name nothing
@@ -1161,6 +597,11 @@ impl Resolver<'_> {
         // class (#425).
         if matches!(ctor, "Any" | "typing.Any" | "t.Any" | "object") {
             return Evidence::Candidate("receiver_unresolved");
+        }
+        // `list()`, `new Map()`: the language's own type, never a class of
+        // the repository (#389).
+        if ctor != class && is_builtin_type(site.path, ctor) {
+            return Evidence::Rejected;
         }
         let ctor_head = ctor.rsplit('.').next().unwrap_or(ctor);
         if ctor.contains('.') {
@@ -1173,6 +614,9 @@ impl Resolver<'_> {
                         Evidence::Rejected => Evidence::Rejected,
                         _ => Evidence::Candidate("receiver_unresolved"),
                     };
+                }
+                if self.names_python_function(site.path, ctor) {
+                    return Evidence::Candidate("receiver_unresolved");
                 }
                 return Evidence::Rejected;
             }
@@ -1189,7 +633,17 @@ impl Resolver<'_> {
             return Evidence::Resolved;
         }
         if self.bindings(site.path).names.contains_key(ctor_head) {
-            return self.names(site, ctor_head, def.path, class);
+            return match self.names(site, ctor_head, def.path, class) {
+                Evidence::Rejected if self.names_python_function(site.path, ctor) => {
+                    Evidence::Candidate("receiver_unresolved")
+                }
+                e => e,
+            };
+        }
+        // A class the site's own file declares is that class, not the
+        // definition's (`o: Other` beside `class Other`).
+        if self.declares_python_class(site.path, ctor_head) {
+            return Evidence::Rejected;
         }
         Evidence::Candidate("receiver_unresolved")
     }
@@ -1201,16 +655,25 @@ impl Resolver<'_> {
         let params = params_of(site.content);
         let mut best: Option<Finding> = None;
         let masked = crate::impact::code_text(site.path, site.content);
-        for (i, code) in masked.lines().enumerate() {
+        let syntax = (lang_of(site.path) == Some(Lang::Js))
+            .then(|| self.js_facts(site.path))
+            .flatten();
+        for ((i, code), raw) in masked.lines().enumerate().zip(site.content.lines()) {
             if is_import_line(code) {
                 continue;
             }
             let line_no = site.start_line + i as u32;
             for word in &words {
                 for (at, _) in code.match_indices(word) {
-                    if let Some((evidence, relation)) =
-                        self.occurrence(site, def, &code, at, word, &params)
-                    {
+                    let lookup = syntax.as_deref().map(|f| f.at(line_no, at, word, raw));
+                    let found = match lookup {
+                        Some(js::Lookup::NotCode) => None,
+                        Some(js::Lookup::Found(o)) if receiver_chain(code, at).is_none() => {
+                            self.js_bare_use(site, def, o, code[at + word.len()..].trim_start())
+                        }
+                        _ => self.occurrence(site, def, code, at, word, &params),
+                    };
+                    if let Some((evidence, relation)) = found {
                         absorb(&mut best, evidence, relation, line_no);
                     }
                 }
@@ -1263,7 +726,10 @@ impl Resolver<'_> {
             .iter()
             .any(|k| before.ends_with(k));
         let next = code[after..].trim_start();
-        let assigned = next.starts_with('=') && !next.starts_with("==");
+        // `x = …` binds a name of its own; `obj.x = …` writes the member,
+        // which is a use of it (#488).
+        let assigned =
+            next.starts_with('=') && !next.starts_with("==") && receiver_chain(code, at).is_none();
         if embedded || defines || assigned {
             return None;
         }
@@ -1283,17 +749,37 @@ impl Resolver<'_> {
             (None, None) => self.names(site, word, def.path, def.name),
         };
         // Reading `x.name` through a receiver nothing types is any object's
-        // attribute (`response.headers`); only a call is worth a guess.
-        let unresolved_read = relation == Relation::Reference
-            && matches!(evidence, Evidence::Candidate("receiver_unresolved"));
-        (evidence != Evidence::Rejected && !unresolved_read).then_some((evidence, relation))
+        // attribute (`response.headers`); only a call is worth a guess, and a
+        // read is counted as unresolved rather than listed (#399).
+        let evidence = if relation == Relation::Reference
+            && matches!(evidence, Evidence::Candidate("receiver_unresolved"))
+        {
+            Evidence::Candidate(UNRESOLVED_READ)
+        } else {
+            evidence
+        };
+        (evidence != Evidence::Rejected).then_some((evidence, relation))
     }
 
     fn module_member(&self, site: &Site, chain: &str, def: &Definition) -> Evidence {
-        if matches!(chain, "self" | "cls" | "this") || chain.is_empty() {
+        let found = if matches!(chain, "self" | "cls" | "this") || chain.is_empty() {
             Evidence::Rejected
         } else {
             self.chain_is_module(site, chain, def.path)
+        };
+        // A module a glob loads arrives as a value nothing types (#357).
+        let unbound = !self
+            .bindings(site.path)
+            .names
+            .contains_key(chain.split('.').next().unwrap_or(""));
+        if found == Evidence::Rejected
+            && chain != "this"
+            && unbound
+            && self.js_glob_loads(site.path, def.path)
+        {
+            Evidence::Candidate("import_glob")
+        } else {
+            found
         }
     }
 }
@@ -1367,7 +853,7 @@ fn bases_of(header: &str) -> Vec<String> {
 /// read as an annotated assignment from `srv.call_tool` (#399).
 fn constructed_as(path: &str, content: &str, var: &str) -> Option<String> {
     let re = Regex::new(&format!(
-        r"(?:^|[^\w$.])({})\s*(?::\s*[\w$.\[\]<>]+\s*)?=\s*(?:new\s+|await\s+)?([\w$.]+)\s*\(",
+        r"(?:^|[^\w$.])({})\s*(?::\s*[\w$.\[\]<>]+\s*)?=\s*(?:new\s+|await\s+)?([\w$.]+)\s*(?:<[^()=;]*>)?\s*\(",
         regex::escape(var)
     ))
     .ok()?;
@@ -1380,6 +866,76 @@ fn constructed_as(path: &str, content: &str, var: &str) -> Option<String> {
                     .map(|c| c[2].to_string())
             })
         })
+}
+
+/// Types the language provides: a receiver built from one is that type.
+const PYTHON_BUILTIN_TYPES: &[&str] = &[
+    "list",
+    "dict",
+    "set",
+    "tuple",
+    "str",
+    "int",
+    "float",
+    "bytes",
+    "bytearray",
+    "frozenset",
+    "bool",
+    "complex",
+    "range",
+    "memoryview",
+];
+const JS_BUILTIN_TYPES: &[&str] = &[
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Array",
+    "Object",
+    "Promise",
+    "Date",
+    "RegExp",
+    "Error",
+    "URL",
+    "URLSearchParams",
+    "Headers",
+    "Request",
+    "Response",
+    "FormData",
+    "String",
+    "Number",
+    "Boolean",
+    "ArrayBuffer",
+    "DataView",
+    "Uint8Array",
+    "Int32Array",
+    "Float64Array",
+    "AbortController",
+    "TextEncoder",
+    "TextDecoder",
+    "Blob",
+];
+
+fn is_builtin_type(path: &str, ctor: &str) -> bool {
+    match lang_of(path) {
+        Some(Lang::Python) => PYTHON_BUILTIN_TYPES.contains(&ctor),
+        Some(Lang::Js) => JS_BUILTIN_TYPES.contains(&ctor),
+        None => false,
+    }
+}
+
+/// `x = []`, `const x = {}`, `x = "…"`, `x = 0`: a literal, the language's
+/// own container, string or number.
+fn assigned_literal(path: &str, content: &str, var: &str) -> bool {
+    let Ok(re) = Regex::new(&format!(
+        r#"(?:^|[^\w$.])({})\s*(?::\s*[\w$.\[\]<>, ]+\s*)?=\s*[\[{{"'`0-9-]"#,
+        regex::escape(var)
+    )) else {
+        return false;
+    };
+    crate::impact::code_text(path, content)
+        .lines()
+        .any(|code| re.is_match(code))
 }
 
 /// Whether the name at `at` is the target of an `as` (`with … as x`,
@@ -1457,5 +1013,6 @@ impl Resolver<'_> {
             })
             .chain(&bindings.star_from)
             .any(|spec| matches!(self.resolve(importer, spec), Resolution::File(f) if f == path))
+            || self.js_glob_loads(importer, path)
     }
 }

@@ -19,6 +19,20 @@ def _load(name: str) -> dict:
     return json.loads((PROJECT_ROOT / name).read_text(encoding="utf-8"))
 
 
+class TestSuiteTiming:
+    def test_no_test_is_cut_short_by_the_wall_clock(self):
+        # #529: Windows has no SIGALRM, so pytest-timeout's thread method
+        # os._exit()s the xdist worker past the limit, and a slow test on a
+        # loaded runner reads as an anonymous "worker crashed". A hang fails
+        # the CI job's timeout-minutes instead.
+        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
+        pytest_options = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]
+        assert "timeout" not in pytest_options["ini_options"]
+        marker = re.compile(r"^\s*@pytest\.mark\.timeout\(", re.MULTILINE)
+        timed = [p.name for p in (PROJECT_ROOT / "tests").rglob("*.py") if marker.search(p.read_text(encoding="utf-8"))]
+        assert timed == []
+
+
 class TestRegistryManifest:
     """server.json is the immutable source for the official MCP registry:
     a bad version or an over-long description fails the publish AFTER the
@@ -154,6 +168,31 @@ class TestPluginEvalMock:
         assert [t["name"] for t in mocked] == ["diffctx_context"]
         assert all(t == live[t["name"]] for t in mocked)
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="the case fixture is a bash script")
+    @pytest.mark.parametrize("mode", ["impact", "pack"])
+    def test_the_eval_answers_are_the_server_s_own(self, tmp_path, mode):
+        """#320: `review-last-commit` scores whether the review reached these
+        answers, so they must be what the server says on the case's fixture.
+        The impact mock had gone stale: it said `is_slow` had no static test
+        link after the engine had learned it is reachable from its test."""
+        pytest.importorskip("mcp")
+        import asyncio
+        import subprocess
+
+        from diffctx.mcp.server import mcp as server
+
+        case = PROJECT_ROOT / "plugin" / "evals" / "review-last-commit"
+        repo = tmp_path / "cwd"
+        repo.mkdir()
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        subprocess.run(["bash", str(case / "fixture.sh")], cwd=repo, env=env, check=True, capture_output=True)
+        answer = asyncio.run(
+            server.call_tool("diffctx_context", {"repo_path": str(repo), "diff_ref": "HEAD~1..HEAD", "mode": mode})
+        )
+        mocked = (case / "mocks" / "diffctx" / f"{mode}.txt").read_text(encoding="utf-8")
+        # The end-of-file hook keeps one final newline in the stored copy.
+        assert answer.content[0].text.rstrip("\n") == mocked.rstrip("\n")
+
 
 class TestPluginHook:
     HOOKS = PROJECT_ROOT / "plugin" / "hooks"
@@ -163,10 +202,11 @@ class TestPluginHook:
         [start] = hooks["SessionStart"]
         [session] = start["hooks"]
         assert session["command"].endswith("/hooks/diffctx-session.sh")
-        for event in ("PreToolUse", "PostToolUse"):
+        # A line that exits non-zero comes as PostToolUseFailure, and its commit landed all the same (#532).
+        for event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
             [entry] = hooks[event]
             # A Grep-tool search is answered after it ran (#337); the gate stays on Bash.
-            assert entry["matcher"] == ("Bash|Grep" if event == "PostToolUse" else "Bash")
+            assert entry["matcher"] == ("Bash" if event == "PreToolUse" else "Bash|Grep")
             [hook] = entry["hooks"]
             assert hook["command"].endswith("/hooks/diffctx-impact.sh")
             assert hook["timeout"] > _diffctx_hook_deadline()

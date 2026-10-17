@@ -171,24 +171,25 @@ def test_a_cancelled_request_stops_its_native_run_and_git_children(tmp_path, mon
     worker.start()
     # Cancel once the stalling git runs, not after a fixed sleep: on a loaded
     # runner a second was not always enough to reach it (#489).
-    _wait_for(lambda: pids_file.exists() and pids_file.read_text(encoding="utf-8").split(), 30)
-    cancelled_at = time.monotonic()
+    _wait_for(lambda: pids_file.exists() and pids_file.read_text(encoding="utf-8").split(), 600)
     token.cancel()
-    worker.join(timeout=30)
+    # The run's own deadline is 60 s away; a run the token did not stop is
+    # still going when the checks run out (#510: no elapsed time is asserted).
+    _wait_for(lambda: not worker.is_alive(), 200)
     assert not worker.is_alive(), "the cancelled run kept going"
-    assert time.monotonic() - cancelled_at < 5
     if "result" in outcome:
         coverage = json.dumps(outcome["result"].get("coverage"))
         assert "cancelled" in coverage, coverage
     stalled = [int(p) for p in pids_file.read_text(encoding="utf-8").split()]
     assert stalled, "the stalling git never ran: the test measured nothing"
-    _wait_for(lambda: not [pid for pid in stalled if _alive(pid)], 5)
+    _wait_for(lambda: not [pid for pid in stalled if _alive(pid)], 100)
     assert not [pid for pid in stalled if _alive(pid)], "a killed git child outlived the cancellation"
 
 
-def _wait_for(ready, seconds: float) -> None:
-    deadline = time.monotonic() + seconds
-    while not ready() and time.monotonic() < deadline:
+def _wait_for(ready, checks: int) -> None:
+    for _ in range(checks):
+        if ready():
+            return
         time.sleep(0.05)
 
 

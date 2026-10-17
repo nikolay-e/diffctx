@@ -20,3 +20,10 @@ from shop.timing import elapsed as took
 
 SLOW_CHECKOUT_SECONDS = 2.0
 ```
+
+## `src/shop/checkout.py:6-7` **is\_slow** _function_
+
+```python
+def is_slow(start: float) -> bool:
+    return took(start) > SLOW_CHECKOUT_SECONDS
+```

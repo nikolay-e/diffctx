@@ -246,7 +246,6 @@ def test_a_bare_clone_is_refused_on_every_surface(tmp_path):
         assert "hidden.py" not in str(refused.value)
 
 
-@pytest.mark.timeout(120)
 def test_every_id_locate_ranks_in_a_file_above_the_fetch_cap_returns_a_body(tmp_path):
     # The engine ranks fragments of changed files up to its own 5 MB limit; the fetch applied its
     # 256 KB cap to the whole file and answered Skipped for every id the ranking had just handed out

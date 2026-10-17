@@ -17,7 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
-from diffctx._diffctx import CancelToken
+from diffctx._diffctx import CancelToken, fit_artifact
 
 # Every module a tool call needs is imported here, at startup, never inside the
 # call: a running server whose package is replaced on disk (`uv tool install
@@ -26,7 +26,6 @@ from diffctx._native import GitError, build_diff_context, build_impact, build_lo
 from diffctx.clipboard import ClipboardError, copy_to_clipboard
 from diffctx.tokens import count_tokens
 from diffctx.version import __version__
-from diffctx.writer import tree_to_string
 
 from .fetch import fetch_result
 from .security import validate_repo_path, validate_scope
@@ -396,11 +395,11 @@ async def _pack_response(
         )
     except GitError as e:
         raise _git_failure(diff_ref, e) from e
-    content = tree_to_string(result, "md")
+    fitted, content = fit_artifact(result, "md")
     if clipboard:
         degraded_notice = await _copy_or_degrade(content)
         if degraded_notice is None:
-            frag_count = result.get("fragment_count", 0)
+            frag_count = fitted.get("fragment_count", 0)
             return f"Copied diff context ({frag_count} fragments) to clipboard"
         content = degraded_notice + content
     return _capped_by_max_tokens(content, max_tokens, "lower budget_tokens, narrow diff_ref, or use clipboard=true")

@@ -18,8 +18,8 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import diffctx
-from diffctx._diffctx import count_tokens
-from diffctx.writer import fit_to_budget, tree_to_string
+from diffctx._diffctx import count_tokens, fit_artifact
+from diffctx.writer import tree_to_string
 from tests.framework.pygit2_backend import Pygit2Repo
 
 NAMES = ["alpha", "beta", "gamma", "delta", "omega"]
@@ -65,7 +65,6 @@ def _build(spec: dict) -> tuple[Pygit2Repo, list[str]]:
     return repo, [f"pkg/{m}.py" for m in changed]
 
 
-@pytest.mark.timeout(300)
 @settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(spec=repos)
 def test_same_input_same_artifact_within_budget_and_fully_inventoried(spec):
@@ -88,12 +87,12 @@ def test_same_input_same_artifact_within_budget_and_fully_inventoried(spec):
         assert entry["represented"] == (entry["path"] in represented), entry
 
     for fmt in ("md", "yaml", "json", "txt"):
-        tree, rendered = fit_to_budget(dict(first), fmt)
+        tree, rendered = fit_artifact(first, fmt)
         if spec["budget"] is not None and tree["fragments"]:
             assert count_tokens(rendered) <= spec["budget"], (fmt, count_tokens(rendered))
         assert {c["path"] for c in tree["changes"]} == inventoried, "the fit dropped an inventory row"
 
-    fitted, rendered = fit_to_budget(dict(first), "json")
+    fitted, rendered = fit_artifact(first, "json")
     doc = json.loads(rendered)
     assert [f["path"] for f in doc["fragments"]] == [f["path"] for f in fitted["fragments"]]
     assert doc["changes"] == fitted["changes"], "the fit keeps the inventory and marks what it dropped"

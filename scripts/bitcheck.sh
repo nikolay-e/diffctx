@@ -79,10 +79,17 @@ MODES=(ego ppr bm25 rrf)
 # selection, so a change can leave pack output alone and still move it — the
 # grouping and blast-radius summary are computed only on this path.
 KINDS=(pack locate)
+# Impact and `--symbol` answer from the definitions and their callers, not
+# from the scored selection, so `--scoring` does not reach them: one impact
+# cell per range, and one cell per symbol. They are the surface the language
+# facts move under (#506). The symbols exist at FIXTURE_SHA: a Rust function
+# with one definition, a Python function, and a trait method too common to
+# resolve by name.
+SYMBOLS=(run_git_z build_diff_context discover_related_files)
 # The eval default. Realistic pressure, and every cell finishes in seconds.
 BUDGET="${BITCHECK_BUDGET:-8000}"
 
-CELL_TOTAL=$((${#RANGES[@]} * ${#MODES[@]} * ${#KINDS[@]}))
+CELL_TOTAL=$((${#RANGES[@]} * ${#MODES[@]} * ${#KINDS[@]} + ${#RANGES[@]} + ${#SYMBOLS[@]}))
 
 cell_name() {
   local range="$1" mode="$2" kind="$3"
@@ -92,27 +99,31 @@ cell_name() {
 
 run_cell() {
   local range="$1" mode="$2" kind="$3" out="$4"
-  # The native binary, not the Python CLI: fewer layers between the change and
-  # the artifact.
-  #
   # A FINITE budget on purpose. `--budget -1` looks like the stronger check —
   # no budget pressure, so the comparison sees fragmentation rather than where
   # the greedy stopped — but selection plus the post-passes are ~97% of wall
   # clock on a wide range (#121), and unlimited means the greedy never stops
   # early: every cell blew the 300s deadline. A budget that binds also
   # exercises admission order, which is where most output changes show up.
+  capture "$out" "$range $mode $kind" \
+    --diff "$range" --scoring "$mode" --mode "$kind" --budget "$BUDGET"
+}
+
+capture() {
+  local out="$1" label="$2"
+  shift 2
+  # The native binary, not the Python CLI: fewer layers between the change and
+  # the artifact.
   #
   # stderr is NOT discarded. Hiding it is how the first version of this script
   # reported "recording 24 cells" and then wrote an empty directory.
-  if ! "$REPO_ROOT/target/release/diffctx" "$FIXTURE" \
-    --diff "$range" --scoring "$mode" --mode "$kind" \
-    --budget "$BUDGET" --format json --quiet \
+  if ! "$REPO_ROOT/target/release/diffctx" "$FIXTURE" "$@" --format json --quiet \
     >"$out.raw"; then
-    printf 'cell failed: %s %s %s\n' "$range" "$mode" "$kind" >&2
+    printf 'cell failed: %s\n' "$label" >&2
     exit 3
   fi
   if [[ ! -s "$out.raw" ]]; then
-    printf 'cell produced no output: %s %s %s\n' "$range" "$mode" "$kind" >&2
+    printf 'cell produced no output: %s\n' "$label" >&2
     exit 3
   fi
   python3 -c '
@@ -141,6 +152,13 @@ sweep() {
         printf '  %s\n' "$name"
       done
     done
+    name="$(cell_name "$range" any impact)"
+    capture "$dest/$name.json" "$range impact" --diff "$range" --mode impact
+    printf '  %s\n' "$name"
+  done
+  for symbol in "${SYMBOLS[@]}"; do
+    capture "$dest/symbol__$symbol.json" "symbol $symbol" --symbol "$symbol"
+    printf '  symbol__%s\n' "$symbol"
   done
 }
 

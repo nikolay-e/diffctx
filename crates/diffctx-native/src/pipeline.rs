@@ -900,7 +900,7 @@ fn resolve_symbol_change_set(
     }
 
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
-    let fragments = crate::fragmentation::process_files_for_fragments(
+    let mut fragments = crate::fragmentation::process_files_for_fragments(
         &files,
         root_dir,
         &[],
@@ -909,6 +909,7 @@ fn resolve_symbol_change_set(
         true,
         run,
     );
+    crate::lang::overlay_assignments(&mut fragments, &run.source());
     let indent = |f: &Fragment| {
         f.content
             .lines()
@@ -1269,7 +1270,6 @@ pub fn compute_scored_state_anchored(
     let mut all_candidate_files = if run.check() {
         candidate_files::collect_candidate_files(&root_dir, &included_set, &scope, &run)
     } else {
-        run.note(crate::resource::LimitReason::DiscoveryTruncated);
         Vec::new()
     };
     if all_candidate_files.len() > run.budget().max_candidate_files {
@@ -1280,7 +1280,7 @@ pub fn compute_scored_state_anchored(
 
     let t_universe = Instant::now();
 
-    let file_cache = build_file_cache(&all_candidate_files);
+    let file_cache = build_file_cache(&all_candidate_files, &run);
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
     config.ppr_alpha = alpha;
@@ -1324,6 +1324,7 @@ pub fn compute_scored_state_anchored(
         file_cache,
         token_corpus: std::sync::OnceLock::new(),
         source: crate::source::current(),
+        run: run.clone(),
     };
 
     let (discovered_files, discovery_attribution) =
@@ -1341,6 +1342,11 @@ pub fn compute_scored_state_anchored(
         .collect();
 
     drop(discovery_ctx);
+    // The walk, the cache and every strategy end at the deadline: whatever
+    // stopped them, the universe the selection saw was cut short.
+    if run.tripped() {
+        run.note(crate::resource::LimitReason::DiscoveryTruncated);
+    }
 
     let t_discovery = Instant::now();
 
@@ -1353,6 +1359,9 @@ pub fn compute_scored_state_anchored(
         false,
         &run,
     ));
+    if reverse_references {
+        crate::lang::overlay_assignments(&mut all_fragments, &run.source());
+    }
 
     let t_parse_discovered = Instant::now();
 
@@ -2302,15 +2311,23 @@ pub(crate) fn is_ignored_path(
         .unwrap_or(false)
 }
 
-/// The one admissibility predicate: secret by name, or excluded by
-/// `.gitignore` / `.diffctx/ignore` as git itself resolves them. Every place
-/// that decides whether a file may be shown composes these two the same way.
+/// Whether a file may be shown, by the facts the diff path reads: its
+/// ignore lookup attributes each exclusion (#153).
 pub(crate) fn is_withheld(
     root_dir: &Path,
     path: &Path,
     ignored_rel_paths: &rustc_hash::FxHashMap<String, git::IgnoreSource>,
 ) -> bool {
-    is_secret_path(path) || is_ignored_path(root_dir, path, ignored_rel_paths)
+    let rel = rel_path_string(root_dir, path);
+    withheld(path, rel.as_deref(), |r| ignored_rel_paths.contains_key(r))
+}
+
+/// The one admissibility predicate: secret by name, inside git's own
+/// directory, or excluded by `.gitignore` / `.diffctx/ignore` as git itself
+/// resolves them. The two readers differ only in which ignore lookup answers
+/// `ignored`; they used to compose the rest differently too (#507).
+fn withheld(path: &Path, rel: Option<&str>, ignored: impl Fn(&str) -> bool) -> bool {
+    is_secret_path(path) || rel.is_some_and(|rel| is_repo_internal(rel) || ignored(rel))
 }
 
 /// Which of `rel_paths` (repo-root-relative) the engine withholds — the
@@ -2325,9 +2342,7 @@ pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
     let ignored = git::find_ignored_paths_any(root_dir, rel_paths);
     rel_paths
         .iter()
-        .filter(|rel| {
-            is_secret_path(&root_dir.join(rel)) || is_repo_internal(rel) || ignored.contains(*rel)
-        })
+        .filter(|rel| withheld(&root_dir.join(rel), Some(rel), |r| ignored.contains(r)))
         .cloned()
         .collect()
 }
@@ -2811,7 +2826,10 @@ pub(crate) fn create_discovery(
     Box::new(EnsembleDiscovery::new(strategies))
 }
 
-fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
+fn build_file_cache(
+    candidate_files: &[PathBuf],
+    run: &crate::resource::RunContext,
+) -> FxHashMap<PathBuf, String> {
     let source = crate::source::current();
     // Stream files one at a time to avoid materialising all content before the cap.
     // Previous par_iter().collect() allocated the full eligible corpus into an
@@ -2821,7 +2839,7 @@ fn build_file_cache(candidate_files: &[PathBuf]) -> FxHashMap<PathBuf, String> {
     sorted.sort();
     let mut cache: FxHashMap<PathBuf, String> = FxHashMap::default();
     let mut cache_bytes = 0usize;
-    for path in sorted {
+    for path in run.bounded(sorted) {
         if cache_bytes > GRAPH_FILTERING.max_cache_bytes {
             break;
         }
@@ -2908,6 +2926,35 @@ mod tests {
             section_path(&root, &[header]).is_some_and(|p| p.ends_with("inside.py")),
             "an in-repo section was dropped"
         );
+    }
+
+    /// The diff path and the readers that walk the tree answer "may this be
+    /// shown" with one predicate; only the ignore facts they feed it differ.
+    /// `is_withheld` lacked git's own directory (#507).
+    #[test]
+    fn both_readers_withhold_alike_given_the_same_ignore_facts() {
+        let root = Path::new("/repo");
+        let ignored: rustc_hash::FxHashMap<String, git::IgnoreSource> =
+            [("build/out.py".to_string(), git::IgnoreSource::Gitignore)]
+                .into_iter()
+                .collect();
+        for (rel, expected) in [
+            (".git/config", true),
+            ("sub/.git/HEAD", true),
+            ("home/.ssh/id_rsa", true),
+            ("keys/server.pem", true),
+            ("build/out.py", true),
+            ("src/app.py", false),
+            (".gitignore", false),
+        ] {
+            let path = root.join(rel);
+            assert_eq!(is_withheld(root, &path, &ignored), expected, "{rel}");
+            assert_eq!(
+                withheld(&path, Some(rel), |r| ignored.contains_key(r)),
+                expected,
+                "{rel}"
+            );
+        }
     }
 }
 

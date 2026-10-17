@@ -218,8 +218,8 @@ impl FragmentId {
     /// `line_count()` is `end - start + 1` on unsigned integers, so an inverted
     /// span panics in debug and wraps to ~4 billion in release — and it does so
     /// somewhere downstream, far from whoever built the span. That has been
-    /// fixed twice at the call site (fragmentation, signatures) and QA.md lists
-    /// it as a recurring pattern; the constructor is the only place it can stop
+    /// fixed twice at the call site (fragmentation, signatures) and it is listed
+    /// as a recurring pattern; the constructor is the only place it can stop
     /// recurring.
     ///
     /// Debug builds fail loudly at the point of construction, where the bug

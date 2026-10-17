@@ -1119,7 +1119,7 @@ fn the_header_counts_every_caller_the_lines_call_untested() {
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(md.contains("no static test link found"), "{md}");
     assert!(
-        header(&md).contains(", 1 without a static test link"),
+        header(&md).contains(", 1 caller(s) without a static test link"),
         "{md}"
     );
 }
@@ -1138,6 +1138,12 @@ fn a_changed_definition_no_test_reaches_is_counted() {
     let md = impact_markdown(repo, "HEAD~1..HEAD");
     assert!(
         header(&md).contains("1 changed definition(s) without a static test link"),
+        "{md}"
+    );
+    // #493: nothing calls it, so no untested caller is counted beside it.
+    assert_eq!(
+        header(&md).matches("without a static test link").count(),
+        1,
         "{md}"
     );
     // #398: what the header counts, the answer names.
@@ -2161,7 +2167,7 @@ fn a_caller_registered_by_a_decorator_is_not_called_untested() {
     assert!(md.contains("@register_node"), "{md}");
     assert!(!md.contains("no static test link found"), "{md}");
     assert!(
-        header(&md).contains(", 0 without a static test link"),
+        header(&md).contains(", 0 caller(s) without a static test link"),
         "{md}"
     );
 }
@@ -4016,7 +4022,7 @@ fn the_header_counts_the_same_at_any_budget() {
     };
     let whole = header("20000");
     assert!(
-        whole.contains("8 caller(s)") && whole.contains("4 without a static test link"),
+        whole.contains("8 caller(s)") && whole.contains("4 caller(s) without a static test link"),
         "{whole}"
     );
     assert_eq!(header("90"), whole);

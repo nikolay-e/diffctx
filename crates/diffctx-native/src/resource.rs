@@ -464,6 +464,21 @@ impl RunContext {
         items.into_iter().take_while(move |_| self.check())
     }
 
+    /// `bounded` for a rayon loop: each item is taken after one poll, from
+    /// any worker, so no item starts past the deadline. Without one, `collect`
+    /// keeps the input's order.
+    pub fn bounded_par<'a, I>(
+        &'a self,
+        items: I,
+    ) -> impl rayon::iter::ParallelIterator<Item = I::Item> + 'a
+    where
+        I: rayon::iter::IntoParallelIterator,
+        I::Iter: 'a,
+    {
+        use rayon::iter::ParallelIterator;
+        items.into_par_iter().take_any_while(move |_| self.check())
+    }
+
     /// Whether the deadline has fired, without re-checking the clock.
     pub fn tripped(&self) -> bool {
         self.inner.tripped.load(Ordering::Relaxed)

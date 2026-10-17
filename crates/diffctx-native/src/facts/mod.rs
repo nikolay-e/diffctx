@@ -9,6 +9,7 @@
 //! an import inside a comment that is not an import at all.
 
 pub mod kotlin;
+pub mod python;
 pub mod scala;
 
 use rustc_hash::FxHashSet;

@@ -111,8 +111,8 @@ pub fn collect_candidate_files(
     let source = crate::source::current();
     match source.list_blobs(scope) {
         Some(Ok(blobs)) => {
-            let admitted = blobs
-                .into_iter()
+            let admitted = ctx
+                .bounded(blobs)
                 .filter(|b| is_snapshot_candidate(b, root_dir, included_set, &source, ctx))
                 .map(|b| b.path)
                 .collect();
@@ -148,12 +148,12 @@ fn tracked_candidates(
         args.extend(scope.iter().map(String::as_str));
     }
     let parts = git::run_git_z(root_dir, &args).ok()?;
+    let paths: Vec<PathBuf> = parts
+        .into_iter()
+        .map(|f| crate::paths::repo_join(root_dir, &f))
+        .collect();
     Some(
-        parts
-            .into_iter()
-            .map(|f| crate::paths::repo_join(root_dir, &f))
-            .collect::<Vec<PathBuf>>()
-            .into_par_iter()
+        ctx.bounded_par(paths)
             .filter(|f| is_candidate_file(f, root_dir, included_set, ctx))
             .collect(),
     )
@@ -189,7 +189,7 @@ fn walked_candidates(
             .filter_entry(|e| !is_walk_skipped_dir(e))
             .filter_map(Result::ok)
             .filter(|e| e.file_type().is_file());
-        for entry in files {
+        for entry in ctx.bounded(files) {
             let path = entry.into_path();
             if is_candidate_file(&path, root_dir, included_set, ctx) {
                 admitted.push(path);
