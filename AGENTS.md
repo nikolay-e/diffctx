@@ -17,6 +17,19 @@ Setup, suite shape and the per-case YAML corpus gate
 (`crates/diffctx-native/tests/known_below_threshold.txt`, bidirectional: a
 listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 
+## History is append-only
+
+`main` is never rewritten: forks, contributors' pull requests, release tags and
+the provenance of published wheels all name its commits, and a rewrite hides
+nothing — every pushed commit stays reachable through pull-request refs and
+forks. The maintainers' work reaches `main` one epoch at a time; until then it
+is a single commit on `next` above `main`, never a pile of agent commits.
+`scripts/epoch-push.sh` folds local commits into it and pushes `next` (the open
+epoch PR runs CI and the review context); `scripts/epoch-push.sh land`
+fast-forwards `main` once the epoch is done. A contributor's commit lands on
+`main` as itself — never folded, amended or restamped — and the epoch rebases
+over it, as it does over dependency bumps.
+
 ## Output-changing changes are judged by correctness
 
 A change either keeps selection output identical (E-class) or moves it
