@@ -46,3 +46,24 @@ def test_rows_carry_engine_version_and_config_hash_that_moves_with_overrides(tmp
 
     overridden = _row(repo.path, monkeypatch, {"DIFFCTX_OP_GRAPH_DEPTH": "3"})
     assert overridden.extra["effective_config_hash"] != plain.extra["effective_config_hash"]
+
+
+def test_the_eval_harness_imports_offline(tmp_path):
+    """Importing the harness fetched tiktoken's tables from an outside host,
+    so collection failed wherever DNS did (CI job 115572515645). The engine
+    counts o200k_base itself."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    dead = "http://127.0.0.1:9"
+    env = {**os.environ, "TIKTOKEN_CACHE_DIR": str(tmp_path), "HTTPS_PROXY": dead, "HTTP_PROXY": dead}
+    result = subprocess.run(
+        [sys.executable, "-c", "import eval.harness.diffctx_eval_fn"],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
