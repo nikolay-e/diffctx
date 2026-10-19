@@ -43,6 +43,8 @@ pub struct PythonFacts {
     /// evaluate.
     pub sys_path: Vec<Option<Vec<Step>>>,
     pub declarations: Vec<Declaration>,
+    /// The lines of every import statement, which bind names and use none.
+    pub imports: Vec<(u32, u32)>,
     /// Every identifier the code spells (never a string or a comment), by
     /// name, with the lines it is spelled on in order.
     names: FxHashMap<String, Vec<u32>>,
@@ -180,6 +182,9 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
                 if let Some(arg) = at.and_then(|i| arguments(node).into_iter().nth(i)) {
                     added.push(arg);
                 }
+            }
+            "import_statement" | "import_from_statement" | "future_import_statement" => {
+                facts.imports.push(lines_of(node));
             }
             "identifier" => {
                 facts

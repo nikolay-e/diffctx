@@ -51,9 +51,29 @@ pub fn unanalysed_reason(
     match tree_sitter_strategy::parse_outcome(path, &String::from_utf8_lossy(&content))? {
         ParseOutcome::Clean => None,
         ParseOutcome::TimedOut => Some(("parse_timeout", Vec::new())),
-        ParseOutcome::Partial(lines) if has_definition => Some(("parse_partial", lines)),
-        ParseOutcome::Partial(lines) => Some(("parse_failed", lines)),
+        ParseOutcome::Partial { lines, .. } if has_definition => Some(("parse_partial", lines)),
+        ParseOutcome::Partial { lines, .. } => Some(("parse_failed", lines)),
     }
+}
+
+/// Whether `name` is spelled, in any case, on a line the parse of `content`
+/// broke on. The rest of a partial tree was read, and a use there is seen
+/// like any other.
+pub fn spelled_where_broken(path: &str, content: &str, name: &str) -> bool {
+    let Some(ParseOutcome::Partial { spans, .. }) =
+        tree_sitter_strategy::parse_outcome(path, content)
+    else {
+        return false;
+    };
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let name = name.to_lowercase();
+    content.to_lowercase().lines().zip(1u32..).any(|(line, n)| {
+        spans.iter().any(|&(start, end)| start <= n && n <= end)
+            && line.match_indices(name.as_str()).any(|(at, _)| {
+                !line[..at].chars().next_back().is_some_and(word)
+                    && !line[at + name.len()..].chars().next().is_some_and(word)
+            })
+    })
 }
 
 /// How a reason of `unanalysed_reason` reads in prose.

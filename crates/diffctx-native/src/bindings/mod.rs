@@ -131,6 +131,7 @@ pub struct Resolver<'a> {
     texts: RefCell<FxHashMap<String, Option<Rc<str>>>>,
     /// The directories a Python file puts on `sys.path`, by importer.
     python_roots: RefCell<FxHashMap<String, Rc<[String]>>>,
+    python_env: python::PythonEnv,
     js_facts: RefCell<FxHashMap<String, Option<Rc<js::JsFacts>>>>,
 }
 
@@ -147,6 +148,7 @@ impl<'a> Resolver<'a> {
             workspace: std::cell::OnceCell::new(),
             texts: RefCell::default(),
             python_roots: RefCell::default(),
+            python_env: python::PythonEnv::default(),
             js_facts: RefCell::default(),
         }
     }
@@ -441,29 +443,50 @@ impl Resolver<'_> {
                     Evidence::Rejected
                 }
             }
-            Resolution::File(f) if depth < MAX_REEXPORT_DEPTH => {
-                let through = self.bindings(&f);
-                if let Some(next) = through.names.get(imported) {
-                    return self.reaches(&f, next, path, name, depth + 1);
-                }
-                through
-                    .star_from
-                    .iter()
-                    .map(|spec| {
-                        let star = Target::Member {
-                            module: spec.clone(),
-                            name: imported.clone(),
-                        };
-                        self.reaches(&f, &star, path, name, depth + 1)
-                    })
-                    .fold(Evidence::Rejected, Evidence::best)
-            }
-            Resolution::Ambiguous(all) if all.iter().any(|f| f == path) => {
+            Resolution::File(f) => self.passes_on(&f, imported, path, name, depth),
+            // Each file the module may be is a way in: one defining the name
+            // or passing it on makes the reference a candidate (#557).
+            Resolution::Ambiguous(all)
+                if all.iter().any(|f| {
+                    f == path
+                        || self.passes_on(f, imported, path, name, depth) != Evidence::Rejected
+                }) =>
+            {
                 Evidence::Candidate("ambiguous_module")
             }
             Resolution::Unsupported => Evidence::Candidate("import_unresolved"),
             _ => Evidence::Rejected,
         }
+    }
+
+    /// Whether `file`, another module than the definition's, re-exports
+    /// `imported` as `path::name`: by an import of its own or a star import.
+    fn passes_on(
+        &self,
+        file: &str,
+        imported: &str,
+        path: &str,
+        name: &str,
+        depth: usize,
+    ) -> Evidence {
+        if depth >= MAX_REEXPORT_DEPTH {
+            return Evidence::Rejected;
+        }
+        let through = self.bindings(file);
+        if let Some(next) = through.names.get(imported) {
+            return self.reaches(file, next, path, name, depth + 1);
+        }
+        through
+            .star_from
+            .iter()
+            .map(|spec| {
+                let star = Target::Member {
+                    module: spec.clone(),
+                    name: imported.to_string(),
+                };
+                self.reaches(file, &star, path, name, depth + 1)
+            })
+            .fold(Evidence::Rejected, Evidence::best)
     }
 
     /// Whether a name used in `site` designates `path::name` (a class, when
@@ -493,7 +516,7 @@ impl Resolver<'_> {
     }
 
     /// `chain.member` where `chain` names a module: does it name `path`?
-    fn chain_is_module(&self, site: &Site, chain: &str, path: &str) -> Evidence {
+    fn chain_is_module(&self, site: &Site, chain: &str, path: &str, member: &str) -> Evidence {
         let mut parts = chain.split('.');
         let head = parts.next().unwrap_or("");
         let rest: Vec<&str> = parts.collect();
@@ -518,6 +541,14 @@ impl Resolver<'_> {
                 return self.js_namespace_is(site.path, module, name, path, 0);
             }
         };
+        if python {
+            // A package passes on what its `__init__` imports (#557).
+            let target = Target::Member {
+                module: spec,
+                name: member.to_string(),
+            };
+            return self.reaches(site.path, &target, path, member, 0);
+        }
         self.module_is(site.path, &spec, path)
     }
 
@@ -533,7 +564,11 @@ impl Resolver<'_> {
             if own == class && site.path == def.path {
                 return Evidence::Resolved;
             }
-            return bases_of(header)
+            let ext = std::path::Path::new(site.path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            return crate::impact::supertypes(header, ext)
                 .iter()
                 .map(|b| self.names(site, b, def.path, class))
                 .fold(Evidence::Rejected, Evidence::best);
@@ -544,11 +579,13 @@ impl Resolver<'_> {
         let head = chain.split('.').next().unwrap_or(chain);
         if !chain.contains('.') {
             let direct = self.names(site, chain, def.path, class);
-            if direct != Evidence::Rejected
-                || self.bindings(site.path).names.contains_key(chain)
-                || (site.path == def.path && chain == class)
-            {
+            if direct != Evidence::Rejected || (site.path == def.path && chain == class) {
                 return direct;
+            }
+            if let Some(target) = self.bindings(site.path).names.get(chain) {
+                return self
+                    .imported_instance_is(site, target, def, class)
+                    .unwrap_or(direct);
             }
         }
         if let Some(ctor) = constructed_as(site.path, site.content, head)
@@ -560,23 +597,59 @@ impl Resolver<'_> {
             return Evidence::Rejected;
         }
         // A module-level binding the function reads: `const m = new Map()`.
-        if let Some(text) = self.text(site.path) {
-            let top: String = text
-                .lines()
-                .filter(|l| !l.starts_with([' ', '\t']))
-                .collect::<Vec<_>>()
-                .join("\n");
-            if let Some(ctor) = constructed_as(site.path, &top, head) {
-                return self.constructor_is(site, &ctor, def, class);
-            }
-            if assigned_literal(site.path, &top, head) {
-                return Evidence::Rejected;
-            }
-        }
-        Evidence::Candidate("receiver_unresolved")
+        self.top_level_is(site, head, def, class)
+            .unwrap_or(Evidence::Candidate("receiver_unresolved"))
     }
 
-    fn text(&self, path: &str) -> Option<Rc<str>> {
+    /// What the top level of `site`'s file says about `var` being `class`:
+    /// the class it constructs, or a literal; nothing when it binds neither.
+    fn top_level_is(
+        &self,
+        site: &Site,
+        var: &str,
+        def: &Definition,
+        class: &str,
+    ) -> Option<Evidence> {
+        let text = self.text(site.path)?;
+        let top: String = text
+            .lines()
+            .filter(|l| !l.starts_with([' ', '\t']))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Some(ctor) = constructed_as(site.path, &top, var) {
+            return Some(self.constructor_is(site, &ctor, def, class));
+        }
+        assigned_literal(site.path, &top, var).then_some(Evidence::Rejected)
+    }
+
+    /// `from config import settings`: the instance that module builds at its
+    /// top level, `settings = AppSettings()` (#400).
+    fn imported_instance_is(
+        &self,
+        site: &Site,
+        target: &Target,
+        def: &Definition,
+        class: &str,
+    ) -> Option<Evidence> {
+        let Target::Member { module, name } = target else {
+            return None;
+        };
+        if lang_of(site.path) != Some(Lang::Python) {
+            return None;
+        }
+        let Resolution::File(home) = self.resolve(site.path, module) else {
+            return None;
+        };
+        let at_home = Site {
+            path: &home,
+            content: "",
+            start_line: 1,
+            class: None,
+        };
+        self.top_level_is(&at_home, name, def, class)
+    }
+
+    pub(crate) fn text(&self, path: &str) -> Option<Rc<str>> {
         if let Some(known) = self.texts.borrow().get(path) {
             return known.clone();
         }
@@ -624,7 +697,7 @@ impl Resolver<'_> {
                 .bindings(site.path)
                 .names
                 .contains_key(module.split('.').next().unwrap_or(module));
-            return match self.chain_is_module(site, module, def.path) {
+            return match self.chain_is_module(site, module, def.path, class) {
                 Evidence::Rejected if !bound => Evidence::Candidate("receiver_unresolved"),
                 e => e,
             };
@@ -765,7 +838,7 @@ impl Resolver<'_> {
         let found = if matches!(chain, "self" | "cls" | "this") || chain.is_empty() {
             Evidence::Rejected
         } else {
-            self.chain_is_module(site, chain, def.path)
+            self.chain_is_module(site, chain, def.path, def.name)
         };
         // A module a glob loads arrives as a value nothing types (#357).
         let unbound = !self
@@ -824,27 +897,6 @@ pub(crate) fn absorb(
     if !f.lines.contains(&line) {
         f.lines.push(line);
     }
-}
-
-static CLASS_HEADER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"class\s+[\w$]+\s*(?:\(([^)]*)\)|extends\s+([\w$.]+)(?:\s+implements\s+([\w$.,\s]+))?)",
-    )
-    .unwrap()
-});
-
-fn bases_of(header: &str) -> Vec<String> {
-    let Some(c) = CLASS_HEADER.captures(header) else {
-        return Vec::new();
-    };
-    [c.get(1), c.get(2), c.get(3)]
-        .into_iter()
-        .flatten()
-        .flat_map(|m| m.as_str().split(','))
-        .map(|b| b.trim().split(['[', '<', '(']).next().unwrap_or("").trim())
-        .filter(|b| !b.is_empty() && !b.contains('='))
-        .map(|b| b.rsplit('.').next().unwrap_or(b).to_string())
-        .collect()
 }
 
 /// `x = Bot(...)`, `const x = new Bot(...)`, `with Bot(...) as x`: the

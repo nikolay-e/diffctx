@@ -8,72 +8,24 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::{At, DefId, LanguageFacts, Relation, Table, UseSite};
+use super::{At, DefId, LanguageFacts, Relation, RemovedDef, Table, UseSite};
 use crate::bindings::{self, Definition, Finding, Lang, Resolution, Resolver, Site, Target};
 use crate::facts::python::{DeclKind, PythonFacts, facts};
 use crate::impact::{base_symbol, enclosing_class, is_member};
 use crate::source::Source;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use crate::types::FragmentKind;
 
-/// A Python module- or class-level assignment is a definition impact and
-/// `--symbol` resolve (#420, #488). Pack keeps its fragments as they are,
-/// sized for a reader's budget, and an impact run lays these over them; a
-/// fragment spanning exactly the statement becomes the definition.
-pub fn overlay_assignments(fragments: &mut Vec<Fragment>, source: &Source) {
-    let mut paths: Vec<Arc<str>> = fragments
-        .iter()
-        .filter(|f| bindings::lang_of(f.path()) == Some(Lang::Python))
-        .map(|f| Arc::clone(&f.id.path))
-        .collect();
-    paths.sort();
-    paths.dedup();
-    let mut at: FxHashMap<FragmentId, usize> = fragments
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.id.clone(), i))
-        .collect();
-    for path in paths {
-        let Some(text) = source.read_to_string(Path::new(path.as_ref())) else {
-            continue;
-        };
-        let Some(facts) = facts(&text) else {
-            continue;
-        };
-        let lines: Vec<&str> = text.split('\n').collect();
-        for d in facts
+/// Module- and class-level assignments, which impact and `--symbol`
+/// resolve as definitions (#420, #488).
+pub(super) fn assignments(text: &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
+    facts(text).map_or_else(Vec::new, |facts| {
+        facts
             .declarations
             .iter()
             .filter(|d| d.kind == DeclKind::Assignment)
-        {
-            let id = FragmentId::new(Arc::clone(&path), d.lines.0, d.lines.1);
-            if let Some(&i) = at.get(&id) {
-                let same = &mut fragments[i];
-                if same.symbol_name.is_none() {
-                    same.kind = FragmentKind::Property;
-                    same.symbol_name = Some(d.name.clone());
-                }
-                continue;
-            }
-            let Some(content) = lines
-                .get(d.lines.0 as usize - 1..d.lines.1 as usize)
-                .map(|l| l.join("\n"))
-            else {
-                continue;
-            };
-            at.insert(id.clone(), fragments.len());
-            fragments.push(Fragment {
-                id,
-                kind: FragmentKind::Property,
-                identifiers: crate::types::extract_identifiers(
-                    &content,
-                    crate::config::tokenization::TOKENIZATION.fragment_min_identifier_length,
-                ),
-                content: Arc::from(content),
-                token_count: 0,
-                symbol_name: Some(d.name.clone()),
-            });
-        }
-    }
+            .map(|d| (Some(d.name.clone()), d.lines, FragmentKind::Property))
+            .collect()
+    })
 }
 
 struct PyDef {
@@ -83,13 +35,13 @@ struct PyDef {
     /// A function defined inside another is a local name: only that
     /// function's lines can call it, never through a receiver.
     scope: Option<(u32, u32)>,
-    /// The lines that define it, which are no use of it.
-    lines: (u32, u32),
+    /// The lines that define it, which are no use of it; none for a
+    /// definition the range removed.
+    lines: Option<(u32, u32)>,
 }
 
 pub(super) struct PythonModel<'a> {
     root: &'a Path,
-    source: &'a Source,
     resolver: Resolver<'a>,
     facts: RefCell<FxHashMap<String, Option<Arc<PythonFacts>>>>,
     defs: Table<(String, String, u32, u32), PyDef>,
@@ -99,7 +51,6 @@ impl<'a> PythonModel<'a> {
     pub(super) fn new(root: &'a Path, source: &'a Source, files: FxHashSet<String>) -> Self {
         Self {
             root,
-            source,
             resolver: Resolver::new(root, source, files),
             facts: RefCell::default(),
             defs: Table::new(),
@@ -110,18 +61,106 @@ impl<'a> PythonModel<'a> {
         if let Some(known) = self.facts.borrow().get(rel) {
             return known.clone();
         }
-        let read = self
-            .source
-            .read_to_string(&self.root.join(rel))
-            .and_then(|text| facts(&text));
+        let read = self.resolver.text(rel).and_then(|text| facts(&text));
         self.facts
             .borrow_mut()
             .insert(rel.to_string(), read.clone());
         read
     }
+
+    /// A line a text search found, read in the function around it: its
+    /// parameters and locals are names of its own, and a word the syntax
+    /// does not spell as an identifier — a docstring's, a comment's — is no
+    /// use at all (#536).
+    fn classify_lines(&self, site: &UseSite, def: &PyDef) -> Option<Finding> {
+        let facts = self.facts(site.path)?;
+        let (first, last) = site.lines;
+        let named = self
+            .resolver
+            .bindings(site.path)
+            .names
+            .iter()
+            .filter(|(_, t)| matches!(t, Target::Member { name, .. } if *name == def.name))
+            .map(|(local, _)| local.as_str())
+            .chain([def.name.as_str()])
+            .any(|n| {
+                facts
+                    .lines_naming(n)
+                    .iter()
+                    .any(|l| (first..=last).contains(l))
+            });
+        // The file that lost the definition and imports the name now took
+        // it from where it went.
+        let moved = def.lines.is_none()
+            && site.path == def.path
+            && self
+                .resolver
+                .bindings(site.path)
+                .names
+                .contains_key(&def.name);
+        if !named || moved {
+            return None;
+        }
+        let around = facts
+            .declarations
+            .iter()
+            .filter(|d| d.kind == DeclKind::Function && d.lines.0 <= first && d.lines.1 >= last)
+            .min_by_key(|d| d.lines.1 - d.lines.0);
+        let span = around.map_or(site.lines, |d| d.lines);
+        let text = self.resolver.text(site.path)?;
+        let lines: Vec<&str> = text.split('\n').collect();
+        let content = lines
+            .get(span.0.saturating_sub(1) as usize..(span.1 as usize).min(lines.len()))?
+            .join("\n");
+        let class = around.and_then(|d| {
+            let name = d.class.as_deref()?;
+            let declared = facts.declarations.iter().find(|c| {
+                c.kind == DeclKind::Class
+                    && c.name == name
+                    && c.lines.0 <= d.lines.0
+                    && c.lines.1 >= d.lines.1
+            })?;
+            let header = lines
+                .get(declared.lines.0.saturating_sub(1) as usize..declared.lines.1 as usize)?
+                .iter()
+                .find(|l| l.trim_start().starts_with("class "))?;
+            Some((name, *header))
+        });
+        let mut found = self.resolver.classify(
+            &Site {
+                path: site.path,
+                content: &content,
+                start_line: span.0,
+                class,
+            },
+            &Definition {
+                path: &def.path,
+                name: &def.name,
+                class: def.class.as_deref(),
+            },
+        )?;
+        found.lines.retain(|l| (first..=last).contains(l));
+        self.outside_imports(site.path, found)
+    }
+
+    /// `from m import (\n    name,\n)`: a line an import spans binds the
+    /// name and uses nothing.
+    fn outside_imports(&self, path: &str, mut found: Finding) -> Option<Finding> {
+        if let Some(facts) = self.facts(path) {
+            found
+                .lines
+                .retain(|l| !facts.imports.iter().any(|&(a, b)| a <= *l && *l <= b));
+        }
+        (!found.lines.is_empty()).then_some(found)
+    }
 }
 
-const MODELLED: &[Relation] = &[Relation::Callers, Relation::Uses, Relation::Imports];
+const MODELLED: &[Relation] = &[
+    Relation::Callers,
+    Relation::Uses,
+    Relation::Imports,
+    Relation::Removals,
+];
 
 impl LanguageFacts for PythonModel<'_> {
     fn modelled(&self) -> &'static [Relation] {
@@ -164,14 +203,16 @@ impl LanguageFacts for PythonModel<'_> {
                 name: name.to_string(),
                 class,
                 scope,
-                lines,
+                lines: Some(lines),
             })
         })
     }
 
     fn classify(&self, site: &UseSite, def: DefId) -> Option<Finding> {
         let def = self.defs.get(def);
-        let (user, file) = site.frag?;
+        let Some((user, file)) = site.frag else {
+            return self.classify_lines(site, &def);
+        };
         if let Some((start, end)) = def.scope {
             if site.path != def.path || user.start_line() < start || user.end_line() > end {
                 return None;
@@ -195,10 +236,58 @@ impl LanguageFacts for PythonModel<'_> {
                 class: def.class.as_deref(),
             },
         )?;
-        if site.path == def.path {
-            found.lines.retain(|l| *l < def.lines.0 || *l > def.lines.1);
+        if let Some((start, end)) = def.lines.filter(|_| site.path == def.path) {
+            found.lines.retain(|l| *l < start || *l > end);
         }
-        (!found.lines.is_empty()).then_some(found)
+        self.outside_imports(site.path, found)
+    }
+
+    fn local(&self, def: DefId) -> bool {
+        self.defs.get(def).scope.is_some()
+    }
+
+    /// The module- and class-level definitions the base declared and the
+    /// head no longer does. A function local to another went with the
+    /// function around it, which the range changed.
+    fn removed(&self, base: &str, pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
+        let mut out = Vec::new();
+        for (old_path, new_path) in pairs.iter().filter(|(old, _)| self.covers(old)) {
+            let Some(old) = crate::git::show_file_at_revision(self.root, base, Path::new(old_path))
+                .ok()
+                .and_then(|text| facts(&text))
+            else {
+                continue;
+            };
+            let new = new_path.as_deref().and_then(|p| self.facts(p));
+            let path = new_path.clone().unwrap_or_else(|| old_path.clone());
+            let mut seen: FxHashSet<(&str, Option<&str>)> = FxHashSet::default();
+            for d in old.declarations.iter().filter(|d| d.scope.is_none()) {
+                let key = (d.name.as_str(), d.class.as_deref());
+                let kept = new.as_ref().is_some_and(|n| {
+                    n.declarations
+                        .iter()
+                        .any(|x| x.scope.is_none() && (x.name.as_str(), x.class.as_deref()) == key)
+                });
+                if kept || d.name.len() < 3 || !seen.insert(key) {
+                    continue;
+                }
+                let def = self.defs.push(PyDef {
+                    path: path.clone(),
+                    name: d.name.clone(),
+                    class: d.class.clone(),
+                    scope: None,
+                    lines: None,
+                })?;
+                out.push(RemovedDef {
+                    def,
+                    path: path.clone(),
+                    name: d.name.clone(),
+                    lines: d.lines,
+                    public: false,
+                });
+            }
+        }
+        Some(out)
     }
 
     fn reaches_file(&self, test: &str, caller: &str) -> bool {

@@ -936,9 +936,12 @@ fn keep_interpolations(node: Node, original: &[u8], out: &mut [u8]) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseOutcome {
     Clean,
-    /// Error or missing nodes on these lines (the first few); what sits
-    /// elsewhere was read.
-    Partial(Vec<u32>),
+    /// Error or missing nodes: the first few lines they start on, to name,
+    /// and every line span they cover. What sits elsewhere was read.
+    Partial {
+        lines: Vec<u32>,
+        spans: Vec<(u32, u32)>,
+    },
     TimedOut,
 }
 
@@ -969,11 +972,12 @@ fn outcome_of(tree: &Tree) -> ParseOutcome {
     if !root.has_error() {
         return ParseOutcome::Clean;
     }
-    let mut lines = Vec::new();
+    let mut spans = Vec::new();
     let mut stack = vec![root];
     while let Some(n) = stack.pop() {
         if n.is_error() || n.is_missing() {
-            lines.push(n.start_position().row as u32 + 1);
+            let row = |p: tree_sitter::Point| p.row as u32 + 1;
+            spans.push((row(n.start_position()), row(n.end_position())));
             continue;
         }
         if n.has_error() {
@@ -981,10 +985,11 @@ fn outcome_of(tree: &Tree) -> ParseOutcome {
             stack.extend(n.children(&mut cursor));
         }
     }
-    lines.sort_unstable();
+    spans.sort_unstable();
+    let mut lines: Vec<u32> = spans.iter().map(|&(start, _)| start).collect();
     lines.dedup();
     lines.truncate(ERROR_LINES_KEPT);
-    ParseOutcome::Partial(lines)
+    ParseOutcome::Partial { lines, spans }
 }
 
 /// What the file's grammar made of `content`: the fragmenter's own record

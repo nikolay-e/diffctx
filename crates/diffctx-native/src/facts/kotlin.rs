@@ -53,6 +53,19 @@ pub enum Visibility {
     Public,
 }
 
+impl Visibility {
+    /// How far a declaration reaches where an unmarked one is `internal`
+    /// (Swift's module, Java's package): no further than its owners.
+    pub fn bounded(own: Option<Self>, owners: impl IntoIterator<Item = Option<Self>>) -> Self {
+        owners
+            .into_iter()
+            .chain([own])
+            .map(|v| v.unwrap_or(Self::Internal))
+            .min()
+            .unwrap_or(Self::Internal)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Declaration {
     pub name: String,
@@ -168,8 +181,23 @@ pub struct Binding {
     pub type_name: Option<String>,
     /// The call that types it when no type is written.
     pub init_call: Option<InitCall>,
+    /// The name it was bound from (`if let t = maybe`), whose type it has.
+    pub alias: Option<String>,
     pub start: usize,
     pub scope: Range<usize>,
+}
+
+impl Binding {
+    pub fn new(name: String, type_name: Option<String>, start: usize, scope: Range<usize>) -> Self {
+        Self {
+            name,
+            type_name,
+            init_call: None,
+            alias: None,
+            start,
+            scope,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -288,18 +316,43 @@ pub fn record(tree: &Tree, content: &str) -> Arc<KotlinFacts> {
 
 type Owners = Vec<(String, Option<Visibility>)>;
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+/// Walks a tree in source order, each node with the owners around it:
+/// `visit` records what the node states and returns the owners its children
+/// see, or `None` when they hold nothing more to read.
+pub(super) fn walk<'t, O: Clone>(
+    root: Node<'t>,
+    owners: O,
+    mut visit: impl FnMut(Node<'t>, &O, &mut KotlinFacts) -> Option<O>,
+) -> KotlinFacts {
     let mut facts = KotlinFacts::default();
-    let mut stack: Vec<(Node, Owners)> = vec![(root, Vec::new())];
+    let mut stack = vec![(root, owners)];
     while let Some((node, owners)) = stack.pop() {
         if node.is_error() || node.is_missing() {
             facts.error_lines.push(line_of(node));
         }
+        let Some(inner) = visit(node, &owners, &mut facts) else {
+            continue;
+        };
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+        stack.extend(children.into_iter().rev().map(|c| (c, inner.clone())));
+    }
+    facts
+        .declarations
+        .sort_by_key(|d| (d.span.start, std::cmp::Reverse(d.span.end)));
+    facts.uses.sort_by_key(|u| u.at);
+    facts.error_lines.sort_unstable();
+    facts.error_lines.dedup();
+    facts
+}
+
+fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+    let mut facts = walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
             "package_header" => {
                 facts.package = child(node, "identifier").map(|i| dotted(i, bytes));
-                continue;
+                return None;
             }
             "import_header" => {
                 if let Some(path) = child(node, "identifier").map(|i| dotted(i, bytes)) {
@@ -310,11 +363,11 @@ fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
                         line: line_of(node),
                     });
                 }
-                continue;
+                return None;
             }
             "line_comment" | "multiline_comment" => {
                 facts.text.push(node.byte_range());
-                continue;
+                return None;
             }
             "string_literal" | "character_literal" => string_text(node, &mut facts.text),
             _ => {}
@@ -323,7 +376,7 @@ fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
             if is_local(&node) {
                 local_binding(&node, bytes, &mut facts.bindings);
             } else {
-                let mut decl = declaration(&node, kind, &owners, bytes);
+                let mut decl = declaration(&node, kind, owners, bytes);
                 decl.signature = squash(bytes, decl.header.clone());
                 if decl.is_type() && decl.kind != "typealias" {
                     facts
@@ -335,23 +388,15 @@ fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
             }
         }
         match node.kind() {
-            "class_parameter" => constructor_property(&node, &owners, bytes, &mut facts),
+            "class_parameter" => constructor_property(&node, owners, bytes, facts),
             "parameter" | "lambda_parameters" | "for_statement" | "catch_block" => {
                 parameter_bindings(&node, bytes, &mut facts.bindings);
             }
             _ => {}
         }
         uses_at(&node, bytes, &mut facts.uses);
-        let mut cursor = node.walk();
-        let children: Vec<Node> = node.children(&mut cursor).collect();
-        for c in children.into_iter().rev() {
-            stack.push((c, inner.clone()));
-        }
-    }
-    facts
-        .declarations
-        .sort_by_key(|d| (d.span.start, std::cmp::Reverse(d.span.end)));
-    facts.uses.sort_by_key(|u| u.at);
+        Some(inner)
+    });
     // A grammar can misread a declaration without an error node (a bodyless
     // annotated class swallowed the next one in tree-sitter-kotlin-sg): a
     // type the text declares at the start of a line that the tree lacks is
@@ -504,7 +549,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
     }
 }
 
-fn squash(bytes: &[u8], range: Range<usize>) -> String {
+pub(super) fn squash(bytes: &[u8], range: Range<usize>) -> String {
     String::from_utf8_lossy(&bytes[range.start.min(bytes.len())..range.end.min(bytes.len())])
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -580,11 +625,8 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
         node.start_byte()
     };
     bindings.push(Binding {
-        name,
-        type_name: declared_type(node, bytes),
         init_call: initializer_call(node, bytes),
-        start,
-        scope,
+        ..Binding::new(name, declared_type(node, bytes), start, scope)
     });
 }
 
@@ -607,13 +649,12 @@ fn parameter_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     };
     let mut push = |n: Node| {
         if let Some(name) = name_of(&n, bytes) {
-            bindings.push(Binding {
+            bindings.push(Binding::new(
                 name,
-                type_name: first_child_type(&n, bytes),
-                init_call: None,
-                start: scope.start,
-                scope: scope.clone(),
-            });
+                first_child_type(&n, bytes),
+                scope.start,
+                scope.clone(),
+            ));
         }
     };
     match node.kind() {
@@ -634,13 +675,12 @@ fn parameter_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
                     .find(|c| c.kind() == "simple_identifier")
                 {
                     if let Some(name) = text(id, bytes) {
-                        bindings.push(Binding {
-                            name: name.to_string(),
-                            type_name: first_child_type(node, bytes),
-                            init_call: None,
-                            start: scope.start,
-                            scope: scope.clone(),
-                        });
+                        bindings.push(Binding::new(
+                            name.to_string(),
+                            first_child_type(node, bytes),
+                            scope.start,
+                            scope.clone(),
+                        ));
                     }
                 }
             }
@@ -666,17 +706,7 @@ fn enclosing_scope(node: &Node) -> Option<Range<usize>> {
 /// The uses a node is the head of. Each use is recorded once, at the node
 /// that decides its kind.
 fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
-    let mut push = |name: Option<String>, kind: UseKind, receiver: Option<Receiver>, at: Node| {
-        if let Some(name) = name.filter(|n| !n.is_empty()) {
-            uses.push(Use {
-                name,
-                kind,
-                receiver,
-                at: at.start_byte(),
-                line: line_of(at),
-            });
-        }
-    };
+    let mut push = |name, kind, receiver, at| push_use(uses, name, kind, receiver, at);
     match node.kind() {
         "navigation_expression" | "directly_assignable_expression" => {
             let Some(suffix) = child(*node, "navigation_suffix") else {
@@ -691,7 +721,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
             });
             let receiver = node.named_child(0).map(|r| receiver_of(r, bytes));
             push(
-                text(name_node, bytes).map(str::to_string),
+                text(name_node, bytes),
                 if called {
                     UseKind::Call
                 } else {
@@ -706,12 +736,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                 .named_child(0)
                 .filter(|c| c.kind() == "simple_identifier")
             {
-                push(
-                    text(callee, bytes).map(str::to_string),
-                    UseKind::Call,
-                    None,
-                    callee,
-                );
+                push(text(callee, bytes), UseKind::Call, None, callee);
             }
         }
         "callable_reference" => {
@@ -721,12 +746,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                 [target] => (None, *target),
                 [recv, .., target] => {
                     // `Obj::f` reads `Obj` as much as it names `f`.
-                    push(
-                        text(*recv, bytes).map(str::to_string),
-                        UseKind::Access,
-                        None,
-                        *recv,
-                    );
+                    push(text(*recv, bytes), UseKind::Access, None, *recv);
                     (
                         text(*recv, bytes).map(|t| Receiver::Name(t.to_string())),
                         *target,
@@ -734,12 +754,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                 }
                 [] => return,
             };
-            push(
-                text(target, bytes).map(str::to_string),
-                UseKind::Reference,
-                receiver,
-                target,
-            );
+            push(text(target, bytes), UseKind::Reference, receiver, target);
         }
         "user_type" => {
             let mut cursor = node.walk();
@@ -756,29 +771,14 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                             .collect(),
                     )
                 });
-                push(
-                    text(*last, bytes).map(str::to_string),
-                    UseKind::TypeUse,
-                    receiver,
-                    *last,
-                );
+                push(text(*last, bytes), UseKind::TypeUse, receiver, *last);
             }
         }
         "interpolated_identifier" => {
-            push(
-                text(*node, bytes).map(str::to_string),
-                UseKind::Access,
-                None,
-                *node,
-            );
+            push(text(*node, bytes), UseKind::Access, None, *node);
         }
         "simple_identifier" if is_bare_reference(node) => {
-            push(
-                text(*node, bytes).map(str::to_string),
-                UseKind::Access,
-                None,
-                *node,
-            );
+            push(text(*node, bytes), UseKind::Access, None, *node);
         }
         _ => {}
     }
@@ -1036,7 +1036,26 @@ fn last_type_name(node: Node, bytes: &[u8]) -> Option<String> {
     text(last, bytes).map(str::to_string)
 }
 
-fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
+/// Records a use of `name` at `at`; no name, or an empty one, is none.
+pub(super) fn push_use(
+    uses: &mut Vec<Use>,
+    name: Option<&str>,
+    kind: UseKind,
+    receiver: Option<Receiver>,
+    at: Node,
+) {
+    if let Some(name) = name.filter(|n| !n.is_empty()) {
+        uses.push(Use {
+            name: name.to_string(),
+            kind,
+            receiver,
+            at: at.start_byte(),
+            line: line_of(at),
+        });
+    }
+}
+
+pub(super) fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
     let mut start = node.start_byte();
     let mut cursor = node.walk();
     for c in node.children(&mut cursor) {
@@ -1055,7 +1074,7 @@ fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
     }
 }
 
-fn child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+pub(super) fn child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
     let found = node.children(&mut cursor).find(|c| c.kind() == kind);
     found
@@ -1072,11 +1091,11 @@ fn dotted(identifier: Node, bytes: &[u8]) -> String {
         .join(".")
 }
 
-fn text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
+pub(super) fn text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
     node.utf8_text(bytes).ok()
 }
 
-fn line_of(node: Node) -> u32 {
+pub(super) fn line_of(node: Node) -> u32 {
     node.start_position().row as u32 + 1
 }
 

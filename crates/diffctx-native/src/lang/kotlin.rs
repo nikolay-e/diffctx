@@ -1,5 +1,6 @@
-//! Kotlin: definitions, uses and supertypes from the syntax facts
-//! (`facts::kotlin`), resolved by `kotlin_bindings::KotlinResolver`.
+//! Kotlin, Java and Swift: definitions, uses and supertypes from their
+//! syntax facts (`facts::kotlin`, `facts::java`, `facts::swift`, one shape),
+//! resolved by `kotlin_bindings::KotlinResolver` (#335, #526).
 
 use std::path::Path;
 
@@ -7,24 +8,47 @@ use super::{At, DefId, Implementer, LanguageFacts, Relation, RemovedDef, Table, 
 use crate::bindings::Finding;
 use crate::facts::kotlin::Visibility;
 use crate::impact::base_symbol;
-use crate::kotlin_bindings::{KDef, KotlinResolver, is_kotlin};
+use crate::kotlin_bindings::{KDef, KotlinResolver};
 use crate::source::Source;
 
 pub(super) struct KotlinModel<'a> {
     resolver: KotlinResolver<'a>,
+    modelled: &'static [Relation],
     defs: Table<(String, String, u32), KDef>,
 }
 
 impl<'a> KotlinModel<'a> {
-    pub(super) fn new(root: &'a Path, source: &'a Source) -> Self {
+    pub(super) fn kotlin(root: &'a Path, source: &'a Source) -> Self {
+        Self::of(KotlinResolver::new(root, source), KOTLIN)
+    }
+
+    pub(super) fn java(root: &'a Path, source: &'a Source) -> Self {
+        Self::of(KotlinResolver::java(root, source), CALLS)
+    }
+
+    /// The model of the Swift files among `files`.
+    pub(super) fn swift<'f>(
+        root: &'a Path,
+        source: &'a Source,
+        files: impl IntoIterator<Item = &'f String>,
+    ) -> Self {
+        Self::of(KotlinResolver::swift(root, source, files), CALLS)
+    }
+
+    fn of(resolver: KotlinResolver<'a>, modelled: &'static [Relation]) -> Self {
         Self {
-            resolver: KotlinResolver::new(root, source),
+            resolver,
+            modelled,
             defs: Table::new(),
         }
     }
+
+    fn answers(&self, relation: Relation) -> Option<()> {
+        self.modelled.contains(&relation).then_some(())
+    }
 }
 
-const MODELLED: &[Relation] = &[
+const KOTLIN: &[Relation] = &[
     Relation::Callers,
     Relation::Uses,
     Relation::Implementations,
@@ -32,13 +56,18 @@ const MODELLED: &[Relation] = &[
     Relation::Removals,
 ];
 
+/// Java needs no `@Override` and Swift no `override` to implement a member,
+/// so the facts cannot list their implementations; their API and removals
+/// are still read off the fragments.
+const CALLS: &[Relation] = &[Relation::Callers, Relation::Uses];
+
 impl LanguageFacts for KotlinModel<'_> {
     fn modelled(&self) -> &'static [Relation] {
-        MODELLED
+        self.modelled
     }
 
     fn covers(&self, path: &str) -> bool {
-        is_kotlin(path)
+        self.resolver.covers(path)
     }
 
     fn definition(&self, at: &At) -> Option<DefId> {
@@ -55,7 +84,7 @@ impl LanguageFacts for KotlinModel<'_> {
             .classify(site.path, site.lines, &self.defs.get(def))
     }
 
-    /// Kotlin's facts do not say yet which file a test imports: a test is
+    /// The facts do not say yet which file a test imports: a test is
     /// linked by its calls alone (#530).
     fn reaches_file(&self, _test: &str, _caller: &str) -> bool {
         false
@@ -66,6 +95,7 @@ impl LanguageFacts for KotlinModel<'_> {
     }
 
     fn implementers(&self, def: DefId, paths: &[String]) -> Option<Vec<Implementer>> {
+        self.answers(Relation::Implementations)?;
         let def = self.defs.get(def);
         if !def.decl.abstract_member {
             return Some(Vec::new());
@@ -88,6 +118,7 @@ impl LanguageFacts for KotlinModel<'_> {
     }
 
     fn public_change(&self, def: DefId, base: &str) -> Option<bool> {
+        self.answers(Relation::PublicApi)?;
         let def = self.defs.get(def);
         Some(
             def.decl.effective == Some(Visibility::Public)
@@ -105,8 +136,9 @@ impl LanguageFacts for KotlinModel<'_> {
     }
 
     fn removed(&self, base: &str, pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
+        self.answers(Relation::Removals)?;
         let mut out = Vec::new();
-        for (old_path, new_path) in pairs.iter().filter(|(old, _)| is_kotlin(old)) {
+        for (old_path, new_path) in pairs.iter().filter(|(old, _)| self.resolver.covers(old)) {
             let Some(old) = self.resolver.facts_at(base, old_path) else {
                 continue;
             };

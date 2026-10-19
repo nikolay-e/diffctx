@@ -85,6 +85,11 @@ pub struct ImpactOutput {
     /// the snapshot this answer is about. A later `git add` makes it stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index_tree: Option<String>,
+    /// What the snapshot holds, when the caller knows it better than a tree
+    /// id says — the hook's session edits, the index a commit records: the
+    /// header names it (#549).
+    #[serde(skip)]
+    pub range_name: Option<String>,
     /// Set on a `--symbol` query (#336): `changed` then lists the symbol's
     /// definitions, and `changed_files` the files that hold them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -738,7 +743,15 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             // document or a binary has no other consumer, a schema is listed
             // as a contract and a layout edit reaches no reader; anything
             // else read as a clean zero while its readers went unsearched.
-            if !is_code_file(path) {
+            // An extensionless shell script is code by its shebang, and the
+            // shell model reads it (#541).
+            let script = || {
+                Path::new(path).extension().is_none()
+                    && source
+                        .read_to_string(&state.root_dir.join(path))
+                        .is_some_and(|t| crate::languages::sniff_language(path, &t) == Some("bash"))
+            };
+            if !is_code_file(path) && !script() {
                 let binary = || {
                     source
                         .read_bytes(&state.root_dir.join(path))
@@ -798,7 +811,13 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
 
 /// Files in view, other than the definition's own, that spell `name` but
 /// whose definitions were not all read: a caller there is not seen.
-fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> Vec<UnanalysedFile> {
+fn missed_namers(
+    state: &ScoredState,
+    files: &Files,
+    registry: &Registry,
+    name: &str,
+    own: &str,
+) -> Vec<UnanalysedFile> {
     let source = state.run.source();
     // Identifiers are stored lowercased: compared as written, a camelCase
     // name never matched and its unparsed namers went unsaid.
@@ -822,6 +841,25 @@ fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> V
                 crate::parsers::unanalysed_reason(&rel_path, has_definition, || {
                     source.read_bytes(Path::new(path))
                 })?;
+            // A tree broken on some lines read the rest: a use of the name
+            // there was seen, and only one where it broke can be lost (#537).
+            if reason == "parse_partial"
+                && source.read_bytes(Path::new(path)).is_some_and(|bytes| {
+                    let text = String::from_utf8_lossy(&bytes);
+                    !crate::parsers::spelled_where_broken(&rel_path, &text, name)
+                })
+            {
+                return None;
+            }
+            // A model that reads past a broken line says whether the name is
+            // where it could not read: an `echo` argument is no hedge (#521).
+            if registry
+                .for_path(&rel_path)
+                .and_then(|m| m.names_unread(&rel_path, name))
+                == Some(false)
+            {
+                return None;
+            }
             Some(UnanalysedFile {
                 language: crate::languages::get_language_for_file(&rel_path),
                 path: rel_path,
@@ -1625,7 +1663,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
     let supers = enclosing_class(core, file)
         .map(|c| supertypes(&c.content, &ext))
         .unwrap_or_default();
-    let quoted = || format!("`{}`", supers.join("`, `"));
+    let quoted = || format!("`{}`", supers[..supers.len().min(2)].join("`, `"));
     if words.iter().any(|w| matches!(*w, "@Override" | "override")) {
         return Some(if supers.is_empty() {
             "the supertype it overrides".to_string()
@@ -1640,7 +1678,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
 /// `implements` and `with` clauses, a Python base list, a Kotlin, Swift or
 /// C# `: Base` after the primary constructor. The root types every class
 /// has are not routes.
-fn supertypes(class: &str, ext: &str) -> Vec<String> {
+pub(crate) fn supertypes(class: &str, ext: &str) -> Vec<String> {
     let Some(at) = class.find("class ") else {
         return Vec::new();
     };
@@ -1690,8 +1728,9 @@ fn supertypes(class: &str, ext: &str) -> Vec<String> {
                     .next()
                     .is_some_and(|c| c.is_alphabetic() || c == '_')
         })
+        .map(|t| t.split(['[', '<', '(']).next().unwrap_or(t))
+        .filter(|t| !t.is_empty())
         .map(|t| t.rsplit('.').next().unwrap_or(t).to_string())
-        .take(2)
         .collect()
 }
 
@@ -2981,7 +3020,9 @@ pub fn build_impact(
                     && signature_changed(state, &base, core)
             }
         };
-        if query.is_none() && public_change {
+        // A test's declarations are no API: nothing but its runner calls
+        // them (#517).
+        if query.is_none() && public_change && !tests.is_test(core) {
             public_api.push((
                 callers.is_empty(),
                 Contract {
@@ -2997,6 +3038,10 @@ pub fn build_impact(
         // Unless nothing could be resolved: an empty list is then no finding,
         // and silence would read as one. A trait method is reached through
         // its trait, whatever else shares its name (`fmt` in `impl Display`).
+        let route = callers
+            .is_empty()
+            .then(|| dispatch_route(state, core, file_of(core)))
+            .flatten();
         let unresolved = dispatched_trait(state, core)
             .map(|trait_name| Unknown::Dispatched { trait_name })
             .or_else(|| {
@@ -3016,18 +3061,18 @@ pub fn build_impact(
                     reads,
                 })
             })
-            .or_else(|| {
-                callers
-                    .is_empty()
-                    .then(|| dispatch_route(state, core, file_of(core)))
-                    .flatten()
-                    .map(|via| Unknown::Overridable { via })
-            });
+            .or_else(|| route.clone().map(|via| Unknown::Overridable { via }));
+        // A method only dispatch reaches is reached through its class: a test
+        // handing the class to the runtime (a server, a test runner, a
+        // visitor) reaches the method (#578).
         let untested = query.is_none()
             && tests.any()
             && !tests.is_test(core)
             && registration(core).is_none()
-            && tests.tested_by(core, state, &by_id, &link).is_none();
+            && tests.tested_by(core, state, &by_id, &link).is_none()
+            && !route
+                .and_then(|_| enclosing_class(core, file_of(core)))
+                .is_some_and(|class| tests.tested_by(class, state, &by_id, &link).is_some());
         untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
             let n = callers.iter().filter(|c| c.evidence != "candidate").count();
@@ -3036,8 +3081,15 @@ pub fn build_impact(
         } else {
             0
         };
+        // A function local to another is named only inside it: a file that
+        // was not read cannot call it (#546).
+        let local = registry
+            .for_path(core.path())
+            .and_then(|m| Some(m.local(definition(m, core)?)))
+            .unwrap_or(false);
         let missed_in = symbol
-            .map(|s| missed_namers(state, &files, s, core.path()))
+            .filter(|_| !local)
+            .map(|s| missed_namers(state, &files, &registry, s, core.path()))
             .unwrap_or_default();
         if callers.is_empty()
             && compatible_callers == 0
@@ -3128,7 +3180,9 @@ pub fn build_impact(
                 c.tested_by = tested.as_ref().map(|(p, _)| rel(state, p));
                 c.tested_via = tested.and_then(|(_, via)| via);
             }
-            if let Some(c) = contract {
+            if let Some(c) =
+                contract.filter(|c| !crate::testfiles::is_test_path(Path::new(&c.path)))
+            {
                 contracts.push(c);
             }
             // Unresolved is an answer too: dropped, it read as no caller.
@@ -3158,7 +3212,9 @@ pub fn build_impact(
         .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
         .map(|(p, _, _)| p.as_str())
         .collect();
-    for path in &changed_files {
+    // A queried symbol changes nothing: the file holding its definition is
+    // no contract that moved.
+    for path in changed_files.iter().filter(|_| query.is_none()) {
         if is_schema_file(path) && !layout_files.contains(path.as_str()) {
             contracts.push(Contract {
                 path: path.clone(),
@@ -3213,6 +3269,7 @@ pub fn build_impact(
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         range: diff_range.map(str::to_string),
         index_tree: state.index_tree.clone(),
+        range_name: None,
         symbol: query.map(str::to_string),
         untracked_files: changed_files
             .iter()
@@ -3342,7 +3399,10 @@ fn removed_by_models(
         n.dedup();
         n
     };
-    let grepped = read_or_note(state, crate::git::grep_lines(&state.root_dir, &names, head));
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_code_words(&state.root_dir, &names, head, MAX_REMOVED_NAME_HITS + 1),
+    );
     state.run.note_withheld(grepped.withheld);
     let hits = grepped.rows;
     let holders = definition_holders(state);
@@ -3353,9 +3413,22 @@ fn removed_by_models(
         }
         let mut lines_by_file: FxHashMap<&str, Vec<u32>> = FxHashMap::default();
         for (path, line, text) in &hits {
-            if model.covers(path) && text.contains(def.name.as_str()) {
+            let spells = text
+                .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+                .any(|w| w == def.name);
+            if model.covers(path) && spells {
                 lines_by_file.entry(path.as_str()).or_default().push(*line);
             }
+        }
+        // As for a name the grammar reads off removed lines: on this many
+        // lines it is a common word, and each would be classified in turn.
+        let spelled: usize = lines_by_file.values().map(Vec::len).sum();
+        let unresolved = (spelled > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
+            name: def.name.clone(),
+            lines: spelled,
+        });
+        if unresolved.is_some() {
+            lines_by_file.clear();
         }
         let mut callers: Vec<Caller> = Vec::new();
         for (path, lines) in lines_by_file {
@@ -3413,7 +3486,7 @@ fn removed_by_models(
                 kind: "removed".to_string(),
                 commits: 0,
                 callers: merge_by_symbol(callers),
-                unresolved: None,
+                unresolved,
                 untested: false,
                 compatible_callers: 0,
                 missed_in: Vec::new(),
@@ -4528,7 +4601,10 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
 }
 
 fn write_header(out: &mut String, output: &ImpactOutput) {
-    let range = range_label(output.range.as_deref(), output.index_tree.as_deref());
+    let range = output
+        .range_name
+        .clone()
+        .unwrap_or_else(|| range_label(output.range.as_deref(), output.index_tree.as_deref()));
     let all = || output.changed.iter().flat_map(|c| &c.callers);
     let callers = all().filter(|c| c.evidence != "candidate").count() + output.truncated
         - output.truncated_possible;
@@ -4668,6 +4744,7 @@ fn reason_text(reason: Option<&str>) -> &'static str {
         Some("import_unresolved") => "import not resolved",
         Some("ambiguous_module") => "module ambiguous",
         Some("import_glob") => "loaded by an import glob",
+        Some("search_path") => "schema left to the search path",
         _ => "binding unresolved",
     }
 }

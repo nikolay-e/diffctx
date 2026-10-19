@@ -2773,9 +2773,10 @@ fn a_deletion_below_a_definition_does_not_change_it() {
 /// not tests: a lexical test link stops at the project a manifest marks.
 #[test]
 fn a_sibling_project_s_test_does_not_guard_a_caller() {
-    // One runtime with no binding model, so the link is the lexical one the
-    // manifest stop governs (a test in another runtime links nothing, #487).
-    // `quiz` names its own `Config`, never importing `web.Config`.
+    // One runtime with no binding model (Scala; Java's resolves `Config` in
+    // its own package), so the link is the lexical one the manifest stop
+    // governs (a test in another runtime links nothing, #487). `quiz` names
+    // its own `Config`, never importing `web.Config`.
     let files = |root_manifest: bool| {
         let mut f = vec![
             (
@@ -2783,16 +2784,16 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
                 "<project><artifactId>web</artifactId></project>\n",
             ),
             (
-                "web/src/main/java/web/Contracts.java",
-                "package web;\n\npublic class Contracts {\n    public static String theme() {\n        return \"dark\";\n    }\n}\n",
+                "web/src/main/scala/web/Contracts.scala",
+                "package web\n\nobject Contracts {\n  def theme(): String = {\n    \"dark\"\n  }\n}\n",
             ),
             (
-                "web/src/main/java/web/Config.java",
-                "package web;\n\npublic class Config {\n    public static String generated() {\n        return Contracts.theme();\n    }\n}\n",
+                "web/src/main/scala/web/Config.scala",
+                "package web\n\nobject Config {\n  def generated(): String = {\n    Contracts.theme()\n  }\n}\n",
             ),
             (
-                "quiz/src/test/java/quiz/ConfigTest.java",
-                "package quiz;\n\npublic class ConfigTest {\n    public void testGenerated() {\n        assert Config.generated().equals(\"dark\");\n    }\n}\n",
+                "quiz/src/test/scala/quiz/ConfigTest.scala",
+                "package quiz\n\nclass ConfigTest {\n  def testGenerated(): Unit = {\n    assert(Config.generated() == \"dark\")\n  }\n}\n",
             ),
         ];
         if root_manifest {
@@ -2804,23 +2805,23 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
         f
     };
     let change = [(
-        "web/src/main/java/web/Contracts.java",
-        "package web;\n\npublic class Contracts {\n    public static String theme() {\n        return \"light\";\n    }\n}\n",
+        "web/src/main/scala/web/Contracts.scala",
+        "package web\n\nobject Contracts {\n  def theme(): String = {\n    \"light\"\n  }\n}\n",
     )];
     // One project: the lexical link stands, so the probe below is not vacuous.
     let together = repo_of(&files(false), &change);
     let md = impact_markdown(together.path(), "HEAD~1..HEAD");
     assert!(
-        md.contains("quiz/src/test/java/quiz/ConfigTest.java"),
+        md.contains("quiz/src/test/scala/quiz/ConfigTest.scala"),
         "{md}"
     );
     let apart = repo_of(&files(true), &change);
     let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
     assert!(
-        md.contains("web/src/main/java/web/Config.java::generated"),
+        md.contains("web/src/main/scala/web/Config.scala::generated"),
         "{md}"
     );
-    assert!(!md.contains("ConfigTest.java"), "{md}");
+    assert!(!md.contains("ConfigTest.scala"), "{md}");
 }
 
 /// A sibling module of one language that imports the definition by its

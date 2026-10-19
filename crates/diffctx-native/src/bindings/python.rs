@@ -4,10 +4,70 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
-use super::{FileBindings, Resolution, Resolver, Target, narrow_to_root, parent_dir};
+use rustc_hash::FxHashMap;
+
+use super::{FileBindings, Resolution, Resolver, Target, narrow_to_root, normalize, parent_dir};
 use crate::facts::python::Step;
+
+/// What a Python environment puts on `sys.path` besides the code itself,
+/// read once per directory.
+#[derive(Default)]
+pub(super) struct PythonEnv {
+    pytest: RefCell<FxHashMap<String, Option<Rc<[String]>>>>,
+    uv: RefCell<FxHashMap<String, Option<Rc<UvSources>>>>,
+    projects: std::cell::OnceCell<FxHashMap<String, String>>,
+}
+
+struct UvSources {
+    roots: Vec<String>,
+    /// A workspace root's sources apply to every member.
+    workspace: bool,
+}
+
+/// A distribution name as PEP 503 compares it.
+fn project_name(name: &str) -> String {
+    let mut out = String::new();
+    for part in name.split(['-', '_', '.']).filter(|p| !p.is_empty()) {
+        if !out.is_empty() {
+            out.push('-');
+        }
+        out.push_str(&part.to_ascii_lowercase());
+    }
+    out
+}
+
+/// `key` of `[section]` in an ini file, continuation lines joined: `None`
+/// when the section is absent, empty when the key is.
+fn ini_value(text: &str, section: &str, key: &str) -> Option<String> {
+    let (mut inside, mut found, mut continues) = (false, false, false);
+    let mut value = String::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            inside = t.trim_matches(['[', ']']).trim() == section;
+            found |= inside;
+            continues = false;
+        } else if !inside || t.is_empty() || t.starts_with(['#', ';']) {
+            continues = continues && t.is_empty();
+        } else if continues && line.starts_with([' ', '\t']) {
+            value.push(' ');
+            value.push_str(t);
+        } else {
+            continues = false;
+            if let Some((k, v)) = t.split_once(['=', ':']) {
+                if k.trim() == key {
+                    value = v.trim().to_string();
+                    continues = true;
+                }
+            }
+        }
+    }
+    found.then_some(value)
+}
 
 static PY_IMPORT: Lazy<Regex> = Lazy::new(|| Regex::new(r"^import\s+(.+)$").unwrap());
 static PY_FROM: Lazy<Regex> =
@@ -171,38 +231,43 @@ impl Resolver<'_> {
         [format!("{rel}.py"), format!("{rel}/__init__.py")]
     }
 
+    /// What `file` itself puts on `sys.path`, repo-relative.
+    fn inserted(&self, file: &str) -> Vec<String> {
+        let Some(facts) = self
+            .text(file)
+            .and_then(|t| crate::facts::python::facts(&t))
+        else {
+            return Vec::new();
+        };
+        facts
+            .sys_path
+            .iter()
+            .flatten()
+            .filter_map(|steps| {
+                let mut parts: Vec<&str> = file.split('/').collect();
+                for step in steps {
+                    match step {
+                        Step::Up => {
+                            parts.pop()?;
+                        }
+                        Step::Down(d) => parts.push(d),
+                    }
+                }
+                Some(parts.join("/"))
+            })
+            .collect()
+    }
+
     /// The directories `importer` and the repository modules it imports (a
-    /// test rig) put on `sys.path`, repo-relative (#525).
+    /// test rig) put on `sys.path`, repo-relative (#525), then what the
+    /// environment running it adds: the packages its uv project takes from a
+    /// path or the workspace (#557) and, for a test, pytest's `pythonpath`
+    /// and what each `conftest.py` above it inserts (#553, #573).
     fn sys_path_roots(&self, importer: &str) -> Rc<[String]> {
         if let Some(known) = self.python_roots.borrow().get(importer) {
             return known.clone();
         }
-        let added = |file: &str| -> Vec<String> {
-            let Some(facts) = self
-                .text(file)
-                .and_then(|t| crate::facts::python::facts(&t))
-            else {
-                return Vec::new();
-            };
-            facts
-                .sys_path
-                .iter()
-                .flatten()
-                .filter_map(|steps| {
-                    let mut parts: Vec<&str> = file.split('/').collect();
-                    for step in steps {
-                        match step {
-                            Step::Up => {
-                                parts.pop()?;
-                            }
-                            Step::Down(d) => parts.push(d),
-                        }
-                    }
-                    Some(parts.join("/"))
-                })
-                .collect()
-        };
-        let mut roots = added(importer);
+        let mut roots = self.inserted(importer);
         let bindings = self.bindings(importer);
         let specs = bindings
             .names
@@ -213,8 +278,32 @@ impl Resolver<'_> {
             .chain(&bindings.star_from);
         for spec in specs {
             if let Resolution::File(f) = self.resolve_python_plain(importer, spec) {
-                roots.extend(added(&f));
+                roots.extend(self.inserted(&f));
             }
+        }
+        let test = crate::testfiles::is_test_path(Path::new(importer));
+        let (mut pytest, mut project) = (test, true);
+        let mut dir = Some(parent_dir(importer));
+        while let Some(d) = dir {
+            if pytest {
+                let conftest = normalize(&Path::new(d).join("conftest.py"));
+                if conftest != importer && self.files.contains(&conftest) {
+                    roots.extend(self.inserted(&conftest));
+                }
+                if let Some(paths) = self.pytest_pythonpath(d) {
+                    roots.extend(paths.iter().cloned());
+                    pytest = false;
+                }
+            }
+            // The nearest project's sources, and a workspace root's, which
+            // uv applies to every member.
+            if let Some(uv) = self.uv_sources(d) {
+                if project || uv.workspace {
+                    roots.extend(uv.roots.iter().cloned());
+                }
+                project = false;
+            }
+            dir = (!d.is_empty()).then(|| parent_dir(d));
         }
         roots.dedup();
         let roots: Rc<[String]> = roots.into();
@@ -222,6 +311,134 @@ impl Resolver<'_> {
             .borrow_mut()
             .insert(importer.to_string(), roots.clone());
         roots
+    }
+
+    fn manifest(&self, dir: &str, name: &str) -> Option<Rc<str>> {
+        let path = normalize(&Path::new(dir).join(name));
+        self.files
+            .contains(&path)
+            .then(|| self.text(&path))
+            .flatten()
+    }
+
+    /// The `pythonpath` of the pytest configuration in `dir`, repo-relative,
+    /// when `dir` holds one: `pytest.ini`, a `pyproject.toml` with a
+    /// `[tool.pytest…]` table, `tox.ini` with `[pytest]`, `setup.cfg` with
+    /// `[tool:pytest]`, in the order pytest looks for its rootdir.
+    fn pytest_pythonpath(&self, dir: &str) -> Option<Rc<[String]>> {
+        if let Some(known) = self.python_env.pytest.borrow().get(dir) {
+            return known.clone();
+        }
+        let ini = self
+            .manifest(dir, "pytest.ini")
+            .or_else(|| self.manifest(dir, ".pytest.ini"))
+            .map(|t| ini_value(&t, "pytest", "pythonpath").unwrap_or_default());
+        let toml = || {
+            let table = self
+                .manifest(dir, "pyproject.toml")?
+                .parse::<toml::Table>()
+                .ok()?;
+            let pytest = table.get("tool")?.get("pytest")?;
+            let value = pytest
+                .get("ini_options")
+                .and_then(|o| o.get("pythonpath"))
+                .or_else(|| pytest.get("pythonpath"));
+            Some(match value {
+                Some(toml::Value::Array(a)) => a
+                    .iter()
+                    .filter_map(toml::Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                Some(toml::Value::String(s)) => s.clone(),
+                _ => String::new(),
+            })
+        };
+        let read = ini
+            .or_else(toml)
+            .or_else(|| ini_value(&self.manifest(dir, "tox.ini")?, "pytest", "pythonpath"))
+            .or_else(|| {
+                ini_value(
+                    &self.manifest(dir, "setup.cfg")?,
+                    "tool:pytest",
+                    "pythonpath",
+                )
+            })
+            .map(|value| {
+                value
+                    .split_whitespace()
+                    .map(|entry| normalize(&Path::new(dir).join(entry)))
+                    .collect()
+            });
+        self.python_env
+            .pytest
+            .borrow_mut()
+            .insert(dir.to_string(), read.clone());
+        read
+    }
+
+    /// The import roots of the packages the uv project in `dir` takes from a
+    /// path or from its workspace, a `src/` layout's `src` (#557).
+    fn uv_sources(&self, dir: &str) -> Option<Rc<UvSources>> {
+        if let Some(known) = self.python_env.uv.borrow().get(dir) {
+            return known.clone();
+        }
+        let read = self.manifest(dir, "pyproject.toml").map(|text| {
+            let table = text.parse::<toml::Table>().unwrap_or_default();
+            let uv = table.get("tool").and_then(|t| t.get("uv"));
+            let sources = uv
+                .and_then(|u| u.get("sources"))
+                .and_then(toml::Value::as_table);
+            let mut roots = Vec::new();
+            for (name, spec) in sources.into_iter().flatten() {
+                let specs = match spec {
+                    toml::Value::Array(a) => a.iter().collect(),
+                    one => vec![one],
+                };
+                for spec in specs {
+                    let package = match spec.get("path").and_then(toml::Value::as_str) {
+                        Some(path) => Some(normalize(&Path::new(dir).join(path))),
+                        None if spec.get("workspace").and_then(toml::Value::as_bool)
+                            == Some(true) =>
+                        {
+                            self.python_projects().get(&project_name(name)).cloned()
+                        }
+                        None => None,
+                    };
+                    let Some(package) = package else { continue };
+                    let src = normalize(&Path::new(&package).join("src"));
+                    let prefix = format!("{src}/");
+                    roots.push(if self.files.iter().any(|f| f.starts_with(&prefix)) {
+                        src
+                    } else {
+                        package
+                    });
+                }
+            }
+            Rc::new(UvSources {
+                roots,
+                workspace: uv.and_then(|u| u.get("workspace")).is_some(),
+            })
+        });
+        self.python_env
+            .uv
+            .borrow_mut()
+            .insert(dir.to_string(), read.clone());
+        read
+    }
+
+    /// Every Python project of the repository, by its normalised name.
+    fn python_projects(&self) -> &FxHashMap<String, String> {
+        self.python_env.projects.get_or_init(|| {
+            self.files
+                .iter()
+                .filter(|f| f.rsplit('/').next() == Some("pyproject.toml"))
+                .filter_map(|f| {
+                    let table = self.text(f)?.parse::<toml::Table>().ok()?;
+                    let name = table.get("project")?.get("name")?.as_str()?;
+                    Some((project_name(name), parent_dir(f).to_string()))
+                })
+                .collect()
+        })
     }
 
     /// A directory on `sys.path` is searched before the rest: a test that

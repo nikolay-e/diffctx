@@ -38,6 +38,9 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Every release tag is checked against main's history.
+          fetch-depth: 0
 
       - name: Resolve the expected version
         id: expect

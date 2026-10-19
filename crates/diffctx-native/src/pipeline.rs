@@ -909,7 +909,7 @@ fn resolve_symbol_change_set(
         true,
         run,
     );
-    crate::lang::overlay_assignments(&mut fragments, &run.source());
+    crate::lang::overlay_definitions(&mut fragments, &run.source());
     let indent = |f: &Fragment| {
         f.content
             .lines()
@@ -953,7 +953,9 @@ fn resolve_symbol_change_set(
         )
     };
     let owned_by = |def: &Fragment, owner: &str| {
-        if let Some(owned) = kotlin_owned(def, owner) {
+        if let Some(owned) = kotlin_owned(def, owner).or_else(|| {
+            crate::lang::stated_owner(def.path(), def.start_line(), owner, &run.source())
+        }) {
             return owned;
         }
         Path::new(def.path())
@@ -1360,7 +1362,7 @@ pub fn compute_scored_state_anchored(
         &run,
     ));
     if reverse_references {
-        crate::lang::overlay_assignments(&mut all_fragments, &run.source());
+        crate::lang::overlay_definitions(&mut all_fragments, &run.source());
     }
 
     let t_parse_discovered = Instant::now();

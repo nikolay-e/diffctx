@@ -209,7 +209,7 @@ def test_the_gate_option_leaves_post_tool_use_answers_alone(tmp_path, pending_ch
     result = _script(tmp_path, bash, True, _event(pending_change, "PostToolUse", "git diff"))
     assert result.returncode == 0, result.stderr
     assert "shop/checkout.py::charge" in _context(result.stdout)
-    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8")
+    log = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text(encoding="utf-8")
     assert "error:" not in log, log
 
 
@@ -251,7 +251,7 @@ def test_a_search_for_a_changed_name_hears_its_callers_once(tmp_path, pending_ch
     assert "shop/checkout.py::charge" in _context(first.stdout)
     again = _hook(tmp_path, ["posttooluse"], _search(pending_change, tool, query))
     assert again.stdout == ""
-    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8").splitlines()
+    log = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text(encoding="utf-8").splitlines()
     assert [line.split()[5] for line in log] == ["shown", "seen"]
 
 
@@ -264,7 +264,7 @@ def test_a_search_answers_only_a_changed_name_on_a_pending_change(tmp_path, pend
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
     clean = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn total ."))
     assert clean.stdout == ""
-    outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook.log").read_text().splitlines()]
+    outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text().splitlines()]
     assert outcomes == ["no-symbol", "no-trigger", "clean"]
 
 
@@ -343,7 +343,7 @@ def test_a_launch_that_fails_leaves_a_line_in_the_hook_log(tmp_path, pending_cha
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
-    line = (tmp_path / "cache" / "diffctx" / "hook.log").read_text().split()
+    line = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text().split()
     assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]
     launched = re.search(r'uvx -q --offline "diffctx\[mcp\]==([0-9.]+)"', IMPACT_SCRIPT.read_text()).group(1)
     assert line[-1] == launched, "the line names the version that wrote it (#524)"

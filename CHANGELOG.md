@@ -45,9 +45,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the ambiguity it is (#538).
 - The hook never deleted an expired marker: one machine held 26,000 of them
   after 13 days. A hook run sweeps them once a day (#569).
+- The hook read text the shell never runs as commands: an issue body quoting
+  `git commit` in a quoted here-document drew "did not analyse this
+  command" (#534), and `--jq '.commit.author.date'` made a read-only line
+  claim another session's commit (#575). A line is now read by a lexer that
+  sets quoted data aside, and whether it records is read off its git
+  statements.
+- A review of this session's files left out every file the session rewrote
+  through Bash (`sed -i`, a heredoc, `git rm`) and paired its edits with the
+  committed text of its own neighbours. A changed file that last changed
+  while one of the session's Bash calls ran is now its own; the files still
+  read as committed are named, with the definitions whose callers they may
+  hide (#453).
+- The answer's header called a session's edits, a `git diff --cached` and a
+  commit's index alike "the snapshot tree"; it now says which (#549).
+- The run log is `hook-runs.log`: a pin at or below 1.18.4 cut `hook.log` at
+  256 KiB and overwrote its previous rotation, erasing the newer binary's
+  history (#555).
+- Shell scripts read off the bash syntax tree: a library sourced as
+  `"$(dirname "$0")/lib.sh"`, through `BASH_SOURCE` or a variable, or
+  under a hyphenated name now binds its callers (#533); an extensionless
+  script is analysed, and a call in a quoted command substitution or after
+  `time -p` is a caller (#541); a broken parse hedges only the names in the
+  span it could not read (#521). A source no file resolves, or two files
+  resolve, is said to be unresolved or ambiguous, never a zero.
+- SQL `CREATE [OR REPLACE] FUNCTION|PROCEDURE|VIEW [schema.]name` is a
+  definition and `[schema.]name(` a caller; comments and strings are no
+  code, a dollar-quoted body is, and an unqualified call is left to the
+  search path (#459, routines and views).
+- Python imports in tests resolve through pytest's `pythonpath` (pytest.ini,
+  pyproject, tox.ini, setup.cfg) and a `conftest.py` that extends
+  `sys.path` (#553, #573), and through a uv project's path and workspace
+  sources; a package's `__init__` re-exports are read (#557). A test
+  that imported its module that way linked to a same-named module instead.
+- Python: a method only a dispatch route reaches counts as tested when its
+  class is (#578); a nested `def` is local, so no unread file is searched
+  for its callers (#546, Python half); a removed definition is read off the
+  base's syntax, so a parameter or docstring word of the name is no caller
+  (#536); a field read through an instance a module builds at top level
+  (`settings = AppSettings()`) is a use of the field (#400).
+- Swift and Java calls resolve through the binding model Kotlin uses:
+  typed parameters and fields, `x?.m()`, `self.m()`, implicit self,
+  `guard let`/`if let`, extension members across files (#526), and a Java
+  receiver typed by its field among same-named methods (#335, Java half).
+  A receiver nothing types is a "possibly called" caller.
+- A declaration in a test file is no public or removed API contract; a
+  Gradle `testFixtures` source set and a `testing` package of main sources
+  still are (#517).
+- A file parsed with errors hedges only the names spelled on the lines it
+  broke on, not every name it spells (#537, our half; the trigger is the
+  pinned Swift grammar).
 - A build no release pipeline made says so: `diffctx --version`,
   `diffctx-mcp --version`, the MCP server's reported version and every
-  `hook.log` line read `X.Y.Z+source`. A `uv tool install` of a checkout
+  hook log line read `X.Y.Z+source`. A `uv tool install` of a checkout
   satisfies the plugin's `==X.Y.Z` launch, and its runs read as the release
   (#570).
 - The MCP server no longer warns that `mcp` is the subcommand when a client
@@ -86,6 +136,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The plugin directory has flagged every main-branch plugin since the change
   that introduced both as reading a credential; whether this clears the
   finding is read off the next directory scan (#565).
+- "Review my last commit" with the plugin loaded never reached impact: the
+  review skill asked only for the code (`pack`), and the session context
+  named only commit and push. The skill now asks for impact first, and the
+  session context names the review route. On the plugin's review eval, runs
+  with the plugin reach impact 3 of 3 times, up from 0 (#551).
+- The weekly channel check names every release tag that `main` does not
+  reach and every tag whose release is missing or a draft: a consumer pins
+  the commit a tag first named, and a moved tag strands it (#500).
 
 ## [1.19.1] - 2026-10-14
 

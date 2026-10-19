@@ -590,10 +590,11 @@ fn a_document_is_named_by_what_reads_it_not_by_other_documents() {
     }
 }
 
-/// #538: a name five Java classes define is ambiguous across files, not
-/// inside the definition's own: `findOne` calling `toReport` in the same
-/// class is that class's call, and the test reaching `findOne` reaches it.
-/// A same-named method in another class stays unresolved, never listed.
+/// #538: a name five Java classes define is no reason to drop the call
+/// inside the definition's own class: `findOne` calling `toReport` is that
+/// class's call, and the test reaching `findOne` reaches it. A same-named
+/// method in another class is never listed, and since Java's binding model
+/// tells the five apart (#335), a private one leaves nothing unresolved.
 #[test]
 fn an_ambiguous_name_still_resolves_inside_its_own_file() {
     let service = |name: &str, body: &str| {
@@ -629,10 +630,7 @@ fn an_ambiguous_name_still_resolves_inside_its_own_file() {
         "{md}"
     );
     assert!(md.contains("ReportServiceTest.java"), "{md}");
-    assert!(
-        md.contains("callers outside its own file are not resolved"),
-        "{md}"
-    );
+    assert!(!md.contains("not resolved"), "{md}");
     assert!(!md.contains("AlphaService"), "{md}");
 }
 
