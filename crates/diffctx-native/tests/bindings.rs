@@ -1437,3 +1437,53 @@ fn a_workspace_package_specifier_resolves_into_its_source() {
         "an external package's name is no caller: {doc}"
     );
 }
+
+/// #526: Swift instance method calls (`x.m()`, `x?.m()`, implicit `self` in
+/// the same class or extension) and `@objc` / multi-modifier methods reach
+/// their callers without turning a class declaration or an unrelated receiver
+/// type into a resolved caller.
+#[test]
+fn swift_instance_and_static_method_calls_reach_their_callers() {
+    let mgr = "import Foundation\n\nclass DataManager {\n    static let shared = DataManager()\n\n    func reload() -> Int {\n        return 1\n    }\n\n    @objc private func syncNow() -> Int {\n        return reload()\n    }\n\n    func refresh() -> Int {\n        return self.reload() + syncNow()\n    }\n}\n";
+    let tmp = repo(
+        &[
+            ("Sources/DataManager.swift", mgr),
+            (
+                "Sources/ViewController.swift",
+                "import Foundation\n\nclass ViewController {\n    var manager: DataManager?\n    let direct = DataManager()\n\n    func onAppear() -> Int {\n        manager?.reload()\n        direct.reload()\n        return DataManager.shared.reload()\n    }\n}\n",
+            ),
+            (
+                "Sources/Other.swift",
+                "class Other {\n    func reload() -> Int { return 0 }\n}\n",
+            ),
+            (
+                "Sources/Unrelated.swift",
+                "class Unrelated {\n    let other = Other()\n    func tick() -> Int {\n        return other.reload()\n    }\n}\n",
+            ),
+        ],
+        &[(
+            "Sources/DataManager.swift",
+            &mgr.replace("return 1", "return 2"),
+        )],
+    );
+    let doc = impact(tmp.path());
+    let expected = vec![
+        "Sources/DataManager.swift::refresh",
+        "Sources/DataManager.swift::syncNow",
+        "Sources/ViewController.swift::onAppear",
+    ];
+    assert_eq!(callers(&doc, "reload", "name"), expected, "{doc}");
+    let sym_out = run(
+        tmp.path(),
+        &[
+            "--symbol",
+            "Sources/DataManager.swift:reload",
+            "-q",
+            "-f",
+            "json",
+        ],
+    );
+    assert!(sym_out.status.success());
+    let sym_doc: serde_json::Value = serde_json::from_slice(&sym_out.stdout).unwrap();
+    assert_eq!(callers(&sym_doc, "reload", "name"), expected, "{sym_doc}");
+}
