@@ -9,10 +9,8 @@ use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -97,7 +95,7 @@ fn hook_in_env(
     env: &[(&str, &Path)],
     stdin: &str,
 ) -> Hook {
-    let mut child = Command::new(&*BIN)
+    let mut child = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache)
         .env_remove("CLAUDE_PLUGIN_ROOT")
@@ -237,7 +235,7 @@ fn a_manual_impact_run_just_before_still_counts() {
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
     let cache = TempDir::new().unwrap();
-    let manual = Command::new(&*BIN)
+    let manual = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--diff", "HEAD", "--mode", "impact", "-q"])
@@ -490,7 +488,7 @@ fn a_manual_impact_run_counts_as_the_review() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
-    let status = Command::new(&*BIN)
+    let status = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--mode", "impact", "-q"])
@@ -1459,7 +1457,7 @@ fn a_partial_answer_is_retried_a_bounded_number_of_times() {
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
     let run = || {
-        let mut child = Command::new(&*BIN)
+        let mut child = diffctx()
             .current_dir(repo)
             .env("DIFFCTX_CACHE_DIR", cache.path())
             .env("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")
@@ -1806,7 +1804,7 @@ fn a_manual_run_that_found_nothing_leaves_no_reminder() {
     let repo = tmp.path();
     git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
     write(repo, "README.md", "# shop\n\nVAT included.\n");
-    let status = Command::new(&*BIN)
+    let status = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--mode", "impact", "-q"])

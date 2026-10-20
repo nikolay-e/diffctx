@@ -1561,6 +1561,7 @@ fn prepare(
     payload: &serde_json::Value,
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
+    let _phase = crate::profile::phase("hook.prepare");
     let command = payload["tool_input"]["command"]
         .as_str()
         .ok_or("no-trigger")?;
@@ -1592,6 +1593,7 @@ fn prepare(
 /// What the line recorded, from the refs its `PreToolUse` left: the first
 /// repository it touched that moved.
 fn prepare_landed(command: &str, trace: &mut Trace) -> Result<Prepared, Silence> {
+    let _phase = crate::profile::phase("hook.prepare");
     let key = before_key(command, trace.session.as_deref());
     let before: Vec<Before> = seen_headline(&key, SEEN_TTL)
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -1639,6 +1641,7 @@ fn record_before(
     command: &str,
     trace: &mut Trace,
 ) -> Result<(), Silence> {
+    let _phase = crate::profile::phase("hook.record");
     if hides_git(command) {
         return Err("unsupported-syntax");
     }
@@ -2532,9 +2535,9 @@ fn within_deadline<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    std::thread::spawn(crate::profile::carry(move || {
         let _ = tx.send(work());
-    });
+    }));
     let left = Duration::from_secs(HOOK_DEADLINE_SECS).saturating_sub(started.elapsed());
     match rx.recv_timeout(left) {
         Ok(result) => result,
@@ -2809,6 +2812,7 @@ fn sweep_seen(seen: &Path) {
 /// The hook's answer, or `None` for silence; every failure path is silence,
 /// and every run leaves its line in the hook log.
 pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
+    let _run = crate::profile::run("hook");
     let started = Instant::now();
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any

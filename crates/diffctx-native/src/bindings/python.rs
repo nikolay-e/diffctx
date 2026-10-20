@@ -205,7 +205,7 @@ impl Resolver<'_> {
             .is_some_and(|f| {
                 f.declarations.iter().any(|d| {
                     d.name == name
-                        && d.kind == crate::facts::python::DeclKind::Function
+                        && d.kind == crate::facts::DeclKind::Function
                         && d.class.is_none()
                         && d.scope.is_none()
                 })
@@ -221,7 +221,7 @@ impl Resolver<'_> {
                 .is_some_and(|f| {
                     f.declarations.iter().any(|d| {
                         d.name == name
-                            && d.kind == crate::facts::python::DeclKind::Class
+                            && d.kind == crate::facts::DeclKind::Class
                             && d.scope.is_none()
                     })
                 })

@@ -321,6 +321,25 @@ fn read_file_content(
     }
 }
 
+/// A changed file's text as the fragmenter reads it.
+pub(crate) fn changed_text(
+    file_path: &Path,
+    root_dir: &Path,
+    preferred_revs: &[String],
+    batch_reader: &mut CatFileBatch,
+) -> Option<String> {
+    match read_file_content(
+        file_path,
+        root_dir,
+        preferred_revs,
+        Some(batch_reader),
+        true,
+    ) {
+        FileRead::Text { content, .. } => Some(content),
+        _ => None,
+    }
+}
+
 pub fn process_files_for_fragments(
     files: &[PathBuf],
     root_dir: &Path,

@@ -8,10 +8,8 @@ use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let out = Command::new("git")
@@ -58,7 +56,7 @@ fn repo(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
 }
 
 fn run(repo: &Path, args: &[&str]) -> Output {
-    Command::new(&*BIN)
+    diffctx()
         .current_dir(repo)
         .env("DIFFCTX_NO_MARKER", "1")
         .args(args)
@@ -526,24 +524,24 @@ fn a_trait_method_reached_by_dynamic_dispatch_is_never_reported_as_uncalled() {
     assert!(text.contains("callers not resolved"), "{text}");
 }
 
+/// Scala has no binding model: a name three objects define is ambiguous.
+/// Rust's model resolves the same shape (`tests/lane_rs.rs`).
 #[test]
 fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
-    let def = |n: u32| format!("pub fn build() -> u32 {{\n    {n}\n}}\n");
+    let def = |class: &str, n: u32| {
+        format!("package app\n\nobject {class} {{\n  def build(): Int = {{\n    {n}\n  }}\n}}\n")
+    };
     let tmp = repo(
         &[
+            ("src/app/A.scala", &def("A", 1)),
+            ("src/app/B.scala", &def("B", 2)),
+            ("src/app/C.scala", &def("C", 3)),
             (
-                "src/lib.rs",
-                "pub mod a;\npub mod b;\npub mod c;\npub mod user;\n",
-            ),
-            ("src/a.rs", &def(1)),
-            ("src/b.rs", &def(2)),
-            ("src/c.rs", &def(3)),
-            (
-                "src/user.rs",
-                "use crate::a;\n\npub fn go() -> u32 {\n    a::build()\n}\n",
+                "src/app/User.scala",
+                "package app\n\nobject User {\n  def go(): Int = {\n    A.build()\n  }\n}\n",
             ),
         ],
-        &[("src/a.rs", &def(10))],
+        &[("src/app/A.scala", &def("A", 10))],
     );
     let doc = impact(tmp.path());
     let build = doc["changed"]
@@ -556,15 +554,18 @@ fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
         build["unresolved"]
             .as_str()
             .unwrap()
-            .contains("`build` is ambiguous: 3 rust definitions"),
+            .contains("`build` is ambiguous: 3 scala definitions"),
         "{doc}"
     );
     let out = run(
         tmp.path(),
-        &["--symbol", "src/a.rs:build", "-q", "-f", "md"],
+        &["--symbol", "src/app/A.scala:build", "-q", "-f", "md"],
     );
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("called from src/user.rs::go"), "{text}");
+    assert!(
+        text.contains("called from src/app/User.scala::go"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -858,6 +859,74 @@ fn go_callers_bind_through_the_package_and_the_stated_type() {
     assert_eq!(
         callers(&doc, "Reconcile", "candidate"),
         vec!["billing/audit.go::Check", "cmd/jobs/run.go::nightly"],
+        "{doc}"
+    );
+}
+
+/// A removed package-level `const` or `var` breaks the code still reading
+/// it: inside its package bare, elsewhere through the import. The removal
+/// read as a clean zero because only funcs and types counted as
+/// declarations (found with #491). Another package's own `MaxRetries`, a
+/// struct field, a string and a comment are no readers, and a constant
+/// moved to another file of its package is not removed.
+#[test]
+fn removed_go_package_constants_name_the_readers_they_break() {
+    let tmp = repo(
+        &[
+            ("go.mod", "module example.com/x\n\ngo 1.22\n"),
+            (
+                "limits/limits.go",
+                "package limits\n\nconst MaxRetries = 3\n\nvar Backoff = 2\n\nconst Moved = 1\n\nfunc Keep() int { return 1 }\n",
+            ),
+            (
+                "limits/twice.go",
+                "package limits\n\nfunc Twice() int { return MaxRetries * 2 }\n",
+            ),
+            (
+                "cmd/main.go",
+                "package main\n\nimport \"example.com/x/limits\"\n\ntype config struct{ MaxRetries int }\n\nfunc main() {\n\t_ = limits.MaxRetries + limits.Backoff + limits.Moved\n}\n\nfunc field(c config) int {\n\treturn c.MaxRetries\n}\n\n// limits.MaxRetries is gone.\nfunc words() string {\n\treturn \"limits.MaxRetries\"\n}\n",
+            ),
+            (
+                "other/other.go",
+                "package other\n\nconst MaxRetries = 9\n\nfunc Own() int { return MaxRetries }\n",
+            ),
+        ],
+        &[
+            (
+                "limits/limits.go",
+                "package limits\n\nfunc Keep() int { return 1 }\n",
+            ),
+            ("limits/moved.go", "package limits\n\nconst Moved = 1\n"),
+        ],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "MaxRetries", "resolved"),
+        vec!["cmd/main.go::main", "limits/twice.go::Twice"],
+        "{doc}"
+    );
+    assert_eq!(
+        callers(&doc, "Backoff", "resolved"),
+        vec!["cmd/main.go::main"],
+        "{doc}"
+    );
+    for evidence in ["candidate", "name"] {
+        assert!(callers(&doc, "MaxRetries", evidence).is_empty(), "{doc}");
+    }
+    let removed: Vec<&str> = doc["contracts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == "removed_api")
+        .filter_map(|c| c["symbol"].as_str())
+        .collect();
+    assert_eq!(removed, vec!["Backoff", "MaxRetries"], "{doc}");
+    assert!(
+        !doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|c| c["symbol"] == "Moved"),
         "{doc}"
     );
 }

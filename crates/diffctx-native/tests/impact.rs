@@ -8,10 +8,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -49,7 +47,7 @@ fn impact(repo: &Path, range: &str) -> serde_json::Value {
 }
 
 fn impact_env(repo: &Path, range: &str, env: &[(&str, &str)]) -> serde_json::Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .envs(env.iter().copied())
         .args(["--diff", range, "--mode", "impact", "-q"])
@@ -64,7 +62,7 @@ fn impact_env(repo: &Path, range: &str, env: &[(&str, &str)]) -> serde_json::Val
 }
 
 fn impact_markdown(repo: &Path, range: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--diff", range, "--mode", "impact", "-q", "-f", "md"])
         .output()
@@ -293,7 +291,7 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
         "{doc}"
     );
     assert_eq!(doc["empty"], false);
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .env("DIFFCTX_MAX_CANDIDATE_FILES", "1")
         .args([
@@ -337,7 +335,7 @@ fn a_cap_every_repository_trips_does_not_make_an_empty_answer_speak() {
     write(repo, "lone.py", "def lone():\n    return 3\n");
     commit_all(repo, "lone: 3");
     let cap = [("DIFFCTX_MAX_EDGES_PER_NODE", "1")];
-    let pack = Command::new(&*BIN)
+    let pack = diffctx()
         .current_dir(repo)
         .envs(cap)
         .args(["--diff", "HEAD~1..HEAD", "-q", "-f", "json"])
@@ -374,6 +372,61 @@ fn the_wholesale_caps_are_losses_the_answer_names() {
             "{env}: {doc:#}"
         );
     }
+}
+
+/// #447, closed on its own shape: under the edge-contribution cap the
+/// caller list does not change from run to run, and a cap that fires is named.
+#[test]
+fn a_run_under_the_contribution_cap_lists_the_same_callers_each_time() {
+    let mut files: Vec<(String, String)> = vec![(
+        "core/compute.py".to_string(),
+        "def compute(x):\n    return x\n".to_string(),
+    )];
+    for i in 0..40 {
+        files.push((
+            format!("users/user_{i}.py"),
+            format!("from core.compute import compute\n\n\ndef use_{i}(x):\n    return compute(x) + {i}\n"),
+        ));
+    }
+    let base: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo_of(
+        &base,
+        &[("core/compute.py", "def compute(x):\n    return x * 2\n")],
+    );
+    let listed = |doc: &serde_json::Value| -> Vec<String> {
+        let mut found: Vec<String> = doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+            .filter_map(|c| c["path"].as_str().map(str::to_string))
+            .collect();
+        found.sort();
+        found
+    };
+    let mut fired = false;
+    for cap in ["20", "200"] {
+        let env = [("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", cap)];
+        // At once: the variation needed concurrent load to show.
+        let runs: Vec<serde_json::Value> = std::thread::scope(|s| {
+            let runs: Vec<_> = (0..4)
+                .map(|_| s.spawn(|| impact_env(tmp.path(), "HEAD~1..HEAD", &env)))
+                .collect();
+            runs.into_iter().map(|r| r.join().unwrap()).collect()
+        });
+        let first = &runs[0];
+        fired |= first["limits"]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|r| r == "edge_contribution_limit"));
+        for again in &runs[1..] {
+            assert_eq!(listed(again), listed(first), "cap {cap}: {again:#}");
+            assert_eq!(again["limits"], first["limits"], "cap {cap}: {again:#}");
+        }
+    }
+    assert!(fired, "no cap fired, so this measures nothing");
 }
 
 #[test]
@@ -731,7 +784,7 @@ fn the_working_tree_is_a_valid_range() {
         "shop/pricing.py",
         "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
     );
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--mode", "impact", "-q"])
         .output()
@@ -766,7 +819,7 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
     commit_all(repo, "initial");
     write(repo, "svc/core.py", "def core(x):\n    return x * 2\n");
     commit_all(repo, "double");
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q"])
         .output()
@@ -787,7 +840,7 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
 #[test]
 fn md_is_rejected_outside_impact_mode() {
     let tmp = repo_with_callers();
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args(["--diff", "HEAD~1..HEAD", "-f", "md"])
         .output()
@@ -1258,7 +1311,7 @@ fn no_mode_names_a_withheld_file_that_references_the_change() {
         &["--diff", "HEAD~1..HEAD", "--full", "-q", "-f", "md"],
         &["-q", "-f", "json"],
     ] {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(repo)
             .arg(".")
             .args(args)
@@ -1460,7 +1513,7 @@ fn markdown_is_fitted_on_markdown_and_keeps_its_contracts() {
 #[test]
 fn the_budget_sets_the_impact_cap() {
     let tmp = wide_change();
-    let small = Command::new(&*BIN)
+    let small = diffctx()
         .current_dir(tmp.path())
         .args([
             "--diff",
@@ -1478,7 +1531,7 @@ fn the_budget_sets_the_impact_cap() {
     let md = String::from_utf8_lossy(&small.stdout);
     assert!(omitted_in(&md) > 0, "{md}");
     assert!(md.contains("a larger budget (--budget"), "{md}");
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args([
             "--diff",
@@ -1571,18 +1624,20 @@ fn a_lock_file_change_is_named_never_empty() {
     assert!(md.contains("  - uv.lock"), "{md}");
 }
 
-/// #387: callers that could not be resolved are not "0 callers".
+/// #387: callers that could not be resolved are not "0 callers" (Scala,
+/// which has no binding model to resolve them).
 #[test]
 fn unresolved_callers_are_not_reported_as_none() {
-    let def = |n: u32| format!("pub fn build() -> u32 {{\n    {n}\n}}\n");
+    let def = |class: &str, n: u32| {
+        format!("package app\n\nobject {class} {{\n  def build(): Int = {{\n    {n}\n  }}\n}}\n")
+    };
     let tmp = repo_of(
         &[
-            ("src/lib.rs", "pub mod a;\npub mod b;\npub mod c;\n"),
-            ("src/a.rs", &def(1)),
-            ("src/b.rs", &def(2)),
-            ("src/c.rs", &def(3)),
+            ("src/app/A.scala", &def("A", 1)),
+            ("src/app/B.scala", &def("B", 2)),
+            ("src/app/C.scala", &def("C", 3)),
         ],
-        &[("src/a.rs", &def(10))],
+        &[("src/app/A.scala", &def("A", 10))],
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(header(&md).contains("callers unresolved"), "{md}");
@@ -1861,7 +1916,7 @@ fn a_qualified_symbol_names_its_owner_and_takes_a_path() {
         &[],
     );
     let symbol = |query: &str| {
-        Command::new(&*BIN)
+        diffctx()
             .current_dir(tmp.path())
             .args(["--symbol", query, "-q", "-f", "md"])
             .output()
@@ -1918,7 +1973,7 @@ fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
         "{md}"
     );
     assert!(md.contains("were not read"), "{md}");
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args(["--symbol", "workers", "-q", "-f", "md"])
         .output()
@@ -2436,7 +2491,7 @@ fn a_removed_optional_member_names_its_remaining_call_site() {
 }
 
 fn change_class_of(repo: &Path, path: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
         .output()
@@ -3033,7 +3088,7 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
         &[],
     );
     let symbol = |name: &str| {
-        Command::new(&*BIN)
+        diffctx()
             .current_dir(tmp.path())
             .args(["--symbol", name, "-q", "-f", "md"])
             .output()
@@ -3076,7 +3131,7 @@ fn a_class_whose_header_is_its_signature_keeps_its_definition() {
         ],
         &[],
     );
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args(["--symbol", "Turns", "-q", "-f", "md"])
         .output()
@@ -3114,7 +3169,7 @@ fn a_test_in_another_runtime_does_not_guard_a_namesake() {
         ],
         &[],
     );
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args(["--symbol", "UserPreferences", "-q", "-f", "md"])
         .output()
@@ -3174,7 +3229,7 @@ fn a_range_whose_base_moved_on_is_measured_from_the_fork() {
             "{range}: {out}"
         );
         for mode in [&["--mode", "pack"][..], &["--mode", "locate"], &["--full"]] {
-            let out = Command::new(&*BIN)
+            let out = diffctx()
                 .current_dir(repo)
                 .args(["--diff", range, "-q", "-f", "json"])
                 .args(mode)
@@ -3239,7 +3294,7 @@ fn a_range_reads_its_snapshot_whatever_the_disk_holds() {
     commit_all(repo, "B");
     let modes = ["impact", "locate", "pack"];
     let answer = |mode: &str| {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(repo)
             .args(["--diff", "HEAD~1..HEAD", "-q", "-f", "json", "--mode", mode])
             .output()
@@ -3670,7 +3725,7 @@ fn a_file_with_its_own_definition_of_the_name_is_no_caller_of_the_removed_one() 
 }
 
 fn impact_budget_md(repo: &Path, budget: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([
             "--diff",

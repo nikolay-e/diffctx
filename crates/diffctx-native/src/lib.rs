@@ -59,6 +59,7 @@ pub mod effective_config;
 pub mod mode;
 pub(crate) mod peak_rss;
 pub mod pipeline;
+pub mod profile;
 pub mod resource;
 pub mod run_provenance;
 pub mod sanitize;

@@ -78,7 +78,8 @@ pub struct Declaration {
     pub receiver: Option<String>,
     /// A property's or a function's declared type, outer name only.
     pub type_name: Option<String>,
-    /// A property with no written type, initialized by a call.
+    /// A property with no written type, initialized by a call, or a
+    /// function whose expression body is one (`fun client() = Api(…)`).
     pub init_call: Option<InitCall>,
     /// What the declaration states itself.
     pub visibility: Option<Visibility>,
@@ -910,13 +911,16 @@ fn declared_type(node: &Node, bytes: &[u8]) -> Option<String> {
     }
 }
 
-/// `val x = Make(…)`: the callee of an initializer that is a plain call.
+/// `val x = Make(…)`, `fun f() = Make(…)`: the callee of an initializer
+/// or an expression body that is a plain call.
 fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
-    if node.kind() != "property_declaration" {
-        return None;
-    }
-    let mut cursor = node.walk();
-    let children: Vec<Node> = node.children(&mut cursor).collect();
+    let holder = match node.kind() {
+        "property_declaration" => *node,
+        "function_declaration" => child(*node, "function_body")?,
+        _ => return None,
+    };
+    let mut cursor = holder.walk();
+    let children: Vec<Node> = holder.children(&mut cursor).collect();
     let after_eq = children
         .iter()
         .position(|c| c.kind() == "=")

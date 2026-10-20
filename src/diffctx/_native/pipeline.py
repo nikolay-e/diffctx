@@ -196,7 +196,8 @@ def _count_raw_diff_redactions(result: dict[str, Any], count: int, categories: l
     block["categories"] = [*block.get("categories", []), *(c for c in categories if c not in block.get("categories", []))]
     result["redactions"] = block
     empty_usage = dict.fromkeys(("source_bytes", "parsed_files", "candidate_files", "edge_contributions", "final_edges"), 0)
-    coverage = dict(result.get("coverage") or {"status": "partial", "limit_reasons": [], "resources": empty_usage})
+    fresh = {"status": "partial", "limit_reasons": [], "resources": empty_usage, "unknown": ["resources"]}
+    coverage = dict(result.get("coverage") or fresh)
     reasons = list(coverage.get("limit_reasons") or [])
     if "sanitization_redaction" not in reasons:
         reasons.append("sanitization_redaction")

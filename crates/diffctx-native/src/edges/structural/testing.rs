@@ -295,3 +295,52 @@ impl EdgeBuilder for TestEdgeBuilder {
         Some("test_edge")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    /// #217 B: a test file's imports land in the gap fragment the parser
+    /// appends after its definitions, so reading them off the first fragment
+    /// left `test_direct` unfired. A same-named test that does not import its
+    /// subject stays a naming link.
+    #[test]
+    fn a_test_that_imports_its_subject_links_by_the_import() {
+        let file =
+            |path: &str, content: &str| crate::parsers::fragment_file(Arc::from(path), content);
+        let test = |import: &str| {
+            format!("import pytest\n{import}\n\ndef test_sum():\n    assert total([1, 2]) == 3\n")
+        };
+        let mut fragments = file(
+            "shop/pricing.py",
+            "def total(items):\n    return sum(items)\n",
+        );
+        let importing = file(
+            "tests/test_pricing.py",
+            &test("from shop.pricing import total\n"),
+        );
+        assert!(
+            !importing[0].content.contains("import"),
+            "the first fragment holds the imports, so this measures nothing"
+        );
+        fragments.extend(importing);
+        fragments.extend(file("legacy/test_pricing.py", &test("")));
+        let edges = TestEdgeBuilder.build(&fragments, None);
+        let reps = base::file_representatives(&fragments);
+        let weight = |test: &str| {
+            edges
+                .get(&(reps[test].clone(), reps["shop/pricing.py"].clone()))
+                .copied()
+        };
+        assert_eq!(
+            weight("tests/test_pricing.py"),
+            Some(EDGE_WEIGHTS["test_direct"].forward)
+        );
+        assert_eq!(
+            weight("legacy/test_pricing.py"),
+            Some(EDGE_WEIGHTS["test_naming"].forward)
+        );
+    }
+}

@@ -143,6 +143,8 @@ impl LanguageFacts for KotlinModel<'_> {
                 continue;
             };
             let new = new_path.as_deref().and_then(|p| self.resolver.facts(p));
+            // Uses resolve against the file the head has; the row carries the
+            // path its base line numbers belong to (#540).
             let path = new_path.clone().unwrap_or_else(|| old_path.clone());
             for d in &old.declarations {
                 let kept = new
@@ -157,7 +159,7 @@ impl LanguageFacts for KotlinModel<'_> {
                     package: old.package.clone(),
                 };
                 let removed = RemovedDef {
-                    path: path.clone(),
+                    path: old_path.clone(),
                     name: d.name.clone(),
                     lines: (d.start_line, d.end_line),
                     public: d.effective == Some(Visibility::Public),

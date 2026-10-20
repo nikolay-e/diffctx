@@ -207,6 +207,12 @@ pub struct CoverageReport {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limited_files: Vec<LimitedFile>,
     pub resources: ResourceUsage,
+    /// Fields of this block nothing measured. `resources` when the block
+    /// was added after the run — a fit that cut the answer, a redaction in
+    /// the raw diff — and its counts read 0 only because the schema requires
+    /// numbers there (#550).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unknown: Vec<&'static str>,
     /// Files that were not UTF-8 and were decoded with replacement
     /// characters (`NonUtf8Content`): their symbols and identifiers may be
     /// truncated at the first non-ASCII byte.
@@ -271,6 +277,7 @@ impl CoverageReport {
             capped,
             limited_files,
             resources: ctx.usage(),
+            unknown: Vec::new(),
             lossy_files: ctx.lossy_files(),
         })
     }

@@ -95,6 +95,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A file parsed with errors hedges only the names spelled on the lines it
   broke on, not every name it spells (#537, our half; the trigger is the
   pinned Swift grammar).
+- Removing a binding a module exports — `export const f = () => …`, a
+  Python module constant, a Rust `const`/`static`, a Go package-level
+  `const`/`var` — answered 0 callers and no removed API; the readers that
+  break are now named (#491). Go reads removals through its package and
+  import model, so another package's own constant of the name is no reader
+  and a declaration moved within its package is not removed.
+- Rust callers resolve through a binding model: `use` imports and aliases,
+  `crate::`/`super::`/`self::` paths, methods through typed fields,
+  returned and aliased values, a function passed by name
+  (`.and_then(f)`, #594), and a constant read by its own file's functions
+  (#503, Rust half). A same-named local or imported function shadows one
+  elsewhere, and an `impl X` header is no caller of `X` (#548). A move
+  every importer follows, or a method moved to another `impl` of its type,
+  is no removal (#540). A private item is hedged only by files that can
+  name it (#599).
+- A Kotlin removal from a renamed file names the base path its lines belong
+  to (#540).
+- JS/TS: a bare `&` in JSX text no longer marks a valid file "parsed with
+  errors" (#531); a default import stands only for its module's default
+  export, so `--symbol` lists no file that never names the symbol (#558);
+  `self.x =`, `globalThis.x =`, `window.x =`, `module.exports.x =` and
+  `exports.x =` define `x` (#426); module bindings in modules and in a
+  page's scripts, interface and class members, and functions nested in a
+  long factory closure are definitions (#420, #488, #554, #577); an HTML
+  `<script type="module">` imports like a module and an import of a symlink
+  reaches the file it names (#372, in part). A function nested in a long
+  body is no longer dropped as a duplicate of the chunk holding the same
+  lines, in every language.
+- YAML output escapes what falls outside YAML's printable set: a file
+  holding U+FFFE or U+FFFF made both writers emit a document every YAML
+  reader rejects.
+- A run of a diff is layout only when the syntax tree of both whole files
+  is the same once a formatter's rewrites are taken out; a dedent out of a
+  block, a tuple's comma, ASI's `return` split, a rune turned string, a
+  regex's space, string content and an import alias swap read as
+  formatting, and impact skipped the definition (#442, a regression since
+  1.18.4).
+- A coverage block the fit or the raw-diff path added after the run names
+  its resource counts as `unknown` instead of reporting zeros (#550).
+- `--symbol` reads every file naming the symbol under the raised cap, so a
+  module over the size cap no longer hides a caller or subclass; a caller
+  whose test file is over the cap names that test (#542).
+- A changed Astro content-collection entry lists the `getCollection` /
+  `getEntry` calls reading its collection (#432).
+- A call inside a sub-fragment of a long function is the function's call,
+  with the function's test link (#579); a Kotlin expression-bodied helper
+  (`fun client() = ApiClient(…)`) types the calls made on it (#562).
+- tree-sitter-swift 0.7.4 parses `as? T ?? default` in a trailing closure,
+  which 0.7.3 read as a broken file (#537).
 - A build no release pipeline made says so: `diffctx --version`,
   `diffctx-mcp --version`, the MCP server's reported version and every
   hook log line read `X.Y.Z+source`. A `uv tool install` of a checkout

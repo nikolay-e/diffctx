@@ -10,24 +10,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 use tree_sitter::Node;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeclKind {
-    Function,
-    Class,
-    Assignment,
-}
-
-#[derive(Debug, Clone)]
-pub struct Declaration {
-    pub name: String,
-    pub kind: DeclKind,
-    /// Decorators included.
-    pub lines: (u32, u32),
-    /// The class whose body declares it: a method, a field.
-    pub class: Option<String>,
-    /// The function it is local to: only that function's lines reach it.
-    pub scope: Option<(u32, u32)>,
-}
+use super::{DeclKind, Declaration};
 
 /// One step of a path an expression builds from `__file__`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,21 +36,6 @@ pub struct PythonFacts {
 impl PythonFacts {
     pub fn lines_naming(&self, name: &str) -> &[u32] {
         self.names.get(name).map_or(&[], Vec::as_slice)
-    }
-
-    /// The declaration named `name` a fragment spanning `lines` stands for:
-    /// the first one opening inside it, else the innermost one around it (a
-    /// chunk of a long function).
-    pub fn declaration(&self, name: &str, lines: (u32, u32)) -> Option<&Declaration> {
-        let named = || self.declarations.iter().filter(|d| d.name == name);
-        named()
-            .filter(|d| lines.0 <= d.lines.0 && d.lines.0 <= lines.1)
-            .min_by_key(|d| d.lines.0)
-            .or_else(|| {
-                named()
-                    .filter(|d| d.lines.0 <= lines.0 && d.lines.1 >= lines.1)
-                    .max_by_key(|d| d.lines.0)
-            })
     }
 }
 

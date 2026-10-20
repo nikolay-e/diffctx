@@ -92,6 +92,16 @@ pub struct GoDef {
     decl: Declaration,
 }
 
+impl GoDef {
+    pub fn name(&self) -> &str {
+        &self.decl.name
+    }
+
+    pub fn lines(&self) -> (u32, u32) {
+        self.decl.lines
+    }
+}
+
 type Locals = FxHashMap<String, Option<TypeName>>;
 
 fn text<'b>(node: Node, bytes: &'b [u8]) -> &'b str {
@@ -473,6 +483,50 @@ impl<'a> GoResolver<'a> {
             package: facts.package.clone(),
             decl: decl.clone(),
         })
+    }
+
+    /// The package-level declarations `old` held at `base` that no file of
+    /// its package at the head still holds, `at` being its head path: a
+    /// declaration moved to another file of the package is still there.
+    pub fn removed<'f>(
+        &self,
+        base: &str,
+        old: &str,
+        at: &str,
+        files: impl Iterator<Item = &'f str>,
+    ) -> Vec<GoDef> {
+        let Some(before) = crate::git::show_file_at_revision(self.root, base, Path::new(old))
+            .ok()
+            .and_then(|text| {
+                let tree = crate::parsers::parse_tree("go", &text)?;
+                Some(extract(tree.root_node(), text.as_bytes()))
+            })
+        else {
+            return Vec::new();
+        };
+        let held: Vec<Rc<GoFacts>> = files
+            .filter(|p| is_go(p) && dir_of(p) == dir_of(at))
+            .filter_map(|p| self.facts(p))
+            .filter(|f| f.package == before.package)
+            .collect();
+        before
+            .declarations
+            .into_iter()
+            .filter(|d| {
+                !matches!(d.name.as_str(), "_" | "init")
+                    && !held.iter().any(|f| {
+                        f.declarations
+                            .iter()
+                            .any(|x| x.name == d.name && x.receiver == d.receiver)
+                    })
+            })
+            .map(|decl| GoDef {
+                path: at.to_string(),
+                package: before.package.clone(),
+                // Its bytes are the base's: no use at the head sits inside it.
+                decl: Declaration { span: 0..0, ..decl },
+            })
+            .collect()
     }
 
     /// The import path of the package in `dir`, from the nearest `go.mod`.

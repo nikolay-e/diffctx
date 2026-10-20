@@ -9,10 +9,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 const MANIFEST: (&str, &str) = (
     "Cargo.toml",
@@ -57,7 +55,7 @@ fn repo(steps: &[&[(&str, Option<&str>)]]) -> TempDir {
 }
 
 fn run(repo: &Path, args: &[&str]) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(args)
         .args(["-q", "--timeout", "600"])
@@ -452,5 +450,747 @@ fn a_definition_moved_in_a_split_is_not_removed() {
         named(&doc["contracts"], &|s| s["kind"] == "removed_api"),
         expected,
         "{out}"
+    );
+}
+
+/// A removed `pub const` breaks the code still reading it; the removal read
+/// as a clean zero because only items with bodies counted as declarations
+/// (found with #491). A module with its own constant of that name and the
+/// name in a string are no readers.
+#[test]
+fn a_removed_const_names_the_readers_it_breaks() {
+    let manifest = "[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+    let tmp = repo(&[
+        &[
+            ("Cargo.toml", Some(manifest)),
+            (
+                "src/lib.rs",
+                Some(
+                    "pub mod limits;\npub mod other;\n\npub fn run() -> u32 {\n    limits::MAX_RETRIES\n}\n",
+                ),
+            ),
+            (
+                "src/limits.rs",
+                Some("pub const MAX_RETRIES: u32 = 3;\n\npub fn keep() -> u32 {\n    1\n}\n"),
+            ),
+            (
+                "src/other.rs",
+                Some(
+                    "pub const MAX_RETRIES: u32 = 9;\n\npub fn own() -> (u32, &'static str) {\n    (MAX_RETRIES, \"limits::MAX_RETRIES\")\n}\n",
+                ),
+            ),
+        ],
+        &[("src/limits.rs", Some("pub fn keep() -> u32 {\n    1\n}\n"))],
+    ]);
+    let md = impact_markdown(tmp.path());
+    let readers: Vec<&str> = md
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix("- referenced from "))
+        .map(|l| l.split(" (").next().unwrap_or(l))
+        .collect();
+    assert_eq!(readers, vec!["src/lib.rs::run"], "{md}");
+    assert!(
+        md.contains("removed_api src/limits.rs::MAX_RETRIES"),
+        "{md}"
+    );
+}
+
+fn impact_json(repo: &Path) -> serde_json::Value {
+    let out = run(
+        repo,
+        &["--diff", "HEAD~1..HEAD", "--mode", "impact", "-f", "json"],
+    );
+    serde_json::from_str(&out).expect("json")
+}
+
+/// `path::symbol` of each caller of the changed (or removed) `symbol`.
+fn callers_of(doc: &serde_json::Value, symbol: &str, removed: bool) -> Vec<String> {
+    let mut found: Vec<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["symbol"] == symbol && (c["kind"] == "removed") == removed)
+        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .map(|c| {
+            format!(
+                "{}::{}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// `path::symbol` of every contract of `kind`.
+fn contracts(doc: &serde_json::Value, kind: &str) -> Vec<String> {
+    let mut found: Vec<String> = doc["contracts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == kind)
+        .map(|c| {
+            format!(
+                "{}::{}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// `path::symbol` of every listed caller, called or referenced.
+fn referrers(md: &str) -> Vec<String> {
+    let mut found: Vec<String> = md
+        .lines()
+        .filter_map(|l| {
+            let l = l.trim_start();
+            l.strip_prefix("- called from ")
+                .or_else(|| l.strip_prefix("- referenced from "))
+        })
+        .map(|l| l.split(" (").next().unwrap_or(l).to_string())
+        .collect();
+    found.sort();
+    found
+}
+
+/// A module over the size cap: what it says is still read by the model.
+fn over_the_cap(tail: &str) -> String {
+    let body: String = (0..25)
+        .map(|j| format!("    let v{j} = x + {j};\n"))
+        .collect();
+    let filler: String = (0..300)
+        .map(|i| format!("pub fn filler_{i}(x: u32) -> u32 {{\n{body}    x\n}}\n\n"))
+        .collect();
+    format!("{filler}{tail}")
+}
+
+/// #548: a name in scope wins over a same-named item elsewhere: the file's
+/// own function (a file over the size cap included, whose fragments were
+/// never read), a method of another type (`BTreeMap::entry`) and a local
+/// closure (`at`). A `mod` declaration and an `impl Context` header use
+/// nothing. The call that
+/// does reach each definition is kept.
+#[test]
+fn a_name_in_scope_shadows_and_an_impl_header_is_no_caller() {
+    let export = |gone: bool| {
+        let removed = "pub fn to_json(x: u32) -> String {\n    format!(\"{x}\")\n}\n\npub fn entry(k: u32) -> u32 {\n    k + 1\n}\n\npub fn render(x: u32) -> String {\n    x.to_string()\n}\n\n";
+        let kept = "pub fn kept() -> u32 {\n    1\n}\n";
+        if gone {
+            format!("{kept}\npub fn at(i: usize) -> usize {{\n    i * 3\n}}\n")
+        } else {
+            format!("{removed}{kept}\npub fn at(i: usize) -> usize {{\n    i * 2\n}}\n")
+        }
+    };
+    let ctx = |field: &str, init: &str| {
+        format!(
+            "pub struct Context {{\n    pub depth: u32,{field}\n}}\n\nimpl Context {{\n    pub fn new() -> Self {{\n        Context {{ depth: 1{init} }}\n    }}\n}}\n\nimpl std::fmt::Display for Context {{\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        write!(f, \"{{}}\", self.depth)\n    }}\n}}\n"
+        )
+    };
+    let big = over_the_cap(
+        "fn to_json(x: u32) -> String {\n    format!(\"<{x}>\")\n}\n\npub fn big_bind() -> String {\n    to_json(9)\n}\n",
+    );
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some(
+                    "pub mod big;\npub mod bridge;\npub mod ctx;\npub mod export;\npub mod maps;\npub mod render;\npub mod user;\n",
+                ),
+            ),
+            ("src/export.rs", Some(&export(false))),
+            ("src/render.rs", Some("pub fn paint() -> u32 {\n    2\n}\n")),
+            ("src/big.rs", Some(&big)),
+            (
+                "src/bridge.rs",
+                Some(
+                    "use crate::export::kept;\n\nmacro_rules! wrap {\n    ($f:ident, $x:expr) => {\n        $f($x)\n    };\n}\n\nfn to_json(x: u32) -> String {\n    format!(\"[{x}]\")\n}\n\npub fn bind() -> String {\n    wrap!(to_json, kept()) + &to_json(2)\n}\n",
+                ),
+            ),
+            (
+                "src/maps.rs",
+                Some(
+                    "use std::collections::BTreeMap;\n\npub fn count(m: &mut BTreeMap<u32, u32>) -> usize {\n    *m.entry(1).or_insert(0) += 1;\n    let at = |i: usize| i + 1;\n    at(m.len())\n}\n",
+                ),
+            ),
+            ("src/ctx.rs", Some(&ctx("", ""))),
+            (
+                "src/user.rs",
+                Some(
+                    "use crate::ctx::Context;\nuse crate::export::to_json;\n\npub fn real() -> String {\n    to_json(3)\n}\n\npub fn drawn() -> String {\n    crate::export::render(4)\n}\n\npub fn make() -> u32 {\n    Context::new().depth\n}\n",
+                ),
+            ),
+        ],
+        &[
+            ("src/export.rs", Some(&export(true))),
+            (
+                "src/ctx.rs",
+                Some(&ctx("\n    pub wide: bool,", ", wide: false")),
+            ),
+        ],
+    ]);
+    let doc = impact_json(tmp.path());
+    assert_eq!(
+        callers_of(&doc, "to_json", true),
+        ["src/user.rs::real"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        callers_of(&doc, "render", true),
+        ["src/user.rs::drawn"],
+        "{doc:#}"
+    );
+    assert_eq!(callers_of(&doc, "entry", true), [""; 0], "{doc:#}");
+    assert_eq!(callers_of(&doc, "at", false), [""; 0], "{doc:#}");
+    assert_eq!(
+        contracts(&doc, "removed_api"),
+        [
+            "src/export.rs::entry",
+            "src/export.rs::render",
+            "src/export.rs::to_json"
+        ],
+        "{doc:#}"
+    );
+    assert_eq!(
+        callers_of(&doc, "Context", false),
+        ["src/user.rs::make"],
+        "{doc:#}"
+    );
+}
+
+/// #484: a call reaches its definition through a `crate::` path, a module a
+/// `use` binds, a `use` of the function itself or an alias of it, the
+/// library's crate name from the binary, and as a value passed by path.
+/// A method is reached through a field whose type the struct states. Not
+/// callers: another module's function of the same name and its importer,
+/// a method of another type, a macro, a comment and a string.
+#[test]
+fn calls_through_paths_imports_and_typed_fields_are_callers() {
+    let tmp = repo(&[&[
+        (
+            "Cargo.toml",
+            Some(
+                "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\nname = \"_fx\"\n",
+            ),
+        ),
+        (
+            "src/lib.rs",
+            Some(
+                "pub mod alias;\npub mod bound;\npub mod decoy;\npub mod git;\npub mod hook;\npub mod macros;\npub mod meter;\npub mod other;\npub mod pipe;\npub mod resolver;\npub mod via_use;\n",
+            ),
+        ),
+        (
+            "src/git.rs",
+            Some(
+                "pub fn split_range(r: &str) -> (String, Option<String>) {\n    match r.split_once(\"..\") {\n        Some((a, b)) => (a.to_string(), Some(b.to_string())),\n        None => (r.to_string(), None),\n    }\n}\n",
+            ),
+        ),
+        (
+            "src/hook.rs",
+            Some(
+                "pub fn head(range: &str) -> Option<String> {\n    crate::git::split_range(range).1\n}\n",
+            ),
+        ),
+        (
+            "src/pipe.rs",
+            Some(
+                "use crate::git;\n\npub fn heads(ranges: &[&str]) -> Vec<Option<String>> {\n    ranges.iter().map(|r| git::split_range(r)).map(|p| p.1).collect()\n}\n\npub fn bases(ranges: Vec<&str>) -> Vec<(String, Option<String>)> {\n    ranges.into_iter().map(crate::git::split_range).collect()\n}\n",
+            ),
+        ),
+        (
+            "src/via_use.rs",
+            Some(
+                "use crate::git::split_range;\n\npub fn base(range: &str) -> String {\n    split_range(range).0\n}\n",
+            ),
+        ),
+        (
+            "src/alias.rs",
+            Some(
+                "use crate::git::split_range as split;\n\npub fn short(range: &str) -> String {\n    split(range).0\n}\n",
+            ),
+        ),
+        (
+            "src/main.rs",
+            Some(
+                "fn main() {\n    let r = _fx::git::split_range(\"a..b\");\n    println!(\"{:?}\", r);\n}\n",
+            ),
+        ),
+        (
+            "src/decoy.rs",
+            Some(
+                "pub fn split_range(r: &str) -> usize {\n    r.len()\n}\n\npub fn own() -> usize {\n    split_range(\"a..b\")\n}\n\npub fn text() -> &'static str {\n    // crate::git::split_range(x) was the other one\n    \"crate::git::split_range(y)\"\n}\n",
+            ),
+        ),
+        (
+            "src/other.rs",
+            Some(
+                "use crate::decoy::split_range;\n\npub fn len_of(r: &str) -> usize {\n    split_range(r)\n}\n",
+            ),
+        ),
+        (
+            "src/meter.rs",
+            Some(
+                "pub struct Meter;\n\nimpl Meter {\n    pub fn split_range(&self, r: &str) -> usize {\n        r.len()\n    }\n\n    pub fn imports_file(&self, a: &str) -> bool {\n        a.is_empty()\n    }\n}\n\npub fn measure(m: &Meter) -> usize {\n    m.split_range(\"x\") + usize::from(m.imports_file(\"y\"))\n}\n",
+            ),
+        ),
+        (
+            "src/macros.rs",
+            Some(
+                "macro_rules! split_range {\n    ($x:expr) => {\n        $x\n    };\n}\n\npub fn via_macro() -> u32 {\n    split_range!(7)\n}\n",
+            ),
+        ),
+        (
+            "src/resolver.rs",
+            Some(
+                "pub struct Resolver {\n    pub depth: u32,\n}\n\nimpl Resolver {\n    pub fn imports_file(&self, a: &str) -> bool {\n        a.len() as u32 > self.depth\n    }\n}\n",
+            ),
+        ),
+        (
+            "src/bound.rs",
+            Some(
+                "use crate::resolver::Resolver;\n\npub struct Bound {\n    resolver: Resolver,\n}\n\nimpl Bound {\n    pub fn reaches(&self, t: &str) -> bool {\n        self.resolver.imports_file(t)\n    }\n}\n",
+            ),
+        ),
+    ]]);
+    let md = symbol_markdown(tmp.path(), "src/git.rs:split_range");
+    assert_eq!(
+        referrers(&md),
+        [
+            "src/alias.rs::short",
+            "src/hook.rs::head",
+            "src/main.rs::main",
+            "src/pipe.rs::bases",
+            "src/pipe.rs::heads",
+            "src/via_use.rs::base"
+        ],
+        "{md}"
+    );
+    let md = symbol_markdown(tmp.path(), "src/resolver.rs:imports_file");
+    assert_eq!(referrers(&md), ["src/bound.rs::reaches"], "{md}");
+}
+
+/// #503: a constant its own file's function reads is referenced by that
+/// function, and the inline test calling it reaches the constant through
+/// it. Another module's constant of the same name, and the name in a
+/// string or a comment, read nothing of it.
+#[test]
+fn a_constant_its_own_function_reads_is_referenced_and_tested() {
+    let cfg = |names: &str| {
+        format!(
+            "pub const NON_SEMANTIC: &[&str] = &[{names}];\n\npub fn undeclared(seen: &[&str]) -> Vec<String> {{\n    seen.iter()\n        .filter(|s| !NON_SEMANTIC.contains(s))\n        .map(|s| s.to_string())\n        .collect()\n}}\n\npub fn describe() -> &'static str {{\n    // NON_SEMANTIC lists the names\n    \"NON_SEMANTIC\"\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n\n    #[test]\n    fn names_the_undeclared() {{\n        assert_eq!(undeclared(&[\"X\"]), vec![\"X\".to_string()]);\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            ("src/lib.rs", Some("pub mod cfg;\npub mod other;\n")),
+            ("src/cfg.rs", Some(&cfg("\"A\", \"B\""))),
+            (
+                "src/other.rs",
+                Some(
+                    "const NON_SEMANTIC: &[&str] = &[\"Z\"];\n\npub fn own() -> usize {\n    NON_SEMANTIC.len()\n}\n",
+                ),
+            ),
+        ],
+        &[("src/cfg.rs", Some(&cfg("\"A\", \"B\", \"C\"")))],
+    ]);
+    let md = impact_markdown(tmp.path());
+    assert_eq!(referrers(&md), ["src/cfg.rs::undeclared"], "{md}");
+    assert!(
+        md.contains(
+            "referenced from src/cfg.rs::undeclared (3-8) — reachable from tests: src/cfg.rs"
+        ),
+        "{md}"
+    );
+    assert!(
+        !md.lines()
+            .next()
+            .unwrap_or("")
+            .contains("changed definition(s) without a static test link"),
+        "{md}"
+    );
+}
+
+/// #540: a function moved to another module, every importer following it,
+/// is no removal. One importer still naming the old module keeps a move a
+/// removal with that caller; a same-named function the range adds elsewhere
+/// that no importer names leaves a removal too.
+#[test]
+fn a_move_every_importer_follows_is_no_removal() {
+    let def = |name: &str, n: u32| format!("pub fn {name}() -> u32 {{\n    {n}\n}}\n");
+    let stays = def("stays", 1);
+    let old = format!(
+        "{}\n{}\n{}\n{stays}",
+        def("tax_rate", 19),
+        def("levy", 3),
+        def("fee", 5)
+    );
+    let new_base = def("other", 1);
+    let new_head = format!(
+        "{new_base}\n{}\n{}\n{}",
+        def("tax_rate", 19),
+        def("levy", 3),
+        def("fee", 50)
+    );
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some("pub mod a;\npub mod b;\npub mod c;\npub mod new;\npub mod old;\n"),
+            ),
+            ("src/old.rs", Some(&old)),
+            ("src/new.rs", Some(&new_base)),
+            (
+                "src/a.rs",
+                Some(
+                    "use crate::old::tax_rate;\n\npub fn price() -> u32 {\n    tax_rate() * 2 + crate::old::levy()\n}\n",
+                ),
+            ),
+            (
+                "src/b.rs",
+                Some(
+                    "pub fn cost() -> u32 {\n    crate::old::tax_rate() + crate::old::stays()\n}\n",
+                ),
+            ),
+            (
+                "src/c.rs",
+                Some("pub fn duty() -> u32 {\n    crate::old::levy()\n}\n"),
+            ),
+        ],
+        &[
+            ("src/old.rs", Some(&stays)),
+            ("src/new.rs", Some(&new_head)),
+            (
+                "src/a.rs",
+                Some(
+                    "use crate::new::tax_rate;\n\npub fn price() -> u32 {\n    tax_rate() * 2 + crate::new::levy()\n}\n",
+                ),
+            ),
+            (
+                "src/b.rs",
+                Some(
+                    "pub fn cost() -> u32 {\n    crate::new::tax_rate() + crate::old::stays()\n}\n",
+                ),
+            ),
+        ],
+    ]);
+    let doc = impact_json(tmp.path());
+    assert_eq!(
+        contracts(&doc, "removed_api"),
+        ["src/old.rs::fee", "src/old.rs::levy"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        callers_of(&doc, "levy", true),
+        ["src/c.rs::duty"],
+        "{doc:#}"
+    );
+    assert_eq!(callers_of(&doc, "tax_rate", true), [""; 0], "{doc:#}");
+}
+
+/// #540, Kotlin: a declaration removed from a file the range renamed is
+/// reported under the base path its line numbers belong to, never under
+/// the head path, and its caller still resolves. A declaration the renamed
+/// file keeps is no removal.
+#[test]
+fn a_kotlin_removal_from_a_renamed_file_carries_the_base_path() {
+    let store = |legacy: bool| {
+        let kept: String = (0..12)
+            .map(|i| format!("    fun keep{i}(x: Int) = x + {i}\n"))
+            .collect();
+        let legacy = if legacy { "    fun legacy() = 2\n" } else { "" };
+        format!("package a\n\nclass Store {{\n{legacy}{kept}}}\n")
+    };
+    let tmp = repo(&[
+        &[
+            ("src/main/kotlin/a/Store.kt", Some(&store(true))),
+            (
+                "src/main/kotlin/a/Client.kt",
+                Some(
+                    "package a\n\nclass Client(private val store: Store) {\n    fun go() = store.legacy() + store.keep1(1)\n}\n",
+                ),
+            ),
+        ],
+        &[
+            ("src/main/kotlin/a/Store.kt", None),
+            ("src/main/kotlin/a/Shop.kt", Some(&store(false))),
+        ],
+    ]);
+    let doc = impact_json(tmp.path());
+    let removed: Vec<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == "removed")
+        .map(|c| {
+            format!(
+                "{}::{} {}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or(""),
+                c["lines"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    assert_eq!(
+        removed,
+        ["src/main/kotlin/a/Store.kt::legacy 4-4"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        contracts(&doc, "removed_api"),
+        ["src/main/kotlin/a/Store.kt::legacy"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        callers_of(&doc, "legacy", true),
+        ["src/main/kotlin/a/Client.kt::go"],
+        "{doc:#}"
+    );
+}
+
+/// #594: a function handed on by name (`.and_then(to_ms)`) is used by the
+/// function that hands it, which carries its test reach; so does a field
+/// of a struct long enough to be read in chunks. Not uses: a parameter
+/// and a closure of that name, a field `c.to_ms`, a comment, a string, and
+/// another module's own `to_ms` passed the same way.
+#[test]
+fn a_function_passed_by_name_is_a_use_with_its_test_reach() {
+    let lib = |body: &str| {
+        format!(
+            "pub mod locate;\npub mod other;\n\npub fn parse_all(items: &[&str]) -> Vec<i64> {{\n    items.iter().filter_map(|s| to_ms(s)).collect()\n}}\n\npub fn parse_first(items: &[&str]) -> Option<i64> {{\n    items.first().copied().and_then(to_ms)\n}}\n\npub fn shadowed(items: &[&str], to_ms: fn(&str) -> Option<i64>) -> Vec<i64> {{\n    items.iter().copied().filter_map(to_ms).collect()\n}}\n\npub fn closure(items: &[&str]) -> Vec<i64> {{\n    let to_ms = |s: &str| s.len() as i64;\n    items.iter().copied().map(to_ms).collect()\n}}\n\npub struct Clock {{\n    pub to_ms: i64,\n}}\n\npub fn field(c: &Clock) -> i64 {{\n    c.to_ms\n}}\n\npub fn text() -> &'static str {{\n    // .and_then(to_ms) in a comment\n    \"and_then(to_ms)\"\n}}\n\nfn to_ms(stamp: &str) -> Option<i64> {{\n    {body}\n}}\n\n#[cfg(test)]\nmod tests {{\n    #[test]\n    fn first() {{\n        assert_eq!(super::parse_first(&[\"1\"]), Some(1));\n    }}\n}}\n"
+        )
+    };
+    let fields = |prefix: &str| -> String {
+        (0..40)
+            .map(|i| format!("    pub {prefix}_{i}: u32,\n"))
+            .collect()
+    };
+    let locate = |extra: &str| {
+        format!(
+            "pub struct Output {{\n{}    pub coverage: Coverage,\n{}}}\n\npub struct Coverage {{\n    pub clean: bool,{extra}\n}}\n\npub fn schema() -> usize {{\n    std::mem::size_of::<Output>()\n}}\n",
+            fields("head"),
+            fields("tail")
+        )
+    };
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            ("src/lib.rs", Some(&lib("stamp.parse().ok()"))),
+            ("src/locate.rs", Some(&locate(""))),
+            (
+                "src/other.rs",
+                Some(
+                    "fn to_ms(stamp: &str) -> Option<i64> {\n    stamp.len().try_into().ok()\n}\n\npub fn elsewhere(items: &[&str]) -> Vec<i64> {\n    items.iter().copied().filter_map(to_ms).collect()\n}\n",
+                ),
+            ),
+            (
+                "tests/schema.rs",
+                Some(
+                    "#[test]\nfn schema_is_sized() {\n    assert!(fixture::locate::schema() > 0);\n}\n",
+                ),
+            ),
+        ],
+        &[
+            ("src/lib.rs", Some(&lib("stamp.trim().parse().ok()"))),
+            ("src/locate.rs", Some(&locate("\n    pub wide: bool,"))),
+        ],
+    ]);
+    let md = impact_markdown(tmp.path());
+    assert_eq!(
+        referrers(&md),
+        [
+            "src/lib.rs::parse_all",
+            "src/lib.rs::parse_first",
+            "src/locate.rs::Output"
+        ],
+        "{md}"
+    );
+    assert!(
+        md.contains(
+            "referenced from src/lib.rs::parse_first (8-10) — reachable from tests: src/lib.rs"
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains("referenced from src/locate.rs::Output (1-83) — reachable from tests: tests/schema.rs via schema"),
+        "{md}"
+    );
+    assert!(
+        !md.lines()
+            .next()
+            .unwrap_or("")
+            .contains("changed definition(s) without a static test link"),
+        "{md}"
+    );
+}
+
+/// #484: a method is reached through a value whose type the syntax states
+/// without a declaration of its own: what a function returns (`?`
+/// unwrapping its `Result`), a type alias, a path through `super::super`.
+/// Not callers: a unit struct and a returned value of another type with a
+/// method of that name, and another module's free function of that name.
+#[test]
+fn a_method_is_reached_through_a_returned_or_aliased_value() {
+    let graph = |n: u32| {
+        format!(
+            "pub struct Graph {{\n    pub n: u32,\n}}\n\nimpl Graph {{\n    pub fn new() -> Self {{\n        Graph {{ n: 0 }}\n    }}\n\n    pub fn add_edge(&mut self, w: u32) {{\n        self.n += w + {n};\n    }}\n}}\n\npub type Alias = Graph;\n"
+        )
+    };
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some("pub mod edges;\npub mod graph;\npub mod make;\n"),
+            ),
+            ("src/graph.rs", Some(&graph(0))),
+            (
+                "src/edges/mod.rs",
+                Some("pub mod base;\npub mod semantic;\n"),
+            ),
+            (
+                "src/edges/base.rs",
+                Some("pub fn add_edge(v: &mut Vec<u32>, w: u32) {\n    v.push(w);\n}\n"),
+            ),
+            ("src/edges/semantic/mod.rs", Some("pub mod js;\n")),
+            (
+                "src/edges/semantic/js.rs",
+                Some(
+                    "use super::super::base::{self};\n\npub fn link(v: &mut Vec<u32>) {\n    base::add_edge(v, 1);\n}\n",
+                ),
+            ),
+            (
+                "src/make.rs",
+                Some(
+                    "use crate::graph::{Alias, Graph};\n\npub struct Unit;\n\nimpl Unit {\n    pub fn add_edge(&self) -> u32 {\n        3\n    }\n}\n\npub fn make() -> Graph {\n    Graph::new()\n}\n\nfn maybe() -> Result<Graph, String> {\n    Ok(make())\n}\n\nfn unit() -> Unit {\n    Unit\n}\n\npub fn by_return() -> u32 {\n    let mut g = make();\n    g.add_edge(1);\n    g.n\n}\n\npub fn by_try() -> Result<u32, String> {\n    let mut g = maybe()?;\n    g.add_edge(2);\n    Ok(g.n)\n}\n\npub fn by_alias(g: &mut Alias) {\n    g.add_edge(3);\n}\n\npub fn by_unit() -> u32 {\n    Unit.add_edge() + unit().add_edge()\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn returns() {\n        assert_eq!(super::by_return(), 1);\n    }\n}\n",
+                ),
+            ),
+        ],
+        &[("src/graph.rs", Some(&graph(1)))],
+    ]);
+    let md = symbol_markdown(tmp.path(), "src/graph.rs:add_edge");
+    assert_eq!(
+        referrers(&md),
+        [
+            "src/make.rs::by_alias",
+            "src/make.rs::by_return",
+            "src/make.rs::by_try"
+        ],
+        "{md}"
+    );
+    assert!(!md.contains("possibly called"), "{md}");
+    assert!(
+        md.contains(
+            "called from src/make.rs::by_return (23-27) — reachable from tests: src/make.rs"
+        ),
+        "{md}"
+    );
+    let md = symbol_markdown(tmp.path(), "src/edges/base.rs:add_edge");
+    assert_eq!(referrers(&md), ["src/edges/semantic/js.rs::link"], "{md}");
+    assert!(!md.contains("possibly called"), "{md}");
+}
+
+/// #540: a method moved to an `impl` of its type in another file is no
+/// removal, and its caller is no broken caller. A function removed for
+/// good stays a removal, and the files the removal search withholds are
+/// the code files that name it, never a withheld data file.
+#[test]
+fn a_method_moved_to_another_impl_of_its_type_is_no_removal() {
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some("pub mod ledger;\npub mod settle;\npub mod user;\n"),
+            ),
+            (
+                "src/ledger.rs",
+                Some(
+                    "pub fn levy() -> u32 {\n    3\n}\n\npub struct Ledger;\n\nimpl Ledger {\n    pub fn settle(&self) -> u32 {\n        levy()\n    }\n}\n",
+                ),
+            ),
+            ("src/settle.rs", Some("pub fn other() -> u32 {\n    1\n}\n")),
+            (
+                "src/user.rs",
+                Some(
+                    "use crate::ledger::Ledger;\n\npub fn pay(l: &Ledger) -> u32 {\n    l.settle()\n}\n",
+                ),
+            ),
+            (".diffctx/ignore", Some("data/\n")),
+            ("data/notes.txt", Some("levy settle levy\n")),
+        ],
+        &[
+            ("src/ledger.rs", Some("pub struct Ledger;\n")),
+            (
+                "src/settle.rs",
+                Some(
+                    "use crate::ledger::Ledger;\n\npub fn other() -> u32 {\n    1\n}\n\nimpl Ledger {\n    pub fn settle(&self) -> u32 {\n        4\n    }\n}\n",
+                ),
+            ),
+        ],
+    ]);
+    let doc = impact_json(tmp.path());
+    assert_eq!(callers_of(&doc, "settle", true), [""; 0], "{doc:#}");
+    assert_eq!(
+        contracts(&doc, "removed_api"),
+        ["src/ledger.rs::levy"],
+        "{doc:#}"
+    );
+    assert!(doc.get("withheld_files").is_none_or(|w| w == 1), "{doc:#}");
+}
+
+/// #599: a private item is named only in its module and the ones below
+/// it, so a file over the size cap elsewhere is no hedge on it. A file
+/// below its module keeps the hedge, and so does any file for a
+/// `pub(crate)` item.
+#[test]
+fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
+    let paths = |n: u32| {
+        format!(
+            "mod deep;\n\npub fn full(dir: &str, file: &str) -> String {{\n    join(dir, file) + &split(dir) + &wide(file)\n}}\n\nfn join(a: &str, b: &str) -> String {{\n    format!(\"{{a}}/{{b}}/{n}\")\n}}\n\nfn split(a: &str) -> String {{\n    a.replace('/', \"{n}\")\n}}\n\npub(crate) fn wide(a: &str) -> String {{\n    a.repeat({n})\n}}\n"
+        )
+    };
+    let big = over_the_cap(
+        "pub fn table() -> String {\n    [\"a\", \"b\"].join(\"=\") + &\"x\".split('y').count().to_string() + \"wide\"\n}\n",
+    );
+    let deep = over_the_cap("pub fn under() -> usize {\n    \"a/b\".split('/').count()\n}\n");
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some("mod big;\nmod paths;\n\npub use big::table;\npub use paths::full;\n"),
+            ),
+            ("src/paths.rs", Some(&paths(1))),
+            ("src/paths/deep.rs", Some(&deep)),
+            ("src/big.rs", Some(&big)),
+        ],
+        &[("src/paths.rs", Some(&paths(2)))],
+    ]);
+    let doc = impact_json(tmp.path());
+    let missed = |symbol: &str| -> Vec<String> {
+        let mut found: Vec<String> = doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["symbol"] == symbol)
+            .flat_map(|c| c["missed_in"].as_array().cloned().unwrap_or_default())
+            .map(|m| m["path"].as_str().unwrap_or("").to_string())
+            .collect();
+        found.sort();
+        found
+    };
+    assert_eq!(missed("join"), [""; 0], "{doc:#}");
+    assert_eq!(missed("split"), ["src/paths/deep.rs"], "{doc:#}");
+    assert_eq!(missed("wide"), ["src/big.rs"], "{doc:#}");
+    assert_eq!(
+        callers_of(&doc, "join", false),
+        ["src/paths.rs::full"],
+        "{doc:#}"
     );
 }

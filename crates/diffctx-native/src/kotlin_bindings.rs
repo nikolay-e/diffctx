@@ -901,12 +901,7 @@ impl<'a> KotlinResolver<'a> {
         };
         // `val a = b.f()` beside `val b = a.g()` does not compile, but must
         // not recurse forever when it is written.
-        if self.typing_depth.get() >= MAX_TYPING_DEPTH {
-            return None;
-        }
-        self.typing_depth.set(self.typing_depth.get() + 1);
-        let held = self.name_type(rel, facts, receiver, at);
-        self.typing_depth.set(self.typing_depth.get() - 1);
+        let held = self.deeper(|| self.name_type(rel, facts, receiver, at));
         let (path, decl) = self
             .member_of(&held?, &init.callee, 0)
             .filter(|(_, d)| d.kind == "fun")?;
@@ -927,9 +922,22 @@ impl<'a> KotlinResolver<'a> {
             })
     }
 
+    /// One level deeper in typing one value by another, or `None` past
+    /// the depth a program that compiles never reaches.
+    fn deeper<T>(&self, typing: impl FnOnce() -> Option<T>) -> Option<T> {
+        if self.typing_depth.get() >= MAX_TYPING_DEPTH {
+            return None;
+        }
+        self.typing_depth.set(self.typing_depth.get() + 1);
+        let typed = typing();
+        self.typing_depth.set(self.typing_depth.get() - 1);
+        typed
+    }
+
     /// What a plain call returns: a constructor its type, a function its
-    /// written return type — a function of the enclosing class (inherited
-    /// ones included) or of the file. An inferred return type is unknown.
+    /// written return type or what its expression body returns — a
+    /// function of the enclosing class (inherited ones included) or of the
+    /// file. A block body's inferred return type is unknown.
     fn call_type(
         &self,
         rel: &str,
@@ -955,9 +963,21 @@ impl<'a> KotlinResolver<'a> {
                     .map(|d| (rel.to_string(), d.clone()))
             })?;
         let (path, decl) = function;
-        let returned = decl.type_name.as_deref()?;
         let decl_facts = self.facts(&path)?;
-        Some(self.type_or_external(&path, &decl_facts, returned))
+        match decl.type_name.as_deref() {
+            Some(returned) => Some(self.type_or_external(&path, &decl_facts, returned)),
+            // `private fun client() = ApiClient(…)` in a test types every
+            // `client().f()` it calls (#562).
+            None => self.deeper(|| {
+                self.value_type(
+                    &path,
+                    &decl_facts,
+                    None,
+                    decl.init_call.as_ref(),
+                    decl.span.start,
+                )
+            }),
+        }
     }
 
     /// `name` declared in `class` or, failing that, in a supertype.

@@ -493,7 +493,7 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
             ("api.swift", "func load() -> Int {\n    return 1\n}\n"),
             (
                 "Panel.swift",
-                "func panel() -> Int {\n    let v = load()\n    return v\n}\n\nfunc f(_ gaps: [[String: Any]], _ rate: Double) -> Double {\n    let s = gaps.reduce(0.0) { $0 + Double($1[\"frames\"] as? Int ?? 1) + rate }\n    return s\n}\n",
+                "func panel() -> Int {\n    let v = load()\n    return v\n}\n\nfunc f(_ rate: Double) -> Double {\n    let s = (rate +)\n    return s\n}\n",
             ),
             (
                 "Broken.swift",
@@ -518,4 +518,27 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
             "Panel.swift::panel resolved"
         ]
     );
+}
+
+/// #537: `as? T ?? default` in a call argument inside a trailing closure is
+/// valid Swift, and the grammar reads it: the file is analysed whole.
+#[test]
+fn a_cast_with_a_default_in_a_trailing_closure_parses() {
+    let gaps = |body: &str| {
+        format!(
+            "func f(_ gaps: [[String: Any]], _ rate: Double) -> Double {{\n    let s = gaps.reduce(0.0) {{ {body} }}\n    return s\n}}\n"
+        )
+    };
+    let tmp = repo_of(
+        &[("a.swift", &gaps("$0 + 2 / rate"))],
+        &[("a.swift", &gaps("$0 + Double($1[\"frames\"] as? Int ?? 1)"))],
+    );
+    let doc = impact(tmp.path());
+    let unanalysed: Vec<&str> = doc["unanalysed_files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|f| f["path"].as_str())
+        .collect();
+    assert!(unanalysed.is_empty(), "{doc}");
 }

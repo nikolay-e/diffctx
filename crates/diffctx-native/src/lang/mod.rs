@@ -18,26 +18,31 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::bindings::{self, Finding, Lang};
+use crate::facts::Declaration;
 use crate::source::Source;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
-type Declarations = fn(&str) -> Vec<(Option<String>, (u32, u32), FragmentKind)>;
+/// A file's declarations as `(name, lines, kind)`, read from its path and
+/// text: a page's code is its inline scripts.
+type Declarations = fn(&str, &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)>;
 
 fn declarations_of(path: &str) -> Option<Declarations> {
-    if bindings::lang_of(path) == Some(Lang::Python) {
-        Some(python::assignments)
-    } else if sql::is_sql(path) {
-        Some(sql::declarations)
-    } else {
-        None
+    match bindings::lang_of(path) {
+        Some(Lang::Python) => Some(|_, text| python::assignments(text)),
+        Some(Lang::Js) => Some(bound::declarations),
+        None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
+        None => None,
     }
 }
 
 /// Definitions a model reads that the fragmenter does not cut: Python
-/// module- and class-level assignments (#420, #488), SQL functions,
-/// procedures and views (#459). Pack keeps its fragments as they are, sized
-/// for a reader's budget, and an impact run lays these over them; a
-/// fragment spanning exactly the definition becomes it.
+/// module- and class-level assignments (#420, #488), JavaScript properties
+/// of the global object or of the module's exports (#426), TypeScript
+/// interface members and class fields (#488), SQL functions, procedures
+/// and views (#459). Pack keeps its fragments as they are, sized for a
+/// reader's budget, and an impact run lays these over them; a fragment
+/// spanning exactly the definition becomes it, and keeps its kind when it
+/// already is a definition's (an arrow assigned to `self.serveShell`).
 pub fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
     let mut paths: Vec<Arc<str>> = fragments
         .iter()
@@ -59,12 +64,14 @@ pub fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
             continue;
         };
         let lines: Vec<&str> = text.split('\n').collect();
-        for (name, (start, end), kind) in read(&text) {
+        for (name, (start, end), kind) in read(&path, &text) {
             let id = FragmentId::new(Arc::clone(&path), start, end);
             if let Some(&i) = at.get(&id) {
                 let same = &mut fragments[i];
                 if same.symbol_name.is_none() && name.is_some() {
-                    same.kind = kind;
+                    if !same.kind.is_definition_kind() {
+                        same.kind = kind;
+                    }
                     same.symbol_name = name;
                 }
                 continue;
@@ -92,16 +99,34 @@ pub fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
 }
 
 /// The names a file defines that a pattern over its lines does not see:
-/// shell functions (`fetch() {`), SQL routines and views. Impact looks for
-/// the files that spell them.
+/// shell functions (`fetch() {`), SQL routines and views, a Python module's
+/// assignments, a JavaScript module's definitions and the globals it sets
+/// (`self.serveShell = …`). Impact looks for the files that spell them.
 pub fn declared_names(path: &str, text: &str) -> Vec<String> {
-    if sql::is_sql(path) {
-        sql::declarations(text)
+    let reachable = |declared: &[Declaration]| {
+        declared
+            .iter()
+            .filter(|d| {
+                d.scope.is_none()
+                    && d.class
+                        .as_deref()
+                        .is_none_or(|c| c == bindings::GLOBAL_OWNER)
+            })
+            .map(|d| d.name.clone())
+            .collect()
+    };
+    match bindings::lang_of(path) {
+        Some(Lang::Python) => {
+            crate::facts::python::facts(text).map_or_else(Vec::new, |f| reachable(&f.declarations))
+        }
+        Some(Lang::Js) => {
+            bindings::js_facts(path, text).map_or_else(Vec::new, |f| reachable(&f.declarations))
+        }
+        None if sql::is_sql(path) => sql::declarations(text)
             .into_iter()
             .filter_map(|(n, _, _)| n)
-            .collect()
-    } else {
-        shell::function_names(path, text)
+            .collect(),
+        None => shell::function_names(path, text),
     }
 }
 
@@ -183,15 +208,21 @@ pub trait LanguageFacts {
     fn use_lines(&self, _path: &str, _def: DefId) -> Option<Vec<u32>> {
         None
     }
-    /// Whether the definition is local to a function: only that function
-    /// names it, so no other file is a possible caller.
-    fn local(&self, _def: DefId) -> bool {
-        false
+    /// Whether code in `path` can name the definition at all: a function
+    /// local to another is named only inside it (#546), a private item only
+    /// where its language's visibility reaches (#599).
+    fn names_from(&self, _def: DefId, _path: &str) -> bool {
+        true
     }
     fn implementers(&self, _def: DefId, _paths: &[String]) -> Option<Vec<Implementer>> {
         None
     }
     fn annotations(&self, _def: DefId) -> Option<Vec<String>> {
+        None
+    }
+    /// The trait a member implements or declares, whose calls may arrive
+    /// through a dispatch no model follows.
+    fn dispatched(&self, _def: DefId) -> Option<String> {
         None
     }
     fn public_change(&self, _def: DefId, _base: &str) -> Option<bool> {
@@ -230,10 +261,15 @@ impl<'a> Registry<'a> {
         models.push(Box::new(shell::ShellModel::new(root, source, &files)));
         models.push(Box::new(kotlin::KotlinModel::swift(root, source, &files)));
         models.push(Box::new(kotlin::KotlinModel::java(root, source)));
-        models.push(Box::new(python::PythonModel::new(root, source, files)));
+        models.push(Box::new(python::PythonModel::new(
+            root,
+            source,
+            files.clone(),
+        )));
         models.push(Box::new(sql::SqlModel::new(root, source)));
         models.push(Box::new(kotlin::KotlinModel::kotlin(root, source)));
         models.push(Box::new(go::GoModel::new(root, source)));
+        models.push(Box::new(rust::RustModel::new(root, source, files)));
         Self { models }
     }
 

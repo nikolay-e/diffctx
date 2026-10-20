@@ -234,6 +234,25 @@ def test_session_start_removes_the_binaries_earlier_releases_downloaded(tmp_path
     assert sorted(p.name for p in data.iterdir()) == ["settings.json"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_the_session_context_says_a_silent_commit_is_no_clean_result(tmp_path, bash):
+    # #350: once Claude Code removes the running version's plugin directory no
+    # hook runs again, and a commit with no diffctx block reads as nothing
+    # outside the diff unless the session was told otherwise. uvx stands in
+    # for the package download the hook starts in the background.
+    stub = tmp_path / "bin" / "uvx"
+    stub.parent.mkdir()
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {"HOME": str(tmp_path), "PATH": f"{stub.parent}:/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin")}
+    result = subprocess.run([bash, str(SESSION_SCRIPT)], capture_output=True, text=True, env=env, timeout=60)
+    assert result.returncode == 0, result.stderr
+    context = _context(result.stdout)
+    assert "a commit with no diffctx block is not a clean result" in context
+    assert re.search(r"run: uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
+
+
 def _search(repo: Path, tool: str, query: str, session: str = "s1") -> str:
     tool_input = {"pattern": query, "path": str(repo)} if tool == "Grep" else {"command": query}
     return json.dumps(

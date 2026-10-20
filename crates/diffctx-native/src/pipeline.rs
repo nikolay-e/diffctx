@@ -178,6 +178,7 @@ pub fn build_diff_context_in(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<DiffContextOutput> {
+    let _run = crate::profile::run(if full { "full" } else { "pack" });
     if full {
         return build_diff_context_full(root_dir, diff_range, paths, no_content, timeout);
     }
@@ -203,6 +204,7 @@ pub fn build_diff_context_locate(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::locate::LocateOutput> {
+    let _run = crate::profile::run("locate");
     validate_tau(tau)?;
     let state = compute_scored_state(root_dir, diff_range, paths, alpha, scoring_mode, timeout)?;
     let outcome = if state.all_fragments.is_empty() {
@@ -223,6 +225,7 @@ pub fn build_diff_context_locate(
     } else {
         run_selection(&state, budget_tokens, tau)
     };
+    let _render = crate::profile::phase("render");
     let mut output = crate::locate::build_locate(&state, &outcome);
     output.fit_to(outcome.effective_budget);
     Ok(output)
@@ -239,6 +242,7 @@ pub fn build_diff_context_impact(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::impact::ImpactOutput> {
+    let _run = crate::profile::run("impact");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state = compute_scored_state_with(
         root_dir,
@@ -267,6 +271,7 @@ pub fn build_symbol_impact(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::impact::ImpactOutput> {
+    let _run = crate::profile::run("symbol");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state = compute_scored_state_anchored(
         root_dir,
@@ -365,6 +370,8 @@ struct ChangeSetData {
     /// The newest commit the history channels may read: the range's base,
     /// so a change's own commits never vouch for its files (#340).
     history_rev: Option<String>,
+    /// `--symbol`: the files naming the symbol beside its definitions' own.
+    named_files: Vec<PathBuf>,
     pre_phase_ms: f64,
 }
 
@@ -728,6 +735,7 @@ fn resolve_change_set(
             _ => history_head.clone(),
         }),
         head_rev: history_head,
+        named_files: Vec::new(),
         pre_phase_ms,
     })))
 }
@@ -963,17 +971,21 @@ fn resolve_symbol_change_set(
             .is_some_and(|stem| stem.to_string_lossy() == owner)
             || owner_of(def).and_then(|c| c.symbol_name.as_deref()) == Some(owner)
     };
-    let is_definition = |f: &&Fragment| f.kind.is_definition_kind();
+    // What diff mode names as a changed definition: a module-level `const`
+    // or `let` is one, though its kind is a variable's (#420).
+    let is_definition = |f: &&Fragment| {
+        crate::container::named_container_of(f, &fragments).is_some_and(|c| c.id == f.id)
+    };
     let mut definitions: Vec<&Fragment> = fragments
         .iter()
-        .filter(is_definition)
         .filter(|f| f.symbol_name.as_deref() == Some(full.as_str()))
+        .filter(is_definition)
         .collect();
     if definitions.is_empty() {
         definitions = fragments
             .iter()
-            .filter(is_definition)
             .filter(|f| f.symbol_name.as_deref() == Some(name))
+            .filter(is_definition)
             .filter(|f| qualifier.is_none_or(|q| owned_by(f, q)))
             .collect();
     }
@@ -1021,6 +1033,10 @@ fn resolve_symbol_change_set(
             changed_files.push(file);
         }
     }
+    let named_files = files
+        .into_iter()
+        .filter(|f| !changed_files.contains(f))
+        .collect();
 
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
         commit_count: 0,
@@ -1038,6 +1054,7 @@ fn resolve_symbol_change_set(
         commit_messages: Vec::new(),
         head_rev: None,
         history_rev: None,
+        named_files,
         pre_phase_ms: t_entry.elapsed().as_secs_f64() * 1000.0,
     })))
 }
@@ -1194,6 +1211,7 @@ pub fn compute_scored_state_anchored(
             ignored_changes,
             policy_excluded_count,
         } => {
+            crate::profile::record("pre_phase", t_entry.elapsed().as_secs_f64() * 1000.0);
             let mut state =
                 empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout, run)?;
             state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], &[], &[]);
@@ -1225,6 +1243,7 @@ pub fn compute_scored_state_anchored(
         commit_messages,
         head_rev,
         history_rev,
+        named_files,
         pre_phase_ms,
     } = *data;
     run.set_head_rev(history_rev);
@@ -1251,10 +1270,17 @@ pub fn compute_scored_state_anchored(
         .iter()
         .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
         .collect();
-    let hunk_texts: Vec<_> = crate::change_class::hunk_texts(&diff_text)
+    let mut hunk_texts: Vec<_> = crate::change_class::hunk_texts(&diff_text)
         .into_iter()
         .filter(|h| analysed.contains(&h.path))
         .collect();
+    settle_layout(
+        &root_dir,
+        &mut hunk_texts,
+        &preferred_revs,
+        &mut batch_reader,
+        &run,
+    );
     let change_classes = classify_changes(
         &root_dir,
         &changed_files,
@@ -1265,7 +1291,8 @@ pub fn compute_scored_state_anchored(
 
     let t_parse_changed = Instant::now();
 
-    let included_set: FxHashSet<PathBuf> = changed_files.iter().cloned().collect();
+    let included_set: FxHashSet<PathBuf> =
+        changed_files.iter().chain(&named_files).cloned().collect();
     // Past the deadline the changed files are the whole universe: no walk,
     // no discovery, a graph over the change alone — a valid, partial artifact
     // instead of an abort.
@@ -1331,9 +1358,18 @@ pub fn compute_scored_state_anchored(
 
     let (discovered_files, discovery_attribution) =
         create_discovery(&config, reverse_references).discover_attributed(&discovery_ctx);
+    // `--symbol` read every file naming the symbol under the changed-file
+    // cap to find its definitions. Its callers are in those files, so they
+    // are read the same way: under the candidate cap a 3,000-line module
+    // that subclasses it was only "not fully analysed" (#542).
+    let named_files: Vec<PathBuf> = named_files
+        .iter()
+        .map(|p| candidate_files::normalize_path(p, &root_dir))
+        .collect();
     let discovered_files: Vec<PathBuf> = discovered_files
         .into_iter()
         .map(|p| candidate_files::normalize_path(&p, &root_dir))
+        .filter(|p| !named_files.contains(p))
         .collect();
     let discovery_source: FxHashMap<Arc<str>, &'static str> = discovery_attribution
         .into_iter()
@@ -1353,6 +1389,15 @@ pub fn compute_scored_state_anchored(
     let t_discovery = Instant::now();
 
     all_fragments.extend(process_files_for_fragments(
+        &named_files,
+        &root_dir,
+        &preferred_revs,
+        &mut seen_frag_ids,
+        Some(&mut batch_reader),
+        true,
+        &run,
+    ));
+    all_fragments.extend(process_files_for_fragments(
         &discovered_files,
         &root_dir,
         &preferred_revs,
@@ -1369,6 +1414,7 @@ pub fn compute_scored_state_anchored(
 
     let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
         .iter()
+        .chain(&named_files)
         .map(|p| Arc::from(p.to_string_lossy().as_ref()))
         .collect();
     let ScoredFragments {
@@ -1412,6 +1458,27 @@ pub fn compute_scored_state_anchored(
         scoring: (t_done.duration_since(t_tokenization).as_secs_f64() * 1000.0 - graph_build_ms)
             .max(0.0),
     };
+
+    for (name, ms) in [
+        ("pre_phase", heavy_latency_ms.pre_phase),
+        ("parse_changed", heavy_latency_ms.parse_changed),
+        ("universe_walk", heavy_latency_ms.universe_walk),
+        ("discovery", heavy_latency_ms.discovery),
+        ("parse_discovered", heavy_latency_ms.parse_discovered),
+        ("tokenization", heavy_latency_ms.tokenization),
+        ("graph_build", heavy_latency_ms.graph_build),
+        ("scoring", heavy_latency_ms.scoring),
+    ] {
+        crate::profile::record(name, ms);
+    }
+    let usage = run.usage();
+    for (name, n) in [
+        ("candidate_files", usage.candidate_files),
+        ("fragments", all_fragments.len() as u64),
+        ("edges", usage.final_edges),
+    ] {
+        crate::profile::count(name, n);
+    }
 
     tracing::debug!(
         "diffctx heavy: pre_phase {:.3}s, parse_changed {:.3}s, universe {:.3}s, discovery {:.3}s, parse_discovered {:.3}s, tokenization {:.3}s, graph_build {:.3}s, scoring {:.3}s",
@@ -1462,6 +1529,42 @@ pub fn compute_scored_state_anchored(
 const MAX_COMMIT_MESSAGES: usize = 20;
 const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 
+/// Which runs only a formatter could have written, each changed file read
+/// as the fragmenter reads it: in chunks, the reads in order (the batch
+/// reader is not `Send`) and the parses in parallel. Past the deadline a
+/// file is judged by its lines alone.
+fn settle_layout(
+    root_dir: &Path,
+    hunk_texts: &mut [crate::change_class::HunkText],
+    preferred_revs: &[String],
+    batch_reader: &mut CatFileBatch,
+    run: &crate::resource::RunContext,
+) {
+    let mut files: Vec<&mut [crate::change_class::HunkText]> =
+        hunk_texts.chunk_by_mut(|a, b| a.path == b.path).collect();
+    for chunk in files.chunks_mut(rayon::current_num_threads().max(1)) {
+        let texts: Vec<Option<String>> = chunk
+            .iter()
+            .map(|runs| {
+                run.check()
+                    .then(|| {
+                        crate::fragmentation::changed_text(
+                            &root_dir.join(&runs[0].path),
+                            root_dir,
+                            preferred_revs,
+                            batch_reader,
+                        )
+                    })
+                    .flatten()
+            })
+            .collect();
+        chunk
+            .par_iter_mut()
+            .zip(texts.par_iter())
+            .for_each(|(runs, text)| crate::change_class::settle_layout(runs, text.as_deref()));
+    }
+}
+
 /// The class of every changed file, keyed by its display path. Generated
 /// files are told by their header, which the first fragment of the file
 /// carries; the rest by the shape of their hunks and changed lines.
@@ -1496,7 +1599,7 @@ pub(crate) fn classify_changes(
             .or_insert_with(|| (Vec::new(), Vec::new(), true));
         removed.extend(h.removed.iter().cloned());
         added.extend(h.added.iter().cloned());
-        *layout &= h.is_layout();
+        *layout &= h.layout;
     }
     let mut head_by_path: FxHashMap<&str, &Fragment> = FxHashMap::default();
     for f in fragments {
@@ -1911,6 +2014,7 @@ pub fn run_selection(
     budget_tokens: Option<u32>,
     tau: Option<f64>,
 ) -> SelectionOutcome {
+    let _selection = crate::profile::phase("selection");
     let t_start = Instant::now();
     // Selection runs after the heavy phase returned, often on another thread
     // (the Python bridge re-runs it per cell): publish the run context again

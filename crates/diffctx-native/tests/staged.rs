@@ -8,10 +8,8 @@ use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git_out(repo: &Path, args: &[&str]) -> Output {
     Command::new("git")
@@ -51,7 +49,7 @@ fn write(repo: &Path, rel: &str, content: &str) {
 }
 
 fn run(repo: &Path, args: &[&str]) -> Output {
-    Command::new(&*BIN)
+    diffctx()
         .current_dir(repo)
         .env("DIFFCTX_NO_MARKER", "1")
         .args(args)

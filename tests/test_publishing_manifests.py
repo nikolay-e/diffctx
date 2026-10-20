@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -7,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from diffctx.version import __version__
 
@@ -286,6 +288,26 @@ class TestDistributionPins:
         current = tuple(map(int, release.groups()))
         for pin in pins:
             assert (1, 12, 3) <= pin <= current
+
+    def test_every_installer_platform_is_built_and_checksummed(self, tmp_path):
+        """#288: install.js mapped six platforms while the release built four, so
+        `npx diffctx` failed on Intel macOS and Windows on ARM until a release
+        caught up; publish-extras only notices once the release is out."""
+        install = (PROJECT_ROOT / "packaging/npm/install.js").read_text(encoding="utf-8")
+        installer = dict(re.findall(r"target: '([\w-]+)', archive: '([\w.]+)'", install))
+        jobs = yaml.safe_load((PROJECT_ROOT / ".github/workflows/cd.yml").read_text(encoding="utf-8"))["jobs"]
+        built = {e["target"]: e["archive"] for e in jobs["build-binaries"]["strategy"]["matrix"]["include"]}
+        wheels = {e["target"] for e in jobs["build-wheels"]["strategy"]["matrix"]["include"]}
+        assert len(installer) == 6
+        assert installer == built
+        assert wheels == set(built)
+        spec = importlib.util.spec_from_file_location("render_packaging", PROJECT_ROOT / "scripts" / "render_packaging.py")
+        render = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(render)
+        assets = {f"diffctx-1.0.0-{target}.{archive}" for target, archive in installer.items()}
+        for name in assets:
+            (tmp_path / name).write_bytes(b"x")
+        assert set(render.collect_checksums(tmp_path, "1.0.0")) == assets
 
     def test_cd_republishes_the_registry_with_oidc(self):
         """The registry version must track releases; the job doing that needs

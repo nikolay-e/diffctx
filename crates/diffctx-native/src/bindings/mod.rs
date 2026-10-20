@@ -20,6 +20,7 @@ mod python;
 
 use js::TsConfigs;
 pub use js::js_bindings;
+pub(crate) use js::js_facts;
 pub use python::python_bindings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,7 +36,10 @@ pub fn lang_of(path: &str) -> Option<Lang> {
         .map(str::to_ascii_lowercase)?;
     match ext.as_str() {
         "py" | "pyi" => Some(Lang::Python),
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" => Some(Lang::Js),
+        // A page's inline scripts are JavaScript (#420).
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "html" | "htm" => {
+            Some(Lang::Js)
+        }
         _ => None,
     }
 }
@@ -132,7 +136,7 @@ pub struct Resolver<'a> {
     /// The directories a Python file puts on `sys.path`, by importer.
     python_roots: RefCell<FxHashMap<String, Rc<[String]>>>,
     python_env: python::PythonEnv,
-    js_facts: RefCell<FxHashMap<String, Option<Rc<js::JsFacts>>>>,
+    js_facts: RefCell<FxHashMap<String, Option<std::sync::Arc<js::JsFacts>>>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -163,7 +167,7 @@ impl<'a> Resolver<'a> {
             .unwrap_or_default();
         let b = Rc::new(match lang_of(path) {
             Some(Lang::Python) => python_bindings(&text),
-            Some(Lang::Js) => js_bindings(&text),
+            Some(Lang::Js) => js_bindings(&js::script_code(path, &text)),
             None => FileBindings::default(),
         });
         self.cache.borrow_mut().insert(path.to_string(), b.clone());
@@ -180,14 +184,45 @@ impl<'a> Resolver<'a> {
             Some(Lang::Js) => self.resolve_js(importer, spec),
             None => Resolution::Unsupported,
         };
+        let answer = match answer {
+            Resolution::File(f) => Resolution::File(self.real_path(f)),
+            other => other,
+        };
         self.resolved.borrow_mut().insert(key, answer.clone());
         answer
+    }
+
+    /// The file a symlink of the working tree names, where the import of
+    /// the link lands: Node and Vite load a module by its real path, so
+    /// `./client-telemetry.js` linked to a shared module is that module
+    /// (#372). A snapshot lists no links (`Source::list_blobs`), and an
+    /// import of one stays unresolved there.
+    fn real_path(&self, path: String) -> String {
+        let at = crate::paths::repo_join(self.root, &path);
+        let linked = matches!(self.source, Source::WorkingTree)
+            && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink());
+        if !linked {
+            return path;
+        }
+        dunce::canonicalize(self.root)
+            .ok()
+            .zip(dunce::canonicalize(&at).ok())
+            .and_then(|(root, real)| crate::paths::display_rel(&root, &real))
+            .filter(|real| self.files.contains(real))
+            .unwrap_or(path)
     }
 }
 
 /// The owner of a method the syntax does not name: an object built inside a
 /// call. A call through any receiver may reach it.
 pub(crate) const UNKNOWN_OWNER: &str = "<object>";
+
+/// The owner of a property set on the global object (`self.x = …`): any
+/// script the realm loads reaches it by name, bare or through the global
+/// object, with no import to bind it (#426).
+pub(crate) const GLOBAL_OWNER: &str = "<global>";
+
+const GLOBAL_OBJECTS: &[&str] = &["self", "globalThis", "window", "global"];
 
 /// A read of a member through a receiver nothing types: not listed as a
 /// caller, and not nothing either (#399).
@@ -554,6 +589,13 @@ impl Resolver<'_> {
 
     /// What `receiver.method` says about the receiver being `class`.
     fn receiver_is(&self, site: &Site, chain: &str, def: &Definition, class: &str) -> Evidence {
+        if class == GLOBAL_OWNER {
+            return if GLOBAL_OBJECTS.contains(&chain) {
+                self.global_reach(site.path, def.path)
+            } else {
+                Evidence::Rejected
+            };
+        }
         if chain.is_empty() || class == UNKNOWN_OWNER {
             return Evidence::Candidate("receiver_unresolved");
         }
@@ -760,19 +802,7 @@ impl Resolver<'_> {
     fn names_for<'n>(&self, site: &Site, def: &'n Definition) -> Vec<String> {
         let mut words = vec![def.name.to_string()];
         if def.class.is_none() {
-            words.extend(
-                self.bindings(site.path)
-                    .names
-                    .iter()
-                    .filter_map(|(local, t)| match t {
-                        Target::Member { name, .. }
-                            if local != def.name && (name == def.name || name == "default") =>
-                        {
-                            Some(local.clone())
-                        }
-                        _ => None,
-                    }),
-            );
+            words.extend(self.import_locals(site.path, def.path, def.name));
         }
         words
     }

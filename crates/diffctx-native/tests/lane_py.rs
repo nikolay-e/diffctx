@@ -10,10 +10,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -51,7 +49,7 @@ fn repo(base: &[(&str, &str)], change: &[(&str, &str)]) -> TempDir {
 }
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(args)
         .args(["-q", "-f", "json"])
@@ -911,6 +909,153 @@ fn a_removed_field_is_read_through_the_instance_its_module_builds() {
     assert_eq!(
         callers(&doc, "svc/config.py", "AppSettings"),
         set(&["svc/config.py::settings", "svc/factory.py::build"]),
+        "{doc}"
+    );
+}
+/// #421, closed on its own shape: a method whose last line calls a
+/// same-class method, past a `with` block, is that method's caller.
+#[test]
+fn a_same_class_call_on_the_last_line_after_a_with_block_is_a_caller() {
+    let tmp = repo(
+        &[
+            ("svc/__init__.py", ""),
+            (
+                "svc/service.py",
+                "class Service:\n    def __init__(self, s):\n        self.s = s\n\n    def apply_result(self, x):\n        return x\n\n    def commit(self, x):\n        with self.s.tx():\n            y = x + 1\n        return self.apply_result(y)\n",
+            ),
+        ],
+        &[],
+    );
+    let doc = symbol(tmp.path(), "apply_result");
+    assert_eq!(
+        callers(&doc, "svc/service.py", "apply_result"),
+        set(&["svc/service.py::commit"]),
+        "{doc}"
+    );
+}
+
+/// #467, closed on its own shape: apps that reach a shared package through
+/// `[tool.uv.sources]` path entries, importing a name its `__init__`
+/// re-exports, are callers of what the change edits there.
+#[test]
+fn apps_linked_by_uv_path_sources_are_callers_in_the_shared_package() {
+    let manifest = |name: &str| {
+        format!(
+            "[project]\nname = \"{name}\"\nversion = \"0.1.0\"\ndependencies = [\"kit\"]\n\n[tool.uv.sources]\nkit = {{ path = \"../../shared/kit\" }}\n"
+        )
+    };
+    let serve = "from kit import auth_settings\n\n\ndef serve():\n    return auth_settings()\n";
+    let auth = "def auth_settings():\n    return {\"ttl\": 60}\n";
+    let (a, b) = (manifest("a"), manifest("b"));
+    let tmp = repo(
+        &[
+            (
+                "shared/kit/pyproject.toml",
+                "[project]\nname = \"kit\"\nversion = \"0.1.0\"\n",
+            ),
+            (
+                "shared/kit/src/kit/__init__.py",
+                "from kit.auth import auth_settings\n",
+            ),
+            ("shared/kit/src/kit/auth.py", auth),
+            ("apps/a/pyproject.toml", &a),
+            ("apps/a/src/a/__init__.py", ""),
+            ("apps/a/src/a/serve.py", serve),
+            ("apps/b/pyproject.toml", &b),
+            ("apps/b/src/b/__init__.py", ""),
+            ("apps/b/src/b/serve.py", serve),
+        ],
+        &[("shared/kit/src/kit/auth.py", &auth.replace("60", "120"))],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "shared/kit/src/kit/auth.py", "auth_settings"),
+        set(&[
+            "apps/a/src/a/serve.py::serve",
+            "apps/b/src/b/serve.py::serve"
+        ]),
+        "{doc}"
+    );
+}
+
+/// #468, closed on its own shape: a file that imports names and calls them
+/// defines none of them, even when the change edits its import line; the
+/// view around the calls is what changed, and its caller says so.
+#[test]
+fn an_imported_name_is_no_changed_definition_of_the_importer() {
+    let tmp = repo(
+        &[
+            ("lib/__init__.py", ""),
+            (
+                "lib/patching.py",
+                "def apply_patch(p):\n    return p\n\n\ndef revert(p):\n    return p\n",
+            ),
+            ("api/__init__.py", ""),
+            (
+                "api/issues.py",
+                "from flask import Blueprint\n\nfrom lib.patching import apply_patch\n\nbp = Blueprint(\"issues\", __name__)\n\n\n@bp.route(\"/patch\")\ndef view(p):\n    return apply_patch(p)\n",
+            ),
+            (
+                "api/app.py",
+                "from api.issues import view\n\n\ndef handle(p):\n    return view(p)\n",
+            ),
+        ],
+        &[(
+            "api/issues.py",
+            "from flask import Blueprint\n\nfrom lib.patching import apply_patch, revert\n\nbp = Blueprint(\"issues\", __name__)\n\n\n@bp.route(\"/patch\")\ndef view(p):\n    return revert(apply_patch(p))\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    let defined: BTreeSet<&str> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["path"] == "api/issues.py")
+        .filter_map(|c| c["symbol"].as_str())
+        .collect();
+    assert_eq!(
+        callers(&doc, "api/issues.py", "view"),
+        set(&["api/app.py::handle"]),
+        "{doc}"
+    );
+    assert!(
+        !defined.contains("apply_patch") && !defined.contains("revert"),
+        "{defined:?}: {doc}"
+    );
+}
+
+/// A removed module-level constant breaks every importer that still reads
+/// it; the removal read as a clean zero because only functions and classes
+/// counted as declarations (found with #491). Another module's own constant
+/// of that name, a class attribute and the name in a string are no readers.
+#[test]
+fn a_removed_module_constant_names_the_readers_it_breaks() {
+    let tmp = repo(
+        &[
+            ("pkg/__init__.py", ""),
+            (
+                "pkg/settings.py",
+                "MAX_RETRIES = 3\n\n\ndef keep():\n    return 1\n",
+            ),
+            (
+                "pkg/client.py",
+                "from pkg.settings import MAX_RETRIES\n\n\ndef retry():\n    return MAX_RETRIES\n",
+            ),
+            (
+                "pkg/worker.py",
+                "from pkg import settings\n\n\ndef work():\n    return settings.MAX_RETRIES\n",
+            ),
+            (
+                "pkg/other.py",
+                "MAX_RETRIES = 9\n\n\nclass Policy:\n    MAX_RETRIES = 1\n\n\ndef own():\n    return MAX_RETRIES, \"MAX_RETRIES\"\n",
+            ),
+        ],
+        &[("pkg/settings.py", "def keep():\n    return 1\n")],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "pkg/settings.py", "MAX_RETRIES"),
+        set(&["pkg/client.py::retry", "pkg/worker.py::work"]),
         "{doc}"
     );
 }

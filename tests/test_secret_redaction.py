@@ -129,4 +129,5 @@ def test_a_secret_only_on_removed_lines_is_counted(tmp_path):
     assert doc["redactions"]["count"] >= 1
     assert "aws_access_key" in doc["redactions"]["categories"]
     assert "sanitization_redaction" in doc["coverage"]["limit_reasons"]
+    assert doc["coverage"]["unknown"] == ["resources"], "the run measured nothing it could report"
     assert "credential-shaped string(s) redacted" in result.stderr

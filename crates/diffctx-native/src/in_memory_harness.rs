@@ -161,11 +161,16 @@ pub fn build_diff_context_in_memory(
     let dummy_root = Path::new(".");
     let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     changed_files.sort();
+    let mut hunk_texts = crate::change_class::hunk_texts(&diff_text);
+    for runs in hunk_texts.chunk_by_mut(|a, b| a.path == b.path) {
+        let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
+        crate::change_class::settle_layout(runs, text);
+    }
     let change_classes = crate::pipeline::classify_changes(
         dummy_root,
         &changed_files,
         &hunks,
-        &crate::change_class::hunk_texts(&diff_text),
+        &hunk_texts,
         &all_fragments,
     );
     let fragmentless =

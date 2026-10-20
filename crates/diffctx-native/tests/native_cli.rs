@@ -13,10 +13,8 @@ use tempfile::TempDir;
 /// The binary under test: the one cargo just built, or — set by the release
 /// job — the shipped artifact for a target, so every standalone binary that
 /// reaches a user passes this suite on its own platform.
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     // Scrub the same vars git_command() scrubs: under `git commit -a` the
@@ -46,7 +44,7 @@ fn commit_all(repo: &Path, message: &str) {
 }
 
 fn run(repo: &Path, args: &[&str]) -> Output {
-    Command::new(&*BIN)
+    diffctx()
         .current_dir(repo)
         .args(args)
         .output()
@@ -564,7 +562,7 @@ fn a_broken_git_config_surfaces_gits_own_fatal_line() {
 #[test]
 fn a_bound_resource_yields_a_partial_artifact_that_says_so() {
     let tmp = code_change_repo();
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .env("DIFFCTX_MAX_EDGE_CONTRIBUTIONS", "1")
         .args([".", "--diff", "HEAD~1..HEAD", "--format", "json", "--quiet"])
@@ -776,7 +774,7 @@ fn a_subtree_argument_or_working_directory_narrows_the_diff() {
 fn tracing_goes_to_stderr_and_the_artifact_still_parses() {
     let tmp = code_change_repo();
     for format in ["json", "yaml"] {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(tmp.path())
             .env("RUST_LOG", "debug")
             .args([".", "--diff", "HEAD~1..HEAD", "-f", format, "-q"])
@@ -815,7 +813,7 @@ fn a_closed_stdout_pipe_exits_quietly() {
     std::fs::write(repo.join("big.py"), body).expect("write");
     commit_all(repo, "big");
 
-    let mut child = Command::new(&*BIN)
+    let mut child = diffctx()
         .current_dir(repo)
         .args([".", "--diff", "HEAD~1..HEAD", "--full", "-q"])
         .stdout(Stdio::piped())
@@ -841,7 +839,7 @@ fn a_closed_stdout_pipe_exits_quietly() {
 #[test]
 fn an_expired_deadline_yields_a_partial_artifact_naming_it() {
     let tmp = code_change_repo();
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .env("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")
         .args([".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
@@ -862,7 +860,7 @@ fn an_expired_deadline_yields_a_partial_artifact_naming_it() {
 #[test]
 fn the_watchdog_exits_124_when_the_worker_does_not_answer() {
     let tmp = code_change_repo();
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .env("DIFFCTX_TEST_WATCHDOG_GRACE_SECS", "0")
         .args([".", "--diff", "HEAD~1..HEAD", "-q"])
@@ -881,7 +879,7 @@ fn the_watchdog_exits_124_when_the_worker_does_not_answer() {
 fn odd_watchdog_overrides_and_a_symbol_in_pack_mode_match_the_python_cli() {
     let tmp = code_change_repo();
     for value in ["+0", "²"] {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(tmp.path())
             .env("DIFFCTX_TEST_WATCHDOG_GRACE_SECS", value)
             .args([".", "--diff", "HEAD~1..HEAD", "-q"])
@@ -889,7 +887,7 @@ fn odd_watchdog_overrides_and_a_symbol_in_pack_mode_match_the_python_cli() {
             .expect("run diffctx");
         assert_eq!(out.status.code(), Some(0), "{value}");
     }
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(tmp.path())
         .args([".", "--symbol", "main", "--mode", "pack", "-q"])
         .output()
@@ -1329,7 +1327,7 @@ fn a_historical_range_ignores_history_after_its_head() {
         format!("{}..{}", revs[0], revs[1])
     };
     let history_edges = |repo: &Path| -> usize {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(repo)
             .env("DIFFCTX_TRACE_BUILDERS", "1")
             .args([".", "--diff", &range, "--format", "json", "--quiet"])
@@ -1395,7 +1393,7 @@ fn co_change_reads_history_before_the_range_and_links_files_once() {
     std::fs::write(repo.join("other.py"), "def unrelated():\n    return 1\n").expect("write");
     commit_all(repo, "base");
     let history_edges = |range: &str| -> usize {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(repo)
             .env("DIFFCTX_TRACE_BUILDERS", "1")
             .args([".", "--diff", range, "--format", "json", "--quiet"])
@@ -1475,7 +1473,7 @@ fn rewritten_functions_are_placed_whole_before_the_budget_goes_elsewhere() {
     commit_all(repo, "base");
     std::fs::write(repo.join("worker.py"), file(1, "//")).expect("write");
     commit_all(repo, "change");
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([
             ".",
@@ -1830,7 +1828,7 @@ fn a_migration_is_not_a_generated_file_and_protoc_output_still_is() {
     )
     .expect("write");
     commit_all(repo, "migration");
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
         .output()
@@ -1880,7 +1878,7 @@ fn a_symbol_path_is_read_from_the_given_path() {
     }
     commit_all(repo, "base");
     let symbol = |dir: &Path, path: &str, query: &str| {
-        let out = Command::new(&*BIN)
+        let out = diffctx()
             .current_dir(dir)
             .args([path, "--symbol", query, "-f", "md", "-q"])
             .output()
@@ -1893,4 +1891,185 @@ fn a_symbol_path_is_read_from_the_given_path() {
         sub.contains("sub/x.py::f") && !sub.contains("other/x.py"),
         "{sub}"
     );
+}
+
+/// #122: a run brings a contiguous window of 16 of the token cache's 256
+/// shards under their share of the size cap. One shard per run, the first
+/// fix, never reached the cap in ordinary use: touching every shard takes
+/// ~1570 runs, and the cache measured 6.3 GB against 512 MB.
+#[test]
+fn a_run_evicts_a_window_of_token_cache_shards() {
+    let tmp = code_change_repo();
+    let cache = TempDir::new().expect("tempdir");
+    let analyse = || {
+        let out = diffctx()
+            .current_dir(tmp.path())
+            .env("DIFFCTX_TOKEN_CACHE_DIR", cache.path())
+            .env("DIFFCTX_TOKEN_CACHE_MAX_BYTES", (256 * 1000).to_string())
+            .args([".", "--diff", "HEAD~1..HEAD", "-q", "-f", "json"])
+            .output()
+            .expect("run diffctx");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    analyse();
+    let tables: Vec<_> = std::fs::read_dir(cache.path())
+        .expect("cache dir")
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    let [table] = tables.as_slice() else {
+        panic!("one table per tokenizer: {tables:?}");
+    };
+    let now = std::time::SystemTime::now();
+    for shard in 0..256 {
+        let dir = table.join(format!("{shard:02x}"));
+        std::fs::create_dir_all(&dir).expect("shard dir");
+        for (name, age) in [("old-a", 7200), ("old-b", 3600)] {
+            let path = dir.join(name);
+            std::fs::write(&path, vec![b'x'; 800]).expect("entry");
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|f| f.set_modified(now - std::time::Duration::from_secs(age)))
+                .expect("age the entry");
+        }
+    }
+    analyse();
+    let evicted: Vec<usize> = (0..256)
+        .filter(|s| !table.join(format!("{s:02x}")).join("old-a").exists())
+        .collect();
+    assert_eq!(evicted.len(), 16, "{evicted:?}");
+    assert!(
+        evicted
+            .iter()
+            .any(|start| (0..16).all(|k| evicted.contains(&((start + k) % 256)))),
+        "not one window: {evicted:?}"
+    );
+}
+
+/// #184: a two-line edit inside a long function ships the excerpt around it
+/// and the one-line signature. The function's own gap chunks, slices of the
+/// changed function, came back as context and carried the body under the
+/// signature's name (101 lines in Python and Rust).
+#[test]
+fn a_small_edit_in_a_long_function_ships_no_slice_of_its_body() {
+    for (path, head, body, tail) in [
+        ("big.py", "def big(a):", "    s{i} = {i}", "    return a"),
+        (
+            "big.rs",
+            "pub fn big(a: u32) -> u32 {",
+            "    let _s{i} = {i};",
+            "    a\n}",
+        ),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path();
+        init_repo(repo);
+        let source = |edited: bool| {
+            let mut lines: Vec<String> = (0..120)
+                .map(|i| body.replace("{i}", &i.to_string()))
+                .collect();
+            if edited {
+                lines.insert(99, body.replace("{i}", "900"));
+                lines.insert(100, body.replace("{i}", "901"));
+            }
+            format!("{head}\n{}\n{tail}\n", lines.join("\n"))
+        };
+        std::fs::write(repo.join(path), source(false)).expect("write");
+        commit_all(repo, "base");
+        std::fs::write(repo.join(path), source(true)).expect("write");
+        commit_all(repo, "edit");
+        let out = run(
+            repo,
+            &[
+                ".",
+                "--diff",
+                "HEAD~1..HEAD",
+                "--budget",
+                "50000",
+                "-q",
+                "-f",
+                "json",
+            ],
+        );
+        let doc = json_doc(&out);
+        let shipped: Vec<(String, String)> = doc["fragments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["path"] == path)
+            .map(|f| {
+                (
+                    f["kind"].as_str().unwrap_or_default().to_string(),
+                    f["lines"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect();
+        let in_edit = |lines: &str| {
+            let (a, b) = lines.split_once('-').unwrap_or((lines, lines));
+            let (a, b): (u32, u32) = (a.parse().unwrap_or(0), b.parse().unwrap_or(0));
+            a <= 101 && b >= 102 && b - a < 12
+        };
+        assert!(
+            shipped.iter().any(|(k, l)| k == "excerpt" && in_edit(l)),
+            "{path}: {shipped:?}"
+        );
+        assert!(
+            shipped.iter().all(|(k, l)| (k == "excerpt" && in_edit(l))
+                || (k == "function_signature" && l == "1-1")),
+            "{path}: {shipped:?}"
+        );
+    }
+}
+
+/// #123: Zig's comptime-generic idiom puts a whole type inside one
+/// function. Fragmentation descends into the struct it returns, so an edit
+/// inside one method is that method, not the 400-line generic.
+#[test]
+fn an_edit_inside_a_zig_generic_type_is_its_method() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let source = |fifty: &str| {
+        let methods: String = (0..99)
+            .map(|i| {
+                let body = if i == 50 {
+                    fifty.to_string()
+                } else {
+                    format!("self.value + x + {i}")
+                };
+                format!(
+                    "        pub fn method_{i}(self: *Self, x: u32) u32 {{\n            return {body};\n        }}\n\n"
+                )
+            })
+            .collect();
+        format!(
+            "const std = @import(\"std\");\n\npub fn TrailerType(comptime Storage: type) type {{\n    return struct {{\n        const Self = @This();\n        storage: *Storage,\n        value: u32,\n\n{methods}    }};\n}}\n"
+        )
+    };
+    std::fs::write(repo.join("trailer.zig"), source("self.value + x + 50")).expect("write");
+    commit_all(repo, "base");
+    std::fs::write(repo.join("trailer.zig"), source("self.value * x + 50")).expect("write");
+    commit_all(repo, "edit");
+    let doc = json_doc(&run(
+        repo,
+        &[".", "--diff", "HEAD~1..HEAD", "-q", "-f", "json"],
+    ));
+    let changed: Vec<(&str, &str)> = doc["fragments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| f["role"] == "changed")
+        .map(|f| {
+            (
+                f["symbol"].as_str().unwrap_or_default(),
+                f["lines"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(changed, vec![("method_50", "209-211")], "{doc:#}");
 }

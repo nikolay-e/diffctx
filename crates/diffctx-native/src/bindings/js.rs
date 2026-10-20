@@ -3,12 +3,13 @@
 //! through relative paths, tsconfig `paths` and workspace packages.
 
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::facts::{DeclKind, Declaration};
 use crate::source::Source;
 
 use super::{
@@ -594,6 +595,9 @@ impl Resolver<'_> {
     }
 
     pub(super) fn resolve_js(&self, importer: &str, spec: &str) -> Resolution {
+        // `./sw.js?raw`, `./w.ts?worker`: a bundler query names the same
+        // file (#558); a leading `#` is a subpath import, not a fragment.
+        let spec = spec.split('?').next().unwrap_or(spec);
         if spec.starts_with("./") || spec.starts_with("../") || spec == "." || spec == ".." {
             let joined = normalize(&PathBuf::from(parent_dir(importer)).join(spec));
             return self
@@ -663,16 +667,27 @@ pub(super) struct Occurrence {
 }
 
 /// What one JS/TS file says in its syntax (#506): the identifiers it
-/// writes, and the names its default export designates.
+/// writes, the names its default export designates, and what it declares.
 #[derive(Debug, Default)]
-pub(super) struct JsFacts {
+pub(crate) struct JsFacts {
     /// In source order.
-    pub occurrences: Vec<Occurrence>,
+    pub(super) occurrences: Vec<Occurrence>,
     /// `export default Badge`, `export default memo(Badge)`,
     /// `export { Badge as default }`, `export default function Badge`.
-    pub default_names: Vec<String>,
+    pub(super) default_names: Vec<String>,
     /// Modules loaded by pattern (#357).
-    pub globs: Vec<Glob>,
+    pub(super) globs: Vec<Glob>,
+    /// Functions, classes and methods with the class and the function
+    /// they sit in (#554), and as assignments what the fragmenter does not
+    /// cut: a property of the global object or of the module's exports
+    /// (#426), an interface or object type member, a class field (#488).
+    pub(crate) declarations: Vec<Declaration>,
+    /// What `importScripts(…)` loads into a worker, as written; `None` for
+    /// an argument that is no string literal.
+    pub(super) scripts: Vec<Option<String>>,
+    /// A page's top-level script statements: in a `.js` file they are the
+    /// fragmenter's gap chunks, in a page the script element holds them.
+    pub(crate) script_statements: Vec<(u32, u32)>,
     lines: Vec<Box<str>>,
 }
 
@@ -749,10 +764,58 @@ const FUNCTIONS: &[&str] = &[
     "method_definition",
 ];
 
-pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
+fn is_html(path: &str) -> bool {
+    let ext = path.rsplit('.').next().map(str::to_ascii_lowercase);
+    matches!(ext.as_deref(), Some("html" | "htm"))
+}
+
+/// The code of a file: an HTML page's is its inline scripts, at their own
+/// positions in the page (#420).
+pub(super) fn script_code<'t>(path: &str, text: &'t str) -> std::borrow::Cow<'t, str> {
+    if is_html(path) {
+        crate::parsers::inline_scripts(text)
+            .unwrap_or_default()
+            .into()
+    } else {
+        text.into()
+    }
+}
+
+const FACTS_LIMIT: usize = 8192;
+
+static FACTS: Lazy<std::sync::Mutex<FxHashMap<u64, Arc<JsFacts>>>> =
+    Lazy::new(|| std::sync::Mutex::new(FxHashMap::default()));
+
+/// The facts of one blob, parsed once per run whoever asks first: the
+/// overlay of declarations, then the resolver. `None` when the grammar is
+/// not compiled in or the parse timed out.
+pub(crate) fn js_facts(path: &str, text: &str) -> Option<Arc<JsFacts>> {
+    use std::hash::{Hash, Hasher};
+    let key = {
+        let mut h = rustc_hash::FxHasher::default();
+        (grammar_of(path), is_html(path), text).hash(&mut h);
+        h.finish()
+    };
+    if let Some(hit) = FACTS.lock().ok().and_then(|c| c.get(&key).cloned()) {
+        return Some(hit);
+    }
+    let facts = Arc::new(read_js_facts(path, &script_code(path, text))?);
+    if let Ok(mut cache) = FACTS.lock() {
+        if cache.len() >= FACTS_LIMIT {
+            cache.clear();
+        }
+        cache.insert(key, Arc::clone(&facts));
+    }
+    Some(facts)
+}
+
+fn read_js_facts(path: &str, text: &str) -> Option<JsFacts> {
     let tree = crate::parsers::parse_tree(grammar_of(path), text)?;
     let bytes = text.as_bytes();
     let mut scopes: Vec<Scope> = vec![(None, FxHashMap::default())];
+    // The lines of each scope's function: what a definition inside is
+    // local to.
+    let mut spans: Vec<Option<(u32, u32)>> = vec![None];
     let mut declared: FxHashSet<usize> = FxHashSet::default();
     let mut found: Vec<(tree_sitter::Node, usize)> = Vec::new();
     let mut facts = JsFacts {
@@ -763,13 +826,31 @@ pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
     while let Some((node, scope)) = stack.pop() {
         let mut inner = scope;
         let kind = node.kind();
+        let local_to = spans[scope];
+        let mut define = |name: Option<tree_sitter::Node>, kind, class: Option<String>| {
+            if let Some(name) = name.filter(|n| n.kind().ends_with("identifier")) {
+                facts.declarations.push(Declaration {
+                    name: name.utf8_text(bytes).unwrap_or("").to_string(),
+                    kind,
+                    lines: lines_of(node),
+                    class,
+                    scope: local_to,
+                });
+            }
+        };
         if FUNCTIONS.contains(&kind) {
+            let name = node.child_by_field_name("name");
+            if kind == "method_definition" {
+                if let Some(class) = class_of(node, bytes) {
+                    define(name, DeclKind::Function, Some(class));
+                }
+            } else if kind.ends_with("_declaration") {
+                define(name, DeclKind::Function, None);
+            }
             scopes.push((Some(scope), FxHashMap::default()));
+            spans.push(Some(lines_of(node)));
             inner = scopes.len() - 1;
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .filter(|_| kind != "method_definition")
-            {
+            if let Some(name) = name.filter(|_| kind != "method_definition") {
                 let owner = (kind.ends_with("_declaration") && scope != 0)
                     .then_some((scope, Local::Function));
                 declare(name, bytes, owner, &mut scopes, &mut declared);
@@ -798,6 +879,13 @@ pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
                 let local = if value
                     .is_some_and(|v| FUNCTIONS.contains(&v.kind()) || v.kind() == "class")
                 {
+                    let class = value.is_some_and(|v| v.kind() == "class");
+                    let kind = if class {
+                        DeclKind::Class
+                    } else {
+                        DeclKind::Function
+                    };
+                    define(node.child_by_field_name("name"), kind, None);
                     Some(Local::Function)
                 } else if value.is_some_and(|v| imports_module(v, bytes)) {
                     None
@@ -816,6 +904,9 @@ pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
             | "interface_declaration"
             | "type_alias_declaration"
             | "enum_declaration" => {
+                if kind.ends_with("class_declaration") {
+                    define(node.child_by_field_name("name"), DeclKind::Class, None);
+                }
                 if let Some(name) = node.child_by_field_name("name") {
                     declare(name, bytes, None, &mut scopes, &mut declared);
                 }
@@ -844,7 +935,26 @@ pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
                 }
             }
             "export_statement" => default_export(node, bytes, &mut facts.default_names),
-            "call_expression" => facts.globs.extend(glob_of(node, bytes)),
+            "assignment_expression"
+            | "property_signature"
+            | "method_signature"
+            | "public_field_definition"
+            | "field_definition" => {
+                if let Some((name, class, span)) = declared_member(node, bytes) {
+                    declared.insert(name.start_byte());
+                    facts.declarations.push(Declaration {
+                        name: name.utf8_text(bytes).unwrap_or("").to_string(),
+                        kind: DeclKind::Assignment,
+                        lines: lines_of(span),
+                        class,
+                        scope: None,
+                    });
+                }
+            }
+            "call_expression" => {
+                facts.globs.extend(glob_of(node, bytes));
+                facts.scripts.extend(imported_scripts(node, bytes));
+            }
             "identifier"
             | "shorthand_property_identifier"
             | "type_identifier"
@@ -886,7 +996,107 @@ pub(super) fn js_facts(path: &str, text: &str) -> Option<JsFacts> {
         });
     }
     facts.occurrences.sort_by_key(|o| (o.line, o.col));
+    if is_html(path) {
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        facts.script_statements = root
+            .named_children(&mut cursor)
+            .filter(|n| {
+                let kind = n.kind();
+                !(kind.ends_with("_declaration")
+                    || kind == "comment"
+                    || kind == "import_statement"
+                    || kind == "export_statement")
+            })
+            .map(lines_of)
+            .collect();
+    }
     Some(facts)
+}
+
+/// A member a statement or a body declares: its name, its owner and the
+/// span of the declaration. `self.x = …`, `globalThis.x`, `window.x` set a
+/// property of the global object, which any script of the realm reaches
+/// by name; `exports.x`, `module.exports.x` export `x` from the module
+/// (#426). An interface or object type states its members, a class its
+/// fields (#488).
+fn declared_member<'t>(
+    node: tree_sitter::Node<'t>,
+    bytes: &[u8],
+) -> Option<(tree_sitter::Node<'t>, Option<String>, tree_sitter::Node<'t>)> {
+    if node.kind() == "assignment_expression" {
+        let left = node
+            .child_by_field_name("left")
+            .filter(|l| l.kind() == "member_expression")?;
+        let name = left
+            .child_by_field_name("property")
+            .filter(|p| p.kind() == "property_identifier")?;
+        let class = match left.child_by_field_name("object")?.utf8_text(bytes).ok()? {
+            o if super::GLOBAL_OBJECTS.contains(&o) => Some(super::GLOBAL_OWNER.to_string()),
+            "exports" | "module.exports" => None,
+            _ => return None,
+        };
+        let statement = node
+            .parent()
+            .filter(|p| p.kind() == "expression_statement")
+            .unwrap_or(node);
+        return Some((name, class, statement));
+    }
+    let name = node
+        .child_by_field_name("name")
+        .or_else(|| node.child_by_field_name("property"))
+        .filter(|n| {
+            matches!(
+                n.kind(),
+                "property_identifier" | "private_property_identifier"
+            )
+        })?;
+    let class = match node.kind() {
+        "public_field_definition" | "field_definition" => class_of(node, bytes)?,
+        _ => {
+            let body = node
+                .parent()
+                .filter(|b| matches!(b.kind(), "interface_body" | "object_type"))?;
+            let owner = body.parent().filter(|o| {
+                matches!(o.kind(), "interface_declaration" | "type_alias_declaration")
+            })?;
+            owner
+                .child_by_field_name("name")?
+                .utf8_text(bytes)
+                .ok()?
+                .to_string()
+        }
+    };
+    Some((name, Some(class), node))
+}
+
+/// The named class whose body holds `member`; a method of an object
+/// literal has none the syntax names.
+fn class_of(member: tree_sitter::Node, bytes: &[u8]) -> Option<String> {
+    let class = member
+        .parent()
+        .filter(|b| b.kind() == "class_body")?
+        .parent()
+        .filter(|c| {
+            matches!(
+                c.kind(),
+                "class_declaration" | "abstract_class_declaration" | "class"
+            )
+        })?;
+    Some(
+        class
+            .child_by_field_name("name")?
+            .utf8_text(bytes)
+            .ok()?
+            .to_string(),
+    )
+}
+
+fn lines_of(node: tree_sitter::Node) -> (u32, u32) {
+    (
+        node.start_position().row as u32 + 1,
+        node.end_position().row as u32 + 1,
+    )
 }
 
 /// The pattern a glob-importing call states, when its arguments are
@@ -932,6 +1142,28 @@ fn glob_of(call: tree_sitter::Node, bytes: &[u8]) -> Option<Glob> {
         }),
         _ => None,
     }
+}
+
+/// The arguments of an `importScripts(…)` call.
+fn imported_scripts(call: tree_sitter::Node, bytes: &[u8]) -> Vec<Option<String>> {
+    let callee = call
+        .child_by_field_name("function")
+        .and_then(|f| f.utf8_text(bytes).ok());
+    if !matches!(callee, Some("importScripts" | "self.importScripts")) {
+        return Vec::new();
+    }
+    let Some(args) = call.child_by_field_name("arguments") else {
+        return Vec::new();
+    };
+    let mut cursor = args.walk();
+    args.named_children(&mut cursor)
+        .map(|a| {
+            (a.kind() == "string").then(|| {
+                let t = a.utf8_text(bytes).unwrap_or("");
+                t[1..t.len().saturating_sub(1).max(1)].to_string()
+            })
+        })
+        .collect()
 }
 
 /// A Vite glob as a path regex: `**/` any directories, `*` and `?` within
@@ -1073,17 +1305,14 @@ fn default_export(node: tree_sitter::Node, bytes: &[u8], out: &mut Vec<String>) 
 }
 
 impl Resolver<'_> {
-    pub(super) fn js_facts(&self, path: &str) -> Option<Rc<JsFacts>> {
+    pub(crate) fn js_facts(&self, path: &str) -> Option<Arc<JsFacts>> {
         if super::lang_of(path) != Some(super::Lang::Js) {
             return None;
         }
         if let Some(known) = self.js_facts.borrow().get(path) {
             return known.clone();
         }
-        let facts = self
-            .text(path)
-            .and_then(|t| js_facts(path, &t))
-            .map(Rc::new);
+        let facts = self.text(path).and_then(|t| js_facts(path, &t));
         self.js_facts
             .borrow_mut()
             .insert(path.to_string(), facts.clone());
@@ -1102,17 +1331,7 @@ impl Resolver<'_> {
         }
         let mut words = vec![name.to_string()];
         if !member {
-            words.extend(
-                self.bindings(path)
-                    .names
-                    .iter()
-                    .filter_map(|(local, t)| match t {
-                        Target::Member { name: n, .. } if n == name || n == "default" => {
-                            Some(local.clone())
-                        }
-                        _ => None,
-                    }),
-            );
+            words.extend(self.import_locals(path, def_path, name));
         }
         let Some(text) = self.text(path) else {
             return Vec::new();
@@ -1181,7 +1400,7 @@ impl Resolver<'_> {
             Some(Local::Function) => site.path != def.path,
             None => false,
         };
-        if occurrence.declares || occurrence.member || shadowed || def.class.is_some() {
+        if occurrence.declares || occurrence.member || shadowed {
             return None;
         }
         let relation = if next.starts_with('(') || next.starts_with("?.(") {
@@ -1189,12 +1408,114 @@ impl Resolver<'_> {
         } else {
             Relation::Reference
         };
-        let evidence = self.names(site, &occurrence.name, def.path, def.name);
+        let evidence = match def.class {
+            None => self.names(site, &occurrence.name, def.path, def.name),
+            // A global is what a bare name means where no import and no
+            // declaration of the file's own binds it (#426).
+            Some(super::GLOBAL_OWNER)
+                if !self
+                    .bindings(site.path)
+                    .names
+                    .contains_key(&*occurrence.name)
+                    && !self.js_declares(site.path, &occurrence.name) =>
+            {
+                self.global_reach(site.path, def.path)
+            }
+            Some(_) => return None,
+        };
         (evidence != Evidence::Rejected).then_some((evidence, relation))
     }
 }
 
 impl Resolver<'_> {
+    /// The locals `path` imports under another name that may stand for
+    /// `name` of `def_path`: a named import of it, or a default import
+    /// when it is its module's default export. A default import of an
+    /// unresolved module named every changed definition (#558).
+    pub(super) fn import_locals(&self, path: &str, def_path: &str, name: &str) -> Vec<String> {
+        let mut default = None;
+        self.bindings(path)
+            .names
+            .iter()
+            .filter(|(local, t)| match t {
+                Target::Member { name: n, .. } if n == name => *local != name,
+                Target::Member { name: n, .. } if n == "default" => {
+                    *default.get_or_insert_with(|| self.default_export_is(def_path, name))
+                }
+                _ => false,
+            })
+            .map(|(local, _)| local.clone())
+            .collect()
+    }
+
+    /// What a use in `site` says of a property `def` sets on the global
+    /// object: its own file's; a worker's when its `importScripts` load
+    /// that file, or a script that loads it; none of a worker whose
+    /// scripts all land elsewhere. Any other script reaches it once the
+    /// realm has loaded the file, which no import states (#426).
+    pub(super) fn global_reach(&self, site: &str, def: &str) -> Evidence {
+        if site == def {
+            return Evidence::Resolved;
+        }
+        let loads = self.js_facts(site).is_some_and(|f| !f.scripts.is_empty());
+        match self.loads(site, def, 0) {
+            Some(found) if loads => found,
+            _ => Evidence::Candidate("global"),
+        }
+    }
+
+    /// Whether the scripts `worker` imports load `target`; `None` when one
+    /// of them lands on no file this can name.
+    fn loads(&self, worker: &str, target: &str, depth: usize) -> Option<Evidence> {
+        let facts = self.js_facts(worker)?;
+        let mut known = true;
+        for spec in &facts.scripts {
+            match spec.as_deref().and_then(|s| self.script_file(worker, s)) {
+                Some(f) if f == target => return Some(Evidence::Resolved),
+                Some(f) if f.is_empty() => {}
+                Some(f) if depth < MAX_REEXPORT_DEPTH => match self.loads(&f, target, depth + 1) {
+                    Some(Evidence::Resolved) => return Some(Evidence::Resolved),
+                    None => known = false,
+                    _ => {}
+                },
+                _ => known = false,
+            }
+        }
+        known.then_some(Evidence::Rejected)
+    }
+
+    /// The file a script URL lands on: relative to the worker, or, rooted
+    /// at a served directory this cannot see, the one file whose path ends
+    /// with it. `""` for another origin's.
+    fn script_file(&self, worker: &str, spec: &str) -> Option<String> {
+        let spec = spec.split(['?', '#']).next().unwrap_or(spec);
+        if spec.contains("://") || spec.starts_with("//") {
+            return Some(String::new());
+        }
+        if let Some(rooted) = spec.strip_prefix('/') {
+            let tail = format!("/{rooted}");
+            let mut hits = self
+                .files
+                .iter()
+                .filter(|f| f.as_str() == rooted || f.ends_with(&tail));
+            return match (hits.next(), hits.next()) {
+                (Some(one), None) => Some(one.clone()),
+                _ => None,
+            };
+        }
+        let joined = normalize(&Path::new(parent_dir(worker)).join(spec));
+        self.files.contains(&joined).then_some(joined)
+    }
+
+    /// Whether `path` declares `name` at its top level.
+    fn js_declares(&self, path: &str, name: &str) -> bool {
+        self.js_facts(path).is_some_and(|f| {
+            f.occurrences
+                .iter()
+                .any(|o| o.declares && !o.member && o.local.is_none() && &*o.name == name)
+        })
+    }
+
     /// Whether a glob import of `importer` loads the file at `path`.
     pub(super) fn js_glob_loads(&self, importer: &str, path: &str) -> bool {
         let Some(facts) = self.js_facts(importer) else {

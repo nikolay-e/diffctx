@@ -10,7 +10,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{At, DefId, LanguageFacts, Relation, RemovedDef, Table, UseSite};
 use crate::bindings::{self, Definition, Finding, Lang, Resolution, Resolver, Site, Target};
-use crate::facts::python::{DeclKind, PythonFacts, facts};
+use crate::facts::DeclKind;
+use crate::facts::python::{PythonFacts, facts};
 use crate::impact::{base_symbol, enclosing_class, is_member};
 use crate::source::Source;
 use crate::types::FragmentKind;
@@ -178,7 +179,7 @@ impl LanguageFacts for PythonModel<'_> {
         let key = (at.path.to_string(), name.to_string(), lines.0, lines.1);
         self.defs.intern(key, || {
             let stated = self.facts(at.path).and_then(|f| {
-                f.declaration(name, lines)
+                crate::facts::declared(&f.declarations, name, lines)
                     .map(|d| (d.class.clone(), d.scope))
             });
             // A file the grammar could not read: the fragments around the
@@ -242,8 +243,8 @@ impl LanguageFacts for PythonModel<'_> {
         self.outside_imports(site.path, found)
     }
 
-    fn local(&self, def: DefId) -> bool {
-        self.defs.get(def).scope.is_some()
+    fn names_from(&self, def: DefId, _path: &str) -> bool {
+        self.defs.get(def).scope.is_none()
     }
 
     /// The module- and class-level definitions the base declared and the

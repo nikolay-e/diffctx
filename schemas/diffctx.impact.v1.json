@@ -75,6 +75,18 @@
       "format": "uint",
       "minimum": 0
     },
+    "collection_reads": {
+      "description": "Lines outside the change that read a changed entry's Astro content\ncollection by name: `getCollection('blog')` reads every entry under\n`src/content/blog/`, and no import or path leads there (#432).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CollectionRead"
+      }
+    },
+    "collection_reads_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
     "commit_count": {
       "type": "integer",
       "format": "uint",
@@ -248,6 +260,30 @@
         "target"
       ]
     },
+    "CollectionRead": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "collection": {
+          "description": "The collection the call names; absent when the name is computed at\nrun time, so the call may read any collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ]
+    },
     "ChangedSymbol": {
       "type": "object",
       "properties": {
@@ -349,6 +385,13 @@
         },
         "registered_by": {
           "description": "The decorator that registers the caller (`@register_node`,\n`@app.route`): what reaches it is whatever reads that registry, which\nno static test link follows, so its absence is no finding (#388).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unread_test": {
+          "description": "A test file the size cap kept out that names this caller: an absent\n`tested_by` says nothing about it (#542).",
           "type": [
             "string",
             "null"

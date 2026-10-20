@@ -25,7 +25,7 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
     ]
 });
 
-pub(crate) use tree_sitter_strategy::{has_grammar, parse_tree};
+pub(crate) use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree};
 
 pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
 
