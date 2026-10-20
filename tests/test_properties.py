@@ -6,7 +6,7 @@ import yaml
 
 pytest.importorskip("hypothesis")
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from diffctx import to_yaml
@@ -126,6 +126,9 @@ yaml_safe_content = st.text(
     )
 )
 @settings(max_examples=100)
+# Outside YAML's printable set: a reader rejects the raw character even in a literal block.
+@example({"name": "0", "type": "directory", "children": [{"name": "0", "type": "file", "content": "\ufffe\n"}]})
+@example({"name": "0", "type": "directory", "children": [{"name": "0", "type": "file", "content": "a\uffffb"}]})
 def test_yaml_roundtrip_nested_tree(tree):
     yaml_str = to_yaml(tree)
     parsed = yaml.safe_load(yaml_str)

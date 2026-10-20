@@ -42,7 +42,7 @@ enum OutputFormat {
 #[derive(Parser)]
 #[command(
     name = "diffctx",
-    version,
+    version = _diffctx::run_provenance::BUILD_LABEL,
     about = "Semantic diff context selector",
     disable_version_flag = true,
     args_conflicts_with_subcommands = true
@@ -269,9 +269,9 @@ where
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
-    let worker = thread::spawn(move || {
+    let worker = thread::spawn(_diffctx::profile::carry(move || {
         let _ = tx.send(work());
-    });
+    }));
     // The pipeline's own deadline is cooperative: at `timeout` it stops the
     // phase it is in and renders a partial artifact (`coverage.status`). This
     // watchdog is the last resort behind it — a phase that cannot poll (a
@@ -294,7 +294,7 @@ where
                  Narrow the review with an explicit '--diff <from>..<to>' range or run on a \
                  smaller subtree, or raise '--timeout'."
             );
-            std::process::exit(124);
+            exit(124);
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             let _ = worker.join();
@@ -331,7 +331,7 @@ fn emit(
     }
     write_stdout(rendered)?;
     if is_empty {
-        std::process::exit(EXIT_EMPTY_DIFF);
+        exit(EXIT_EMPTY_DIFF);
     }
     Ok(())
 }
@@ -356,6 +356,12 @@ fn disclose_early_stop(limits: &[LimitReason]) -> bool {
     !stopped.is_empty()
 }
 
+/// An exit in the middle of a run: `process::exit` skips the profile's guard.
+fn exit(code: i32) -> ! {
+    _diffctx::profile::flush();
+    std::process::exit(code)
+}
+
 /// A reader that stopped reading (`| head`) is not an error: exit the way a
 /// shell pipeline expects (128 + SIGPIPE) instead of panicking in `print!`.
 fn write_stdout(rendered: &str) -> Result<()> {
@@ -364,7 +370,7 @@ fn write_stdout(rendered: &str) -> Result<()> {
         .write_all(rendered.as_bytes())
         .and_then(|()| stdout.flush())
     {
-        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => std::process::exit(EXIT_BROKEN_PIPE),
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => exit(EXIT_BROKEN_PIPE),
         other => Ok(other?),
     }
 }
@@ -557,6 +563,7 @@ fn real_main() -> Result<()> {
 
     let scoring_mode =
         ScoringMode::from_str(&cli.scoring).expect("clap value_parser already validated --scoring");
+    let _run = _diffctx::profile::run_cli();
 
     // The per-phase git timeout does not bound in-process phases (parse, graph
     // build, scoring), so a pathological repo can hang far past `--timeout`
@@ -638,8 +645,10 @@ fn real_main() -> Result<()> {
         OutputFormat::Json => Format::Json,
         OutputFormat::Md => unreachable!("rejected before the pipeline runs"),
     };
+    let render = _diffctx::profile::phase("render");
     let mut doc = serde_json::to_value(&output)?;
     let rendered = _diffctx::artifact::fit(&mut doc, format);
+    drop(render);
 
     emit(
         &cli,

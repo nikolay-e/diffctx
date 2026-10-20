@@ -98,13 +98,13 @@ pub enum Trigger {
     Inspect { staged: bool, own: Option<Owned> },
 }
 
-/// The changed files an inspecting session edited itself, in a checkout
+/// The changed files an inspecting session wrote itself, in a checkout
 /// other sessions may share.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Owned {
     pub files: Vec<String>,
-    /// Changed files no edit of this session touched: counted, not reviewed.
-    pub others: usize,
+    /// Changed files no write of this session touched: read as committed.
+    pub others: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -204,7 +204,7 @@ fn words(command: &str) -> Vec<String> {
                     }
                     out.push(";".to_string());
                     for (delimiter, strip_tabs) in std::mem::take(&mut heredocs) {
-                        skip_heredoc_body(&mut chars, &delimiter, strip_tabs);
+                        heredoc_body(&mut chars, &delimiter, strip_tabs, |_, _| {});
                     }
                 }
                 c if c.is_whitespace() => {
@@ -249,10 +249,12 @@ fn words(command: &str) -> Vec<String> {
 
 const OPERATORS: &[char] = &[';', '|', '&'];
 
+type Chars<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
 /// The rest of a `$(…)` after its `(`, appended to `word` up to and including
 /// the `)` that closes it: quoted strings and here-document bodies are read
 /// as text, so a `)` or `"` inside them closes nothing.
-fn skip_substitution(chars: &mut std::iter::Peekable<std::str::Chars>, word: &mut String) {
+fn skip_substitution(chars: &mut Chars, word: &mut String) {
     let mut depth = 1usize;
     let mut heredocs: Vec<(String, bool)> = Vec::new();
     while let Some(c) = chars.next() {
@@ -289,25 +291,10 @@ fn skip_substitution(chars: &mut std::iter::Peekable<std::str::Chars>, word: &mu
             }
             '\n' => {
                 for (delimiter, strip_tabs) in std::mem::take(&mut heredocs) {
-                    while let Some(n) = chars.next() {
-                        let mut line = String::from(n);
-                        if n != '\n' {
-                            while let Some(m) = chars.next_if(|m| *m != '\n') {
-                                line.push(m);
-                            }
-                            chars.next();
-                        }
-                        word.push_str(&line);
+                    heredoc_body(chars, &delimiter, strip_tabs, |line, _| {
+                        word.push_str(line);
                         word.push('\n');
-                        let body = if strip_tabs {
-                            line.trim_start_matches('\t')
-                        } else {
-                            line.as_str()
-                        };
-                        if body == delimiter {
-                            break;
-                        }
-                    }
+                    });
                 }
             }
             '(' => depth += 1,
@@ -324,7 +311,7 @@ fn skip_substitution(chars: &mut std::iter::Peekable<std::str::Chars>, word: &mu
 
 /// One shell word with its quotes removed: a here-document delimiter
 /// (`'EOF'`, `"EOF"`, `\EOF`) or a here-string.
-fn shell_word(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
+fn shell_word(chars: &mut Chars) -> String {
     let mut word = String::new();
     let mut quote: Option<char> = None;
     while let Some(&c) = chars.peek() {
@@ -347,37 +334,10 @@ fn shell_word(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
     word
 }
 
-/// Consumes a here-document body up to and including its delimiter line.
-fn skip_heredoc_body(
-    chars: &mut std::iter::Peekable<std::str::Chars>,
-    delimiter: &str,
-    strip_tabs: bool,
-) {
-    loop {
-        let mut line = String::new();
-        let mut ended = true;
-        for c in chars.by_ref() {
-            if c == '\n' {
-                ended = false;
-                break;
-            }
-            line.push(c);
-        }
-        let line = if strip_tabs {
-            line.trim_start_matches('\t')
-        } else {
-            &line
-        };
-        if line == delimiter || ended {
-            return;
-        }
-    }
-}
-
 /// The rest of a redirection after its first `>`/`<`: more `>`/`&`, then
 /// the target word. `true` when it duplicates another descriptor (`>&2`),
 /// which the tool still shows.
-fn skip_redirection(chars: &mut std::iter::Peekable<std::str::Chars>) -> bool {
+fn skip_redirection(chars: &mut Chars) -> bool {
     let mut duplicate = false;
     while let Some(c) = chars.next_if(|n| matches!(n, '>' | '&')) {
         duplicate |= c == '&';
@@ -1060,7 +1020,7 @@ pub fn range_for(root: &Path, trigger: &Trigger) -> Option<String> {
         Trigger::Inspect {
             staged,
             own: Some(own),
-        } if own.others > 0 => own_range(root, *staged, &own.files)?,
+        } if !own.others.is_empty() => own_range(root, *staged, &own.files)?,
         Trigger::Inspect { staged: false, .. } => "HEAD".to_string(),
         Trigger::Inspect { staged: true, .. } => staged_range(root, None)?,
         Trigger::Commit { amend, .. } => {
@@ -1601,6 +1561,7 @@ fn prepare(
     payload: &serde_json::Value,
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
+    let _phase = crate::profile::phase("hook.prepare");
     let command = payload["tool_input"]["command"]
         .as_str()
         .ok_or("no-trigger")?;
@@ -1632,6 +1593,7 @@ fn prepare(
 /// What the line recorded, from the refs its `PreToolUse` left: the first
 /// repository it touched that moved.
 fn prepare_landed(command: &str, trace: &mut Trace) -> Result<Prepared, Silence> {
+    let _phase = crate::profile::phase("hook.prepare");
     let key = before_key(command, trace.session.as_deref());
     let before: Vec<Before> = seen_headline(&key, SEEN_TTL)
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -1679,6 +1641,7 @@ fn record_before(
     command: &str,
     trace: &mut Trace,
 ) -> Result<(), Silence> {
+    let _phase = crate::profile::phase("hook.record");
     if hides_git(command) {
         return Err("unsupported-syntax");
     }
@@ -1720,70 +1683,236 @@ const RECORDING_VERBS: [&str; 5] = ["commit", "merge", "cherry-pick", "revert", 
 /// A git command only the shell could run — in `$(…)`, backticks, `eval`,
 /// `sh -c '…'`: what it records cannot be read off the line, and the hook
 /// says it did not try rather than guessing. A substitution elsewhere on the
-/// line (`FP=$(cat f) && git commit`) hides nothing.
+/// line (`FP=$(cat f) && git commit`) hides nothing, and neither does text
+/// the shell never runs (#534).
 fn hides_git(command: &str) -> bool {
-    wrapped_spans(command)
+    let mut code = ShellCode::default();
+    code.read(&mut command.chars().peekable(), None);
+    code.hidden
         .iter()
-        .any(|&(from, to)| command.get(from..to).is_some_and(names_a_recording_verb))
+        .any(|&(from, to)| code.text.get(from..to).is_some_and(names_a_recording_verb))
 }
 
-/// Byte ranges of `$(…)`, backtick pairs, `eval …` and `-c '…'` bodies.
-fn wrapped_spans(command: &str) -> Vec<(usize, usize)> {
-    let bytes = command.as_bytes();
-    let mut spans = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i..].starts_with(b"$(") {
-            let mut depth = 0usize;
-            let mut j = i + 1;
-            while j < bytes.len() {
-                match bytes[j] {
-                    b'(' => depth += 1,
-                    b')' => {
-                        depth -= 1;
-                        if depth == 0 {
+/// The line runs a git verb that records or publishes: a statement the
+/// parser reads, or one only the shell runs. A word handed to another
+/// program — a jq path, an API route, a message — is no verb (#575).
+fn records(command: &str) -> bool {
+    statements(command)
+        .iter()
+        .any(|st| RECORDING_VERBS.contains(&st.verb.as_str()))
+        || hides_git(command)
+}
+
+/// What the shell runs of a line: its text with the data blanked — the
+/// body of a quoted here-document (`<<'X'`, `<<"X"`, `<<\X`), a
+/// single-quoted string that is no script, a comment — and the byte spans
+/// of it only the shell runs: a `$(…)` or backticks (in double quotes and
+/// unquoted here-documents too), an `eval` statement, a `-c` script.
+#[derive(Default)]
+struct ShellCode {
+    text: String,
+    hidden: Vec<(usize, usize)>,
+}
+
+impl ShellCode {
+    /// Code up to and including `closer` (a substitution's `)`, a closing
+    /// backtick).
+    fn read(&mut self, chars: &mut Chars, closer: Option<char>) {
+        let mut heredocs: Vec<(String, bool, bool)> = Vec::new();
+        let mut words: Vec<String> = Vec::new();
+        let mut word = String::new();
+        let mut statement = self.text.len();
+        while let Some(c) = chars.next() {
+            if Some(c) == closer {
+                self.end_statement(statement, &words, &word);
+                self.text.push(c);
+                return;
+            }
+            self.text.push(c);
+            // The argument of `-c` or `-lc` is a script the shell runs.
+            let script = word.is_empty() && words.last().is_some_and(|w| is_script_flag(w));
+            match c {
+                '\\' => {
+                    if let Some(n) = chars.next() {
+                        self.text.push(n);
+                        word.push(n);
+                    }
+                }
+                '\'' => {
+                    let from = self.text.len();
+                    let keep = script || words.first().is_some_and(|w| w == "eval");
+                    for n in chars.by_ref() {
+                        if n == '\'' {
                             break;
                         }
+                        self.text.push(if keep || n == '\n' { n } else { ' ' });
                     }
-                    _ => {}
+                    if script {
+                        self.hidden.push((from, self.text.len()));
+                    }
+                    self.text.push(c);
+                    word.push(c);
                 }
-                j += 1;
+                '"' => {
+                    let from = self.text.len();
+                    self.expanded(chars, Some('"'));
+                    if script {
+                        self.hidden.push((from, self.text.len()));
+                    }
+                    word.push(c);
+                }
+                '`' => {
+                    self.substitution(chars, '`');
+                    word.push(c);
+                }
+                '$' if chars.peek() == Some(&'(') => {
+                    self.text.extend(chars.next());
+                    self.substitution(chars, ')');
+                    word.push(c);
+                }
+                '(' => {
+                    self.read(chars, Some(')'));
+                    word.push(c);
+                }
+                '#' if word.is_empty() => {
+                    while chars.next_if(|n| *n != '\n').is_some() {
+                        self.text.push(' ');
+                    }
+                }
+                '<' if chars.peek() == Some(&'<') => {
+                    self.text.extend(chars.next());
+                    if let Some(n) = chars.next_if_eq(&'<') {
+                        self.text.push(n);
+                        continue;
+                    }
+                    let strip_tabs = chars
+                        .next_if_eq(&'-')
+                        .inspect(|n| self.text.push(*n))
+                        .is_some();
+                    while let Some(n) = chars.next_if(|n| *n == ' ' || *n == '\t') {
+                        self.text.push(n);
+                    }
+                    let raw = delimiter_word(chars);
+                    self.text.push_str(&raw);
+                    let quoted = raw.contains(['\'', '"', '\\']);
+                    heredocs.push((shell_word(&mut raw.chars().peekable()), strip_tabs, quoted));
+                }
+                '\n' | ';' | '&' | '|' => {
+                    self.end_statement(statement, &words, &word);
+                    if c == '\n' {
+                        for (delimiter, strip_tabs, quoted) in std::mem::take(&mut heredocs) {
+                            heredoc_body(chars, &delimiter, strip_tabs, |line, last| {
+                                if last {
+                                    self.text.push_str(line);
+                                } else if quoted {
+                                    self.text.extend(line.chars().map(|_| ' '));
+                                } else {
+                                    self.expanded(&mut line.chars().peekable(), None);
+                                }
+                                self.text.push('\n');
+                            });
+                        }
+                    }
+                    statement = self.text.len();
+                    words.clear();
+                    word.clear();
+                }
+                c if c.is_whitespace() => {
+                    if !word.is_empty() {
+                        words.push(std::mem::take(&mut word));
+                    }
+                }
+                _ => word.push(c),
             }
-            spans.push((i, j));
-        } else if bytes[i] == b'`' {
-            let end = command[i + 1..]
-                .find('`')
-                .map_or(bytes.len(), |k| i + 1 + k);
-            spans.push((i, end));
-            i = end;
-        } else if bytes[i..].starts_with(b"eval ") {
-            let end = command[i..]
-                .find(['\n', ';', '&', '|'])
-                .map_or(bytes.len(), |k| i + k);
-            spans.push((i, end));
-        } else if let Some(open) = shell_c_flag(&bytes[i..]) {
-            // `-c`, and clusters ending in it (`-lc`, `-ic`): `bash -lc "…"`.
-            let quote = bytes[i + open] as char;
-            let end = command[i + open + 1..]
-                .find(quote)
-                .map_or(bytes.len(), |k| i + open + 1 + k);
-            spans.push((i, end));
         }
-        i += 1;
+        self.end_statement(statement, &words, &word);
     }
-    spans
+
+    /// A statement whose first word is `eval` runs the rest as code.
+    fn end_statement(&mut self, from: usize, words: &[String], word: &str) {
+        if words.first().map_or(word, String::as_str) == "eval" {
+            self.hidden.push((from, self.text.len()));
+        }
+    }
+
+    /// The code of a `$(…)` or backticks after its opening: a span only the
+    /// shell runs.
+    fn substitution(&mut self, chars: &mut Chars, closer: char) {
+        let from = self.text.len();
+        self.read(chars, Some(closer));
+        self.hidden.push((from, self.text.len()));
+    }
+
+    /// Text the shell expands, a `"…"` up to its `closer` or a line of an
+    /// unquoted here-document: its `$(…)` and backticks are code.
+    fn expanded(&mut self, chars: &mut Chars, closer: Option<char>) {
+        while let Some(c) = chars.next() {
+            self.text.push(c);
+            match c {
+                c if Some(c) == closer => return,
+                '\\' => self.text.extend(chars.next()),
+                '`' => self.substitution(chars, '`'),
+                '$' if chars.peek() == Some(&'(') => {
+                    self.text.extend(chars.next());
+                    self.substitution(chars, ')');
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
-/// The offset of the opening quote after a ` -c` flag or a short-flag
-/// cluster ending in `c` (` -lc '`), if `rest` starts with one.
-fn shell_c_flag(rest: &[u8]) -> Option<usize> {
-    let flags = rest.strip_prefix(b" -")?;
-    let len = flags.iter().take_while(|b| b.is_ascii_alphabetic()).count();
-    (len > 0
-        && flags[len - 1] == b'c'
-        && flags.get(len) == Some(&b' ')
-        && matches!(flags.get(len + 1), Some(b'\'' | b'"')))
-    .then_some(2 + len + 1)
+/// `-c`, or a short-flag cluster ending in it (`-lc`).
+fn is_script_flag(word: &str) -> bool {
+    word.strip_prefix('-')
+        .is_some_and(|flags| flags.ends_with('c') && flags.chars().all(|c| c.is_ascii_alphabetic()))
+}
+
+/// A here-document delimiter as written, quotes kept.
+fn delimiter_word(chars: &mut Chars) -> String {
+    let mut raw = String::new();
+    let mut quote: Option<char> = None;
+    while let Some(&c) = chars.peek() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if c == '\'' || c == '"' => quote = Some(c),
+            None if c.is_whitespace() || ";&|<>()".contains(c) => break,
+            _ => {}
+        }
+        raw.push(c);
+        chars.next();
+    }
+    raw
+}
+
+/// Reads a here-document body up to and including its delimiter line,
+/// handing `each` every line and whether it is the delimiter's.
+fn heredoc_body(
+    chars: &mut Chars,
+    delimiter: &str,
+    strip_tabs: bool,
+    mut each: impl FnMut(&str, bool),
+) {
+    loop {
+        let mut line = String::new();
+        let mut ended = true;
+        for c in chars.by_ref() {
+            if c == '\n' {
+                ended = false;
+                break;
+            }
+            line.push(c);
+        }
+        let last = if strip_tabs {
+            line.trim_start_matches('\t')
+        } else {
+            &line
+        } == delimiter;
+        each(&line, last);
+        if last || ended {
+            return;
+        }
+    }
 }
 
 /// Bytes of transcript read to tell this session's edits apart. A long
@@ -1793,10 +1922,10 @@ const TRANSCRIPT_BUDGET: u64 = 256 * 1024 * 1024;
 
 const EDIT_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
 
-/// Which of the changed files an inspection shows this session edited, by
+/// Which of the changed files an inspection shows this session wrote, by
 /// its own transcript; `None` when no transcript can tell. Another session's
 /// uncommitted work in a shared checkout is not this one's pending change:
-/// a session that edited none of the changed files has nothing to review
+/// a session that wrote none of the changed files has nothing to review
 /// (#404).
 fn own_changes(
     root: &Path,
@@ -1807,23 +1936,20 @@ fn own_changes(
     if changed.is_empty() {
         return Err("clean");
     }
-    let Some(edited) = payload["transcript_path"]
+    let Some(writes) = payload["transcript_path"]
         .as_str()
-        .and_then(|t| edited_files(Path::new(t)))
+        .and_then(|t| session_writes(Path::new(t)))
     else {
         return Ok(None);
     };
     let top = canonical(root);
     let (files, others): (Vec<String>, Vec<String>) = changed
         .into_iter()
-        .partition(|p| edited.contains(&top.join(p)));
+        .partition(|p| writes.wrote(&top.join(p)));
     if files.is_empty() {
         return Err("not-this-session");
     }
-    Ok(Some(Owned {
-        files,
-        others: others.len(),
-    }))
+    Ok(Some(Owned { files, others }))
 }
 
 /// Every path the inspected snapshot changes: the index against `HEAD`, or
@@ -1842,10 +1968,114 @@ fn changed_paths(root: &Path, staged: bool) -> Vec<String> {
     paths
 }
 
-/// The files this session's edit tools named, read from its transcript and
-/// from its subagents' beside it (`<transcript>/subagents/`), streamed line
-/// by line. `None` when they cannot be read whole within the budget.
-fn edited_files(transcript: &Path) -> Option<rustc_hash::FxHashSet<PathBuf>> {
+/// What a session's transcripts show it wrote: the files its edit tools
+/// named, and when its shell ran (#453).
+#[derive(Default)]
+struct Writes {
+    files: rustc_hash::FxHashSet<PathBuf>,
+    /// Each Bash call that returned, from its call to its result, in
+    /// milliseconds since the epoch.
+    shell: Vec<(i64, i64)>,
+}
+
+/// How far a file time may sit outside a shell call's span: a file system
+/// that keeps whole seconds truncates a write to the second before it.
+const SHELL_SLACK_MS: i64 = 1000;
+
+impl Writes {
+    /// An edit tool named the file, or it last changed while a Bash call of
+    /// the session ran: a `sed -i`, a heredoc rewrite, a `git rm`. Another
+    /// session's edit lands in those spans only when it was made while this
+    /// session's shell ran, so a shared checkout stays split (#404).
+    fn wrote(&self, path: &Path) -> bool {
+        self.files.contains(path)
+            || changed_at(path).is_some_and(|at| {
+                self.shell
+                    .iter()
+                    .any(|(from, to)| from - SHELL_SLACK_MS <= at && at <= to + SHELL_SLACK_MS)
+            })
+    }
+
+    /// One transcript entry: an edit tool's path, a Bash call starting, or
+    /// the result that ends one.
+    fn note(&mut self, entry: &serde_json::Value, running: &mut FxHashMap<String, i64>) {
+        let at = entry["timestamp"].as_str().and_then(epoch_ms);
+        for item in entry["message"]["content"].as_array().into_iter().flatten() {
+            match (item["type"].as_str(), item["name"].as_str()) {
+                (Some("tool_use"), Some("Bash")) => {
+                    if let (Some(id), Some(at)) = (item["id"].as_str(), at) {
+                        running.insert(id.to_string(), at);
+                    }
+                }
+                (Some("tool_use"), Some(tool)) if EDIT_TOOLS.contains(&tool) => {
+                    let input = &item["input"];
+                    if let Some(path) = input["file_path"]
+                        .as_str()
+                        .or_else(|| input["notebook_path"].as_str())
+                    {
+                        self.files.insert(canonical(Path::new(path)));
+                    }
+                }
+                (Some("tool_result"), _) => {
+                    let started = item["tool_use_id"]
+                        .as_str()
+                        .and_then(|id| running.remove(id));
+                    if let (Some(from), Some(to)) = (started, at) {
+                        self.shell.push((from, to));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// When a path last changed, content or name, in milliseconds since the
+/// epoch; for a path that is gone, when its directory's listing did.
+fn changed_at(path: &Path) -> Option<i64> {
+    let meta = std::fs::symlink_metadata(path)
+        .or_else(|_| std::fs::metadata(path.parent().unwrap_or(path)))
+        .ok()?;
+    let at = meta.modified().ok()?;
+    // A rename (`git mv`, `mv`) keeps the time of the content it moves;
+    // the inode change time is when it moved.
+    #[cfg(unix)]
+    let at = {
+        use std::os::unix::fs::MetadataExt as _;
+        u64::try_from(meta.ctime()).ok().map_or(at, |s| {
+            let nanos = u32::try_from(meta.ctime_nsec()).unwrap_or(0);
+            at.max(SystemTime::UNIX_EPOCH + Duration::new(s, nanos))
+        })
+    };
+    i64::try_from(at.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_millis()).ok()
+}
+
+/// A transcript timestamp, `2026-10-17T09:33:39.324Z` (UTC), in
+/// milliseconds since the epoch.
+fn epoch_ms(stamp: &str) -> Option<i64> {
+    let (date, time) = stamp.strip_suffix('Z')?.split_once('T')?;
+    let mut ymd = date.splitn(3, '-').map(|p| p.parse::<i64>().ok());
+    let (year, month, day) = (ymd.next()??, ymd.next()??, ymd.next()??);
+    let (hms, fraction) = time.split_once('.').unwrap_or((time, "0"));
+    let mut hms = hms.splitn(3, ':').map(|p| p.parse::<i64>().ok());
+    let (hour, minute, second) = (hms.next()??, hms.next()??, hms.next()??);
+    let millis: i64 = format!("{fraction:0<3}").get(..3)?.parse().ok()?;
+    // Days since the epoch of a proleptic Gregorian date (H. Hinnant's
+    // `days_from_civil`), March first so that leap days end the year.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let days = era * 146_097 + year_of_era * 365 + year_of_era / 4 - year_of_era / 100
+        + day_of_year
+        - 719_468;
+    Some((((days * 24 + hour) * 60 + minute) * 60 + second) * 1000 + millis)
+}
+
+/// What this session and its subagents (`<transcript>/subagents/`) wrote,
+/// streamed line by line. `None` when the transcripts cannot be read whole
+/// within the budget.
+fn session_writes(transcript: &Path) -> Option<Writes> {
     use std::io::{BufRead as _, Read as _};
     let mut sources = vec![transcript.to_path_buf()];
     if let Ok(dir) = std::fs::read_dir(transcript.with_extension("").join("subagents")) {
@@ -1855,7 +2085,9 @@ fn edited_files(transcript: &Path) -> Option<rustc_hash::FxHashSet<PathBuf>> {
         );
     }
     let mut left = TRANSCRIPT_BUDGET;
-    let mut edited = rustc_hash::FxHashSet::default();
+    let mut writes = Writes::default();
+    // Bash calls by id, until their result says when they returned.
+    let mut running: FxHashMap<String, i64> = FxHashMap::default();
     let mut line = Vec::new();
     for source in &sources {
         let file = std::fs::File::open(source).ok()?;
@@ -1870,41 +2102,20 @@ fn edited_files(transcript: &Path) -> Option<rustc_hash::FxHashSet<PathBuf>> {
             let Ok(text) = std::str::from_utf8(&line) else {
                 continue;
             };
-            if text.contains("\"tool_use\"")
-                && EDIT_TOOLS
-                    .iter()
-                    .any(|tool| text.contains(&format!("\"{tool}\"")))
-            {
-                edited.extend(edited_paths(text));
+            let call = text.contains("\"tool_use\"")
+                && std::iter::once(&"Bash")
+                    .chain(&EDIT_TOOLS)
+                    .any(|tool| text.contains(&format!("\"{tool}\"")));
+            let result = text.contains("\"tool_result\"")
+                && running.keys().any(|id| text.contains(id.as_str()));
+            if call || result {
+                if let Ok(entry) = serde_json::from_str(text) {
+                    writes.note(&entry, &mut running);
+                }
             }
         }
     }
-    Some(edited)
-}
-
-/// The paths a transcript line's edit tool calls name.
-fn edited_paths(line: &str) -> Vec<PathBuf> {
-    let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
-        return Vec::new();
-    };
-    entry["message"]["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|call| {
-            call["type"] == "tool_use"
-                && call["name"]
-                    .as_str()
-                    .is_some_and(|name| EDIT_TOOLS.contains(&name))
-        })
-        .filter_map(|call| {
-            let input = &call["input"];
-            input["file_path"]
-                .as_str()
-                .or_else(|| input["notebook_path"].as_str())
-        })
-        .map(|path| canonical(Path::new(path)))
-        .collect()
+    Some(writes)
 }
 
 /// A path as the filesystem resolves it (`/var` is `/private/var` on
@@ -1978,15 +2189,84 @@ fn lead_of(event: Event, trigger: &Trigger) -> String {
         (Event::PostToolUse { .. }, Trigger::Inspect { own: None, .. }) => {
             "diffctx reviewed every pending change in this checkout, which you just inspected; without a readable transcript it cannot tell this session's edits from another session's."
         }
-        (Event::PostToolUse { .. }, Trigger::Inspect { own: Some(own), .. }) if own.others > 0 => {
+        (Event::PostToolUse { .. }, Trigger::Inspect { own: Some(own), .. })
+            if !own.others.is_empty() =>
+        {
             return format!(
-                "diffctx reviewed the pending change this session and its subagents made, which you just inspected; {} other changed file(s) were not edited in this session or by its subagents and are not analysed.",
-                own.others
+                "diffctx reviewed the pending change this session and its subagents made, which you just inspected; {} other changed file(s) show no write by this session or its subagents and are read as committed: {}.",
+                own.others.len(),
+                some_of(&own.others)
             );
         }
         (Event::PostToolUse { .. }, _) => "diffctx reviewed the pending change you just inspected.",
     };
     lead.to_string()
+}
+
+/// The first few of a list of paths, the rest counted.
+fn some_of(paths: &[String]) -> String {
+    const SHOWN: usize = 3;
+    let shown = paths[..paths.len().min(SHOWN)].join(", ");
+    match paths.len().checked_sub(SHOWN) {
+        Some(more) if more > 0 => format!("{shown} and {more} more"),
+        _ => shown,
+    }
+}
+
+/// What the snapshot holds, when the trigger knows better than its tree id
+/// (#549): a session's edits, or the index a commit records.
+fn range_name(trigger: &Trigger, range: &str) -> Option<String> {
+    let tree = range.split_once("..")?.1;
+    let tree = &tree[..tree.len().min(10)];
+    Some(match trigger {
+        Trigger::Inspect {
+            staged,
+            own: Some(own),
+        } if !own.others.is_empty() => format!(
+            "this session's {}edits (snapshot tree {tree})",
+            if *staged { "staged " } else { "" }
+        ),
+        Trigger::Inspect { staged: true, .. } | Trigger::Commit { amend: false, .. } => {
+            format!("staged changes (index tree {tree})")
+        }
+        Trigger::Commit { amend: true, .. } => {
+            format!("staged changes on HEAD~1 (index tree {tree})")
+        }
+        _ => return None,
+    })
+}
+
+/// The definitions this session's edits change that a file read as
+/// committed names in its pending text: no caller count of the answer
+/// covers that text, so for them a zero is no finding (#453).
+fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
+    let names = edited_definitions(root, Some(&own.files));
+    let mut named = std::collections::BTreeSet::new();
+    let mut naming = Vec::new();
+    for path in &own.others {
+        let Ok(text) = std::fs::read_to_string(root.join(path)) else {
+            continue;
+        };
+        let words: rustc_hash::FxHashSet<&str> = text
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .collect();
+        let hits: Vec<&String> = names
+            .iter()
+            .filter(|n| words.contains(n.as_str()))
+            .collect();
+        if !hits.is_empty() {
+            named.extend(hits);
+            naming.push(path.clone());
+        }
+    }
+    (!named.is_empty()).then(|| {
+        format!(
+            "(callers may be missing: {} named in {} changed file(s) read as committed: {})",
+            named.into_iter().cloned().collect::<Vec<_>>().join(", "),
+            naming.len(),
+            some_of(&naming)
+        )
+    })
 }
 
 fn impact_context(
@@ -1996,9 +2276,16 @@ fn impact_context(
     range: &str,
 ) -> Result<Answer, Silence> {
     let mut output = run_impact(root, range)?;
-    if output.empty {
+    let hedge = match trigger {
+        Trigger::Inspect { own: Some(own), .. } if !own.others.is_empty() => {
+            named_in_unread(root, own)
+        }
+        _ => None,
+    };
+    if output.empty && hedge.is_none() {
         return Err("empty");
     }
+    output.range_name = range_name(trigger, range);
     let partial = !output.limits.is_empty();
     // With no caller listed, what is left to check is a contract or an
     // untested definition, not a caller (#463).
@@ -2011,8 +2298,9 @@ fn impact_context(
     let headline = text.lines().next().unwrap_or_default().to_string();
     Ok(Answer {
         context: format!(
-            "{} What it reaches outside the diff:\n{text}\n{check} before going on, or tell the user why they are unaffected.",
-            lead_of(event, trigger)
+            "{} What it reaches outside the diff:\n{text}\n{}{check} before going on, or tell the user why they are unaffected.",
+            lead_of(event, trigger),
+            hedge.map(|h| format!("{h}\n")).unwrap_or_default(),
         ),
         headline,
         partial,
@@ -2046,18 +2334,24 @@ fn searched(payload: &serde_json::Value) -> Option<Searched> {
     })
 }
 
-/// The names of the definitions the pending change edits: the innermost
-/// named container around each hunk of the working tree, the way impact
-/// names its changed symbols. Only the changed files are parsed, so a
-/// search for any other name stops here without running the pipeline.
-fn edited_definitions(root: &Path) -> Vec<String> {
+/// The names of the definitions the pending change edits, in `within` when
+/// it names files: the innermost named container around each hunk of the
+/// working tree, the way impact names its changed symbols. Only the changed
+/// files are parsed, so a search for any other name stops here without
+/// running the pipeline.
+fn edited_definitions(root: &Path, within: Option<&[String]>) -> Vec<String> {
     // The pending change as impact reads it, untracked files included: a
     // name defined only in a new file is still the change's (#448).
-    let Ok((hunks, _)) =
+    let Ok((mut hunks, _)) =
         crate::pipeline::collect_hunks_with_untracked(root, Some("HEAD"), &[], true, None)
     else {
         return Vec::new();
     };
+    if let Some(files) = within {
+        let top = canonical(root);
+        let files: rustc_hash::FxHashSet<PathBuf> = files.iter().map(|f| top.join(f)).collect();
+        hunks.retain(|h| files.contains(&canonical(Path::new(&*h.path))));
+    }
     let mut files: Vec<PathBuf> = hunks.iter().map(|h| PathBuf::from(&*h.path)).collect();
     files.sort();
     files.dedup();
@@ -2167,7 +2461,7 @@ fn search_answer(
     trace.root = Some(root.clone());
     trace.range = Some("HEAD".to_string());
     let identity = result_identity(&root, "HEAD").ok_or("clean")?;
-    let edited = edited_definitions(&root);
+    let edited = edited_definitions(&root, None);
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("id-{identity}.{name}"), session.as_deref());
     let names: Vec<String> = names.into_iter().filter(|n| edited.contains(n)).collect();
@@ -2241,9 +2535,9 @@ fn within_deadline<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    std::thread::spawn(crate::profile::carry(move || {
         let _ = tx.send(work());
-    });
+    }));
     let left = Duration::from_secs(HOOK_DEADLINE_SECS).saturating_sub(started.elapsed());
     match rx.recv_timeout(left) {
         Ok(result) => result,
@@ -2269,7 +2563,7 @@ fn decide(
     let command = payload["tool_input"]["command"]
         .as_str()
         .unwrap_or_default();
-    let recording = names_a_recording_verb(command);
+    let recording = records(command);
     let search = if matches!(event, Event::PostToolUse { .. }) {
         searched(&payload)
     } else {
@@ -2292,7 +2586,7 @@ fn decide(
                 Some(Trigger::Commit { .. })
             );
         match recorded {
-            Ok(()) if !gated_commit && !command.contains("gh pr create") => {
+            Ok(()) if !gated_commit && !opens_pr(command) => {
                 return Err("recorded");
             }
             Ok(()) | Err("not-git") => {}
@@ -2430,17 +2724,29 @@ fn not_analysed(event: Event, why: Silence, trace: &mut Trace) -> String {
     )
 }
 
+fn opens_pr(command: &str) -> bool {
+    statements(command)
+        .iter()
+        .any(|st| st.verb == "gh pr" && st.args.first().is_some_and(|a| a == "create"))
+}
+
 fn names_a_recording_verb(command: &str) -> bool {
     let words = || command.split(|c: char| !(c.is_alphanumeric() || c == '-'));
     words().any(|w| w == "git")
         && words().any(|w| matches!(w, "commit" | "push" | "merge" | "cherry-pick" | "revert"))
 }
 
-/// The log is cut over to `hook.log.1` past this size: tens of thousands of
+/// The log is cut over to `<log>.1` past this size: tens of thousands of
 /// runs, so an audit reads a whole session (#464).
 const LOG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
-/// One line per run in `<cache>/diffctx/hook.log` (#338): Claude Code keeps
+/// Up to 1.19 the log was `hook.log`, which a pin at or below 1.18.4 still
+/// running beside this one cuts at 256 KiB, overwriting what it rotated
+/// before: a name no older pin writes keeps this history whole (#555). An
+/// audit reads both.
+const LOG_NAME: &str = "hook-runs.log";
+
+/// One line per run in `<cache>/diffctx/hook-runs.log` (#338): Claude Code keeps
 /// only hooks that print, so without it a silent hook that decided "nothing
 /// to say" and one that never got an answer look the same afterwards.
 /// `<unix ts> <session> <event> <verb> <range> <outcome> <ms>ms <repo>
@@ -2448,11 +2754,11 @@ const LOG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// from the current one (#524) without moving the fields before it.
 fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let Some(dir) = cache_root() else { return };
-    let path = dir.join("hook.log");
+    let path = dir.join(LOG_NAME);
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_MAX_BYTES) {
-        let _ = std::fs::rename(&path, dir.join("hook.log.1"));
-        sweep_seen(&dir.join("seen"));
+        let _ = std::fs::rename(&path, dir.join(format!("{LOG_NAME}.1")));
     }
+    sweep_seen_daily(&dir.join("seen"));
     let session = file_safe(trace.session.as_deref());
     let line = format!(
         "{} {} {} {} {} {outcome} {}ms {} {}\n",
@@ -2468,7 +2774,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
             || "-".to_string(),
             |r| r.to_string_lossy().replace(['\n', '\r'], "?")
         ),
-        env!("CARGO_PKG_VERSION"),
+        crate::run_provenance::BUILD_LABEL,
     );
     let _ = std::fs::create_dir_all(&dir);
     let _ = std::fs::OpenOptions::new()
@@ -2479,9 +2785,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
 }
 
 /// Markers in `seen/` are never read once their TTL has passed, so a
-/// long-lived cache otherwise grows without bound (#569). Swept when
-/// `hook.log` rotates: once every tens of thousands of runs, and nothing on
-/// the hot path.
+/// long-lived cache otherwise grows without bound (#569).
 fn sweep_seen(seen: &Path) {
     let Ok(entries) = std::fs::read_dir(seen) else {
         return;
@@ -2508,6 +2812,7 @@ fn sweep_seen(seen: &Path) {
 /// The hook's answer, or `None` for silence; every failure path is silence,
 /// and every run leaves its line in the hook log.
 pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
+    let _run = crate::profile::run("hook");
     let started = Instant::now();
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any
@@ -2524,6 +2829,20 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
         (answer, None) => answer,
         (None, Some(notice)) => Some(hook_json(event, &notice, false)),
         (Some(answer), Some(notice)) => Some(with_notice(&answer, &notice)),
+    }
+}
+
+/// The sweep runs once a day on a stamp of its own. The log's rotation is no
+/// clock for it: it comes after tens of thousands of runs.
+fn sweep_seen_daily(seen: &Path) {
+    let stamp = seen.join(".swept");
+    let fresh = std::fs::metadata(&stamp)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|m| SystemTime::now().duration_since(m).ok())
+        .is_some_and(|age| age < SEEN_TTL);
+    if !fresh && std::fs::write(&stamp, "").is_ok() {
+        sweep_seen(seen);
     }
 }
 

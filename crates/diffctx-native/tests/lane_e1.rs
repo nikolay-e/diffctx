@@ -8,10 +8,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -45,7 +43,7 @@ fn repo(base: &[(&str, String)], change: &[(&str, String)]) -> TempDir {
 }
 
 fn pack(repo: &Path, budget: u32, format: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "-q", "-f", format])
         .args(["--budget", &budget.to_string()])

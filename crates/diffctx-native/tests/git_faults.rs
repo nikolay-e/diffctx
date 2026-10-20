@@ -14,10 +14,8 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 const TIMEOUT_SECS: u64 = 3;
 /// The deadline for runs that must return the whole answer, where nothing
@@ -82,7 +80,7 @@ impl Fixture {
             bin_dir.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        Command::new(&*BIN)
+        diffctx()
             .current_dir(self.repo())
             .args(args)
             .env("PATH", path)

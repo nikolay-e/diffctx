@@ -9,10 +9,8 @@ use std::process::Command;
 use serde_json::Value;
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -54,7 +52,7 @@ fn repo_of(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
 }
 
 fn symbol(repo: &Path, query: &str) -> Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--symbol", query, "-q"])
         .output()
@@ -68,7 +66,7 @@ fn symbol(repo: &Path, query: &str) -> Value {
 }
 
 fn impact(repo: &Path) -> Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q"])
         .output()

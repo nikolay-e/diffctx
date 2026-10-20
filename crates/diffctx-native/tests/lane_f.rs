@@ -7,10 +7,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -71,7 +69,7 @@ fn repo_with_a_universe() -> TempDir {
 }
 
 fn run(repo: &Path, args: &[&str], polls: Option<u64>) -> serde_json::Value {
-    let mut cmd = Command::new(&*BIN);
+    let mut cmd = diffctx();
     cmd.current_dir(repo)
         .args(args)
         .args(["-q", "--timeout", "600"]);

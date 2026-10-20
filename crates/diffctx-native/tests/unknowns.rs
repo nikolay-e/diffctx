@@ -6,10 +6,8 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -50,7 +48,7 @@ fn fill(root: &Path, base: &[(&str, &str)], change: &[(&str, &str)]) {
 }
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([".", "--symbol", name, "-q", "-f", "md"])
         .output()
@@ -64,7 +62,7 @@ fn symbol_markdown(repo: &Path, name: &str) -> String {
 }
 
 fn impact_markdown_within(repo: &Path, budget: &str) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([
             "--diff",
@@ -88,7 +86,7 @@ fn impact_markdown_within(repo: &Path, budget: &str) -> String {
 }
 
 fn impact_markdown(repo: &Path) -> String {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([
             "--diff",
@@ -351,49 +349,48 @@ fn a_script_run_by_config_lists_the_entries_that_run_it() {
     assert!(!md.contains("tools/run.sh"), "{md}");
 }
 
-/// #430: eight changed Rust methods named `new` and `build`, each defined
-/// in four files, say one thing between them. They take one folded line,
-/// and the function whose callers resolve keeps them.
+/// #430: eight changed Scala methods named `make` and `build`, each defined
+/// in four objects, say one thing between them. They take one folded line,
+/// and the function whose callers resolve keeps them. Scala has no binding
+/// model; Rust's resolves the same shape (`tests/lane_rs.rs`).
 #[test]
 fn names_too_common_to_trace_fold_into_one_line() {
-    let ty = |name: &str, n: u32| {
+    let ty = |name: &str, n: u32, extra: &str| {
         format!(
-            "pub struct {name}(pub u32);\nimpl {name} {{\n    pub fn new() -> Self {{ {name}({n}) }}\n    pub fn build(&self) -> u32 {{ self.0 + {n} }}\n}}\n"
+            "package app\n\nobject {name} {{\n  def make(): Int = {n}\n  def build(): Int = {n} + 1\n{extra}}}\n"
         )
     };
-    let lib = "pub mod a;\npub mod b;\npub mod c;\npub mod d;\n\npub fn entry() -> u32 {\n    a::A::new().0 + b::B::new().0 + c::C::new().0 + d::D::new().0 + a::unique_helper()\n}\n";
-    let a = |n: u32| format!("{}pub fn unique_helper() -> u32 {{ {n} }}\n", ty("A", n));
+    let a = |n: u32| ty("A", n, &format!("  def uniqueHelper(): Int = {n}\n"));
     let tmp = repo(
         &[
             (
-                "Cargo.toml",
-                "[package]\nname = \"c\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "src/app/Lib.scala",
+                "package app\n\nobject Lib {\n  def entry(): Int = {\n    A.make() + B.make() + C.make() + D.make() + A.uniqueHelper()\n  }\n}\n",
             ),
-            ("src/lib.rs", lib),
-            ("src/a.rs", &a(1)),
-            ("src/b.rs", &ty("B", 2)),
-            ("src/c.rs", &ty("C", 3)),
-            ("src/d.rs", &ty("D", 4)),
+            ("src/app/A.scala", &a(1)),
+            ("src/app/B.scala", &ty("B", 2, "")),
+            ("src/app/C.scala", &ty("C", 3, "")),
+            ("src/app/D.scala", &ty("D", 4, "")),
             (
-                "src/main.rs",
-                "fn main() {\n    println!(\"{}\", c::entry() + c::a::unique_helper());\n}\n",
+                "src/app/Main.scala",
+                "package app\n\nobject Main {\n  def main(args: Array[String]): Unit = {\n    println(Lib.entry() + A.uniqueHelper())\n  }\n}\n",
             ),
         ],
         &[
-            ("src/a.rs", &a(10)),
-            ("src/b.rs", &ty("B", 20)),
-            ("src/c.rs", &ty("C", 30)),
-            ("src/d.rs", &ty("D", 40)),
+            ("src/app/A.scala", &a(10)),
+            ("src/app/B.scala", &ty("B", 20, "")),
+            ("src/app/C.scala", &ty("C", 30, "")),
+            ("src/app/D.scala", &ty("D", 40, "")),
         ],
     );
     let md = impact_markdown(tmp.path());
     assert!(
-        md.contains("- 8 changed definition(s) with names too common to trace by name (rust has no binding model here"),
+        md.contains("- 8 changed definition(s) with names too common to trace by name (scala has no binding model here"),
         "{md}"
     );
-    assert!(!md.contains("callers not resolved: `new`"), "{md}");
-    assert!(md.contains("called from src/main.rs::main"), "{md}");
-    assert!(md.contains("called from src/lib.rs::entry"), "{md}");
+    assert!(!md.contains("callers not resolved: `make`"), "{md}");
+    assert!(md.contains("called from src/app/Main.scala::main"), "{md}");
+    assert!(md.contains("called from src/app/Lib.scala::entry"), "{md}");
 }
 
 /// What names a changed file by path is context, never at a caller's
@@ -446,7 +443,7 @@ fn named_by_never_displaces_a_caller() {
 }
 
 fn impact_json(repo: &Path) -> serde_json::Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args([
             "--diff",
@@ -590,10 +587,11 @@ fn a_document_is_named_by_what_reads_it_not_by_other_documents() {
     }
 }
 
-/// #538: a name five Java classes define is ambiguous across files, not
-/// inside the definition's own: `findOne` calling `toReport` in the same
-/// class is that class's call, and the test reaching `findOne` reaches it.
-/// A same-named method in another class stays unresolved, never listed.
+/// #538: a name five Java classes define is no reason to drop the call
+/// inside the definition's own class: `findOne` calling `toReport` is that
+/// class's call, and the test reaching `findOne` reaches it. A same-named
+/// method in another class is never listed, and since Java's binding model
+/// tells the five apart (#335), a private one leaves nothing unresolved.
 #[test]
 fn an_ambiguous_name_still_resolves_inside_its_own_file() {
     let service = |name: &str, body: &str| {
@@ -629,10 +627,7 @@ fn an_ambiguous_name_still_resolves_inside_its_own_file() {
         "{md}"
     );
     assert!(md.contains("ReportServiceTest.java"), "{md}");
-    assert!(
-        md.contains("callers outside its own file are not resolved"),
-        "{md}"
-    );
+    assert!(!md.contains("not resolved"), "{md}");
     assert!(!md.contains("AlphaService"), "{md}");
 }
 
@@ -736,4 +731,562 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
         "{json}"
     );
     assert!(total.get("unresolved").is_none(), "{json}");
+}
+
+/// #442: an edit that changes the code's tokens, the block a line sits in
+/// or a string's content is never layout, so its callers are listed. Each
+/// has a formatting look-alike that stays layout and says its callers were
+/// not traced: a call's trailing comma beside a tuple's, a whole-body
+/// reindent beside a dedent out of a loop, a `;` beside a line break after
+/// `return`, quote style beside a Go rune, names reordered beside aliases
+/// swapped, whitespace and blank lines between tokens beside whitespace in
+/// a string.
+#[test]
+fn an_edit_a_formatter_cannot_make_is_never_layout() {
+    let py = (
+        "main.py",
+        "from calc import tally\n\n\ndef run():\n    return tally([1])\n",
+        "called from main.py::run",
+    );
+    let js = (
+        "main.js",
+        "import { tally } from './calc.js';\n\nexport function run() {\n  return tally(1);\n}\n",
+        "called from main.js::run",
+    );
+    let loop_body =
+        |inner: &str| format!("def tally(xs):\n    s = 0\n    for x in xs:\n{inner}    return s\n");
+    let ret = |e: &str| format!("def tally(x):\n    return {e}\n");
+    let fun = |body: &str| format!("export function tally(a, b) {{\n{body}}}\n");
+    let semantic: Vec<(&str, String, String, (&str, &str, &str))> = vec![
+        (
+            "calc.py",
+            loop_body("        if x:\n            s += x\n        s += 1\n"),
+            loop_body("        if x:\n            s += x\n    s += 1\n"),
+            py,
+        ),
+        (
+            "calc.py",
+            loop_body("        s += x\n\n        s += 1\n"),
+            loop_body("        s += x\n\n    s += 1\n"),
+            py,
+        ),
+        ("calc.py", ret("(x,)"), ret("(x)"), py),
+        ("calc.py", ret("x in ('ab',)"), ret("x in ('ab')"), py),
+        ("calc.py", ret("d[1,]"), ret("d[1]"), py),
+        (
+            "calc.py",
+            "def tally():\n    return \"\"\"\n# Release v1\n\"\"\"\n".into(),
+            "def tally():\n    return \"\"\"\n# Release v2\n\"\"\"\n".into(),
+            py,
+        ),
+        (
+            "calc.py",
+            "def tally():\n    return \"\"\"\nkeep  two\n\"\"\"\n".into(),
+            "def tally():\n    return \"\"\"\nkeep two\n\"\"\"\n".into(),
+            py,
+        ),
+        (
+            "calc.py",
+            "def tally():\n    from m import A as B, C as D\n    return B() + D()\n".into(),
+            "def tally():\n    from m import A as D, C as B\n    return B() + D()\n".into(),
+            py,
+        ),
+        (
+            "calc.js",
+            fun("  return a;\n"),
+            fun("  return\n    a;\n"),
+            js,
+        ),
+        (
+            "calc.js",
+            fun("  return /a +/.test(a);\n"),
+            fun("  return /a+/.test(a);\n"),
+            js,
+        ),
+        (
+            "calc.js",
+            fun("  return a + ++b;\n"),
+            fun("  return a++ + b;\n"),
+            js,
+        ),
+        (
+            "calc.js",
+            fun("  return `\n    https://a.example/${a}\n  `;\n"),
+            fun("  return `\n    https://b.example/${a}\n  `;\n"),
+            js,
+        ),
+        (
+            "calc.go",
+            "package m\n\nfunc Tally() any {\n\treturn 'a'\n}\n".into(),
+            "package m\n\nfunc Tally() any {\n\treturn \"a\"\n}\n".into(),
+            (
+                "main.go",
+                "package m\n\nfunc Run() {\n\tTally()\n}\n",
+                "called from main.go::Run",
+            ),
+        ),
+        (
+            "src/calc.rs",
+            "pub fn tally() -> (i32,) {\n    (1,)\n}\n".into(),
+            "pub fn tally() -> (i32,) {\n    (1)\n}\n".into(),
+            (
+                "src/main.rs",
+                "mod calc;\n\nfn main() {\n    println!(\"{:?}\", calc::tally());\n}\n",
+                "called from src/main.rs::main",
+            ),
+        ),
+    ];
+    for (path, before, after, (caller, caller_src, listed)) in &semantic {
+        let tmp = repo(&[(path, before), (caller, caller_src)], &[(path, after)]);
+        let md = impact_markdown(tmp.path());
+        assert!(md.contains(listed), "{path}: {after:?}\n{md}");
+        assert!(
+            !md.contains("callers not traced"),
+            "{path}: {after:?}\n{md}"
+        );
+    }
+    for (before, after) in [
+        ("a:\n  b: 1\n  d: 2\n", "a:\n  b: 1\nd: 2\n"),
+        ("a: 1\nb: 2\n", "a:1\nb: 2\n"),
+    ] {
+        let tmp = repo(&[("schemas/s.yaml", before)], &[("schemas/s.yaml", after)]);
+        let json = impact_json(tmp.path());
+        let contracts = json["contracts"].as_array().cloned().unwrap_or_default();
+        assert!(
+            contracts.iter().any(|c| c["kind"] == "schema"),
+            "{after:?}: {json}"
+        );
+    }
+
+    let layout: Vec<(&str, String, String, (&str, &str, &str))> = vec![
+        (
+            "calc.py",
+            loop_body("        s += x\n        s += 1\n"),
+            "def tally(xs):\n  s = 0\n  for x in xs:\n    s += x\n    s += 1\n  return s\n".into(),
+            py,
+        ),
+        ("calc.py", ret("g(x,)"), ret("g(x)"), py),
+        ("calc.py", ret("x + 'a'"), ret("x + \"a\""), py),
+        (
+            "calc.py",
+            ret("x"),
+            "def tally(x):\n    return x   \n".into(),
+            py,
+        ),
+        (
+            "calc.py",
+            "def tally(x):\n    y = x\n    return y\n".into(),
+            "def tally(x):\n    # kept\n    y = x\n\n    return y\n".into(),
+            py,
+        ),
+        (
+            "calc.py",
+            "def tally():\n    from m import C, A\n    return A() + C()\n".into(),
+            "def tally():\n    from m import A, C\n    return A() + C()\n".into(),
+            py,
+        ),
+        (
+            "calc.py",
+            ret("\"keep  two\""),
+            "def tally(x):\n    return   \"keep  two\"\n".into(),
+            py,
+        ),
+        ("calc.js", fun("  return a\n"), fun("  return a;\n"), js),
+        (
+            "calc.js",
+            fun("  const c = a + b;\n  return c;\n"),
+            fun("      const c = a + b;\n      return c;\n"),
+            js,
+        ),
+    ];
+    for (path, before, after, (caller, caller_src, listed)) in &layout {
+        let tmp = repo(&[(path, before), (caller, caller_src)], &[(path, after)]);
+        let json = impact_json(tmp.path());
+        let skipped = json["layout_only"].as_array().cloned().unwrap_or_default();
+        assert!(
+            skipped.iter().any(|s| s
+                .as_str()
+                .is_some_and(|s| s.starts_with(&format!("{path}::")))),
+            "{path}: {after:?}\n{json}"
+        );
+        let md = impact_markdown(tmp.path());
+        assert!(!md.contains(listed), "{path}: {after:?}\n{md}");
+        assert!(md.contains("callers not traced"), "{path}: {after:?}\n{md}");
+        assert!(
+            !md.contains("No resolved static callers"),
+            "{path}: {after:?}\n{md}"
+        );
+    }
+}
+
+fn pack_json(repo: &Path, extra: &[&str], polls: Option<u64>) -> serde_json::Value {
+    let mut cmd = diffctx();
+    cmd.current_dir(repo)
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "-q",
+            "-f",
+            "json",
+            "--timeout",
+            "600",
+        ])
+        .args(extra);
+    if let Some(n) = polls {
+        cmd.env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string());
+    }
+    let out = cmd.output().expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("pack JSON")
+}
+
+/// #550: a run nothing limited carries no coverage block, so when the fit
+/// to `--budget` cuts it the block is added afterwards and nobody counted
+/// what the run read. Its `resources` stay the zeros the schema requires,
+/// and `unknown` names them. A block the run wrote itself was measured and
+/// names nothing; a run that fits has no block at all.
+#[test]
+fn a_coverage_block_added_by_the_fit_names_its_counts_unknown() {
+    // Eight changed functions: 900 tokens fit a few of them with room on
+    // both sides, so the envelope's own size (its latencies) cannot move
+    // the cut to all or nothing.
+    let calc = |k: u32| -> String {
+        (0..8)
+            .map(|i| {
+                format!(
+                    "def step_{i}(values):\n    total = 0\n    for value in values:\n        if value > {i}:\n            total += value * {i}\n        else:\n            total -= value\n    return total + {k}\n\n\n"
+                )
+            })
+            .collect()
+    };
+    let tmp = repo(
+        &[
+            ("calc.py", &calc(1)),
+            (
+                "main.py",
+                "import calc\n\n\ndef run(xs):\n    return [getattr(calc, f'step_{i}')(xs) for i in range(8)]\n",
+            ),
+        ],
+        &[("calc.py", &calc(2))],
+    );
+    let cut = pack_json(tmp.path(), &["--budget", "900"], None);
+    assert!(
+        cut["fragment_count"].as_u64().is_some_and(|n| n > 0),
+        "{cut}"
+    );
+    let coverage = &cut["coverage"];
+    assert!(
+        coverage["limit_reasons"]
+            .as_array()
+            .is_some_and(|r| r.iter().any(|r| r == "selection_budget_exceeded")),
+        "{cut}"
+    );
+    assert_eq!(
+        coverage["unknown"],
+        serde_json::json!(["resources"]),
+        "{cut}"
+    );
+    assert!(coverage["resources"].is_object(), "{cut}");
+
+    let measured = pack_json(tmp.path(), &[], Some(0));
+    assert_eq!(measured["coverage"]["status"], "partial", "{measured}");
+    assert!(measured["coverage"].get("unknown").is_none(), "{measured}");
+
+    let whole = pack_json(tmp.path(), &[], None);
+    assert!(whole.get("coverage").is_none(), "{whole}");
+}
+
+/// #542: `--symbol` reads the files that name the symbol, so a module over
+/// the candidate size cap that subclasses it is a caller, and a test over
+/// it that calls it is a test link. A test over the cap that names only a
+/// caller is not read, and that caller says so instead of reading as
+/// untested. A comment and a string in an over-cap file stay no caller.
+#[test]
+fn a_file_over_the_size_cap_that_names_the_symbol_is_read() {
+    let pad = |what: &str, n: usize| -> String {
+        (0..n)
+            .map(|i| format!("\n\ndef {what}_{i}(x):\n    '''Padding {i} of a long module.'''\n    return x + {i}\n"))
+            .collect()
+    };
+    let server = format!(
+        "from pkg.base import StrictServer\n\n\nclass ChildServer(StrictServer):\n    def call_tool(self, name):\n        return name\n{}",
+        pad("tool", 1500)
+    );
+    let notes = format!(
+        "# StrictServer is the base every server extends.\nLABEL = \"StrictServer\"\n{}",
+        pad("note", 1500)
+    );
+    let base_test = format!(
+        "from pkg.base import StrictServer\n\n\ndef test_strict():\n    assert StrictServer().call_tool('a') == 'a'\n{}",
+        pad("test_pad", 1500)
+    );
+    let child_test = format!(
+        "from pkg.server import ChildServer\n\n\ndef test_child():\n    assert ChildServer().call_tool('a') == 'a'\n{}",
+        pad("test_more", 1500)
+    );
+    let docs_test = format!(
+        "# make is documented here, never called\nUSAGE = \"make builds one\"\n{}",
+        pad("test_docs", 1500)
+    );
+    let tmp = repo(
+        &[
+            ("pkg/__init__.py", ""),
+            (
+                "pkg/base.py",
+                "class StrictServer:\n    def call_tool(self, name):\n        return name\n",
+            ),
+            (
+                "pkg/small.py",
+                "from pkg.base import StrictServer\n\n\ndef make():\n    return StrictServer()\n",
+            ),
+            ("pkg/server.py", &server),
+            ("pkg/notes.py", &notes),
+            ("tests/test_base.py", &base_test),
+            ("tests/test_child.py", &child_test),
+            ("tests/test_docs.py", &docs_test),
+        ],
+        &[],
+    );
+    for big in [
+        "pkg/server.py",
+        "pkg/notes.py",
+        "tests/test_base.py",
+        "tests/test_child.py",
+        "tests/test_docs.py",
+    ] {
+        let len = std::fs::metadata(tmp.path().join(big)).unwrap().len();
+        assert!(len > 100_000, "{big} is {len} bytes, under the cap");
+    }
+    let md = symbol_markdown(tmp.path(), "StrictServer");
+    assert!(md.contains("from pkg/server.py::ChildServer"), "{md}");
+    assert!(
+        md.contains(
+            "called from tests/test_base.py::test_strict (4-5) — reachable from tests: tests/test_base.py"
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains("tests/test_child.py names it but was not read (over the size cap)"),
+        "{md}"
+    );
+    assert!(
+        md.contains("called from pkg/small.py::make (4-5) — no static test link found\n"),
+        "{md}"
+    );
+    assert!(!md.contains("pkg/notes.py"), "{md}");
+    assert!(!md.contains("not fully analysed"), "{md}");
+}
+
+/// #432: an Astro content entry is read by its collection's name, never
+/// imported or named by path, so its readers were a clean zero. Each call
+/// naming the collection is listed — split over lines, through
+/// `getEntry`, or with a name computed at run time; the same call for
+/// another collection, in a comment, in a string or outside the Astro
+/// project lists nothing. An edit outside any collection keeps its zero.
+#[test]
+fn a_content_entry_lists_the_calls_reading_its_collection() {
+    let base = [
+        (
+            "site/astro.config.mjs",
+            "import { defineConfig } from 'astro/config';\n\nexport default defineConfig({});\n",
+        ),
+        (
+            "site/src/content/projects/a.md",
+            "---\ntitle: A\norder: 1\n---\n\nProject A.\n",
+        ),
+        (
+            "site/src/content/posts/hello.md",
+            "---\ntitle: Hello\n---\n\nHi.\n",
+        ),
+        (
+            "site/src/pages/projects/[slug].astro",
+            "---\nimport { getCollection } from 'astro:content';\n\nexport async function getStaticPaths() {\n  const projects = (await getCollection('projects')).sort((a, b) => a.data.order - b.data.order);\n  return projects.map((p) => ({ params: { slug: p.slug } }));\n}\n---\n<h1>Projects</h1>\n",
+        ),
+        (
+            "site/src/pages/index.astro",
+            "---\nimport { getCollection } from 'astro:content';\nconst all = await getCollection(\n  'projects',\n  ({ data }) => data.order > 0,\n);\n---\n<p>{all.length}</p>\n",
+        ),
+        (
+            "site/src/pages/blog.astro",
+            "---\nimport { getCollection } from 'astro:content';\nconst posts = await getCollection('posts');\n---\n<ul>{posts.map((p) => <li>{p.data.title}</li>)}</ul>\n",
+        ),
+        (
+            "site/src/lib/featured.ts",
+            "import { getEntry } from 'astro:content';\n\nexport async function featured() {\n  // getCollection('projects') is not called here\n  return getEntry('projects', 'a');\n}\n",
+        ),
+        (
+            "site/src/lib/any.ts",
+            "import { getCollection } from 'astro:content';\n\nexport const load = (name: string) => getCollection(name);\n",
+        ),
+        (
+            "site/src/lib/label.ts",
+            "export const hint = \"call getCollection('projects') to list them\";\n",
+        ),
+        (
+            "tools/list.js",
+            "export const all = () => getCollection('projects');\n",
+        ),
+        ("site/README.md", "# Site\n"),
+    ];
+    let tmp = repo(
+        &base,
+        &[(
+            "site/src/content/projects/a.md",
+            "---\ntitle: A\norder: 3\n---\n\nProject A.\n",
+        )],
+    );
+    let md = impact_markdown(tmp.path());
+    for listed in [
+        "0 caller(s) outside the diff, 4 read(s) by collection name",
+        "site/src/pages/projects/[slug].astro:5 reads collection projects",
+        "site/src/pages/index.astro:3 reads collection projects",
+        "site/src/lib/featured.ts:5 reads collection projects",
+        "site/src/lib/any.ts:3 reads a collection named at run time",
+    ] {
+        assert!(md.contains(listed), "{listed}\n{md}");
+    }
+    for decoy in ["blog.astro", "featured.ts:4", "label.ts", "tools/list.js"] {
+        assert!(!md.contains(decoy), "{decoy}\n{md}");
+    }
+    assert!(!md.contains("No resolved static callers"), "{md}");
+    let json = impact_json(tmp.path());
+    assert_eq!(json["empty"], false, "{json}");
+    assert_eq!(
+        json["collection_reads"].as_array().map(Vec::len),
+        Some(4),
+        "{json}"
+    );
+
+    let control = repo(&base, &[("site/README.md", "# Site\n\nA portfolio.\n")]);
+    let json = impact_json(control.path());
+    assert_eq!(json["empty"], true, "{json}");
+    assert!(json.get("collection_reads").is_none(), "{json}");
+}
+
+/// #579: a call inside a long function is a call from that function. Its
+/// chunk (`processA[7]`) was reported as the caller, and no test edge
+/// reaches a chunk, so a function the tests drive read untested. The
+/// function is the caller, with every call site and the test reach of its
+/// own callers; a long function no test reaches stays untested, and a
+/// short one is listed as before.
+#[test]
+fn a_call_in_a_long_function_is_the_function_s_call() {
+    let steps = |n: usize| -> String {
+        (0..n)
+            .map(|i| format!("        total += step{i}(pending.size)\n"))
+            .collect()
+    };
+    let helpers: String = (0..30)
+        .map(|i| format!("    private fun step{i}(n: Int): Int = n + {i}\n"))
+        .collect();
+    let worker = format!(
+        "package demo\n\nclass Worker(private val store: Store) {{\n    fun run() {{ processA(); processB() }}\n\n    fun processA(): Int {{\n        var total = 0\n        val pending =\n            (\n                store.findPending(2) +\n                    store.findMissing(2)\n            ).distinct()\n{}        total += store.findPending(1).size\n{}        return total\n    }}\n\n    fun processB(): Int {{\n        val xs = store.findPending(3)\n        return xs.size\n    }}\n\n    fun processC(): Int {{\n        var total = 0\n        val pending = store.findPending(4)\n{}        return total\n    }}\n\n{helpers}}}\n",
+        steps(15),
+        steps(15),
+        steps(30),
+    );
+    let tmp = repo(
+        &[
+            (
+                "src/main/kotlin/demo/Store.kt",
+                "package demo\n\nclass Store {\n    fun findPending(limit: Int): List<Int> = (0 until limit).toList()\n\n    fun findMissing(limit: Int): List<Int> = (limit until 2 * limit).toList()\n}\n",
+            ),
+            ("src/main/kotlin/demo/Worker.kt", &worker),
+            (
+                "src/test/kotlin/demo/WorkerTest.kt",
+                "package demo\n\nimport kotlin.test.Test\n\nclass WorkerTest {\n    @Test\n    fun runs() {\n        Worker(Store()).run()\n    }\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let md = symbol_markdown(tmp.path(), "findPending");
+    let caller = |name: &str| {
+        md.lines()
+            .find(|l| l.contains(&format!("Worker.kt::{name}")))
+            .unwrap_or_else(|| panic!("{name}\n{md}"))
+            .to_string()
+    };
+    let a = caller("processA");
+    assert!(a.contains("processA (6-"), "{md}");
+    assert!(
+        a.ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+        "{md}"
+    );
+    assert!(
+        caller("processB")
+            .ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+        "{md}"
+    );
+    let c = caller("processC");
+    assert!(
+        !c.contains("processC[") && !c.contains("reachable from tests"),
+        "{md}"
+    );
+    assert!(!md.contains("processA["), "{md}");
+    assert!(
+        md.contains("3 caller(s), 1 caller(s) without a static test link"),
+        "{md}"
+    );
+}
+
+/// #562: a Kotlin test reaching its subject through a helper,
+/// `private fun client() = ApiClient(…)`, left `client().f()` with an
+/// untyped receiver, so a function whose test came with it read "no
+/// static test link". The helper's expression body types the receiver.
+/// A helper returning another class with a method of the same name links
+/// nothing, and a direct `ApiClient().f()` links as before.
+#[test]
+fn a_test_helper_s_expression_body_types_the_receiver() {
+    let client = |body: &str| {
+        format!("package demo\n\nclass ApiClient {{\n    fun ping(): Int = 1\n{body}}}\n")
+    };
+    let added = "\n    fun fetchListeningSummary(days: Int): List<Int> {\n        return (0 until days).toList()\n    }\n";
+    let test = |helper: &str, call: &str| {
+        format!(
+            "package demo\n\nimport kotlin.test.Test\nimport kotlin.test.assertEquals\n\nclass ApiClientListeningTest {{\n{helper}\n    @Test\n    fun fetchesSummary() {{\n        assertEquals(30, {call}.fetchListeningSummary(30).size)\n    }}\n}}\n"
+        )
+    };
+    let base = [
+        ("app/src/main/java/demo/ApiClient.kt", client("")),
+        (
+            "app/src/main/java/demo/Other.kt",
+            "package demo\n\nclass Other {\n    fun fetchListeningSummary(days: Int): List<Int> = listOf(days)\n}\n".to_string(),
+        ),
+        (
+            "app/src/test/java/demo/PingTest.kt",
+            "package demo\n\nimport kotlin.test.Test\n\nclass PingTest {\n    @Test\n    fun pings() {\n        ApiClient().ping()\n    }\n}\n".to_string(),
+        ),
+    ];
+    let base: Vec<(&str, &str)> = base.iter().map(|(p, c)| (*p, c.as_str())).collect();
+    let run = |helper: &str, call: &str| {
+        let after = client(added);
+        let test = test(helper, call);
+        let tmp = repo(
+            &base,
+            &[
+                ("app/src/main/java/demo/ApiClient.kt", &after),
+                ("app/src/test/java/demo/ApiClientListeningTest.kt", &test),
+            ],
+        );
+        impact_markdown(tmp.path())
+    };
+    for (helper, call) in [
+        (
+            "    private fun client(path: String = \"/\") = ApiClient()\n",
+            "client()",
+        ),
+        ("", "ApiClient()"),
+    ] {
+        let md = run(helper, call);
+        assert!(!md.contains("without a static test link"), "{call}\n{md}");
+    }
+    let md = run("    private fun other() = Other()\n", "other()");
+    assert!(
+        md.contains("1 changed definition(s) without a static test link"),
+        "{md}"
+    );
 }

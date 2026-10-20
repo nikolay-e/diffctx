@@ -191,8 +191,16 @@ fn yaml_plain(s: &str) -> bool {
         && !RESOLVED.contains(&s)
 }
 
+/// YAML's printable set: a reader rejects any other character outright,
+/// even inside a literal block (a file holding U+FFFE broke every reader).
+fn yaml_printable(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\r' | '\x20'..='\x7e' | '\u{85}' | '\u{a0}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..)
+}
+
+/// A character a literal block cannot carry as itself: one outside the
+/// printable set, or a line break YAML reads its own way.
 fn yaml_problematic(c: char) -> bool {
-    matches!(c, '\x00'..='\x08' | '\x0b'..='\x1f' | '\x7f'..='\u{9f}' | '\u{2028}' | '\u{2029}')
+    matches!(c, '\r' | '\u{85}' | '\u{2028}' | '\u{2029}') || !yaml_printable(c)
 }
 
 fn yaml_escape(s: &str, named_tab: bool) -> String {
@@ -211,6 +219,9 @@ fn yaml_escape(s: &str, named_tab: bool) -> String {
             '\u{2029}' => escaped.push_str("\\u2029"),
             c if c.is_control() => {
                 let _ = write!(escaped, "\\x{:02x}", c as u32);
+            }
+            c if !yaml_printable(c) => {
+                let _ = write!(escaped, "\\u{:04x}", c as u32);
             }
             c => escaped.push(c),
         }
@@ -298,6 +309,7 @@ fn record_cut(obj: &mut Map<String, Value>, unrepresented: bool) {
             capped: Vec::new(),
             limited_files: Vec::new(),
             resources: ResourceUsage::default(),
+            unknown: vec!["resources"],
             lossy_files: Vec::new(),
         };
         let at = obj
@@ -943,6 +955,21 @@ mod tests {
             text.contains("    content: |2\n      x\n\n        y\n"),
             "{text}"
         );
+    }
+
+    /// A character outside YAML's printable set fails a reader even inside a
+    /// literal block: it is escaped, in a block's text and in a plain string.
+    #[test]
+    fn yaml_escapes_what_falls_outside_the_printable_set() {
+        let doc = serde_json::json!({
+            "schema": "diffctx.context.v1",
+            "changed_files": ["a\u{ffff}b"],
+            "fragments": [{"path": "a.py", "content": "\u{fffe}\n"}],
+        });
+        let text = render(&doc, Format::Yaml);
+        assert!(!text.contains(['\u{fffe}', '\u{ffff}']), "{text:?}");
+        assert!(text.contains("  - \"a\\uffffb\"\n"), "{text}");
+        assert!(text.contains("content: \"\\ufffe\\n\"\n"), "{text}");
     }
 
     #[test]

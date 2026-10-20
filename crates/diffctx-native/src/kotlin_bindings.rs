@@ -11,6 +11,12 @@
 //! dependency — stays a candidate with its reason; what it settles against
 //! the declaration is rejected. Compiler-grade typing is out of reach here:
 //! a receiver typed by inference is unresolved, never guessed.
+//!
+//! Java and Swift read through the same model (#335, #526): their facts
+//! take Kotlin's shape. A Java package-private name stops at its package and
+//! a static import binds a member; a Swift package is the SwiftPM target a
+//! file sits in, and a member an `extension` adds is owned by the type it
+//! extends.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -34,9 +40,52 @@ const MAX_PROJECT_HOPS: usize = 6;
 const MAX_TYPING_DEPTH: usize = 4;
 
 pub fn is_kotlin(path: &str) -> bool {
+    has_extension(path, Dialect::Kotlin.extensions())
+}
+
+fn has_extension(path: &str, extensions: &[&str]) -> bool {
     Path::new(path)
         .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("kt") || e.eq_ignore_ascii_case("kts"))
+        .is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)))
+}
+
+/// The SwiftPM target a file belongs to: the directory under `Sources/` or
+/// `Tests/` that holds it. A file outside that layout, an Xcode target's,
+/// is in the one unnamed module.
+fn swift_module(rel: &str) -> Option<String> {
+    let parts: Vec<&str> = rel.split('/').collect();
+    parts
+        .windows(3)
+        .find(|w| w[0] == "Sources" || w[0] == "Tests")
+        .map(|w| w[1].to_string())
+}
+
+/// The language a resolver reads.
+enum Dialect {
+    Kotlin,
+    Java,
+    /// The modules the repository declares: an import of any other one
+    /// cannot bring one of its names.
+    Swift(FxHashSet<String>),
+}
+
+impl Dialect {
+    fn extensions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Kotlin => &["kt", "kts"],
+            Self::Java => &["java"],
+            Self::Swift(_) => &["swift"],
+        }
+    }
+
+    /// The keywords a type declaration starts with.
+    fn type_keywords(&self) -> &'static [&'static str] {
+        match self {
+            Self::Kotlin => &["class", "interface", "object", "typealias"],
+            Self::Java => &["class", "interface", "enum", "record"],
+            Self::Swift(_) => &["class", "struct", "enum", "actor", "protocol", "typealias"],
+        }
+    }
 }
 
 /// A declaration and where it lives.
@@ -76,6 +125,7 @@ struct TypeRef {
 pub struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
+    dialect: Dialect,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
     /// Facts of other revisions, by (revision, path): the base side of a
     /// range is asked for once per changed definition.
@@ -90,9 +140,32 @@ pub struct KotlinResolver<'a> {
 
 impl<'a> KotlinResolver<'a> {
     pub fn new(root: &'a Path, source: &'a Source) -> Self {
+        Self::with(root, source, Dialect::Kotlin)
+    }
+
+    pub fn java(root: &'a Path, source: &'a Source) -> Self {
+        Self::with(root, source, Dialect::Java)
+    }
+
+    /// A resolver of the Swift files among `files`.
+    pub fn swift<'f>(
+        root: &'a Path,
+        source: &'a Source,
+        files: impl IntoIterator<Item = &'f String>,
+    ) -> Self {
+        let modules = files
+            .into_iter()
+            .filter(|f| has_extension(f, &["swift"]))
+            .filter_map(|f| swift_module(f))
+            .collect();
+        Self::with(root, source, Dialect::Swift(modules))
+    }
+
+    fn with(root: &'a Path, source: &'a Source, dialect: Dialect) -> Self {
         Self {
             root,
             source,
+            dialect,
             facts: RefCell::default(),
             facts_at: RefCell::default(),
             batch: RefCell::default(),
@@ -112,7 +185,7 @@ impl<'a> KotlinResolver<'a> {
             .source
             .read_bytes(&self.root.join(rel))
             .and_then(|b| String::from_utf8(b).ok())
-            .and_then(|text| crate::facts::kotlin::facts(&text));
+            .and_then(|text| self.parse(rel, &text));
         self.facts
             .borrow_mut()
             .insert(rel.to_string(), read.clone());
@@ -147,9 +220,29 @@ impl<'a> KotlinResolver<'a> {
                 .and_then(|b| b.get(rev, Path::new(rel)).ok())
                 .or_else(|| crate::git::show_file_at_revision(self.root, rev, Path::new(rel)).ok())
         }
-        .and_then(|text| crate::facts::kotlin::facts(&text));
+        .and_then(|text| self.parse(rel, &text));
         self.facts_at.borrow_mut().insert(key, read.clone());
         read
+    }
+
+    fn parse(&self, rel: &str, text: &str) -> Option<Arc<KotlinFacts>> {
+        match self.dialect {
+            Dialect::Kotlin => crate::facts::kotlin::facts(text),
+            Dialect::Java => crate::facts::java::facts(text).map(Arc::new),
+            Dialect::Swift(_) => crate::facts::swift::facts(text).map(|mut f| {
+                f.package = swift_module(rel);
+                Arc::new(f)
+            }),
+        }
+    }
+
+    fn is_swift(&self) -> bool {
+        matches!(self.dialect, Dialect::Swift(_))
+    }
+
+    /// Whether `path` is a file of this resolver's language.
+    pub fn covers(&self, path: &str) -> bool {
+        has_extension(path, self.dialect.extensions())
     }
 
     /// The lines of `rel` where a use could reach `def` by spelling: its
@@ -291,6 +384,14 @@ impl<'a> KotlinResolver<'a> {
     fn visibility_rejects(&self, rel: &str, def: &KDef) -> Option<Evidence> {
         match def.decl.effective {
             Some(Visibility::Private) if rel != def.path => Some(Evidence::Rejected),
+            // A Swift module reaches another one's names through an import
+            // alone, which `@testable` opens to `internal` ones.
+            Some(Visibility::Internal) if self.is_swift() => None,
+            // Java's package-private stops at the package.
+            Some(Visibility::Internal) if matches!(self.dialect, Dialect::Java) => {
+                let package = self.facts(rel).and_then(|f| f.package.clone());
+                (package != def.package).then_some(Evidence::Rejected)
+            }
             Some(Visibility::Internal) => {
                 let same = self.project_of(rel) == self.project_of(&def.path);
                 (!same).then_some(Evidence::Rejected)
@@ -360,6 +461,10 @@ impl<'a> KotlinResolver<'a> {
             .iter()
             .filter(|i| i.wildcard)
             .map(|i| i.path.as_str())
+            .filter(|m| match &self.dialect {
+                Dialect::Swift(modules) => modules.contains(*m),
+                Dialect::Kotlin | Dialect::Java => true,
+            })
             .collect();
         match def.package.as_deref() {
             Some(pkg) if wildcards.contains(&pkg) => {
@@ -431,6 +536,15 @@ impl<'a> KotlinResolver<'a> {
         let Some(owner) = self.owner_ref(def) else {
             return Evidence::Candidate("receiver_unresolved");
         };
+        // `import static a.b.C.m` binds `m` to that member.
+        if u.receiver.is_none()
+            && matches!(self.dialect, Dialect::Java)
+            && facts
+                .imported(&u.name)
+                .is_some_and(|i| i.path == def.qualified())
+        {
+            return Evidence::Resolved;
+        }
         let actual = match &u.receiver {
             None => {
                 let implicit = self.implicit_receivers(rel, facts, u.at);
@@ -444,9 +558,10 @@ impl<'a> KotlinResolver<'a> {
             Some(r) => self.receiver_type(rel, facts, u, r),
         };
         let Some(actual) = actual else {
-            return match u.receiver {
+            return match &u.receiver {
                 // A bare name outside any class is a top-level name.
                 None => Evidence::Rejected,
+                Some(r) if self.undeclared_receiver(rel, facts, r, u.at) => Evidence::Rejected,
                 // An untyped receiver can hold the owner only where the file
                 // names the owner's type or shares its package.
                 _ if (u.kind == UseKind::Call || u.kind == UseKind::Reference)
@@ -466,11 +581,63 @@ impl<'a> KotlinResolver<'a> {
                 return Evidence::Resolved;
             }
         }
-        // A call through a supertype the owner implements may dispatch here.
-        if self.is_subtype(&owner, &actual, 0) && def.decl.is_override {
+        // A call through a supertype the owner implements may dispatch here:
+        // a Swift protocol's requirement is met without `override`.
+        if self.is_subtype(&owner, &actual, 0)
+            && (def.decl.is_override
+                || (self.is_swift() && self.member_of(&actual, &def.decl.name, 0).is_some()))
+        {
             return Evidence::Candidate("dispatch");
         }
         Evidence::Rejected
+    }
+
+    /// A Java receiver named by nothing in view: no local, no import, no
+    /// field of the classes around it or of a base class, all of whose
+    /// sources are here. Java declares no value outside a class and adds no
+    /// member from elsewhere, so such a name holds no value at all (#496).
+    fn undeclared_receiver(&self, rel: &str, facts: &KotlinFacts, r: &Receiver, at: usize) -> bool {
+        let name = match (&self.dialect, r) {
+            (Dialect::Java, Receiver::Name(n)) => n.as_str(),
+            (Dialect::Java, Receiver::Path(parts)) => match parts.first() {
+                Some(head) if head != "this" => head.as_str(),
+                _ => return false,
+            },
+            _ => return false,
+        };
+        let classes = self.implicit_receivers(rel, facts, at);
+        !name.starts_with(char::is_uppercase)
+            && facts.binding_at(name, at).is_none()
+            && facts.imported(name).is_none()
+            // `import static a.B.*` may bring any name of `B`.
+            && !facts.imports.iter().any(|i| {
+                i.wildcard && i.target_name().starts_with(char::is_uppercase)
+            })
+            && !classes.is_empty()
+            && classes.iter().all(|c| self.closed_without(c, name, 0))
+    }
+
+    /// Whether `class` and every type it inherits from are declared in the
+    /// repository and none of them declares `name`.
+    fn closed_without(&self, class: &TypeRef, name: &str, depth: usize) -> bool {
+        if depth > MAX_INHERITANCE_DEPTH || class.path.is_empty() {
+            return false;
+        }
+        let Some(facts) = self.facts(&class.path) else {
+            return false;
+        };
+        let mut owners = class.owners.clone();
+        owners.push(class.name.clone());
+        !facts
+            .declarations
+            .iter()
+            .any(|d| d.name == name && d.owners == owners)
+            && facts.supertypes_of(&class.name).iter().all(|s| {
+                match self.resolve_type(&class.path, &facts, s) {
+                    Some(t) => self.closed_without(&t, name, depth + 1),
+                    None => false,
+                }
+            })
     }
 
     /// Whether a file can hold a value of `owner` without spelling a type:
@@ -535,11 +702,46 @@ impl<'a> KotlinResolver<'a> {
 
     fn owner_ref(&self, def: &KDef) -> Option<TypeRef> {
         let (name, outer) = def.decl.owners.split_last()?;
-        Some(TypeRef {
+        let extended = self.facts(&def.path).and_then(|facts| {
+            let extension = facts.declarations.iter().find(|d| {
+                d.kind == "extension"
+                    && d.span.contains(&def.decl.span.start)
+                    && d.owners.len() + 1 == def.decl.owners.len()
+                    && d.owners == outer
+                    && d.name == *name
+            })?;
+            Some(self.extended(&def.path, &facts, extension))
+        });
+        Some(extended.unwrap_or_else(|| TypeRef {
             path: def.path.clone(),
             name: name.clone(),
             owners: outer.to_vec(),
-        })
+        }))
+    }
+
+    /// The type an extension extends: its declaration in view, or the bare
+    /// name of a type from outside the repository.
+    fn extended(&self, rel: &str, facts: &KotlinFacts, extension: &Declaration) -> TypeRef {
+        let Some((head, nested)) = extension.owners.split_first() else {
+            return self.type_or_external(rel, facts, &extension.name);
+        };
+        match self.resolve_type(rel, facts, head) {
+            Some(outer) => {
+                let mut owners = outer.owners;
+                owners.push(outer.name);
+                owners.extend(nested.iter().cloned());
+                TypeRef {
+                    path: outer.path,
+                    name: extension.name.clone(),
+                    owners,
+                }
+            }
+            None => TypeRef {
+                path: String::new(),
+                name: extension.name.clone(),
+                owners: extension.owners.clone(),
+            },
+        }
     }
 
     /// The class around a companion `def` is a member of.
@@ -569,15 +771,22 @@ impl<'a> KotlinResolver<'a> {
         let mut holders: Vec<&Declaration> = facts
             .declarations
             .iter()
-            .filter(|d| d.is_type() && d.kind != "typealias" && d.span.contains(&at))
+            .filter(|d| {
+                ((d.is_type() && d.kind != "typealias") || d.kind == "extension")
+                    && d.span.contains(&at)
+            })
             .collect();
         holders.sort_by_key(|d| d.span.len());
         let mut out = Vec::new();
         for d in holders {
-            out.push(TypeRef {
-                path: rel.to_string(),
-                name: d.name.clone(),
-                owners: d.owners.clone(),
+            out.push(if d.kind == "extension" {
+                self.extended(rel, facts, d)
+            } else {
+                TypeRef {
+                    path: rel.to_string(),
+                    name: d.name.clone(),
+                    owners: d.owners.clone(),
+                }
             });
             if !d.inner {
                 break;
@@ -621,6 +830,15 @@ impl<'a> KotlinResolver<'a> {
         if let Some(b) = facts.binding_at(name, at) {
             // The initializer reads names from before the binding.
             let from = b.start.saturating_sub(1);
+            if let Some(source) = b.alias.as_deref() {
+                if self.typing_depth.get() >= MAX_TYPING_DEPTH {
+                    return None;
+                }
+                self.typing_depth.set(self.typing_depth.get() + 1);
+                let held = self.name_type(rel, facts, source, from);
+                self.typing_depth.set(self.typing_depth.get() - 1);
+                return held;
+            }
             return self.value_type(
                 rel,
                 facts,
@@ -683,12 +901,7 @@ impl<'a> KotlinResolver<'a> {
         };
         // `val a = b.f()` beside `val b = a.g()` does not compile, but must
         // not recurse forever when it is written.
-        if self.typing_depth.get() >= MAX_TYPING_DEPTH {
-            return None;
-        }
-        self.typing_depth.set(self.typing_depth.get() + 1);
-        let held = self.name_type(rel, facts, receiver, at);
-        self.typing_depth.set(self.typing_depth.get() - 1);
+        let held = self.deeper(|| self.name_type(rel, facts, receiver, at));
         let (path, decl) = self
             .member_of(&held?, &init.callee, 0)
             .filter(|(_, d)| d.kind == "fun")?;
@@ -709,9 +922,22 @@ impl<'a> KotlinResolver<'a> {
             })
     }
 
+    /// One level deeper in typing one value by another, or `None` past
+    /// the depth a program that compiles never reaches.
+    fn deeper<T>(&self, typing: impl FnOnce() -> Option<T>) -> Option<T> {
+        if self.typing_depth.get() >= MAX_TYPING_DEPTH {
+            return None;
+        }
+        self.typing_depth.set(self.typing_depth.get() + 1);
+        let typed = typing();
+        self.typing_depth.set(self.typing_depth.get() - 1);
+        typed
+    }
+
     /// What a plain call returns: a constructor its type, a function its
-    /// written return type — a function of the enclosing class (inherited
-    /// ones included) or of the file. An inferred return type is unknown.
+    /// written return type or what its expression body returns — a
+    /// function of the enclosing class (inherited ones included) or of the
+    /// file. A block body's inferred return type is unknown.
     fn call_type(
         &self,
         rel: &str,
@@ -737,9 +963,21 @@ impl<'a> KotlinResolver<'a> {
                     .map(|d| (rel.to_string(), d.clone()))
             })?;
         let (path, decl) = function;
-        let returned = decl.type_name.as_deref()?;
         let decl_facts = self.facts(&path)?;
-        Some(self.type_or_external(&path, &decl_facts, returned))
+        match decl.type_name.as_deref() {
+            Some(returned) => Some(self.type_or_external(&path, &decl_facts, returned)),
+            // `private fun client() = ApiClient(…)` in a test types every
+            // `client().f()` it calls (#562).
+            None => self.deeper(|| {
+                self.value_type(
+                    &path,
+                    &decl_facts,
+                    None,
+                    decl.init_call.as_ref(),
+                    decl.span.start,
+                )
+            }),
+        }
     }
 
     /// `name` declared in `class` or, failing that, in a supertype.
@@ -854,23 +1092,30 @@ impl<'a> KotlinResolver<'a> {
             .find_map(|i| found(&i.path))
     }
 
-    /// Kotlin files that declare a type named `name`, at the run's snapshot:
-    /// one grep builds the repository's index of type declarations the first
-    /// time any name is asked for.
+    /// Files of the language that declare a type named `name`, at the run's
+    /// snapshot: one grep builds the repository's index of type declarations
+    /// the first time any name is asked for.
     fn files_declaring(&self, name: &str) -> Vec<String> {
         if self.type_files.borrow().is_empty() {
             let mut index: FxHashMap<String, Vec<String>> = FxHashMap::default();
             let rev = self.source.rev().map(str::to_string);
+            let keywords = self.dialect.type_keywords();
+            let globs: Vec<String> = self
+                .dialect
+                .extensions()
+                .iter()
+                .map(|e| format!("*.{e}"))
+                .collect();
             let declared = crate::git::grep_lines_matching(
                 self.root,
-                r"(class|interface|object|typealias)[[:space:]]+[A-Za-z_]",
+                &format!("({})[[:space:]]+[A-Za-z_]", keywords.join("|")),
                 rev.as_deref(),
-                &["*.kt", "*.kts"],
+                &globs.iter().map(String::as_str).collect::<Vec<_>>(),
             )
             .map(|g| g.rows)
             .unwrap_or_default();
             for (path, _, text) in declared {
-                for name in declared_type_names(&text) {
+                for name in declared_type_names(&text, keywords) {
                     let files = index.entry(name).or_default();
                     if files.last() != Some(&path) && files.len() < MAX_TYPE_FILES {
                         files.push(path.clone());
@@ -995,16 +1240,15 @@ impl<'a> KotlinResolver<'a> {
     }
 }
 
-/// The type names a source line declares: the word after each `class`,
-/// `interface`, `object` or `typealias` keyword.
-fn declared_type_names(line: &str) -> Vec<String> {
+/// The type names a source line declares: the word after each keyword.
+fn declared_type_names(line: &str, keywords: &[&str]) -> Vec<String> {
     let words: Vec<&str> = line
         .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '`'))
         .filter(|w| !w.is_empty())
         .collect();
     words
         .windows(2)
-        .filter(|w| matches!(w[0], "class" | "interface" | "object" | "typealias"))
+        .filter(|w| keywords.contains(&w[0]))
         .map(|w| w[1].trim_matches('`').to_string())
         .collect()
 }

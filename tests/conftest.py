@@ -4,10 +4,12 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
+from tests.framework.profile_report import read_runs, summarize
 from tests.framework.pygit2_backend import Pygit2Repo
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -22,6 +24,39 @@ if importlib.util.find_spec("pebble") is None:
     collect_ignore_glob.extend(["eval/test_runner.py", "eval/test_splits.py", "eval/test_adapters.py"])
 
 GITIGNORE = ".gitignore"
+
+PROFILE_ENV = "DIFFCTX_PROFILE"
+PROFILE_TAG_ENV = "DIFFCTX_PROFILE_TAG"
+_owned_profile: Path | None = None
+
+
+def pytest_configure(config):
+    # Every engine run of the session, in-process or a child, appends where its
+    # time went; the session ends with the summary. Set before xdist starts its
+    # workers, so they inherit it. An empty DIFFCTX_PROFILE turns it off.
+    global _owned_profile
+    if PROFILE_ENV not in os.environ and not hasattr(config, "workerinput"):
+        fd, path = tempfile.mkstemp(prefix="diffctx-profile-", suffix=".jsonl")
+        os.close(fd)
+        os.environ[PROFILE_ENV] = path
+        _owned_profile = Path(path)
+
+
+@pytest.fixture(autouse=True)
+def _profile_tag(monkeypatch, request):
+    monkeypatch.setenv(PROFILE_TAG_ENV, request.node.nodeid)
+
+
+def pytest_terminal_summary(terminalreporter, config):
+    path = os.environ.get(PROFILE_ENV)
+    if hasattr(config, "workerinput") or not path:
+        return
+    source = path if _owned_profile is None else f"set {PROFILE_ENV}=<file> to keep the raw lines"
+    terminalreporter.write_sep("-", "diffctx profile")
+    terminalreporter.write_line(summarize(read_runs(Path(path)), source=source))
+    if _owned_profile is not None:
+        _owned_profile.unlink(missing_ok=True)
+
 
 _PROC_VERSION = Path("/proc/version")
 IS_WSL = _PROC_VERSION.exists() and "microsoft" in _PROC_VERSION.read_text(errors="ignore").lower()

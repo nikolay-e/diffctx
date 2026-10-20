@@ -9,10 +9,8 @@ use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
+mod support;
+use support::diffctx;
 
 fn git(repo: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -97,7 +95,7 @@ fn hook_in_env(
     env: &[(&str, &Path)],
     stdin: &str,
 ) -> Hook {
-    let mut child = Command::new(&*BIN)
+    let mut child = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache)
         .env_remove("CLAUDE_PLUGIN_ROOT")
@@ -237,7 +235,7 @@ fn a_manual_impact_run_just_before_still_counts() {
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
     let cache = TempDir::new().unwrap();
-    let manual = Command::new(&*BIN)
+    let manual = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--diff", "HEAD", "--mode", "impact", "-q"])
@@ -363,9 +361,13 @@ fn an_older_pin_says_once_per_session_that_a_newer_one_is_installed() {
     );
     assert_eq!(quiet.stdout, "", "nothing newer, nothing said");
 
-    let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
+    // A build no release pipeline made says so: it shares the release's
+    // version, and only the mark tells its runs from the release's (#570).
+    let label = _diffctx::run_provenance::BUILD_LABEL;
+    assert!(label == running || label == format!("{running}+source"));
+    let log = hook_log(cache.path());
     assert!(
-        log.lines().all(|l| l.split(' ').last() == Some(running)),
+        log.lines().all(|l| l.split(' ').last() == Some(label)),
         "{log}"
     );
 }
@@ -486,7 +488,7 @@ fn a_manual_impact_run_counts_as_the_review() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
-    let status = Command::new(&*BIN)
+    let status = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--mode", "impact", "-q"])
@@ -917,8 +919,9 @@ fn an_inspection_reviews_only_what_this_session_edited() {
             h.stdout
         );
         assert!(
-            h.stdout
-                .contains("1 other changed file(s) were not edited in this session"),
+            h.stdout.contains(
+                "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+            ),
             "{}",
             h.stdout
         );
@@ -1268,7 +1271,7 @@ fn a_search_for_a_changed_name_is_answered_with_its_callers() {
     let commit = run_line(repo, cache.path(), "git commit -am vat");
     assert!(context_of(&commit).contains("shop/checkout.py::charge"));
 
-    let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
+    let log = hook_log(cache.path());
     let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
     assert_eq!(
         outcomes,
@@ -1454,7 +1457,7 @@ fn a_partial_answer_is_retried_a_bounded_number_of_times() {
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
     let run = || {
-        let mut child = Command::new(&*BIN)
+        let mut child = diffctx()
             .current_dir(repo)
             .env("DIFFCTX_CACHE_DIR", cache.path())
             .env("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")
@@ -1494,7 +1497,7 @@ fn a_git_command_hidden_in_a_subshell_is_logged_as_unsupported() {
         "{}",
         h.stdout
     );
-    let log = std::fs::read_to_string(cache.path().join("diffctx").join("hook.log")).unwrap();
+    let log = hook_log(cache.path());
     assert!(log.contains("unsupported-syntax"), "{log}");
 }
 
@@ -1533,9 +1536,12 @@ fn the_automatic_answer_fits_its_token_cap() {
     assert!(body.contains("omitted to stay under 600 tokens"), "{body}");
 }
 
+fn hook_log(cache: &Path) -> String {
+    std::fs::read_to_string(cache.join("diffctx").join("hook-runs.log")).unwrap()
+}
+
 fn last_log_line(cache: &Path) -> String {
-    let log = std::fs::read_to_string(cache.join("diffctx").join("hook.log")).unwrap();
-    log.lines().last().unwrap().to_string()
+    hook_log(cache).lines().last().unwrap().to_string()
 }
 
 /// An unrelated edit beside the pending one, the shape of a worktree another
@@ -1798,7 +1804,7 @@ fn a_manual_run_that_found_nothing_leaves_no_reminder() {
     let repo = tmp.path();
     git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
     write(repo, "README.md", "# shop\n\nVAT included.\n");
-    let status = Command::new(&*BIN)
+    let status = diffctx()
         .current_dir(repo)
         .env("DIFFCTX_CACHE_DIR", cache.path())
         .args(["--mode", "impact", "-q"])
@@ -2033,7 +2039,7 @@ fn a_git_grep_over_a_revision_is_answered() {
         .unwrap_or_default()
         .to_string();
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
-    let log = std::fs::read_to_string(cache.path().join("diffctx/hook.log")).unwrap();
+    let log = hook_log(cache.path());
     assert!(!log.contains("not-git"), "{log}");
 }
 
@@ -2070,7 +2076,7 @@ fn a_qualified_search_word_is_not_the_name_it_qualifies() {
 }
 
 /// #569: markers past their TTL (`SEEN_TTL`, or `UPGRADE_NOTICE_TTL` for
-/// `upgrade-*`) cannot be read by any hook run; rotating `hook.log` sweeps
+/// `upgrade-*`) cannot be read by any hook run; rotating the log sweeps
 /// them while keeping live ones.
 #[test]
 fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
@@ -2097,11 +2103,11 @@ fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
     stamp("upgrade-0.9.1.s1", 2 * day);
     stamp("id-fresh.s1", std::time::Duration::from_secs(60));
 
-    std::fs::write(dir.join("hook.log"), vec![b'x'; 4 * 1024 * 1024 + 1]).unwrap();
+    std::fs::write(dir.join("hook-runs.log"), vec![b'x'; 4 * 1024 * 1024 + 1]).unwrap();
     let h = hook(tmp.path(), cache.path(), &payload(tmp.path(), "git status"));
     assert_eq!(h.code, Some(0));
 
-    assert!(dir.join("hook.log.1").is_file(), "hook.log rotated");
+    assert!(dir.join("hook-runs.log.1").is_file(), "the log rotated");
     assert!(!seen.join("id-stale.s1").exists(), "day-old marker swept");
     assert!(
         !seen.join("upgrade-0.9.0.s1").exists(),
@@ -2114,3 +2120,407 @@ fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
     assert!(seen.join("id-fresh.s1").is_file(), "fresh marker kept");
 }
 
+/// The sweep does not wait for the log to rotate, which takes tens of
+/// thousands of runs. It runs once a day on its own stamp, not on every hook
+/// run.
+#[test]
+fn the_marker_sweep_runs_daily_without_a_rotation() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let seen = cache.path().join("diffctx").join("seen");
+    std::fs::create_dir_all(&seen).unwrap();
+    let aged = |name: &str| {
+        let path = seen.join(name);
+        std::fs::write(&path, "").unwrap();
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(then)
+            .unwrap();
+        path
+    };
+    let stale = aged("id-0123.s1");
+    run_line(tmp.path(), cache.path(), "git status");
+    assert!(
+        !cache.path().join("diffctx/hook-runs.log.1").exists(),
+        "no rotation"
+    );
+    assert!(!stale.exists(), "swept without a rotation");
+
+    let later = aged("id-89ab.s1");
+    run_line(tmp.path(), cache.path(), "git status");
+    assert!(later.exists(), "one sweep a day, not one per run");
+}
+
+/// #534: the body of a quoted here-document is data — Markdown code spans,
+/// a `$(…)` quoted in an issue body — and so is a single-quoted argument or
+/// a comment: none of them is git the shell hides.
+#[test]
+fn quoted_text_naming_git_hides_no_git() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    for command in [
+        "cat > notes.md <<'X'\nRun `git commit -qam change` then `git push`, or $(git push origin main).\nX",
+        "cat > notes.md <<\"X\"\nRun `git commit -qam change`.\nX",
+        "cat > notes.md <<\\X\nRun `git commit -qam change`.\nX",
+        "cat > notes.md <<-'X'\n\tRun `git push`.\n\tX",
+        "gh issue create --title t --body \"$(cat <<'EOF'\nrepro: `git commit -qam change` (then push)\nEOF\n)\"",
+        "gh issue create --title t --body 'Run `git commit -am x` first'",
+        "git status # never `git push` from here",
+    ] {
+        let cache = TempDir::new().unwrap();
+        let h = hook(repo, cache.path(), &payload(repo, command));
+        assert_eq!((h.code, h.stdout.as_str()), (Some(0), ""), "{command}");
+        assert!(
+            !last_log_line(cache.path()).contains("unsupported-syntax"),
+            "{command}"
+        );
+    }
+    // What the shell does run still hides git: an unquoted here-document
+    // expands its body, and a `-c` or `eval` script is code.
+    for command in [
+        "cat > notes.md <<X\n$(git commit -qam change)\nX",
+        "cat <<X\n`git push`\nX",
+        "sh -c 'git commit -am x'",
+        "eval 'git push'",
+    ] {
+        let cache = TempDir::new().unwrap();
+        let h = hook(repo, cache.path(), &payload(repo, command));
+        assert!(
+            h.stdout.contains("did not analyse this command"),
+            "{command}: {}",
+            h.stdout
+        );
+    }
+    // A commit after the here-document's opening line is still reviewed.
+    let cache = TempDir::new().unwrap();
+    let h = run_line(
+        repo,
+        cache.path(),
+        "cat > msg.txt <<'EOF' && git commit -qam vat\nbody `git push` $(git push)\nEOF",
+    );
+    let context = context_of(&h);
+    assert!(
+        context.starts_with("diffctx reviewed what this commit recorded."),
+        "{context}"
+    );
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    // So is the usual message form, whose text names a push.
+    write(repo, "shop/pricing.py", "def total(items):\n    return 0\n");
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qam \"$(cat <<'EOF'\nvat: `git push` follows\nEOF\n)\"",
+    );
+    assert!(
+        context_of(&h).starts_with("diffctx reviewed what this commit recorded."),
+        "{}",
+        h.stdout
+    );
+}
+
+/// #575: a word the line hands to another program — a jq path, an API
+/// route, a pattern — is no git verb, so a line that only reads does not
+/// take a commit another session made while it ran as its own.
+#[test]
+fn a_commit_named_in_another_programs_argument_is_not_this_lines() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    for (i, command) in [
+        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
+        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq .commit.author.date",
+        "git log -1 --format=%s | grep -c commit",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let pre = hook(repo, cache.path(), &payload(repo, command));
+        assert_eq!(pre.stdout, "", "{command}");
+        write(
+            repo,
+            "shop/pricing.py",
+            &format!("def total(items):\n    return sum(i.price for i in items) + {i}\n"),
+        );
+        git(repo, &["commit", "-qam", "another session"]);
+        let post = hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &payload_for("PostToolUse", repo, command),
+        );
+        assert_eq!(
+            post.stdout, "",
+            "{command}: another session's commit is not this line's"
+        );
+    }
+    write(repo, "shop/pricing.py", "def total(items):\n    return 0\n");
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qam vat; echo '{\"commit\": 1}' | grep -c commit",
+    );
+    let context = context_of(&h);
+    assert!(
+        context.starts_with("diffctx reviewed what this commit recorded."),
+        "{context}"
+    );
+}
+
+/// #556: from a session whose cwd is the main checkout, a commit made with
+/// `cd <linked worktree> && git commit` is the worktree's, and a change
+/// whose only reach is a config naming it by path says so, never that it
+/// reaches nothing.
+#[test]
+fn a_commit_in_a_linked_worktree_entered_with_cd_names_what_names_it() {
+    let tmp = TempDir::new().unwrap();
+    let main = tmp.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    git(&main, &["init", "-q", "."]);
+    git(&main, &["config", "user.email", "test@example.com"]);
+    git(&main, &["config", "user.name", "diffctx tests"]);
+    write(&main, "deploy/values.yaml", "a: 1\n");
+    write(&main, "refs.yaml", "values: deploy/values.yaml\n");
+    commit_all(&main, "initial");
+    let wt = tmp.path().join("wt");
+    git(
+        &main,
+        &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "side"],
+    );
+    write(&wt, "deploy/values.yaml", "a: 2\n");
+    git(&wt, &["add", "deploy/values.yaml"]);
+    let cache = TempDir::new().unwrap();
+    let command = format!(
+        "cd '{}' && git commit -q -F - <<'EOF' > '{}' 2>&1\nvalues: a 2\nEOF\ngit log --oneline -1",
+        wt.display(),
+        cache.path().join("commit.log").display()
+    );
+    let h = run_line(&main, cache.path(), &command);
+    let context = context_of(&h);
+    assert!(
+        context.starts_with("diffctx reviewed what this commit recorded."),
+        "{context}"
+    );
+    assert!(
+        context.contains("refs.yaml:1 names deploy/values.yaml"),
+        "{context}"
+    );
+}
+
+/// A transcript timestamp as Claude Code writes it: UTC, milliseconds.
+fn iso(t: std::time::SystemTime) -> String {
+    let ms = i64::try_from(t.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()).unwrap();
+    let (days, of_day) = (ms.div_euclid(86_400_000), ms.rem_euclid(86_400_000));
+    // H. Hinnant's `civil_from_days`.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        of_day / 3_600_000,
+        of_day / 60_000 % 60,
+        of_day / 1000 % 60,
+        of_day % 1000
+    )
+}
+
+/// The transcript lines of one Bash call: its `tool_use` at `from` and,
+/// once it returned, its `tool_result` at `to`.
+fn bash_call(id: &str, from: std::time::SystemTime, to: Option<std::time::SystemTime>) -> String {
+    let mut lines = vec![serde_json::json!({"type": "assistant", "timestamp": iso(from), "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": id, "name": "Bash", "input": {"command": "python3 - <<'EOF'\n...\nEOF"}}
+    ]}})
+    .to_string()];
+    if let Some(to) = to {
+        lines.push(
+            serde_json::json!({"type": "user", "timestamp": iso(to), "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": id, "content": "ok"}
+            ]}})
+            .to_string(),
+        );
+    }
+    lines.join("\n") + "\n"
+}
+
+/// #453: a file the session's own shell rewrote (`sed -i`, a heredoc
+/// script, `git rm`) is its edit, as one its edit tools wrote is; another
+/// session's edit, made while none of its Bash calls ran, still is not
+/// (#404).
+#[test]
+fn a_file_the_sessions_shell_wrote_is_its_own() {
+    use std::time::{Duration, SystemTime};
+    // `pricing.total` is another session's edit, made before any shell call
+    // of this one returned or ran.
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let theirs = SystemTime::now();
+    while SystemTime::now() < theirs + Duration::from_millis(1500) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let from = SystemTime::now();
+    add_unrelated_edit(repo);
+    std::fs::remove_file(repo.join("README.md")).unwrap();
+    let to = SystemTime::now() + Duration::from_millis(1);
+
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(
+        &main,
+        [
+            // Returned before their edit; still running, so no span yet.
+            bash_call(
+                "t1",
+                theirs - Duration::from_secs(20),
+                Some(theirs - Duration::from_secs(10)),
+            ),
+            bash_call("t2", theirs - Duration::from_secs(5), None),
+            // The `git rm` of README.md.
+            bash_call("t3", from, Some(to)),
+        ]
+        .concat(),
+    )
+    .unwrap();
+    let subagents = dir.path().join("b").join("subagents");
+    std::fs::create_dir_all(&subagents).unwrap();
+    // A subagent's heredoc rewrite of `inventory.restock`.
+    std::fs::write(
+        subagents.join("agent-1.jsonl"),
+        bash_call("t4", from, Some(to)),
+    )
+    .unwrap();
+
+    let h = inspect_with_transcript(repo, "git diff", Some(&main));
+    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+    assert!(h.stdout.contains("(1 deleted)"), "{}", h.stdout);
+    assert!(
+        !h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+}
+
+/// #453: a definition the session added, called from the pending text of a
+/// changed file it shows no write of: that file is read as committed, so
+/// the answer says the definition's callers may be missing rather than that
+/// nothing calls it.
+#[test]
+fn a_caller_in_a_file_read_as_committed_is_named_as_an_unknown() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(
+        repo,
+        "shop/discount.py",
+        "def discount(amount):\n    return amount * 0.9\n",
+    );
+    write(
+        repo,
+        "shop/pricing.py",
+        "from shop.discount import discount\n\n\ndef total(items):\n    return discount(sum(i.price for i in items))\n",
+    );
+    // Names only a longer word.
+    write(
+        repo,
+        "shop/inventory.py",
+        "def restock(item):\n    # discounts apply later\n    return item.count + 1\n",
+    );
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[repo.join("shop/discount.py")], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        h.stdout.contains("2 other changed file(s) show no write by this session or its subagents and are read as committed: shop/inventory.py, shop/pricing.py."),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        h.stdout.contains(
+            "(callers may be missing: discount named in 1 changed file(s) read as committed: shop/pricing.py)"
+        ),
+        "{}",
+        h.stdout
+    );
+}
+
+/// #549: the header names what the snapshot holds — the index for a staged
+/// inspection, this session's edits for a scoped one — not a bare tree id.
+#[test]
+fn the_header_names_what_the_snapshot_holds() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let fresh = |command: &str| {
+        let cache = TempDir::new().unwrap();
+        context_of(&inspect(repo, cache.path(), command))
+    };
+    let all = fresh("git diff");
+    assert!(
+        all.contains("diffctx impact for uncommitted changes:"),
+        "{all}"
+    );
+    git(repo, &["add", "shop/pricing.py"]);
+    let staged = fresh("git diff --cached");
+    assert!(
+        staged.contains("diffctx impact for staged changes (index tree "),
+        "{staged}"
+    );
+    add_unrelated_edit(repo);
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[repo.join("shop/inventory.py")], &[]);
+    let scoped = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        scoped
+            .stdout
+            .contains("diffctx impact for this session's edits (snapshot tree "),
+        "{}",
+        scoped.stdout
+    );
+}
+
+/// #555: a pin at or below 1.18.4 cuts `hook.log` at 256 KiB, each time
+/// overwriting what it rotated before; the runs this binary logged survive.
+#[test]
+fn an_older_pins_log_rotation_keeps_this_binarys_history() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let h = hook(
+        repo,
+        cache.path(),
+        &payload_in_session("kept-1", repo, "ls"),
+    );
+    assert_eq!(h.code, Some(0));
+    let dir = cache.path().join("diffctx");
+    for _ in 0..2 {
+        let old = dir.join("hook.log");
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&old)
+            .and_then(|mut f| f.write_all(&vec![b'x'; 256 * 1024 + 1]))
+            .unwrap();
+        std::fs::rename(&old, dir.join("hook.log.1")).unwrap();
+    }
+    let kept: String = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| std::fs::read_to_string(e.ok()?.path()).ok())
+        .collect();
+    assert!(
+        kept.lines().any(|l| l.split(' ').nth(1) == Some("kept-1")),
+        "the run's line is gone"
+    );
+}

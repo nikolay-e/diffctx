@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from diffctx.version import __version__
+from diffctx._diffctx import BUILD_LABEL
 
 # The base package installs the diffctx-mcp script too (a console script cannot
 # depend on an extra), so this module parses arguments and reports a missing
@@ -16,7 +16,7 @@ def main(prog: str = "diffctx-mcp") -> None:
         prog=prog,
         description="Run the diffctx MCP server (stdio transport) for editor/agent integration.",
     )
-    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {BUILD_LABEL}")
     parser.parse_args()
     try:
         from .server import run_server

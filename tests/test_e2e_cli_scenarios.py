@@ -645,11 +645,11 @@ class TestGraphModeJourneys:
 
 class TestIdentityJourneys:
     def test_version_matches_package(self, temp_project):
-        import diffctx
+        from diffctx._diffctx import BUILD_LABEL
 
         result = run_diffctx_subprocess(["--version"], cwd=temp_project)
         assert result.returncode == EXIT_OK
-        assert result.stdout.strip() == f"diffctx {diffctx.__version__}"
+        assert result.stdout.strip() == f"diffctx {BUILD_LABEL}"
 
     @staticmethod
     def _console_script():

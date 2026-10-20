@@ -85,6 +85,11 @@ pub struct ImpactOutput {
     /// the snapshot this answer is about. A later `git add` makes it stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index_tree: Option<String>,
+    /// What the snapshot holds, when the caller knows it better than a tree
+    /// id says — the hook's session edits, the index a commit records: the
+    /// header names it (#549).
+    #[serde(skip)]
+    pub range_name: Option<String>,
     /// Set on a `--symbol` query (#336): `changed` then lists the symbol's
     /// definitions, and `changed_files` the files that hold them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,6 +117,13 @@ pub struct ImpactOutput {
     pub named_by: Vec<PathReference>,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub named_by_omitted: usize,
+    /// Lines outside the change that read a changed entry's Astro content
+    /// collection by name: `getCollection('blog')` reads every entry under
+    /// `src/content/blog/`, and no import or path leads there (#432).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collection_reads: Vec<CollectionRead>,
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub collection_reads_omitted: usize,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub commit_count: usize,
     pub changed: Vec<ChangedSymbol>,
@@ -326,6 +338,10 @@ pub struct Caller {
     /// no static test link follows, so its absence is no finding (#388).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registered_by: Option<String>,
+    /// A test file the size cap kept out that names this caller: an absent
+    /// `tested_by` says nothing about it (#542).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unread_test: Option<String>,
     /// `resolved`: an import binding links the reference to the changed
     /// definition (Python, JavaScript, TypeScript). `name`: the lexical model
     /// of a language without a binding model — a mention in code of a file
@@ -355,6 +371,16 @@ pub struct StaleReference {
     pub target: String,
     /// `deleted`, or `renamed to <new path>`.
     pub kind: String,
+}
+
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct CollectionRead {
+    pub path: String,
+    pub line: u32,
+    /// The collection the call names; absent when the name is computed at
+    /// run time, so the call may read any collection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -404,6 +430,16 @@ fn binds_locally(code: &str, name: &str) -> bool {
     })
 }
 
+/// Whether `text` holds `name` as a whole word; `$` is a word character,
+/// as in a JavaScript identifier.
+fn names_word(text: &str, name: &str) -> bool {
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    text.match_indices(name).any(|(at, _)| {
+        !text[..at].chars().next_back().is_some_and(word)
+            && !text[at + name.len()..].chars().next().is_some_and(word)
+    })
+}
+
 fn is_code_file(path: &str) -> bool {
     let ext = Path::new(path)
         .extension()
@@ -449,7 +485,6 @@ fn receiver_before(code: &str, at: usize) -> Option<&str> {
 fn mentions(caller: &Fragment, symbol: Option<&str>, receiver: &Receiver) -> bool {
     let Some(sym) = symbol else { return true };
     let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-    let rust = lang::rust::is_rust(caller.path());
     code_text(caller.path(), &caller.content)
         .lines()
         .any(|code| {
@@ -459,14 +494,6 @@ fn mentions(caller: &Fragment, symbol: Option<&str>, receiver: &Receiver) -> boo
                 let after = bytes.get(at + sym.len()).copied();
                 if before.is_some_and(is_word) || after.is_some_and(is_word) {
                     return false;
-                }
-                if rust && lang::rust::invokes_macro(&code[at + sym.len()..]) {
-                    return false;
-                }
-                if let (true, Receiver::Module { stem, aliases }, Some(q)) =
-                    (rust, receiver, lang::rust::path_qualifier(&code[..at]))
-                {
-                    return lang::rust::qualifier_reaches(q, stem, aliases);
                 }
                 match (receiver, receiver_before(&code, at)) {
                     (Receiver::Module { stem, aliases }, Some(r)) => {
@@ -738,7 +765,15 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             // document or a binary has no other consumer, a schema is listed
             // as a contract and a layout edit reaches no reader; anything
             // else read as a clean zero while its readers went unsearched.
-            if !is_code_file(path) {
+            // An extensionless shell script is code by its shebang, and the
+            // shell model reads it (#541).
+            let script = || {
+                Path::new(path).extension().is_none()
+                    && source
+                        .read_to_string(&state.root_dir.join(path))
+                        .is_some_and(|t| crate::languages::sniff_language(path, &t) == Some("bash"))
+            };
+            if !is_code_file(path) && !script() {
                 let binary = || {
                     source
                         .read_bytes(&state.root_dir.join(path))
@@ -798,7 +833,13 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
 
 /// Files in view, other than the definition's own, that spell `name` but
 /// whose definitions were not all read: a caller there is not seen.
-fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> Vec<UnanalysedFile> {
+fn missed_namers(
+    state: &ScoredState,
+    files: &Files,
+    registry: &Registry,
+    name: &str,
+    own: &str,
+) -> Vec<UnanalysedFile> {
     let source = state.run.source();
     // Identifiers are stored lowercased: compared as written, a camelCase
     // name never matched and its unparsed namers went unsaid.
@@ -822,6 +863,25 @@ fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> V
                 crate::parsers::unanalysed_reason(&rel_path, has_definition, || {
                     source.read_bytes(Path::new(path))
                 })?;
+            // A tree broken on some lines read the rest: a use of the name
+            // there was seen, and only one where it broke can be lost (#537).
+            if reason == "parse_partial"
+                && source.read_bytes(Path::new(path)).is_some_and(|bytes| {
+                    let text = String::from_utf8_lossy(&bytes);
+                    !crate::parsers::spelled_where_broken(&rel_path, &text, name)
+                })
+            {
+                return None;
+            }
+            // A model that reads past a broken line says whether the name is
+            // where it could not read: an `echo` argument is no hedge (#521).
+            if registry
+                .for_path(&rel_path)
+                .and_then(|m| m.names_unread(&rel_path, name))
+                == Some(false)
+            {
+                return None;
+            }
             Some(UnanalysedFile {
                 language: crate::languages::get_language_for_file(&rel_path),
                 path: rel_path,
@@ -872,13 +932,7 @@ fn missed_namers(state: &ScoredState, files: &Files, name: &str, own: &str) -> V
         let Some(bytes) = source.read_bytes(&state.root_dir.join(&path)) else {
             continue;
         };
-        let text = String::from_utf8_lossy(&bytes);
-        let named = text.match_indices(name).any(|(at, _)| {
-            let word = |c: char| c.is_alphanumeric() || c == '_';
-            !text[..at].chars().next_back().is_some_and(word)
-                && !text[at + name.len()..].chars().next().is_some_and(word)
-        });
-        if named {
+        if names_word(&String::from_utf8_lossy(&bytes), name) {
             out.push(UnanalysedFile {
                 language: crate::languages::get_language_for_file(&path),
                 path,
@@ -921,14 +975,7 @@ fn embedded_naming(script: &str, runtime: &str, name: &str) -> Option<u32> {
     let text = |n: tree_sitter::Node| n.utf8_text(script.as_bytes()).unwrap_or("");
     // Only code names it: a comment or a string in the embedded program
     // does not (`# column-aligned`).
-    let names = |embedded: &str| {
-        let code = code_text(as_file, embedded);
-        code.match_indices(name).any(|(at, _)| {
-            let word = |c: char| c.is_alphanumeric() || c == '_';
-            !code[..at].chars().next_back().is_some_and(word)
-                && !code[at + name.len()..].chars().next().is_some_and(word)
-        })
-    };
+    let names = |embedded: &str| names_word(&code_text(as_file, embedded), name);
     let mut stack = vec![tree.root_node()];
     while let Some(node) = stack.pop() {
         let mut cursor = node.walk();
@@ -983,28 +1030,6 @@ fn same_runtime(a: &str, b: &str) -> bool {
     ra.is_empty() || rb.is_empty() || ra == rb
 }
 
-/// A Rust `use` (or re-export) line.
-fn rust_use(text: &str) -> bool {
-    let t = text.trim_start();
-    let t = t
-        .strip_prefix("pub(crate) ")
-        .or_else(|| t.strip_prefix("pub "))
-        .unwrap_or(t);
-    t.starts_with("use ")
-}
-
-/// Where a private Rust item can be used: its own module file and the
-/// modules beneath it (`a/b.rs` reaches into `a/b/`; `mod.rs`, `lib.rs` and
-/// `main.rs` into their directory).
-fn rust_private_reach(caller: &str, removed: &str) -> bool {
-    let p = Path::new(removed);
-    let scope = match p.file_stem().and_then(|s| s.to_str()) {
-        Some("mod" | "lib" | "main") => p.parent().map(Path::to_path_buf),
-        _ => Some(p.with_extension("")),
-    };
-    caller == removed || scope.is_some_and(|d| Path::new(caller).starts_with(d))
-}
-
 fn rel(state: &ScoredState, path: &str) -> String {
     crate::paths::display_rel_or_abs(&state.root_dir, Path::new(path))
 }
@@ -1029,79 +1054,6 @@ fn is_public(path: &str, symbol: Option<&str>, content: &str) -> bool {
         || head.starts_with("exports.")
 }
 
-/// Whether every module on a Rust file's path is public from its crate
-/// root: `pub fn` in a `pub(crate) mod` is crate-internal (#359). A binary
-/// crate exports nothing. Files outside Rust are left to `is_public`.
-fn rust_module_is_public(state: &ScoredState, path: &str) -> bool {
-    if !path.ends_with(".rs") {
-        return true;
-    }
-    let source = state.run.source();
-    // The run's own source only: a snapshot's module tree, not the disk's
-    // (an uncommitted `mod.rs` -> `m.rs` move flipped a commit's verdict).
-    let read = |p: &Path| source.read_to_string(p);
-    let file = Path::new(path);
-    let Some(src_dir) = file.ancestors().find(|d| {
-        d.file_name().is_some_and(|n| n == "src")
-            && d.parent()
-                .is_some_and(|c| read(&c.join("Cargo.toml")).is_some())
-    }) else {
-        return true;
-    };
-    let Ok(rel_path) = file.strip_prefix(src_dir) else {
-        return true;
-    };
-    let mut segments: Vec<String> = rel_path
-        .with_extension("")
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
-        .collect();
-    if segments.last().is_some_and(|s| s == "mod") {
-        segments.pop();
-    }
-    if segments.first().is_some_and(|s| s == "main" || s == "bin") {
-        return false;
-    }
-    if segments == ["lib"] {
-        return true;
-    }
-    let mut parent = src_dir.join("lib.rs");
-    for (i, seg) in segments.iter().enumerate() {
-        let Some(text) = read(&parent) else {
-            return i > 0;
-        };
-        let declared_pub = text.lines().map(without_attributes).any(|l| {
-            l.strip_prefix("pub mod ")
-                .and_then(|rest| {
-                    rest.trim_start()
-                        .trim_start_matches("r#")
-                        .strip_prefix(seg.as_str())
-                })
-                .is_some_and(|after| after.trim_start().starts_with([';', '{']))
-                || (l.starts_with("pub use ") && l.contains(&format!("{seg}::")))
-        });
-        if !declared_pub {
-            return false;
-        }
-        let dir = parent.parent().unwrap_or(src_dir).to_path_buf();
-        let base = if parent
-            .file_name()
-            .is_some_and(|n| n == "lib.rs" || n == "mod.rs")
-        {
-            dir
-        } else {
-            dir.join(parent.file_stem().unwrap_or_default())
-        };
-        let flat = base.join(format!("{seg}.rs"));
-        parent = if read(&flat).is_some() {
-            flat
-        } else {
-            base.join(seg).join("mod.rs")
-        };
-    }
-    true
-}
-
 /// An added run whose lines, blank ones aside, are a run removed elsewhere in
 /// the same file: the definition moved, its text and indentation did not.
 fn moved_verbatim(
@@ -1121,26 +1073,6 @@ fn moved_verbatim(
         && hunks
             .iter()
             .any(|h| h.path == run.path && h.added.is_empty() && text(&h.removed) == added)
-}
-
-/// A line without the `#[cfg(..)]`-style attributes written before its item.
-fn without_attributes(line: &str) -> &str {
-    let mut rest = line.trim_start();
-    while let Some(attr) = rest.strip_prefix("#[") {
-        let mut depth = 1usize;
-        let Some(end) = attr.char_indices().find_map(|(i, c)| {
-            match c {
-                '[' => depth += 1,
-                ']' => depth -= 1,
-                _ => {}
-            }
-            (depth == 0).then_some(i)
-        }) else {
-            return rest;
-        };
-        rest = attr[end + 1..].trim_start();
-    }
-    rest
 }
 
 fn is_schema_file(path: &str) -> bool {
@@ -1303,6 +1235,8 @@ struct TestIndex<'a> {
     /// Functions outside test files an attribute marks as tests: a Rust
     /// `#[test]` in an inline `mod tests` (#528).
     inline_tests: FxHashSet<&'a FragmentId>,
+    /// Test files the size cap kept out, with their code.
+    unread: Vec<(String, std::sync::Arc<str>)>,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: std::cell::RefCell<FxHashMap<FragmentId, Option<(String, Option<String>)>>>,
@@ -1356,16 +1290,49 @@ impl<'a> TestIndex<'a> {
                 crate::testfiles::is_test_path(Path::new(f.path())) || inline_tests.contains(&f.id)
             })
             .collect();
+        let source = state.run.source();
+        let too_large: Vec<String> = state
+            .run
+            .limited_files()
+            .into_iter()
+            .filter(|f| {
+                f.reason == crate::resource::LimitReason::FileTooLarge
+                    && crate::testfiles::is_test_path(Path::new(&f.path))
+            })
+            .map(|f| f.path)
+            .collect();
+        let unread = state
+            .run
+            .bounded(too_large)
+            .filter_map(|path| {
+                let bytes = source.read_bytes(&state.root_dir.join(&path))?;
+                let code = code_text(&path, &String::from_utf8_lossy(&bytes));
+                Some((path, code))
+            })
+            .collect();
         Self {
             by_path,
             test_fragments,
             inline_tests,
+            unread,
             memo: std::cell::RefCell::default(),
         }
     }
 
     fn any(&self) -> bool {
         !self.test_fragments.is_empty() || !self.by_path.is_empty()
+    }
+
+    fn unread_naming(&self, caller: &Fragment) -> Option<String> {
+        let name = caller
+            .symbol_name
+            .as_deref()
+            .map(base_symbol)
+            .filter(|s| s.len() >= 3)?;
+        self.unread
+            .iter()
+            .find(|(_, text)| names_word(text, name))
+            .map(|(path, _)| path.clone())
     }
 
     fn is_test(&self, f: &Fragment) -> bool {
@@ -1427,8 +1394,23 @@ impl<'a> TestIndex<'a> {
             return Some((test, None));
         }
         let graph = &state.scoring_result.graph;
-        let mut frontier: Vec<&Fragment> = vec![caller];
-        let mut seen: FxHashSet<&FragmentId> = FxHashSet::from_iter([&caller.id]);
+        // A chunk of a long definition (`Output[35]`) is reached by what
+        // reaches the definition: the graph's edges end at the whole.
+        let name = caller.symbol_name.as_deref().map(base_symbol);
+        let whole = (caller.symbol_name.as_deref() != name)
+            .then(|| {
+                by_id.values().copied().filter(|f| {
+                    f.symbol_name.as_deref() == name
+                        && f.path() == caller.path()
+                        && f.start_line() <= caller.start_line()
+                        && f.end_line() >= caller.end_line()
+                })
+            })
+            .into_iter()
+            .flatten()
+            .max_by_key(|f| f.line_count());
+        let mut frontier: Vec<&Fragment> = std::iter::once(caller).chain(whole).collect();
+        let mut seen: FxHashSet<&FragmentId> = frontier.iter().map(|f| &f.id).collect();
         for _ in 0..MAX_TEST_HOPS {
             let mut next = Vec::new();
             for f in &frontier {
@@ -1522,6 +1504,7 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                     m.tested_by = c.tested_by;
                     m.tested_via = c.tested_via;
                 }
+                m.unread_test = m.unread_test.take().or(c.unread_test);
                 m.file_tested = m.tested_by.is_none() && (m.file_tested || c.file_tested);
             }
             None => merged.push(c),
@@ -1532,42 +1515,6 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
 
 pub(crate) fn base_symbol(symbol: &str) -> &str {
     symbol.split('[').next().unwrap_or(symbol)
-}
-
-/// The trait a Rust method implements or declares (`impl Trait for Type`,
-/// `trait Trait`), whose calls may arrive through dynamic dispatch the graph
-/// does not model. Read from the file: the impl block is not a fragment.
-fn dispatched_trait(state: &ScoredState, core: &Fragment) -> Option<String> {
-    if !core.path().ends_with(".rs") {
-        return None;
-    }
-    let text = state.run.source().read_to_string(Path::new(core.path()))?;
-    let indent = |l: &str| l.len() - l.trim_start().len();
-    let lines: Vec<&str> = text.lines().collect();
-    let own = lines
-        .get(core.start_line().saturating_sub(1) as usize)
-        .map_or(0, |l| indent(l));
-    if own == 0 {
-        return None;
-    }
-    let head = lines[..core.start_line().saturating_sub(1) as usize]
-        .iter()
-        .rev()
-        .find(|l| !l.trim().is_empty() && indent(l) < own)?
-        .trim_start();
-    let head = head.strip_prefix("pub ").unwrap_or(head);
-    let head = head.strip_prefix("unsafe ").unwrap_or(head);
-    let name = if let Some(rest) = head.strip_prefix("impl") {
-        let (lhs, _) = rest.split_once(" for ")?;
-        skip_generics(lhs)
-    } else {
-        head.strip_prefix("trait ")?
-    };
-    // `std::fmt::Display<T>` names `Display`; `trait Foo: Bar` names `Foo`.
-    let name = name.trim().split(['<', ' ', '{']).next().unwrap_or("");
-    let name = name.rsplit("::").next().unwrap_or(name);
-    let name = name.split(':').next().unwrap_or(name);
-    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// What can call a member nothing calls directly, in a language whose model
@@ -1583,7 +1530,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
         .to_str()?
         .to_ascii_lowercase();
     match ext.as_str() {
-        // Traits are `dispatched_trait`'s.
+        // Traits are the Rust model's (`LanguageFacts::dispatched`).
         "rs" => return None,
         "go" => {
             return core
@@ -1625,7 +1572,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
     let supers = enclosing_class(core, file)
         .map(|c| supertypes(&c.content, &ext))
         .unwrap_or_default();
-    let quoted = || format!("`{}`", supers.join("`, `"));
+    let quoted = || format!("`{}`", supers[..supers.len().min(2)].join("`, `"));
     if words.iter().any(|w| matches!(*w, "@Override" | "override")) {
         return Some(if supers.is_empty() {
             "the supertype it overrides".to_string()
@@ -1640,7 +1587,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
 /// `implements` and `with` clauses, a Python base list, a Kotlin, Swift or
 /// C# `: Base` after the primary constructor. The root types every class
 /// has are not routes.
-fn supertypes(class: &str, ext: &str) -> Vec<String> {
+pub(crate) fn supertypes(class: &str, ext: &str) -> Vec<String> {
     let Some(at) = class.find("class ") else {
         return Vec::new();
     };
@@ -1690,34 +1637,10 @@ fn supertypes(class: &str, ext: &str) -> Vec<String> {
                     .next()
                     .is_some_and(|c| c.is_alphabetic() || c == '_')
         })
+        .map(|t| t.split(['[', '<', '(']).next().unwrap_or(t))
+        .filter(|t| !t.is_empty())
         .map(|t| t.rsplit('.').next().unwrap_or(t).to_string())
-        .take(2)
         .collect()
-}
-
-/// `<T: Clone> Iterator<Item = T>` without its leading parameter list.
-fn skip_generics(text: &str) -> &str {
-    let text = text.trim_start();
-    if !text.starts_with('<') {
-        return text;
-    }
-    let mut depth = 0usize;
-    let mut prev = ' ';
-    for (i, c) in text.char_indices() {
-        match c {
-            '<' => depth += 1,
-            // `Fn() -> u32` closes nothing.
-            '>' if prev != '-' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return &text[i + 1..];
-                }
-            }
-            _ => {}
-        }
-        prev = c;
-    }
-    ""
 }
 
 /// The class a fragment sits in, among `file`, the fragments of its own
@@ -2133,6 +2056,7 @@ pub fn build_impact(
     query: Option<&str>,
     deadline: Option<Instant>,
 ) -> ImpactOutput {
+    let setup = crate::profile::phase("impact.setup");
     let graph = &state.scoring_result.graph;
     // A signature variant as long as its fragment shares its id (a Kotlin
     // class header ending `) {`); the id names the fragment, not its stub.
@@ -2464,6 +2388,8 @@ pub fn build_impact(
         (state.core_ids.contains(id) && !bordering.contains(id))
             || (query.is_none() && in_a_hunk(id))
     };
+    drop(setup);
+    let callers = crate::profile::phase("impact.callers");
     for (i, core) in cores.iter().enumerate() {
         // Past the deadline the symbols already answered are the answer:
         // `limits` then says it is partial, and a mass reformat returns what
@@ -2478,7 +2404,7 @@ pub fn build_impact(
             && !core_hunks.is_empty()
             && core_hunks
                 .iter()
-                .all(|h| h.is_layout() || moved_verbatim(h, &state.hunk_texts))
+                .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))
         {
             layout_only.push(label(
                 &rel(state, core.path()),
@@ -2867,20 +2793,27 @@ pub fn build_impact(
         // A local `const items = rows(xs)` is a line of its function, not a
         // caller of its own: the function is, with its test link (#452).
         // An anonymous arrow (`.map((p) => …)`) is a line of the definition
-        // around it as well (#520), and a field of the class holding it.
+        // around it as well (#520), and a field of the class holding it. So
+        // is a chunk of a long function (`main[88]`), which no test edge
+        // reaches: its calls arrive at the function (#579).
         for source in &mut sources {
             let anonymous =
                 source.0.kind == FragmentKind::Function && source.0.symbol_name.is_none();
             let field = source.0.kind == FragmentKind::Property;
-            if source.0.kind != FragmentKind::Variable && !anonymous && !field {
+            let chunk = source.0.kind == FragmentKind::Chunk;
+            if source.0.kind != FragmentKind::Variable && !anonymous && !field && !chunk {
                 continue;
             }
+            let parent = source.0.symbol_name.as_deref().map(base_symbol);
             let enclosing = file_of(source.0)
                 .iter()
                 .filter(|f| {
                     (f.kind == FragmentKind::Function
                         || (anonymous && f.kind == FragmentKind::Variable)
-                        || (field && f.kind.is_container()))
+                        || (field && f.kind.is_container())
+                        || (chunk
+                            && f.kind != FragmentKind::Chunk
+                            && parent.is_none_or(|p| f.symbol_name.as_deref() == Some(p))))
                         && f.symbol_name.is_some()
                         && f.id != source.0.id
                         && f.start_line() <= source.0.start_line()
@@ -2891,6 +2824,29 @@ pub fn build_impact(
                 source.0 = f;
             }
         }
+        // Two lines lifted into one function are one caller with both sites.
+        let mut lifted: Vec<(&Fragment, f64, Option<Finding>)> = Vec::with_capacity(sources.len());
+        for (frag, weight, found) in sources {
+            match lifted.iter_mut().find(|(f, _, _)| f.id == frag.id) {
+                Some((_, w, known)) => {
+                    *w = w.max(weight);
+                    match (known.as_mut(), found) {
+                        (Some(k), Some(f)) => {
+                            if f.evidence == Evidence::Resolved {
+                                k.evidence = Evidence::Resolved;
+                            }
+                            k.lines.extend(f.lines);
+                            k.lines.sort_unstable();
+                            k.lines.dedup();
+                        }
+                        (None, f) => *known = f,
+                        _ => {}
+                    }
+                }
+                None => lifted.push((frag, weight, found)),
+            }
+        }
+        sources = lifted;
         sources.retain(|(f, _, _)| !within(&f.id, core));
         let kept = sources.len();
         sources.retain(|(f, _, _)| !inside_the_diff(&f.id));
@@ -2936,6 +2892,10 @@ pub fn build_impact(
                     file_tested: tested.is_none()
                         && registered_by.is_none()
                         && tests.file_tested(frag, &reaches_file),
+                    unread_test: tested
+                        .is_none()
+                        .then(|| tests.unread_naming(frag))
+                        .flatten(),
                     registered_by,
                     tested_by: tested.as_ref().map(|(p, _)| rel(state, p)),
                     tested_via: tested.and_then(|(_, via)| via),
@@ -2977,11 +2937,13 @@ pub fn build_impact(
                 .is_some_and(|def| model.public_change(def, &base).unwrap_or(false)),
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
-                    && rust_module_is_public(state, core.path())
+                    && lang::rust::module_is_public(&state.run.source(), core.path())
                     && signature_changed(state, &base, core)
             }
         };
-        if query.is_none() && public_change {
+        // A test's declarations are no API: nothing but its runner calls
+        // them (#517).
+        if query.is_none() && public_change && !tests.is_test(core) {
             public_api.push((
                 callers.is_empty(),
                 Contract {
@@ -2997,7 +2959,12 @@ pub fn build_impact(
         // Unless nothing could be resolved: an empty list is then no finding,
         // and silence would read as one. A trait method is reached through
         // its trait, whatever else shares its name (`fmt` in `impl Display`).
-        let unresolved = dispatched_trait(state, core)
+        let route = callers
+            .is_empty()
+            .then(|| dispatch_route(state, core, file_of(core)))
+            .flatten();
+        let unresolved = core_def
+            .and_then(|(model, def)| model.dispatched(def))
             .map(|trait_name| Unknown::Dispatched { trait_name })
             .or_else(|| {
                 symbol.filter(|_| ambiguous).map(|s| Unknown::Ambiguous {
@@ -3016,18 +2983,23 @@ pub fn build_impact(
                     reads,
                 })
             })
-            .or_else(|| {
-                callers
-                    .is_empty()
-                    .then(|| dispatch_route(state, core, file_of(core)))
-                    .flatten()
-                    .map(|via| Unknown::Overridable { via })
-            });
+            .or_else(|| route.clone().map(|via| Unknown::Overridable { via }));
+        // A method only dispatch reaches is reached through its class: a test
+        // handing the class to the runtime (a server, a test runner, a
+        // visitor) reaches the method (#578). A caller a test calls is the
+        // second hop of a test link: a caller read off the syntax has no
+        // graph edge for the walk to take (#503).
         let untested = query.is_none()
             && tests.any()
             && !tests.is_test(core)
             && registration(core).is_none()
-            && tests.tested_by(core, state, &by_id, &link).is_none();
+            && !callers.iter().any(|c| {
+                c.evidence != "candidate" && c.tested_by.is_some() && c.tested_via.is_none()
+            })
+            && tests.tested_by(core, state, &by_id, &link).is_none()
+            && !route
+                .and_then(|_| enclosing_class(core, file_of(core)))
+                .is_some_and(|class| tests.tested_by(class, state, &by_id, &link).is_some());
         untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
             let n = callers.iter().filter(|c| c.evidence != "candidate").count();
@@ -3036,9 +3008,18 @@ pub fn build_impact(
         } else {
             0
         };
-        let missed_in = symbol
-            .map(|s| missed_namers(state, &files, s, core.path()))
-            .unwrap_or_default();
+        // A file that cannot name the definition cannot call it, read or
+        // not: a function local to another (#546), a private Rust item
+        // outside its module (#599).
+        let model_def = registry
+            .for_path(core.path())
+            .and_then(|m| Some((m, definition(m, core)?)));
+        let missed_in: Vec<UnanalysedFile> = symbol
+            .map(|s| missed_namers(state, &files, &registry, s, core.path()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
+            .collect();
         if callers.is_empty()
             && compatible_callers == 0
             && commits < 2
@@ -3075,6 +3056,8 @@ pub fn build_impact(
             missed_in,
         });
     }
+    drop(callers);
+    let removed = crate::profile::phase("impact.removed");
     if query.is_none() && state.run.check() {
         let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
         for (n, p) in &defined_in {
@@ -3128,7 +3111,9 @@ pub fn build_impact(
                 c.tested_by = tested.as_ref().map(|(p, _)| rel(state, p));
                 c.tested_via = tested.and_then(|(_, via)| via);
             }
-            if let Some(c) = contract {
+            if let Some(c) =
+                contract.filter(|c| !crate::testfiles::is_test_path(Path::new(&c.path)))
+            {
                 contracts.push(c);
             }
             // Unresolved is an answer too: dropped, it read as no caller.
@@ -3137,6 +3122,7 @@ pub fn build_impact(
             }
         }
     }
+    drop(removed);
     // Symbols with something to say first: callers, then commit overlap.
     changed.sort_by(|a, b| {
         b.callers
@@ -3158,7 +3144,9 @@ pub fn build_impact(
         .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
         .map(|(p, _, _)| p.as_str())
         .collect();
-    for path in &changed_files {
+    // A queried symbol changes nothing: the file holding its definition is
+    // no contract that moved.
+    for path in changed_files.iter().filter(|_| query.is_none()) {
         if is_schema_file(path) && !layout_files.contains(path.as_str()) {
             contracts.push(Contract {
                 path: path.clone(),
@@ -3182,12 +3170,19 @@ pub fn build_impact(
         .map(|p| rel(state, &p.to_string_lossy()))
         .collect();
     let (stale, stale_omitted) = if query.is_none() {
+        let _stale = crate::profile::phase("impact.stale_paths");
         stale_references(state, analysed)
     } else {
         (Vec::new(), 0)
     };
     let (named_by, named_by_omitted) = if query.is_none() {
+        let _named = crate::profile::phase("impact.named_by");
         named_by_path(state, analysed)
+    } else {
+        (Vec::new(), 0)
+    };
+    let (collection_reads, collection_reads_omitted) = if query.is_none() {
+        read_by_collection(state, analysed)
     } else {
         (Vec::new(), 0)
     };
@@ -3213,6 +3208,7 @@ pub fn build_impact(
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         range: diff_range.map(str::to_string),
         index_tree: state.index_tree.clone(),
+        range_name: None,
         symbol: query.map(str::to_string),
         untracked_files: changed_files
             .iter()
@@ -3228,6 +3224,8 @@ pub fn build_impact(
         stale_references_omitted: stale_omitted,
         named_by,
         named_by_omitted,
+        collection_reads,
+        collection_reads_omitted,
         commit_count: state.commit_count,
         changed,
         contracts,
@@ -3342,10 +3340,16 @@ fn removed_by_models(
         n.dedup();
         n
     };
-    let grepped = read_or_note(state, crate::git::grep_lines(&state.root_dir, &names, head));
+    // Whole words of code files: read over every file, a common name
+    // counted each withheld data file that spells it.
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_code_words(&state.root_dir, &names, head, MAX_REMOVED_NAME_HITS + 1),
+    );
     state.run.note_withheld(grepped.withheld);
     let hits = grepped.rows;
     let holders = definition_holders(state);
+    let changed: FxHashSet<&str> = pairs.iter().filter_map(|(_, new)| new.as_deref()).collect();
     let mut out = Vec::new();
     for (model, def) in removed {
         if !state.run.check() {
@@ -3353,13 +3357,23 @@ fn removed_by_models(
         }
         let mut lines_by_file: FxHashMap<&str, Vec<u32>> = FxHashMap::default();
         for (path, line, text) in &hits {
-            if model.covers(path) && text.contains(def.name.as_str()) {
+            if model.covers(path) && names_word(text, &def.name) {
                 lines_by_file.entry(path.as_str()).or_default().push(*line);
             }
         }
+        // As for a name the grammar reads off removed lines: on this many
+        // lines it is a common word, and each would be classified in turn.
+        let spelled: usize = lines_by_file.values().map(Vec::len).sum();
+        let unresolved = (spelled > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
+            name: def.name.clone(),
+            lines: spelled,
+        });
+        if unresolved.is_some() {
+            lines_by_file.clear();
+        }
         let mut callers: Vec<Caller> = Vec::new();
-        for (path, lines) in lines_by_file {
-            for line in lines {
+        for (path, lines) in &lines_by_file {
+            for &line in lines {
                 let site = UseSite {
                     path,
                     lines: (line, line),
@@ -3369,7 +3383,7 @@ fn removed_by_models(
                     continue;
                 };
                 let holder = holders
-                    .get(path)
+                    .get(*path)
                     .into_iter()
                     .flatten()
                     .filter(|f| f.start_line() <= line && f.end_line() >= line)
@@ -3383,6 +3397,7 @@ fn removed_by_models(
                     tested_via: None,
                     file_tested: false,
                     registered_by: None,
+                    unread_test: None,
                     evidence: match found.evidence {
                         Evidence::Resolved => "resolved",
                         _ => "candidate",
@@ -3400,6 +3415,47 @@ fn removed_by_models(
                 });
             }
         }
+        // Moved, not removed, when nothing still reaches it where it was
+        // and a use reaches the name the range now declares in another
+        // file: every importer names the new path (#540). A move whose
+        // callers still name the old module stays a removal, with them.
+        let reaches_moved = |frag: &Fragment, frags: &[&Fragment], path: &str| {
+            model
+                .definition(&lang::At {
+                    path,
+                    frag,
+                    file: frags,
+                })
+                .is_some_and(|moved| {
+                    lines_by_file.iter().any(|(at, lines)| {
+                        lines.iter().any(|&line| {
+                            let site = UseSite {
+                                path: at,
+                                lines: (line, line),
+                                frag: None,
+                            };
+                            model
+                                .classify(&site, moved)
+                                .is_some_and(|f| f.evidence == Evidence::Resolved)
+                        })
+                    })
+                })
+        };
+        let moved = callers.is_empty()
+            && holders
+                .iter()
+                .filter(|(path, _)| {
+                    **path != def.path && changed.contains(path.as_str()) && model.covers(path)
+                })
+                .any(|(path, frags)| {
+                    frags.iter().any(|f| {
+                        f.symbol_name.as_deref().map(base_symbol) == Some(def.name.as_str())
+                            && reaches_moved(f, frags, path)
+                    })
+                });
+        if moved {
+            continue;
+        }
         let contract = def.public.then(|| Contract {
             path: def.path.clone(),
             symbol: Some(def.name.clone()),
@@ -3413,7 +3469,7 @@ fn removed_by_models(
                 kind: "removed".to_string(),
                 commits: 0,
                 callers: merge_by_symbol(callers),
-                unresolved: None,
+                unresolved,
                 untested: false,
                 compatible_callers: 0,
                 missed_in: Vec::new(),
@@ -3482,18 +3538,7 @@ fn removed_definitions(
             }
             continue;
         };
-        // A Rust module split moves definitions out and re-exports them: the
-        // module still answers for each name it `pub use`s (#540).
-        let reexported = if lang::rust::is_rust(&h.path) {
-            lang::rust::reexported(&after)
-        } else {
-            Vec::new()
-        };
-        let still: FxHashSet<&str> = at_head
-            .iter()
-            .map(|d| d.name.as_str())
-            .chain(reexported.iter().map(String::as_str))
-            .collect();
+        let still: FxHashSet<&str> = at_head.iter().map(|d| d.name.as_str()).collect();
         let public = |d: &crate::parsers::Declaration| {
             let head = d.head.trim_start();
             is_public(old_path, Some(&d.name), head)
@@ -3583,28 +3628,8 @@ fn removed_definitions(
                 .unwrap_or_default();
             text.contains(&format!("{stem}::{name}")) || text.contains(&format!("{stem}.{name}"))
         };
-        // Rust: a `use` bringing the name in from another module binds every
-        // use of it in that file there, and the `use` line is an import, not a
-        // reference. Removing a private duplicate in favour of an imported
-        // shared one listed both files' calls as broken.
-        let removed_module = Path::new(&path_removed)
-            .file_stem()
-            .map(|s| format!("{}::", s.to_string_lossy()))
-            .unwrap_or_default();
-        let imported_elsewhere: FxHashSet<String> = hits
-            .iter()
-            .filter(|(p, _, t)| p.ends_with(".rs") && rust_use(t) && !t.contains(&removed_module))
-            .map(|(p, _, _)| p.clone())
-            .collect();
         for (path, line, text) in hits {
             if !is_code_file(&path) {
-                continue;
-            }
-            if path.ends_with(".rs")
-                && (rust_use(&text)
-                    || imported_elsewhere.contains(&path)
-                    || (!exported && !rust_private_reach(&path, &path_removed)))
-            {
                 continue;
             }
             // A caller is code that can still reach the removed definition:
@@ -3684,6 +3709,7 @@ fn removed_definitions(
                 tested_via: None,
                 file_tested: false,
                 registered_by: None,
+                unread_test: None,
                 evidence: "name",
                 reason: None,
                 relation: if next.starts_with('(') || next.starts_with("?.(") {
@@ -3695,10 +3721,7 @@ fn removed_definitions(
             });
         }
         let callers = merge_by_symbol(callers);
-        // A `pub fn` of a private module or of a binary is no API (#413).
-        let public =
-            rust_module_is_public(state, &state.root_dir.join(&path_removed).to_string_lossy());
-        let contract = (exported && public).then(|| Contract {
+        let contract = exported.then(|| Contract {
             path: path_at_base.clone(),
             symbol: Some(name.clone()),
             kind: "removed_api",
@@ -3893,11 +3916,6 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
         .iter()
         .flat_map(|h| h.added.iter().map(move |l| (h.path.as_str(), l.trim())))
         .collect();
-    // `--flag path` in a shell line and `*p` in C are code, not comments.
-    let commented = |text: &str| {
-        let t = text.trim_start();
-        ["#", "//", "/*", "* "].iter().any(|m| t.starts_with(m)) || t == "*"
-    };
     for (path, line, text) in state.run.bounded(&lines) {
         if renamed_to.contains(path.as_str()) {
             continue;
@@ -3941,6 +3959,12 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
         });
     }
     (found, omitted)
+}
+
+/// `--flag path` in a shell line and `*p` in C are code, not comments.
+fn commented(text: &str) -> bool {
+    let t = text.trim_start();
+    ["#", "//", "/*", "* "].iter().any(|m| t.starts_with(m)) || t == "*"
 }
 
 /// Lines outside the change that name a changed file by its path, from a
@@ -3988,10 +4012,6 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
         .iter()
         .flat_map(|h| h.added.iter().map(move |l| (h.path.as_str(), l.trim())))
         .collect();
-    let commented = |text: &str| {
-        let t = text.trim_start();
-        ["#", "//", "/*", "* "].iter().any(|m| t.starts_with(m)) || t == "*"
-    };
     let token_re = once_cell::sync::Lazy::force(&PATH_TOKEN);
     let mut found: Vec<PathReference> = Vec::new();
     let mut per_target: FxHashMap<&str, usize> = FxHashMap::default();
@@ -4035,6 +4055,135 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
             line: *line,
             target: target.clone(),
         });
+    }
+    (found, omitted)
+}
+
+/// Astro's content API: a page reads the entries of a collection by its
+/// name. The first argument is the name, or an object or array of them
+/// with a `collection` key; anything else computes it.
+static COLLECTION_CALL: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(
+        r#"\b(?:getCollection|getEntry|getEntries|getEntryBySlug|getDataEntryById)\s*\(\s*(?:\[\s*)?(?:\{[^}]*?\bcollection\s*:\s*)?(?:'([^'$]*)'|"([^"$]*)"|`([^`$]*)`|([^\s)]))?"#,
+    )
+    .expect("collection call regex")
+});
+
+/// The lines outside the change that read the content collection of a
+/// changed entry by name (#432). An entry under `src/content/<name>/` of a
+/// directory holding an `astro.config.*` is read by `getCollection('<name>')`
+/// and its kin, never imported or named by path, so its readers were a clean
+/// zero. A call whose name is computed may read it and is listed so.
+/// Read off the lines: an `.astro` page has no grammar here, and a file
+/// that has one must hold the call in code, not in a string or comment.
+fn read_by_collection(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+) -> (Vec<CollectionRead>, usize) {
+    let paths = read_or_note(state, state.run.source().list_paths(&state.root_dir));
+    let projects: Vec<&str> = paths
+        .iter()
+        .filter_map(|p| {
+            let (dir, file) = p.rsplit_once('/').unwrap_or(("", p));
+            file.starts_with("astro.config.").then_some(dir)
+        })
+        .collect();
+    let content_of = |project: &str| {
+        if project.is_empty() {
+            "src/content/".to_string()
+        } else {
+            format!("{project}/src/content/")
+        }
+    };
+    let project_of = |path: &str| {
+        projects
+            .iter()
+            .copied()
+            .filter(|p| p.is_empty() || path.starts_with(&format!("{p}/")))
+            .max_by_key(|p| p.len())
+    };
+    let changed: FxHashSet<(&str, String)> = state
+        .changed_files
+        .iter()
+        .map(|f| rel(state, &f.to_string_lossy()))
+        .chain(state.deleted_files.iter().cloned())
+        .filter_map(|path| {
+            let project = project_of(&path)?;
+            let (collection, _) = path.strip_prefix(&content_of(project))?.split_once('/')?;
+            Some((project, collection.to_string()))
+        })
+        .collect();
+    if changed.is_empty() {
+        return (Vec::new(), 0);
+    }
+    let head = diff_range
+        .map(crate::git::split_diff_range)
+        .and_then(|(_, head)| head);
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_lines_matching(
+            &state.root_dir,
+            r"(getCollection|getEntry|getEntries|getEntryBySlug|getDataEntryById)[[:space:]]*\(",
+            head.as_deref(),
+            &[],
+        ),
+    );
+    let written: FxHashSet<(&str, &str)> = state
+        .hunk_texts
+        .iter()
+        .flat_map(|h| h.added.iter().map(move |l| (h.path.as_str(), l.trim())))
+        .collect();
+    let source = state.run.source();
+    let mut texts: FxHashMap<&str, Option<String>> = FxHashMap::default();
+    let (mut found, mut omitted) = (Vec::new(), 0);
+    for (path, line, text) in state.run.bounded(&grepped.rows) {
+        let Some(project) = project_of(path) else {
+            continue;
+        };
+        if is_document(path) || commented(text) || written.contains(&(path.as_str(), text.trim())) {
+            continue;
+        }
+        let Some(file) = texts
+            .entry(path)
+            .or_insert_with(|| source.read_to_string(&state.root_dir.join(path)))
+        else {
+            continue;
+        };
+        let lines: Vec<&str> = file.lines().collect();
+        let code = code_text(path, file);
+        let code_line = code.lines().nth(*line as usize - 1).unwrap_or("");
+        // A call split over lines names its collection on the next one.
+        let call = match lines.get(*line as usize) {
+            Some(next) => format!("{text} {next}"),
+            None => text.clone(),
+        };
+        for m in COLLECTION_CALL.captures_iter(&call) {
+            // A call in a string or a comment reads nothing, and one on the
+            // next line is that line's own.
+            let at = m.get(0).map_or(0, |m| m.start());
+            if at >= text.len() || code_line.get(at..at + 3) != text.get(at..at + 3) {
+                continue;
+            }
+            let named = (1..=3)
+                .find_map(|i| m.get(i))
+                .map(|n| n.as_str().to_string());
+            let reads = match &named {
+                Some(c) => changed.contains(&(project, c.clone())),
+                None => m.get(4).is_some() && changed.iter().any(|(p, _)| *p == project),
+            };
+            if !reads {
+                continue;
+            }
+            if found.len() >= MAX_NAMED_BY {
+                omitted += 1;
+                continue;
+            }
+            found.push(CollectionRead {
+                path: path.clone(),
+                line: *line,
+                collection: named,
+            });
+        }
     }
     (found, omitted)
 }
@@ -4109,6 +4258,8 @@ fn proves_empty(output: &ImpactOutput) -> bool {
         && output.stale_references_omitted == 0
         && output.named_by.is_empty()
         && output.named_by_omitted == 0
+        && output.collection_reads.is_empty()
+        && output.collection_reads_omitted == 0
         && output.truncated == 0
         && output.contracts_omitted == 0
         && output.limits.is_empty()
@@ -4237,6 +4388,7 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
 /// and `budget_tokens` set the cap, which stayed 2000 whatever was asked
 /// (#466). `None` keeps the default.
 pub fn deliver(output: &mut ImpactOutput, markdown: bool, cap: Option<u32>) -> String {
+    let _render = crate::profile::phase("render");
     let cap = cap.unwrap_or(IMPACT_TOKEN_CAP);
     if markdown {
         let measure = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, false));
@@ -4528,7 +4680,10 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
 }
 
 fn write_header(out: &mut String, output: &ImpactOutput) {
-    let range = range_label(output.range.as_deref(), output.index_tree.as_deref());
+    let range = output
+        .range_name
+        .clone()
+        .unwrap_or_else(|| range_label(output.range.as_deref(), output.index_tree.as_deref()));
     let all = || output.changed.iter().flat_map(|c| &c.callers);
     let callers = all().filter(|c| c.evidence != "candidate").count() + output.truncated
         - output.truncated_possible;
@@ -4591,9 +4746,10 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
             );
         }
         None => {
+            let reads = output.collection_reads.len() + output.collection_reads_omitted;
             let _ = writeln!(
                 out,
-                "diffctx impact for {range}: {} changed file(s){}{}{}, {}{guard_summary}",
+                "diffctx impact for {range}: {} changed file(s){}{}{}, {}{}{guard_summary}",
                 output.changed_files.len()
                     + output.changed_files_omitted
                     + output.deleted_files.len(),
@@ -4616,6 +4772,10 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                         " outside the diff in the analysed files"
                     }
                 ),
+                match reads {
+                    0 => String::new(),
+                    n => format!(", {n} read(s) by collection name"),
+                },
             );
         }
     }
@@ -4656,6 +4816,10 @@ fn guard_of(c: &Caller, tests_known: bool) -> String {
             "registered by `@{}`; whatever reads that registry reaches it, which static test links do not follow",
             c.registered_by.as_deref().unwrap_or_default()
         ),
+        (None, _) if c.unread_test.is_some() => format!(
+            "no static test link found; {} names it but was not read (over the size cap)",
+            c.unread_test.as_deref().unwrap_or_default()
+        ),
         (None, _) if c.file_tested => "no static test link (its file has tests)".to_string(),
         (None, _) if tests_known => "no static test link found".to_string(),
         (None, _) => "no test files in view".to_string(),
@@ -4668,6 +4832,8 @@ fn reason_text(reason: Option<&str>) -> &'static str {
         Some("import_unresolved") => "import not resolved",
         Some("ambiguous_module") => "module ambiguous",
         Some("import_glob") => "loaded by an import glob",
+        Some("search_path") => "schema left to the search path",
+        Some("global") => "a global; which scripts load it is not traced",
         _ => "binding unresolved",
     }
 }
@@ -4894,6 +5060,21 @@ fn write_tail(out: &mut String, output: &ImpactOutput) {
         &named,
         usize::MAX,
         output.named_by_omitted,
+    );
+    let reads: Vec<String> = output
+        .collection_reads
+        .iter()
+        .map(|r| match &r.collection {
+            Some(c) => format!("{}:{} reads collection {c}", r.path, r.line),
+            None => format!("{}:{} reads a collection named at run time", r.path, r.line),
+        })
+        .collect();
+    write_list(
+        out,
+        "Read by collection name outside the diff (Astro content collections):",
+        &reads,
+        usize::MAX,
+        output.collection_reads_omitted,
     );
     let contracts: Vec<String> = output
         .contracts

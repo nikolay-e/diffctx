@@ -122,9 +122,9 @@ class TestServerIdentity:
     the SDK report its own — clients saw the mcp package version instead."""
 
     def test_reports_package_version_not_sdk_version(self, server):
-        from diffctx.version import __version__
+        from diffctx._diffctx import BUILD_LABEL
 
-        assert server.version == __version__
+        assert server.version == BUILD_LABEL
 
     @pytest.mark.asyncio
     async def test_every_tool_is_annotated_read_only(self, server):

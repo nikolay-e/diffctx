@@ -107,12 +107,9 @@ pub struct HunkText {
     pub new_len: u32,
     pub removed: Vec<String>,
     pub added: Vec<String>,
-    /// The unchanged line right above the run, when the diff shows one: a
-    /// docstring is told from data by the `def`/`class` line it follows.
-    pub before: Option<String>,
-    /// The unchanged line right below the run: whether it continues the
-    /// run's last statement (a `(`/`[` line after a removed `;`).
-    pub after: Option<String>,
+    /// Only what a formatter changes, settled by [`settle_layout`] against
+    /// both whole versions of the file.
+    pub layout: bool,
 }
 
 impl HunkText {
@@ -124,16 +121,6 @@ impl HunkText {
         } else {
             (self.new_start, self.new_start + self.new_len - 1)
         }
-    }
-
-    pub fn is_layout(&self) -> bool {
-        layout_equal(
-            &self.path,
-            self.before.as_deref(),
-            self.after.as_deref(),
-            &self.removed,
-            &self.added,
-        )
     }
 }
 
@@ -157,7 +144,6 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
     let mut new_no = 0u32;
     let mut open = false;
     let mut in_hunk = false;
-    let mut last_context: Option<String> = None;
     for line in diff_text.lines() {
         if let Some(rest) = line.strip_prefix("@@ -") {
             let mut parts = rest.split_whitespace();
@@ -171,7 +157,6 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
                 new_no = n;
                 in_hunk = true;
                 open = false;
-                last_context = None;
             }
             continue;
         }
@@ -196,14 +181,7 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
             _ => {
                 old_no += 1;
                 new_no += 1;
-                let text = line.get(1..).unwrap_or("").to_string();
-                if open {
-                    if let Some(h) = out.last_mut() {
-                        h.after = Some(text.clone());
-                    }
-                }
                 open = false;
-                last_context = Some(text);
                 continue;
             }
         };
@@ -217,7 +195,6 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
                     .unwrap_or_default(),
                 old_start: old_no,
                 new_start: new_no,
-                before: last_context.take(),
                 ..HunkText::default()
             });
             open = true;
@@ -247,337 +224,305 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
     out
 }
 
-/// Whether two versions of some lines differ only in what a formatter
-/// changes. Tokens are compared, so whitespace never joins two words. Import
-/// statements compare as a set of statements, each with its names sorted —
-/// organising imports reorders both, and swapping a name between two
-/// statements is not that. A triple-quoted string right after a `def`/`class`
-/// header is a docstring and counts as a comment; anywhere else it is data.
-/// A comment marker counts only in a language that has it: `//` is floor
-/// division in Python and part of a URL in YAML. Where indentation is syntax,
-/// the nesting of the lines (the unchanged line above them included) must
-/// match: a consistent reindent keeps it, a line leaving its block does not.
-pub fn layout_equal(
-    path: &str,
-    before: Option<&str>,
-    after: Option<&str>,
-    old: &[String],
-    new: &[String],
-) -> bool {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    let ext = ext.as_str();
-    let syntax = CommentSyntax {
-        hash: HASH_COMMENT_EXTENSIONS.contains(&ext),
-        hash_mid_word: HASH_MID_WORD_EXTENSIONS.contains(&ext),
-        slash: SLASH_COMMENT_EXTENSIONS.contains(&ext),
-        python: matches!(ext, "py" | "pyi"),
-        asi: ASI_EXTENSIONS.contains(&ext),
-        indented: INDENTED_EXTENSIONS.contains(&ext),
+/// Settles `layout` on the runs of one file from its text after the change.
+/// The text before is that text with the runs reverted, so both versions
+/// parse whole and a run is read in its context: the block a line sits in,
+/// the string a line continues, the statement a line ends. A run is layout
+/// when its syntax tree is unchanged except for what a formatter rewrites —
+/// comments and docstrings, quote style, `;` and trailing commas, the order
+/// of imports and of the names one imports. Compared line by line, a dedent
+/// out of a loop, a tuple's comma, a rune turned string or the inside of a
+/// multi-line string all read as layout (#442). Without a grammar, a clean
+/// parse or the text, only trailing whitespace and blank lines are.
+pub fn settle_layout(runs: &mut [HunkText], new: Option<&str>) {
+    let Some(path) = runs.first().map(|r| r.path.clone()) else {
+        return;
     };
-    layout_form(old, syntax, before, after) == layout_form(new, syntax, before, after)
-}
-
-#[derive(Clone, Copy)]
-struct CommentSyntax {
-    hash: bool,
-    /// `#` starts a comment even inside a word (`x=1#c`); elsewhere only at
-    /// a word start, so `${#a}` and `$#array` stay code.
-    hash_mid_word: bool,
-    slash: bool,
-    /// Docstrings, and a one-element tuple's comma.
-    python: bool,
-    /// A line opening with `(`, `[` or a template continues the line above
-    /// unless a `;` ended it.
-    asi: bool,
-    indented: bool,
-}
-
-const HASH_COMMENT_EXTENSIONS: &[&str] = &[
-    "py", "pyi", "rb", "sh", "bash", "zsh", "pl", "r", "jl", "ex", "exs", "nim", "yml", "yaml",
-    "toml", "mk", "cmake",
-];
-
-const HASH_MID_WORD_EXTENSIONS: &[&str] =
-    &["py", "pyi", "rb", "toml", "nim", "jl", "ex", "exs", "r"];
-
-const SLASH_COMMENT_EXTENSIONS: &[&str] = &[
-    "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "java", "kt", "kts", "scala", "sc", "groovy",
-    "gradle", "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "go", "rs", "swift", "dart",
-    "php", "css", "scss", "less", "proto", "zig", "m", "mm", "vue", "svelte",
-];
-
-const ASI_EXTENSIONS: &[&str] = &[
-    "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "vue", "svelte",
-];
-
-const INDENTED_EXTENSIONS: &[&str] = &[
-    "py", "pyi", "yml", "yaml", "nim", "coffee", "sass", "pug", "haml", "fs", "fsx",
-];
-
-const TRIPLE_QUOTES: [&str; 2] = ["\"\"\"", "'''"];
-
-/// Imports as a set, the code's tokens, and the nesting of its lines.
-type LayoutForm = (Vec<Vec<String>>, Vec<String>, Vec<usize>);
-
-fn indent_width(line: &str) -> usize {
-    line.chars()
-        .take_while(|c| c.is_whitespace())
-        .map(|c| if c == '\t' { 8 } else { 1 })
-        .sum()
-}
-
-fn is_def_header(line: &str) -> bool {
-    let line = line.trim();
-    (line.starts_with("def ") || line.starts_with("async def ") || line.starts_with("class "))
-        && line.ends_with(':')
-}
-
-fn layout_form(
-    lines: &[String],
-    syntax: CommentSyntax,
-    before: Option<&str>,
-    after: Option<&str>,
-) -> LayoutForm {
-    let mut imports: Vec<Vec<String>> = Vec::new();
-    let mut statement: Vec<String> = Vec::new();
-    let mut code: Vec<String> = Vec::new();
-    let mut in_import = false;
-    let mut depth = 0i32;
-    let mut docstring: Option<&str> = None;
-    let mut block_comment = false;
-    let mut after_header = before.is_some_and(is_def_header);
-    // Widths of the lines that start a statement, the line above the run
-    // first: their ranks are the nesting a formatter cannot change.
-    let mut widths: Vec<usize> = before
-        .filter(|b| syntax.indented && !b.trim().is_empty())
-        .map(indent_width)
-        .into_iter()
-        .collect();
-    for line in lines {
-        let trimmed = line.trim_start();
-        if let Some(q) = docstring {
-            if trimmed.contains(q) {
-                docstring = None;
+    let parsed = new.and_then(|new| {
+        let old = reverted(new, runs)?;
+        let (old_tree, grammar) = crate::parsers::parse_file(&path, &old)?;
+        let (new_tree, _) = crate::parsers::parse_file(&path, new)?;
+        (!old_tree.root_node().has_error() && !new_tree.root_node().has_error()).then_some((
+            old,
+            old_tree,
+            new_tree,
+            grammar == "python",
+        ))
+    });
+    for run in runs.iter_mut() {
+        run.layout = match (&parsed, new) {
+            (Some((old, old_tree, new_tree, python)), Some(new)) => {
+                let rows = |start: u32, len: u32| (start.max(1) - 1, len);
+                Shape::of(old_tree, old, rows(run.old_start, run.old_len), *python)
+                    == Shape::of(new_tree, new, rows(run.new_start, run.new_len), *python)
             }
-            continue;
+            _ => {
+                let text = |lines: &[String]| -> Vec<String> {
+                    lines
+                        .iter()
+                        .map(|l| l.trim_end().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect()
+                };
+                text(&run.removed) == text(&run.added)
+            }
+        };
+    }
+}
+
+/// `new` with the runs undone, or `None` when the runs do not describe it.
+fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
+    let lines: Vec<&str> = new.lines().collect();
+    let mut old: Vec<&str> = Vec::with_capacity(lines.len());
+    let mut next = 0usize;
+    for run in runs {
+        // A run without lines on a side sits after the line its start names.
+        let at = |start: u32, len: u32| start as usize - usize::from(len > 0);
+        let new_at = at(run.new_start, run.new_len);
+        let new_end = new_at + run.new_len as usize;
+        if new_at < next || new_end > lines.len() {
+            return None;
         }
-        if syntax.python && after_header {
-            if let Some(q) = TRIPLE_QUOTES.into_iter().find(|q| trimmed.starts_with(q)) {
-                if !trimmed[3..].contains(q) {
-                    docstring = Some(q);
+        old.extend(&lines[next..new_at]);
+        let added = lines[new_at..new_end]
+            .iter()
+            .zip(&run.added)
+            .all(|(line, added)| *line == added.trim_end_matches('\r'));
+        if !added || old.len() != at(run.old_start, run.old_len) {
+            return None;
+        }
+        old.extend(run.removed.iter().map(|l| l.trim_end_matches('\r')));
+        next = new_end;
+    }
+    old.extend(&lines[next..]);
+    let mut text = old.join("\n");
+    text.push('\n');
+    Some(text)
+}
+
+/// A token of a run's shape: a syntax node opening or closing, or text — a
+/// leaf, or what a node holds between its children.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Token {
+    Open(u16),
+    Close,
+    Text(u16, String),
+}
+
+/// Every quote mark reads as one: `'a'` and `"a"` are one string wherever
+/// the grammar gives both the same node, and a grammar that tells them
+/// apart (a Go rune, a shell raw string, a PHP interpolated string) keeps
+/// the difference in its node kinds.
+const QUOTE: u16 = u16::MAX;
+const OWN_TEXT: u16 = u16::MAX - 1;
+
+/// The syntax over some rows of a file: the import statements as a set,
+/// and the tokens of everything else in order.
+#[derive(PartialEq, Eq)]
+struct Shape {
+    imports: Vec<Vec<Token>>,
+    tokens: Vec<Token>,
+}
+
+struct Rows<'a> {
+    source: &'a str,
+    first: usize,
+    last: usize,
+    python: bool,
+}
+
+impl Shape {
+    /// `rows` is the first row (0-based) and the number of rows.
+    fn of(tree: &tree_sitter::Tree, source: &str, rows: (u32, u32), python: bool) -> Self {
+        let mut shape = Self {
+            imports: Vec::new(),
+            tokens: Vec::new(),
+        };
+        if rows.1 > 0 {
+            let within = Rows {
+                source,
+                first: rows.0 as usize,
+                last: (rows.0 + rows.1 - 1) as usize,
+                python,
+            };
+            within.node(
+                tree.root_node(),
+                false,
+                &mut shape.tokens,
+                &mut shape.imports,
+            );
+        }
+        shape.imports.sort();
+        shape
+    }
+}
+
+/// Statements that only bring names into scope, which organise-imports
+/// reorders.
+fn is_import(kind: &str) -> bool {
+    matches!(
+        kind,
+        "import_statement"
+            | "import_from_statement"
+            | "future_import_statement"
+            | "import_declaration"
+            | "import_header"
+            | "use_declaration"
+            | "using_directive"
+            | "preproc_include"
+            | "namespace_use_declaration"
+    )
+}
+
+impl Rows<'_> {
+    fn covers(&self, start: tree_sitter::Point, end: tree_sitter::Point) -> bool {
+        // A node ending at the start of a row ends on the row above it.
+        let last = if end.column == 0 && end.row > start.row {
+            end.row - 1
+        } else {
+            end.row
+        };
+        start.row <= self.last && last >= self.first
+    }
+
+    fn node(
+        &self,
+        node: tree_sitter::Node,
+        in_import: bool,
+        out: &mut Vec<Token>,
+        imports: &mut Vec<Vec<Token>>,
+    ) {
+        if node.child_count() == 0 {
+            let text = &self.source[node.byte_range()];
+            out.push(match (node.is_named(), node.kind()) {
+                (false, _) if matches!(text, "'" | "\"") => Token::Text(QUOTE, String::new()),
+                (true, "string_start" | "string_end") if self.python => {
+                    Token::Text(node.kind_id(), text.replace('\'', "\""))
                 }
-                after_header = false;
+                _ => Token::Text(node.kind_id(), text.to_string()),
+            });
+            return;
+        }
+        if node.is_named() && !in_import && is_import(node.kind()) {
+            let mut unit = Vec::new();
+            self.node(node, true, &mut unit, imports);
+            if !unit.is_empty() {
+                imports.push(unit);
+            }
+            return;
+        }
+        let mark = out.len();
+        if node.is_named() {
+            out.push(Token::Open(node.kind_id()));
+        }
+        self.children(node, in_import, out, imports);
+        if node.is_named() {
+            if out.len() == mark + 1 {
+                out.pop();
+            } else {
+                out.push(Token::Close);
+            }
+        }
+    }
+
+    /// The children within the rows and the node's own text between them.
+    /// Inside an import, the names a list holds compare as a set.
+    fn children(
+        &self,
+        node: tree_sitter::Node,
+        in_import: bool,
+        out: &mut Vec<Token>,
+        imports: &mut Vec<Vec<Token>>,
+    ) {
+        let mut cursor = node.walk();
+        let kids: Vec<tree_sitter::Node> = node.children(&mut cursor).collect();
+        let mut names: Vec<Vec<Token>> = Vec::new();
+        let flush = |names: &mut Vec<Vec<Token>>, out: &mut Vec<Token>| {
+            names.sort();
+            out.extend(names.drain(..).flatten());
+        };
+        let (mut gap, mut gap_at) = (node.start_byte(), node.start_position());
+        for i in 0..=kids.len() {
+            let (end, end_at) = kids.get(i).map_or_else(
+                || (node.end_byte(), node.end_position()),
+                |k| (k.start_byte(), k.start_position()),
+            );
+            let own = &self.source[gap..end.max(gap)];
+            if !own.trim().is_empty() && self.covers(gap_at, end_at) {
+                flush(&mut names, out);
+                out.push(Token::Text(OWN_TEXT, own.to_string()));
+            }
+            let Some(&kid) = kids.get(i) else { break };
+            (gap, gap_at) = (kid.end_byte(), kid.end_position());
+            if !self.covers(kid.start_position(), kid.end_position())
+                || kid.kind().contains("comment")
+                || self.is_docstring(kid)
+            {
                 continue;
             }
-        }
-        let tokens = layout_tokens(line, syntax, &mut block_comment);
-        if tokens.is_empty() {
-            continue;
-        }
-        after_header = matches!(tokens[0].as_str(), "def" | "class" | "async")
-            && tokens.last().is_some_and(|t| t == ":");
-        if syntax.indented && depth == 0 {
-            widths.push(indent_width(line));
-        }
-        let continues_above = syntax.asi
-            && depth == 0
-            && (matches!(tokens[0].as_str(), "(" | "[") || tokens[0].starts_with('`'))
-            && code
-                .last()
-                .is_some_and(|t| t != ";" && t != "{" && t != "}");
-        let starts_import = matches!(tokens[0].as_str(), "import" | "from" | "use" | "require")
-            || (tokens[0] == "#" && tokens.get(1).is_some_and(|t| t == "include"))
-            || (tokens[0] == "export" && tokens.iter().any(|t| t == "from"));
-        if starts_import && depth == 0 {
-            in_import = true;
-        }
-        for t in &tokens {
-            match t.as_str() {
-                "(" | "[" | "{" => depth += 1,
-                ")" | "]" | "}" => depth -= 1,
-                _ => {}
-            }
-        }
-        if in_import {
-            statement.extend(tokens);
-            if depth <= 0 {
-                imports.push(import_statement(std::mem::take(&mut statement), syntax));
-                in_import = false;
-                depth = 0;
-            }
-        } else {
-            if continues_above {
-                code.push("<continues>".to_string());
-            }
-            code.extend(tokens);
-        }
-    }
-    if !statement.is_empty() {
-        imports.push(import_statement(statement, syntax));
-    }
-    let next_continues = after.is_some_and(|a| {
-        let a = a.trim_start();
-        a.starts_with('(') || a.starts_with('[') || a.starts_with('`')
-    });
-    if syntax.asi
-        && next_continues
-        && code
-            .last()
-            .is_some_and(|t| t != ";" && t != "{" && t != "}")
-    {
-        code.push("<continues>".to_string());
-    }
-    imports.sort();
-    let mut levels: Vec<usize> = widths.clone();
-    levels.sort_unstable();
-    levels.dedup();
-    let nesting = widths
-        .iter()
-        .map(|w| levels.binary_search(w).unwrap_or(0))
-        .collect();
-    (imports, drop_separators(code, syntax), nesting)
-}
-
-/// One import statement with its imported names in a fixed order: what
-/// organise-imports may reorder (`{ b, a }`, `import b, a`) compares equal,
-/// the module each name comes from does not move.
-fn import_statement(tokens: Vec<String>, syntax: CommentSyntax) -> Vec<String> {
-    let tokens = drop_separators(tokens, syntax);
-    let split = tokens
-        .iter()
-        .position(|t| t == "{")
-        .or_else(|| tokens.iter().position(|t| t == "import").map(|i| i + 1));
-    let Some(at) = split else {
-        return tokens;
-    };
-    let close = tokens[at..]
-        .iter()
-        .position(|t| t == "}")
-        .map_or(tokens.len(), |c| at + c);
-    let mut names: Vec<String> = tokens[at..close]
-        .iter()
-        .filter(|t| !matches!(t.as_str(), "{" | "," | "(" | ")"))
-        .cloned()
-        .collect();
-    names.sort();
-    let mut out: Vec<String> = tokens[..at].to_vec();
-    out.extend(names);
-    out.extend(tokens[close..].iter().cloned());
-    out
-}
-
-/// `;` is optional where formatters disagree, and a comma before a closing
-/// bracket is a trailing comma — except the one comma of a Python tuple,
-/// `(x,)`, which is what makes it a tuple.
-fn drop_separators(tokens: Vec<String>, syntax: CommentSyntax) -> Vec<String> {
-    // Per open bracket: whether it is a bare `(` (a tuple, not a call) and
-    // how many commas it has held.
-    let mut groups: Vec<(bool, usize)> = Vec::new();
-    let mut out: Vec<String> = Vec::with_capacity(tokens.len());
-    for (i, t) in tokens.iter().enumerate() {
-        match t.as_str() {
-            "(" | "[" | "{" => {
-                let callee = i.checked_sub(1).is_some_and(|p| {
-                    let p = &tokens[p];
-                    p == ")"
-                        || p == "]"
-                        || p.chars()
-                            .next()
-                            .is_some_and(|c| c.is_alphanumeric() || c == '_')
-                });
-                groups.push((t == "(" && !callee, 0));
-            }
-            ")" | "]" | "}" => {
-                groups.pop();
-            }
-            "," => {
-                if let Some(g) = groups.last_mut() {
-                    g.1 += 1;
+            if !kid.is_named() {
+                let closes = || {
+                    kids[i + 1..]
+                        .iter()
+                        .find(|k| !k.kind().contains("comment"))
+                        .is_some_and(|k| !k.is_named() && matches!(k.kind(), ")" | "]" | "}"))
+                };
+                match kid.kind() {
+                    ";" => continue,
+                    "," if in_import || (closes() && !self.makes_a_tuple(node)) => continue,
+                    _ => {}
                 }
             }
-            _ => {}
+            if in_import && kid.is_named() {
+                let mut name = Vec::new();
+                self.node(kid, true, &mut name, imports);
+                names.push(name);
+                continue;
+            }
+            flush(&mut names, out);
+            self.node(kid, in_import, out, imports);
         }
-        let closes_next = tokens
-            .get(i + 1)
-            .is_some_and(|n| matches!(n.as_str(), ")" | "]" | "}"));
-        let tuple_comma = syntax.python
-            && groups
-                .last()
-                .is_some_and(|&(bare, commas)| bare && commas == 1);
-        if t == ";" || (t == "," && closes_next && !tuple_comma) {
-            continue;
-        }
-        out.push(t.clone());
+        flush(&mut names, out);
     }
-    out
-}
 
-/// Words, string literals (single and double quotes as one style; a
-/// template literal stays its own), and every other non-space character,
-/// with the language's comments dropped.
-fn layout_tokens(line: &str, syntax: CommentSyntax, block_comment: &mut bool) -> Vec<String> {
-    let chars: Vec<char> = line.chars().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        if *block_comment {
-            if c == '*' && chars.get(i + 1) == Some(&'/') {
-                *block_comment = false;
-                i += 1;
-            }
-            i += 1;
-            continue;
+    /// A docstring documents, like a comment: the string that opens a
+    /// module, class or function body.
+    fn is_docstring(&self, node: tree_sitter::Node) -> bool {
+        if !self.python || node.kind() != "expression_statement" {
+            return false;
         }
-        if c.is_whitespace() {
-            i += 1;
-            continue;
-        }
-        let word_start = i == 0 || chars[i - 1].is_whitespace() || chars[i - 1] == ';';
-        if (syntax.slash && c == '/' && chars.get(i + 1) == Some(&'/'))
-            || (syntax.hash && c == '#' && (syntax.hash_mid_word || word_start))
-        {
-            break;
-        }
-        if syntax.slash && c == '/' && chars.get(i + 1) == Some(&'*') {
-            *block_comment = true;
-            i += 2;
-            continue;
-        }
-        if matches!(c, '"' | '\'' | '`') {
-            let quote = if c == '`' { '`' } else { '"' };
-            let mut lit = String::from(quote);
-            i += 1;
-            while i < chars.len() && chars[i] != c {
-                if chars[i] == '\\' && i + 1 < chars.len() {
-                    lit.push(chars[i]);
-                    i += 1;
-                }
-                lit.push(chars[i]);
-                i += 1;
-            }
-            lit.push(quote);
-            out.push(lit);
-            i += 1;
-            continue;
-        }
-        if c.is_alphanumeric() || c == '_' || c == '$' {
-            let start = i;
-            while i < chars.len()
-                && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '$')
-            {
-                i += 1;
-            }
-            out.push(chars[start..i].iter().collect());
-            continue;
-        }
-        out.push(c.to_string());
-        i += 1;
+        let mut cursor = node.walk();
+        let mut inner = node.named_children(&mut cursor);
+        let (Some(only), None) = (inner.next(), inner.next()) else {
+            return false;
+        };
+        let Some(body) = node.parent() else {
+            return false;
+        };
+        let opens_body = body.kind() == "module"
+            || (body.kind() == "block"
+                && body.parent().is_some_and(|d| {
+                    matches!(d.kind(), "function_definition" | "class_definition")
+                }));
+        let mut cursor = body.walk();
+        let first = body
+            .named_children(&mut cursor)
+            .find(|s| !s.kind().contains("comment"));
+        matches!(only.kind(), "string" | "concatenated_string") && opens_body && first == Some(node)
     }
-    out
+
+    /// `d[1,]` indexes with the tuple `(1,)`: in a Python subscript with one
+    /// index the trailing comma is the tuple. Elsewhere a tuple is its own
+    /// node and its comma changes the node kind.
+    fn makes_a_tuple(&self, node: tree_sitter::Node) -> bool {
+        let mut cursor = node.walk();
+        self.python
+            && node.kind() == "subscript"
+            && node
+                .children_by_field_name("subscript", &mut cursor)
+                .count()
+                == 1
+    }
 }
 
 #[cfg(test)]

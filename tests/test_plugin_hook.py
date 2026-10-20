@@ -209,7 +209,7 @@ def test_the_gate_option_leaves_post_tool_use_answers_alone(tmp_path, pending_ch
     result = _script(tmp_path, bash, True, _event(pending_change, "PostToolUse", "git diff"))
     assert result.returncode == 0, result.stderr
     assert "shop/checkout.py::charge" in _context(result.stdout)
-    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8")
+    log = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text(encoding="utf-8")
     assert "error:" not in log, log
 
 
@@ -234,6 +234,25 @@ def test_session_start_removes_the_binaries_earlier_releases_downloaded(tmp_path
     assert sorted(p.name for p in data.iterdir()) == ["settings.json"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_the_session_context_says_a_silent_commit_is_no_clean_result(tmp_path, bash):
+    # #350: once Claude Code removes the running version's plugin directory no
+    # hook runs again, and a commit with no diffctx block reads as nothing
+    # outside the diff unless the session was told otherwise. uvx stands in
+    # for the package download the hook starts in the background.
+    stub = tmp_path / "bin" / "uvx"
+    stub.parent.mkdir()
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {"HOME": str(tmp_path), "PATH": f"{stub.parent}:/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin")}
+    result = subprocess.run([bash, str(SESSION_SCRIPT)], capture_output=True, text=True, env=env, timeout=60)
+    assert result.returncode == 0, result.stderr
+    context = _context(result.stdout)
+    assert "a commit with no diffctx block is not a clean result" in context
+    assert re.search(r"run: uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
+
+
 def _search(repo: Path, tool: str, query: str, session: str = "s1") -> str:
     tool_input = {"pattern": query, "path": str(repo)} if tool == "Grep" else {"command": query}
     return json.dumps(
@@ -251,7 +270,7 @@ def test_a_search_for_a_changed_name_hears_its_callers_once(tmp_path, pending_ch
     assert "shop/checkout.py::charge" in _context(first.stdout)
     again = _hook(tmp_path, ["posttooluse"], _search(pending_change, tool, query))
     assert again.stdout == ""
-    log = (tmp_path / "cache" / "diffctx" / "hook.log").read_text(encoding="utf-8").splitlines()
+    log = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text(encoding="utf-8").splitlines()
     assert [line.split()[5] for line in log] == ["shown", "seen"]
 
 
@@ -264,7 +283,7 @@ def test_a_search_answers_only_a_changed_name_on_a_pending_change(tmp_path, pend
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
     clean = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn total ."))
     assert clean.stdout == ""
-    outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook.log").read_text().splitlines()]
+    outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text().splitlines()]
     assert outcomes == ["no-symbol", "no-trigger", "clean"]
 
 
@@ -343,7 +362,7 @@ def test_a_launch_that_fails_leaves_a_line_in_the_hook_log(tmp_path, pending_cha
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
-    line = (tmp_path / "cache" / "diffctx" / "hook.log").read_text().split()
+    line = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text().split()
     assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]
     launched = re.search(r'uvx -q --offline "diffctx\[mcp\]==([0-9.]+)"', IMPACT_SCRIPT.read_text()).group(1)
     assert line[-1] == launched, "the line names the version that wrote it (#524)"

@@ -836,15 +836,26 @@ fn collect_declarations(
     out: &mut Vec<Declaration>,
 ) {
     let kind = node.kind();
-    let named = declares(kind)
-        .then(|| node.child_by_field_name("name"))
-        .flatten()
-        .and_then(|n| n.utf8_text(content.as_bytes()).ok());
+    let bound = kind == "variable_declarator";
+    let named = if bound {
+        bound_definition(node, content)
+    } else {
+        declares(kind)
+            .then(|| node.child_by_field_name("name"))
+            .flatten()
+            .and_then(|n| n.utf8_text(content.as_bytes()).ok())
+    };
     let mut inner = container;
     if let Some(name) = named {
         let mut start = node;
         while let Some(parent) = start.parent() {
-            if !matches!(parent.kind(), "export_statement" | "decorated_definition") {
+            if !matches!(
+                parent.kind(),
+                "export_statement"
+                    | "decorated_definition"
+                    | "lexical_declaration"
+                    | "variable_declaration"
+            ) {
                 break;
             }
             start = parent;
@@ -862,7 +873,9 @@ fn collect_declarations(
             container,
         });
         // A function's body declares locals nothing outside it reaches.
-        if (kind.contains("function") || kind.contains("method")) && !kind.contains("signature") {
+        if bound
+            || (kind.contains("function") || kind.contains("method")) && !kind.contains("signature")
+        {
             return;
         }
         inner = Some(out.len() - 1);
@@ -870,6 +883,33 @@ fn collect_declarations(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_declarations(child, content, inner, out);
+    }
+}
+
+/// A name a binding gives a module that an importer reaches as it reaches a
+/// function, so its removal breaks the importer: a JS/TS `const f = () => …`
+/// or an exported `const` (#491). A JS/TS binding of any other value, and
+/// every binding inside a body, stays a value. Python, Rust and Go read
+/// their removals off their own models.
+fn bound_definition<'a>(node: Node, content: &'a str) -> Option<&'a str> {
+    let text = |n: Node| n.utf8_text(content.as_bytes()).ok();
+    let grandparent = node.parent().and_then(|p| p.parent()).map(|g| g.kind());
+    match node.kind() {
+        "variable_declarator" => {
+            let name = node
+                .child_by_field_name("name")
+                .filter(|n| n.kind() == "identifier")?;
+            let function_valued = node.child_by_field_name("value").is_some_and(|v| {
+                matches!(
+                    v.kind(),
+                    "arrow_function" | "function_expression" | "function" | "generator_function"
+                )
+            });
+            (function_valued || grandparent == Some("export_statement"))
+                .then(|| text(name))
+                .flatten()
+        }
+        _ => None,
     }
 }
 
@@ -936,9 +976,12 @@ fn keep_interpolations(node: Node, original: &[u8], out: &mut [u8]) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseOutcome {
     Clean,
-    /// Error or missing nodes on these lines (the first few); what sits
-    /// elsewhere was read.
-    Partial(Vec<u32>),
+    /// Error or missing nodes: the first few lines they start on, to name,
+    /// and every line span they cover. What sits elsewhere was read.
+    Partial {
+        lines: Vec<u32>,
+        spans: Vec<(u32, u32)>,
+    },
     TimedOut,
 }
 
@@ -969,11 +1012,12 @@ fn outcome_of(tree: &Tree) -> ParseOutcome {
     if !root.has_error() {
         return ParseOutcome::Clean;
     }
-    let mut lines = Vec::new();
+    let mut spans = Vec::new();
     let mut stack = vec![root];
     while let Some(n) = stack.pop() {
         if n.is_error() || n.is_missing() {
-            lines.push(n.start_position().row as u32 + 1);
+            let row = |p: tree_sitter::Point| p.row as u32 + 1;
+            spans.push((row(n.start_position()), row(n.end_position())));
             continue;
         }
         if n.has_error() {
@@ -981,10 +1025,11 @@ fn outcome_of(tree: &Tree) -> ParseOutcome {
             stack.extend(n.children(&mut cursor));
         }
     }
-    lines.sort_unstable();
+    spans.sort_unstable();
+    let mut lines: Vec<u32> = spans.iter().map(|&(start, _)| start).collect();
     lines.dedup();
     lines.truncate(ERROR_LINES_KEPT);
-    ParseOutcome::Partial(lines)
+    ParseOutcome::Partial { lines, spans }
 }
 
 /// What the file's grammar made of `content`: the fragmenter's own record
@@ -1005,6 +1050,13 @@ pub fn parse_outcome(path: &str, content: &str) -> Option<ParseOutcome> {
         .map_or(ParseOutcome::TimedOut, |tree| outcome_of(&tree));
     remember_outcome(content, outcome.clone());
     Some(outcome)
+}
+
+/// A parse of `content` under the grammar of `path`, and that grammar's
+/// name. `None` without a grammar or when the parse timed out.
+pub(crate) fn parse_file(path: &str, content: &str) -> Option<(Tree, &'static str)> {
+    let config = find_lang_config(path)?;
+    Some((parse_tree(config.ts_name, content)?, config.ts_name))
 }
 
 /// A parse of `content` under the named grammar, from the same thread-local
@@ -1029,7 +1081,51 @@ fn parse_with_cached_parser(
     language: &Language,
     content: &str,
 ) -> Option<Tree> {
-    parse_with_deadline(ts_name, language, content, PARSE_TIMEOUT)
+    let tree = parse_with_deadline(ts_name, language, content, PARSE_TIMEOUT)?;
+    if !matches!(ts_name, "javascript" | "jsx" | "tsx") || !tree.root_node().has_error() {
+        return Some(tree);
+    }
+    // JSX text may hold a bare `&`, which the grammar reads as a broken
+    // character reference, and its recovery can misread the element around
+    // it (#531). `|` stands where `&` does in text, in code and in a type,
+    // so a parse with it in place reads what the language does; it is kept
+    // when it reads the whole file.
+    let Some(spelled) = without_bare_ampersands(content) else {
+        return Some(tree);
+    };
+    match parse_with_deadline(ts_name, language, &spelled, PARSE_TIMEOUT) {
+        Some(clean) if !clean.root_node().has_error() => Some(clean),
+        _ => Some(tree),
+    }
+}
+
+/// `content` with each `&` that is neither `&&`, `&=` nor a character
+/// reference (`&amp;`, `&#38;`) spelled `|`, at the same byte; `None` when
+/// there is none.
+fn without_bare_ampersands(content: &str) -> Option<String> {
+    let bytes = content.as_bytes();
+    let reference = |rest: &[u8]| {
+        let body = rest.strip_prefix(b"#").unwrap_or(rest);
+        let len = body
+            .iter()
+            .take(32)
+            .position(|b| !b.is_ascii_alphanumeric())
+            .unwrap_or(body.len());
+        len > 0 && body.get(len) == Some(&b';')
+    };
+    let mut out = bytes.to_vec();
+    let mut changed = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        let bare = b == b'&'
+            && i.checked_sub(1).is_none_or(|p| bytes[p] != b'&')
+            && !matches!(bytes.get(i + 1), Some(b'&' | b'='))
+            && !reference(&bytes[i + 1..]);
+        if bare {
+            out[i] = b'|';
+            changed = true;
+        }
+    }
+    changed.then(|| String::from_utf8(out).ok()).flatten()
 }
 
 fn parse_with_deadline(
@@ -1289,6 +1385,8 @@ struct Walk<'a> {
     fragments: Vec<Fragment>,
     covered: Vec<(u32, u32)>,
     added_ends: FxHashSet<(String, u32)>,
+    /// The body chunks emitted so far, by their lines.
+    chunks: FxHashMap<(u32, u32), usize>,
 }
 
 impl<'a> Walk<'a> {
@@ -1307,15 +1405,31 @@ impl<'a> Walk<'a> {
             fragments: Vec::new(),
             covered: Vec::new(),
             added_ends: FxHashSet::default(),
+            chunks: FxHashMap::default(),
         }
     }
 
     fn push(&mut self, start: u32, end: u32, kind: &str, sym_name: Option<&str>) -> bool {
+        // A chunk of a long body spanning exactly a definition nested in it
+        // is that definition. Kept as the chunk, it held the definition's
+        // lines, the definition was dropped as its duplicate, and its name
+        // had no definition (#554).
+        if kind != "chunk" {
+            if let Some(at) = self.chunks.remove(&(start, end)) {
+                let chunk = &mut self.fragments[at];
+                chunk.kind = FragmentKind::from_str(kind);
+                chunk.symbol_name = sym_name.map(str::to_string);
+                return true;
+            }
+        }
         let Some(snippet) = create_snippet(self.lines, start, end) else {
             return false;
         };
         let identifiers =
             extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
+        if kind == "chunk" {
+            self.chunks.insert((start, end), self.fragments.len());
+        }
         self.fragments.push(Fragment {
             id: FragmentId::new(Arc::clone(self.path), start, end),
             kind: FragmentKind::from_str(kind),
@@ -1566,6 +1680,33 @@ fn inject_embedded_languages(
             inject_embedded_languages(&child, source, path, fragments, depth + 1);
         }
     }
+}
+
+/// A page's JavaScript: the text of its inline scripts where the page has
+/// it, every other byte but a newline blanked, so one parse places each
+/// identifier at its line and column in the page. Classic scripts share one
+/// global scope, which one program over all of them models.
+pub(crate) fn inline_scripts(html: &str) -> Option<String> {
+    let tree = parse_tree("html", html)?;
+    let source = html.as_bytes();
+    let mut code: Vec<u8> = source
+        .iter()
+        .map(|&b| if b == b'\n' { b } else { b' ' })
+        .collect();
+    let mut stack = vec![tree.root_node()];
+    while let Some(node) = stack.pop() {
+        if node.kind() != "script_element" {
+            stack.extend(children(&node));
+            continue;
+        }
+        if script_is_javascript(&node, source) && script_grammar(&node, source) == "javascript" {
+            for raw in children(&node).filter(|c| c.kind() == "raw_text") {
+                let range = raw.byte_range();
+                code[range.clone()].copy_from_slice(&source[range]);
+            }
+        }
+    }
+    String::from_utf8(code).ok()
 }
 
 /// A `type=` attribute that names something other than JavaScript (JSON

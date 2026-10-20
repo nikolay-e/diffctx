@@ -8,9 +8,35 @@ use rustc_hash::FxHashSet;
 
 use super::{At, DefId, LanguageFacts, Relation, Table, UseSite};
 use crate::bindings::{self, Definition, Finding, Lang, Resolution, Resolver, Site, Target};
+use crate::facts::DeclKind;
 use crate::impact::{base_symbol, enclosing_class, is_member, is_object_property, object_owner};
 use crate::source::Source;
 use crate::types::FragmentKind;
+
+/// A JavaScript file's or a page's assignments the fragmenter does not cut
+/// — a property of the global object or of the module's exports (#426), an
+/// interface member, a class field (#488) — and a page's top-level script
+/// statements, so a call there is a caller at its own lines rather than
+/// the whole script element (#577).
+pub(super) fn declarations(
+    path: &str,
+    text: &str,
+) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
+    bindings::js_facts(path, text).map_or_else(Vec::new, |facts| {
+        facts
+            .declarations
+            .iter()
+            .filter(|d| d.kind == DeclKind::Assignment)
+            .map(|d| (Some(d.name.clone()), d.lines, FragmentKind::Property))
+            .chain(
+                facts
+                    .script_statements
+                    .iter()
+                    .map(|&lines| (None, lines, FragmentKind::Chunk)),
+            )
+            .collect()
+    })
+}
 
 pub(super) fn models<'a>(
     root: &'a Path,
@@ -58,9 +84,13 @@ impl LanguageFacts for BoundModel<'_> {
 
     fn use_lines(&self, path: &str, def: DefId) -> Option<Vec<u32>> {
         let def = self.defs.get(def);
+        let member = def
+            .class
+            .as_deref()
+            .is_some_and(|c| c != bindings::GLOBAL_OWNER);
         (self.lang == Lang::Js).then(|| {
             self.resolver
-                .js_use_lines(path, &def.path, &def.name, def.class.is_some())
+                .js_use_lines(path, &def.path, &def.name, member)
         })
     }
 
@@ -78,6 +108,22 @@ impl LanguageFacts for BoundModel<'_> {
             used.end_line(),
         );
         self.defs.intern(key, || {
+            // The syntax states the class and the function a declaration
+            // sits in; the fragments around it only suggest them, and an
+            // indented function in a factory closure read as a member of
+            // the interface above it (#554).
+            let stated = self.resolver.js_facts(at.path).and_then(|f| {
+                crate::facts::declared(&f.declarations, name, (used.start_line(), used.end_line()))
+                    .map(|d| (d.class.clone(), d.scope))
+            });
+            if let Some((class, scope)) = stated {
+                return Some(BoundDef {
+                    path: at.path.to_string(),
+                    name: name.to_string(),
+                    class,
+                    scope,
+                });
+            }
             let scope = at.file.iter().find(|f| {
                 f.id != used.id
                     && f.kind == FragmentKind::Function
