@@ -4246,3 +4246,54 @@ fn a_local_closure_named_like_a_definition_is_no_caller() {
         .collect();
     assert_eq!(callers, vec!["src/c.rs"], "{doc}");
 }
+
+/// #536: a deleted function whose name survives only as a parameter, a local
+/// variable, or a word inside a multiline docstring has no remaining callers.
+#[test]
+fn a_removed_function_is_not_linked_to_a_parameter_or_docstring_word() {
+    let head_doc =
+        "\"\"\"Evaluation helpers.\n\nSplits audio into regions and scores alignment.\n\"\"\"\n";
+    let base_eval = format!(
+        "{head_doc}\ndef utterances(run_dir):\n    return [run_dir]\n\n\ndef regions(session):\n    return [session]\n\n\ndef score_wer(hyp, ref):\n    return len(hyp) - len(ref)\n\n\ndef align(reference, utterances):\n    return (reference, utterances)\n\n\ndef summarize(session):\n    regions = []\n    return regions\n\n\ndef evaluate(hyp, ref):\n    return score_wer(hyp, ref)\n"
+    );
+    let head_eval = format!(
+        "{head_doc}\ndef align(reference, utterances):\n    return (reference, utterances)\n\n\ndef summarize(session):\n    regions = []\n    return regions\n\n\ndef evaluate(hyp, ref):\n    return score_wer(hyp, ref)\n"
+    );
+    let tmp = repo_of(
+        &[("pkg/__init__.py", ""), ("pkg/eval.py", &base_eval)],
+        &[("pkg/eval.py", &head_eval)],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let removed: Vec<(String, Vec<String>)> = doc["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["kind"] == "removed")
+        .map(|c| {
+            (
+                c["symbol"].as_str().unwrap().to_string(),
+                c["callers"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|k| {
+                        format!(
+                            "{}::{}",
+                            k["path"].as_str().unwrap(),
+                            k["symbol"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        removed,
+        [(
+            "score_wer".to_string(),
+            vec!["pkg/eval.py::evaluate".to_string()]
+        )],
+        "{doc:#}"
+    );
+}

@@ -733,3 +733,43 @@ fn a_caller_with_a_signature_variant_keeps_the_sites_in_its_body() {
         "the constructor call in the body: {doc:#}"
     );
 }
+
+/// #579: a call inside a sub-fragment of a long function is attributed to its
+/// enclosing definition and keeps the enclosing function's test link.
+#[test]
+fn a_caller_in_a_sub_fragment_of_a_long_function_keeps_its_test_link() {
+    let steps: String = (1..=35)
+        .map(|i| format!("        total += {i}\n"))
+        .collect();
+    let worker = format!(
+        "package demo\n\nclass Worker(private val store: Store) {{\n    fun run(): Int = processA() + processB()\n\n    fun processA(): Int {{\n        val pending =\n            (\n                store.findPending(2) +\n                    store.findMissing(2)\n            ).distinct()\n        var total = pending.size\n{steps}        return total\n    }}\n\n    fun processB(): Int {{\n        return store.findPending(3).size\n    }}\n}}\n"
+    );
+    let tmp = repo_of(
+        &[
+            (
+                "src/main/kotlin/demo/Store.kt",
+                "package demo\n\nclass Store {\n    fun findPending(limit: Int): List<Int> = (0 until limit).toList()\n    fun findMissing(limit: Int): List<Int> = (limit until 2 * limit).toList()\n}\n",
+            ),
+            ("src/main/kotlin/demo/Worker.kt", &worker),
+            (
+                "src/test/kotlin/demo/WorkerTest.kt",
+                "package demo\n\nclass WorkerTest {\n    fun testRun() {\n        val w = Worker(Store())\n        w.run()\n    }\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let doc = symbol(tmp.path(), "findPending");
+    let list = doc["changed"][0]["callers"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    let proc_a = list
+        .iter()
+        .find(|c| c["symbol"] == "processA")
+        .unwrap_or_else(|| panic!("expected processA caller, not a sub-fragment: {doc:#}"));
+    assert_eq!(proc_a["lines"], "6-49", "{doc:#}");
+    assert_eq!(
+        proc_a["tested_by"], "src/test/kotlin/demo/WorkerTest.kt",
+        "{doc:#}"
+    );
+    assert_eq!(proc_a["tested_via"], "run", "{doc:#}");
+}

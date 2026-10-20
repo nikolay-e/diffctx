@@ -1472,7 +1472,7 @@ fn swift_instance_and_static_method_calls_reach_their_callers() {
         "Sources/DataManager.swift::syncNow",
         "Sources/ViewController.swift::onAppear",
     ];
-    assert_eq!(callers(&doc, "reload", "name"), expected, "{doc}");
+    assert_eq!(callers(&doc, "reload", "resolved"), expected, "{doc}");
     let sym_out = run(
         tmp.path(),
         &[
@@ -1485,5 +1485,9 @@ fn swift_instance_and_static_method_calls_reach_their_callers() {
     );
     assert!(sym_out.status.success());
     let sym_doc: serde_json::Value = serde_json::from_slice(&sym_out.stdout).unwrap();
-    assert_eq!(callers(&sym_doc, "reload", "name"), expected, "{sym_doc}");
+    assert_eq!(
+        callers(&sym_doc, "reload", "resolved"),
+        expected,
+        "{sym_doc}"
+    );
 }
