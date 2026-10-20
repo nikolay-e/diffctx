@@ -820,6 +820,26 @@ fn a_commit_that_landed_nothing_is_not_answered_with_another_sessions_commit() {
     assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
 }
 
+/// #575: a recording verb word inside another command's argument (`--jq`,
+/// `-m`, a `grep` pattern) does not make a read-only git line record refs and
+/// claim a commit another session lands while it runs.
+#[test]
+fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let command = "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'";
+    let h = hook_pair("b", repo, cache.path(), command, || {
+        commit_all(repo, "vat");
+    });
+    assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
+    assert!(
+        last_log_line(cache.path()).contains(" no-trigger "),
+        "{}",
+        last_log_line(cache.path())
+    );
+}
+
 /// An amend replaces `HEAD` on its parent: what it records is measured from
 /// that parent, the earlier commit's change included, whatever staged it.
 #[test]

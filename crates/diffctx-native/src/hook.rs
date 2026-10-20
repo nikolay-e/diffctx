@@ -3149,6 +3149,15 @@ mod tests {
         assert!(hides_git("eval git push"));
         assert!(!hides_git("FP=$(cat f) && git commit -m x"));
         assert!(!hides_git("git commit -m 'a `b`' && echo $(date)"));
+        // A recording word in another program's argument records nothing (#575).
+        for command in [
+            "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
+            "git merge-base main HEAD; gh pr comment 1 -b 'please commit or push'",
+            "git status; grep -rn 'git commit' src/",
+            "git log -1 --grep=commit",
+        ] {
+            assert!(!records(command), "{command}");
+        }
     }
 
     #[test]
