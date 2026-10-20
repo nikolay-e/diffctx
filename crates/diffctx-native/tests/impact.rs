@@ -4,43 +4,11 @@
 // the hook does.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn init_repo(repo: &Path) {
-    git(repo, &["init", "-q", "."]);
-    git(repo, &["config", "user.email", "test@example.com"]);
-    git(repo, &["config", "user.name", "diffctx tests"]);
-}
-
-fn commit_all(repo: &Path, message: &str) {
-    git(repo, &["add", "-A"]);
-    git(repo, &["commit", "-q", "-m", message]);
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("mkdir");
-    }
-    std::fs::write(path, content).expect("write");
-}
+use support::{claims, commit_all, diffctx, git, init_repo, repo, write};
 
 fn impact(repo: &Path, range: &str) -> serde_json::Value {
     impact_env(repo, range, &[])
@@ -392,7 +360,7 @@ fn a_run_under_the_contribution_cap_lists_the_same_callers_each_time() {
         .iter()
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
-    let tmp = repo_of(
+    let tmp = repo(
         &base,
         &[("core/compute.py", "def compute(x):\n    return x * 2\n")],
     );
@@ -460,7 +428,7 @@ fn a_test_named_for_a_schema_is_not_a_schema_contract() {
 #[test]
 fn rails_schema_and_migrations_are_contracts_and_yarn_versions_are_not() {
     let schema_kinds = |files: &[(&str, &str, &str)]| {
-        let tmp = repo_of(
+        let tmp = repo(
             &files.iter().map(|(p, a, _)| (*p, *a)).collect::<Vec<_>>(),
             &files.iter().map(|(p, _, b)| (*p, *b)).collect::<Vec<_>>(),
         );
@@ -1118,23 +1086,6 @@ fn header(md: &str) -> &str {
     md.lines().next().unwrap_or_default()
 }
 
-fn repo_of(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let repo = tmp.path();
-    init_repo(repo);
-    for (p, c) in files {
-        write(repo, p, c);
-    }
-    commit_all(repo, "initial");
-    for (p, c) in changes {
-        write(repo, p, c);
-    }
-    if !changes.is_empty() {
-        commit_all(repo, "change");
-    }
-    tmp
-}
-
 fn changed_symbols(doc: &serde_json::Value) -> Vec<String> {
     doc["changed"]
         .as_array()
@@ -1221,7 +1172,7 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
             "def _scale(x):\n    return x * {k}\n\n\ndef quote(x):\n    return _scale(x) + {k}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("app/__init__.py", ""),
             ("app/rates.py", &rates(2)),
@@ -1273,7 +1224,7 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
 #[test]
 fn no_mode_names_a_withheld_file_that_references_the_change() {
     let canary = "from lib import kept, gone\n# see scripts/rotate.sh\nkept(); gone()\n";
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (".diffctx/ignore", "private/\n"),
             (
@@ -1355,7 +1306,7 @@ fn a_caller_the_edge_cap_cut_is_still_a_caller() {
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
     let changed = target(3);
-    let tmp = repo_of(&initial, &[("app/target.py", &changed)]);
+    let tmp = repo(&initial, &[("app/target.py", &changed)]);
     let callers = |doc: &serde_json::Value| -> Vec<String> {
         doc["changed"]
             .as_array()
@@ -1397,7 +1348,7 @@ fn a_changed_file_over_the_size_cap_is_named_never_empty() {
         text
     };
     let (before, after) = (body(2), body(3));
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("big.py", &before),
             (
@@ -1421,7 +1372,7 @@ fn a_changed_file_over_the_size_cap_is_named_never_empty() {
 /// "No resolved static callers" about a function with a caller.
 #[test]
 fn a_comment_only_edit_says_its_callers_were_not_traced() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "pay.py",
@@ -1473,7 +1424,7 @@ fn wide_change() -> TempDir {
         .iter()
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
-    repo_of(
+    repo(
         &initial,
         &[
             (
@@ -1574,7 +1525,7 @@ fn a_removed_name_too_common_to_trace_is_unresolved_not_listed() {
         .iter()
         .map(|(p, c)| (p.as_str(), c.as_str()))
         .collect();
-    let tmp = repo_of(&initial, &[("app/defs.py", "def keep():\n    return 1\n")]);
+    let tmp = repo(&initial, &[("app/defs.py", "def keep():\n    return 1\n")]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let removed: Vec<&serde_json::Value> = doc["changed"]
         .as_array()
@@ -1599,7 +1550,7 @@ fn a_removed_name_too_common_to_trace_is_unresolved_not_listed() {
 /// answer is never empty, where it read "No changes to analyse".
 #[test]
 fn a_lock_file_change_is_named_never_empty() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("app.py", "def f():\n    return 1\n"),
             ("uv.lock", "x==1\n"),
@@ -1631,7 +1582,7 @@ fn unresolved_callers_are_not_reported_as_none() {
     let def = |class: &str, n: u32| {
         format!("package app\n\nobject {class} {{\n  def build(): Int = {{\n    {n}\n  }}\n}}\n")
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/app/A.scala", &def("A", 1)),
             ("src/app/B.scala", &def("B", 2)),
@@ -1648,7 +1599,7 @@ fn unresolved_callers_are_not_reported_as_none() {
 /// definition its hunk removed, not as a deleted file.
 #[test]
 fn a_withheld_file_is_never_named_by_its_removed_definitions_or_deletion() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (".diffctx/ignore", "internal/\n"),
             (
@@ -1693,7 +1644,7 @@ fn a_withheld_file_is_never_named_by_its_removed_definitions_or_deletion() {
 /// match no file, so a removal there reported nothing.
 #[test]
 fn a_definition_removed_from_a_non_ascii_path_is_reported() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/caf\u{e9}.js",
@@ -1720,6 +1671,34 @@ fn a_definition_removed_from_a_non_ascii_path_is_reported() {
     );
 }
 
+/// A removed definition's range is on the base side; printed bare, a reader
+/// opened the new file there and found the next definition, and its caller
+/// read as calling something still there (#598). The control, `alpha`,
+/// changed in place and keeps its plain range.
+#[test]
+fn a_removed_definition_says_so_in_the_markdown() {
+    let tmp = repo(
+        &[
+            (
+                "config.py",
+                "def alpha():\n    return 1\n\n\ndef bravo():\n    return 2\n\n\ndef charlie():\n    return 3\n",
+            ),
+            (
+                "job.py",
+                "from config import alpha, bravo\n\n\ndef run():\n    return alpha() + bravo()\n",
+            ),
+        ],
+        &[(
+            "config.py",
+            "def alpha():\n    return 10\n\n\ndef charlie():\n    return 3\n",
+        )],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("- config.py::bravo (removed; was 5-6)"), "{md}");
+    assert!(md.contains("- config.py::alpha (1-2)"), "{md}");
+    assert!(md.contains("called from job.py::run"), "{md}");
+}
+
 /// A statement moved out of its `if` is a change, whatever `diff.context`
 /// the user configured: with it at 0 the hunk lost the lines that show the
 /// move and read as layout.
@@ -1730,7 +1709,7 @@ fn a_dedented_statement_is_a_change_under_any_diff_context() {
             "import os\n\n\ndef charge(user, amount):\n    if user.blocked:\n        log(user)\n{body}    return amount\n\n\ndef log(u):\n    print(u)\n\n\ndef refund(u, a):\n    print(u, a)\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("pkg/__init__.py", ""),
             ("pkg/core.py", &core("        refund(user, amount)\n")),
@@ -1754,7 +1733,7 @@ fn a_deleted_call_inside_a_method_is_no_removed_member() {
             "import {{ validate }} from './validate.js';\n\nexport class Form {{\n  submit(x) {{\n    validate(x);\n{body}    return x;\n  }}\n}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/form.js", &form("    notify(x);\n")),
             (
@@ -1786,7 +1765,7 @@ fn a_removed_control_statement_is_no_removed_member() {
             "pub struct Shape;\n\nimpl Shape {{\n    pub fn area(&self, a: u32, b: u32) -> u32 {{\n{body}        a * b\n    }}\n}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/shape.rs",
@@ -1817,7 +1796,7 @@ fn a_caller_right_above_a_deleted_function_is_still_a_caller() {
             "def rate(amount):\n    return amount * {rate}\n\n\ndef invoice(amount):\n    total = rate(amount)\n    return total\n{tail}\n\ndef last():\n    return 1\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("pkg/__init__.py", ""),
             ("pkg/core.py", &core("2", "def obsolete():\n    return 0\n")),
@@ -1837,7 +1816,7 @@ fn a_column_zero_line_removed_inside_a_body_is_a_change() {
             "def active_users(db):\n    return db.query(\"\"\"\nSELECT id FROM users\n{filter}ORDER BY id\n\"\"\")\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("app/__init__.py", ""),
             ("app/queries.py", &users("WHERE active\n")),
@@ -1857,7 +1836,7 @@ fn a_column_zero_line_removed_inside_a_body_is_a_change() {
 #[test]
 fn a_rust_call_still_naming_the_old_module_of_a_move_is_reported() {
     let rate = "pub fn tax_rate() -> u32 {\n    19\n}\n";
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "Cargo.toml",
@@ -1902,7 +1881,7 @@ fn a_rust_call_still_naming_the_old_module_of_a_move_is_reported() {
 /// prefix `Owner::name`.
 #[test]
 fn a_qualified_symbol_names_its_owner_and_takes_a_path() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "shop.py",
@@ -1953,7 +1932,7 @@ fn a_qualified_symbol_names_its_owner_and_takes_a_path() {
 /// the header, in a diff and for a symbol, instead of reading as nothing.
 #[test]
 fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (".diffctx/ignore", "app/tests/\n"),
             ("app/__init__.py", ""),
@@ -2005,7 +1984,7 @@ fn a_definition_moved_verbatim_is_no_change_and_moved_edited_is() {
     );
     for (token, listed) in [("", false), ("t", true)] {
         let after = conf(token, true);
-        let tmp = repo_of(
+        let tmp = repo(
             &[
                 ("pkg/__init__.py", ""),
                 ("pkg/conf.py", &conf("", false)),
@@ -2022,7 +2001,7 @@ fn a_definition_moved_verbatim_is_no_change_and_moved_edited_is() {
 /// answer says the change was withheld, never "the working tree matches HEAD".
 #[test]
 fn a_change_entirely_withheld_is_not_called_a_clean_tree() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (".diffctx/ignore", "tests/\n"),
             ("tests/conftest.py", "X = 1\n"),
@@ -2046,7 +2025,7 @@ fn each_removed_definition_of_a_deleted_module_keeps_its_own_callers() {
     let module: String = (0..40)
         .map(|i| format!("export function fn_{i}(x) {{\n  return x + {i};\n}}\n\n"))
         .collect();
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/many.js", &module),
             (
@@ -2085,7 +2064,7 @@ fn each_removed_definition_of_a_deleted_module_keeps_its_own_callers() {
 /// #414: in Python `//` is floor division; the call after it is a caller.
 #[test]
 fn a_call_after_python_floor_division_is_a_caller() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "shop/paging.py",
@@ -2124,7 +2103,7 @@ fn a_type_with_trait_impls_is_one_definition_reached_by_its_users() {
             "pub struct {t};\n\nimpl std::fmt::Display for {t} {{\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        f.write_str(\"{t}\")\n    }}\n}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/lib.rs",
@@ -2175,7 +2154,7 @@ fn a_type_with_trait_impls_is_one_definition_reached_by_its_users() {
 }
 
 fn registry_repo(port_after: &str) -> TempDir {
-    repo_of(
+    repo(
         &[
             (
                 "flow/registry.py",
@@ -2231,7 +2210,7 @@ fn a_caller_registered_by_a_decorator_is_not_called_untested() {
 /// untested setter or `attr.s` class is untested, not "registered by".
 #[test]
 fn shaping_decorators_are_not_registries() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("util.py", "def clamp(v):\n    return max(0, v)\n"),
             (
@@ -2291,7 +2270,7 @@ fn a_formatting_only_change_is_neither_a_contract_nor_a_caller_list() {
 /// #362: an unchanged caller in a changed file is outside the diff.
 #[test]
 fn an_unchanged_caller_in_the_changed_file_is_listed() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[(
             "tool.py",
             "def diagnose(xs):\n    return len(xs)\n\n\ndef main():\n    return diagnose([1, 2])\n",
@@ -2309,7 +2288,7 @@ fn an_unchanged_caller_in_the_changed_file_is_listed() {
 /// #359: `pub` inside a `pub(crate)` module is crate-internal.
 #[test]
 fn pub_items_of_a_crate_private_module_are_not_public_api() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "Cargo.toml",
@@ -2357,7 +2336,7 @@ fn pub_items_of_a_crate_private_module_are_not_public_api() {
 /// an uncommitted `a/mod.rs` -> `a.rs` move made a private module public.
 #[test]
 fn module_visibility_of_a_range_ignores_the_working_tree() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "Cargo.toml",
@@ -2385,7 +2364,7 @@ fn module_visibility_of_a_range_ignores_the_working_tree() {
 /// #374: a script named for a schema is not a schema.
 #[test]
 fn a_script_named_for_a_schema_is_not_a_schema_contract() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("scripts/ci/schema-compat.sh", "#!/bin/sh\ndocker build .\n"),
             ("db/schema.sql", "create table a (id int);\n"),
@@ -2406,7 +2385,7 @@ fn a_script_named_for_a_schema_is_not_a_schema_contract() {
 /// where another file still has it, and never by a bare word.
 #[test]
 fn a_stale_reference_names_the_deleted_path_itself() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("biome.jsonc", "{}\n"),
             ("child/biome.json", "{}\n"),
@@ -2452,7 +2431,7 @@ fn a_stale_reference_names_the_deleted_path_itself() {
 /// optional call to it outside the diff is its caller.
 #[test]
 fn a_removed_optional_member_names_its_remaining_call_site() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/engine.ts",
@@ -2512,7 +2491,7 @@ fn change_class_of(repo: &Path, path: &str) -> String {
 /// moved between hunks is a reorder.
 #[test]
 fn code_that_only_looks_like_formatting_is_not_layout() {
-    let floor = repo_of(
+    let floor = repo(
         &[
             ("m.py", "def mid(lo, hi):\n    return (lo + hi) // 2\n"),
             (
@@ -2527,7 +2506,7 @@ fn code_that_only_looks_like_formatting_is_not_layout() {
         impact_markdown(floor.path(), "HEAD~1..HEAD").contains("called from u.py::use"),
         "a floor-division change keeps its callers"
     );
-    let swapped = repo_of(
+    let swapped = repo(
         &[(
             "m.py",
             "from a import x\nfrom b import y\n\n\ndef f():\n    return x() + y()\n",
@@ -2538,7 +2517,7 @@ fn code_that_only_looks_like_formatting_is_not_layout() {
         )],
     );
     assert_ne!(change_class_of(swapped.path(), "m.py"), "layout");
-    let template = repo_of(
+    let template = repo(
         &[(
             "t.ts",
             "export function greet(n: string): string {\n  return 'hi ${n}';\n}\n",
@@ -2549,7 +2528,7 @@ fn code_that_only_looks_like_formatting_is_not_layout() {
         )],
     );
     assert_ne!(change_class_of(template.path(), "t.ts"), "layout");
-    let sql = repo_of(
+    let sql = repo(
         &[(
             "q.py",
             "def active(cur):\n    return cur.execute(\n        \"\"\"SELECT id FROM users WHERE active\"\"\"\n    )\n",
@@ -2560,7 +2539,7 @@ fn code_that_only_looks_like_formatting_is_not_layout() {
         )],
     );
     assert_ne!(change_class_of(sql.path(), "q.py"), "layout");
-    let reordered = repo_of(
+    let reordered = repo(
         &[("r.py", "A = 1\nB = 2\nC = 3\nD = 4\nE = 5\nF = 6\nG = 7\n")],
         &[("r.py", "B = 2\nC = 3\nD = 4\nE = 5\nF = 6\nG = 7\nA = 1\n")],
     );
@@ -2571,7 +2550,7 @@ fn code_that_only_looks_like_formatting_is_not_layout() {
 /// call sites working (#388); anything else lists them.
 #[test]
 fn breaking_insertions_are_not_signature_compatible() {
-    let mid = repo_of(
+    let mid = repo(
         &[
             ("f.py", "def f(\n    a,\n    c=2,\n):\n    return a + c\n"),
             (
@@ -2587,7 +2566,7 @@ fn breaking_insertions_are_not_signature_compatible() {
     let md = impact_markdown(mid.path(), "HEAD~1..HEAD");
     assert!(!md.contains("signature-compatible"), "{md}");
     assert!(md.contains("called from u.py::use"), "{md}");
-    let callback = repo_of(
+    let callback = repo(
         &[
             ("p.ts", "export interface Props {\n  label: string;\n}\n"),
             (
@@ -2601,7 +2580,7 @@ fn breaking_insertions_are_not_signature_compatible() {
         )],
     );
     assert!(!impact_markdown(callback.path(), "HEAD~1..HEAD").contains("signature-compatible"));
-    let required = repo_of(
+    let required = repo(
         &[
             (
                 "m.py",
@@ -2620,7 +2599,7 @@ fn breaking_insertions_are_not_signature_compatible() {
     let md = impact_markdown(required.path(), "HEAD~1..HEAD");
     assert!(!md.contains("signature-compatible"), "{md}");
     // A call in the body that gains a keyword argument is no parameter list.
-    let body = repo_of(
+    let body = repo(
         &[
             (
                 "pkg/core.py",
@@ -2640,7 +2619,7 @@ fn breaking_insertions_are_not_signature_compatible() {
     assert!(!md.contains("signature-compatible"), "{md}");
     assert!(md.contains("called from pkg/app.py::handler"), "{md}");
     // `__slots__` changes how every instance is built.
-    let slots = repo_of(
+    let slots = repo(
         &[
             ("pt.py", "class Point:\n    x = 0\n"),
             (
@@ -2662,7 +2641,7 @@ fn breaking_insertions_are_not_signature_compatible() {
 /// import`; a `../lib/foo` that resolves elsewhere does not.
 #[test]
 fn relative_references_to_a_moved_file_are_stale_and_foreign_ones_are_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/utils.ts", "export const x = 1;\n"),
             (
@@ -2707,7 +2686,7 @@ fn relative_references_to_a_moved_file_are_stale_and_foreign_ones_are_not() {
 /// broken; the removal is reported with them (#367 class).
 #[test]
 fn a_moved_function_names_the_importers_of_its_old_module() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "a.py",
@@ -2735,7 +2714,7 @@ fn a_moved_function_names_the_importers_of_its_old_module() {
 /// `def self.x` names `x`, never `self`.
 #[test]
 fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
-    let ts = repo_of(
+    let ts = repo(
         &[
             (
                 "store.ts",
@@ -2756,7 +2735,7 @@ fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
         md.contains("save") && md.contains("use.ts::persist"),
         "{md}"
     );
-    let rb = repo_of(
+    let rb = repo(
         &[
             (
                 "svc.rb",
@@ -2780,7 +2759,7 @@ fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
 /// removed definitions are the change.
 #[test]
 fn a_deletion_below_a_definition_does_not_change_it() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "lib.py",
@@ -2804,7 +2783,7 @@ fn a_deletion_below_a_definition_does_not_change_it() {
         "{doc}"
     );
     // Removing the body's last line is a change to it.
-    let tail = repo_of(
+    let tail = repo(
         &[
             (
                 "lib.py",
@@ -2864,13 +2843,13 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
         "package web\n\nobject Contracts {\n  def theme(): String = {\n    \"light\"\n  }\n}\n",
     )];
     // One project: the lexical link stands, so the probe below is not vacuous.
-    let together = repo_of(&files(false), &change);
+    let together = repo(&files(false), &change);
     let md = impact_markdown(together.path(), "HEAD~1..HEAD");
     assert!(
         md.contains("quiz/src/test/scala/quiz/ConfigTest.scala"),
         "{md}"
     );
-    let apart = repo_of(&files(true), &change);
+    let apart = repo(&files(true), &change);
     let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
     assert!(
         md.contains("web/src/main/scala/web/Config.scala::generated"),
@@ -2888,7 +2867,7 @@ fn a_sibling_module_importing_the_qualified_name_still_guards_it() {
             "package com.acme.core;\n\npublic class Pricing {{\n    public static int gross(int a) {{\n        return a * {rate};\n    }}\n}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "pom.xml",
@@ -2930,7 +2909,7 @@ fn a_sibling_module_importing_the_qualified_name_still_guards_it() {
 #[test]
 fn syntax_that_formatting_rules_would_erase_is_not_layout() {
     let class = |path: &str, old: &str, new: &str| {
-        let repo = repo_of(&[(path, old)], &[(path, new)]);
+        let repo = repo(&[(path, old)], &[(path, new)]);
         change_class_of(repo.path(), path)
     };
     for (path, old, new) in [
@@ -2979,7 +2958,7 @@ fn syntax_that_formatting_rules_would_erase_is_not_layout() {
 /// callers from unrelated code.
 #[test]
 fn local_functions_and_untyped_attribute_reads_are_not_callers() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "log.py",
@@ -3018,7 +2997,7 @@ fn a_code_change_without_a_parse_is_not_analysed_not_an_all_clear() {
             "module solver\ncontains\n  subroutine step(x)\n    real :: x\n    x = x * {k}\n  end subroutine step\nend module solver\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("num/solver.f90", &solver("2.0")),
             ("tools/run.py", "print(\"run\")\n"),
@@ -3073,7 +3052,7 @@ fn a_code_change_without_a_parse_is_not_analysed_not_an_all_clear() {
 /// a name nobody spells keeps the plain answer.
 #[test]
 fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "num/solver.f90",
@@ -3118,7 +3097,7 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
 /// variant; the definition is still the class, with its callers.
 #[test]
 fn a_class_whose_header_is_its_signature_keeps_its_definition() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Turns.kt",
@@ -3152,7 +3131,7 @@ fn a_class_whose_header_is_its_signature_keeps_its_definition() {
 /// test that reaches the Kotlin one.
 #[test]
 fn a_test_in_another_runtime_does_not_guard_a_namesake() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "android/app/src/main/java/a/ApiClient.kt",
@@ -3367,34 +3346,6 @@ fn untracked_files_are_named_apart_and_binaries_are_not_changes() {
     );
 }
 
-/// What an impact answer claims: each changed symbol's callers, and the
-/// lines still naming a deleted path.
-fn claims(doc: &serde_json::Value) -> Vec<String> {
-    let mut out: Vec<String> = doc["changed"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|c| {
-            let symbol = c["symbol"].as_str().unwrap_or("").to_string();
-            c["callers"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(move |k| format!("{symbol} <- {}", k["path"].as_str().unwrap_or("")))
-        })
-        .chain(
-            doc["stale_references"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|r| format!("stale {}", r["path"].as_str().unwrap_or(""))),
-        )
-        .collect();
-    out.sort();
-    out
-}
-
 /// #510: stopped at its `n`th deadline poll, for every `n` until it runs to
 /// the end, a run either answers in full or names the deadline, and never
 /// claims what the whole run does not. The logical clock replaces the
@@ -3570,7 +3521,7 @@ fn a_call_inside_an_interpolation_is_a_caller_and_a_string_is_not() {
 /// function was a removed API.
 #[test]
 fn only_declarations_the_head_lost_are_removed_definitions() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/lib.rs",
@@ -3627,7 +3578,7 @@ fn only_declarations_the_head_lost_are_removed_definitions() {
 /// shell `die` and a TypeScript `test.describe` were callers.
 #[test]
 fn a_removed_definition_is_called_only_from_code_that_can_reach_it() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "shop/helpers.py",
@@ -3695,7 +3646,7 @@ fn a_removed_definition_is_called_only_from_code_that_can_reach_it() {
 /// to its own `helper` as broken callers.
 #[test]
 fn a_file_with_its_own_definition_of_the_name_is_no_caller_of_the_removed_one() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/a.rs",
@@ -4090,7 +4041,7 @@ fn the_header_counts_the_same_at_any_budget() {
 #[test]
 fn an_unqualified_same_class_java_call_is_a_caller() {
     let mapper = "package app;\n\npublic class Mapper {\n    static int map(int x) {\n        return x * 2;\n    }\n\n    public int toDto(int x) {\n        return map(x) + 1;\n    }\n\n    public int noted(int x) {\n        // map(x) is not called here\n        return other.map(x);\n    }\n}\n";
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/main/java/app/Mapper.java", mapper),
             (
@@ -4216,7 +4167,7 @@ fn a_broken_parse_hedges_only_callers_of_its_own_runtime() {
 #[test]
 fn a_local_closure_named_like_a_definition_is_no_caller() {
     let a = "pub fn read() -> u8 {\n    1\n}\n";
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "Cargo.toml",
@@ -4259,7 +4210,7 @@ fn a_removed_function_is_not_linked_to_a_parameter_or_docstring_word() {
     let head_eval = format!(
         "{head_doc}\ndef align(reference, utterances):\n    return (reference, utterances)\n\n\ndef summarize(session):\n    regions = []\n    return regions\n\n\ndef evaluate(hyp, ref):\n    return score_wer(hyp, ref)\n"
     );
-    let tmp = repo_of(
+    let tmp = repo(
         &[("pkg/__init__.py", ""), ("pkg/eval.py", &base_eval)],
         &[("pkg/eval.py", &head_eval)],
     );

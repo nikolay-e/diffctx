@@ -10,30 +10,7 @@ use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, content).unwrap();
-}
-
-fn commit_all(repo: &Path, message: &str) {
-    git(repo, &["add", "-A"]);
-    git(repo, &["commit", "-q", "-m", message]);
-}
+use support::{commit_all, diffctx, git, write};
 
 /// `pricing.total` is edited in the working tree; `checkout.charge` calls it
 /// from another file and `test_checkout.py` pins `charge`.

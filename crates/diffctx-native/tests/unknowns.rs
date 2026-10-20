@@ -2,50 +2,11 @@
 // (#505): an unknown is named, never read as nothing.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// A repository whose last commit applies `change` on top of `base`.
-fn repo(base: &[(&str, &str)], change: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    fill(tmp.path(), base, change);
-    tmp
-}
-
-fn fill(root: &Path, base: &[(&str, &str)], change: &[(&str, &str)]) {
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (step, files) in [base, change]
-        .into_iter()
-        .filter(|f| !f.is_empty())
-        .enumerate()
-    {
-        for (rel, content) in files {
-            let path = root.join(rel);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, content).unwrap();
-        }
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-q", "-m", &format!("step {step}")]);
-    }
-}
+use support::{diffctx, fill, repo};
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
     let out = diffctx()

@@ -9,7 +9,7 @@ use std::process::{Command, Output};
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
+use support::{diffctx, write};
 
 fn git_out(repo: &Path, args: &[&str]) -> Output {
     Command::new("git")
@@ -38,14 +38,6 @@ fn init_repo(repo: &Path, extra: &[&str]) {
     git(repo, &args);
     git(repo, &["config", "user.email", "test@example.com"]);
     git(repo, &["config", "user.name", "diffctx tests"]);
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("mkdir");
-    }
-    std::fs::write(path, content).expect("write");
 }
 
 fn run(repo: &Path, args: &[&str]) -> Output {

@@ -4,56 +4,10 @@
 // so neither precision nor recall can be bought with the other.
 
 use std::path::Path;
-use std::process::{Command, Output};
-
-use tempfile::TempDir;
+use std::process::Output;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .output()
-        .expect("run git");
-    assert!(
-        out.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("mkdir");
-    }
-    std::fs::write(path, content).expect("write");
-}
-
-/// A repository with `files` committed, then `changes` committed on top.
-fn repo(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = tmp.path();
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (p, c) in files {
-        write(root, p, c);
-    }
-    git(root, &["add", "-A"]);
-    git(root, &["commit", "-q", "-m", "initial"]);
-    for (p, c) in changes {
-        write(root, p, c);
-    }
-    git(root, &["add", "-A"]);
-    git(root, &["commit", "-q", "-m", "change"]);
-    tmp
-}
+use support::{diffctx, repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()

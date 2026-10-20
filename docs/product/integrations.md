@@ -16,9 +16,10 @@ docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 scoop bucket add diffctx https://github.com/nikolay-e/diffctx && scoop install diffctx/diffctx
 ```
 
-The native binary, npm wrapper and Docker image cover diff mode with YAML/JSON
-output on stdout. Tree mode, Markdown output, the `graph` subcommand and the MCP
-server live in the Python package.
+The native binary, npm wrapper and Docker image answer `--diff` and `--symbol`
+in every mode, as YAML/JSON on stdout plus text for `--mode impact`. Tree mode,
+Markdown packs, the `graph` subcommand and the MCP server live in the Python
+package.
 
 **Platforms.** Every [release](https://github.com/nikolay-e/diffctx/releases/latest)
 carries prebuilt binaries for Linux (x86_64/aarch64), macOS (arm64/x86_64) and

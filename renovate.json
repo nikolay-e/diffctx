@@ -13,6 +13,16 @@
       "allowedVersions": "<3.15"
     },
     {
+      "description": "tree-sitter 0.26+ does not resolve: tree-sitter-clojure 0.1.0, its only release, needs ^0.25.6 under the same links key. Lift when it moves",
+      "matchDepNames": ["tree-sitter"],
+      "allowedVersions": "<0.26"
+    },
+    {
+      "description": "tree-sitter-graphql 0.3 needs tree-sitter-language ^0.1.8; brokk-tree-sitter-kotlin =0.4.6 pins =0.1.7. Lift when the kotlin pin moves",
+      "matchDepNames": ["tree-sitter-graphql"],
+      "allowedVersions": "<0.3"
+    },
+    {
       "description": "plugin/uv.lock is written by cd.yml once PyPI serves a release, seeded with uv.lock: the set CI tested. A bump here locks versions CI never ran, and plugin/pyproject.toml's diffctx pin moves only with a release",
       "matchFileNames": ["plugin/**"],
       "enabled": false

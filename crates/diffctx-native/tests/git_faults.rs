@@ -8,14 +8,14 @@
 #![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::time::Duration;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
+use support::{claims, diffctx, git};
 
 const TIMEOUT_SECS: u64 = 3;
 /// The deadline for runs that must return the whole answer, where nothing
@@ -188,18 +188,6 @@ fn running(pid: &str) -> bool {
         .expect("ps");
     let stat = String::from_utf8_lossy(&out.stdout);
     !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
-}
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
 }
 
 fn fixture() -> Fixture {
@@ -571,34 +559,6 @@ fn sweep_fixture() -> Fixture {
     }
     std::fs::write(repo.join("junk.py"), "def total():\n    return 0\n").unwrap();
     fx
-}
-
-/// What the run claims: the callers of each changed or removed symbol, and
-/// the lines still naming a deleted path.
-fn claims(doc: &serde_json::Value) -> Vec<String> {
-    let mut out: Vec<String> = doc["changed"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|c| {
-            let symbol = c["symbol"].as_str().unwrap_or("").to_string();
-            c["callers"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(move |k| format!("{symbol} <- {}", k["path"].as_str().unwrap_or("")))
-        })
-        .chain(
-            doc["stale_references"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|r| format!("stale {}", r["path"].as_str().unwrap_or(""))),
-        )
-        .collect();
-    out.sort();
-    out
 }
 
 /// Whether the run said it did not see everything.

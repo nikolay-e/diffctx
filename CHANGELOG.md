@@ -193,6 +193,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The weekly channel check names every release tag that `main` does not
   reach and every tag whose release is missing or a draft: a consumer pins
   the commit a tag first named, and a moved tag strands it (#500).
+- A removed definition's markdown row read like a live one: its range is in
+  the base file, so a reader found the next definition there and its caller
+  read as calling something still present. The CLI answer and the hook's
+  block now print `path::name (removed; was 5-6)` (#598).
 
 ## [1.19.1] - 2026-10-14
 

@@ -4,43 +4,11 @@
 // the doors compared, is tests/test_fit_contract.py.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
 use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// A repository whose last commit applies `change` on top of `base`.
-fn repo(base: &[(&str, String)], change: &[(&str, String)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = tmp.path();
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (step, files) in [base, change].into_iter().enumerate() {
-        for (rel, content) in files {
-            let path = root.join(rel);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, content).unwrap();
-        }
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-q", "-m", &format!("step {step}")]);
-    }
-    tmp
-}
 
 fn pack(repo: &Path, budget: u32, format: &str) -> String {
     let out = diffctx()
@@ -78,6 +46,14 @@ fn fragments(text: &str, format: &str) -> Vec<(String, String, bool)> {
             )
         })
         .collect()
+}
+
+/// A repository whose last commit applies `change` on top of `base`.
+fn repo(base: &[(&str, String)], change: &[(&str, String)]) -> TempDir {
+    fn borrow<'a>(files: &'a [(&str, String)]) -> Vec<(&'a str, &'a str)> {
+        files.iter().map(|(p, c)| (*p, c.as_str())).collect()
+    }
+    support::repo(&borrow(base), &borrow(change))
 }
 
 fn tier_repo() -> TempDir {

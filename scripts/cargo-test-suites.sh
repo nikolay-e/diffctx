@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../crates/diffctx-native"
 
-if [ -z "${DIFFCTX_PROFILE+set}" ]; then
+if [[ -z "${DIFFCTX_PROFILE+set}" ]]; then
   DIFFCTX_PROFILE=$(mktemp "${TMPDIR:-/tmp}/diffctx-profile-XXXXXX")
   owned_profile=$DIFFCTX_PROFILE
   export DIFFCTX_PROFILE
@@ -19,23 +19,23 @@ fi
 report() {
   local python
   python=$(command -v python3 || command -v python || true)
-  if [ -n "${DIFFCTX_PROFILE:-}" ] && [ -n "$python" ]; then
+  if [[ -n "${DIFFCTX_PROFILE:-}" ]] && [[ -n "$python" ]]; then
     "$python" ../../tests/framework/profile_report.py "$DIFFCTX_PROFILE" || true
   fi
-  [ -z "${owned_profile:-}" ] || rm -f "$owned_profile"
+  [[ -z "${owned_profile:-}" ]] || rm -f "$owned_profile"
 }
 trap report EXIT
 
 # --features python, or analytics/, graph_export/ and project_graph/ are not
 # compiled at all: they are cfg-gated on it and ship inside the wheel.
-cargo test --lib --features python
+cargo test --locked --lib --features python
 
 suites=()
 for file in tests/*.rs; do
   name=$(basename "$file" .rs)
-  [ "$name" = yaml_cases ] || suites+=(--test "$name")
+  [[ "$name" = yaml_cases ]] || suites+=(--test "$name")
 done
 # One failing suite must not hide the others.
-cargo test --no-fail-fast "${suites[@]}"
+cargo test --locked --no-fail-fast "${suites[@]}"
 
-cargo test --release --test yaml_cases
+cargo test --release --locked --test yaml_cases

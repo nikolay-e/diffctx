@@ -87,7 +87,7 @@ jobs:
           DIFFCTX_YAML_IGNORE_BASELINE: "1"
           DIFFCTX_DISABLE_BUILDERS: ${{ matrix.builder }}
         run: |
-          cargo test --release --test yaml_cases 2>&1 | tee knife.log || true
+          cargo test --release --locked --test yaml_cases 2>&1 | tee knife.log || true
           grep -q '^test result:' knife.log
           awk '/^failures:$/{n++} n==2 && /^    /{print $1}' knife.log | sort > failing.txt
           grep -vE '^\s*(#|$)' tests/known_below_threshold.txt | sort > baseline.txt

@@ -111,11 +111,11 @@ jobs:
 
       - name: Check lang-core only
         working-directory: crates/diffctx-native
-        run: cargo check --no-default-features --features lang-core
+        run: cargo check --locked --no-default-features --features lang-core
 
       - name: Check with no language grammars at all
         working-directory: crates/diffctx-native
-        run: cargo check --no-default-features
+        run: cargo check --locked --no-default-features
 
   # ============================================================================
   # `cargo publish --locked` in publish-crate.yml was the first packaging step
@@ -279,7 +279,7 @@ jobs:
       # for a fast stratified subset.
       - name: Build and test
         run: |
-          (cd crates/diffctx-native && cargo build --release --examples)
+          (cd crates/diffctx-native && cargo build --release --locked --examples)
           scripts/cargo-test-suites.sh
 
   # The Linux job above keeps its name because branch protection requires it;

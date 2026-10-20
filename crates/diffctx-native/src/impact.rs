@@ -4844,10 +4844,16 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     } else {
         String::new()
     };
+    // A removed definition's range is on the base side, not in the head file.
+    let lines = if sym.kind == "removed" {
+        format!("removed; was {}", sym.lines)
+    } else {
+        sym.lines.clone()
+    };
     let _ = writeln!(
         out,
         "- {}{commits}{}",
-        label(&sym.path, sym.symbol.as_deref(), &sym.lines),
+        label(&sym.path, sym.symbol.as_deref(), &lines),
         if sym.untested && tests_known {
             " — no static test link"
         } else {

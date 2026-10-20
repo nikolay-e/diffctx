@@ -243,7 +243,9 @@ const LANG_CONFIGS: &[LangConfig] = &[
         ts_name: "haskell",
         definition_types: &[
             "function",
+            // The grammar's own spelling up to 0.23; 0.24 corrects it.
             "type_synomym",
+            "type_synonym",
             "newtype",
             "data_type",
             "class",

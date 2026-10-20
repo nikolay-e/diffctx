@@ -13,16 +13,19 @@ die() {
   exit 1
 }
 
-[ "$(git symbolic-ref --short HEAD 2>/dev/null)" = next ] || die "run it on the next branch"
-[ -z "$(git status --porcelain --untracked-files=no)" ] || die "commit or stash tracked changes first"
+[[ "$(git symbolic-ref --short HEAD 2>/dev/null)" = next ]] || die "run it on the next branch"
+[[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "commit or stash tracked changes first"
 
 src=origin
 remotes=$(git remote)
 for r in $remotes; do git fetch --quiet "$r"; done
-has_next() { git rev-parse --verify --quiet "refs/remotes/$1/next" >/dev/null; }
+has_next() {
+  local remote=$1
+  git rev-parse --verify --quiet "refs/remotes/$remote/next" >/dev/null
+}
 # The epoch PR lives where CI runs; with two remotes, gh would otherwise stop to ask which.
 gh_repo=$(git remote -v | sed -nE 's#.*github\.com[:/]([^ ]+/[^ ]+) \(push\)$#\1#p' | sed 's/\.git$//' | head -1)
-[ -n "$gh_repo" ] && command -v gh >/dev/null || gh_repo=''
+[[ -n "$gh_repo" ]] && command -v gh >/dev/null || gh_repo=''
 epoch_pr() { gh pr list -R "$gh_repo" --head next --base main --state open --json number -q '.[0].number // empty'; }
 
 fold() {
@@ -34,7 +37,7 @@ fold() {
 
   local commits oldest msg tree epoch
   commits=$(git rev-list --reverse "$src/main..HEAD")
-  [ -n "$commits" ] || {
+  [[ -n "$commits" ]] || {
     echo "epoch-push: nothing above main"
     return
   }
@@ -42,7 +45,7 @@ fold() {
   local me foreign
   me=$(git config user.email)
   foreign=$(git log --format='%h %an <%ae>' "$src/main..HEAD" | grep -vF "<$me>" || true)
-  [ -z "$foreign" ] || die "commits by someone else sit above main — land them on main as themselves first:
+  [[ -z "$foreign" ]] || die "commits by someone else sit above main — land them on main as themselves first:
 $foreign"
   oldest=$(printf '%s\n' "$commits" | head -1)
   msg=$(mktemp)
@@ -64,7 +67,7 @@ $foreign"
   git hook run --ignore-missing post-commit
 
   for r in $remotes; do git push --quiet --force-with-lease=refs/heads/next "$r" HEAD:refs/heads/next; done
-  if [ -n "$gh_repo" ] && [ -z "$(epoch_pr)" ]; then
+  if [[ -n "$gh_repo" ]] && [[ -z "$(epoch_pr)" ]]; then
     gh pr create -R "$gh_repo" --draft --base main --head next --title "$(git log -1 --format=%s)" \
       --body "One epoch of maintainer work, kept as a single commit by scripts/epoch-push.sh. It lands on main by fast-forward."
   fi
@@ -72,11 +75,11 @@ $foreign"
 }
 
 land() {
-  [ "$(git rev-parse HEAD)" = "$(git rev-parse "$src/next")" ] || die "local next differs from $src/next; fold first"
-  [ "$(git rev-list --count "$src/main..$src/next")" = 1 ] || die "$src/next is not one commit above $src/main; fold first"
-  if [ -n "$gh_repo" ]; then
+  [[ "$(git rev-parse HEAD)" = "$(git rev-parse "$src/next")" ]] || die "local next differs from $src/next; fold first"
+  [[ "$(git rev-list --count "$src/main..$src/next")" = 1 ]] || die "$src/next is not one commit above $src/main; fold first"
+  if [[ -n "$gh_repo" ]]; then
     pr=$(epoch_pr)
-    [ -z "$pr" ] || gh pr checks -R "$gh_repo" "$pr" >/dev/null || die "the epoch PR #$pr is not green yet"
+    [[ -z "$pr" ]] || gh pr checks -R "$gh_repo" "$pr" >/dev/null || die "the epoch PR #$pr is not green yet"
   fi
   for r in $remotes; do git push --quiet "$r" "HEAD:refs/heads/main"; done
   echo "epoch-push: main = $(git log -1 --format='%h %s')"
