@@ -1319,6 +1319,138 @@ fn a_search_on_a_clean_tree_is_answered_as_symbol_would() {
     assert_eq!(search("git log --oneline | grep restock").stdout, "");
 }
 
+/// A search the hook cannot place, and a name defined all over, get no
+/// answer: a grep of `$OUT/notes.tsv` read as a search of the cwd's
+/// repository, and `main` with 44 definitions printed the first two.
+#[test]
+fn a_search_it_cannot_place_or_an_ambiguous_name_is_silence() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    for n in 0..4 {
+        write(
+            repo,
+            &format!("jobs/job{n}.py"),
+            "def handle(event):\n    return event\n",
+        );
+    }
+    write(
+        repo,
+        "jobs/run.py",
+        "from jobs.job0 import handle\n\n\ndef run(e):\n    return handle(e)\n",
+    );
+    commit_all(repo, "vat");
+    let outside = TempDir::new().unwrap();
+    let search = |query: &str| {
+        hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &search_payload(repo, "Bash", query),
+        )
+    };
+    let scratch = format!(
+        "OUT='{}'; grep -n total $OUT/notes.tsv",
+        outside.path().display()
+    );
+    assert_eq!(
+        search(&scratch).stdout,
+        "",
+        "{}",
+        last_log_line(cache.path())
+    );
+    assert_eq!(search("grep -rn handle jobs/").stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" ambiguous "),
+        "{}",
+        last_log_line(cache.path())
+    );
+    // A name defined once is still answered.
+    assert!(context_of(&search("grep -rn 'total(' shop/")).contains("shop/checkout.py::charge"));
+}
+
+/// A search is answered for what it searches and where it found it: every
+/// name it is a search for (#634), never a word inside a line of code or a
+/// file name (#643, #646), only the definitions in the files its result
+/// names or called from them (fj#95), and never for an inverted search, a
+/// search of another revision or one that found nothing. The payload
+/// carries the command's real output, as Claude Code sends it.
+#[test]
+fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(
+        repo,
+        "legacy/stock.py",
+        "def restock(n):\n    return n\n\n\ndef rerun(n):\n    return restock(n)\n",
+    );
+    write(repo, "AGENTS.md", "# shop\n");
+    write(
+        repo,
+        "scripts/report.mjs",
+        "export function md(s) {\n  return s;\n}\nconsole.log(md(\"x\"));\n",
+    );
+    write(
+        repo,
+        "shop/cart.py",
+        "def models():\n    return []\n\n\ndef lines():\n    return models()\n",
+    );
+    write(repo, "docs/stock.md", "Call restock() nightly.\n");
+    write(repo, "pyproject.toml", "[restock]\nnightly = true\n");
+    commit_all(repo, "vat");
+    let mut n = 0;
+    let mut search = |query: &str| {
+        n += 1;
+        let ran = Command::new("sh")
+            .args(["-c", query])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let mut payload: serde_json::Value = serde_json::from_str(&in_session(
+            &format!("s{n}"),
+            &search_payload(repo, "Bash", query),
+        ))
+        .unwrap();
+        payload["tool_response"] =
+            serde_json::json!({"stdout": String::from_utf8_lossy(&ran.stdout), "stderr": ""});
+        hook_with(repo, cache.path(), "posttooluse", &[], &payload.to_string())
+    };
+    let both = context_of(&search(r#"grep -rn "total\|restock" shop tests"#));
+    assert!(
+        both.contains("`total`") && both.contains("shop/checkout.py::charge"),
+        "{both}"
+    );
+    assert!(
+        both.contains("`restock`") && both.contains("shop/shelf.py::refill"),
+        "{both}"
+    );
+    assert!(!both.contains("legacy/stock.py"), "{both}");
+    let flags = context_of(&search("grep -rn -e total -e restock shop"));
+    assert!(
+        flags.contains("`total`") && flags.contains("`restock`"),
+        "{flags}"
+    );
+    let scoped = context_of(&search("grep -n restock legacy/stock.py"));
+    assert!(scoped.contains("legacy/stock.py::rerun"), "{scoped}");
+    assert!(!scoped.contains("shop/shelf.py"), "{scoped}");
+    let docs = context_of(&search("grep -rn restock ."));
+    assert!(docs.contains("shop/shelf.py::refill"), "{docs}");
+    for query in [
+        "git grep -n 'AGENTS.md'",
+        "grep -rn '^from models import' shop",
+        "grep -rn 'lines.models' shop",
+        "grep -rn --include='*.md' restock .",
+        "grep -n '^\\[restock' pyproject.toml",
+        "grep -rLn restock shop",
+        "git grep -n refill HEAD~1",
+        "grep -rn no_such_name_here .",
+    ] {
+        assert_eq!(search(query).stdout, "", "{query}");
+    }
+}
+
 fn inspect(repo: &Path, cache: &Path, command: &str) -> Hook {
     hook_with(
         repo,
@@ -1584,6 +1716,50 @@ fn a_hidden_git_that_moved_nothing_here_says_it_was_not_analysed() {
     );
     let line = last_log_line(cache.path());
     assert!(line.contains(" unsupported-syntax "), "{line}");
+}
+
+/// What landed is every entry git wrote while the line ran, not its last
+/// one: a reset, switch, stash or rebase after the commit on the same line
+/// hid it (#508, a commit then `fetch && rebase` in the field).
+#[test]
+fn a_commit_a_later_move_on_the_line_hides_is_still_reviewed() {
+    for then in [
+        "git reset -q --hard HEAD~1",
+        "git switch -q -c side",
+        "echo x >> README.md && git stash -q",
+        "git rebase -q --force-rebase HEAD~1",
+    ] {
+        let tmp = repo_with_pending_change();
+        let cache = TempDir::new().unwrap();
+        let command = format!("git commit -qam vat && {then}");
+        let context = context_of(&run_line(tmp.path(), cache.path(), &command));
+        assert!(
+            context.contains("shop/checkout.py::charge"),
+            "{command}: {context}"
+        );
+    }
+}
+
+/// #642: a push from a work tree the same line then removes is reviewed:
+/// the repository's git directory still holds the refs the push moved.
+#[test]
+fn a_push_from_a_work_tree_the_line_removes_is_reviewed() {
+    let (tmp, _remote) = repo_with_branches_beside_origin();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let parent = TempDir::new().unwrap();
+    let wt = parent.path().join("wt");
+    let wt_arg = wt.to_string_lossy().to_string();
+    git(
+        repo,
+        &["worktree", "add", "-q", "--detach", &wt_arg, "origin/main"],
+    );
+    write(&wt, "shop/tax.py", "def rate(country):\n    return 0.2\n");
+    commit_all(&wt, "rate");
+    let command =
+        format!("git -C '{wt_arg}' push -q origin HEAD:main && git worktree remove '{wt_arg}'");
+    let context = context_of(&run_line(repo, cache.path(), &command));
+    assert!(context.contains("shop/invoice.py::bill"), "{context}");
 }
 
 /// #608: a line that records in two repositories gets both reviewed.

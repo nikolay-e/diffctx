@@ -251,6 +251,26 @@ def _validate_budget_tokens(budget_tokens: int) -> None:
         )
 
 
+def _budget_within(budget_tokens: int, max_tokens: int) -> tuple[int, str]:
+    """The budget the answer is fitted to, and the line that says it was lowered.
+
+    An answer fitted past max_tokens was refused whole, and a caller who asked
+    for more than the cap got nothing (#645). -1 is "capped by max_tokens".
+    The note's own tokens come out of the budget, so the reply stays within.
+    """
+    if 0 <= budget_tokens <= max_tokens:
+        return budget_tokens, ""
+    asked = "unlimited" if budget_tokens == -1 else f"{budget_tokens:,}"
+    note = f"Note: budget_tokens={asked} is above max_tokens={max_tokens:,}; the answer is fitted to max_tokens.\n\n"
+    return max(1, max_tokens - count_tokens(note).count), note
+
+
+def _with_note(note: str, reply: str, max_tokens: int) -> str:
+    if not note or reply.startswith("diffctx_context: output is"):
+        return reply
+    return _capped_by_max_tokens(note + reply, max_tokens, "lower budget_tokens or narrow diff_range")
+
+
 def _validate_max_tokens(max_tokens: int) -> None:
     if max_tokens < 1:
         raise ValueError(f"max_tokens must be >= 1, got {max_tokens}")
@@ -335,13 +355,16 @@ async def diffctx_context(
     validated_path = validate_repo_path(repo_path)
     scope = validate_scope(repo_path)
     _validate_max_tokens(max_tokens)
+    _validate_budget_tokens(budget_tokens)
+    budget_tokens, note = _budget_within(budget_tokens, max_tokens)
     if symbol is not None:
         if diff_ref or fragment_ids or mode != "impact":
             raise ValueError(
                 'symbol looks the name up in the working tree: call again with mode="impact" '
                 "and drop diff_ref and fragment_ids"
             )
-        return await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, symbol=symbol)
+        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, symbol=symbol)
+        return _with_note(note, reply, max_tokens)
     ref = diff_ref if diff_ref else await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
@@ -351,16 +374,17 @@ async def diffctx_context(
     if fragment_ids:
         return await _fetch_response(validated_path, ref, fragment_ids, clipboard, max_tokens)
 
-    _validate_budget_tokens(budget_tokens)
     if mode not in ("pack", "locate", "impact"):
         raise ValueError(f'mode must be "pack", "locate" or "impact", got {mode!r}')
     if include_raw_diff and mode != "pack":
         raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
     if mode == "impact":
-        return await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens)
+        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens)
+        return _with_note(note, reply, max_tokens)
     if mode == "locate":
         return await _locate_response(scope, ref, budget_tokens, clipboard, max_tokens)
-    return await _pack_response(scope, ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
+    reply = await _pack_response(scope, ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
+    return _with_note(note, reply, max_tokens)
 
 
 async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: list[str], clipboard: bool, max_tokens: int) -> str:

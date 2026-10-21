@@ -274,6 +274,9 @@ pub enum Unknown {
     /// A member with no direct caller that a supertype, an interface or the
     /// runtime can call: `via` names that route, which nothing traces.
     Overridable { via: String },
+    /// Code in a language no binding model reads: its callers are only the
+    /// files the ranking graph links, so finding none proves nothing (#505).
+    NotModelled { language: &'static str },
 }
 
 impl std::fmt::Display for Unknown {
@@ -305,6 +308,10 @@ impl std::fmt::Display for Unknown {
                     "calls through {via} are not traced, and no direct caller was found"
                 )
             }
+            Self::NotModelled { language } => write!(
+                f,
+                "no binding model reads {language}: calls in its own file and through its types are not traced, so none found is no zero"
+            ),
         }
     }
 }
@@ -874,7 +881,7 @@ const ROLE_STEMS: &str = "index main mod lib init __init__ __main__ app util uti
 /// A name only code would spell: `foo_check`, `formatDate`, `LIMIT`, `v2`.
 /// A plain word (`naming`, `total`) is prose in a dataset or a paper as
 /// often as a reference, and witnesses nothing.
-fn distinctive(word: &str) -> bool {
+pub(crate) fn distinctive(word: &str) -> bool {
     let has = |f: fn(&char) -> bool| word.chars().any(|c| f(&c));
     let shaped = word.contains('_')
         || has(char::is_ascii_digit)
@@ -1024,6 +1031,21 @@ impl UntracedNamers {
     }
 }
 
+/// Whether a file could import `own`'s definitions: it sits in its
+/// directory or below (a package's own files, a Rust child module), or
+/// spells its module's stem or directory (`billing/years`, the Go package
+/// `billing`). One that only spells the name calls another of that name: an
+/// over-cap file of another package was a hedge on an unexported function
+/// it could never reach (#591, #599).
+fn names_module(path: &str, own: &str, spells: impl Fn(&str) -> bool) -> bool {
+    let (path, own) = (Path::new(path), Path::new(own));
+    own.parent().is_none_or(|dir| path.starts_with(dir))
+        || [own.file_stem(), own.parent().and_then(Path::file_name)]
+            .into_iter()
+            .flatten()
+            .any(|w| spells(&w.to_string_lossy()))
+}
+
 fn missed_namers(
     state: &ScoredState,
     files: &Files,
@@ -1042,7 +1064,10 @@ fn missed_namers(
         // shell script that broke the parse is no hedge on a JS function
         // (#521).
         .filter(|(path, words)| {
-            **path != own && words.contains(word.as_str()) && same_runtime(path, own)
+            **path != own
+                && words.contains(word.as_str())
+                && same_runtime(path, own)
+                && names_module(path, own, |w| words.contains(w.to_lowercase().as_str()))
         })
         .filter_map(|(path, _)| {
             let rel_path = rel(state, path);
@@ -1123,7 +1148,10 @@ fn missed_namers(
         let Some(bytes) = source.read_bytes(&state.root_dir.join(&path)) else {
             continue;
         };
-        if names_word(&String::from_utf8_lossy(&bytes), name) {
+        let text = String::from_utf8_lossy(&bytes);
+        if names_word(&text, name)
+            && names_module(&path, &rel(state, own), |w| names_word(&text, w))
+        {
             out.push(UnanalysedFile {
                 language: crate::languages::get_language_for_file(&path),
                 path,
@@ -3223,7 +3251,19 @@ pub fn build_impact(
                     reads,
                 })
             })
-            .or_else(|| route.clone().map(|via| Unknown::Overridable { via }));
+            .or_else(|| route.clone().map(|via| Unknown::Overridable { via }))
+            .or_else(|| {
+                (callers.is_empty()
+                    && is_code_file(core.path())
+                    && !registry.answers(core.path(), lang::Relation::Callers))
+                .then(|| Unknown::NotModelled {
+                    language: if core_lang.is_empty() {
+                        "this language"
+                    } else {
+                        core_lang
+                    },
+                })
+            });
         // A method only dispatch reaches is reached through its class: a test
         // handing the class to the runtime (a server, a test runner, a
         // visitor) reaches the method (#578). A caller a test calls is the
@@ -4086,7 +4126,12 @@ fn without_extension(path: &str) -> &str {
 /// different name that merely shares a basename or a word (#369, #383).
 fn naming(token: &str, referrer: &str, target: &str, unique_basename: bool) -> Option<Naming> {
     let trimmed = token.trim_start_matches("./");
-    if trimmed == target || token.ends_with(&format!("/{target}")) {
+    // A file at the root is spelled by its bare name, which names any file
+    // of that name: `svc/tests` reading `"AGENTS.md"` reads `svc/AGENTS.md`
+    // (#644), and `"/../AGENTS.md"` is a probe string, not the root's.
+    if (target.contains('/') || unique_basename)
+        && (trimmed == target || token.ends_with(&format!("/{target}")))
+    {
         return Some(Naming::FullPath);
     }
     let dir = referrer.rsplit_once('/').map_or("", |(d, _)| d);
@@ -4863,11 +4908,23 @@ fn without_test_link(c: &Caller) -> bool {
 /// The caller count as far as it is known: symbols whose callers could not
 /// be resolved, or a run that stopped early, make a zero no finding (#387).
 fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String {
-    let unresolved = output
+    let unresolved: Vec<&str> = output
         .changed
         .iter()
         .filter(|c| c.unresolved.is_some())
-        .count();
+        .map(|c| c.symbol.as_deref().unwrap_or(&c.path))
+        .collect();
+    let unresolved_names = {
+        let shown: Vec<String> = unresolved
+            .iter()
+            .take(3)
+            .map(|n| format!("`{n}`"))
+            .collect();
+        match unresolved.len().saturating_sub(3) {
+            0 => shown.join(", "),
+            more => format!("{} and {more} more", shown.join(", ")),
+        }
+    };
     // A symbol no resolved caller reaches but a file nothing traced names is
     // no zero: the header says so where the reader looks first (#505).
     let hedged = output
@@ -4880,8 +4937,11 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
                 && !c.missed_in.is_empty()
         })
         .count();
-    let mut phrase = if callers == 0 && unresolved > 0 && unresolved == output.changed.len() {
-        "callers unresolved".to_string()
+    let mut phrase = if callers == 0
+        && !unresolved.is_empty()
+        && unresolved.len() == output.changed.len()
+    {
+        format!("callers unresolved for {unresolved_names}")
     } else {
         let mut p = if hedged > 0 {
             format!(
@@ -4890,8 +4950,8 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
         } else {
             format!("{callers} caller(s){scope}")
         };
-        if unresolved > 0 {
-            p.push_str(&format!(", callers unresolved for {unresolved} symbol(s)"));
+        if !unresolved.is_empty() {
+            p.push_str(&format!(", callers unresolved for {unresolved_names}"));
         }
         p
     };

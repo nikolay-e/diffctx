@@ -641,46 +641,81 @@ const SEARCH_TOOLS: &[&str] = &["grep", "egrep", "fgrep", "rg", "ag", "ack"];
 /// Search flags whose next word is a value, not the pattern or a path.
 const SEARCH_VALUE_FLAGS: &str = "-f --file -A -B -C --context --after-context --before-context -m --max-count -g --glob --iglob -t --type -T --type-not -j --threads -M --max-columns -d --max-depth";
 
-/// The pattern of a grep/rg/ag/`git grep` argument list, and the path after
-/// it when there is one.
+/// What a grep/rg/ag/`git grep` argument list searches for, and where.
+struct SearchArgs {
+    /// Every `-e` joined as alternation.
+    pattern: String,
+    paths: Vec<String>,
+    /// `-v`, `-L`: it seeks what does not spell the pattern.
+    inverted: bool,
+    /// `git grep PATTERN REV…`: the trees it searches instead of the work tree.
+    revisions: Vec<String>,
+}
+
 /// `git grep PATTERN [REV…] [-- PATH…]` names its paths only after `--`;
 /// a word between the pattern and `--` is a revision (`origin/main`).
-fn search_pattern(args: &[String], git: bool) -> Option<(String, Option<String>)> {
-    let mut pattern = None;
-    let mut paths_follow = !git;
+fn search_args(args: &[String], git: bool) -> Option<SearchArgs> {
+    let mut patterns: Vec<String> = Vec::new();
+    let mut words: Vec<&String> = Vec::new();
+    let mut pathspec: Vec<&String> = Vec::new();
+    let mut options_end = false;
+    let mut inverted = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
-        if git && a == "--" {
-            paths_follow = true;
+        if options_end {
+            if git {
+                pathspec.push(a);
+            } else {
+                words.push(a);
+            }
+        } else if a == "--" {
+            options_end = true;
         } else if a == "-e" || a == "--regexp" {
-            pattern = it.next().cloned();
+            patterns.extend(it.next().cloned());
         } else if let Some(p) = a.strip_prefix("--regexp=") {
-            pattern = Some(p.to_string());
+            patterns.push(p.to_string());
         } else if SEARCH_VALUE_FLAGS.split(' ').any(|f| f == a) {
             it.next();
-        } else if a.starts_with('-') {
-            // A boolean flag, or `--` before the paths.
-        } else if pattern.is_none() {
-            pattern = Some(a.clone());
-        } else if paths_follow {
-            let path = Some(expand_home(a)).filter(|p| !is_unresolvable(p));
-            return Some((pattern?, path));
+        } else if a == "--invert-match" || a == "--files-without-match" {
+            inverted = true;
+        } else if let Some(flags) = a.strip_prefix('-') {
+            inverted |= !flags.starts_with('-') && flags.contains(['v', 'L']);
+        } else {
+            words.push(a);
         }
     }
-    Some((pattern?, None))
+    let mut words = words.into_iter();
+    if patterns.is_empty() {
+        patterns.push(words.next()?.clone());
+    }
+    let (paths, revisions) = if git {
+        (pathspec, words.cloned().collect())
+    } else {
+        (words.collect(), Vec::new())
+    };
+    Some(SearchArgs {
+        pattern: patterns.join("|"),
+        paths: paths.into_iter().map(|p| expand_home(p)).collect(),
+        inverted,
+        revisions,
+    })
 }
 
 /// Keywords a definition search spells around the name: `def total`,
 /// `fn total`, `class Cart`.
 const DECLARATION_WORDS: &str = "def class fn func function struct enum trait impl interface type let const var pub async static export import from new self this return";
 
-/// The identifiers a search pattern names, with its regex escapes (`\b`,
-/// `\(`, `\w`) and declaration keywords dropped: one per alternation branch
-/// that names exactly one, read off the end of its qualified chain —
-/// `tests.direct`, `tests\.direct` and `a::direct` search for `direct`, not
-/// for `tests` (#402). A test module or test function is no definition a
-/// caller list answers for.
+/// The identifiers a search pattern is a search for: one per alternation
+/// branch that is that name and nothing else once its regex escapes (`\b`,
+/// `\(`, `\w`) and the declaration keywords before it (`def`, `pub fn`) are
+/// dropped. A word inside a line of code is no lookup of it (`^from models
+/// import`, #646). A qualified chain searches for its last segment —
+/// `tests.direct` and `a::direct` for `direct`, not `tests` (#402) — only
+/// when code alone would spell it: `AGENTS.md` names a file and
+/// `limiter.limit` a call, not the symbols `md` and `limit` (#643). A test
+/// module or test function is no definition a caller list answers for.
 fn pattern_names(pattern: &str) -> Vec<String> {
+    let is_keyword = |w: &str| DECLARATION_WORDS.split(' ').any(|d| d == w);
     let mut names: Vec<String> = Vec::new();
     for branch in pattern.split("\\|").flat_map(|b| b.split('|')) {
         let joined = branch.replace("\\.", ".").replace("::", ".");
@@ -696,25 +731,29 @@ fn pattern_names(pattern: &str) -> Vec<String> {
                 cleaned.push(' ');
             }
         }
-        let branch_names: Vec<&str> = cleaned
-            .split_whitespace()
-            .filter_map(|chain| chain.split('.').filter(|s| !s.is_empty()).next_back())
-            .filter(|w| {
-                w.chars().count() >= 2
-                    && !w.starts_with(|c: char| c.is_ascii_digit())
-                    && !DECLARATION_WORDS.split(' ').any(|d| d == *w)
-            })
+        let mut words = cleaned.split_whitespace().skip_while(|w| is_keyword(w));
+        let (Some(chain), None) = (words.next(), words.next()) else {
+            continue;
+        };
+        let segments: Vec<&str> = chain
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .skip_while(|s| is_keyword(s))
             .collect();
-        // A branch that names several identifiers is a line of code, not a
-        // search for one of them (`for (path, line, text) in hits`).
-        if let [w] = branch_names[..] {
-            if !matches!(w, "test" | "tests")
-                && !w.starts_with("test_")
-                && !names.iter().any(|n| n == w)
-            {
-                names.push(w.to_string());
-            }
+        let Some(&w) = segments.last() else {
+            continue;
+        };
+        if (segments.len() > 1 && !crate::impact::distinctive(w))
+            || w.chars().count() < 2
+            || w.starts_with(|c: char| c.is_ascii_digit())
+            || is_keyword(w)
+            || matches!(w, "test" | "tests")
+            || w.starts_with("test_")
+            || names.iter().any(|n| n == w)
+        {
+            continue;
         }
+        names.push(w.to_string());
     }
     names.truncate(8);
     names
@@ -1070,6 +1109,28 @@ struct Before {
     remotes: Vec<(String, String)>,
     #[serde(default)]
     moves: Moves,
+    /// `HEAD`'s reflog and how far it ran: every entry past it is this line's.
+    #[serde(default)]
+    head_log: Option<(PathBuf, u64)>,
+    /// The repository's git directory, which outlives a work tree the line
+    /// removes after pushing from it (#642).
+    #[serde(default)]
+    common: Option<PathBuf>,
+}
+
+impl Before {
+    /// Where the record can still be read: its work tree, or once the line
+    /// removed it, the repository's main one, which holds the same remote refs.
+    fn live_root(&self) -> Option<PathBuf> {
+        if self.root.is_dir() {
+            return Some(self.root.clone());
+        }
+        let common = self.common.as_deref()?;
+        (common.file_name()? == ".git")
+            .then(|| common.parent().map(Path::to_path_buf))
+            .flatten()
+            .filter(|main| main.is_dir())
+    }
 }
 
 /// What a git statement can record: a commit on `HEAD`, a pushed ref, or
@@ -1159,12 +1220,54 @@ fn refs_now(root: &Path) -> Option<Before> {
     .filter_map(|l| l.split_once(' '))
     .map(|(r, o)| (r.to_string(), o.to_string()))
     .collect();
+    // The work tree's own `HEAD` reflog, the record of every move it made.
+    // Relative to the work tree before git 2.31's `--path-format`.
+    let dirs = git_out(
+        root,
+        &["rev-parse", "--git-common-dir", "--git-path", "logs/HEAD"],
+    )
+    .unwrap_or_default();
+    let mut dirs = dirs.lines().map(|d| root.join(d));
+    let common = dirs.next();
+    let head_log = dirs.next().map(|log| {
+        let len = std::fs::metadata(&log).map_or(0, |m| m.len());
+        (log, len)
+    });
     Some(Before {
         root: root.to_path_buf(),
         head,
         remotes,
         moves: Moves::default(),
+        head_log,
+        common,
     })
+}
+
+/// `HEAD`'s reflog entries since `before`, oldest first, as (old, new,
+/// subject); the last entry alone when the record holds no position.
+fn head_moves(before: &Before) -> Option<Vec<(String, String, String)>> {
+    let Some((log, from)) = &before.head_log else {
+        let root = before.root.as_path();
+        let subject = git_out(root, &["reflog", "-1", "--format=%gs", "HEAD"])?;
+        let new = crate::git::rev_oid(root, "HEAD")?;
+        return Some(vec![(before.head.clone(), new, subject)]);
+    };
+    let bytes = std::fs::read(log).ok()?;
+    let since = bytes.get(usize::try_from(*from).ok()?..)?;
+    Some(
+        String::from_utf8_lossy(since)
+            .lines()
+            .filter_map(|line| {
+                let (who, subject) = line.split_once('\t')?;
+                let mut ids = who.split(' ');
+                Some((
+                    ids.next()?.to_string(),
+                    ids.next()?.to_string(),
+                    subject.to_string(),
+                ))
+            })
+            .collect(),
+    )
 }
 
 /// The record one line leaves for its own `PostToolUse`: per session and
@@ -1180,8 +1283,9 @@ fn before_key(command: &str, session: Option<&str>) -> String {
 /// moved `HEAD` without recording this session's change, and is not
 /// reviewed. The count is of the other ranges the same push moved: refs
 /// moved over one range (a mirror's two remotes) are one (#608).
-fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
-    let root = before.root.as_path();
+fn landed(before: &Before) -> Option<(PathBuf, String, &'static str, usize)> {
+    let live = before.live_root()?;
+    let root = live.as_path();
     let now = refs_now(root)?;
     let old_of = |name: &str| {
         before
@@ -1224,46 +1328,69 @@ fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
         }
     }
     if let Some(range) = pushed.first() {
-        return Some((range.clone(), "push", pushed.len() - 1));
+        return Some((live.clone(), range.clone(), "push", pushed.len() - 1));
     }
-    if !before.moves.head || now.head == before.head || now.head.is_empty() {
+    if !before.moves.head {
         return None;
     }
-    let head = now.head.as_str();
-    let subject = git_out(root, &["reflog", "-1", "--format=%gs", "HEAD"])?;
-    let action = subject.split(':').next().unwrap_or_default();
+    // Every move the line made, not its last: a reset, switch, stash or
+    // rebase after the commit on the same line hid it (#508). A commit is
+    // the line's when it grows from where the line started, or amends a
+    // commit the line started on or made: another session's commit after a
+    // reset of the same checkout does neither (#406).
     let empty = || crate::git::empty_tree_oid(root);
-    let verb = match action {
-        "commit (initial)" => return Some((format!("{}..{head}", empty()), "commit", 0)),
-        "commit (amend)" => {
-            let parent = git_out(root, &["rev-parse", "--verify", "--quiet", "HEAD~1"]);
-            return Some((
-                format!("{}..{head}", parent.unwrap_or_else(empty)),
-                "commit",
-                0,
-            ));
-        }
-        "commit" | "commit (merge)" | "am" => "commit",
-        "cherry-pick" => "cherry-pick",
-        "revert" => "revert",
-        // Catching up with the branch's own upstream brings in commits that
-        // already landed there: nothing for this session to review.
-        a if a.starts_with("merge ") => {
-            if subject.contains("Fast-forward")
-                && crate::git::rev_oid(root, "@{upstream}").as_deref() == Some(head)
-            {
-                return None;
-            }
-            "merge"
-        }
-        _ => return None,
+    let descends = |new: &str| {
+        before.head.is_empty()
+            || crate::git::run_git(root, &["merge-base", "--is-ancestor", &before.head, new])
+                .is_ok()
     };
-    if before.head.is_empty() {
-        return Some((format!("{}..{head}", empty()), verb, 0));
+    let mut ours: Vec<String> = vec![before.head.clone()];
+    let mut start: Option<String> = None;
+    let mut last: Option<(String, &'static str)> = None;
+    for (old, new, subject) in head_moves(before).unwrap_or_default() {
+        let action = subject.split(':').next().unwrap_or_default();
+        let verb = match action {
+            "commit" | "commit (initial)" | "commit (amend)" | "commit (merge)" | "am" => "commit",
+            "cherry-pick" => "cherry-pick",
+            "revert" => "revert",
+            // Catching up with the branch's own upstream brings in commits
+            // that already landed there: nothing for this session to review.
+            a if a.starts_with("merge ") => {
+                if subject.contains("Fast-forward")
+                    && crate::git::rev_oid(root, "@{upstream}").as_deref() == Some(new.as_str())
+                {
+                    continue;
+                }
+                "merge"
+            }
+            _ => continue,
+        };
+        let amend = action == "commit (amend)";
+        if !(if amend {
+            ours.contains(&old)
+        } else {
+            descends(&new)
+        }) {
+            continue;
+        }
+        start.get_or_insert_with(|| {
+            if amend {
+                git_out(
+                    root,
+                    &["rev-parse", "--verify", "--quiet", &format!("{new}~1")],
+                )
+                .unwrap_or_else(empty)
+            } else if before.head.is_empty() {
+                empty()
+            } else {
+                before.head.clone()
+            }
+        });
+        ours.push(new.clone());
+        last = Some((new, verb));
     }
-    crate::git::run_git(root, &["merge-base", "--is-ancestor", &before.head, head])
-        .is_ok()
-        .then(|| (format!("{}..{head}", before.head), verb, 0))
+    let (end, verb) = last?;
+    Some((live, format!("{}..{end}", start?), verb, 0))
 }
 
 /// FNV-1a, 64-bit: no dependency, and no collision that matters at the
@@ -1710,16 +1837,16 @@ fn landed_in(record: &Record, late: bool, trace: &mut Trace) -> Result<Vec<Prepa
     let mut ranges = Vec::new();
     let mut unreadable = None;
     for before in &record.repos {
-        let Some((range, verb, also)) = landed(before) else {
+        let Some((root, range, verb, also)) = landed(before) else {
             continue;
         };
         if found.is_empty() {
             trace.verb = Some(verb);
-            trace.root = Some(before.root.clone());
+            trace.root = Some(root.clone());
         }
         ranges.push(range.clone());
         let trigger = Trigger::Landed { verb, also, late };
-        match prepared(before.root.clone(), range, trigger, trace) {
+        match prepared(root, range, trigger, trace) {
             Ok(p) => found.push(p),
             Err(why) => unreadable = unreadable.or(Some(why)),
         }
@@ -1971,8 +2098,11 @@ impl ShellCode {
                 return;
             }
             self.text.push(c);
-            // The argument of `-c` or `-lc` is a script the shell runs.
-            let script = word.is_empty() && words.last().is_some_and(|w| is_script_flag(w));
+            // The argument of a shell's `-c` or `-lc` is a script it runs;
+            // `python3 -c` source and `git -c` config are data (#635).
+            let script = word.is_empty()
+                && words.last().is_some_and(|w| is_script_flag(w))
+                && words.iter().any(|w| is_shell(w));
             match c {
                 '\\' => {
                     if let Some(n) = chars.next() {
@@ -2105,6 +2235,14 @@ impl ShellCode {
 }
 
 /// `-c`, or a short-flag cluster ending in it (`-lc`).
+/// A POSIX shell, by the name it runs under (`/bin/sh`, `env bash`).
+fn is_shell(word: &str) -> bool {
+    matches!(
+        word.rsplit('/').next(),
+        Some("sh" | "bash" | "zsh" | "dash" | "ksh" | "ash")
+    )
+}
+
 fn is_script_flag(word: &str) -> bool {
     word.strip_prefix('-')
         .is_some_and(|flags| flags.ends_with('c') && flags.chars().all(|c| c.is_ascii_alphabetic()))
@@ -2559,14 +2697,33 @@ fn impact_context(
 /// tool.
 struct Searched {
     dir: Option<String>,
+    /// The paths the search reads; none when it reads the directory it ran in.
+    paths: Vec<String>,
     pattern: String,
+    inverted: bool,
+    revisions: Vec<String>,
+    /// The files its result names, when it names any: the search's own
+    /// record of where the pattern is. `Some(empty)` when it found nothing.
+    found: Option<Vec<String>>,
 }
 
 fn searched(payload: &serde_json::Value) -> Option<Searched> {
+    let response = &payload["tool_response"];
     if payload["tool_name"] == "Grep" {
+        let dir = payload["tool_input"]["path"].as_str().map(str::to_string);
+        let found = response["filenames"].as_array().map(|files| {
+            files
+                .iter()
+                .filter_map(|f| f.as_str().map(str::to_string))
+                .collect()
+        });
         return Some(Searched {
-            dir: payload["tool_input"]["path"].as_str().map(str::to_string),
+            paths: dir.iter().cloned().collect(),
+            dir,
             pattern: payload["tool_input"]["pattern"].as_str()?.to_string(),
+            inverted: false,
+            revisions: Vec::new(),
+            found,
         });
     }
     let command = payload["tool_input"]["command"].as_str()?;
@@ -2575,11 +2732,95 @@ fn searched(payload: &serde_json::Value) -> Option<Searched> {
     } = statements(command)
         .into_iter()
         .find(|st| (st.verb == "grep" || st.verb == "git grep") && !st.lost)?;
-    let (pattern, path) = search_pattern(&args, verb == "git grep")?;
+    let args = search_args(&args, verb == "git grep")?;
+    // A path only the shell can expand (`$OUT/notes.tsv`) is searched
+    // nowhere the hook can name: joined to the cwd it read as the cwd's
+    // repository, and a grep of a scratch file got that repository's answer.
+    if args.paths.iter().any(|p| is_unresolvable(p)) {
+        return None;
+    }
+    let found = response["stdout"].as_str().and_then(|out| {
+        let cwd = payload_cwd(payload)?;
+        let at = resolve_dir(&cwd, dir.as_deref());
+        files_named_in(out, &at)
+    });
+    let paths: Vec<String> = args
+        .paths
+        .iter()
+        .map(|p| join_dir(dir.as_deref(), p))
+        .collect();
     Some(Searched {
-        dir: path.map(|p| join_dir(dir.as_deref(), &p)).or(dir),
-        pattern,
+        dir: paths.first().cloned().or(dir),
+        paths,
+        pattern: args.pattern,
+        inverted: args.inverted,
+        revisions: args.revisions,
+        found,
     })
+}
+
+/// The files a search's output names at the head of its lines
+/// (`path:line:text`, `path` alone for `-l`), as paths under `at`. `None`
+/// when no line names one: a single file's matches, a count.
+fn files_named_in(output: &str, at: &Path) -> Option<Vec<String>> {
+    if output.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    let mut files: Vec<String> = output
+        .lines()
+        .take(2000)
+        .filter_map(|line| {
+            let head = line.split(':').next()?.trim();
+            let path = at.join(head.strip_prefix("./").unwrap_or(head));
+            (!head.is_empty() && path.is_file()).then(|| path.to_string_lossy().into_owned())
+        })
+        .collect();
+    files.sort();
+    files.dedup();
+    (!files.is_empty()).then_some(files)
+}
+
+/// Where a search looked, as repo-relative prefixes: the files its result
+/// names, else its paths, else the directory it ran in (#646, fj#95). A
+/// path outside the repository adds none; an empty prefix is the whole
+/// repository.
+struct Scope(Vec<String>);
+
+impl Scope {
+    fn holds(&self, path: &str) -> bool {
+        self.0.iter().any(|p| {
+            p.is_empty()
+                || path == p
+                || path
+                    .strip_prefix(p.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+}
+
+fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> Scope {
+    let cwd = payload_cwd(payload);
+    let looked: Vec<Option<&str>> = match (&search.found, search.paths.is_empty()) {
+        (Some(found), _) if !found.is_empty() => found.iter().map(|p| Some(p.as_str())).collect(),
+        (_, true) => vec![None],
+        (_, false) => search.paths.iter().map(|p| Some(p.as_str())).collect(),
+    };
+    let root = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let prefixes: Vec<String> = cwd
+        .iter()
+        .flat_map(|cwd| looked.iter().map(move |p| resolve_dir(cwd, *p)))
+        .filter_map(|p| {
+            // A glob searches the directory it starts in (`-- '*.py'`).
+            let p: PathBuf = p
+                .components()
+                .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
+                .collect();
+            let p = dunce::canonicalize(&p).unwrap_or(p);
+            let rel = p.strip_prefix(&root).ok()?;
+            Some(rel.to_string_lossy().replace('\\', "/"))
+        })
+        .collect();
+    Scope(prefixes)
 }
 
 /// The names of the definitions the pending change edits, in `within` when
@@ -2691,16 +2932,23 @@ fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
     }
 }
 
-/// A search for a name the pending change defines is a search for its
-/// callers, which the impact already has (#337). Once per name per identity
-/// per session, marked only once answered; silence for any other name and on
-/// a clean tree.
+/// A search answers every name it is a search for (#634): a name the
+/// pending change edits from the impact, which already has its callers
+/// (#337), any other as `--symbol` would. Silence when none has an answer.
 fn search_answer(
     payload: &serde_json::Value,
     search: &Searched,
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
+    // A search for what does not spell the name, or that found nothing, is
+    // no lookup of a symbol.
+    if search.inverted {
+        return Err("not-a-lookup");
+    }
+    if search.found.as_ref().is_some_and(Vec::is_empty) {
+        return Err("nothing-found");
+    }
     let names = pattern_names(&search.pattern);
     if names.is_empty() {
         return Err("no-symbol");
@@ -2708,19 +2956,58 @@ fn search_answer(
     let root = repo_root(payload, search.dir.as_deref()).ok_or("not-git")?;
     trace.root = Some(root.clone());
     trace.range = Some("HEAD".to_string());
-    let Some(identity) = result_identity(&root, "HEAD") else {
-        return symbol_answer(&root, &names, started, trace);
-    };
-    let edited = edited_definitions(&root, None);
+    // A revision other than HEAD is a tree the answer would not be about: a
+    // subagent's `git grep x origin/main` got 17 answers from a checkout 36
+    // commits behind it.
+    let head = crate::git::rev_oid(&root, "HEAD");
+    if search
+        .revisions
+        .iter()
+        .any(|r| crate::git::rev_oid(&root, r) != head)
+    {
+        return Err("other-tree");
+    }
+    let scope = search_scope(payload, search, &root);
+    let identity = result_identity(&root, "HEAD");
+    let edited = identity
+        .as_ref()
+        .map(|_| edited_definitions(&root, None))
+        .unwrap_or_default();
+    let (edited, others): (Vec<String>, Vec<String>) =
+        names.into_iter().partition(|n| edited.contains(n));
+    let mut answers = Vec::new();
+    let mut silence = "seen";
+    if let (Some(identity), false) = (&identity, edited.is_empty()) {
+        match edited_answer(&root, identity, &edited, started, trace) {
+            Ok(text) => answers.push(text),
+            Err(why) => silence = why,
+        }
+    }
+    if !others.is_empty() {
+        match symbol_answer(&root, &others, &scope, started, trace) {
+            Ok(text) => answers.push(text),
+            Err(why) => silence = why,
+        }
+    }
+    if answers.is_empty() {
+        return Err(silence);
+    }
+    Ok(answers.join("\n"))
+}
+
+/// Names the pending change edits, answered from its impact once per name
+/// per identity per session, marked only once answered.
+fn edited_answer(
+    root: &Path,
+    identity: &str,
+    names: &[String],
+    started: Instant,
+    trace: &mut Trace,
+) -> Result<String, Silence> {
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("id-{identity}.{name}"), session.as_deref());
-    let (names, others): (Vec<String>, Vec<String>) =
-        names.into_iter().partition(|n| edited.contains(n));
-    if names.is_empty() {
-        return symbol_answer(&root, &others, started, trace);
-    }
-    let names: Vec<String> = names
-        .into_iter()
+    let names: Vec<&String> = names
+        .iter()
         .filter(|n| delivered(&key(n), SEEN_TTL).is_none())
         .collect();
     if names.is_empty() {
@@ -2732,12 +3019,13 @@ fn search_answer(
         return Err("retry-exhausted");
     }
     mark_seen_with(&tries, &(attempt + 1).to_string());
+    let root = root.to_path_buf();
     let known = within_deadline(started, move || {
         run_impact(&root, "HEAD").map(known_answers)
     })?;
     unmark(&tries);
     let mut answers = Vec::new();
-    for name in &names {
+    for name in names {
         let answer = match known.answers.get(name) {
             Some(text) => format!(
                 "You searched for `{name}`, which the pending change edits; diffctx already analysed what references it:\n{text}"
@@ -2762,28 +3050,58 @@ fn search_answer(
 /// The automatic answer to a search for a name, a pointer to the full one.
 const SYMBOL_TOKEN_CAP: u32 = 200;
 
+/// More definitions than this make a searched name ambiguous.
+const MAX_SEARCH_DEFINITIONS: usize = 3;
+
+/// Names one search answers as `--symbol` would. Each runs the pipeline
+/// within the hook's one deadline, so a name past it is silence, answered on
+/// a later search: about one answered search in ten seeks a second name.
+const MAX_SEARCH_NAMES: usize = 3;
+
 /// A search for a name the pending change does not edit, on any tree: where
 /// it is defined, who calls it and which tests reach them, as `--symbol`
 /// answers it, once per name and commit in a session. Most lookups come on
-/// a clean tree, where the hook used to say nothing (#628). A name with no
-/// definition here, or no caller it could resolve, is silence: it never
-/// asserts a zero.
+/// a clean tree, where the hook used to say nothing (#628).
 fn symbol_answer(
     root: &Path,
     names: &[String],
+    scope: &Scope,
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
     let head = crate::git::rev_oid(root, "HEAD").unwrap_or_default();
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("sym-{head}-{name}"), session.as_deref());
-    let name = names
+    let fresh: Vec<&String> = names
         .iter()
-        .find(|n| !is_seen(&key(n)))
-        .ok_or("seen")?
-        .clone();
-    mark_seen(&key(&name));
-    let (root, lookup) = (root.to_path_buf(), name.clone());
+        .filter(|n| !is_seen(&key(n)))
+        .take(MAX_SEARCH_NAMES)
+        .collect();
+    if fresh.is_empty() {
+        return Err("seen");
+    }
+    let mut answers = Vec::new();
+    let mut silence = "empty";
+    for name in fresh {
+        mark_seen(&key(name));
+        match one_symbol_answer(root, name, scope, started) {
+            Ok(text) => answers.push(text),
+            Err(why) => silence = why,
+        }
+    }
+    if answers.is_empty() {
+        return Err(silence);
+    }
+    Ok(answers.join("\n"))
+}
+
+fn one_symbol_answer(
+    root: &Path,
+    name: &str,
+    scope: &Scope,
+    started: Instant,
+) -> Result<String, Silence> {
+    let (root, lookup) = (root.to_path_buf(), name.to_string());
     let mut output = within_deadline(started, move || {
         let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
         crate::pipeline::build_symbol_impact(
@@ -2796,6 +3114,16 @@ fn symbol_answer(
         )
         .map_err(|_| "no-symbol")
     })?;
+    // A definition outside where the search looked, with no caller there,
+    // is another symbol of the same name: a `models` module of another
+    // subproject, a `segments` the grepped file never reaches (#646, fj#95).
+    let defined = output.changed.len();
+    output
+        .changed
+        .retain(|c| scope.holds(&c.path) || c.callers.iter().any(|k| scope.holds(&k.path)));
+    if output.changed.is_empty() {
+        return Err("out-of-scope");
+    }
     // The answer adds what grep cannot: the callers it resolved and the
     // tests that reach them. Without one it says nothing, because a caller
     // in a file no model reads (an `.astro` page, a template, a class name
@@ -2803,9 +3131,18 @@ fn symbol_answer(
     if output.changed.iter().all(|c| c.callers.is_empty()) {
         return Err("empty");
     }
+    // A name defined all over (`main`, `run`, `new`) is no lookup a short
+    // answer can serve: its first definitions crowd out the one searched.
+    if output.changed.len() + output.symbols_omitted > MAX_SEARCH_DEFINITIONS {
+        return Err("ambiguous");
+    }
+    let elsewhere = match defined - output.changed.len() {
+        0 => String::new(),
+        n => format!(" where you searched ({n} more definition(s) elsewhere)"),
+    };
     let text = crate::impact::render_automatic(&mut output, SYMBOL_TOKEN_CAP);
     Ok(format!(
-        "You searched for `{name}`; diffctx resolved it (`diffctx . --symbol {name} -f md` gives the whole answer):\n{text}"
+        "You searched for `{name}`; diffctx resolved it{elsewhere} (`diffctx . --symbol {name} -f md` gives the whole answer):\n{text}"
     ))
 }
 
@@ -3457,9 +3794,33 @@ mod tests {
             Some(vec!["charge".to_string(), "refund".to_string()])
         );
         assert_eq!(
+            names("grep -rn -e total -e 'self.restock(' ."),
+            Some(vec!["total".to_string(), "restock".to_string()])
+        );
+        for line in [
+            "grep -rn '^from models import' pkg",
+            "git grep -n 'AGENTS.md'",
+            "grep -n 'limiter.limit' app.py",
+        ] {
+            assert_eq!(names(line), Some(Vec::new()), "{line}");
+        }
+        assert_eq!(
             searched_in("cd /r && rg -n total shop/").unwrap().0,
             Some("/r/shop/".to_string())
         );
+        let both = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "cd /r && grep -rn total shop tests"}});
+        assert_eq!(searched(&both).unwrap().paths, ["/r/shop", "/r/tests"]);
+        let flags = |c: &str| {
+            let payload = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": c}});
+            searched(&payload).map(|s| (s.inverted, s.revisions))
+        };
+        assert_eq!(flags("grep -rvn total ."), Some((true, vec![])));
+        assert_eq!(flags("git grep -L total"), Some((true, vec![])));
+        assert_eq!(
+            flags("git grep -n total origin/main -- src"),
+            Some((false, vec!["origin/main".to_string()]))
+        );
+        assert_eq!(flags("rg -n -C 3 total src/"), Some((false, vec![])));
         assert!(searched_in("git log | grep total").is_none());
         assert!(searched_in("cd $R && grep -rn total .").is_none());
         assert!(searched_in("cargo test").is_none());
@@ -3500,6 +3861,12 @@ mod tests {
     #[test]
     fn only_git_inside_a_substitution_is_hidden() {
         assert!(hides_git("sh -c 'git commit -am x'"));
+        assert!(hides_git("docker exec box /bin/bash -lc 'git push'"));
+        // Another language's source is data, whatever it spells (#635).
+        assert!(!hides_git(
+            "python3 -c \"import re; print(re.search(r'git commit', s))\""
+        ));
+        assert!(!hides_git("node -e 'run(\"git push\")'"));
         assert!(hides_git("x=$(git commit -m y)"));
         assert!(hides_git("eval git push"));
         assert!(!hides_git("FP=$(cat f) && git commit -m x"));

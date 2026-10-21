@@ -537,10 +537,24 @@ class TestBudgetTokensValidation:
 
         args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD"}
         full = _get_text(await server.call_tool("diffctx_context", args))
-        exact = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": count_tokens(full).count}))
+        n = count_tokens(full).count
+        exact = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": n, "budget_tokens": n}))
         assert exact == full
-        one_short = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": count_tokens(full).count - 1}))
-        assert "exceeding max_tokens" in one_short
+
+    @pytest.mark.asyncio
+    async def test_a_budget_above_max_tokens_is_fitted_to_it_and_said(self, server, mcp_repo):
+        """#645: budget_tokens=30000 under max_tokens=25000 was fitted to 30000
+        and then refused whole, or overflowed the client; it is fitted to the
+        cap, and the reply says the budget was lowered."""
+        from diffctx.tokens import count_tokens
+
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "pack"}
+        full = _get_text(await server.call_tool("diffctx_context", args))
+        cap = count_tokens(full).count - 1
+        fitted = _get_text(await server.call_tool("diffctx_context", {**args, "max_tokens": cap, "budget_tokens": cap * 4}))
+        assert fitted.startswith(f"Note: budget_tokens={cap * 4:,} is above max_tokens={cap:,}"), fitted
+        assert "exceeding max_tokens" not in fitted, fitted
+        assert count_tokens(fitted).count <= cap, fitted
 
     @pytest.mark.asyncio
     async def test_unlimited_budget_is_still_capped_by_max_tokens(self, server, mcp_repo):

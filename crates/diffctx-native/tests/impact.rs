@@ -1633,7 +1633,8 @@ fn a_lock_file_change_is_named_never_empty() {
 }
 
 /// #387: callers that could not be resolved are not "0 callers" (Scala,
-/// which has no binding model to resolve them).
+/// which has no binding model to resolve them). The header names them, or
+/// one such row reads like the rest among many (#506).
 #[test]
 fn unresolved_callers_are_not_reported_as_none() {
     let def = |class: &str, n: u32| {
@@ -1648,7 +1649,10 @@ fn unresolved_callers_are_not_reported_as_none() {
         &[("src/app/A.scala", &def("A", 10))],
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    assert!(header(&md).contains("callers unresolved"), "{md}");
+    assert!(
+        header(&md).contains("callers unresolved for `build`"),
+        "{md}"
+    );
     assert!(!header(&md).contains(" 0 caller(s)"), "{md}");
 }
 

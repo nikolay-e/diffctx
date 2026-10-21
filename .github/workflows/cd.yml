@@ -26,6 +26,11 @@ concurrency:
         required: false
         default: false
         type: boolean
+      move_plugin_release:
+        description: 'Point the plugin directory at this release (each move is one more version for its reviewer)'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   prepare-version:
@@ -1109,8 +1114,9 @@ jobs:
       # commit on its tracked branch as a version and holds each one for a
       # reviewer, so only a release should be one. Forced, because an epoch
       # squash of main leaves the previous release off the new history.
+      # Off keeps a version that is already with the reviewer from being superseded.
       - name: Point the plugin directory at the release
-        if: github.event.inputs.publish_to_pypi == 'true'
+        if: github.event.inputs.publish_to_pypi == 'true' && inputs.move_plugin_release
         working-directory: ./repo
         run: git push --force origin HEAD:refs/heads/plugin-release
 

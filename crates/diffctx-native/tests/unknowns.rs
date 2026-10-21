@@ -1321,3 +1321,153 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     assert!(!text.contains(" 0 caller(s)"), "{text}");
     assert!(text.contains("callers may be missing"), "{text}");
 }
+
+/// #505: a verdict needs a model. A changed method whose only caller is in
+/// its own file, in a language no binding model reads (C#, Ruby, C, PHP),
+/// read `empty`, "nothing calls them", and the hook said the commit reached
+/// nothing. Its callers are now unresolved, named; a cross-file caller the
+/// graph links and a Python same-file caller are still found.
+#[test]
+fn a_verdict_needs_a_model() {
+    let unmodelled: &[(&str, &str, &str)] = &[
+        (
+            "src/Users.cs",
+            "class Users {\n  int FindOne(int id) {\n    return id;\n  }\n  int ToReport(int id) {\n    return FindOne(id);\n  }\n}\n",
+            "class Users {\n  int FindOne(int id) {\n    return id + 1;\n  }\n  int ToReport(int id) {\n    return FindOne(id);\n  }\n}\n",
+        ),
+        (
+            "lib/users.rb",
+            "class Users\n  def find_one(id)\n    id\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
+            "class Users\n  def find_one(id)\n    id + 1\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
+        ),
+        (
+            "src/users.c",
+            "int find_one(int id) {\n  return id;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
+            "int find_one(int id) {\n  return id + 1;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
+        ),
+        (
+            "src/Users.php",
+            "<?php\nclass Users {\n  function findOne($id) {\n    return $id;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
+            "<?php\nclass Users {\n  function findOne($id) {\n    return $id + 1;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
+        ),
+    ];
+    for (path, base, change) in unmodelled {
+        let tmp = repo(&[(path, base)], &[(path, change)]);
+        let doc = impact_json(tmp.path());
+        assert_eq!(doc["empty"], false, "{path}: {doc:#}");
+        let changed = doc["changed"].as_array().cloned().unwrap_or_default();
+        assert!(
+            changed.iter().any(|c| c["unresolved"]
+                .as_str()
+                .is_some_and(|u| u.contains("no binding model"))),
+            "{path}: {doc:#}"
+        );
+    }
+    let python = repo(
+        &[(
+            "app/users.py",
+            "def find_one(i):\n    return i\n\n\ndef to_report(i):\n    return find_one(i)\n",
+        )],
+        &[(
+            "app/users.py",
+            "def find_one(i):\n    return i + 1\n\n\ndef to_report(i):\n    return find_one(i)\n",
+        )],
+    );
+    let doc = impact_json(python.path());
+    assert!(
+        doc["changed"][0]["unresolved"].is_null(),
+        "a modelled language answers itself: {doc:#}"
+    );
+    let linked = repo(
+        &[
+            (
+                "src/Users.cs",
+                "class Users {\n  public static int FindOne(int id) {\n    return id;\n  }\n}\n",
+            ),
+            (
+                "src/Report.cs",
+                "class Report {\n  int Make(int id) { return Users.FindOne(id); }\n}\n",
+            ),
+        ],
+        &[(
+            "src/Users.cs",
+            "class Users {\n  public static int FindOne(int id) {\n    return id + 1;\n  }\n}\n",
+        )],
+    );
+    let doc = impact_json(linked.path());
+    assert!(
+        doc["changed"][0]["unresolved"].is_null()
+            && doc["changed"][0]["callers"][0]["path"] == "src/Report.cs",
+        "a caller the graph links is still found: {doc:#}"
+    );
+}
+
+/// #505, #591: a hedge needs reach. A file over the size cap that spells a
+/// changed name but never names its module calls another of that name, so
+/// it is no "callers may be missing"; one that imports the module keeps it.
+#[test]
+fn a_hedge_needs_reach() {
+    let pad = |n: usize| -> String {
+        (0..n)
+            .map(|i| format!("\n\ndef pad_{i}(x):\n    return summary(x) + {i}\n"))
+            .collect()
+    };
+    let base: &[(&str, &str)] = &[
+        ("billing/__init__.py", ""),
+        ("billing/years.py", "def summary(x):\n    return x\n"),
+        (
+            "billing/api.py",
+            "from billing.years import summary\n\n\ndef listing(x):\n    return summary(x)\n",
+        ),
+        ("reports/__init__.py", ""),
+    ];
+    let change: &[(&str, &str)] = &[("billing/years.py", "def summary(x):\n    return x + 1\n")];
+    let missed = |extra: (&str, String)| {
+        let mut files: Vec<(&str, &str)> = base.to_vec();
+        files.push((extra.0, extra.1.as_str()));
+        let tmp = repo(&files, change);
+        let len = std::fs::metadata(tmp.path().join(extra.0)).unwrap().len();
+        assert!(len > 100_000, "{} is {len} bytes, under the cap", extra.0);
+        let doc = impact_json(tmp.path());
+        doc["changed"][0]["missed_in"].clone()
+    };
+    let unrelated = format!("def summary(x):\n    return x\n{}", pad(4000));
+    assert!(
+        missed(("reports/engine.py", unrelated)).is_null(),
+        "a file that never names billing cannot call billing.years.summary"
+    );
+    let importer = format!("from billing.years import summary\n{}", pad(4000));
+    assert_eq!(
+        missed(("reports/engine.py", importer))[0]["path"],
+        "reports/engine.py",
+        "a file that imports the module keeps its hedge"
+    );
+}
+
+/// #644: a bare file name names any file of that name. With a root and a
+/// nested `AGENTS.md`, a test reading `"AGENTS.md"` beside the nested one
+/// is no reader of the root's, on an edit or a deletion of it; a path that
+/// names the root's from below still is.
+#[test]
+fn a_bare_name_shared_by_nested_files_names_neither() {
+    let reader = "from pathlib import Path\n\nRULES = Path(__file__).resolve().parent.parent / \"AGENTS.md\"\n";
+    let base: &[(&str, &str)] = &[
+        ("AGENTS.md", "# root\n"),
+        ("svc/AGENTS.md", "# svc\n"),
+        ("svc/tests/test_rules.py", reader),
+        (
+            "tools/lint.py",
+            "ROOT_RULES = \"../AGENTS.md\"\nPROBE = \"/../AGENTS.md\"\n",
+        ),
+    ];
+    let edited = repo(base, &[("AGENTS.md", "# root, edited\n")]);
+    let md = impact_markdown(edited.path());
+    assert!(!md.contains("svc/tests/test_rules.py"), "{md}");
+    assert!(md.contains("tools/lint.py:1 names AGENTS.md"), "{md}");
+    let deleted = repo(base, &[]);
+    support::git(deleted.path(), &["rm", "-q", "AGENTS.md"]);
+    support::commit_all(deleted.path(), "drop the root rules");
+    let md = impact_markdown(deleted.path());
+    assert!(!md.contains("svc/tests/test_rules.py"), "{md}");
+    assert!(md.contains("tools/lint.py:1"), "{md}");
+}

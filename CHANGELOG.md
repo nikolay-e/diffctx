@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Named by path" took a bare file name for the root file of that name:
+  with a root and a nested `AGENTS.md`, a test reading `"AGENTS.md"` beside
+  the nested one was listed for an edit of the root's, and named as still
+  naming it when the root's was deleted. A root file's bare name now counts
+  only when no other file has it (#644).
+- The MCP tool fitted an answer to a `budget_tokens` above `max_tokens`
+  and then refused it whole, or overflowed the client. The budget is now
+  lowered to `max_tokens`, and the reply says so in one line (#645).
+- The impact header counted symbols whose callers could not be resolved
+  ("callers unresolved for 2 symbol(s)") without naming them, so the one
+  such row read like the rest among many. It now names them, up to three
+  (#506).
 - The plugin hook missed commits whose verb it did not list, and misread
   whose movement it saw. It now records before any git line whose verb may
   record, and reads what landed from git's reflog. That covers `git am`
@@ -35,7 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meanwhile (#556). A line run in the background, whose `PostToolUse`
   fires at launch, is reviewed at the session's next hook event, once
   (#617). A git only the shell runs, that recorded nothing where the hook
-  looked, is said to be unread after it ran, not before.
+  looked, is said to be unread after it ran, not before. What landed is
+  every entry git's reflog gained while the line ran, not its last one, so
+  a reset, switch, stash or rebase after the commit on the same line no
+  longer hides it (#508); a push from a work tree the same line then
+  removes is read in the repository's main work tree (#642); and
+  `python3 -c` source that spells `git commit` is no git the shell runs
+  (#635).
 - A commit whose review timed out or failed got no word from the hook,
   which read as a clean review. It now says which range was not reviewed
   and the command to run (#612, #613).
@@ -56,7 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header then reads "0 resolved caller(s) …, callers may be missing for
   N symbol(s)", not a bare zero. A document mentioning a name is no reader,
   and a name spelled in more than 12 such files is too common to count
-  (#505, #613).
+  (#505, #613). A verdict also needs a model: a changed method in a
+  language no binding model reads (C#, Ruby, C, PHP, …) whose only caller
+  is in its own file read "nothing calls them", and the hook said the
+  commit reached nothing; its callers are now unresolved, said so and
+  named in the header. And a hedge needs reach: a file over the size cap
+  that spells the name but never names its module (an unexported Go
+  function, a private Java method, a module function of another package)
+  is no "callers may be missing" (#591).
 - A search for a name got an answer only when the pending change edited
   that name, so on a clean tree, where most lookups happen, the hook said
   nothing: 132 of 3,757 searches were answered in a week. A Bash or Grep
@@ -64,7 +89,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answers it (definition, callers, the tests that reach them), in at most
   200 tokens, once per name in a session, and only when it resolved a
   caller: a caller in a file no model reads would otherwise read as none
-  (#337, #483, #628).
+  (#337, #483, #628). A search the hook cannot place (`grep x $OUT/notes`)
+  and a name with more than three definitions get no answer: the first
+  was read as a search of the cwd's repository, the second printed the
+  first two of 44 `main`s. The answer is for what the search seeks and
+  where it looks: each name an alternation or `-e` searches for, up to
+  three (#634); never a word inside a line of code (`^from models
+  import`) or a file name (`AGENTS.md` is no search for `md`) (#643,
+  #646); and only the definitions under the searched paths or called from
+  them, so a grep of one file is not answered with a same-named symbol of
+  another subproject (fj#95). The paths are the files its result names
+  when it names any; an inverted search (`-v`, `-L`), one that found
+  nothing, and a `git grep` of a revision other than `HEAD` get no
+  answer: a subagent's searches of `origin/main` got 17 answers from a
+  checkout 36 commits behind. Replayed on the 38 field searches the
+  first version answered whose checkout still exists: the 12 answers
+  about another name or another place are gone, the 22 exact ones are
+  unchanged, and four also answer the second name searched.
 - Subagents never heard that diffctx was installed: the standing context
   reached the root session only. The plugin now gives each subagent the
   same line at `SubagentStart` (#543).
