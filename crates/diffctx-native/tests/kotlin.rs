@@ -4,52 +4,11 @@
 // the hook and `--symbol` do.
 
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::Value;
-use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, content).unwrap();
-}
-
-fn repo_of(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().unwrap();
-    let repo = tmp.path();
-    git(repo, &["init", "-q", "."]);
-    git(repo, &["config", "user.email", "test@example.com"]);
-    git(repo, &["config", "user.name", "diffctx tests"]);
-    for (p, c) in files {
-        write(repo, p, c);
-    }
-    git(repo, &["add", "-A"]);
-    git(repo, &["commit", "-q", "-m", "initial"]);
-    if !changes.is_empty() {
-        for (p, c) in changes {
-            write(repo, p, c);
-        }
-        git(repo, &["add", "-A"]);
-        git(repo, &["commit", "-q", "-m", "change"]);
-    }
-    tmp
-}
+use support::{diffctx, repo};
 
 fn symbol(repo: &Path, query: &str) -> Value {
     let out = diffctx()
@@ -114,7 +73,7 @@ const BASE_KT: &str = "package app.test\n\nimport app.data.Repo\n\nabstract clas
 /// another file; the same method name on an unrelated receiver does not.
 #[test]
 fn an_inherited_typed_receiver_binds_and_an_unrelated_one_does_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("data/src/main/kotlin/app/data/Repo.kt", REPO_KT),
             ("app/src/test/kotlin/app/test/Base.kt", BASE_KT),
@@ -141,7 +100,7 @@ fn an_inherited_typed_receiver_binds_and_an_unrelated_one_does_not() {
 /// `f` in another package does not.
 #[test]
 fn an_aliased_import_binds_and_a_same_named_function_elsewhere_does_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/tags/Tags.kt",
@@ -171,7 +130,7 @@ fn an_aliased_import_binds_and_a_same_named_function_elsewhere_does_not() {
 /// a file in the same directory declaring another package does not.
 #[test]
 fn the_declared_package_decides_not_the_directory() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/x/Money.kt",
@@ -201,7 +160,7 @@ fn the_declared_package_decides_not_the_directory() {
 /// local, a string and a comment do not.
 #[test]
 fn implicit_this_binds_and_a_local_a_string_and_a_comment_do_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[(
             "src/main/kotlin/a/Resolver.kt",
             "package a\n\nclass Resolver {\n    fun tagFor(id: Int) = id\n\n    fun tagsFor(ids: List<Int>) = ids.map { tagFor(it) }\n\n    fun shadowed() {\n        val tagFor = { x: Int -> x }\n        tagFor(1)\n    }\n\n    fun named(): Int {\n        val tagFor = tagFor(4)\n        return tagFor + 1\n    }\n\n    // tagFor(2) in a comment\n    fun quoted() = \"tagFor(3)\"\n}\n",
@@ -222,7 +181,7 @@ fn implicit_this_binds_and_a_local_a_string_and_a_comment_do_not() {
 /// `Obj::f` and `x::f` are references to `f`, not calls.
 #[test]
 fn a_callable_reference_is_a_reference() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Covers.kt",
@@ -247,7 +206,7 @@ fn a_callable_reference_is_a_reference() {
 /// own type wins over it, and another type's call is no use of it.
 #[test]
 fn an_extension_binds_by_receiver_type_and_a_member_wins() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Pad.kt",
@@ -272,7 +231,7 @@ fn an_extension_binds_by_receiver_type_and_a_member_wins() {
 /// apart is a candidate, never a resolved caller of both.
 #[test]
 fn an_overloaded_member_is_a_candidate_not_a_resolved_call() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Log.kt",
@@ -304,7 +263,7 @@ fn implementers_of_a_changed_abstract_member_are_their_own_relation() {
             "package a.port\n\ninterface ImagePort {{\n    fun tag(id: Int): String\n{extra}}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/main/kotlin/a/port/ImagePort.kt", &port("")),
             (
@@ -340,7 +299,7 @@ fn implementers_of_a_changed_abstract_member_are_their_own_relation() {
 /// it, another project does not.
 #[test]
 fn internal_reaches_its_own_tests_and_stops_at_another_project() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("settings.gradle.kts", "include(\":core\", \":web\")\n"),
             ("core/build.gradle.kts", "plugins { kotlin(\"jvm\") }\n"),
@@ -376,7 +335,7 @@ fn internal_reaches_its_own_tests_and_stops_at_another_project() {
 /// candidate.
 #[test]
 fn an_override_in_a_private_class_stays_in_its_file() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/test/kotlin/a/SchedulingTest.kt",
@@ -402,7 +361,7 @@ fn an_override_in_a_private_class_stays_in_its_file() {
 /// store types `x` as that store's result and rejects it.
 #[test]
 fn a_value_takes_the_return_type_of_the_member_it_is_initialized_by() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[(
             "src/main/kotlin/a/Lyrics.kt",
             "package a\n\nclass Lyrics\n\nclass Cover\n\ninterface LyricsStore {\n    fun find(id: Int): Lyrics?\n}\n\ninterface CoverStore {\n    fun find(id: Int): Cover?\n}\n\nprivate fun Lyrics?.settles(x: Int) = x > 0\n\nprivate fun Cover?.settles(x: Int) = x < 0\n\nclass Resolver(private val lyrics: LyricsStore, private val covers: CoverStore) {\n    fun look(): Boolean {\n        val stored = lyrics.find(1)\n        return stored.settles(2)\n    }\n\n    fun cover(): Boolean {\n        val stored = covers.find(1)\n        return stored.settles(3)\n    }\n}\n",
@@ -423,7 +382,7 @@ fn a_value_takes_the_return_type_of_the_member_it_is_initialized_by() {
 /// same name, are not it.
 #[test]
 fn an_inner_class_reaches_its_outer_instance() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[(
             "src/main/kotlin/a/Scanner.kt",
             "package a\n\nclass Writer {\n    fun upsert(x: Int) = x\n}\n\nclass Other {\n    fun upsert(x: Int) = x\n}\n\nclass Scanner(private val writer: Writer) {\n    fun begin() = 1\n\n    private inner class Visitor {\n        fun visit() {\n            writer.upsert(1)\n            begin()\n        }\n    }\n\n    private class Detached {\n        val writer = Other()\n        fun go() = writer.upsert(2)\n    }\n}\n\nclass Unrelated {\n    fun begin() = 2\n    fun run() = begin()\n}\n",
@@ -445,7 +404,7 @@ fn an_inner_class_reaches_its_outer_instance() {
 /// value of the same spelling, are not it.
 #[test]
 fn companion_and_object_members_bind_through_their_holder_case_kept() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/UI.kt",
@@ -472,7 +431,7 @@ fn companion_and_object_members_bind_through_their_holder_case_kept() {
 /// declarations (sg 0.4.1 read the second as an expression).
 #[test]
 fn a_bodyless_annotated_class_does_not_swallow_the_next_class() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/test/kotlin/a/Base.kt",
@@ -501,7 +460,7 @@ fn a_bodyless_annotated_class_does_not_swallow_the_next_class() {
 /// use; a removed call statement is no removed declaration.
 #[test]
 fn a_removed_declaration_is_reported_and_a_removed_call_is_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Store.kt",
@@ -542,7 +501,7 @@ fn a_signature_change_after_a_default_is_a_contract_and_a_body_edit_is_not() {
             "package a\n\nclass Api {{\n    fun fetch(limit: Int = 10, mode: {param} = {param}()): Int = {body}\n\n    fun stable(x: Int): Int = {body}\n}}\n\nclass Fast\nclass Slow\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[("src/main/kotlin/a/Api.kt", &api("Fast", "1"))],
         &[("src/main/kotlin/a/Api.kt", &api("Slow", "2"))],
     );
@@ -558,7 +517,7 @@ fn a_signature_change_after_a_default_is_a_contract_and_a_body_edit_is_not() {
 /// definition survives the break.
 #[test]
 fn a_surviving_definition_does_not_hide_a_broken_parse() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[(
             "src/main/kotlin/a/Mixed.kt",
             "package a\n\nclass Good {\n    fun ok() = 1\n}\n",
@@ -588,7 +547,7 @@ fn a_test_class_guards_the_methods_it_calls_and_only_those() {
         )
     };
     let with_test = |calls: &str| {
-        repo_of(
+        repo(
             &[
                 ("src/main/kotlin/a/Foo.kt", &foo("1")),
                 (
@@ -629,7 +588,7 @@ fn a_test_class_guards_the_methods_it_calls_and_only_those() {
 fn a_namer_that_did_not_parse_is_named_where_a_caller_may_hide() {
     let ledger =
         |body: &str| format!("package a\n\nclass Ledger {{\n    fun settle(x: Int) = {body}\n}}\n");
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("src/main/kotlin/a/Ledger.kt", &ledger("x")),
             (
@@ -663,7 +622,7 @@ fn a_namer_that_did_not_parse_is_named_where_a_caller_may_hide() {
 /// on another class is not what the query names.
 #[test]
 fn a_symbol_query_takes_receivers_and_companions_from_the_syntax() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Pad.kt",
@@ -700,7 +659,7 @@ fn a_symbol_query_takes_receivers_and_companions_from_the_syntax() {
 /// a use in its body is one of its sites, not lost to the signature.
 #[test]
 fn a_caller_with_a_signature_variant_keeps_the_sites_in_its_body() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/a/Turns.kt",
@@ -744,7 +703,7 @@ fn a_caller_in_a_sub_fragment_of_a_long_function_keeps_its_test_link() {
     let worker = format!(
         "package demo\n\nclass Worker(private val store: Store) {{\n    fun run(): Int = processA() + processB()\n\n    fun processA(): Int {{\n        val pending =\n            (\n                store.findPending(2) +\n                    store.findMissing(2)\n            ).distinct()\n        var total = pending.size\n{steps}        return total\n    }}\n\n    fun processB(): Int {{\n        return store.findPending(3).size\n    }}\n}}\n"
     );
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "src/main/kotlin/demo/Store.kt",

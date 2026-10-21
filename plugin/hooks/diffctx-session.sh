@@ -5,19 +5,30 @@
 # rather than a tool to consider, since models follow a concrete recipe more
 # readily. Nothing is downloaded but the pinned package. Every path ends in
 # exit 0.
+#
+# SubagentStart: the same line for a subagent, which never sees the
+# session's context and does most of the lookups (#543).
 set -u
+
+payload=''
+[[ -t 0 ]] || payload=$(cat 2>/dev/null)
+event=SessionStart
+case "$payload" in
+*'"SubagentStart"'*) event=SubagentStart ;;
+esac
 
 # Up to 1.18.1 this hook downloaded a binary per release into the plugin's
 # data directory. Nothing reads it since, and an update never removed the
 # previous one: 61 MB per version left behind (#52).
-if [[ -n "${CLAUDE_PLUGIN_DATA:-}" ]]; then
+if [[ $event == SessionStart && -n "${CLAUDE_PLUGIN_DATA:-}" ]]; then
   rm -rf "${CLAUDE_PLUGIN_DATA:?}/bin" "${CLAUDE_PLUGIN_DATA:?}"/install-failed-* 2>/dev/null
 fi
 
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 command -v uvx >/dev/null 2>&1 || exit 0
 
-(uvx -q "diffctx[mcp]==1.19.1" --version </dev/null >/dev/null 2>&1 &)
+[[ $event == SessionStart ]] && (uvx -q "diffctx[mcp]==1.19.1" --version </dev/null >/dev/null 2>&1 &)
 
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.19.1 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To review a commit or say what it affects, call the diffctx_context tool with mode=impact (diff_ref HEAD~1..HEAD for the last commit). To find who calls a name and which tests reach it without a pending change: uvx diffctx==1.19.1 . --symbol NAME -f md. The plugin also injects this once a git commit/merge/push ran and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself."}}'
+context='diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.19.1 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To review a commit or say what it affects, call the diffctx_context tool with mode=impact (diff_ref HEAD~1..HEAD for the last commit). To find who calls a name and which tests reach it without a pending change: uvx diffctx==1.19.1 . --symbol NAME -f md. The plugin also injects this once a git commit/merge/push ran and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself.'
+printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"%s"}}\n' "$event" "$context"
 exit 0

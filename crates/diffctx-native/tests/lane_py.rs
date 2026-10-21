@@ -6,47 +6,9 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
-
-use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// A repository whose last commit applies `change` on top of `base`.
-fn repo(base: &[(&str, &str)], change: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = tmp.path();
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (step, files) in [base, change]
-        .into_iter()
-        .filter(|f| !f.is_empty())
-        .enumerate()
-    {
-        for (rel, content) in files {
-            let path = root.join(rel);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, content).unwrap();
-        }
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-q", "-m", &format!("step {step}")]);
-    }
-    tmp
-}
+use support::{diffctx, repo, set};
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
@@ -94,10 +56,6 @@ fn callers(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
             )
         })
         .collect()
-}
-
-fn set(items: &[&str]) -> BTreeSet<String> {
-    items.iter().map(|s| (*s).to_string()).collect()
 }
 
 /// #420: a module-level constant, annotated or plain, is a definition, and

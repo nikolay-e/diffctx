@@ -21,12 +21,12 @@ case "$payload" in
 *) exit 0 ;;
 esac
 
-# After a text search the hook answers a grep for a name the pending change
-# defines (#337). A search heads its statement (`… | grep` filters output),
-# and a clean tree has nothing to answer with, so most searches end here.
-# Only the command is read for a search or a `cd`: the payload also carries
-# the tool's output, and a `cd /srv` the grep printed is not where it ran.
-searches_pending_change() {
+# After a text search for a name the hook answers where it is defined, who
+# calls it and which tests reach them (#337, #628), in a repository, clean
+# or not. A search heads its statement (`… | grep` filters output). Only the
+# command is read for a search or a `cd`: the payload also carries the
+# tool's output, and a `cd /srv` the grep printed is not where it ran.
+searches_a_repository() {
   local command='' re='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
   [[ $payload =~ $re ]] && command=${BASH_REMATCH[1]}
   re='"tool_name"[[:space:]]*:[[:space:]]*"Grep"'
@@ -43,12 +43,18 @@ searches_pending_change() {
   # The payload's literal `~/`, expanded the way the shell running the command will.
   [[ ${dir:0:1} == "~" && ${dir:1:1} == / ]] && dir="${HOME:-}/${dir:2}"
   [[ -f $dir ]] && dir=$(dirname "$dir")
-  # Untracked files are a pending change too.
-  [[ -n $(git -C "$dir" status --porcelain 2>/dev/null) ]]
+  [[ $(git -C "$dir" rev-parse --is-inside-work-tree 2>/dev/null) == true ]]
+}
+# A line this session ran in the background left its record for whatever
+# event comes next, which need not name git (#617).
+waits_for_background_line() {
+  local re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]+)"'
+  [[ $payload =~ $re ]] || return 1
+  [[ -e "${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx/seen/pending.${BASH_REMATCH[1]}" ]]
 }
 case "$payload" in
 *'git '* | *'gh '*) ;;
-*) [[ $event != pretooluse ]] && searches_pending_change || exit 0 ;;
+*) waits_for_background_line || { [[ $event != pretooluse ]] && searches_a_repository; } || exit 0 ;;
 esac
 
 # The launched version for the log's last field, so an audit can tell an old

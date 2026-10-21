@@ -301,6 +301,9 @@ struct Inner {
     source: Mutex<Option<crate::source::Source>>,
     /// Polls left before the logical clock fires; `None` outside a test.
     polls_left: Option<AtomicU64>,
+    /// Answers that depend on a path alone (is it a repository, what
+    /// `.diffctx/ignore` declares), asked up to seven times a run: `memoized`.
+    memo: Mutex<rustc_hash::FxHashMap<(&'static str, std::path::PathBuf), Arc<Memoized>>>,
 }
 
 #[derive(Clone)]
@@ -354,6 +357,7 @@ impl RunContext {
                 head_rev: Mutex::new(None),
                 source: Mutex::new(None),
                 polls_left,
+                memo: Mutex::default(),
             }),
         }
     }
@@ -409,6 +413,18 @@ impl RunContext {
             .into_iter()
             .filter(|f| f.reason == LimitReason::NonUtf8Content)
             .map(|f| f.path)
+            .collect()
+    }
+
+    /// The files this run noted for `reason`, repo-relative.
+    pub fn limited_by(&self, reason: LimitReason) -> rustc_hash::FxHashSet<String> {
+        self.inner
+            .limited_files
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, r)| *r == reason)
+            .map(|(path, _)| path.clone())
             .collect()
     }
 
@@ -577,6 +593,37 @@ impl Drop for ScopedContext {
 
 fn with_current<T>(f: impl FnOnce(&RunContext) -> T) -> Option<T> {
     CURRENT.with(|c| c.borrow().as_ref().map(f))
+}
+
+type Memoized = dyn std::any::Any + Send + Sync;
+
+/// The current run's first answer to `kind` for `key`, for an answer that
+/// depends on that path alone; anything read off a revision or a source
+/// belongs to that source instead. Outside a run every call computes, and a
+/// failure is never kept, so the next ask tries again.
+pub fn memoized<T, E>(
+    kind: &'static str,
+    key: &std::path::Path,
+    f: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    let Some(run) = with_current(RunContext::clone) else {
+        return f();
+    };
+    let slot = (kind, key.to_path_buf());
+    let known = run.inner.memo.lock().unwrap().get(&slot).cloned();
+    if let Some(value) = known.as_deref().and_then(|v| v.downcast_ref::<T>()) {
+        return Ok(value.clone());
+    }
+    let value = f()?;
+    run.inner
+        .memo
+        .lock()
+        .unwrap()
+        .insert(slot, Arc::new(value.clone()));
+    Ok(value)
 }
 
 /// A run that something it owns can note into without keeping it alive: the

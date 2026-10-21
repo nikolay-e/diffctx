@@ -252,6 +252,10 @@
           "description": "Relevance arrived over a typed edge; `from` is the strongest source.",
           "type": "object",
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "edge"
+            },
             "category": {
               "type": "string"
             },
@@ -261,10 +265,6 @@
             "mass": {
               "type": "number",
               "format": "double"
-            },
-            "type": {
-              "type": "string",
-              "const": "edge"
             }
           },
           "required": [
@@ -278,14 +278,14 @@
           "description": "Graph distance from the nearest changed fragment.",
           "type": "object",
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "proximity"
+            },
             "seed_hops": {
               "type": "integer",
               "format": "uint32",
               "minimum": 0
-            },
-            "type": {
-              "type": "string",
-              "const": "proximity"
             }
           },
           "required": [

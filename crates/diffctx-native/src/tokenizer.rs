@@ -75,6 +75,16 @@ pub static ACCOUNTING: AccountingCounter = AccountingCounter;
 static ENCODER: Lazy<Result<CoreBPE, TokenizerError>> =
     Lazy::new(|| tiktoken_rs::o200k_base().map_err(|e| TokenizerError::EncoderInit(e.to_string())));
 
+/// Loads the BPE tables on a thread of their own, so a run's git reads
+/// overlap the ~40 ms every fresh process otherwise spent in its first count.
+pub fn warm() {
+    if Lazy::get(&ENCODER).is_none() {
+        std::thread::spawn(|| {
+            Lazy::force(&ENCODER);
+        });
+    }
+}
+
 fn scale(raw: u32) -> u32 {
     let factor = safety_factor();
     if factor == 1.0 {

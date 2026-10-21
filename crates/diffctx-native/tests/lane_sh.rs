@@ -6,48 +6,12 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
 
-use tempfile::TempDir;
-
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// A repository with one commit per step.
-fn repo(steps: &[&[(&str, &str)]]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = tmp.path();
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (step, files) in steps.iter().enumerate() {
-        for (rel, content) in *files {
-            let path = root.join(rel);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, content).unwrap();
-        }
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-q", "-m", &format!("step {step}")]);
-    }
-    tmp
-}
+mod support;
+use support::{diffctx, repo_steps, set};
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(args)
         .args(["-q", "-f", "json", "--timeout", "600"])
@@ -105,10 +69,6 @@ fn callers(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
         .collect()
 }
 
-fn set(items: &[&str]) -> BTreeSet<String> {
-    items.iter().map(|s| (*s).to_string()).collect()
-}
-
 const LIB: &str = "fetch() {\n  curl -s \"$1\"\n}\n";
 const MY_LIB: &str = "login() {\n  echo token\n}\n";
 
@@ -160,7 +120,7 @@ fn sourcing_scripts() -> Vec<(&'static str, &'static str)> {
 #[test]
 fn a_sourced_library_binds_its_callers_however_the_path_is_spelled() {
     let files = sourcing_scripts();
-    let tmp = repo(&[&files]);
+    let tmp = repo_steps(&[&files]);
     let fetch = symbol(tmp.path(), "fetch");
     assert_eq!(
         callers(&fetch, "scripts/lib.sh", "fetch"),
@@ -196,7 +156,7 @@ fn a_sourced_library_binds_its_callers_however_the_path_is_spelled() {
 #[test]
 fn a_changed_library_function_names_the_scripts_that_source_it() {
     let files = sourcing_scripts();
-    let tmp = repo(&[
+    let tmp = repo_steps(&[
         &files,
         &[("scripts/my-lib.sh", "login() {\n  echo session\n}\n")],
     ]);
@@ -228,7 +188,7 @@ fn a_library_name_two_files_carry_is_said_to_be_ambiguous() {
             "source \"$(dirname \"$0\")/../a/util.sh\"\nhelper\n",
         ),
     ];
-    let tmp = repo(&[&files]);
+    let tmp = repo_steps(&[&files]);
     let out = symbol(tmp.path(), "helper");
     assert_eq!(
         callers(&out, "a/util.sh", "helper"),
@@ -256,7 +216,7 @@ fn a_library_calls_what_its_sourcing_script_sources_beside_it() {
         ),
         ("lib/orphan.sh", "sweep() {\n  log \"sweeping\"\n}\n"),
     ];
-    let tmp = repo(&[&files]);
+    let tmp = repo_steps(&[&files]);
     let out = symbol(tmp.path(), "log");
     assert_eq!(
         callers(&out, "lib/log-lib.sh", "log"),
@@ -275,7 +235,7 @@ const DAEMON: &str = "#!/bin/bash\ndevices_ready() {\n  test -e /dev/null\n}\nfa
 /// `sudo` is not.
 #[test]
 fn calls_inside_compound_commands_are_callers() {
-    let tmp = repo(&[
+    let tmp = repo_steps(&[
         &[("bin/call", DISPATCHER), ("bin/daemon.sh", DAEMON)],
         &[
             (
@@ -356,7 +316,7 @@ fn calls_inside_compound_commands_are_callers() {
 /// a name in an `echo` argument after it was read; one inside it was not.
 #[test]
 fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
-    let tmp = repo(&[
+    let tmp = repo_steps(&[
         &[
             ("lib.sh", "helper() {\n  echo one\n}\n"),
             (
@@ -413,7 +373,7 @@ fn migrations() -> Vec<(&'static str, &'static str)> {
 #[test]
 fn sql_routines_and_views_are_definitions_with_callers() {
     let files = migrations();
-    let tmp = repo(&[&files]);
+    let tmp = repo_steps(&[&files]);
     for query in ["refresh_book", "lib.refresh_book"] {
         let out = symbol(tmp.path(), query);
         assert_eq!(
@@ -446,7 +406,7 @@ fn sql_routines_and_views_are_definitions_with_callers() {
 #[test]
 fn a_redefined_sql_routine_keeps_its_callers() {
     let files = migrations();
-    let tmp = repo(&[
+    let tmp = repo_steps(&[
         &files,
         &[(
             "db/V3__redo.sql",

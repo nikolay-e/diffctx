@@ -14,34 +14,7 @@ use tempfile::TempDir;
 /// job — the shipped artifact for a target, so every standalone binary that
 /// reaches a user passes this suite on its own platform.
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    // Scrub the same vars git_command() scrubs: under `git commit -a` the
-    // pre-commit hook runs with GIT_INDEX_FILE pointing at the MAIN repo's
-    // in-progress index, and an unscrubbed child git in a temp repo locks
-    // that index instead ("index.lock.lock: File exists").
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn init_repo(repo: &Path) {
-    git(repo, &["init", "-q", "."]);
-    git(repo, &["config", "user.email", "test@example.com"]);
-    git(repo, &["config", "user.name", "diffctx tests"]);
-}
-
-fn commit_all(repo: &Path, message: &str) {
-    git(repo, &["add", "-A"]);
-    git(repo, &["commit", "-q", "-m", message]);
-}
+use support::{commit_all, diffctx, git, init_repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()

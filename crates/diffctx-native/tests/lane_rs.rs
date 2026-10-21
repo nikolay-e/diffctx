@@ -5,29 +5,16 @@
 // that name — and a control that has to come back exactly.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
+use support::{diffctx, git};
 
 const MANIFEST: (&str, &str) = (
     "Cargo.toml",
     "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
 );
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
 
 /// A repository with one commit per step; a step writes its files and
 /// deletes the paths it lists with no content.

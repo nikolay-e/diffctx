@@ -29,6 +29,7 @@ fn has_known_shebang(path: &Path, name: &str) -> bool {
 fn is_candidate_file(
     file_path: &Path,
     root_dir: &Path,
+    within: &crate::paths::Containment,
     included_set: &FxHashSet<PathBuf>,
     ctx: &crate::resource::RunContext,
 ) -> bool {
@@ -38,7 +39,7 @@ fn is_candidate_file(
     // discovery reads it with a bare `read_to_string`, and the content is a
     // context fragment. The boundary is checked once, here, so the readers
     // downstream stay simple; a link pointing INSIDE the repo still resolves.
-    if crate::paths::resolve_within(root_dir, file_path).is_none() {
+    if !within.contains(file_path) {
         return false;
     }
     if !file_path.is_file() {
@@ -152,9 +153,10 @@ fn tracked_candidates(
         .into_iter()
         .map(|f| crate::paths::repo_join(root_dir, &f))
         .collect();
+    let within = crate::paths::Containment::new(root_dir);
     Some(
         ctx.bounded_par(paths)
-            .filter(|f| is_candidate_file(f, root_dir, included_set, ctx))
+            .filter(|f| is_candidate_file(f, root_dir, &within, included_set, ctx))
             .collect(),
     )
 }
@@ -181,6 +183,7 @@ fn walked_candidates(
             .map(|rel| crate::paths::repo_join(root_dir, rel))
             .collect()
     };
+    let within = crate::paths::Containment::new(root_dir);
     let mut admitted: Vec<PathBuf> = Vec::new();
     for walk_root in walk_roots {
         let files = WalkDir::new(walk_root)
@@ -191,7 +194,7 @@ fn walked_candidates(
             .filter(|e| e.file_type().is_file());
         for entry in ctx.bounded(files) {
             let path = entry.into_path();
-            if is_candidate_file(&path, root_dir, included_set, ctx) {
+            if is_candidate_file(&path, root_dir, &within, included_set, ctx) {
                 admitted.push(path);
             }
             // Counted AFTER admission: capping raw entries meant a repository

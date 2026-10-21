@@ -415,7 +415,8 @@ pub(crate) fn collect_hunks_with_untracked(
     // its canonicalising form: `evil -> /etc/shadow` is lexically inside the
     // root and would otherwise be line-counted and then fragmented out of the
     // file it points at.
-    untracked_files.retain(|f| crate::paths::resolve_within(root_dir, f).is_some());
+    let within = crate::paths::Containment::new(root_dir);
+    untracked_files.retain(|f| within.contains(f));
     // An untracked binary — a local database, a build artefact — is no
     // source change: counted, it inflated every "N changed file(s)" with
     // files nobody meant to commit and diffctx cannot read (#423).
@@ -523,16 +524,13 @@ fn ignore_disclosure(
 /// old name. Their bodies exist only at the base, so none of them is the
 /// change's content; `--full` once showed a deleted file's old body as
 /// changed (#409).
-fn gone_at_head(
-    root_dir: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-    run: Option<&crate::resource::RunContext>,
-) -> Result<FxHashSet<PathBuf>> {
-    let deleted = unless_cut_short(run, git::get_deleted_files(root_dir, diff_range, pathspec))?;
-    let renamed_old =
-        unless_cut_short(run, git::get_renamed_paths(root_dir, diff_range, pathspec))?;
-    Ok(deleted.into_iter().chain(renamed_old).collect())
+fn gone_at_head(root_dir: &Path, names: &git::DiffNames) -> FxHashSet<PathBuf> {
+    names
+        .deleted
+        .iter()
+        .cloned()
+        .chain(names.renamed_sources(root_dir))
+        .collect()
 }
 
 fn is_gone(gone: &FxHashSet<PathBuf>, file: &Path) -> bool {
@@ -546,13 +544,13 @@ fn hunkless_changed_files(
     untracked_files: Vec<PathBuf>,
     run: Option<&crate::resource::RunContext>,
 ) -> Result<Vec<PathBuf>> {
-    let mut changed =
-        unless_cut_short(run, git::get_changed_files(root_dir, diff_range, pathspec))?;
+    let names = unless_cut_short(run, git::diff_names(root_dir, diff_range, pathspec))?;
+    let excluded = gone_at_head(root_dir, &names);
+    let mut changed = names.changed;
     changed.extend(untracked_files);
     if changed.is_empty() {
         return Ok(changed);
     }
-    let excluded = gone_at_head(root_dir, diff_range, pathspec, run)?;
     let rel_paths: Vec<String> = changed
         .iter()
         .filter_map(|p| rel_path_string(root_dir, p))
@@ -638,7 +636,8 @@ fn resolve_change_set(
 
     let diff_text = git::get_diff_text(root_dir, diff_range, pathspec)?;
 
-    let mut changed_files = git::get_changed_files(root_dir, diff_range, pathspec)?;
+    let names = git::diff_names(root_dir, diff_range, pathspec)?;
+    let mut changed_files = names.changed.clone();
     changed_files.extend(untracked_files.iter().cloned());
     if changed_files.is_empty() {
         return Ok(ChangeSet::Empty {
@@ -652,12 +651,11 @@ fn resolve_change_set(
 
     // Rename destinations exist on the head and stay candidates via the
     // changed set below, so seeds and discovery still find them.
-    let excluded = gone_at_head(root_dir, diff_range, pathspec, None)?;
+    let excluded = gone_at_head(root_dir, &names);
     // Display lists for the output header: deletions and renames produce no
     // fragments, but silently omitting them misrepresents the diff (a
     // deletion-only commit used to render as a bare two-line skeleton).
-    let (deleted_display, renamed_display) =
-        deletion_rename_displays(root_dir, diff_range, pathspec, Some(run))?;
+    let (deleted_display, renamed_display) = deletion_rename_displays(root_dir, &names);
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
         .filter(|f| {
@@ -1185,6 +1183,7 @@ pub fn compute_scored_state_anchored(
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
+    crate::tokenizer::warm();
     git::set_git_timeout(timeout);
     let run = crate::resource::RunContext::for_run(timeout);
     let _in_run = run.enter();
@@ -2610,7 +2609,8 @@ fn full_empty_output(
     changed_files: &[PathBuf],
     withheld: &FullWithheld,
 ) -> Result<DiffContextOutput> {
-    let (deleted, renamed) = deletion_rename_displays(root_dir, diff_range, pathspec, None)?;
+    let (deleted, renamed) =
+        deletion_rename_displays(root_dir, &git::diff_names(root_dir, diff_range, pathspec)?);
     let mut output = empty_output(root_dir);
     output.deleted_files = deleted;
     output.renamed_files = renamed;
@@ -2681,9 +2681,10 @@ fn build_diff_context_full(
         let listed = hunkless_changed_files(&root_dir, diff_range, &scope, untracked_files, None)?;
         return full_empty_output(&root_dir, diff_range, &scope, &listed, &withheld);
     }
-    let mut changed_files = git::get_changed_files(&root_dir, diff_range, &scope)?;
+    let names = git::diff_names(&root_dir, diff_range, &scope)?;
+    let mut changed_files = names.changed.clone();
     changed_files.extend(untracked_files);
-    let gone = gone_at_head(&root_dir, diff_range, &scope, None)?;
+    let gone = gone_at_head(&root_dir, &names);
     changed_files.retain(|f| !is_gone(&gone, f) && !is_withheld(&root_dir, f, &ignored_rel_paths));
     changed_files.dedup();
     if changed_files.is_empty() {
@@ -2727,8 +2728,7 @@ fn build_diff_context_full(
                 .find(|l| !l.is_empty())
                 .map(str::to_string)
         });
-    let (deleted_display, renamed_display) =
-        deletion_rename_displays(&root_dir, diff_range, &scope, None)?;
+    let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, &names);
     let change = render::ChangeSummary {
         commit_count: 0,
         commit_message,
@@ -2765,17 +2765,15 @@ fn build_diff_context_full(
 
 fn deletion_rename_displays(
     root_dir: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-    run: Option<&crate::resource::RunContext>,
-) -> Result<(Vec<String>, Vec<(String, String)>)> {
-    let mut deleted: Vec<String> =
-        unless_cut_short(run, git::get_deleted_files(root_dir, diff_range, pathspec))?
-            .iter()
-            .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
-            .collect();
+    names: &git::DiffNames,
+) -> (Vec<String>, Vec<(String, String)>) {
+    let mut deleted: Vec<String> = names
+        .deleted
+        .iter()
+        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+        .collect();
     deleted.sort();
-    let mut renamed = unless_cut_short(run, git::get_rename_pairs(root_dir, diff_range, pathspec))?;
+    let mut renamed = names.rename_pairs();
     // A deletion or rename of a withheld file is no exception to withholding
     // it: the header would otherwise publish the path the policy hides.
     let named: Vec<String> = deleted
@@ -2788,7 +2786,7 @@ fn deletion_rename_displays(
         deleted.retain(|p| !hidden.contains(p));
         renamed.retain(|(a, b)| !hidden.contains(a) && !hidden.contains(b));
     }
-    Ok((deleted, renamed))
+    (deleted, renamed)
 }
 
 /// Keeps the run that listed the change, not a fresh one: what it noted on
@@ -2801,7 +2799,8 @@ fn empty_scored_state_with_changes(
     timeout: u64,
     run: crate::resource::RunContext,
 ) -> Result<ScoredState> {
-    let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range, pathspec, Some(&run))?;
+    let names = unless_cut_short(Some(&run), git::diff_names(&root_dir, diff_range, pathspec))?;
+    let (deleted, renamed) = deletion_rename_displays(&root_dir, &names);
     let mut state = empty_scored_state(root_dir, diff_range, timeout, run);
     state.deleted_files = deleted;
     state.renamed_files = renamed;

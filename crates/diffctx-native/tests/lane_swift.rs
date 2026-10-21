@@ -6,58 +6,14 @@
 // — and a control that has to come back exactly.
 
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::Value;
-use tempfile::TempDir;
 
-static BIN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    std::env::var("DIFFCTX_NATIVE_BIN")
-        .unwrap_or_else(|_| env!("CARGO_BIN_EXE_diffctx").to_string())
-});
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn write(repo: &Path, rel: &str, content: &str) {
-    let path = repo.join(rel);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, content).unwrap();
-}
-
-/// A repository of `files`, then one commit of `changes` when there are any.
-fn repo_of(files: &[(&str, &str)], changes: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().unwrap();
-    let repo = tmp.path();
-    git(repo, &["init", "-q", "."]);
-    git(repo, &["config", "user.email", "test@example.com"]);
-    git(repo, &["config", "user.name", "diffctx tests"]);
-    for (p, c) in files {
-        write(repo, p, c);
-    }
-    git(repo, &["add", "-A"]);
-    git(repo, &["commit", "-q", "-m", "initial"]);
-    if !changes.is_empty() {
-        for (p, c) in changes {
-            write(repo, p, c);
-        }
-        git(repo, &["add", "-A"]);
-        git(repo, &["commit", "-q", "-m", "change"]);
-    }
-    tmp
-}
+mod support;
+use support::{diffctx, repo};
 
 fn run(repo: &Path, args: &[&str]) -> Value {
-    let out = Command::new(&*BIN)
+    let out = diffctx()
         .current_dir(repo)
         .args(args)
         .args(["-q", "--timeout", "600"])
@@ -159,7 +115,7 @@ const LOOP: &str = "func loop(_ all: [Track]) {
 /// implicit `self` resolve; the other type's method and the text do not.
 #[test]
 fn swift_calls_resolve_through_their_receiver_and_the_look_alikes_do_not() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("Sources/Track.swift", TRACK),
             ("Sources/main.swift", MAIN),
@@ -199,7 +155,7 @@ fn swift_calls_resolve_through_their_receiver_and_the_look_alikes_do_not() {
 /// does not import it does not.
 #[test]
 fn an_extension_member_is_the_types_across_files_and_modules() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             (
                 "Sources/Rec/Track.swift",
@@ -338,7 +294,7 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
     let alpha = same_named_mapper("AlphaMapper");
     let beta = same_named_mapper("BetaMapper");
     let gamma = same_named_mapper("GammaMapper");
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("pom.xml", "<project></project>\n"),
             ("src/main/java/com/acme/mapper/Mapper.java", MAPPER),
@@ -404,7 +360,7 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
 /// and so is the main-source signature the same commit changes.
 #[test]
 fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("build.gradle.kts", "plugins { kotlin(\"jvm\") }\n"),
             (
@@ -488,7 +444,7 @@ fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
 /// the call the parse recovered.
 #[test]
 fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
-    let tmp = repo_of(
+    let tmp = repo(
         &[
             ("api.swift", "func load() -> Int {\n    return 1\n}\n"),
             (
@@ -529,7 +485,7 @@ fn a_cast_with_a_default_in_a_trailing_closure_parses() {
             "func f(_ gaps: [[String: Any]], _ rate: Double) -> Double {{\n    let s = gaps.reduce(0.0) {{ {body} }}\n    return s\n}}\n"
         )
     };
-    let tmp = repo_of(
+    let tmp = repo(
         &[("a.swift", &gaps("$0 + 2 / rate"))],
         &[("a.swift", &gaps("$0 + Double($1[\"frames\"] as? Int ?? 1)"))],
     );

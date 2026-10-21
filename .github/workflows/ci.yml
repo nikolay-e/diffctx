@@ -52,8 +52,10 @@ jobs:
           uv sync --locked --no-build --extra dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
+      # cargo-test runs scripts/cargo-test-suites.sh, which the Rust jobs below
+      # run in full on every OS; here it only repeated the Linux one.
       - name: Run pre-commit
-        run: pre-commit run --all-files
+        run: SKIP=cargo-test pre-commit run --all-files
 
   # ============================================================================
   # Rust dependency advisories. Separate job because the pre-commit hook can
@@ -111,11 +113,11 @@ jobs:
 
       - name: Check lang-core only
         working-directory: crates/diffctx-native
-        run: cargo check --no-default-features --features lang-core
+        run: cargo check --locked --no-default-features --features lang-core
 
       - name: Check with no language grammars at all
         working-directory: crates/diffctx-native
-        run: cargo check --no-default-features
+        run: cargo check --locked --no-default-features
 
   # ============================================================================
   # `cargo publish --locked` in publish-crate.yml was the first packaging step
@@ -279,7 +281,7 @@ jobs:
       # for a fast stratified subset.
       - name: Build and test
         run: |
-          (cd crates/diffctx-native && cargo build --release --examples)
+          (cd crates/diffctx-native && cargo build --release --locked --examples)
           scripts/cargo-test-suites.sh
 
   # The Linux job above keeps its name because branch protection requires it;

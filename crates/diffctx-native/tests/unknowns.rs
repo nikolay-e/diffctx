@@ -2,50 +2,11 @@
 // (#505): an unknown is named, never read as nothing.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// A repository whose last commit applies `change` on top of `base`.
-fn repo(base: &[(&str, &str)], change: &[(&str, &str)]) -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    fill(tmp.path(), base, change);
-    tmp
-}
-
-fn fill(root: &Path, base: &[(&str, &str)], change: &[(&str, &str)]) {
-    git(root, &["init", "-q", "."]);
-    git(root, &["config", "user.email", "test@example.com"]);
-    git(root, &["config", "user.name", "diffctx tests"]);
-    for (step, files) in [base, change]
-        .into_iter()
-        .filter(|f| !f.is_empty())
-        .enumerate()
-    {
-        for (rel, content) in files {
-            let path = root.join(rel);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, content).unwrap();
-        }
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-q", "-m", &format!("step {step}")]);
-    }
-}
+use support::{diffctx, fill, repo};
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
     let out = diffctx()
@@ -1289,4 +1250,74 @@ fn a_test_helper_s_expression_body_types_the_receiver() {
         md.contains("1 changed definition(s) without a static test link"),
         "{md}"
     );
+}
+
+/// #505, #613: a zero needs a witness. A module a CronWorkflow runs by
+/// name, and a function only an `.astro` page calls, read as "0 callers"
+/// though impact never looked where they are named. Now the config line is
+/// named, the function says its callers may be missing, and the header
+/// carries no bare zero. A document mentioning the name is no reader.
+#[test]
+fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
+    let infra = repo(
+        &[
+            (
+                "controls/foo_check.py",
+                "LIMIT = 5\n\n\ndef main():\n    print(\"checked\", LIMIT)\n",
+            ),
+            (
+                "deploy/cron-foo-check.yaml",
+                "kind: CronWorkflow\nspec:\n  workflowSpec:\n    arguments:\n      parameters:\n        - {name: control, value: foo_check}\n",
+            ),
+        ],
+        &[(
+            "controls/foo_check.py",
+            "LIMIT = 7\n\n\ndef main():\n    print(\"checked\", LIMIT)\n",
+        )],
+    );
+    let doc = impact_json(infra.path());
+    assert!(
+        doc["named_by"]
+            .to_string()
+            .contains("deploy/cron-foo-check.yaml"),
+        "{doc:#}"
+    );
+    let site = repo(
+        &[
+            (
+                "src/lib/dates.ts",
+                "export function formatDate(d: Date): string {\n  return d.toISOString();\n}\n",
+            ),
+            (
+                "src/pages/index.astro",
+                "---\nimport { formatDate } from \"../lib/dates\";\n---\n<p>{formatDate(new Date())}</p>\n",
+            ),
+            ("README.md", "Uses formatDate for dates.\n"),
+            (
+                "src/lib/total.ts",
+                "export function total(xs: number[]) {\n  return xs.length;\n}\n",
+            ),
+            ("data/labels.json", "{\"label\": \"total\"}\n"),
+        ],
+        &[
+            (
+                "src/lib/dates.ts",
+                "export function formatDate(d: Date): string {\n  return d.toISOString().slice(0, 10);\n}\n",
+            ),
+            (
+                "src/lib/total.ts",
+                "export function total(xs: number[]) {\n  return xs.length + 0;\n}\n",
+            ),
+        ],
+    );
+    let doc = impact_json(site.path());
+    assert_eq!(doc["empty"], false, "{doc:#}");
+    let missed = doc["changed"].to_string();
+    assert!(missed.contains("src/pages/index.astro"), "{doc:#}");
+    assert!(!missed.contains("README.md"), "{doc:#}");
+    // A plain word in a data file is no reader of a function named `total`.
+    assert!(!missed.contains("data/labels.json"), "{doc:#}");
+    let text = impact_markdown(site.path());
+    assert!(!text.contains(" 0 caller(s)"), "{text}");
+    assert!(text.contains("callers may be missing"), "{text}");
 }

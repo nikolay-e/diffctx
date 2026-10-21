@@ -83,8 +83,13 @@ pub enum Trigger {
     /// git's own reflog once the line ran. Predicting it from the command
     /// text took fifteen parser commits in nine days and still reviewed another
     /// session's staged file for `--pathspec-from-file` (#508). `also`
-    /// counts the other refs one push moved, which are not reviewed.
-    Landed { verb: &'static str, also: usize },
+    /// counts the other refs one push moved, which are not reviewed; `late`
+    /// is a background line's, answered at a later event (#617).
+    Landed {
+        verb: &'static str,
+        also: usize,
+        late: bool,
+    },
     /// `gh pr create`: `head` (the current branch unless `--head` names
     /// one) against `base` (the remote's default unless `--base` names one).
     PullRequest {
@@ -1055,12 +1060,83 @@ pub fn range_for(root: &Path, trigger: &Trigger) -> Option<String> {
 
 /// What a line recorded in each repository it may have touched, as its
 /// `PreToolUse` found them: `HEAD` (empty on an unborn branch) and every
-/// remote-tracking ref.
+/// remote-tracking ref, and which of them a statement of the line there
+/// could move. A ref only another session could have moved is never this
+/// line's (#618, #556).
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Before {
     root: PathBuf,
     head: String,
     remotes: Vec<(String, String)>,
+    #[serde(default)]
+    moves: Moves,
+}
+
+/// What a git statement can record: a commit on `HEAD`, a pushed ref, or
+/// either for a verb the hook does not know (an alias, `am`, a new verb).
+/// What it did record is read off git's reflog once the line ran (#508).
+#[derive(Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Moves {
+    head: bool,
+    pushed: bool,
+}
+
+impl Moves {
+    const ANY: Moves = Moves {
+        head: true,
+        pushed: true,
+    };
+
+    fn any(self) -> bool {
+        self.head || self.pushed
+    }
+
+    fn or(self, other: Moves) -> Moves {
+        Moves {
+            head: self.head || other.head,
+            pushed: self.pushed || other.pushed,
+        }
+    }
+}
+
+/// Git verbs that record nothing a review is for: they read, stage, fetch,
+/// or move `HEAD` over commits this line did not write (a pull, rebase,
+/// reset or checkout, which `landed` would not review anyway).
+const LANDS_NOTHING: &str = "add apply archive bisect blame branch bundle cat-file check-attr check-ignore checkout \
+     cherry clean clone config count-objects describe diff diff-files diff-index diff-tree \
+     difftool fetch for-each-ref format-patch fsck gc hash-object help init lfs log \
+     ls-files ls-remote ls-tree maintenance merge-base mergetool mv name-rev notes prune \
+     pull range-diff rebase reflog remote rerere reset restore rev-list rev-parse rm \
+     shortlog show show-branch show-ref sparse-checkout stage stash status submodule switch \
+     symbolic-ref tag update-index var verify-commit verify-tag version whatchanged \
+     worktree write-tree";
+
+fn moves_of(st: &Statement) -> Moves {
+    match st.verb.as_str() {
+        "push" => Moves {
+            head: false,
+            pushed: true,
+        },
+        "commit" | "merge" | "cherry-pick" | "revert" | "am" => Moves {
+            head: true,
+            pushed: false,
+        },
+        v if v == "grep" || v == "git grep" || v.starts_with("gh ") => Moves::default(),
+        v if LANDS_NOTHING.split_whitespace().any(|w| w == v) => Moves::default(),
+        _ => Moves::ANY,
+    }
+}
+
+/// The record a line's `PreToolUse` leaves for its `PostToolUse`, or for
+/// a later event when the line runs in the background (#617).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Record {
+    repos: Vec<Before>,
+    /// A git only the shell runs, that may have recorded where the hook did
+    /// not look: said so when nothing moved where it did.
+    hidden: bool,
+    #[serde(default)]
+    at: u64,
 }
 
 fn refs_now(root: &Path) -> Option<Before> {
@@ -1087,6 +1163,7 @@ fn refs_now(root: &Path) -> Option<Before> {
         root: root.to_path_buf(),
         head,
         remotes,
+        moves: Moves::default(),
     })
 }
 
@@ -1099,9 +1176,10 @@ fn before_key(command: &str, session: Option<&str>) -> String {
 
 /// What the line recorded in `before.root`, by git's own reflog: a push
 /// (what a remote-tracking ref moved over), else a commit, merge,
-/// cherry-pick or revert on `HEAD`. A checkout, reset, pull or rebase moved
-/// `HEAD` without recording this session's change, and is not reviewed.
-/// The count is of the other refs the same push moved.
+/// cherry-pick, revert or `am` on `HEAD`. A checkout, reset, pull or rebase
+/// moved `HEAD` without recording this session's change, and is not
+/// reviewed. The count is of the other ranges the same push moved: refs
+/// moved over one range (a mirror's two remotes) are one (#608).
 fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
     let root = before.root.as_path();
     let now = refs_now(root)?;
@@ -1112,16 +1190,7 @@ fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
             .find(|(r, _)| r == name)
             .map(|(_, o)| o.clone())
     };
-    let pushed: Vec<&(String, String)> = now
-        .remotes
-        .iter()
-        .filter(|(name, new)| {
-            old_of(name).as_deref() != Some(new.as_str())
-                && git_out(root, &["reflog", "-1", "--format=%gs", name])
-                    .is_some_and(|s| s.starts_with("update by push"))
-        })
-        .collect();
-    if let Some((name, new)) = pushed.first() {
+    let pushed_over = |name: &str, new: &str| -> Option<String> {
         // What the push itself moved the ref over: a `pull` on the same line
         // moves it first, and the value this line started from would count
         // the commits that pull brought in as pushed (#462).
@@ -1141,9 +1210,23 @@ fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
                 git_out(root, &["merge-base", &default, new])?
             }
         };
-        return Some((format!("{base}..{new}"), "push", pushed.len() - 1));
+        Some(format!("{base}..{new}"))
+    };
+    let mut pushed: Vec<String> = Vec::new();
+    for (name, new) in now.remotes.iter().filter(|_| before.moves.pushed) {
+        let by_push = old_of(name).as_deref() != Some(new.as_str())
+            && git_out(root, &["reflog", "-1", "--format=%gs", name])
+                .is_some_and(|s| s.starts_with("update by push"));
+        if let Some(range) = by_push.then(|| pushed_over(name, new)).flatten() {
+            if !pushed.contains(&range) {
+                pushed.push(range);
+            }
+        }
     }
-    if now.head == before.head || now.head.is_empty() {
+    if let Some(range) = pushed.first() {
+        return Some((range.clone(), "push", pushed.len() - 1));
+    }
+    if !before.moves.head || now.head == before.head || now.head.is_empty() {
         return None;
     }
     let head = now.head.as_str();
@@ -1160,7 +1243,7 @@ fn landed(before: &Before) -> Option<(String, &'static str, usize)> {
                 0,
             ));
         }
-        "commit" | "commit (merge)" => "commit",
+        "commit" | "commit (merge)" | "am" => "commit",
         "cherry-pick" => "cherry-pick",
         "revert" => "revert",
         // Catching up with the branch's own upstream brings in commits that
@@ -1590,22 +1673,173 @@ fn prepare(
     prepared(root, range, detected.trigger, trace)
 }
 
-/// What the line recorded, from the refs its `PreToolUse` left: the first
-/// repository it touched that moved.
-fn prepare_landed(command: &str, trace: &mut Trace) -> Result<Prepared, Silence> {
+/// What the line recorded, from the record its `PreToolUse` left: every
+/// repository it touched that moved (#608). A line run in the background
+/// has its `PostToolUse` at launch, before git records anything, so its
+/// record waits for a later event of the session (#617).
+fn prepare_landed(
+    payload: &serde_json::Value,
+    command: &str,
+    trace: &mut Trace,
+) -> Result<Vec<Prepared>, Silence> {
     let _phase = crate::profile::phase("hook.prepare");
     let key = before_key(command, trace.session.as_deref());
-    let before: Vec<Before> = seen_headline(&key, SEEN_TTL)
+    let record: Record = seen_headline(&key, SEEN_TTL)
         .and_then(|s| serde_json::from_str(&s).ok())
         .ok_or("no-record")?;
     unmark(&key);
-    let (root, (range, verb, also)) = before
-        .iter()
-        .find_map(|b| Some((b.root.clone(), landed(b)?)))
-        .ok_or("nothing-landed")?;
-    trace.verb = Some(verb);
-    trace.root = Some(root.clone());
-    prepared(root, range, Trigger::Landed { verb, also }, trace)
+    let found = landed_in(&record, false, trace)?;
+    if !found.is_empty() {
+        forget_pending(trace.session.as_deref(), &found);
+        return Ok(found);
+    }
+    if in_background(payload) {
+        keep_pending(record, trace.session.as_deref());
+        return Err("pending");
+    }
+    Err(if record.hidden {
+        "unsupported-syntax"
+    } else {
+        "nothing-landed"
+    })
+}
+
+/// Every repository of `record` that moved, as a range to review each.
+fn landed_in(record: &Record, late: bool, trace: &mut Trace) -> Result<Vec<Prepared>, Silence> {
+    let mut found = Vec::new();
+    let mut ranges = Vec::new();
+    let mut unreadable = None;
+    for before in &record.repos {
+        let Some((range, verb, also)) = landed(before) else {
+            continue;
+        };
+        if found.is_empty() {
+            trace.verb = Some(verb);
+            trace.root = Some(before.root.clone());
+        }
+        ranges.push(range.clone());
+        let trigger = Trigger::Landed { verb, also, late };
+        match prepared(before.root.clone(), range, trigger, trace) {
+            Ok(p) => found.push(p),
+            Err(why) => unreadable = unreadable.or(Some(why)),
+        }
+    }
+    if !ranges.is_empty() {
+        trace.range = Some(ranges.join(","));
+    }
+    match unreadable {
+        Some(why) if found.is_empty() => Err(why),
+        _ => Ok(found),
+    }
+}
+
+fn in_background(payload: &serde_json::Value) -> bool {
+    payload["tool_input"]["run_in_background"].as_bool() == Some(true)
+        || payload["tool_response"]["backgroundTaskId"].is_string()
+}
+
+/// How long a background line's record waits to land: a pre-commit that
+/// runs the whole suite takes minutes, and a record older than this would
+/// claim whatever lands next in that repository.
+const PENDING_TTL: Duration = Duration::from_secs(2 * 60 * 60);
+
+fn pending_key(session: Option<&str>) -> String {
+    session_key("pending", session)
+}
+
+fn pending(session: Option<&str>) -> Vec<Record> {
+    seen_headline(&pending_key(session), PENDING_TTL)
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn store_pending(session: Option<&str>, records: &[Record]) {
+    match serde_json::to_string(records) {
+        Ok(json) if !records.is_empty() => mark_seen_with(&pending_key(session), &json),
+        _ => unmark(&pending_key(session)),
+    }
+}
+
+fn keep_pending(record: Record, session: Option<&str>) {
+    let mut records = pending(session);
+    records.push(record);
+    store_pending(session, &records);
+}
+
+/// A repository this session's own line just reviewed: an earlier
+/// background record there would claim that commit as its own.
+fn forget_pending(session: Option<&str>, reviewed: &[Prepared]) {
+    let mut records = pending(session);
+    let before = records.len();
+    records.retain(|r| {
+        !r.repos
+            .iter()
+            .any(|b| reviewed.iter().any(|p| p.root == b.root))
+    });
+    if records.len() != before {
+        store_pending(session, &records);
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// What a background line of this session recorded since an earlier event
+/// left its record waiting, answered at whatever event comes next, once.
+fn pending_review(event: Event, session: Option<&str>, started: Instant) -> Option<String> {
+    let records = pending(session);
+    if records.is_empty() {
+        return None;
+    }
+    let mut trace = Trace {
+        session: session.map(str::to_string),
+        ..Trace::default()
+    };
+    let mut waiting = Vec::new();
+    let mut answers = Vec::new();
+    let mut reviewed = false;
+    for record in records {
+        match landed_in(&record, true, &mut trace) {
+            Ok(found) if !found.is_empty() => {
+                reviewed = true;
+                for p in found {
+                    if let Ok(a) = answer(event, p, false, started, &mut trace) {
+                        answers.push(a);
+                    }
+                }
+            }
+            _ if now_secs().saturating_sub(record.at) < PENDING_TTL.as_secs() => {
+                waiting.push(record);
+            }
+            _ => {}
+        }
+    }
+    store_pending(session, &waiting);
+    if reviewed {
+        log_outcome(event, &trace, "late", started.elapsed());
+    }
+    joined(answers)
+}
+
+/// Several answers of one event as one hook output: the last one's (a
+/// gate's decision stays), with every earlier one's context before its own.
+fn joined(answers: Vec<String>) -> Option<String> {
+    let mut answers = answers.into_iter().rev();
+    let last = answers.next()?;
+    Some(answers.fold(last, |acc, earlier| {
+        let context = serde_json::from_str::<serde_json::Value>(&earlier)
+            .ok()
+            .and_then(|d| {
+                d["hookSpecificOutput"]["additionalContext"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .unwrap_or_default();
+        with_notice(&acc, &context)
+    }))
 }
 
 fn prepared(
@@ -1631,60 +1865,70 @@ fn prepared(
     })
 }
 
-/// Before a line that records or publishes commits runs: the refs of every
-/// repository it names (the cwd's, a `cd` or `-C` target), for its own
-/// `PostToolUse` to compare against. Nothing about what it will stage is
-/// guessed. A directory only the shell can name, or a git the shell alone
-/// runs, is said to be unread.
+/// Before a line that may record or publish commits runs: the refs of every
+/// repository a statement of it may record in (a `cd` or `-C` target, else
+/// the cwd's), with what each statement there can move, for its own
+/// `PostToolUse` to compare against. Nothing about what it will record is
+/// guessed: git's reflog says it afterwards. A git only the shell runs may
+/// record in the cwd's repository; a directory only the shell can name is
+/// said to be unread.
 fn record_before(
     payload: &serde_json::Value,
     command: &str,
     trace: &mut Trace,
 ) -> Result<(), Silence> {
     let _phase = crate::profile::phase("hook.record");
-    if hides_git(command) {
-        return Err("unsupported-syntax");
-    }
     let cwd = payload_cwd(payload).ok_or("not-git")?;
-    // The cwd's own repository always: a statement this parser misreads
-    // still records there.
-    let mut roots: Vec<PathBuf> = git_out(&cwd, &["rev-parse", "--show-toplevel"])
-        .map(PathBuf::from)
-        .into_iter()
-        .collect();
-    for st in statements(command)
-        .into_iter()
-        .filter(|st| RECORDING_VERBS.contains(&st.verb.as_str()))
-    {
+    let hidden = hides_git(command);
+    let mut places: Vec<(PathBuf, Moves)> = Vec::new();
+    if hidden {
+        places.push((cwd.clone(), Moves::ANY));
+    }
+    for st in statements(command) {
+        let moves = moves_of(&st);
+        if !moves.any() {
+            continue;
+        }
         if st.lost {
             return Err("unresolved-dir");
         }
-        let top = git_out(
-            &resolve_dir(&cwd, st.dir.as_deref()),
-            &["rev-parse", "--show-toplevel"],
-        );
-        if let Some(top) = top.map(PathBuf::from).filter(|t| !roots.contains(t)) {
-            roots.push(top);
+        places.push((resolve_dir(&cwd, st.dir.as_deref()), moves));
+    }
+    let mut repos: Vec<Before> = Vec::new();
+    for (dir, moves) in places {
+        let Some(top) = git_out(&dir, &["rev-parse", "--show-toplevel"]).map(PathBuf::from) else {
+            continue;
+        };
+        if let Some(known) = repos.iter_mut().find(|b| b.root == top) {
+            known.moves = known.moves.or(moves);
+        } else if let Some(mut before) = refs_now(&top) {
+            before.moves = moves;
+            repos.push(before);
         }
     }
-    let before: Vec<Before> = roots.iter().filter_map(|r| refs_now(r)).collect();
-    if before.is_empty() {
-        return Err("not-git");
+    if repos.is_empty() {
+        return Err(if hidden {
+            "unsupported-syntax"
+        } else {
+            "not-git"
+        });
     }
-    trace.root = before.first().map(|b| b.root.clone());
-    let json = serde_json::to_string(&before).map_err(|_| "error:record")?;
+    trace.root = repos.first().map(|b| b.root.clone());
+    let record = Record {
+        repos,
+        hidden,
+        at: now_secs(),
+    };
+    let json = serde_json::to_string(&record).map_err(|_| "error:record")?;
     mark_seen_with(&before_key(command, trace.session.as_deref()), &json);
     Ok(())
 }
 
-/// The verbs whose effect is a commit or a pushed ref.
-const RECORDING_VERBS: [&str; 5] = ["commit", "merge", "cherry-pick", "revert", "push"];
-
 /// A git command only the shell could run — in `$(…)`, backticks, `eval`,
-/// `sh -c '…'`: what it records cannot be read off the line, and the hook
-/// says it did not try rather than guessing. A substitution elsewhere on the
-/// line (`FP=$(cat f) && git commit`) hides nothing, and neither does text
-/// the shell never runs (#534).
+/// `sh -c '…'`: where it records cannot be read off the line, so the cwd's
+/// repository is watched and anything else is said to be unread. A
+/// substitution elsewhere on the line (`FP=$(cat f) && git commit`) hides
+/// nothing, and neither does text the shell never runs (#534).
 fn hides_git(command: &str) -> bool {
     let mut code = ShellCode::default();
     code.read(&mut command.chars().peekable(), None);
@@ -1693,14 +1937,12 @@ fn hides_git(command: &str) -> bool {
         .any(|&(from, to)| code.text.get(from..to).is_some_and(names_a_recording_verb))
 }
 
-/// The line runs a git verb that records or publishes: a statement the
-/// parser reads, or one only the shell runs. A word handed to another
-/// program — a jq path, an API route, a message — is no verb (#575).
+/// The line runs a git verb that may record or publish: a statement the
+/// parser reads whose verb is not known to land nothing, or one only the
+/// shell runs. A word handed to another program — a jq path, an API route,
+/// a message — is no verb (#575).
 fn records(command: &str) -> bool {
-    statements(command)
-        .iter()
-        .any(|st| RECORDING_VERBS.contains(&st.verb.as_str()))
-        || hides_git(command)
+    statements(command).iter().any(|st| moves_of(st).any()) || hides_git(command)
 }
 
 /// What the shell runs of a line: its text with the data blanked — the
@@ -2177,13 +2419,19 @@ const AUTOMATIC_TOKEN_CAP: u32 = 600;
 fn lead_of(event: Event, trigger: &Trigger) -> String {
     let lead = match (event, trigger) {
         (_, Trigger::Commit { .. }) => "diffctx reviewed the index this commit will record.",
-        (_, Trigger::Landed { verb, also: 0 }) => {
-            return format!("diffctx reviewed what this {verb} recorded.");
-        }
-        (_, Trigger::Landed { verb, also }) => {
-            return format!(
-                "diffctx reviewed the first ref this {verb} moved; {also} other pushed ref(s) are not analysed."
-            );
+        (_, Trigger::Landed { verb, also, late }) => {
+            let which = if *late {
+                "an earlier background"
+            } else {
+                "this"
+            };
+            return if *also == 0 {
+                format!("diffctx reviewed what {which} {verb} recorded.")
+            } else {
+                format!(
+                    "diffctx reviewed the first ref {which} {verb} moved; {also} other pushed ref(s) are not analysed."
+                )
+            };
         }
         (Event::PreToolUse, _) => "diffctx reviewed the commits this pull request proposes.",
         (Event::PostToolUse { .. }, Trigger::Inspect { own: None, .. }) => {
@@ -2460,13 +2708,16 @@ fn search_answer(
     let root = repo_root(payload, search.dir.as_deref()).ok_or("not-git")?;
     trace.root = Some(root.clone());
     trace.range = Some("HEAD".to_string());
-    let identity = result_identity(&root, "HEAD").ok_or("clean")?;
+    let Some(identity) = result_identity(&root, "HEAD") else {
+        return symbol_answer(&root, &names, started, trace);
+    };
     let edited = edited_definitions(&root, None);
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("id-{identity}.{name}"), session.as_deref());
-    let names: Vec<String> = names.into_iter().filter(|n| edited.contains(n)).collect();
+    let (names, others): (Vec<String>, Vec<String>) =
+        names.into_iter().partition(|n| edited.contains(n));
     if names.is_empty() {
-        return Err("no-symbol");
+        return symbol_answer(&root, &others, started, trace);
     }
     let names: Vec<String> = names
         .into_iter()
@@ -2506,6 +2757,56 @@ fn search_answer(
         return Err("partial");
     }
     Ok(answers.join("\n"))
+}
+
+/// The automatic answer to a search for a name, a pointer to the full one.
+const SYMBOL_TOKEN_CAP: u32 = 200;
+
+/// A search for a name the pending change does not edit, on any tree: where
+/// it is defined, who calls it and which tests reach them, as `--symbol`
+/// answers it, once per name and commit in a session. Most lookups come on
+/// a clean tree, where the hook used to say nothing (#628). A name with no
+/// definition here, or no caller it could resolve, is silence: it never
+/// asserts a zero.
+fn symbol_answer(
+    root: &Path,
+    names: &[String],
+    started: Instant,
+    trace: &mut Trace,
+) -> Result<String, Silence> {
+    let head = crate::git::rev_oid(root, "HEAD").unwrap_or_default();
+    let session = trace.session.clone();
+    let key = |name: &str| session_key(&format!("sym-{head}-{name}"), session.as_deref());
+    let name = names
+        .iter()
+        .find(|n| !is_seen(&key(n)))
+        .ok_or("seen")?
+        .clone();
+    mark_seen(&key(&name));
+    let (root, lookup) = (root.to_path_buf(), name.clone());
+    let mut output = within_deadline(started, move || {
+        let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
+        crate::pipeline::build_symbol_impact(
+            &root,
+            &lookup,
+            &[],
+            DEFAULT_PPR_ALPHA,
+            scoring,
+            PIPELINE_SECS,
+        )
+        .map_err(|_| "no-symbol")
+    })?;
+    // The answer adds what grep cannot: the callers it resolved and the
+    // tests that reach them. Without one it says nothing, because a caller
+    // in a file no model reads (an `.astro` page, a template, a class name
+    // in markup) would read as none.
+    if output.changed.iter().all(|c| c.callers.is_empty()) {
+        return Err("empty");
+    }
+    let text = crate::impact::render_automatic(&mut output, SYMBOL_TOKEN_CAP);
+    Ok(format!(
+        "You searched for `{name}`; diffctx resolved it (`diffctx . --symbol {name} -f md` gives the whole answer):\n{text}"
+    ))
 }
 
 /// The JSON the hook prints. The strict gate denies the command with the
@@ -2607,15 +2908,17 @@ fn decide(
         }
     }
     let prepared = match if matches!(event, Event::PostToolUse { .. }) && recording {
-        match prepare_landed(command, trace) {
+        match prepare_landed(&payload, command, trace) {
             Err("no-record" | "nothing-landed") => match &search {
                 Some(search) => return answer_search(search, trace),
-                None => prepare(event, &payload, trace),
+                None => prepare(event, &payload, trace).map(|p| vec![p]),
             },
+            // A git only the shell ran moved nothing where the hook looked.
+            Err(why @ "unsupported-syntax") => return Ok(not_analysed(event, why, trace)),
             landed => landed,
         }
     } else {
-        prepare(event, &payload, trace)
+        prepare(event, &payload, trace).map(|p| vec![p])
     } {
         Ok(p) => p,
         // A commit or push the hook could not read is said so, so that no
@@ -2627,6 +2930,26 @@ fn decide(
         }
         Err(why) => return Err(why),
     };
+    let mut answers = Vec::new();
+    let mut silence = None;
+    for p in prepared {
+        match answer(event, p, gate, started, trace) {
+            Ok(a) => answers.push(a),
+            Err(why) => silence = silence.or(Some(why)),
+        }
+    }
+    joined(answers).ok_or(silence.unwrap_or("empty"))
+}
+
+/// The answer for one prepared range: a reminder of what was delivered
+/// before, the review, or why there is none.
+fn answer(
+    event: Event,
+    prepared: Prepared,
+    gate: bool,
+    started: Instant,
+    trace: &mut Trace,
+) -> Result<String, Silence> {
     if event == Event::PreToolUse && is_seen(&prepared.record_key) {
         return Err("seen");
     }
@@ -2655,6 +2978,14 @@ fn decide(
     }
     let attempt = attempts(&prepared.tries_key);
     if attempt >= MAX_ATTEMPTS {
+        if landed {
+            return Ok(not_reviewed(
+                event,
+                &prepared.range,
+                "retry-exhausted",
+                trace,
+            ));
+        }
         return Err("retry-exhausted");
     }
     mark_seen_with(&prepared.tries_key, &(attempt + 1).to_string());
@@ -2667,6 +2998,7 @@ fn decide(
         tries_key,
         ..
     } = prepared;
+    let reviewed = range.clone();
     let answer = within_deadline(started, move || {
         impact_context(event, &trigger, &root, &range)
     });
@@ -2674,6 +3006,9 @@ fn decide(
         // Nothing to say is a complete answer, delivered as silence.
         Err("empty") => mark_delivered(&key, "", false),
         Ok(a) => mark_delivered(&key, &a.headline, a.partial),
+        // What landed and was not reviewed is said so: silence there reads
+        // as a clean review (#612, #613).
+        Err(why) if landed => return Ok(not_reviewed(event, &reviewed, why, trace)),
         Err(_) => return answer.map(|_| String::new()),
     }
     // A partial answer keeps its attempt: it is retried, but not forever.
@@ -2704,6 +3039,22 @@ fn nothing_reached(event: Event, trace: &mut Trace) -> String {
     hook_json(
         event,
         &format!("diffctx: {range} reaches nothing outside the diff."),
+        false,
+    )
+}
+
+fn not_reviewed(event: Event, range: &str, why: Silence, trace: &mut Trace) -> String {
+    trace.noted = Some(why);
+    let how = match why {
+        "timeout" => "the review ran past the hook's deadline",
+        "retry-exhausted" => "earlier attempts at this change stopped at a limit",
+        _ => "the review failed",
+    };
+    hook_json(
+        event,
+        &format!(
+            "diffctx did not review {range}: {how}. Run `diffctx <repo> --diff {range} --mode impact` in that repository before going on."
+        ),
         false,
     )
 }
@@ -2762,9 +3113,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let session = file_safe(trace.session.as_deref());
     let line = format!(
         "{} {} {} {} {} {outcome} {}ms {} {}\n",
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs()),
+        now_secs(),
         if session.is_empty() { "-" } else { &session },
         event.name(),
         trace.verb.unwrap_or("-"),
@@ -2825,7 +3174,13 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
         Err(why) => why,
     };
     log_outcome(event, &trace, outcome, started.elapsed());
-    match (answer.ok(), upgrade_notice(trace.session.as_deref())) {
+    let session = trace.session.as_deref();
+    let answer = match (answer.ok(), pending_review(event, session, started)) {
+        (answer, None) => answer,
+        (None, late) => late,
+        (Some(answer), Some(late)) => joined(vec![late, answer]),
+    };
+    match (answer, upgrade_notice(session)) {
         (answer, None) => answer,
         (None, Some(notice)) => Some(hook_json(event, &notice, false)),
         (Some(answer), Some(notice)) => Some(with_notice(&answer, &notice)),

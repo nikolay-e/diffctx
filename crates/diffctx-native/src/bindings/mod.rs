@@ -199,7 +199,7 @@ impl<'a> Resolver<'a> {
     /// import of one stays unresolved there.
     fn real_path(&self, path: String) -> String {
         let at = crate::paths::repo_join(self.root, &path);
-        let linked = matches!(self.source, Source::WorkingTree)
+        let linked = matches!(self.source, Source::WorkingTree(_))
             && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink());
         if !linked {
             return path;

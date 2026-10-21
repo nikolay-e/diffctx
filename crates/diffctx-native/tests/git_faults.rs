@@ -8,14 +8,14 @@
 #![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::time::Duration;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
+use support::{claims, diffctx, git};
 
 const TIMEOUT_SECS: u64 = 3;
 /// The deadline for runs that must return the whole answer, where nothing
@@ -188,18 +188,6 @@ fn running(pid: &str) -> bool {
         .expect("ps");
     let stat = String::from_utf8_lossy(&out.stdout);
     !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
-}
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
 }
 
 fn fixture() -> Fixture {
@@ -486,8 +474,8 @@ fn withheld_change() -> Fixture {
 fn a_policy_the_deadline_left_unread_still_withholds() {
     let fx = withheld_change();
     for (mode, out) in [
-        ("impact", fx.impact("--diff-filter=R", "stall_before_read")),
-        ("pack", fx.pack("--diff-filter=R", "stall_before_read", &[])),
+        ("impact", fx.impact("--name-status", "stall_before_read")),
+        ("pack", fx.pack("--name-status", "stall_before_read", &[])),
     ] {
         let doc = json(&out).to_string();
         assert!(!doc.contains("vault.py"), "{mode}: {doc}");
@@ -495,24 +483,25 @@ fn a_policy_the_deadline_left_unread_still_withholds() {
     fx.assert_no_survivors();
 }
 
-/// git refusing to say whether this is a repository once the run is under
-/// way — dubious ownership, a broken config, git gone — leaves the policy
-/// unread just as the deadline does, and the path it withholds stays
-/// withheld.
+/// git refusing to list the policy — dubious ownership, a broken config,
+/// git gone — leaves it unread just as the deadline does, and the path it
+/// withholds stays withheld. The run asks once: whether it is a repository
+/// and what `.diffctx/ignore` declares are answers it keeps.
 #[test]
 fn a_policy_git_refused_to_read_still_withholds() {
+    let policy = ":(glob)**/.diffctx/ignore";
     for mode in ["impact", "pack"] {
         let fx = withheld_change();
         let out = if mode == "impact" {
-            fx.impact("--git-dir", "fail_after_first")
+            fx.impact(policy, "fail")
         } else {
-            fx.pack("--git-dir", "fail_after_first", &[])
+            fx.pack(policy, "fail", &[])
         };
         let doc = json(&out).to_string();
         assert!(!doc.contains("vault.py"), "{mode}: {doc}");
         let refusals = std::fs::read_to_string(fx.pids_file()).unwrap_or_default();
         assert!(
-            refusals.lines().count() > 1,
+            !refusals.trim().is_empty(),
             "{mode}: git never refused, the test measured nothing"
         );
     }
@@ -571,34 +560,6 @@ fn sweep_fixture() -> Fixture {
     }
     std::fs::write(repo.join("junk.py"), "def total():\n    return 0\n").unwrap();
     fx
-}
-
-/// What the run claims: the callers of each changed or removed symbol, and
-/// the lines still naming a deleted path.
-fn claims(doc: &serde_json::Value) -> Vec<String> {
-    let mut out: Vec<String> = doc["changed"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|c| {
-            let symbol = c["symbol"].as_str().unwrap_or("").to_string();
-            c["callers"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(move |k| format!("{symbol} <- {}", k["path"].as_str().unwrap_or("")))
-        })
-        .chain(
-            doc["stale_references"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|r| format!("stale {}", r["path"].as_str().unwrap_or(""))),
-        )
-        .collect();
-    out.sort();
-    out
 }
 
 /// Whether the run said it did not see everything.

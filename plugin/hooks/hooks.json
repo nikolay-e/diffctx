@@ -1,7 +1,18 @@
 {
-  "description": "Warms uv's cache with the pinned diffctx package at session start; once a git commit, merge, cherry-pick, revert or push has run, before a PR is created, and after a git diff, git status or a search for a name the pending change defines, hands Claude what the change reaches outside the diff",
+  "description": "Warms uv's cache with the pinned diffctx package at session start and tells each subagent the commands too; once git has recorded a commit or a push (whatever verb, alias or shell recorded it; a background line at the next event), before a PR is created, and after a git diff or git status, hands Claude what the change reaches outside the diff; after a search for a name, on any tree, where it is defined, who calls it and which tests reach them",
   "hooks": {
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/diffctx-session.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
       {
         "hooks": [
           {

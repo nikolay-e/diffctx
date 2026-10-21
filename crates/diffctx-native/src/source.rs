@@ -18,13 +18,24 @@ pub struct Snapshot {
     batch: Mutex<CatFileBatch>,
     /// The run this source serves, for the reads that fail.
     notes: std::sync::OnceLock<crate::resource::RunNotes>,
+    listed: Listed,
 }
 
-#[derive(Clone, Default)]
+/// The file list a source gave for a root, kept as long as the source: impact
+/// asked for it four times a run, each a walk of the repository.
+#[derive(Default)]
+pub struct Listed(std::sync::OnceLock<(PathBuf, Vec<String>)>);
+
+#[derive(Clone)]
 pub enum Source {
-    #[default]
-    WorkingTree,
+    WorkingTree(Arc<Listed>),
     Snapshot(Arc<Snapshot>),
+}
+
+impl Default for Source {
+    fn default() -> Self {
+        Self::WorkingTree(Arc::default())
+    }
 }
 
 /// One blob of a snapshot's listing, by absolute path.
@@ -41,12 +52,13 @@ impl Source {
             .map(git::split_diff_range)
             .and_then(|(_, head)| head);
         match head {
-            None => Ok(Self::WorkingTree),
+            None => Ok(Self::default()),
             Some(rev) => Ok(Self::Snapshot(Arc::new(Snapshot {
                 root: root.to_path_buf(),
                 rev,
                 batch: Mutex::new(CatFileBatch::new(root)?),
                 notes: std::sync::OnceLock::new(),
+                listed: Listed::default(),
             }))),
         }
     }
@@ -54,7 +66,7 @@ impl Source {
     /// The revision the current side is read at, `None` for the working tree.
     pub fn rev(&self) -> Option<&str> {
         match self {
-            Self::WorkingTree => None,
+            Self::WorkingTree(_) => None,
             Self::Snapshot(s) => Some(&s.rev),
         }
     }
@@ -71,7 +83,7 @@ impl Source {
     /// dropped imports and callers with no word in the answer (#408).
     pub fn read_bytes(&self, abs_path: &Path) -> Option<Vec<u8>> {
         match self {
-            Self::WorkingTree => match std::fs::read(abs_path) {
+            Self::WorkingTree(_) => match std::fs::read(abs_path) {
                 Ok(bytes) => Some(bytes),
                 Err(e)
                     if matches!(
@@ -118,13 +130,24 @@ impl Source {
     /// is an error: read as empty, or a snapshot read as the working tree,
     /// it made every caller in the missing files a clean zero.
     pub fn list_paths(&self, root: &Path) -> git::Result<Vec<String>> {
-        if let Some(blobs) = self.snapshot_blobs(&[]) {
-            return Ok(blobs?
+        let listed = match self {
+            Self::WorkingTree(listed) => listed.as_ref(),
+            Self::Snapshot(s) => &s.listed,
+        };
+        if let Some((at, paths)) = listed.0.get() {
+            if at == root {
+                return Ok(paths.clone());
+            }
+        }
+        let paths = match self.snapshot_blobs(&[]) {
+            Some(blobs) => blobs?
                 .into_iter()
                 .filter_map(|b| crate::pipeline::rel_path_string(root, &b.path))
-                .collect());
-        }
-        git::run_git_z(root, &["ls-files", "-co", "--exclude-standard", "-z"])
+                .collect(),
+            None => git::run_git_z(root, &["ls-files", "-co", "--exclude-standard", "-z"])?,
+        };
+        let _ = listed.0.set((root.to_path_buf(), paths.clone()));
+        Ok(paths)
     }
 
     /// Every blob of the snapshot under `scope`, symlinks and submodules

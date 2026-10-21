@@ -22,6 +22,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The plugin hook missed commits whose verb it did not list, and misread
+  whose movement it saw. It now records before any git line whose verb may
+  record, and reads what landed from git's reflog. That covers `git am`
+  (#607), an alias, and a git only `sh -c`, `bash -lc` or `$(…)` runs, in
+  the cwd's repository. Each repository the line records in is reviewed,
+  not only the first one that moved (#608). A push of one range to two
+  remotes is one review with no "not analysed" note (#608). A ref only
+  another session could have moved is not this line's: a commit line is
+  never answered with another checkout's push (#618). A `cd <repo> && git
+  commit` is never answered with what moved in the cwd's repository
+  meanwhile (#556). A line run in the background, whose `PostToolUse`
+  fires at launch, is reviewed at the session's next hook event, once
+  (#617). A git only the shell runs, that recorded nothing where the hook
+  looked, is said to be unread after it ran, not before.
+- A commit whose review timed out or failed got no word from the hook,
+  which read as a clean review. It now says which range was not reviewed
+  and the command to run (#612, #613).
+- Uncommitted work with untracked files was read as two trees. git grep
+  searched only tracked files, so a new untracked class whose untracked
+  test calls it read as "nothing calls them, no static test link". An
+  untracked script naming a deleted path was also no stale reference. The
+  working tree is now tracked plus unignored untracked files for every
+  reader (#625).
+- Impact answered a confident "0 callers" for what it never looked at. A
+  function only an `.astro` page calls, a module a CronWorkflow runs by
+  name, a name a template or config spells: none were searched, and the
+  zero read as a verdict. A zero now needs a witness. A changed definition
+  no traced caller reaches, whose name a file outside code spells, keeps
+  its row with "callers may be missing: named in `<file>:<line>` (a file
+  whose references are not traced)". A changed module named by its name in
+  a config or in another runtime's script is listed under "Named by path".
+  The header then reads "0 resolved caller(s) …, callers may be missing for
+  N symbol(s)", not a bare zero. A document mentioning a name is no reader,
+  and a name spelled in more than 12 such files is too common to count
+  (#505, #613).
+- A search for a name got an answer only when the pending change edited
+  that name, so on a clean tree, where most lookups happen, the hook said
+  nothing: 132 of 3,757 searches were answered in a week. A Bash or Grep
+  search for a name diffctx can define is now answered as `--symbol`
+  answers it (definition, callers, the tests that reach them), in at most
+  200 tokens, once per name in a session, and only when it resolved a
+  caller: a caller in a file no model reads would otherwise read as none
+  (#337, #483, #628).
+- Subagents never heard that diffctx was installed: the standing context
+  reached the root session only. The plugin now gives each subagent the
+  same line at `SubagentStart` (#543).
+- Under a tight budget, "Still naming a deleted or renamed path" was cut
+  to a bare count while routine callers printed in full, though those
+  entries were the answer's only definite defects. They now outlive every
+  caller row, and their first entries are kept (#600).
+- A capture, log or document over the size cap beside a code change made
+  the whole answer "partial; callers may be missing". A file outside code
+  holds no caller, so it is now named as not followed and the answer stays
+  whole. Without a language it is listed as "other", not "code" (#626).
 - Impact named a changed config, template, stylesheet, `requirements.txt`
   or `CMakeLists.txt` as reaching nothing: a file outside code was dropped
   from the answer when nothing named it by path, though nothing traced what
@@ -193,6 +247,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The weekly channel check names every release tag that `main` does not
   reach and every tag whose release is missing or a draft: a consumer pins
   the commit a tag first named, and a moved tag strands it (#500).
+- A removed definition's markdown row read like a live one: its range is in
+  the base file, so a reader found the next definition there and its caller
+  read as calling something still present. The CLI answer and the hook's
+  block now print `path::name (removed; was 5-6)` (#598).
 
 ## [1.19.1] - 2026-10-14
 

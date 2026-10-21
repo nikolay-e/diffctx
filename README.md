@@ -17,20 +17,58 @@ zero.
 
 ## Install
 
+diffctx is a command-line tool; the MCP server, the Claude Code plugin and the
+GitHub Action run the same engine.
+
+### CLI
+
 ```bash
-# Claude Code: the MCP server, /diffctx:impact, and hooks that run it on each commit and push
-claude plugin marketplace add nikolay-e/diffctx
-claude plugin install diffctx@diffctx
-
-# any MCP client
-claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
-
-# CLI, zero-install
-uvx diffctx . --diff HEAD~1
+uvx diffctx . --diff HEAD~1             # zero-install, run once via uv
+pipx install diffctx                    # isolated CLI
+pip install diffctx                     # into an active environment
+cargo install diffctx                   # native binary from crates.io, no Python
+npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
+docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
-pipx, pip, cargo, npm, Docker, Scoop, other MCP clients and the Python API:
+```powershell
+scoop bucket add diffctx https://github.com/nikolay-e/diffctx   # Windows
+scoop install diffctx/diffctx
+```
+
+The native binary — cargo, npm, Docker, Scoop and the
+[release archives](https://github.com/nikolay-e/diffctx/releases/latest) for
+Linux, macOS and Windows on x64 and ARM — answers `--diff` and `--symbol` in
+every mode; whole-tree export, Markdown packs, `diffctx graph` and the MCP
+server need the Python package.
+
+### Any MCP client
+
+Registered as `io.github.nikolay-e/diffctx`.
+
+```bash
+claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp
+```
+
+Cursor, VS Code, Claude Desktop, Windsurf, Zed, Continue and the Python API:
 [integrations](docs/product/integrations.md).
+
+### Claude Code plugin
+
+The MCP server plus `/diffctx:impact` and hooks that run it on each commit and
+push.
+
+```bash
+claude plugin marketplace add nikolay-e/diffctx
+claude plugin install diffctx@diffctx
+```
+
+### CI
+
+The [GitHub Action](docs/product/github-action.md) hands a pull request's diff
+context to any review step.
 
 ## Usage
 
@@ -63,7 +101,6 @@ the other two fit better: [COMPARISON.md](COMPARISON.md).
 - [Integrations](docs/product/integrations.md) — install, MCP clients, Python API
 - [FAQ](docs/product/faq.md) — heuristic or oracle, ignore rules, monorepos, secrets
 - [Token counting](docs/product/token-budget.md) — `--budget` for non-GPT models
-- [GitHub Action](docs/product/github-action.md) — diff context as a CI step
 - [Benchmarks](BENCHMARKS.md) and the [paper](https://doi.org/10.5281/zenodo.18824579)
 - [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 - [Parameter strategy](docs/engineering/parameter-strategy.md)

@@ -201,9 +201,11 @@ class TestPluginHook:
 
     def test_hooks_json_wires_the_session_start_and_impact_around_git(self):
         hooks = _load("plugin/hooks/hooks.json")["hooks"]
-        [start] = hooks["SessionStart"]
-        [session] = start["hooks"]
-        assert session["command"].endswith("/hooks/diffctx-session.sh")
+        # A subagent never sees the session's context, and does most of the lookups (#543).
+        for event in ("SessionStart", "SubagentStart"):
+            [start] = hooks[event]
+            [session] = start["hooks"]
+            assert session["command"].endswith("/hooks/diffctx-session.sh")
         # A line that exits non-zero comes as PostToolUseFailure, and its commit landed all the same (#532).
         for event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
             [entry] = hooks[event]

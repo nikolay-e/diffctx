@@ -174,6 +174,11 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
 
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
+        // A changed file the run found over its size cap is reported not
+        // analysed; reading and parsing it here anyway cost seconds per MB.
+        let too_large = ctx
+            .run
+            .limited_by(crate::resource::LimitReason::FileTooLarge);
         // Per changed file: the module name a reference would import it by,
         // and the names it defines. A file that carries both is a reference
         // however common the name; one that carries the name alone counts
@@ -185,8 +190,11 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
                 .and_then(|s| s.to_str())
                 .filter(|s| s.len() >= MIN_REVERSE_NAME_LEN)
                 .map(|s| s.to_lowercase());
-            let names: FxHashSet<String> = ctx
-                .read_file(path)
+            let names: FxHashSet<String> = Some(path)
+                .filter(|p| {
+                    !too_large.contains(&crate::paths::display_rel_or_abs(&ctx.root_dir, p))
+                })
+                .and_then(|p| ctx.read_file(p))
                 .map(|c| {
                     definition_names(&c)
                         .into_iter()
@@ -583,7 +591,7 @@ mod tests {
                 expansion_concepts: self.concepts.iter().map(|s| s.to_string()).collect(),
                 file_cache: FxHashMap::default(),
                 token_corpus,
-                source: crate::source::Source::WorkingTree,
+                source: crate::source::Source::default(),
                 run: crate::resource::RunContext::unbounded(),
             }
         }
@@ -931,7 +939,7 @@ mod tests {
                 .map(|(p, text)| (root.join(p), (*text).to_string()))
                 .collect(),
             token_corpus: OnceLock::new(),
-            source: crate::source::Source::WorkingTree,
+            source: crate::source::Source::default(),
             run: crate::resource::RunContext::unbounded(),
         };
         let (ready, unready) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));

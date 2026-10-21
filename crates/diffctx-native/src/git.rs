@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use wait_timeout::ChildExt;
 
 use crate::config::git::{self, GIT};
@@ -804,6 +804,10 @@ fn supervise_within(mut child: Child, limits: &ChildLimits) -> Result<std::proce
 /// `rev-parse` finish reported a perfectly good repo as not one, sending the
 /// reader after the wrong problem entirely.
 pub fn is_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
+    crate::resource::memoized("is_git_repo", path, || probe_git_repo(path))
+}
+
+fn probe_git_repo(path: &Path) -> std::result::Result<bool, GitError> {
     match run_git(path, &["rev-parse", "--git-dir"]) {
         Ok(_) => Ok(true),
         // git ran and said no: that is the one honest "false". Any other
@@ -1101,130 +1105,104 @@ pub fn run_git_z(repo_root: &Path, args: &[&str]) -> Result<Vec<String>> {
         .collect())
 }
 
-pub fn get_changed_files(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-) -> Result<Vec<PathBuf>> {
-    let args = diff_args(&["--name-only", "-M", "-z"], diff_range, pathspec)?;
-    let parts = run_git_z(repo_root, &args)?;
-    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
-    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
-    // entered the changed-file list under an absolute out-of-root path. That
-    // breaks three things at once — the path stops naming an object in the
-    // repository, the ignore and secret policies are then applied to the wrong
-    // name, and the working-tree line counter reads outside the checkout.
-    //
-    // Containment is checked lexically and NOT by canonicalising: these names
-    // need not exist on disk. A deleted file is gone by definition and a bare
-    // clone has no working tree, so an existence test empties both lists. The
-    // symlink itself is caught where the file is actually read.
-    Ok(parts
-        .iter()
-        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| crate::paths::repo_join(repo_root, p))
-        .collect())
+/// The names a diff touches, read from one `--name-status -M` listing: every
+/// changed path (a rename by its destination), the deletions, and the rename
+/// pairs. They were three listings, two of them run twice per run.
+#[derive(Default)]
+pub struct DiffNames {
+    pub changed: Vec<PathBuf>,
+    pub deleted: FxHashSet<PathBuf>,
+    renamed: Vec<(String, String)>,
 }
 
-pub fn get_deleted_files(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-) -> Result<FxHashSet<PathBuf>> {
-    let args = diff_args(
-        &["--diff-filter=D", "--name-only", "-M", "-z"],
-        diff_range,
-        pathspec,
-    )?;
-    let parts = run_git_z(repo_root, &args)?;
-    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
-    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
-    // entered the changed-file list under an absolute out-of-root path. That
-    // breaks three things at once — the path stops naming an object in the
-    // repository, the ignore and secret policies are then applied to the wrong
-    // name, and the working-tree line counter reads outside the checkout.
-    //
-    // Containment is checked lexically and NOT by canonicalising: these names
-    // need not exist on disk. A deleted file is gone by definition and a bare
-    // clone has no working tree, so an existence test empties both lists. The
-    // symlink itself is caught where the file is actually read.
-    Ok(parts
-        .iter()
-        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| crate::paths::repo_join(repo_root, p))
-        .collect())
+impl DiffNames {
+    /// Rename *source* paths, canonicalized. These no longer exist on disk and
+    /// cannot be fragmented, so the pipeline excludes them from the changed set.
+    /// The rename destinations need no special handling: they exist on HEAD and
+    /// reach the universe through the ordinary changed-file path.
+    pub fn renamed_sources(&self, repo_root: &Path) -> FxHashSet<PathBuf> {
+        self.renamed
+            .iter()
+            .map(|(old, _)| {
+                let joined = crate::paths::repo_join(repo_root, old);
+                dunce::canonicalize(&joined).unwrap_or(joined)
+            })
+            .collect()
+    }
+
+    /// Rename pairs as repo-relative display paths (`old -> new`), for the
+    /// output header: the pairing kept, nothing canonicalized (the old path no
+    /// longer exists on disk).
+    pub fn rename_pairs(&self) -> Vec<(String, String)> {
+        self.renamed
+            .iter()
+            .map(|(old, new)| {
+                (
+                    crate::paths::to_posix_display(std::borrow::Cow::Borrowed(old)),
+                    crate::paths::to_posix_display(std::borrow::Cow::Borrowed(new)),
+                )
+            })
+            .collect()
+    }
 }
 
-/// The `R` records of a rename-only diff, as raw `(old, new)` strings.
-///
-/// `--name-status -z` emits renames as `R<similarity>\0old\0new\0`, so the walk
-/// steps three fields per record and one otherwise. Both callers below ran their
-/// own copy of that walk; they disagreed on validation, one accepting a record
-/// whose destination was missing. A rename without a destination is not a
-/// rename, so the stricter reading is the one kept here.
-fn rename_records(
+pub fn diff_names(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
-) -> Result<Vec<(String, String)>> {
-    let args = diff_args(
-        &["--diff-filter=R", "--name-status", "-M", "-z"],
-        diff_range,
-        pathspec,
-    )?;
+) -> Result<DiffNames> {
+    let args = diff_args(&["--name-status", "-M", "-z"], diff_range, pathspec)?;
     let output = run_git(repo_root, &args)?;
     let parts: Vec<&str> = output.split('\0').collect();
-
-    let mut records = Vec::new();
+    // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
+    // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
+    // entered the changed-file list under an absolute out-of-root path. That
+    // breaks three things at once — the path stops naming an object in the
+    // repository, the ignore and secret policies are then applied to the wrong
+    // name, and the working-tree line counter reads outside the checkout.
+    //
+    // Containment is checked lexically and NOT by canonicalising: these names
+    // need not exist on disk. A deleted file is gone by definition and a bare
+    // clone has no working tree, so an existence test empties both lists. The
+    // symlink itself is caught where the file is actually read.
+    let inside = |p: &str| {
+        crate::paths::contains_lexically(Path::new(p))
+            .then(|| crate::paths::repo_join(repo_root, p))
+    };
+    let mut names = DiffNames::default();
     let mut i = 0;
     while i < parts.len() {
-        if parts[i].starts_with('R') {
-            if i + 2 < parts.len() && !parts[i + 1].is_empty() && !parts[i + 2].is_empty() {
-                records.push((parts[i + 1].to_string(), parts[i + 2].to_string()));
+        let status = parts[i];
+        if status.is_empty() {
+            i += 1;
+            continue;
+        }
+        // `R<similarity>\0old\0new` and `C…` carry two paths, every other
+        // status one; a rename without a destination is no rename.
+        if status.starts_with(['R', 'C']) {
+            let (old, new) = (
+                parts.get(i + 1).copied().unwrap_or(""),
+                parts.get(i + 2).copied().unwrap_or(""),
+            );
+            if !new.is_empty() {
+                names.changed.extend(inside(new));
+            }
+            if status.starts_with('R') && !old.is_empty() && !new.is_empty() {
+                names.renamed.push((old.to_string(), new.to_string()));
             }
             i += 3;
         } else {
-            i += 1;
+            if let Some(path) = parts.get(i + 1).filter(|p| !p.is_empty()) {
+                let joined = inside(path);
+                if status.starts_with('D') {
+                    names.deleted.extend(joined.clone());
+                }
+                names.changed.extend(joined);
+            }
+            i += 2;
         }
     }
-    Ok(records)
-}
-
-/// Rename *source* paths, canonicalized. These no longer exist on disk and
-/// cannot be fragmented, so the pipeline excludes them from the changed set.
-/// The rename destinations need no special handling: they exist on HEAD and
-/// reach the universe through the ordinary changed-file path.
-pub fn get_renamed_paths(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-) -> Result<FxHashSet<PathBuf>> {
-    Ok(rename_records(repo_root, diff_range, pathspec)?
-        .into_iter()
-        .map(|(old, _)| {
-            let joined = crate::paths::repo_join(repo_root, &old);
-            dunce::canonicalize(&joined).unwrap_or(joined)
-        })
-        .collect())
-}
-
-/// Rename pairs as repo-relative display paths (`old -> new`), for the output
-/// header. Unlike `get_renamed_paths` this preserves the pairing and does not
-/// canonicalize (the old path no longer exists on disk).
-pub fn get_rename_pairs(
-    repo_root: &Path,
-    diff_range: Option<&str>,
-    pathspec: &[String],
-) -> Result<Vec<(String, String)>> {
-    Ok(rename_records(repo_root, diff_range, pathspec)?
-        .into_iter()
-        .map(|(old, new)| {
-            (
-                crate::paths::to_posix_display(std::borrow::Cow::Owned(old)),
-                crate::paths::to_posix_display(std::borrow::Cow::Owned(new)),
-            )
-        })
-        .collect())
+    Ok(names)
 }
 
 /// `(base, head)` of a two-sided range; `(None, None)` for a single revision,
@@ -1292,7 +1270,8 @@ pub fn commit_messages(
     limit: usize,
     max_chars: usize,
 ) -> Vec<String> {
-    if validate_rev(base).is_err() || validate_rev(head).is_err() {
+    // `X..X` holds no commit: a working-tree diff asks it of `HEAD..HEAD`.
+    if base == head || validate_rev(base).is_err() || validate_rev(head).is_err() {
         return Vec::new();
     }
     let range = format!("{base}..{head}");
@@ -1319,7 +1298,7 @@ pub fn commit_messages(
 /// Commits in `base..head`: the list above stops at `limit`, and a reader
 /// told "20 commits" must learn when the range held more.
 pub fn commit_count(repo_root: &Path, base: &str, head: &str) -> usize {
-    if validate_rev(base).is_err() || validate_rev(head).is_err() {
+    if base == head || validate_rev(base).is_err() || validate_rev(head).is_err() {
         return 0;
     }
     let range = format!("{base}..{head}");
@@ -1371,6 +1350,34 @@ pub fn hash_object_paths(repo_root: &Path, paths: &[String]) -> Result<Vec<Strin
         return Err(GitError::CommandFailed("hash-object: short answer".into()));
     }
     Ok(oids)
+}
+
+/// The size of each blob `rev` holds at `paths`, from `ls-tree -l`: no body
+/// is read, and an argv command leaves a stalled child nothing to hold. A
+/// `cat-file --batch-check` stream here waited out the whole `--timeout` on a
+/// git that answered it with garbage. A path the revision lacks is absent.
+pub fn blob_sizes(repo_root: &Path, rev: &str, paths: &[String]) -> Result<FxHashMap<String, u64>> {
+    validate_rev(rev)?;
+    let mut sizes = FxHashMap::default();
+    // Chunked: Windows caps a command line at 32 K characters.
+    for chunk in paths.chunks(200) {
+        let mut args: Vec<&str> = vec!["ls-tree", "-l", "-z", rev, "--"];
+        args.extend(chunk.iter().map(String::as_str));
+        for record in run_git_z(repo_root, &args)? {
+            // `<mode> blob <oid> <size>\t<path>`
+            let Some((meta, path)) = record.split_once('\t') else {
+                continue;
+            };
+            let mut fields = meta.split_whitespace().skip(1);
+            if fields.next() != Some("blob") {
+                continue;
+            }
+            if let Some(size) = fields.nth(1).and_then(|s| s.parse().ok()) {
+                sizes.insert(path.to_string(), size);
+            }
+        }
+    }
+    Ok(sizes)
 }
 
 /// `git grep`'s stdout; exit 1 means "no match", which is an answer here,
@@ -1437,14 +1444,21 @@ pub fn grep_lines_matching(
 }
 
 /// `git grep -n -z` at `rev` as (repo-relative path, line, text), withheld
-/// files dropped.
+/// files dropped. The working tree is its tracked and unignored untracked
+/// files, as every other reader of it lists them: without `--untracked` a
+/// new file's own callers and tests were nowhere, and its definitions read
+/// as called by nothing (#625).
 fn grep_rows(
     repo_root: &Path,
     args: &[&str],
     rev: Option<&str>,
 ) -> Result<Grepped<(String, u32, String)>> {
     let prefix = rev.map(|r| format!("{r}:")).unwrap_or_default();
-    let rows = run_grep(repo_root, args)?
+    let mut args = args.to_vec();
+    if rev.is_none() {
+        args.insert(1, "--untracked");
+    }
+    let rows = run_grep(repo_root, &args)?
         .lines()
         .filter_map(|line| {
             let mut parts = line.splitn(3, '\0');
@@ -1788,6 +1802,17 @@ fn collect_diffctx_ignore_patterns(
     repo_root: &Path,
     scratch: Option<&Path>,
 ) -> Result<Vec<String>> {
+    // A scratch git dir is this call's own; a repository's policy is the
+    // run's, read once however many times the run asks.
+    match scratch {
+        None => crate::resource::memoized("diffctx_ignore", repo_root, || {
+            read_diffctx_ignore_patterns(repo_root, None)
+        }),
+        Some(_) => read_diffctx_ignore_patterns(repo_root, scratch),
+    }
+}
+
+fn read_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> Result<Vec<String>> {
     let mut args = scratch_git_args(scratch, repo_root);
     args.extend(
         [
@@ -2441,6 +2466,76 @@ mod tests {
         git(dir, &["config", "commit.gpgsign", "false"]);
     }
 
+    /// One `--name-status` listing answers what the three listings it
+    /// replaced answered, by git's own word on each: renames, deletions and
+    /// names a shell or a header would split.
+    #[test]
+    fn diff_names_answers_what_the_three_listings_did() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        init_git_repo(root);
+        let body = "line one\nline two\nline three\nline four\n";
+        let mut names = vec![
+            "kept.txt",
+            "moved.txt",
+            "gone.txt",
+            "a b.txt",
+            "ünï.txt",
+            "-dash.txt",
+        ];
+        // Windows refuses a tab in a file name.
+        if cfg!(unix) {
+            names.push("tab\there.txt");
+        }
+        for name in names {
+            fs::write(root.join(name), format!("{name}\n{body}")).unwrap();
+        }
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-q", "-m", "base"]);
+        fs::write(root.join("kept.txt"), "changed\n").unwrap();
+        git(root, &["mv", "moved.txt", "renamed.txt"]);
+        git(root, &["rm", "-q", "gone.txt", "--", "-dash.txt"]);
+        fs::write(root.join("a b.txt"), "changed too\n").unwrap();
+        fs::write(root.join("added.txt"), "new\n").unwrap();
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-q", "-m", "change"]);
+
+        let range = Some("HEAD~1..HEAD");
+        let listed = |extra: &[&str]| {
+            let args = diff_args(extra, range, &[]).unwrap();
+            run_git(root, &args).unwrap()
+        };
+        let names = diff_names(root, range, &[]).unwrap();
+        let joined = |s: &str| crate::paths::repo_join(root, s);
+
+        let name_only: Vec<PathBuf> = listed(&["--name-only", "-M", "-z"])
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(joined)
+            .collect();
+        assert_eq!(names.changed, name_only);
+
+        let deleted: FxHashSet<PathBuf> = listed(&["--diff-filter=D", "--name-only", "-M", "-z"])
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(joined)
+            .collect();
+        assert_eq!(names.deleted, deleted);
+        assert_eq!(deleted.len(), 2, "{deleted:?}");
+
+        let renames = listed(&["--diff-filter=R", "--name-status", "-M", "-z"]);
+        let fields: Vec<&str> = renames.split('\0').filter(|p| !p.is_empty()).collect();
+        let pairs: Vec<(String, String)> = fields
+            .chunks(3)
+            .map(|r| (r[1].to_string(), r[2].to_string()))
+            .collect();
+        assert_eq!(names.rename_pairs(), pairs);
+        assert_eq!(
+            pairs,
+            vec![("moved.txt".to_string(), "renamed.txt".to_string())]
+        );
+    }
+
     fn commit_all(dir: &Path, message: &str) {
         git(dir, &["add", "-A"]);
         git(dir, &["commit", "-q", "-m", message]);
@@ -2527,10 +2622,12 @@ mod tests {
             "hostile config changed the parsed hunk shape vs a clean-config repo"
         );
 
-        let clean_files =
-            get_changed_files(&clean_root, Some("HEAD~1..HEAD"), &[]).expect("clean changed files");
-        let hostile_files = get_changed_files(&hostile_root, Some("HEAD~1..HEAD"), &[])
-            .expect("hostile changed files");
+        let clean_files = diff_names(&clean_root, Some("HEAD~1..HEAD"), &[])
+            .expect("clean changed files")
+            .changed;
+        let hostile_files = diff_names(&hostile_root, Some("HEAD~1..HEAD"), &[])
+            .expect("hostile changed files")
+            .changed;
         assert!(
             !hostile_files.is_empty(),
             "hostile git config reduced changed_files to empty"

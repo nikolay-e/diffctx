@@ -3,30 +3,11 @@
 // someone remembered to poll.
 
 use std::path::Path;
-use std::process::Command;
 
 use tempfile::TempDir;
 
 mod support;
-use support::diffctx;
-
-fn git(repo: &Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-fn write(root: &Path, rel: &str, content: &str) {
-    let path = root.join(rel);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, content).unwrap();
-}
+use support::{diffctx, git, write};
 
 const CALLERS: usize = 12;
 
@@ -125,17 +106,16 @@ fn a_pack_run_stopped_at_any_poll_has_read_no_candidate_past_it() {
     expected.sort();
     assert_eq!(paths(&whole, "fragments"), expected, "{whole}");
     assert!(limits(&whole).is_empty(), "{whole}");
-    let mut n: u64 = 0;
-    loop {
-        let doc = run(repo, &args, Some(n));
+    let stopped = |doc: &serde_json::Value| limits(doc).iter().any(|r| r == "deadline");
+    for (n, doc) in support::sweep_polls(|n| run(repo, &args, Some(n)), |doc| !stopped(doc)) {
         let reasons = limits(&doc);
-        if !reasons.iter().any(|r| r == "deadline") {
+        if !stopped(&doc) {
             assert_eq!(
                 paths(&doc, "fragments"),
                 expected,
                 "poll {n}: a smaller answer that looks complete"
             );
-            break;
+            continue;
         }
         let read = doc["coverage"]["resources"]["candidate_files"]
             .as_u64()
@@ -156,8 +136,6 @@ fn a_pack_run_stopped_at_any_poll_has_read_no_candidate_past_it() {
                 .all(|p| expected.contains(p)),
             "poll {n}: a file outside the universe: {doc}"
         );
-        assert!(n < 5_000, "the run never finished");
-        n += 1;
     }
 }
 
@@ -170,20 +148,16 @@ fn a_locate_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
     let args = ["--diff", "HEAD~1..HEAD", "--mode", "locate"];
     let whole = paths(&run(repo, &args, None), "items");
     assert_eq!(whole.len(), CALLERS + 1, "{whole:?}");
-    let mut n: u64 = 0;
-    loop {
-        let doc = run(repo, &args, Some(n));
+    let stopped = |doc: &serde_json::Value| limits(doc).iter().any(|r| r == "deadline");
+    for (n, doc) in support::sweep_polls(|n| run(repo, &args, Some(n)), |doc| !stopped(doc)) {
         let got = paths(&doc, "items");
         assert!(
             got.iter().all(|p| whole.contains(p)),
             "poll {n}: a file outside the universe: {got:?}"
         );
-        if !limits(&doc).iter().any(|r| r == "deadline") {
+        if !stopped(&doc) {
             assert_eq!(got, whole, "poll {n}: a smaller answer that looks complete");
-            break;
         }
-        assert!(n < 5_000, "the run never finished");
-        n += 1;
     }
 }
 

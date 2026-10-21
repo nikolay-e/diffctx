@@ -60,7 +60,13 @@ pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
     display_rel(root, path).unwrap_or_else(|| to_posix_display(path.to_string_lossy()))
 }
 
-/// `path` if reading it stays inside `root`, `None` if it would escape.
+/// The root as `canonicalize` resolves it, once per run: every file read
+/// resolved it again (`fragmentation`), at up to a third of a run's CPU.
+pub(crate) fn canonical_root(root: &Path) -> Option<PathBuf> {
+    crate::resource::memoized("canonical_root", root, || dunce::canonicalize(root)).ok()
+}
+
+/// Whether reading a path stays inside `root`.
 ///
 /// The repository is the trust boundary: a tool that reads a stranger's
 /// checkout must not be walked out of it by a symlink the checkout contains.
@@ -78,14 +84,28 @@ pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
 /// existence are different questions, and answering the second one where the
 /// first was meant empties both lists.
 ///
-/// The path is returned **as given**, never canonicalised: the repo-relative
-/// name is what every downstream layer keys on (fragment ids, ignore rules,
-/// the secret policy), and substituting the link target renames the object
-/// mid-pipeline.
-pub(crate) fn resolve_within(root: &Path, path: &Path) -> Option<std::path::PathBuf> {
-    let root_canon = dunce::canonicalize(root).ok()?;
-    let canon = dunce::canonicalize(path).ok()?;
-    canon.starts_with(&root_canon).then(|| path.to_path_buf())
+/// The path itself is never rewritten: the repo-relative name is what every
+/// downstream layer keys on (fragment ids, ignore rules, the secret policy),
+/// and substituting the link target renames the object mid-pipeline.
+///
+/// One per walk, the root resolved once; every path is still resolved in
+/// full, so the guard is the one each path always had.
+pub(crate) struct Containment {
+    root: Option<PathBuf>,
+}
+
+impl Containment {
+    pub(crate) fn new(root: &Path) -> Self {
+        Self {
+            root: dunce::canonicalize(root).ok(),
+        }
+    }
+
+    pub(crate) fn contains(&self, path: &Path) -> bool {
+        self.root.as_ref().is_some_and(|root| {
+            dunce::canonicalize(path).is_ok_and(|canon| canon.starts_with(root))
+        })
+    }
 }
 
 /// Containment for a repo-relative name that need not exist on disk — what `git ls-files`,
@@ -95,7 +115,7 @@ pub(crate) fn resolve_within(root: &Path, path: &Path) -> Option<std::path::Path
 /// bare clone's tracked files answer the same as a present one.
 ///
 /// It cannot see a symlink — that is not its job. A working-tree name that
-/// passes here and is then READ goes through `resolve_within` at the point of
+/// passes here and is then READ goes through `Containment` at the point of
 /// the read.
 pub(crate) fn contains_lexically(relative: &Path) -> bool {
     use std::path::Component;
@@ -139,25 +159,23 @@ mod tests {
         std::fs::write(outside.join("secret.txt"), "LEAK\n").expect("write");
         std::fs::write(root.join("real.txt"), "ok\n").expect("write");
 
+        let within = Containment::new(&root);
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("escape.txt"))
                 .expect("symlink");
             std::os::unix::fs::symlink(&outside, root.join("escape_dir")).expect("symlink dir");
-            assert_eq!(resolve_within(&root, &root.join("escape.txt")), None);
+            std::os::unix::fs::symlink(root.join("real.txt"), root.join("inner_link.txt"))
+                .expect("symlink inside");
+            assert!(!within.contains(&root.join("escape.txt")));
             // A symlinked *directory* hides the escape one level up: the leaf
             // is an ordinary file, so only the canonical form catches it.
-            assert_eq!(
-                resolve_within(&root, &root.join("escape_dir").join("secret.txt")),
-                None
-            );
+            assert!(!within.contains(&root.join("escape_dir").join("secret.txt")));
+            assert!(within.contains(&root.join("inner_link.txt")));
         }
-        assert_eq!(
-            resolve_within(&root, &root.join("real.txt")),
-            Some(root.join("real.txt")),
-            "a real file inside the root keeps the name it was asked about"
-        );
-        assert_eq!(resolve_within(&root, &outside.join("secret.txt")), None);
+        assert!(within.contains(&root.join("real.txt")));
+        assert!(!within.contains(&root.join("missing.txt")));
+        assert!(!within.contains(&outside.join("secret.txt")));
     }
 
     #[test]

@@ -744,13 +744,9 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
         *fragmented.entry(rel(state, f.path())).or_default() |= f.kind.is_definition_kind();
     }
     let source = state.run.source();
-    let too_large: FxHashSet<String> = state
+    let too_large = state
         .run
-        .limited_files()
-        .into_iter()
-        .filter(|f| f.reason == crate::resource::LimitReason::FileTooLarge)
-        .map(|f| f.path)
-        .collect();
+        .limited_by(crate::resource::LimitReason::FileTooLarge);
     let layout: FxHashSet<&str> = state
         .change_classes
         .iter()
@@ -797,10 +793,18 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             // `changed`; a code file over the size cap or one that could not
             // be read was never analysed, and saying nothing made its callers
             // a clean zero. An empty file has nothing to analyse.
+            // Over the cap on either side: a head read in full still had its
+            // removals skipped when the base was too large to parse.
+            if too_large.contains(path) {
+                return Some(UnanalysedFile {
+                    path: path.clone(),
+                    language: crate::languages::get_language_for_file(path),
+                    reason: "too_large",
+                    lines: Vec::new(),
+                });
+            }
             let Some(&has_definition) = fragmented.get(path) else {
-                let reason = if too_large.contains(path) {
-                    "too_large"
-                } else if source.read_bytes(&state.root_dir.join(path)).is_none() {
+                let reason = if source.read_bytes(&state.root_dir.join(path)).is_none() {
                     "unreadable"
                 } else {
                     return None;
@@ -823,6 +827,21 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             })
         })
         .collect();
+    // A deleted file over the size cap had its removals skipped
+    // (`removed_by_models`): as unanalysed as a changed one, and never in
+    // `changed`.
+    out.extend(
+        state
+            .deleted_files
+            .iter()
+            .filter(|p| too_large.contains(*p) && !changed.contains(p))
+            .map(|p| UnanalysedFile {
+                path: p.clone(),
+                language: crate::languages::get_language_for_file(p),
+                reason: "too_large",
+                lines: Vec::new(),
+            }),
+    );
     out.sort_by(|a, b| {
         a.language
             .cmp(&b.language)
@@ -833,6 +852,178 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
 
 /// Files in view, other than the definition's own, that spell `name` but
 /// whose definitions were not all read: a caller there is not seen.
+/// Where a name is spelled outside the code impact traces: config, data,
+/// templates, markup, and, for a module's name, another runtime's scripts
+/// (`python -m controls.foo_check` in a CronWorkflow). A changed definition
+/// no traced caller reaches, but such a file names, is no "nothing calls
+/// it": a zero needs a witness that the name is read nowhere it went
+/// unsearched (#505).
+#[derive(Default)]
+struct UntracedNamers {
+    /// Each needle, by the lines naming it as a whole word.
+    rows: FxHashMap<String, Vec<(String, u32)>>,
+}
+
+/// A name spelled in more untraced files than this is a common word, not a
+/// reference: it witnesses nothing.
+const MAX_UNTRACED_NAMERS: usize = 12;
+
+/// Module names that say a file's role, not which file it is.
+const ROLE_STEMS: &str = "index main mod lib init __init__ __main__ app util utils helpers common core base types config settings test tests conftest setup";
+
+/// A name only code would spell: `foo_check`, `formatDate`, `LIMIT`, `v2`.
+/// A plain word (`naming`, `total`) is prose in a dataset or a paper as
+/// often as a reference, and witnesses nothing.
+fn distinctive(word: &str) -> bool {
+    let has = |f: fn(&char) -> bool| word.chars().any(|c| f(&c));
+    let shaped = word.contains('_')
+        || has(char::is_ascii_digit)
+        || (has(char::is_ascii_uppercase) && has(char::is_ascii_lowercase))
+        || !has(char::is_ascii_lowercase);
+    shaped
+        && word.chars().count() >= 4
+        && !word.chars().all(|c| c.is_ascii_digit() || c == '_')
+        && !crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
+        && !ROLE_STEMS.split(' ').any(|r| r == word)
+}
+
+fn module_stem(path: &str) -> Option<&str> {
+    Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| distinctive(s))
+}
+
+impl UntracedNamers {
+    fn build(state: &ScoredState, cores: &[&Fragment], diff_range: Option<&str>) -> Self {
+        let mut needles: Vec<String> = cores
+            .iter()
+            .filter_map(|c| c.symbol_name.as_deref().map(base_symbol))
+            .chain(cores.iter().filter_map(|c| module_stem(c.path())))
+            .filter(|w| distinctive(w))
+            .map(str::to_string)
+            .collect();
+        needles.sort();
+        needles.dedup();
+        if needles.is_empty() {
+            return Self::default();
+        }
+        let head = diff_range
+            .map(crate::git::split_diff_range)
+            .and_then(|(_, head)| head);
+        let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
+        let changed: FxHashSet<String> = state
+            .changed_files
+            .iter()
+            .map(|p| rel(state, &p.to_string_lossy()))
+            .collect();
+        let grepped = read_or_note(
+            state,
+            crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+        );
+        let mut rows: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
+        for (path, line, text) in &grepped.rows {
+            // A comment or a document mentions a name without reading it.
+            if changed.contains(path)
+                || is_document(path)
+                || matches!(
+                    extension(path).as_str(),
+                    "diff"
+                        | "patch"
+                        | "lock"
+                        | "tex"
+                        | "bib"
+                        | "txt"
+                        | "csv"
+                        | "tsv"
+                        | "log"
+                        | "svg"
+                )
+                || commented(text)
+            {
+                continue;
+            }
+            let mut seen: FxHashSet<&str> = FxHashSet::default();
+            for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
+                if wanted.contains(word) && seen.insert(word) {
+                    rows.entry(word.to_string())
+                        .or_default()
+                        .push((path.clone(), *line));
+                }
+            }
+        }
+        Self { rows }
+    }
+
+    /// The lines naming `word` in the files `admit` keeps, one per file;
+    /// none when the word is too common to witness anything.
+    fn naming(&self, word: &str, admit: impl Fn(&str) -> bool) -> Vec<(String, u32)> {
+        let mut by_path: Vec<(String, u32)> = Vec::new();
+        for (path, line) in self.rows.get(word).into_iter().flatten() {
+            if admit(path) && !by_path.iter().any(|(p, _)| p == path) {
+                by_path.push((path.clone(), *line));
+            }
+        }
+        if by_path.len() > MAX_UNTRACED_NAMERS {
+            return Vec::new();
+        }
+        by_path.sort();
+        by_path
+    }
+
+    /// The files outside code that spell `core`'s name.
+    fn of(&self, core: &Fragment) -> Vec<UnanalysedFile> {
+        let Some(name) = core.symbol_name.as_deref().map(base_symbol) else {
+            return Vec::new();
+        };
+        self.naming(name, |p| !is_code_file(p))
+            .into_iter()
+            .map(|(path, line)| UnanalysedFile {
+                language: crate::languages::get_language_for_file(&path),
+                path,
+                reason: "not_traced",
+                lines: vec![line],
+            })
+            .collect()
+    }
+
+    /// The lines naming a changed module by its name outside the code that
+    /// imports it: a config value, a `python -m pkg.mod` in another
+    /// runtime's script (#613). Named by path, a path's own spelling, is
+    /// already in `known`.
+    fn module_refs(
+        &self,
+        state: &ScoredState,
+        cores: &[&Fragment],
+        known: &[PathReference],
+    ) -> Vec<PathReference> {
+        let mut out: Vec<PathReference> = Vec::new();
+        let mut files: Vec<&str> = cores.iter().map(|c| c.path()).collect();
+        files.sort_unstable();
+        files.dedup();
+        for own in files {
+            let Some(stem) = module_stem(own) else {
+                continue;
+            };
+            let target = rel(state, own);
+            for (path, line) in self
+                .naming(stem, |p| !is_code_file(p) || !same_runtime(p, own))
+                .into_iter()
+                .take(MAX_NAMED_BY_PER_TARGET)
+            {
+                if !known.iter().any(|k| k.path == path && k.target == target) {
+                    out.push(PathReference {
+                        path,
+                        line,
+                        target: target.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
+}
+
 fn missed_namers(
     state: &ScoredState,
     files: &Files,
@@ -1177,15 +1368,58 @@ fn declaration_head(content: &str) -> String {
     head.join("\n")
 }
 
+/// The base revision's text of the files whose public signatures impact
+/// compares, read through one `cat-file --batch` and kept: the check of each
+/// public symbol ran `git show` of its whole file, the same few files again
+/// and again. Only a read that succeeded is kept, so a failure is met again
+/// as the first one was.
+struct BaseTexts<'a> {
+    root: &'a Path,
+    batch: std::cell::RefCell<Option<crate::git::CatFileBatch>>,
+    texts: std::cell::RefCell<FxHashMap<(String, String), std::rc::Rc<str>>>,
+}
+
+impl<'a> BaseTexts<'a> {
+    fn new(root: &'a Path) -> Self {
+        Self {
+            root,
+            batch: std::cell::RefCell::new(None),
+            texts: std::cell::RefCell::default(),
+        }
+    }
+
+    fn read(&self, rev: &str, rel_path: &str) -> crate::git::Result<std::rc::Rc<str>> {
+        let key = (rev.to_string(), rel_path.to_string());
+        if let Some(text) = self.texts.borrow().get(&key) {
+            return Ok(text.clone());
+        }
+        let mut batch = self.batch.borrow_mut();
+        if batch.is_none() {
+            *batch = Some(crate::git::CatFileBatch::new(self.root)?);
+        }
+        let text: std::rc::Rc<str> = batch
+            .as_mut()
+            .expect("opened above")
+            .get(rev, Path::new(rel_path))?
+            .into();
+        self.texts.borrow_mut().insert(key, text.clone());
+        Ok(text)
+    }
+}
+
 /// Whether an exported symbol's declaration moved: its head is looked for in
 /// the file at the base revision, whitespace-insensitively. A body-only edit
 /// is what the callers list already says, and a contracts section repeated
 /// on every refactor teaches the reader to skip it (#325). A file the base
 /// does not have is new, and every export in it is a new contract.
-fn signature_changed(state: &ScoredState, base: &str, core: &Fragment) -> bool {
+fn signature_changed(
+    state: &ScoredState,
+    base_texts: &BaseTexts,
+    base: &str,
+    core: &Fragment,
+) -> bool {
     let rel_path = rel(state, core.path());
-    let Ok(old) = crate::git::show_file_at_revision(&state.root_dir, base, Path::new(&rel_path))
-    else {
+    let Ok(old) = base_texts.read(base, &rel_path) else {
         return true;
     };
     let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -2135,6 +2369,7 @@ pub fn build_impact(
     let analysed = state.analysed_range.as_deref().or(diff_range);
     let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
     let base = base_revision(analysed);
+    let base_texts = BaseTexts::new(&state.root_dir);
 
     let mut changed: Vec<ChangedSymbol> = Vec::new();
     // Schema changes first, then the public symbols something calls, then
@@ -2387,6 +2622,11 @@ pub fn build_impact(
     let inside_the_diff = |id: &FragmentId| {
         (state.core_ids.contains(id) && !bordering.contains(id))
             || (query.is_none() && in_a_hunk(id))
+    };
+    let untraced = if query.is_none() {
+        UntracedNamers::build(state, &cores, diff_range)
+    } else {
+        UntracedNamers::default()
     };
     drop(setup);
     let callers = crate::profile::phase("impact.callers");
@@ -2938,7 +3178,7 @@ pub fn build_impact(
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
                     && lang::rust::module_is_public(&state.run.source(), core.path())
-                    && signature_changed(state, &base, core)
+                    && signature_changed(state, &base_texts, &base, core)
             }
         };
         // A test's declarations are no API: nothing but its runner calls
@@ -3014,12 +3254,23 @@ pub fn build_impact(
         let model_def = registry
             .for_path(core.path())
             .and_then(|m| Some((m, definition(m, core)?)));
-        let missed_in: Vec<UnanalysedFile> = symbol
+        let mut missed_in: Vec<UnanalysedFile> = symbol
             .map(|s| missed_namers(state, &files, &registry, s, core.path()))
             .unwrap_or_default()
             .into_iter()
             .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
             .collect();
+        if callers.is_empty()
+            && compatible_callers == 0
+            && unresolved.is_none()
+            && missed_in.is_empty()
+        {
+            missed_in = untraced
+                .of(core)
+                .into_iter()
+                .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
+                .collect();
+        }
         if callers.is_empty()
             && compatible_callers == 0
             && commits < 2
@@ -3177,7 +3428,10 @@ pub fn build_impact(
     };
     let (named_by, named_by_omitted) = if query.is_none() {
         let _named = crate::profile::phase("impact.named_by");
-        named_by_path(state, analysed)
+        let (mut named, omitted) = named_by_path(state, analysed);
+        let by_module = untraced.module_refs(state, &cores, &named);
+        named.extend(by_module);
+        (named, omitted)
     } else {
         (Vec::new(), 0)
     };
@@ -3192,9 +3446,13 @@ pub fn build_impact(
         Vec::new()
     };
     // Read after the last phase that can stop: a deadline the stale-reference
-    // search hit was missing from an answer that had dropped its lines.
-    let (mut limits, _, _) =
-        crate::resource::classify_limits(&state.run, &[], &|p| changed_set.contains(p));
+    // search hit was missing from an answer that had dropped its lines. A
+    // changed file outside code holds no definition and calls nothing: one
+    // over the cap is named in `unanalysed`, and no caller is missing for it
+    // (#626).
+    let (mut limits, _, _) = crate::resource::classify_limits(&state.run, &[], &|p| {
+        changed_set.contains(p) && (is_code_file(p) || Path::new(p).extension().is_none())
+    });
     // A changed file cut to the fragment cap keeps every fragment the diff
     // touched: pack loses context there, impact loses no changed definition,
     // and the cap fires on most large files (#306).
@@ -3309,10 +3567,18 @@ fn removed_by_models(
         .iter()
         .map(|(old, new)| (new.as_str(), old.as_str()))
         .collect();
+    // A side over the size cap is not analysed, as fragmentation decided for
+    // the head; parsing it here anyway cost seconds per MB. Its removals go
+    // unread and the file is named not analysed (`unanalysed_files`).
+    let cap = crate::config::limits::LIMITS.max_changed_file_size as u64;
+    let head_too_large = state
+        .run
+        .limited_by(crate::resource::LimitReason::FileTooLarge);
     let pairs: Vec<(String, Option<String>)> = state
         .changed_files
         .iter()
         .map(|p| rel(state, &p.to_string_lossy()))
+        .filter(|p| !head_too_large.contains(p))
         .map(|p| {
             let old = renamed_to
                 .get(p.as_str())
@@ -3320,6 +3586,22 @@ fn removed_by_models(
             (old, Some(p))
         })
         .chain(state.deleted_files.iter().map(|p| (p.clone(), None)))
+        .collect();
+    let old_paths: Vec<String> = pairs.iter().map(|(old, _)| old.clone()).collect();
+    let base_sizes = crate::git::blob_sizes(&state.root_dir, base, &old_paths).unwrap_or_default();
+    let pairs: Vec<(String, Option<String>)> = pairs
+        .into_iter()
+        .filter(|(old, new)| {
+            let over = base_sizes.get(old).is_some_and(|size| *size > cap);
+            if over {
+                // Named where its removals are reported: the head's path.
+                let named = new.clone().unwrap_or_else(|| old.clone());
+                state
+                    .run
+                    .note_file(crate::resource::LimitReason::FileTooLarge, named);
+            }
+            !over
+        })
         .collect();
     let removed: Vec<(&dyn LanguageFacts, lang::RemovedDef)> = registry
         .models()
@@ -4321,10 +4603,6 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.contracts_omitted += 1;
         return true;
     }
-    if output.stale_references.pop().is_some() {
-        output.stale_references_omitted += 1;
-        return true;
-    }
     // A symbol whose callers could not be resolved says so to the last:
     // dropping it would turn "unknown" into "nothing".
     if let Some(i) = output
@@ -4336,7 +4614,17 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.symbols_omitted += 1;
         return true;
     }
-    shed_weakest_caller(output)
+    if shed_weakest_caller(output) {
+        return true;
+    }
+    // A file still naming a deleted or renamed path is a defect, not a
+    // caller to check: it outlives every caller row, first entries kept
+    // (#600).
+    if output.stale_references.pop().is_some() {
+        output.stale_references_omitted += 1;
+        return true;
+    }
+    false
 }
 
 fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
@@ -4580,10 +4868,28 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
         .iter()
         .filter(|c| c.unresolved.is_some())
         .count();
+    // A symbol no resolved caller reaches but a file nothing traced names is
+    // no zero: the header says so where the reader looks first (#505).
+    let hedged = output
+        .changed
+        .iter()
+        .filter(|c| {
+            c.unresolved.is_none()
+                && c.callers.is_empty()
+                && c.compatible_callers == 0
+                && !c.missed_in.is_empty()
+        })
+        .count();
     let mut phrase = if callers == 0 && unresolved > 0 && unresolved == output.changed.len() {
         "callers unresolved".to_string()
     } else {
-        let mut p = format!("{callers} caller(s){scope}");
+        let mut p = if hedged > 0 {
+            format!(
+                "{callers} resolved caller(s){scope}, callers may be missing for {hedged} symbol(s)"
+            )
+        } else {
+            format!("{callers} caller(s){scope}")
+        };
         if unresolved > 0 {
             p.push_str(&format!(", callers unresolved for {unresolved} symbol(s)"));
         }
@@ -4633,10 +4939,16 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
                 } else {
                     format!(" ({why})")
                 };
+                // A file outside code with no language is no code (#626).
+                let kind = if reason == "content_untraced" {
+                    "other"
+                } else {
+                    "code"
+                };
                 format!(
                     "{} {}{why}: {examples}{rest}",
                     paths.len(),
-                    language.unwrap_or("code"),
+                    language.unwrap_or(kind),
                 )
             })
             .collect();
@@ -4844,10 +5156,16 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     } else {
         String::new()
     };
+    // A removed definition's range is on the base side, not in the head file.
+    let lines = if sym.kind == "removed" {
+        format!("removed; was {}", sym.lines)
+    } else {
+        sym.lines.clone()
+    };
     let _ = writeln!(
         out,
         "- {}{commits}{}",
-        label(&sym.path, sym.symbol.as_deref(), &sym.lines),
+        label(&sym.path, sym.symbol.as_deref(), &lines),
         if sym.untested && tests_known {
             " — no static test link"
         } else {

@@ -246,11 +246,15 @@ def test_the_session_context_says_a_silent_commit_is_no_clean_result(tmp_path, b
     stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
     env = {"HOME": str(tmp_path), "PATH": f"{stub.parent}:/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": str(PROJECT_ROOT / "plugin")}
-    result = subprocess.run([bash, str(SESSION_SCRIPT)], capture_output=True, text=True, env=env, timeout=60)
-    assert result.returncode == 0, result.stderr
-    context = _context(result.stdout)
-    assert "a commit with no diffctx block is not a clean result" in context
-    assert re.search(r"run: uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
+    # A subagent gets the same line under its own event (#543).
+    for event in ("SessionStart", "SubagentStart"):
+        stdin = json.dumps({"hook_event_name": event, "session_id": "s1", "agent_type": "Explore"})
+        result = subprocess.run([bash, str(SESSION_SCRIPT)], input=stdin, capture_output=True, text=True, env=env, timeout=60)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)["hookSpecificOutput"]["hookEventName"] == event
+        context = _context(result.stdout)
+        assert "a commit with no diffctx block is not a clean result" in context
+        assert re.search(r"run: uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
 
 
 def _search(repo: Path, tool: str, query: str, session: str = "s1") -> str:
@@ -274,17 +278,20 @@ def test_a_search_for_a_changed_name_hears_its_callers_once(tmp_path, pending_ch
     assert [line.split()[5] for line in log] == ["shown", "seen"]
 
 
-def test_a_search_answers_only_a_changed_name_on_a_pending_change(tmp_path, pending_change):
+def test_a_search_for_a_defined_name_is_answered_on_any_tree(tmp_path, pending_change):
+    # #628: a name the change does not edit, and any name on a clean tree, is
+    # answered as `--symbol` answers it; a filter over another command's
+    # output is no search.
     unrelated = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn charge ."))
     assert unrelated.returncode == 0, unrelated.stderr
-    assert unrelated.stdout == ""
+    assert unrelated.stdout == "", "charge has no caller to resolve, and no zero is asserted"
     filtered = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "cat shop/pricing.py | grep total"))
     assert filtered.stdout == ""
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
     clean = _hook(tmp_path, ["posttooluse"], _search(pending_change, "Bash", "grep -rn total ."))
-    assert clean.stdout == ""
+    assert "shop/checkout.py::charge" in _context(clean.stdout)
     outcomes = [line.split()[5] for line in (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text().splitlines()]
-    assert outcomes == ["no-symbol", "no-trigger", "clean"]
+    assert outcomes == ["empty", "no-trigger", "shown"]
 
 
 def test_a_changed_name_nothing_calls_is_said_in_one_line(tmp_path, pending_change):
@@ -301,7 +308,7 @@ def test_a_changed_name_nothing_calls_is_said_in_one_line(tmp_path, pending_chan
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
 @pytest.mark.parametrize("bash", _bashes())
-def test_the_plugin_script_launches_on_a_search_only_over_a_pending_change(tmp_path, pending_change, bash):
+def test_the_plugin_script_launches_on_a_search_in_a_repository(tmp_path, pending_change, bash):
     calls = tmp_path / "calls"
     launcher = tmp_path / "diffctx"
     launcher.write_text(f'#!/bin/sh\necho >> "{calls}"\nexec "{sys.executable}" -m diffctx "$@"\n', encoding="utf-8")
@@ -338,9 +345,47 @@ def test_the_plugin_script_launches_on_a_search_only_over_a_pending_change(tmp_p
     assert "shop/checkout.py::charge" in _context(run(json.dumps(elsewhere)))
     assert run(_search(pending_change, "Bash", "ls | grep total")) == ""
     assert calls.read_text().count("\n") == 5
+    # A clean tree is searched too (#628); a directory outside git launches nothing.
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
-    assert run(_search(pending_change, "Bash", "grep -rn total .")) == ""
-    assert calls.read_text().count("\n") == 5, "a clean tree launches nothing"
+    assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Bash", "grep -rn total .", session="s6")))
+    assert calls.read_text().count("\n") == 6
+    outside = json.loads(_search(pending_change, "Bash", "grep -rn total .", session="s7"))
+    outside["cwd"] = str(tmp_path)
+    assert run(json.dumps(outside)) == ""
+    assert calls.read_text().count("\n") == 6, "outside a repository nothing launches"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_a_session_waiting_on_a_background_line_launches_on_any_event(tmp_path, pending_change, bash):
+    # A background line's review comes at the session's next event, which
+    # need not name git (#617).
+    calls = tmp_path / "calls"
+    launcher = tmp_path / "diffctx"
+    launcher.write_text(f'#!/bin/sh\necho >> "{calls}"\ncat >/dev/null\n', encoding="utf-8")
+    launcher.chmod(0o755)
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
+        "DIFFCTX_HOOK_BIN": str(launcher),
+    }
+    event = json.loads(_event(pending_change, "PreToolUse", "ls"))
+    event["session_id"] = "s7"
+
+    def run() -> None:
+        result = subprocess.run(
+            [bash, str(IMPACT_SCRIPT)], input=json.dumps(event), capture_output=True, text=True, env=env, timeout=60
+        )
+        assert result.returncode == 0, result.stderr
+
+    run()
+    assert not calls.exists(), "nothing waits: a line without git launches nothing"
+    seen = tmp_path / "cache" / "diffctx" / "seen"
+    seen.mkdir(parents=True)
+    (seen / "pending.s7").write_text("[]", encoding="utf-8")
+    run()
+    assert calls.read_text().count("\n") == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")

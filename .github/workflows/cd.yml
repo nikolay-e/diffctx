@@ -389,7 +389,7 @@ jobs:
           # Inside the manylinux container every interpreter is python3.X;
           # on a host setup-python's default (3.12, listed last) is `python`.
           args: >-
-            --release --out dist -i python3.14t
+            --release --locked --out dist -i python3.14t
             -i ${{ matrix.manylinux != 'off' && 'python3.12' || 'python' }}
           rust-toolchain: '1.92.0'
           docker-options: -e DIFFCTX_BUILD_SHA

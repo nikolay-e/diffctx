@@ -92,7 +92,7 @@ pub fn build_diff_context_in_memory(
         expansion_concepts,
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
-        source: crate::source::Source::WorkingTree,
+        source: crate::source::Source::default(),
         run: crate::resource::RunContext::unbounded(),
     };
     let (discovered, _attribution) =

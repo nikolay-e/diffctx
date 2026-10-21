@@ -17,19 +17,22 @@ Setup, suite shape and the per-case YAML corpus gate
 (`crates/diffctx-native/tests/known_below_threshold.txt`, bidirectional: a
 listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 
-## History is append-only
+## History reads as epochs
 
-`main` is never rewritten: forks, contributors' pull requests, release tags and
-the provenance of published wheels all name its commits, and a rewrite hides
-nothing — every pushed commit stays reachable through pull-request refs and
-forks. The maintainers' work reaches `main` one epoch at a time; until then it
-is a single commit on `next` above `main`, never a pile of agent commits.
-`scripts/epoch-push.sh` folds local commits into it and pushes `next` (the open
-epoch PR runs CI and the review context); `scripts/epoch-push.sh land`
-fast-forwards `main` once the epoch is done. A contributor's commit lands on
-`main` as itself — never folded, amended or restamped: the open epoch lands
-first and their commit goes on top of it, keeping its author and date.
-Dependency bumps land on `main` and the epoch rebases over them.
+`main` is a sequence of epochs — one commit per coherent chunk of the
+maintainers' work — and the contributors' commits between them, never a pile of
+agent commits. The maintainers' work reaches `main` one epoch at a time; until
+then it is a single commit on `next` above `main`. `scripts/epoch-push.sh` folds
+local commits into it and pushes `next` (the open epoch PR runs CI and the
+review context); `scripts/epoch-push.sh land` fast-forwards `main` once the
+epoch is done. Maintainer commits that reached `main` one by one are squashed
+into one epoch there: a bundle backup first, a force-push with a lease to both
+remotes. The squash stops at the last release tag and at any commit that
+carries someone else's work, as its author or a `Co-authored-by` trailer: it
+lands on `main` as itself — never folded, amended or restamped, keeping its
+author and dates — and release tags name what the published wheels were built
+from. Dependency bumps land on `main` and the
+epoch rebases over them.
 
 ## Output-changing changes are judged by correctness
 

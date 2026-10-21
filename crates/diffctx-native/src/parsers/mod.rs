@@ -86,6 +86,7 @@ pub fn unanalysed_text(reason: &str) -> &'static str {
         "embedded_code" => "its embedded code is not analysed",
         "unreadable" => "could not be read",
         "content_untraced" => "what reads its content is not traced",
+        "not_traced" => "a file whose references are not traced",
         _ => "parse failed",
     }
 }
