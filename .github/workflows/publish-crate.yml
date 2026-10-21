@@ -80,7 +80,9 @@ jobs:
             echo "diffctx $VERSION never became installable"; exit 1
           fi
           BIN="$RUNNER_TEMP/crate/bin/diffctx"
-          "$BIN" --version | grep -qx "diffctx ${VERSION}"
+          # cargo builds it on the installing machine, not this pipeline, so
+          # it says it is a source build (#570), like a pip install of the sdist.
+          "$BIN" --version | grep -qx "diffctx ${VERSION}+source"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
