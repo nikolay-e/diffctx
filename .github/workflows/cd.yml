@@ -502,7 +502,9 @@ jobs:
           python -m venv "${RUNNER_TEMP}/sdist-smoke"
           bin="${RUNNER_TEMP}/sdist-smoke/bin"
           "$bin/python" -m pip install --quiet --disable-pip-version-check ./repo/dist/*.tar.gz
-          "$bin/diffctx" --version | grep -qx "diffctx $(cut -d'"' -f2 ./repo/src/diffctx/version.py)"
+          # Built on the installing machine, not by this pipeline, so it says
+          # it is a source build (#570); the wheels and binaries carry the SHA.
+          "$bin/diffctx" --version | grep -qx "diffctx $(cut -d'"' -f2 ./repo/src/diffctx/version.py)+source"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
