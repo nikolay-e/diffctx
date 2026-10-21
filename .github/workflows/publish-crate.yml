@@ -53,11 +53,20 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18  # v1.0.5
 
+      # A re-run after the crate is up (a smoke that failed afterwards, as
+      # 1.20.0's did) publishes nothing and goes on to the smoke, like PyPI's
+      # skip-existing; cargo publish would refuse the version outright.
       - name: Publish
         working-directory: ./crates/diffctx-native
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked
+          VERSION: ${{ inputs.version }}
+        run: |
+          if curl -fsS -A release-check "https://crates.io/api/v1/crates/diffctx/${VERSION}" > /dev/null; then
+            echo "diffctx ${VERSION} is already on crates.io"
+          else
+            cargo publish --locked
+          fi
 
       # README's `cargo install diffctx` was never run against the registry:
       # a crate that publishes but does not build from its packaged form (a
