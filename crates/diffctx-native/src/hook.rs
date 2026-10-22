@@ -2750,13 +2750,27 @@ fn searched(payload: &serde_json::Value) -> Option<Searched> {
         .map(|p| join_dir(dir.as_deref(), p))
         .collect();
     Some(Searched {
-        dir: paths.first().cloned().or(dir),
+        dir: paths
+            .first()
+            .map(|p| match p.contains(['*', '?', '[']) {
+                true => before_glob(Path::new(p)).to_string_lossy().into_owned(),
+                false => p.clone(),
+            })
+            .or(dir),
         paths,
         pattern: args.pattern,
         inverted: args.inverted,
         revisions: args.revisions,
         found,
     })
+}
+
+/// A glob searches the directory it starts in (`src/*.rs`, `-- '*.py'`):
+/// read as a directory, it named no repository and the search went unanswered.
+fn before_glob(path: &Path) -> PathBuf {
+    path.components()
+        .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
+        .collect()
 }
 
 /// The files a search's output names at the head of its lines
@@ -2810,11 +2824,7 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
         .iter()
         .flat_map(|cwd| looked.iter().map(move |p| resolve_dir(cwd, *p)))
         .filter_map(|p| {
-            // A glob searches the directory it starts in (`-- '*.py'`).
-            let p: PathBuf = p
-                .components()
-                .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
-                .collect();
+            let p = before_glob(&p);
             let p = dunce::canonicalize(&p).unwrap_or(p);
             let rel = p.strip_prefix(&root).ok()?;
             Some(rel.to_string_lossy().replace('\\', "/"))

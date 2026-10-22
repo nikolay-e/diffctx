@@ -1435,6 +1435,9 @@ fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
     let scoped = context_of(&search("grep -n restock legacy/stock.py"));
     assert!(scoped.contains("legacy/stock.py::rerun"), "{scoped}");
     assert!(!scoped.contains("shop/shelf.py"), "{scoped}");
+    // A glob path searches the directory it starts in.
+    let globbed = context_of(&search("grep -n restock shop/*.py"));
+    assert!(globbed.contains("shop/shelf.py::refill"), "{globbed}");
     let docs = context_of(&search("grep -rn restock ."));
     assert!(docs.contains("shop/shelf.py::refill"), "{docs}");
     for query in [
