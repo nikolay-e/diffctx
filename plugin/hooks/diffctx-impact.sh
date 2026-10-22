@@ -61,7 +61,7 @@ esac
 # plugin (#524). The release rewrites it with the launch's literal below,
 # which stays written out in the command because the plugin directory
 # requires it. Not named `pin` (#565).
-spec="diffctx[mcp]==1.19.1"
+spec="diffctx[mcp]==1.20.0"
 
 # The binary logs every run it gets (#338); a launch that never reached it
 # is logged here, or an audit could not tell it from a hook with nothing to say.
@@ -90,7 +90,7 @@ else
     log_failure no-uvx
     exit 0
   }
-  launch=(uvx -q --offline "diffctx[mcp]==1.19.1")
+  launch=(uvx -q --offline "diffctx[mcp]==1.20.0")
 fi
 
 # A release without the subcommand, or a cache uv has not filled yet, exits
