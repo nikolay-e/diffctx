@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A search over a glob path (`grep -n 'fn total' src/*.rs`) got no answer: the
+  hook looked for a repository at `src/*.rs`. A glob now searches the directory
+  it starts in, as a path search does.
+
 ## [1.20.0] - 2026-10-22
 
 ### Changed
