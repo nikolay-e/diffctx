@@ -759,6 +759,16 @@ fn pattern_names(pattern: &str) -> Vec<String> {
     names
 }
 
+/// A pattern that is one identifier and nothing else, with or without word
+/// anchors (`\b`): no alternation, no regex metacharacter.
+fn is_lookup_pattern(pattern: &str) -> bool {
+    let bare = pattern
+        .trim()
+        .trim_start_matches("\\b")
+        .trim_end_matches("\\b");
+    !bare.is_empty() && bare.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
 /// A directory only the shell could expand: a variable, a command
 /// substitution, another user's home (`~user`).
 /// `$NAME` and `${NAME}` replaced by what the line set them to; any other
@@ -2673,24 +2683,52 @@ fn impact_context(
     }
     output.range_name = range_name(trigger, range);
     let partial = !output.limits.is_empty();
-    // With no caller listed, what is left to check is a contract or an
-    // untested definition, not a caller (#463).
-    let check = if output.changed.iter().any(|c| !c.callers.is_empty()) {
-        "Check these callers"
-    } else {
-        "Check these"
-    };
+    let check = what_to_check(&output, hedge.is_some());
     let text = crate::impact::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
     let headline = text.lines().next().unwrap_or_default().to_string();
     Ok(Answer {
         context: format!(
-            "{} What it reaches outside the diff:\n{text}\n{}{check} before going on, or tell the user why they are unaffected.",
+            "{} What it reaches outside the diff:\n{text}\n{}{}",
             lead_of(event, trigger),
             hedge.map(|h| format!("{h}\n")).unwrap_or_default(),
+            check
+                .map(|c| format!(
+                    "Check {c} before going on, or tell the user why they are unaffected."
+                ))
+                .unwrap_or_default(),
         ),
         headline,
         partial,
     })
+}
+
+/// What in a review a reader must act on, named; `None` when every row is
+/// context — a caller a test reaches, a config naming the file — and a
+/// constant "check these" under it taught skipping the block (#656).
+fn what_to_check(output: &crate::impact::ImpactOutput, hedged: bool) -> Option<String> {
+    let untested = output
+        .changed
+        .iter()
+        .flat_map(|c| &c.callers)
+        .filter(|c| crate::impact::without_test_link(c))
+        .count()
+        + output.truncated_untested;
+    let mut parts: Vec<String> = Vec::new();
+    if untested > 0 {
+        parts.push(format!(
+            "the {untested} caller(s) no static test link reaches"
+        ));
+    }
+    if !output.stale_references.is_empty() || output.stale_references_omitted > 0 {
+        parts.push("the lines still naming a removed path".to_string());
+    }
+    if !output.contracts.is_empty() || output.contracts_omitted > 0 {
+        parts.push("the changed contract(s)".to_string());
+    }
+    if hedged && parts.is_empty() {
+        parts.push("the files read as committed".to_string());
+    }
+    (!parts.is_empty()).then(|| parts.join(" and "))
 }
 
 /// A text search the agent ran: a Bash grep/rg/ag/`git grep`, or the Grep
@@ -2750,13 +2788,27 @@ fn searched(payload: &serde_json::Value) -> Option<Searched> {
         .map(|p| join_dir(dir.as_deref(), p))
         .collect();
     Some(Searched {
-        dir: paths.first().cloned().or(dir),
+        dir: paths
+            .first()
+            .map(|p| match p.contains(['*', '?', '[']) {
+                true => before_glob(Path::new(p)).to_string_lossy().into_owned(),
+                false => p.clone(),
+            })
+            .or(dir),
         paths,
         pattern: args.pattern,
         inverted: args.inverted,
         revisions: args.revisions,
         found,
     })
+}
+
+/// A glob searches the directory it starts in (`src/*.rs`, `-- '*.py'`):
+/// read as a directory, it named no repository and the search went unanswered.
+fn before_glob(path: &Path) -> PathBuf {
+    path.components()
+        .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
+        .collect()
 }
 
 /// The files a search's output names at the head of its lines
@@ -2810,11 +2862,7 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
         .iter()
         .flat_map(|cwd| looked.iter().map(move |p| resolve_dir(cwd, *p)))
         .filter_map(|p| {
-            // A glob searches the directory it starts in (`-- '*.py'`).
-            let p: PathBuf = p
-                .components()
-                .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
-                .collect();
+            let p = before_glob(&p);
             let p = dunce::canonicalize(&p).unwrap_or(p);
             let rel = p.strip_prefix(&root).ok()?;
             Some(rel.to_string_lossy().replace('\\', "/"))
@@ -2984,7 +3032,8 @@ fn search_answer(
         }
     }
     if !others.is_empty() {
-        match symbol_answer(&root, &others, &scope, started, trace) {
+        let lookup = is_lookup_pattern(&search.pattern);
+        match symbol_answer(&root, &others, &scope, lookup, started, trace) {
             Ok(text) => answers.push(text),
             Err(why) => silence = why,
         }
@@ -3066,6 +3115,7 @@ fn symbol_answer(
     root: &Path,
     names: &[String],
     scope: &Scope,
+    lookup: bool,
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
@@ -3084,9 +3134,15 @@ fn symbol_answer(
     let mut silence = "empty";
     for name in fresh {
         mark_seen(&key(name));
-        match one_symbol_answer(root, name, scope, started) {
+        match one_symbol_answer(root, name, scope, lookup, started) {
             Ok(text) => answers.push(text),
-            Err(why) => silence = why,
+            Err(why) => {
+                // A shape that is no lookup does not use the name up.
+                if why == "not-a-lookup" {
+                    unmark(&key(name));
+                }
+                silence = why;
+            }
         }
     }
     if answers.is_empty() {
@@ -3099,6 +3155,7 @@ fn one_symbol_answer(
     root: &Path,
     name: &str,
     scope: &Scope,
+    is_lookup: bool,
     started: Instant,
 ) -> Result<String, Silence> {
     let (root, lookup) = (root.to_path_buf(), name.to_string());
@@ -3114,6 +3171,22 @@ fn one_symbol_answer(
         )
         .map_err(|_| "no-symbol")
     })?;
+    // No definition, but files spell it: one line, since the grep that led
+    // here printed the lines and cannot say no binding was found (R2). Only a
+    // lookup of a name code would spell asks that: an alternation or a plain
+    // word is a search for text.
+    if let Some(named) = &output.symbol_named {
+        if !is_lookup {
+            return Err("not-a-lookup");
+        }
+        if !crate::impact::distinctive(name) {
+            return Err("no-symbol");
+        }
+        return Ok(format!(
+            "`{name}`: no definition; named textually in {} file(s), no binding \u{2014} `diffctx . --symbol {name} -f md` lists them",
+            named.files
+        ));
+    }
     // A definition outside where the search looked, with no caller there,
     // is another symbol of the same name: a `models` module of another
     // subproject, a `segments` the grepped file never reaches (#646, fj#95).
@@ -3127,8 +3200,13 @@ fn one_symbol_answer(
     // The answer adds what grep cannot: the callers it resolved and the
     // tests that reach them. Without one it says nothing, because a caller
     // in a file no model reads (an `.astro` page, a template, a class name
-    // in markup) would read as none.
-    if output.changed.iter().all(|c| c.callers.is_empty()) {
+    // in markup) would read as none. A word match is no resolved caller:
+    // the grep that led here printed those lines already.
+    if output
+        .changed
+        .iter()
+        .all(|c| c.callers.iter().all(crate::impact::is_textual))
+    {
         return Err("empty");
     }
     // A name defined all over (`main`, `run`, `new`) is no lookup a short

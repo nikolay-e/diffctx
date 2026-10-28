@@ -2025,6 +2025,36 @@ fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
     );
 }
 
+/// #656: once a symbol has a resolved caller, the files the repository
+/// chose to withhold cannot turn the answer into a zero; counting them on
+/// every lookup only taught the reader to skip the header.
+#[test]
+fn a_symbol_with_callers_does_not_count_withheld_files() {
+    let tmp = repo(
+        &[
+            (".diffctx/ignore", "app/tests/\n"),
+            ("app/__init__.py", ""),
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+            (
+                "app/run.py",
+                "from app.conf import workers\n\n\ndef start():\n    return workers(4)\n",
+            ),
+        ],
+        &[(
+            "app/tests/test_conf.py",
+            "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 2\n",
+        )],
+    );
+    let out = diffctx()
+        .current_dir(tmp.path())
+        .args(["--symbol", "workers", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("app/run.py::start"), "{text}");
+    assert!(!text.contains("withheld"), "{text}");
+}
+
 /// A class moved within its file, text unchanged, changes nothing a caller
 /// sees; moved and edited, it does.
 #[test]
@@ -2792,8 +2822,10 @@ fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
         )],
     );
     let md = impact_markdown(ts.path(), "HEAD~1..HEAD");
+    // The file imports the class, so a binding model checked the row: the
+    // receiver is unknown, which reads "possible", not a word match.
     assert!(
-        md.contains("save") && md.contains("use.ts::persist"),
+        md.contains("possibly called from use.ts::persist") && !md.contains("use.ts:4 names save"),
         "{md}"
     );
     let rb = repo(
@@ -2904,16 +2936,30 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
         "package web\n\nobject Contracts {\n  def theme(): String = {\n    \"light\"\n  }\n}\n",
     )];
     // One project: the lexical link stands, so the probe below is not vacuous.
+    // The word match is listed as text; its link stays in the JSON row.
+    let tests_of_the_namer = |doc: &serde_json::Value| -> Vec<String> {
+        doc["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|c| c["callers"].as_array().unwrap())
+            .filter(|c| c["evidence"] == "name")
+            .filter_map(|c| c["tested_by"].as_str().map(str::to_string))
+            .collect()
+    };
     let together = repo(&files(false), &change);
-    let md = impact_markdown(together.path(), "HEAD~1..HEAD");
-    assert!(
-        md.contains("quiz/src/test/scala/quiz/ConfigTest.scala"),
-        "{md}"
+    let doc = impact(together.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        tests_of_the_namer(&doc),
+        ["quiz/src/test/scala/quiz/ConfigTest.scala"],
+        "{doc}"
     );
     let apart = repo(&files(true), &change);
+    let doc = impact(apart.path(), "HEAD~1..HEAD");
+    assert!(tests_of_the_namer(&doc).is_empty(), "{doc}");
     let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
     assert!(
-        md.contains("web/src/main/scala/web/Config.scala::generated"),
+        md.contains("web/src/main/scala/web/Config.scala:5 names theme"),
         "{md}"
     );
     assert!(!md.contains("ConfigTest.scala"), "{md}");
@@ -3134,17 +3180,19 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
             .output()
             .expect("run diffctx")
     };
+    // The files are listed as text, and the answer still says a definition
+    // may sit in them: they were read as text, not analysed.
     let unparsed = symbol("relax_step");
-    assert!(!unparsed.status.success());
-    let err = String::from_utf8_lossy(&unparsed.stderr);
+    assert!(unparsed.status.success());
+    let out = String::from_utf8_lossy(&unparsed.stdout);
     assert!(
-        err.contains("2 file(s) naming it were read as text"),
-        "{err}"
+        out.contains("2 file(s) naming it were read as text"),
+        "{out}"
     );
-    assert!(err.contains("fortran: no grammar in this build"), "{err}");
+    assert!(out.contains("fortran: no grammar in this build"), "{out}");
     assert!(
-        err.contains("num/solver.f90") && err.contains("num/use.f90"),
-        "{err}"
+        out.contains("num/solver.f90:") && out.contains("num/use.f90:"),
+        "{out}"
     );
 
     let missing = symbol("nowhere_spelled");
@@ -4177,7 +4225,10 @@ fn a_namer_over_the_size_cap_is_named_as_a_possible_caller() {
     );
     commit_all(repo, "change");
     let md = impact_markdown(repo, "HEAD~1..HEAD");
-    assert!(md.contains("src/big.rs (over the size cap)"), "{md}");
+    assert!(
+        md.contains("src/big.rs names is_test_path (over the size cap)"),
+        "{md}"
+    );
     assert!(md.contains("called from src/small.rs::small_use"), "{md}");
 }
 

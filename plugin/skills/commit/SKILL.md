@@ -8,7 +8,7 @@ Two steps, in this order.
 1. Call the `diffctx_context` MCP tool from the diffctx server on the current
    repository with `mode="impact"` and no `diff_ref` (it reads the pending
    work). Without the MCP server, run
-   `uvx diffctx==1.20.0 . --diff --mode impact -f md`. For every
+   `UV_ISOLATED=1 uvx diffctx==1.20.0 . --diff --mode impact -f md`. For every
    caller outside the diff with no static test link, and every possible
    caller, either fix it now or say in one line why it is unaffected. An empty
    impact means no resolved static caller in the analysed scope; a line

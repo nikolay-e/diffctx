@@ -439,7 +439,8 @@ fn evidenced(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String
 /// #578: a method only the framework calls (`do_GET` of a
 /// `BaseHTTPRequestHandler`) names that route, and a test that hands its
 /// class to the server reaches it through the class. The same handler in a
-/// module no test reaches keeps "no static test link", a test spelling its
+/// module no test reaches keeps "no static test link" with its role named
+/// (the link is modelled, so its absence is a finding), a test spelling its
 /// class in a string and a comment links nothing, and a plain class's
 /// method keeps its zero. Control: `serve`'s caller answers exactly.
 #[test]
@@ -476,33 +477,35 @@ fn a_method_the_framework_dispatches_is_reached_through_its_class() {
         ],
     );
     let doc = impact(tmp.path());
-    let reached = changed(&doc, "server.py", "do_GET");
-    assert_eq!(reached["untested"], serde_json::Value::Null, "{doc}");
+    // A dispatched method is entered by the framework: never hedged. The class
+    // a test hands to the server links it; a handler no test reaches stays a
+    // test gap, its role named, and a test spelling its class in a string and
+    // a comment links nothing.
+    let entries: Vec<&str> = doc["entry_unlisted"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.as_str())
+        .collect();
     assert!(
-        reached["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("`BaseHTTPRequestHandler`")),
+        entries.contains(&"server.py::do_GET (5-7) \u{2014} dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via serve"),
         "{doc}"
     );
-    let unreached = changed(&doc, "quiet.py", "do_GET");
-    assert_eq!(unreached["untested"], true, "{doc}");
-    assert!(
-        unreached["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("`BaseHTTPRequestHandler`")),
-        "{doc}"
-    );
+    assert!(!entries.iter().any(|e| e.starts_with("quiet.py")), "{doc}");
     assert!(
         doc["changed"]
             .as_array()
             .into_iter()
             .flatten()
-            .all(|c| c["path"] != "plain.py"),
+            .all(|c| c["path"] != "plain.py" && c["path"] != "quiet.py"),
         "{doc}"
     );
     assert_eq!(
         doc["untested_unlisted"],
-        serde_json::json!(["plain.py::tally (2-3)"]),
+        serde_json::json!([
+            "plain.py::tally (2-3)",
+            "quiet.py::do_GET (5-6) \u{2014} dispatched by `BaseHTTPRequestHandler`"
+        ]),
         "{doc}"
     );
     // Control: a function, which the base already models.

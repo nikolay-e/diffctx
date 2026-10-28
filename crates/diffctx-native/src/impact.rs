@@ -94,6 +94,10 @@ pub struct ImpactOutput {
     /// definitions, and `changed_files` the files that hold them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    /// A `--symbol` name no file defines but files spell as a word: where,
+    /// as text. `changed` is empty then (Forgejo #114).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_named: Option<SymbolNamed>,
     /// What git tracks and the change modifies; untracked work is listed
     /// apart, in `untracked_files`.
     pub changed_files: Vec<String>,
@@ -117,6 +121,10 @@ pub struct ImpactOutput {
     pub named_by: Vec<PathReference>,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub named_by_omitted: usize,
+    /// The changed files outside code whose changed keys were searched as
+    /// text; the lines naming them are in `named_by` with their `key`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_searches: Vec<KeySearch>,
     /// Lines outside the change that read a changed entry's Astro content
     /// collection by name: `getCollection('blog')` reads every entry under
     /// `src/content/blog/`, and no import or path leads there (#432).
@@ -147,6 +155,10 @@ pub struct ImpactOutput {
     /// every caller found counts their test links the same way.
     #[serde(skip)]
     pub truncated_untested: usize,
+    /// Of `truncated`, the word matches: they are listed as text, so the
+    /// header keeps them out of the caller count.
+    #[serde(skip)]
+    pub truncated_textual: usize,
     /// Changed files left out of `changed_files` to fit the cap; the count
     /// is still whole. The reader holds the file list already.
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
@@ -181,6 +193,11 @@ pub struct ImpactOutput {
     /// the diff: live code, not code nothing calls (#441).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub untested_called_in_diff: Vec<String>,
+    /// The changed definitions of that kind a runner or a framework enters
+    /// without a caller (a script, a program's `main`, a registered or
+    /// dispatched handler), named by role: `path::symbol (lines) — role`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entry_unlisted: Vec<String>,
     /// Changed definitions whose hunks are comments, formatting or a
     /// verbatim move only, which no caller sees, so their callers were not
     /// traced (#370): `path::symbol (lines)` each. Unsaid, a comment edit
@@ -222,6 +239,27 @@ pub struct ImpactOutput {
     pub cap: u32,
 }
 
+/// The files outside documents and data that spell a name nothing defines:
+/// a textual match, not a resolved binding.
+#[derive(Debug, Serialize, JsonSchema, Clone)]
+pub struct SymbolNamed {
+    /// Every file that spells the name, listed or not.
+    pub files: usize,
+    /// Code and config first, `MAX_TEXTUAL_SHOWN` of them.
+    pub rows: Vec<NamedFile>,
+    /// What this build read as text and so could not tell a definition in
+    /// (#454); empty when every file naming the symbol was analysed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub caveat: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, Clone)]
+pub struct NamedFile {
+    pub path: String,
+    /// The first line that spells the name.
+    pub line: u32,
+}
+
 #[derive(Serialize, JsonSchema, Clone)]
 pub struct ChangedSymbol {
     pub path: String,
@@ -234,6 +272,12 @@ pub struct ChangedSymbol {
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub commits: usize,
     pub callers: Vec<Caller>,
+    /// The role that gives this definition an implicit caller: a test its
+    /// runner runs, a script's own guard, a program's `main`, a handler a
+    /// framework registers or dispatches (R3). Such a definition is no test
+    /// gap and its callers are not hedged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
     /// Why callers could not be resolved at all: a name defined in many
     /// files in a language without a binding model, a trait method reached
     /// through dynamic dispatch. Its empty `callers` is then no finding.
@@ -349,11 +393,12 @@ pub struct Caller {
     /// `tested_by` says nothing about it (#542).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unread_test: Option<String>,
-    /// `resolved`: an import binding links the reference to the changed
-    /// definition (Python, JavaScript, TypeScript). `name`: the lexical model
-    /// of a language without a binding model — a mention in code of a file
-    /// that names the module. `candidate`: the binding or the receiver is not
-    /// known; `reason` says which.
+    /// `resolved`: a binding links the reference to the changed definition.
+    /// `name`: a word match — the lexical model of a language without a
+    /// binding model, or a removed definition's name found by search; the
+    /// text form lists it as text and never counts it as a caller.
+    /// `candidate`: the binding or the receiver is not known; `reason` says
+    /// which.
     pub evidence: &'static str,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
@@ -396,6 +441,19 @@ pub struct PathReference {
     pub line: u32,
     /// The changed file the line names.
     pub target: String,
+    /// A key the change touched in `target`, which the line spells: a
+    /// textual match, not a resolved binding (#686).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// A changed file outside code whose changed keys were searched as text.
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct KeySearch {
+    pub path: String,
+    pub keys: Vec<String>,
+    /// The lines outside the diff naming any of them.
+    pub named: usize,
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -434,6 +492,23 @@ fn binds_locally(code: &str, name: &str) -> bool {
         };
         !rest.chars().next_back().is_some_and(word)
             && !code[at + name.len()..].chars().next().is_some_and(word)
+    })
+}
+
+/// The line of `f` that first spells `name` as a whole word.
+fn first_naming_line(f: &Fragment, name: &str) -> Option<u32> {
+    f.content
+        .lines()
+        .position(|l| names_word(l, name))
+        .map(|i| f.start_line() + i as u32)
+}
+
+/// Whether `line` holds a call of `name`: the whole word, then `(`.
+fn calls_word(line: &str, name: &str) -> bool {
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    line.match_indices(name).any(|(at, _)| {
+        !line[..at].chars().next_back().is_some_and(word)
+            && line[at + name.len()..].starts_with('(')
     })
 }
 
@@ -1023,6 +1098,7 @@ impl UntracedNamers {
                         path,
                         line,
                         target: target.clone(),
+                        key: None,
                     });
                 }
             }
@@ -1499,13 +1575,17 @@ struct TestIndex<'a> {
     inline_tests: FxHashSet<&'a FragmentId>,
     /// Test files the size cap kept out, with their code.
     unread: Vec<(String, std::sync::Arc<str>)>,
+    /// A binary's entry file -> a test that runs the built binary
+    /// (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`), which reaches its
+    /// `main` through no call (#391, #678).
+    binary_tests: FxHashMap<String, String>,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: std::cell::RefCell<FxHashMap<FragmentId, Option<(String, Option<String>)>>>,
 }
 
 impl<'a> TestIndex<'a> {
-    fn build(state: &'a ScoredState) -> Self {
+    fn build(state: &'a ScoredState, diff_range: Option<&str>) -> Self {
         let graph = &state.scoring_result.graph;
         let mut by_path: FxHashMap<String, String> = FxHashMap::default();
         graph.for_each_categorized_edge(|src, dst, cat| {
@@ -1577,15 +1657,16 @@ impl<'a> TestIndex<'a> {
             test_fragments,
             inline_tests,
             unread,
+            binary_tests: binary_tests(state, diff_range),
             memo: std::cell::RefCell::default(),
         }
     }
 
     fn any(&self) -> bool {
-        !self.test_fragments.is_empty() || !self.by_path.is_empty()
+        !self.test_fragments.is_empty() || !self.by_path.is_empty() || !self.binary_tests.is_empty()
     }
 
-    fn unread_naming(&self, caller: &Fragment) -> Option<String> {
+    fn unread_naming(&self, caller: &Fragment, own: &str) -> Option<String> {
         let name = caller
             .symbol_name
             .as_deref()
@@ -1593,7 +1674,11 @@ impl<'a> TestIndex<'a> {
             .filter(|s| s.len() >= 3)?;
         self.unread
             .iter()
-            .find(|(_, text)| names_word(text, name))
+            .find(|(path, text)| {
+                same_runtime(path, own)
+                    && names_word(text, name)
+                    && names_module(path, own, |w| names_word(text, w))
+            })
             .map(|(path, _)| path.clone())
     }
 
@@ -1609,6 +1694,11 @@ impl<'a> TestIndex<'a> {
     fn direct(&self, caller: &Fragment, link: &Link) -> Option<String> {
         if self.is_test(caller) {
             return Some(caller.path().to_string());
+        }
+        if caller.symbol_name.as_deref() == Some("main") {
+            if let Some(test) = self.binary_tests.get(caller.path()) {
+                return Some(test.clone());
+            }
         }
         // A chunk inside a long function is named `main[88]`; the test
         // names `main`.
@@ -1711,6 +1801,81 @@ impl<'a> TestIndex<'a> {
         self.by_path.contains_key(caller.path())
             || self.test_fragments.iter().any(|t| reaches_file(t, caller))
     }
+}
+
+/// The Rust binaries in the analysed fragments, keyed by their entry file
+/// as fragments spell it, each mapped to one test of its crate that runs
+/// the built binary. `src/main.rs` is the package's binary, named in
+/// `Cargo.toml`; `src/bin/<name>.rs` is `<name>`.
+fn binary_tests(state: &ScoredState, diff_range: Option<&str>) -> FxHashMap<String, String> {
+    let mut entries: Vec<(String, String, String)> = Vec::new();
+    let mut seen: FxHashSet<&str> = FxHashSet::default();
+    for f in &state.all_fragments {
+        let own = f.path();
+        if !seen.insert(own) || !lang::rust::is_rust(own) {
+            continue;
+        }
+        let path = rel(state, own);
+        let (krate, name) = if let Some(krate) = path.strip_suffix("src/main.rs") {
+            let manifest = state
+                .run
+                .source()
+                .read_to_string(&state.root_dir.join(format!("{krate}Cargo.toml")));
+            let Some(name) = manifest.as_deref().and_then(package_name) else {
+                continue;
+            };
+            (krate.to_string(), name)
+        } else if let Some((krate, file)) = path.split_once("src/bin/") {
+            let name = file.trim_end_matches("/main.rs").trim_end_matches(".rs");
+            if name.contains('/') {
+                continue;
+            }
+            (krate.to_string(), name.to_string())
+        } else {
+            continue;
+        };
+        entries.push((own.to_string(), krate, name));
+    }
+    if entries.is_empty() {
+        return FxHashMap::default();
+    }
+    let head = diff_range
+        .map(crate::git::split_diff_range)
+        .and_then(|(_, head)| head);
+    let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+    );
+    let mut out: FxHashMap<String, String> = FxHashMap::default();
+    for (own, krate, name) in entries {
+        let exe = format!("CARGO_BIN_EXE_{name}");
+        let quoted = format!("\"{name}\"");
+        let test = grepped
+            .rows
+            .iter()
+            .filter(|(path, _, text)| {
+                path.starts_with(&format!("{krate}tests/"))
+                    && (names_word(text, &exe)
+                        || (text.contains("cargo_bin") && text.contains(&quoted)))
+            })
+            .map(|(path, _, _)| path.clone())
+            .min();
+        if let Some(test) = test {
+            out.insert(own, test);
+        }
+    }
+    out
+}
+
+/// `[package] name = "…"` in a Cargo manifest.
+fn package_name(manifest: &str) -> Option<String> {
+    let package = manifest.split("[package]").nth(1)?;
+    let section = package.split("\n[").next()?;
+    section.lines().find_map(|l| {
+        let (key, value) = l.split_once('=')?;
+        (key.trim() == "name").then(|| value.trim().trim_matches('"').to_string())
+    })
 }
 
 /// Whether the first fragment references the second's definition: through
@@ -2154,6 +2319,78 @@ fn names_parameter(f: &Fragment, name: &str) -> Option<u32> {
         .then(|| f.start_line() + header as u32)
 }
 
+/// How a definition is entered by something that is no caller: its module's
+/// own script guard, or a curried registration call (`tool("name")(fn)`).
+enum Entered {
+    Script,
+    Registered(String),
+}
+
+/// A statement of `f` that enters the definition `name` of its own file:
+/// the module's `if __name__ == "__main__":` guard calling it, or a curried
+/// registration call naming it. Both are how it is run, not who calls it.
+fn entered_by(f: &Fragment, name: &str) -> Option<Entered> {
+    static CURRIED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^\s*([A-Za-z_][\w.]*\([^()]*\))\(\s*([A-Za-z_][\w.]*)\s*\)\s*$")
+            .expect("curried registration regex")
+    });
+    if !f.path().ends_with(".py") && !f.path().ends_with(".pyi") {
+        return None;
+    }
+    let first = f.content.lines().find(|l| !l.trim().is_empty())?.trim();
+    let guard = first.starts_with("if __name__ ==")
+        && (first.contains("\"__main__\"") || first.contains("'__main__'"));
+    if guard {
+        return f
+            .content
+            .lines()
+            .any(|l| calls_word(l, name))
+            .then_some(Entered::Script);
+    }
+    f.content.lines().find_map(|l| {
+        let caps = CURRIED.captures(l)?;
+        (&caps[2] == name).then(|| Entered::Registered(caps[1].to_string()))
+    })
+}
+
+/// The class of a `do_<METHOD>` handler a standard-library HTTP server
+/// dispatches by method name: the base it names.
+fn http_handler_base(core: &Fragment, file: &[&Fragment]) -> Option<&'static str> {
+    let name = base_symbol(core.symbol_name.as_deref()?);
+    let method = name.strip_prefix("do_")?;
+    if method.is_empty() || !method.chars().all(|c| c.is_ascii_uppercase()) {
+        return None;
+    }
+    let class = enclosing_class(core, file)?;
+    let supers = supertypes(&class.content, "py");
+    [
+        "BaseHTTPRequestHandler",
+        "SimpleHTTPRequestHandler",
+        "CGIHTTPRequestHandler",
+    ]
+    .into_iter()
+    .find(|base| supers.iter().any(|s| s == base))
+}
+
+/// `main` of a program in a language whose runtime calls it.
+fn is_program_main(core: &Fragment) -> bool {
+    let Some(name) = core.symbol_name.as_deref().map(base_symbol) else {
+        return false;
+    };
+    let ext = Path::new(core.path())
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "go" | "java" | "kt" | "kts" | "scala" | "rs" | "c" | "cc" | "cpp" | "swift" => {
+            name == "main"
+        }
+        "cs" => name == "Main",
+        _ => false,
+    }
+}
+
 fn registering_decorator(f: &Fragment, file: &[&Fragment]) -> Option<String> {
     let of = |content: &str| {
         content
@@ -2338,7 +2575,7 @@ pub fn build_impact(
         .iter()
         .filter_map(|p| p.to_str())
         .collect();
-    let tests = TestIndex::build(state);
+    let tests = TestIndex::build(state, state.analysed_range.as_deref().or(diff_range));
     // A caller in a changed file is outside the diff unless its lines are
     // in a hunk: the reader holds the hunks, not the rest of the file (#362).
     let mut hunk_lines: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
@@ -2379,6 +2616,7 @@ pub fn build_impact(
     let mut untested_definitions = 0usize;
     let mut untested_unlisted: Vec<String> = Vec::new();
     let mut untested_called_in_diff: Vec<String> = Vec::new();
+    let mut entry_unlisted: Vec<String> = Vec::new();
     let mut layout_only: Vec<String> = Vec::new();
     let mut traced_definitions = 0usize;
 
@@ -3116,6 +3354,18 @@ pub fn build_impact(
         }
         sources = lifted;
         sources.retain(|(f, _, _)| !within(&f.id, core));
+        // The module's own guard and a registration call run the definition;
+        // they are no callers of it (R3).
+        let entered = symbol.and_then(|name| {
+            file_of(core)
+                .iter()
+                .find_map(|f| entered_by(f, base_symbol(name)))
+        });
+        if let Some(name) = symbol.filter(|_| entered.is_some()) {
+            sources.retain(|(f, _, _)| {
+                f.path() != core.path() || entered_by(f, base_symbol(name)).is_none()
+            });
+        }
         let kept = sources.len();
         sources.retain(|(f, _, _)| !inside_the_diff(&f.id));
         called_in_diff = called_in_diff || sources.len() < kept;
@@ -3162,7 +3412,7 @@ pub fn build_impact(
                         && tests.file_tested(frag, &reaches_file),
                     unread_test: tested
                         .is_none()
-                        .then(|| tests.unread_naming(frag))
+                        .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
                     registered_by,
                     tested_by: tested.as_ref().map(|(p, _)| rel(state, p)),
@@ -3181,7 +3431,15 @@ pub fn build_impact(
                         Some(Relation::Implementation) => "implementation",
                         _ => "call",
                     },
-                    sites: found.map(|f| f.lines.clone()).unwrap_or_default(),
+                    // A word match cites the line that spells the name, not
+                    // the start of the function around it.
+                    sites: match found {
+                        Some(f) => f.lines.clone(),
+                        None => symbol
+                            .and_then(|name| first_naming_line(frag, base_symbol(name)))
+                            .into_iter()
+                            .collect(),
+                    },
                 }
             })
             .collect();
@@ -3231,6 +3489,59 @@ pub fn build_impact(
             .is_empty()
             .then(|| dispatch_route(state, core, file_of(core)))
             .flatten();
+        // The role that gives the definition an implicit caller (R3): where a
+        // static test link exists it is shown, otherwise the role is named.
+        let test_link = |frag| {
+            tests
+                .tested_by(frag, state, &by_id, &link)
+                .map(|(test, via)| {
+                    let test = rel(state, &test);
+                    match via {
+                        Some(via) => format!("reachable from tests: {test} via {via}"),
+                        None => format!("reachable from tests: {test}"),
+                    }
+                })
+        };
+        let mut linkless_role = false;
+        let entry: Option<String> = if tests.is_test(core) {
+            Some("test (run by the test runner)".to_string())
+        } else if matches!(entered, Some(Entered::Script)) {
+            Some("run as a script (if __name__ == \"__main__\")".to_string())
+        } else if let Some(by) = registration(core).or_else(|| match &entered {
+            Some(Entered::Registered(call)) => Some(call.clone()),
+            _ => None,
+        }) {
+            Some(match test_link(core) {
+                Some(link) => format!("registered by `{by}`; {link}"),
+                None => format!(
+                    "registered by `{by}` \u{2014} reached through the framework, not traced"
+                ),
+            })
+        } else if let Some(base) = http_handler_base(core, file_of(core)) {
+            // The class link is modelled: no test reaching it is a finding,
+            // not an unmodelled gap, so the role does not excuse it.
+            let link = enclosing_class(core, file_of(core)).and_then(test_link);
+            Some(match link {
+                Some(link) => format!("dispatched by `{base}`; {link}"),
+                None => {
+                    linkless_role = true;
+                    format!("dispatched by `{base}`")
+                }
+            })
+        } else if is_program_main(core) {
+            Some(match test_link(core) {
+                Some(link) => format!("program entry point; {link}"),
+                // A test that runs the binary is modelled for Rust: none
+                // reaching `main` is a finding there, not an unmodelled gap.
+                None if core.path().ends_with(".rs") => {
+                    linkless_role = true;
+                    "program entry point".to_string()
+                }
+                None => "program entry point".to_string(),
+            })
+        } else {
+            None
+        };
         let unresolved = core_def
             .and_then(|(model, def)| model.dispatched(def))
             .map(|trait_name| Unknown::Dispatched { trait_name })
@@ -3264,6 +3575,17 @@ pub fn build_impact(
                     },
                 })
             });
+        // An entry point is called by its runner or framework: the hedge for
+        // callers nothing traces would be a false unknown.
+        let unresolved = unresolved.filter(|u| {
+            entry.is_none()
+                || !matches!(
+                    u,
+                    Unknown::Overridable { .. }
+                        | Unknown::NotModelled { .. }
+                        | Unknown::Dispatched { .. }
+                )
+        });
         // A method only dispatch reaches is reached through its class: a test
         // handing the class to the runtime (a server, a test runner, a
         // visitor) reaches the method (#578). A caller a test calls is the
@@ -3272,7 +3594,7 @@ pub fn build_impact(
         let untested = query.is_none()
             && tests.any()
             && !tests.is_test(core)
-            && registration(core).is_none()
+            && (entry.is_none() || linkless_role)
             && !callers.iter().any(|c| {
                 c.evidence != "candidate" && c.tested_by.is_some() && c.tested_via.is_none()
             })
@@ -3320,17 +3642,23 @@ pub fn build_impact(
         {
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
+            let named = label(
+                &rel(state, core.path()),
+                core.symbol_name.as_deref(),
+                &lines_of(&core.id),
+            );
             if untested {
-                let named = label(
-                    &rel(state, core.path()),
-                    core.symbol_name.as_deref(),
-                    &lines_of(&core.id),
-                );
+                let named = match entry.as_ref().filter(|_| linkless_role) {
+                    Some(role) => format!("{named} \u{2014} {role}"),
+                    None => named,
+                };
                 if called_in_diff {
                     untested_called_in_diff.push(named);
                 } else {
                     untested_unlisted.push(named);
                 }
+            } else if let Some(role) = entry.as_ref().filter(|_| !tests.is_test(core)) {
+                entry_unlisted.push(format!("{named} \u{2014} {role}"));
             }
             continue;
         }
@@ -3341,6 +3669,7 @@ pub fn build_impact(
             kind: format!("{:?}", core.kind).to_lowercase(),
             commits,
             callers,
+            entry,
             unresolved,
             untested,
             compatible_callers,
@@ -3480,10 +3809,24 @@ pub fn build_impact(
     } else {
         (Vec::new(), 0)
     };
-    let unanalysed = if query.is_none() {
+    let mut unanalysed = if query.is_none() {
         unanalysed_files(state, &changed_files)
     } else {
         Vec::new()
+    };
+    let mut named_by = named_by;
+    let mut named_by_omitted = named_by_omitted;
+    let key_searches = {
+        let untraced: Vec<String> = unanalysed
+            .iter()
+            .filter(|f| f.reason == "content_untraced")
+            .map(|f| f.path.clone())
+            .collect();
+        let (refs, omitted, searches) = key_references(state, &untraced, analysed);
+        unanalysed.retain(|f| !searches.iter().any(|k| k.path == f.path));
+        named_by.extend(refs);
+        named_by_omitted += omitted;
+        searches
     };
     // Read after the last phase that can stop: a deadline the stale-reference
     // search hit was missing from an answer that had dropped its lines. A
@@ -3508,6 +3851,7 @@ pub fn build_impact(
         index_tree: state.index_tree.clone(),
         range_name: None,
         symbol: query.map(str::to_string),
+        symbol_named: None,
         untracked_files: changed_files
             .iter()
             .filter(|f| untracked.contains(f.as_str()))
@@ -3522,6 +3866,7 @@ pub fn build_impact(
         stale_references_omitted: stale_omitted,
         named_by,
         named_by_omitted,
+        key_searches,
         collection_reads,
         collection_reads_omitted,
         commit_count: state.commit_count,
@@ -3532,6 +3877,7 @@ pub fn build_impact(
         truncated_possible: 0,
         symbols_omitted: 0,
         truncated_untested: 0,
+        truncated_textual: 0,
         changed_files_omitted: 0,
         untracked_files_omitted: 0,
         contracts_omitted,
@@ -3540,6 +3886,7 @@ pub fn build_impact(
         untested_definitions,
         untested_unlisted,
         untested_called_in_diff,
+        entry_unlisted,
         layout_only,
         lockfile_changes: state.lockfile_changes.clone(),
         layout_only_omitted: 0,
@@ -3791,6 +4138,7 @@ fn removed_by_models(
                 kind: "removed".to_string(),
                 commits: 0,
                 callers: merge_by_symbol(callers),
+                entry: None,
                 unresolved,
                 untested: false,
                 compatible_callers: 0,
@@ -3961,14 +4309,21 @@ fn removed_definitions(
             // TypeScript `test.describe` were callers (#470, #471, #458).
             let modelled =
                 bindings::lang_of(&path).is_some() && bindings::lang_of(&path_removed).is_some();
+            // A row the binding model let through is model-informed; one no
+            // model checked is a word match (R1).
+            let mut checked: Option<Option<&'static str>> = None;
             if modelled {
                 // A member is reached through its class, imported by name.
-                let bound = binds_to(&path, &text, &name, &path_removed)
+                let by_name = binds_to(&path, &text, &name, &path_removed);
+                let bound = by_name
                     || container
                         .as_deref()
                         .is_some_and(|c| binds_to(&path, &text, c, &path_removed));
                 if path != path_removed && !bound {
                     continue;
+                }
+                if path != path_removed {
+                    checked = Some((!by_name).then_some("receiver_unresolved"));
                 }
             } else if runtime_of(&path) != runtime_of(&path_removed)
                 // A file that declares the name itself calls its own.
@@ -4032,8 +4387,12 @@ fn removed_definitions(
                 file_tested: false,
                 registered_by: None,
                 unread_test: None,
-                evidence: "name",
-                reason: None,
+                evidence: if checked.is_some() {
+                    "candidate"
+                } else {
+                    "name"
+                },
+                reason: checked.flatten(),
                 relation: if next.starts_with('(') || next.starts_with("?.(") {
                     "call"
                 } else {
@@ -4056,6 +4415,7 @@ fn removed_definitions(
                 kind: "removed".to_string(),
                 commits: 0,
                 callers,
+                entry: None,
                 unresolved,
                 untested: false,
                 compatible_callers: 0,
@@ -4124,14 +4484,32 @@ fn without_extension(path: &str) -> &str {
 
 /// How `token`, found in `referrer`, names `target` — or `None` when it is a
 /// different name that merely shares a basename or a word (#369, #383).
-fn naming(token: &str, referrer: &str, target: &str, unique_basename: bool) -> Option<Naming> {
+fn naming(
+    token: &str,
+    referrer: &str,
+    target: &str,
+    unique_basename: bool,
+    root: &str,
+) -> Option<Naming> {
     let trimmed = token.trim_start_matches("./");
     // A file at the root is spelled by its bare name, which names any file
     // of that name: `svc/tests` reading `"AGENTS.md"` reads `svc/AGENTS.md`
     // (#644), and `"/../AGENTS.md"` is a probe string, not the root's.
-    if (target.contains('/') || unique_basename)
-        && (trimmed == target || token.ends_with(&format!("/{target}")))
-    {
+    // Behind a prefix it is the root's only from the repository's own path
+    // or one mount point or variable: `$HOME/other/README.md` and
+    // `/home/x/elsewhere/README.md` are other trees' files (#673).
+    let anchored = || {
+        token
+            .strip_suffix(target)
+            .and_then(|p| p.strip_suffix('/'))
+            .is_some_and(|prefix| {
+                target.contains('/')
+                    || prefix == root
+                    || (!prefix.trim_start_matches('/').contains('/')
+                        && !matches!(prefix, "~" | "$HOME" | "${HOME}"))
+            })
+    };
+    if (target.contains('/') || unique_basename) && (trimmed == target || anchored()) {
         return Some(Naming::FullPath);
     }
     let dir = referrer.rsplit_once('/').map_or("", |(d, _)| d);
@@ -4194,6 +4572,7 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
+    let root = state.root_dir.to_string_lossy().replace('\\', "/");
     let head = diff_range
         .map(crate::git::split_diff_range)
         .and_then(|(_, head)| head);
@@ -4254,6 +4633,7 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
         }
         let surviving = &surviving;
         let targets = &targets;
+        let root = root.as_str();
         let best = token_re
             .find_iter(text)
             .flat_map(|m| {
@@ -4264,7 +4644,7 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
                         let basename = t.rsplit('/').next().unwrap_or(t);
                         // A path that ends a sentence carries its full stop.
                         let token = m.as_str().trim_end_matches('.');
-                        naming(token, path, t, !surviving.contains(basename))
+                        naming(token, path, t, !surviving.contains(basename), root)
                             .map(|n| (n, std::cmp::Reverse(t.len()), t, kind))
                     })
             })
@@ -4294,6 +4674,178 @@ fn commented(text: &str) -> bool {
     ["#", "//", "/*", "* "].iter().any(|m| t.starts_with(m)) || t == "*"
 }
 
+/// An ignore or attribute file lists paths to include or exclude them; it
+/// reads none of their content (#682).
+fn selects_paths(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    (name.starts_with('.') && name.ends_with("ignore"))
+        || name == ".gitattributes"
+        || path.ends_with(".diffctx/ignore")
+}
+
+/// Rows of data and transcripts mention paths; nothing runs them (#673).
+/// An extensionless file is data unless its name or shebang says what runs it.
+fn is_data(root_dir: &Path, source: &crate::source::Source, path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if !name.contains('.') {
+        return crate::languages::get_language_for_file(path).is_none()
+            && !source
+                .read_to_string(&root_dir.join(path))
+                .is_some_and(|t| t.starts_with("#!"));
+    }
+    matches!(
+        extension(path).as_str(),
+        "csv" | "tsv" | "log" | "jsonl" | "ndjson"
+    )
+}
+
+/// The words a changed config's lines spell that can witness a reader:
+/// `maxPoolSize`, `DATABASE_URL`, `max-connections`, `synchronization`,
+/// never `replicas`. Only a structured config has keys; a template's or a
+/// stylesheet's words are prose and selectors.
+fn changed_keys(state: &ScoredState, path: &str) -> Vec<String> {
+    if !matches!(
+        extension(path).as_str(),
+        "yaml" | "yml" | "json" | "toml" | "ini" | "env" | "properties" | "conf" | "cfg"
+    ) {
+        return Vec::new();
+    }
+    let mut keys: Vec<String> = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.path == path)
+        .flat_map(|h| h.added.iter().chain(&h.removed))
+        .filter(|l| !commented(l))
+        .flat_map(|l| key_words(l))
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn key_words(text: &str) -> impl Iterator<Item = String> + '_ {
+    text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+        .map(|w| w.trim_matches('-'))
+        .filter(|w| key_like(w))
+        .map(str::to_string)
+}
+
+/// Shaped like a key a reader spells back: joined words, a constant's
+/// capitals or one long word. `Hello` and `retries` are not.
+fn key_like(word: &str) -> bool {
+    let chars: Vec<char> = word.chars().collect();
+    if chars.len() < 4
+        || !chars.iter().any(|c| c.is_ascii_alphabetic())
+        || crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
+    {
+        return false;
+    }
+    let joined = (word.contains('_') || word.contains('-')) && chars.len() >= 6;
+    let camel = chars
+        .windows(2)
+        .any(|w| w[0].is_ascii_lowercase() && w[1].is_ascii_uppercase());
+    let constant = chars
+        .iter()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_');
+    let long = chars.len() >= 8 && chars.iter().all(char::is_ascii_lowercase);
+    joined || camel || constant || long
+}
+
+/// The lines outside the change that spell a key the change touched in a
+/// file outside code (#686, #609). The match is textual: a key too common
+/// to witness a reader is not searched, and a file none of whose keys could
+/// be searched stays `content_untraced`.
+fn key_references(
+    state: &ScoredState,
+    untraced: &[String],
+    diff_range: Option<&str>,
+) -> (Vec<PathReference>, usize, Vec<KeySearch>) {
+    let keys: Vec<(String, Vec<String>)> = untraced
+        .iter()
+        .map(|p| (p.clone(), changed_keys(state, p)))
+        .filter(|(_, k)| !k.is_empty())
+        .collect();
+    let mut needles: Vec<String> = keys.iter().flat_map(|(_, k)| k.clone()).collect();
+    needles.sort();
+    needles.dedup();
+    if needles.is_empty() {
+        return (Vec::new(), 0, Vec::new());
+    }
+    let head = diff_range
+        .map(crate::git::split_diff_range)
+        .and_then(|(_, head)| head);
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+    );
+    let changed: FxHashSet<String> = state
+        .changed_files
+        .iter()
+        .map(|p| rel(state, &p.to_string_lossy()))
+        .collect();
+    let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
+    let mut by_key: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
+    for (path, line, text) in state.run.bounded(&grepped.rows) {
+        if changed.contains(path)
+            || is_document(path)
+            || selects_paths(path)
+            || is_data(&state.root_dir, &state.run.source(), path)
+            || commented(text)
+        {
+            continue;
+        }
+        let mut seen: FxHashSet<String> = FxHashSet::default();
+        for word in key_words(text) {
+            if wanted.contains(word.as_str()) && seen.insert(word.clone()) {
+                let rows = by_key.entry(word).or_default();
+                if !rows.iter().any(|(p, _)| p == path) {
+                    rows.push((path.clone(), *line));
+                }
+            }
+        }
+    }
+    let mut refs: Vec<PathReference> = Vec::new();
+    let mut searches: Vec<KeySearch> = Vec::new();
+    let mut omitted = 0;
+    let mut claimed: FxHashSet<&str> = FxHashSet::default();
+    for (target, target_keys) in &keys {
+        let searchable: Vec<&String> = target_keys
+            .iter()
+            .filter(|k| by_key.get(*k).map_or(0, Vec::len) <= MAX_UNTRACED_NAMERS)
+            .collect();
+        if searchable.is_empty() {
+            continue;
+        }
+        let mut named = 0;
+        for key in &searchable {
+            if !claimed.insert(key.as_str()) {
+                continue;
+            }
+            let mut rows = by_key.get(*key).cloned().unwrap_or_default();
+            rows.sort();
+            for (path, line) in rows {
+                named += 1;
+                if named > MAX_NAMED_BY_PER_TARGET || refs.len() >= MAX_NAMED_BY {
+                    omitted += 1;
+                    continue;
+                }
+                refs.push(PathReference {
+                    path,
+                    line,
+                    target: target.clone(),
+                    key: Some((*key).clone()),
+                });
+            }
+        }
+        searches.push(KeySearch {
+            path: target.clone(),
+            keys: searchable.into_iter().cloned().collect(),
+            named,
+        });
+    }
+    (refs, omitted, searches)
+}
+
 /// Lines outside the change that name a changed file by its path, from a
 /// file of another runtime or a config: the command line that runs it, the
 /// Dockerfile that copies it, the settings entry that runs a script (#393,
@@ -4311,6 +4863,7 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
+    let root = state.root_dir.to_string_lossy().replace('\\', "/");
     let head = diff_range
         .map(crate::git::split_diff_range)
         .and_then(|(_, head)| head);
@@ -4350,6 +4903,8 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
         // skip the block (#563, #564).
         if is_document(path)
             || matches!(extension(path).as_str(), "diff" | "patch")
+            || selects_paths(path)
+            || is_data(&state.root_dir, &state.run.source(), path)
             || commented(text)
             || crate::bindings::is_import_line(text)
             || written.contains(&(path.as_str(), text.trim()))
@@ -4363,7 +4918,7 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
                 *t != path
                     && token.ends_with(basename.as_str())
                     && matches!(
-                        naming(token, path, t, basenames.get(&basename) == Some(&1)),
+                        naming(token, path, t, basenames.get(&basename) == Some(&1), &root),
                         Some(Naming::FullPath | Naming::RelativePath | Naming::UniqueBasename)
                     )
             })
@@ -4381,6 +4936,7 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
             path: path.clone(),
             line: *line,
             target: target.clone(),
+            key: None,
         });
     }
     (found, omitted)
@@ -4579,12 +5135,14 @@ fn shed(output: &mut ImpactOutput, steps: usize) -> usize {
 /// The one rule for `empty` (#505): nothing outside the diff depends on the
 /// change, no contract moved, and nothing was cut, left unread or capped.
 fn proves_empty(output: &ImpactOutput) -> bool {
-    output.changed.is_empty()
+    output.symbol_named.is_none()
+        && output.changed.is_empty()
         && output.contracts.is_empty()
         && output.stale_references.is_empty()
         && output.stale_references_omitted == 0
         && output.named_by.is_empty()
         && output.named_by_omitted == 0
+        && output.key_searches.is_empty()
         && output.collection_reads.is_empty()
         && output.collection_reads_omitted == 0
         && output.truncated == 0
@@ -4630,6 +5188,19 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
             .count();
         output.unanalysed_files.truncate(MAX_UNANALYSED_LISTED);
         return true;
+    }
+    // A word match is the weakest row there is: it goes before a guess.
+    if let Some(sym) = output
+        .changed
+        .iter_mut()
+        .find(|c| c.callers.iter().any(is_textual))
+    {
+        if let Some(i) = sym.callers.iter().rposition(is_textual) {
+            sym.callers.remove(i);
+            output.truncated += 1;
+            output.truncated_textual += 1;
+            return true;
+        }
     }
     // A possible caller is a guess; a changed contract is a fact (#413).
     if let Some(sym) = output
@@ -4775,6 +5346,10 @@ pub fn render_markdown(output: &ImpactOutput) -> String {
 
 fn render(output: &ImpactOutput, compact: bool) -> String {
     let mut out = String::new();
+    if let (Some(symbol), Some(named)) = (&output.symbol, &output.symbol_named) {
+        write_symbol_named(&mut out, symbol, named);
+        return out;
+    }
     write_header(&mut out, output);
     if output.empty
         && output.changed_files.is_empty()
@@ -4901,8 +5476,149 @@ fn named_list(symbols: &[&ChangedSymbol]) -> String {
 
 /// A caller no static test link reaches although one could have: the one
 /// predicate behind the header count, the folded count and the line (#386).
-fn without_test_link(c: &Caller) -> bool {
-    c.evidence != "candidate" && c.tested_by.is_none() && c.registered_by.is_none()
+pub(crate) fn without_test_link(c: &Caller) -> bool {
+    c.evidence == "resolved" && c.tested_by.is_none() && c.registered_by.is_none()
+}
+
+/// A row that rests on a word match alone: listed as text, never counted or
+/// rendered as a caller (R1).
+pub(crate) fn is_textual(c: &Caller) -> bool {
+    c.evidence == "name"
+}
+
+/// What every row built from a word match is labelled with.
+pub(crate) const TEXTUAL_MATCH: &str = "a textual match, not a resolved binding";
+
+/// Textual rows shown before they are counted.
+const MAX_TEXTUAL_SHOWN: usize = 12;
+
+/// The files that spell a name nothing defines, from one line each: not
+/// documents, data, ignore files or lockfiles, which mention without
+/// reading. Code and config come first (Forgejo #114).
+pub(crate) fn symbol_named(
+    root_dir: &Path,
+    source: &crate::source::Source,
+    lines: Vec<(String, u32, String)>,
+    caveat: &str,
+) -> Option<SymbolNamed> {
+    let config = |p: &str| {
+        matches!(
+            extension(p).as_str(),
+            "yaml" | "yml" | "json" | "toml" | "ini" | "env" | "properties" | "conf" | "cfg"
+        )
+    };
+    let mut rows: Vec<NamedFile> = lines
+        .into_iter()
+        .filter(|(path, _, _)| {
+            !is_document(path) && !selects_paths(path) && !is_data(root_dir, source, path)
+        })
+        .map(|(path, line, _)| NamedFile { path, line })
+        .collect();
+    if rows.is_empty() {
+        return None;
+    }
+    rows.sort_by_key(|r| (!(is_code_file(&r.path) || config(&r.path)), r.path.clone()));
+    let files = rows.len();
+    rows.truncate(MAX_TEXTUAL_SHOWN);
+    Some(SymbolNamed {
+        files,
+        rows,
+        caveat: caveat.to_string(),
+    })
+}
+
+/// A `--symbol` query that only text answers: the output carries the names
+/// and nothing else.
+pub(crate) fn symbol_named_output(
+    root_dir: &Path,
+    query: &str,
+    named: SymbolNamed,
+) -> ImpactOutput {
+    ImpactOutput {
+        schema: IMPACT_SCHEMA,
+        name: root_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| root_dir.to_string_lossy().to_string()),
+        range: None,
+        index_tree: None,
+        range_name: None,
+        symbol: Some(query.to_string()),
+        symbol_named: Some(named),
+        changed_files: Vec::new(),
+        untracked_files: Vec::new(),
+        deleted_files: Vec::new(),
+        stale_references: Vec::new(),
+        stale_references_omitted: 0,
+        named_by: Vec::new(),
+        named_by_omitted: 0,
+        key_searches: Vec::new(),
+        collection_reads: Vec::new(),
+        collection_reads_omitted: 0,
+        commit_count: 0,
+        changed: Vec::new(),
+        contracts: Vec::new(),
+        empty: false,
+        truncated: 0,
+        truncated_possible: 0,
+        symbols_omitted: 0,
+        truncated_untested: 0,
+        truncated_textual: 0,
+        changed_files_omitted: 0,
+        untracked_files_omitted: 0,
+        contracts_omitted: 0,
+        limits: Vec::new(),
+        tests_known: false,
+        untested_definitions: 0,
+        untested_unlisted: Vec::new(),
+        untested_called_in_diff: Vec::new(),
+        entry_unlisted: Vec::new(),
+        layout_only: Vec::new(),
+        lockfile_changes: Vec::new(),
+        layout_only_omitted: 0,
+        traced_definitions: 0,
+        withheld_files: 0,
+        unanalysed_files: Vec::new(),
+        unanalysed_files_omitted: 0,
+        untraced_omitted: 0,
+        cap: IMPACT_TOKEN_CAP,
+    }
+}
+
+fn write_symbol_named(out: &mut String, symbol: &str, named: &SymbolNamed) {
+    let _ = writeln!(
+        out,
+        "diffctx impact for symbol {symbol}: no definition found{}; named in {} file(s) ({TEXTUAL_MATCH}):",
+        named.caveat, named.files
+    );
+    for row in &named.rows {
+        let _ = writeln!(out, "  - {}:{}", row.path, row.line);
+    }
+    if named.files > named.rows.len() {
+        let _ = writeln!(out, "  - and {} more", named.files - named.rows.len());
+    }
+}
+
+/// The word matches outside the diff, one row each: `path:line names <symbol>`.
+/// A file the run did not fully read says why beside it.
+fn textual_rows(output: &ImpactOutput) -> Vec<String> {
+    let mut rows = Vec::new();
+    for sym in &output.changed {
+        let name = sym.symbol.as_deref().map_or(sym.path.as_str(), base_symbol);
+        for c in sym.callers.iter().filter(|c| is_textual(c)) {
+            let at = c.sites.first().map(|l| format!(":{l}")).unwrap_or_default();
+            rows.push(format!("{}{at} names {name}", c.path));
+        }
+        for f in &sym.missed_in {
+            let at = f.lines.first().map(|l| format!(":{l}")).unwrap_or_default();
+            rows.push(format!(
+                "{}{at} names {name} ({})",
+                f.path,
+                crate::parsers::unanalysed_text(f.reason)
+            ));
+        }
+    }
+    rows
 }
 
 /// The caller count as far as it is known: symbols whose callers could not
@@ -4925,36 +5641,22 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
             more => format!("{} and {more} more", shown.join(", ")),
         }
     };
-    // A symbol no resolved caller reaches but a file nothing traced names is
-    // no zero: the header says so where the reader looks first (#505).
-    let hedged = output
-        .changed
-        .iter()
-        .filter(|c| {
-            c.unresolved.is_none()
-                && c.callers.is_empty()
-                && c.compatible_callers == 0
-                && !c.missed_in.is_empty()
-        })
-        .count();
-    let mut phrase = if callers == 0
-        && !unresolved.is_empty()
-        && unresolved.len() == output.changed.len()
-    {
-        format!("callers unresolved for {unresolved_names}")
-    } else {
-        let mut p = if hedged > 0 {
-            format!(
-                "{callers} resolved caller(s){scope}, callers may be missing for {hedged} symbol(s)"
-            )
+    let mut phrase =
+        if callers == 0 && !unresolved.is_empty() && unresolved.len() == output.changed.len() {
+            format!("callers unresolved for {unresolved_names}")
         } else {
-            format!("{callers} caller(s){scope}")
+            let mut p = format!("{callers} caller(s){scope}");
+            if !unresolved.is_empty() {
+                p.push_str(&format!(", callers unresolved for {unresolved_names}"));
+            }
+            p
         };
-        if !unresolved.is_empty() {
-            p.push_str(&format!(", callers unresolved for {unresolved_names}"));
-        }
-        p
-    };
+    // Word matches are no callers, and no zero either: they are counted
+    // where the reader looks first (R1).
+    let textual = textual_rows(output).len() + output.truncated_textual;
+    if textual > 0 {
+        phrase.push_str(&format!(", {textual} named only textually (not resolved)"));
+    }
     if !output.limits.is_empty() {
         phrase.push_str(" found in a partial run");
     }
@@ -5057,8 +5759,9 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         .clone()
         .unwrap_or_else(|| range_label(output.range.as_deref(), output.index_tree.as_deref()));
     let all = || output.changed.iter().flat_map(|c| &c.callers);
-    let callers = all().filter(|c| c.evidence != "candidate").count() + output.truncated
-        - output.truncated_possible;
+    let callers = all().filter(|c| c.evidence == "resolved").count() + output.truncated
+        - output.truncated_possible
+        - output.truncated_textual;
     let possible = all().filter(|c| c.evidence == "candidate").count() + output.truncated_possible;
     let untested = all().filter(|c| without_test_link(c)).count() + output.truncated_untested;
     // Labelled, and only beside a caller: "0 without a static test link"
@@ -5077,13 +5780,18 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
             output.untested_definitions
         ));
     }
+    // Withheld files matter where they could hide the answer: a changed
+    // file, or a symbol with no caller yet. A symbol that has callers is
+    // answered, and the count on every lookup taught skipping (#656).
+    let withheld_count = if output.symbol.is_some() && callers + possible > 0 {
+        0
+    } else {
+        output.withheld_files
+    };
     let withheld = |what: &str| {
         let mut clause = String::new();
-        if output.withheld_files > 0 {
-            clause = format!(
-                ", {} {what} withheld by ignore rules",
-                output.withheld_files
-            );
+        if withheld_count > 0 {
+            clause = format!(", {} {what} withheld by ignore rules", withheld_count);
         }
         let count = |reason: &str| {
             output
@@ -5152,7 +5860,7 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         }
     }
     write_unanalysed(out, output);
-    if output.withheld_files > 0 {
+    if withheld_count > 0 {
         let _ = writeln!(
             out,
             "(the withheld files were not read: calls and tests in them are not counted)"
@@ -5189,8 +5897,9 @@ fn guard_of(c: &Caller, tests_known: bool) -> String {
             c.registered_by.as_deref().unwrap_or_default()
         ),
         (None, _) if c.unread_test.is_some() => format!(
-            "no static test link found; {} names it but was not read (over the size cap)",
-            c.unread_test.as_deref().unwrap_or_default()
+            "no static test link found; {} names {} but was not read (over the size cap)",
+            c.unread_test.as_deref().unwrap_or_default(),
+            c.symbol.as_deref().map(base_symbol).unwrap_or("the caller")
         ),
         (None, _) if c.file_tested => "no static test link (its file has tests)".to_string(),
         (None, _) if tests_known => "no static test link found".to_string(),
@@ -5227,40 +5936,19 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
         "- {}{commits}{}",
         label(&sym.path, sym.symbol.as_deref(), &lines),
         if sym.untested && tests_known {
-            " — no static test link"
+            match &sym.entry {
+                Some(role) => format!(" \u{2014} {role} \u{2014} no static test link"),
+                None => " — no static test link".to_string(),
+            }
         } else {
-            ""
+            sym.entry
+                .as_ref()
+                .map(|role| format!(" \u{2014} {role}"))
+                .unwrap_or_default()
         }
     );
     if let Some(note) = &sym.unresolved {
         let _ = writeln!(out, "  - callers not resolved: {note}");
-    }
-    if !sym.missed_in.is_empty() {
-        let shown: Vec<String> = sym
-            .missed_in
-            .iter()
-            .take(UNANALYSED_EXAMPLES)
-            .map(|f| {
-                let at = f.lines.first().map(|l| format!(":{l}")).unwrap_or_default();
-                format!(
-                    "{}{at} ({})",
-                    f.path,
-                    crate::parsers::unanalysed_text(f.reason)
-                )
-            })
-            .collect();
-        let more = sym.missed_in.len().saturating_sub(UNANALYSED_EXAMPLES);
-        let _ = writeln!(
-            out,
-            "  - callers may be missing: named in {} file(s) not fully analysed: {}{}",
-            sym.missed_in.len(),
-            shown.join(", "),
-            if more > 0 {
-                format!(" and {more} more")
-            } else {
-                String::new()
-            }
-        );
     }
     if sym.compatible_callers > 0 {
         let _ = writeln!(
@@ -5278,7 +5966,7 @@ fn write_resolved_callers(out: &mut String, sym: &ChangedSymbol, tests_known: bo
     // lines: the first few name where, the count says how many.
     let mut shown_per_file: FxHashMap<&str, usize> = FxHashMap::default();
     let mut folded_per_file: FxHashMap<&str, (usize, usize)> = FxHashMap::default();
-    for c in sym.callers.iter().filter(|c| c.evidence != "candidate") {
+    for c in sym.callers.iter().filter(|c| c.evidence == "resolved") {
         let shown = shown_per_file.entry(c.path.as_str()).or_default();
         if *shown >= MAX_CALLERS_SHOWN_PER_FILE {
             let entry = folded_per_file.entry(c.path.as_str()).or_default();
@@ -5345,6 +6033,17 @@ fn write_candidate_callers(out: &mut String, sym: &ChangedSymbol, compact: bool)
 const MAX_UNTESTED_NAMED: usize = 8;
 
 fn write_untested_unlisted(out: &mut String, output: &ImpactOutput) {
+    write_untested(out, output);
+    write_list(
+        out,
+        "Changed, entered by a runner or the framework, not by a caller:",
+        &output.entry_unlisted,
+        MAX_UNTESTED_NAMED,
+        0,
+    );
+}
+
+fn write_untested(out: &mut String, output: &ImpactOutput) {
     if !output.tests_known {
         return;
     }
@@ -5427,9 +6126,18 @@ fn write_tail(out: &mut String, output: &ImpactOutput) {
         usize::MAX,
         output.stale_references_omitted,
     );
+    let textual = textual_rows(output);
+    write_list(
+        out,
+        &format!("Named in code outside the diff ({TEXTUAL_MATCH}):"),
+        &textual,
+        MAX_TEXTUAL_SHOWN,
+        output.truncated_textual,
+    );
     let named: Vec<String> = output
         .named_by
         .iter()
+        .filter(|r| r.key.is_none())
         .map(|r| format!("{}:{} names {}", r.path, r.line, r.target))
         .collect();
     write_list(
@@ -5439,6 +6147,34 @@ fn write_tail(out: &mut String, output: &ImpactOutput) {
         usize::MAX,
         output.named_by_omitted,
     );
+    let keyed: Vec<String> = output
+        .named_by
+        .iter()
+        .filter_map(|r| {
+            let key = r.key.as_deref()?;
+            Some(format!("{}:{} names {key} ({})", r.path, r.line, r.target))
+        })
+        .collect();
+    write_list(
+        out,
+        &format!("Named by a changed key outside the diff ({TEXTUAL_MATCH}):"),
+        &keyed,
+        usize::MAX,
+        0,
+    );
+    let unnamed: Vec<String> = output
+        .key_searches
+        .iter()
+        .filter(|k| k.named == 0)
+        .map(|k| format!("{} ({})", k.path, k.keys.join(", ")))
+        .collect();
+    if !unnamed.is_empty() {
+        let _ = writeln!(
+            out,
+            "(changed keys searched as text, named nowhere outside the diff: {})",
+            unnamed.join("; ")
+        );
+    }
     let reads: Vec<String> = output
         .collection_reads
         .iter()
@@ -5477,13 +6213,7 @@ fn write_tail(out: &mut String, output: &ImpactOutput) {
         );
     }
     let callers = || output.changed.iter().flat_map(|c| &c.callers);
-    if callers().any(|c| c.evidence == "name") {
-        let _ = writeln!(
-            out,
-            "Callers outside Python and JS/TS are matched by name in code that names the module, not by a resolved binding."
-        );
-    }
-    if callers().any(|c| c.tested_by.is_some()) {
+    if callers().any(|c| c.tested_by.is_some() && !is_textual(c)) {
         let _ = writeln!(
             out,
             "Test links are static references within {MAX_TEST_HOPS} call hops, not execution coverage."

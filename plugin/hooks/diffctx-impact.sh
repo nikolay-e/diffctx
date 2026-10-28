@@ -8,6 +8,9 @@
 # and no impact review is worth a blocked commit.
 set -u
 
+# A source-installed tool can share the pin while carrying different code.
+export UV_ISOLATED=1
+
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 
 # Read the event once and leave every other Bash call alone before starting

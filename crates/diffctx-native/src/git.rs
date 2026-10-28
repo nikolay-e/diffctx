@@ -1545,6 +1545,22 @@ pub fn grep_code_words(
     grep_rows(repo_root, &args, rev)
 }
 
+/// The first line of each file that holds `word` as a whole word, in the
+/// working tree: where a name nothing defines is spelled.
+pub fn grep_word_first_lines(
+    repo_root: &Path,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Grepped<(String, u32, String)>> {
+    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F", "-w", "-m", "1", "-e", word];
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    grep_rows(repo_root, &args, None)
+}
+
 /// Every line holding one of `needles` (fixed strings) at `rev`, or in the
 /// working tree when `rev` is `None`: (repo-relative path, line, text).
 pub fn grep_lines(

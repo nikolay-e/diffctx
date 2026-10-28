@@ -27,9 +27,9 @@ concurrency:
         default: false
         type: boolean
       move_plugin_release:
-        description: 'Point the plugin directory at this release (each move is one more version for its reviewer)'
+        description: 'Point the plugin directory at this release: only on the owner''s word (it requeues review)'
         required: false
-        default: true
+        default: false
         type: boolean
 
 jobs:

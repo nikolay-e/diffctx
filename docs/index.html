@@ -77,7 +77,7 @@
         --line-soft: #1a241f;
         --fg: #d7e4dc;
         --fg-dim: #8fa39a;
-        --fg-faint: #5c6f66;
+        --fg-faint: #81958a;
         --sig: #52f2a8;
         --sig-dim: #2c8f63;
         --seed: #e8b44f;
@@ -476,69 +476,13 @@
         margin-top: 14px;
       }
 
-      /* ---------- problem: token bars ---------- */
-      .bars {
-        margin-top: 56px;
-        display: grid;
-        gap: 34px;
-      }
-      .bar-row .bar-label {
-        display: flex;
-        justify-content: space-between;
-        font-size: 13px;
-        margin-bottom: 10px;
-      }
-      .bar-row .who {
-        color: var(--fg);
-      }
-      .bar-row .tok {
-        color: var(--fg-dim);
-        font-variant-numeric: tabular-nums;
-      }
-      .bar-track {
-        height: 34px;
-        background: var(--ink-2);
-        border: 1px solid var(--line-soft);
-        border-radius: 6px;
-        overflow: hidden;
-        position: relative;
-      }
-      .bar-fill {
-        height: 100%;
-        width: 0;
-        transition: width 1.4s cubic-bezier(0.2, 0.7, 0.2, 1);
-        display: flex;
-        align-items: center;
-        position: relative;
-      }
-      .bar-fill.noise-fill {
-        background: repeating-linear-gradient(
-          -45deg,
-          #2a332e 0 8px,
-          #242c28 8px 16px
-        );
-      }
-      .bar-fill.sig-fill {
-        background: linear-gradient(90deg, var(--sig-dim), var(--sig));
-        box-shadow: 0 0 24px rgba(82, 242, 168, 0.25);
-      }
-      .bar-note {
-        font-size: 12px;
-        color: var(--fg-faint);
-        margin-top: 8px;
-      }
-      .bar-note b {
-        color: var(--sig);
-        font-weight: 500;
-      }
-
       /* ---------- lab (pipeline) ---------- */
       #lab {
         padding-top: 88px;
       }
       .lab-grid {
         display: grid;
-        grid-template-columns: 390px 1fr;
+        grid-template-columns: 390px minmax(0, 1fr);
         gap: 44px;
         margin-top: 54px;
         align-items: start;
@@ -1345,7 +1289,7 @@
                 <span>stdout</span>
                 <span class="stage-name">-f yaml · o200k_base</span>
               </div>
-              <div class="yaml-body" id="yaml"></div>
+              <div class="yaml-body" id="yaml" tabindex="0" role="region" aria-label="Context preview"></div>
             </div>
           </div>
         </div>
@@ -1577,12 +1521,12 @@
     <script>
       /* ============ data: toy repo ============ */
       const CAT = {
-        semantic: { color: "var(--c-semantic)", hex: "#4ce0a0" },
-        structural: { color: "var(--c-structural)", hex: "#5aa9e6" },
-        config: { color: "var(--c-config)", hex: "#e8b44f" },
-        document: { color: "var(--c-document)", hex: "#b18cf0" },
-        similarity: { color: "var(--c-similarity)", hex: "#e77b9d" },
-        history: { color: "var(--c-history)", hex: "#d9c04a" },
+        semantic: { hex: "#4ce0a0" },
+        structural: { hex: "#5aa9e6" },
+        config: { hex: "#e8b44f" },
+        document: { hex: "#b18cf0" },
+        similarity: { hex: "#e77b9d" },
+        history: { hex: "#d9c04a" },
       };
 
       const NODES = [
@@ -2126,7 +2070,6 @@
 
       /* autoplay through stages the first time the lab scrolls in */
       let played = false;
-      const lab = document.getElementById("lab");
       new IntersectionObserver(
         (entries) => {
           if (entries[0].isIntersecting && !played) {

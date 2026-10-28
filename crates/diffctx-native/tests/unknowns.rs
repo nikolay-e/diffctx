@@ -6,7 +6,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, fill, repo};
+use support::{commit_all, diffctx, fill, fill_steps, repo, write};
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
     let out = diffctx()
@@ -310,6 +310,225 @@ fn a_script_run_by_config_lists_the_entries_that_run_it() {
     assert!(!md.contains("tools/run.sh"), "{md}");
 }
 
+/// #673, #682: a root file is named by a path that resolves to it in this
+/// repository. Another tree's path ending in the same name, a row of data,
+/// a transcript and an ignore file's entry name no consumer of its content.
+#[test]
+fn a_root_file_is_named_only_by_this_repositorys_path_to_it() {
+    let tmp = TempDir::new().expect("tempdir");
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let check = format!(
+        "#!/bin/sh\n[ -f \"$HOME/other-project/GUIDE.md\" ]\n[ -f {}/GUIDE.md ]\n",
+        root.display()
+    );
+    let mut base: Vec<(String, String)> = vec![
+        ("GUIDE.md".into(), "# demo\n".into()),
+        (".gitignore".into(), "tmp/\n!GUIDE.md\n".into()),
+        ("scripts/check.sh".into(), check),
+        (
+            "data/corpus.tsv".into(),
+            "id\tpath\n1\t/home/someone/elsewhere/GUIDE.md\n".into(),
+        ),
+        (
+            "Dockerfile".into(),
+            "FROM alpine\nCOPY GUIDE.md /srv/\n".into(),
+        ),
+    ];
+    for i in 1..=4 {
+        base.push((
+            format!("data/exports/Chat {i}"),
+            "user: I updated GUIDE.md\nassistant: GUIDE.md looks fine\n".into(),
+        ));
+    }
+    let base: Vec<(&str, &str)> = base.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    fill(&root, &base, &[("GUIDE.md", "# demo\n\nmore\n")]);
+    let md = impact_markdown(&root);
+    assert!(md.contains("Dockerfile:2 names GUIDE.md"), "{md}");
+    assert!(md.contains("scripts/check.sh:3 names GUIDE.md"), "{md}");
+    assert!(!md.contains("check.sh:2"), "{md}");
+    assert!(!md.contains("corpus.tsv"), "{md}");
+    assert!(!md.contains("Chat "), "{md}");
+    assert!(!md.contains(".gitignore"), "{md}");
+    assert!(!md.contains("more"), "{md}");
+}
+
+/// #686, #609: a changed config's keys are searched as text, and the lines
+/// naming them are listed as textual references. A key nobody names is said
+/// to be searched; a file whose changed words are too common stays unfollowed.
+#[test]
+fn a_changed_configs_keys_are_searched_as_text() {
+    let values = |n: u32| format!("db:\n  maxPoolSize: {n}\n  statementTimeoutMs: 500\n");
+    let tmp = repo(
+        &[
+            ("deploy/values.yaml", &values(10)),
+            (
+                "deploy/templates/app.yaml",
+                "env:\n  - name: POOL\n    value: {{ .Values.db.maxPoolSize }}\n",
+            ),
+            (
+                "src/db.py",
+                "def pool(cfg):\n    return cfg[\"db\"][\"maxPoolSize\"]\n",
+            ),
+            ("README.md", "Set maxPoolSize in deploy/values.yaml.\n"),
+            ("deploy/other.yaml", "replicas: 2\n"),
+            ("deploy/lonely.toml", "[cache]\nevictionWindowSec = 30\n"),
+        ],
+        &[
+            ("deploy/values.yaml", &values(20)),
+            ("deploy/other.yaml", "replicas: 3\n"),
+            ("deploy/lonely.toml", "[cache]\nevictionWindowSec = 60\n"),
+        ],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(
+        md.contains("src/db.py:2 names maxPoolSize (deploy/values.yaml)"),
+        "{md}"
+    );
+    assert!(
+        md.contains("deploy/templates/app.yaml:3 names maxPoolSize (deploy/values.yaml)"),
+        "{md}"
+    );
+    assert!(!md.contains("README.md"), "{md}");
+    assert!(md.contains("evictionWindowSec"), "{md}");
+    assert!(md.contains("not followed"), "{md}");
+    assert!(md.contains("deploy/other.yaml"), "{md}");
+    let not_followed = md
+        .lines()
+        .find(|l| l.contains("not followed —"))
+        .unwrap_or_default();
+    assert!(!not_followed.contains("values.yaml"), "{md}");
+    assert!(!not_followed.contains("lonely.toml"), "{md}");
+}
+
+/// #678, #391: a crate's integration test that runs its binary reaches
+/// `main`, and through it what `main` calls.
+#[test]
+fn a_test_that_runs_the_binary_reaches_main() {
+    let main = |word: &str| {
+        format!(
+            "fn greet(name: &str) -> String {{\n    format!(\"{word} {{name}}\")\n}}\n\nfn main() {{\n    let arg = std::env::args().nth(1).unwrap_or_default();\n    println!(\"{{}}\", greet(&arg));\n}}\n"
+        )
+    };
+    let cli = "use std::process::Command;\n\n#[test]\nfn greets() {\n    let out = Command::new(env!(\"CARGO_BIN_EXE_tool\")).arg(\"x\").output().unwrap();\n    assert!(out.status.success());\n}\n";
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/main.rs", &main("hello")),
+            ("tests/cli.rs", cli),
+        ],
+        &[("src/main.rs", &main("hi"))],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(!md.contains("no static test link"), "{md}");
+    assert!(md.contains("tests/cli.rs"), "{md}");
+
+    // Another binary's run reaches this one's `main` no more than before.
+    let other = cli.replace("CARGO_BIN_EXE_tool", "CARGO_BIN_EXE_other");
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/main.rs", &main("hello")),
+            ("tests/cli.rs", &other),
+        ],
+        &[("src/main.rs", &main("hi"))],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(!md.contains("tests/cli.rs"), "{md}");
+}
+
+/// R1: a word match is listed as text, never counted or rendered as a caller.
+/// #681: a removed shell function whose name sits in another script's path and
+/// argument. Forgejo #115: a Python constant named by a shell variable in a
+/// template. A C# method called from another file (the lexical tier: no binding
+/// model reads C#). A resolved Python caller beside them stays a caller.
+#[test]
+fn a_word_match_is_listed_as_text_never_as_a_caller() {
+    let tmp = TempDir::new().unwrap();
+    fill_steps(
+        tmp.path(),
+        &[&[
+            (
+                "bin/tool.sh",
+                "#!/bin/sh\nusage() {\n  echo \"usage: tool <x>\"\n}\n[ $# -gt 0 ] || usage\n",
+            ),
+            (
+                "hooks/cap.sh",
+                "#!/bin/sh\ndir=$HOME/state/usage\nsome-cli /usage > \"$dir/out\"\n",
+            ),
+            ("ops/settings.py", "NAMESPACES = [\"a\", \"b\"]\n"),
+            (
+                "ops/run.sh.j2",
+                "#!/bin/sh\nNAMESPACES=\"a b\"\nfor ns in $NAMESPACES; do echo \"$ns\"; done\n",
+            ),
+            (
+                "src/Rates.cs",
+                "class Rates {\n    public static int Rate() {\n        return 1;\n    }\n}\n",
+            ),
+            (
+                "src/Invoice.cs",
+                "class Invoice {\n    int Total() {\n        return Rates.Rate() * 3;\n    }\n}\n",
+            ),
+            ("core/tax.py", "def vat(x):\n    return x * 1.19\n"),
+            (
+                "core/cart.py",
+                "from core.tax import vat\n\n\ndef checkout(x):\n    return vat(x)\n",
+            ),
+        ]],
+    );
+    std::fs::remove_file(tmp.path().join("bin/tool.sh")).unwrap();
+    write(
+        tmp.path(),
+        "ops/settings.py",
+        "NAMESPACES = [\"a\", \"b\", \"c\"]\n",
+    );
+    write(
+        tmp.path(),
+        "src/Rates.cs",
+        "class Rates {\n    public static int Rate() {\n        return 2;\n    }\n}\n",
+    );
+    write(
+        tmp.path(),
+        "core/tax.py",
+        "def vat(x):\n    return x * 1.2\n",
+    );
+    commit_all(tmp.path(), "change");
+    let md = impact_markdown(tmp.path());
+    let json = impact_json(tmp.path());
+    let section = "Named in code outside the diff (a textual match, not a resolved binding):";
+    let (head, text) = md.split_once(section).unwrap_or_else(|| panic!("{md}"));
+    assert!(head.contains("1 caller(s) outside the diff"), "{md}");
+    assert!(
+        head.contains("1 caller(s) outside the diff, 3 named only textually (not resolved)"),
+        "{md}"
+    );
+    for row in ["hooks/cap.sh:", "ops/run.sh.j2", "src/Invoice.cs:"] {
+        assert!(text.contains(row), "{row}: {md}");
+    }
+    // The row cites the line that spells the name, not its function's start.
+    assert!(text.contains("src/Invoice.cs:3 names Rate"), "{md}");
+    for shown_as_caller in ["hooks/cap.sh", "ops/run.sh.j2", "src/Invoice.cs"] {
+        assert!(!head.contains(shown_as_caller), "{shown_as_caller}: {md}");
+    }
+    assert!(!md.contains("callers may be missing"), "{md}");
+    assert!(!md.contains("Callers outside Python"), "{md}");
+    assert!(head.contains("called from core/cart.py::checkout"), "{md}");
+    let evidence: Vec<&str> = json["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|c| c["callers"].as_array().unwrap())
+        .filter(|c| c["path"] == "src/Invoice.cs")
+        .map(|c| c["evidence"].as_str().unwrap())
+        .collect();
+    assert_eq!(evidence, ["name"], "{json}");
+}
+
 /// #430: eight changed Scala methods named `make` and `build`, each defined
 /// in four objects, say one thing between them. They take one folded line,
 /// and the function whose callers resolve keeps them. Scala has no binding
@@ -350,8 +569,15 @@ fn names_too_common_to_trace_fold_into_one_line() {
         "{md}"
     );
     assert!(!md.contains("callers not resolved: `make`"), "{md}");
-    assert!(md.contains("called from src/app/Main.scala::main"), "{md}");
-    assert!(md.contains("called from src/app/Lib.scala::entry"), "{md}");
+    assert!(
+        md.contains("src/app/Main.scala:5 names uniqueHelper"),
+        "{md}"
+    );
+    assert!(
+        md.contains("src/app/Lib.scala:5 names uniqueHelper"),
+        "{md}"
+    );
+    assert!(!md.contains("called from src/app/Main.scala"), "{md}");
 }
 
 /// What names a changed file by path is context, never at a caller's
@@ -433,11 +659,6 @@ fn impact_json(repo: &Path) -> serde_json::Value {
 #[test]
 fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
     let untraced: &[(&str, &str, &str)] = &[
-        (
-            "template.yaml",
-            "spec:\n  synchronization:\n    mutexes:\n      - name: build\n  entrypoint: main\n",
-            "spec:\n  entrypoint: main\n",
-        ),
         ("settings.json", "{\"retries\": 3}\n", "{\"retries\": 5}\n"),
         ("app.toml", "[pool]\nsize = 4\n", "[pool]\nsize = 8\n"),
         (
@@ -485,6 +706,24 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         assert!(md.contains("not followed"), "{path}: {md}");
         assert!(!md.contains("No resolved static callers"), "{path}: {md}");
     }
+
+    // A removed key a script reads is that script's line, by text (#686).
+    let tmp = repo(
+        &[
+            (
+                "template.yaml",
+                "spec:\n  synchronization:\n    mutexes:\n      - name: build\n  entrypoint: main\n",
+            ),
+            reader,
+        ],
+        &[("template.yaml", "spec:\n  entrypoint: main\n")],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(
+        md.contains("healer.py:2 names synchronization (template.yaml)"),
+        "{md}"
+    );
+    assert!(!md.contains("not followed"), "{md}");
 
     let png_before = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01".to_vec();
     let mut png_after = png_before.clone();
@@ -961,6 +1200,90 @@ fn a_coverage_block_added_by_the_fit_names_its_counts_unknown() {
     assert!(whole.get("coverage").is_none(), "{whole}");
 }
 
+/// R2, Forgejo #114: a name no file defines but files spell is answered with
+/// where they spell it, labelled a textual match; documents and data are not
+/// readers; a name nothing spells keeps its error.
+#[test]
+fn a_name_nothing_defines_is_listed_where_files_spell_it() {
+    let metric = "restic_last_success_seconds";
+    let mut files: Vec<(String, String)> = vec![
+        (
+            "rules/backup.yaml".into(),
+            format!("groups:\n  - rules:\n      - expr: time() - {metric} > 86400\n"),
+        ),
+        (
+            "scripts/backup.sh".into(),
+            format!("#!/bin/sh\necho \"{metric} $(date +%s)\"\n"),
+        ),
+        ("docs/notes.md".into(), format!("Watch {metric}.\n")),
+        ("data/runs.csv".into(), format!("{metric},1\n")),
+        (".gitignore".into(), format!("{metric}\n")),
+        ("src/app.py".into(), "def other():\n    return 1\n".into()),
+    ];
+    for i in 0..13 {
+        files.push((format!("zz/{i:02}.sh"), format!("echo {metric}\n")));
+    }
+    let base: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo(&base, &[]);
+    let out = diffctx()
+        .current_dir(tmp.path())
+        .args([".", "--symbol", metric, "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let md = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        md.starts_with(&format!(
+            "diffctx impact for symbol {metric}: no definition found; named in 15 file(s) (a textual match, not a resolved binding):"
+        )),
+        "{md}"
+    );
+    assert!(md.contains("rules/backup.yaml:3"), "{md}");
+    assert!(md.contains("scripts/backup.sh:2"), "{md}");
+    for excluded in ["notes.md", "runs.csv", ".gitignore"] {
+        assert!(!md.contains(excluded), "{excluded}: {md}");
+    }
+    assert!(md.contains("and 3 more"), "{md}");
+    assert_eq!(
+        md.lines().filter(|l| l.starts_with("  - ")).count(),
+        13,
+        "{md}"
+    );
+
+    let json = diffctx()
+        .current_dir(tmp.path())
+        .args([".", "--symbol", metric, "-q", "-f", "json"])
+        .output()
+        .expect("run diffctx");
+    assert!(json.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&json.stdout).expect("json");
+    assert_eq!(doc["symbol_named"]["files"], 15, "{doc:#}");
+    assert_eq!(
+        doc["symbol_named"]["rows"][0]["path"], "rules/backup.yaml",
+        "{doc:#}"
+    );
+    assert_eq!(doc["symbol_named"]["rows"][0]["line"], 3, "{doc:#}");
+
+    let none = diffctx()
+        .current_dir(tmp.path())
+        .args([".", "--symbol", "no_such_function", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    assert_eq!(none.status.code(), Some(1));
+    assert_eq!(none.stdout, b"");
+    assert_eq!(
+        String::from_utf8_lossy(&none.stderr),
+        "diffctx: no definition of \"no_such_function\" found\n"
+    );
+}
+
 /// #542: `--symbol` reads the files that name the symbol, so a module over
 /// the candidate size cap that subclasses it is a caller, and a test over
 /// it that calls it is a test link. A test over the cap that names only a
@@ -1002,13 +1325,24 @@ fn a_file_over_the_size_cap_that_names_the_symbol_is_read() {
             ),
             (
                 "pkg/small.py",
-                "from pkg.base import StrictServer\n\n\ndef make():\n    return StrictServer()\n",
+                "from pkg.base import StrictServer\n\n\ndef make():\n    return StrictServer()\n\ndef build():\n    return StrictServer()\n",
             ),
             ("pkg/server.py", &server),
             ("pkg/notes.py", &notes),
             ("tests/test_base.py", &base_test),
             ("tests/test_child.py", &child_test),
             ("tests/test_docs.py", &docs_test),
+            (
+                "tests/test_unrelated.py",
+                &format!("def make():\n    return 1\n{}", pad("other", 1500)),
+            ),
+            (
+                "tests/test_unrelated.js",
+                &format!(
+                    "function build() {{}}\nconst small = 1;\n{}",
+                    "// padding\n".repeat(11000)
+                ),
+            ),
         ],
         &[],
     );
@@ -1031,14 +1365,17 @@ fn a_file_over_the_size_cap_that_names_the_symbol_is_read() {
         "{md}"
     );
     assert!(
-        md.contains("tests/test_child.py names it but was not read (over the size cap)"),
+        md.contains("tests/test_child.py names ChildServer but was not read (over the size cap)"),
         "{md}"
     );
     assert!(
         md.contains("called from pkg/small.py::make (4-5) — no static test link found\n"),
         "{md}"
     );
-    assert!(!md.contains("pkg/notes.py"), "{md}");
+    assert!(
+        !md.contains("pkg/notes.py") && !md.contains("test_unrelated"),
+        "{md}"
+    );
     assert!(!md.contains("not fully analysed"), "{md}");
 }
 
@@ -1318,8 +1655,15 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     // A plain word in a data file is no reader of a function named `total`.
     assert!(!missed.contains("data/labels.json"), "{doc:#}");
     let text = impact_markdown(site.path());
-    assert!(!text.contains(" 0 caller(s)"), "{text}");
-    assert!(text.contains("callers may be missing"), "{text}");
+    assert!(
+        text.contains(", 1 named only textually (not resolved)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("src/pages/index.astro:2 names formatDate"),
+        "{text}"
+    );
+    assert!(!text.contains("callers may be missing"), "{text}");
 }
 
 /// #505: a verdict needs a model. A changed method whose only caller is in
@@ -1470,4 +1814,327 @@ fn a_bare_name_shared_by_nested_files_names_neither() {
     let md = impact_markdown(deleted.path());
     assert!(!md.contains("svc/tests/test_rules.py"), "{md}");
     assert!(md.contains("tools/lint.py:1"), "{md}");
+}
+
+/// R3: a fragment whose role is an entry point has an implicit caller. It is
+/// never a test gap and never hedged for callers; where a static link exists
+/// it is shown, otherwise the role is named.
+const ENTRY_LIST: &str = "Changed, entered by a runner or the framework, not by a caller:";
+
+fn assert_no_negative_claim(md: &str) {
+    for claim in [
+        "callers not resolved",
+        "callers unresolved",
+        "no static test link",
+        "nothing calls them",
+        "no test files in view",
+    ] {
+        assert!(!md.contains(claim), "{claim}: {md}");
+    }
+}
+
+/// #671, #401, #664: a test is run by its runner. `TestCase` methods and
+/// their helpers, pytest fixtures and parametrized tests, a Go `TestGreet`,
+/// a Kotlin JUnit `@Test`: none is hedged, none is a gap. A queried one names
+/// its role.
+#[test]
+fn a_test_is_run_by_its_runner() {
+    let unittest = repo(
+        &[
+            ("tool.py", "def run(x):\n    return x + 1\n"),
+            (
+                "test_tool.py",
+                "import unittest\nfrom tool import run\n\n\nclass ToolTest(unittest.TestCase):\n    def setUp(self):\n        self.x = 1\n\n    def run_tool(self):\n        return run(self.x)\n\n    def test_one(self):\n        self.assertEqual(self.run_tool(), 2)\n\n    def test_two(self):\n        self.assertEqual(self.run_tool(), 2)\n",
+            ),
+        ],
+        &[(
+            "test_tool.py",
+            "import unittest\nfrom tool import run\n\n\nclass ToolTest(unittest.TestCase):\n    def setUp(self):\n        self.x = 2\n\n    def run_tool(self):\n        return run(self.x) + 0\n\n    def test_one(self):\n        self.assertEqual(self.run_tool(), 3)\n\n    def test_two(self):\n        self.assertEqual(self.run_tool(), 3)\n",
+        )],
+    );
+    let md = impact_markdown(unittest.path());
+    assert_no_negative_claim(&md);
+    let queried = symbol_markdown(unittest.path(), "run_tool");
+    assert!(
+        queried.contains("test (run by the test runner)"),
+        "{queried}"
+    );
+    assert!(!queried.contains("callers not resolved"), "{queried}");
+
+    let pytest = repo(
+        &[
+            ("app.py", "def f(x):\n    return x\n"),
+            (
+                "tests/test_app.py",
+                "import pytest\nfrom app import f\n\n\n@pytest.fixture\ndef item():\n    return 1\n\n\n@pytest.mark.parametrize('v', [1, 2])\ndef test_f(v, item):\n    assert f(v) == v\n",
+            ),
+        ],
+        &[(
+            "tests/test_app.py",
+            "import pytest\nfrom app import f\n\n\n@pytest.fixture\ndef item():\n    return 2\n\n\n@pytest.mark.parametrize('v', [1, 2, 3])\ndef test_f(v, item):\n    assert f(v) == v\n",
+        )],
+    );
+    assert_no_negative_claim(&impact_markdown(pytest.path()));
+
+    let go = repo(
+        &[
+            ("go.mod", "module ex\n\ngo 1.21\n"),
+            (
+                "greet.go",
+                "package ex\n\nfunc Greet() string {\n\treturn \"hi\"\n}\n",
+            ),
+            (
+                "greet_test.go",
+                "package ex\n\nimport \"testing\"\n\nfunc TestGreet(t *testing.T) {\n\tif Greet() != \"hi\" {\n\t\tt.Fail()\n\t}\n}\n",
+            ),
+        ],
+        &[(
+            "greet_test.go",
+            "package ex\n\nimport \"testing\"\n\nfunc TestGreet(t *testing.T) {\n\tif Greet() != \"hi\" {\n\t\tt.Fatal(1)\n\t}\n}\n",
+        )],
+    );
+    assert_no_negative_claim(&impact_markdown(go.path()));
+
+    // #664: a JUnit `@Test` whose body calls an inherited helper (the
+    // released wheel read it as "callers not resolved: calls through
+    // `HttpTestBase` are not traced").
+    let cart = |extra: &str| {
+        format!(
+            "package shop\n\nimport org.junit.jupiter.api.Test\nimport kotlin.test.assertEquals\n\nclass CartTest : HttpTestBase() {{\n    @Test\n    fun `a cart with no items is empty`() {{\n        assertEquals(true, Cart().empty(0))\n    }}\n{extra}}}\n"
+        )
+    };
+    let kotlin = repo(
+        &[
+            (
+                "src/main/kotlin/shop/Cart.kt",
+                "package shop\n\nclass Cart {\n    fun empty(items: Int): Boolean = items == 0\n}\n",
+            ),
+            (
+                "src/test/kotlin/shop/HttpTestBase.kt",
+                "package shop\n\nabstract class HttpTestBase {\n    fun get(path: String): Int = path.length\n}\n",
+            ),
+            ("src/test/kotlin/shop/CartTest.kt", &cart("")),
+        ],
+        &[(
+            "src/test/kotlin/shop/CartTest.kt",
+            &cart(
+                "\n    @Test\n    fun `the cart page answers`() {\n        assertEquals(5, get(\"/cart\"))\n        assertEquals(false, Cart().empty(2))\n    }\n",
+            ),
+        )],
+    );
+    assert_no_negative_claim(&impact_markdown(kotlin.path()));
+}
+
+/// Forgejo #111: a module's own `if __name__ == "__main__":` guard calling a
+/// changed function is not a caller outside the diff and not a test gap; the
+/// definition says it runs as a script. A Go and a Java `main` are program
+/// entry points, not definitions nothing calls.
+#[test]
+fn a_script_guard_and_a_program_main_are_entry_points_not_callers() {
+    let script = repo(
+        &[
+            (
+                "job.py",
+                "def main():\n    print('hi')\n\n\nif __name__ == '__main__':\n    main()\n",
+            ),
+            ("tests/test_other.py", "def test_x():\n    assert True\n"),
+        ],
+        &[(
+            "job.py",
+            "def main():\n    print('hello')\n\n\nif __name__ == '__main__':\n    main()\n",
+        )],
+    );
+    let md = impact_markdown(script.path());
+    assert!(md.contains("0 caller(s) outside the diff"), "{md}");
+    assert_eq!(
+        md.matches("run as a script (if __name__ == \"__main__\")")
+            .count(),
+        1,
+        "{md}"
+    );
+    assert!(md.contains(ENTRY_LIST), "{md}");
+    assert_no_negative_claim(&md);
+
+    // A name only spelled inside a longer word of the guard's call is no
+    // entry: `load` sits in `download=True`. It stays a definition nothing
+    // calls.
+    let substring = repo(
+        &[
+            (
+                "job.py",
+                "def load(path):\n    return open(path).read()\n\n\ndef main(download=False):\n    print('hi')\n\n\nif __name__ == '__main__':\n    main(download=True)\n",
+            ),
+            ("tests/test_other.py", "def test_x():\n    assert True\n"),
+        ],
+        &[(
+            "job.py",
+            "def load(path):\n    return open(path).read().strip()\n\n\ndef main(download=False):\n    print('hi')\n\n\nif __name__ == '__main__':\n    main(download=True)\n",
+        )],
+    );
+    let md = impact_markdown(substring.path());
+    assert!(!md.contains("run as a script"), "{md}");
+    assert!(
+        md.contains("no static test link:\n  - job.py::load"),
+        "{md}"
+    );
+    assert!(md.contains("nothing calls them"), "{md}");
+
+    // A Rust `main` links to the test that runs the binary; one no test runs
+    // keeps its negative claim (the link is modelled): a test that runs
+    // another binary is in view (changed with it), and none runs this one.
+    let rust = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/main.rs", "fn main() {\n    println!(\"hello\");\n}\n"),
+            (
+                "tests/other.rs",
+                "use std::process::Command;\n\n#[test]\nfn runs_another_binary() {\n    let out = Command::new(env!(\"CARGO_BIN_EXE_other\")).output().unwrap();\n    assert!(out.status.success());\n}\n",
+            ),
+        ],
+        &[
+            ("src/main.rs", "fn main() {\n    println!(\"hi\");\n}\n"),
+            (
+                "tests/other.rs",
+                "use std::process::Command;\n\n#[test]\nfn runs_another_binary() {\n    let out = Command::new(env!(\"CARGO_BIN_EXE_other\")).arg(\"x\").output().unwrap();\n    assert!(out.status.success());\n}\n",
+            ),
+        ],
+    );
+    let md = impact_markdown(rust.path());
+    assert!(
+        md.contains("no static test link:\n  - src/main.rs::main"),
+        "{md}"
+    );
+    assert!(!md.contains(ENTRY_LIST), "{md}");
+
+    let go = repo(
+        &[
+            ("go.mod", "module ex\n\ngo 1.21\n"),
+            (
+                "main.go",
+                "package main\n\nfunc main() {\n\tprintln(1)\n}\n",
+            ),
+            (
+                "util_test.go",
+                "package main\n\nimport \"testing\"\n\nfunc TestUtil(t *testing.T) {}\n",
+            ),
+        ],
+        &[(
+            "main.go",
+            "package main\n\nfunc main() {\n\tprintln(2)\n}\n",
+        )],
+    );
+    let md = impact_markdown(go.path());
+    assert!(md.contains("main.go::main"), "{md}");
+    assert!(md.contains("program entry point"), "{md}");
+    assert_no_negative_claim(&md);
+
+    let java = repo(
+        &[
+            (
+                "src/main/java/App.java",
+                "public class App {\n    public static void main(String[] args) {\n        System.out.println(\"hi\");\n    }\n}\n",
+            ),
+            (
+                "src/test/java/OtherTest.java",
+                "public class OtherTest {\n    public void other() {}\n}\n",
+            ),
+        ],
+        &[(
+            "src/main/java/App.java",
+            "public class App {\n    public static void main(String[] args) {\n        System.out.println(\"hello\");\n    }\n}\n",
+        )],
+    );
+    let md = impact_markdown(java.path());
+    assert!(md.contains("program entry point"), "{md}");
+    assert_no_negative_claim(&md);
+}
+
+/// Forgejo #108, #679, #107: a framework-registered handler and a
+/// `do_<METHOD>` of an HTTP handler class are reached through the framework.
+/// A handler no test spells reads as registered, not as untested; the
+/// class a test builds links `do_POST`; a plain function nothing calls and
+/// no test reaches keeps its negative claim.
+#[test]
+fn a_registered_or_dispatched_handler_is_named_not_untested() {
+    let api = repo(
+        &[
+            (
+                "api.py",
+                "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get('/reviews')\ndef reviews():\n    return []\n\n\ndef list_items():\n    return []\n\n\ntool('list_items')(list_items)\n\n\ndef plain():\n    return 0\n",
+            ),
+            ("tests/test_other.py", "def test_x():\n    assert True\n"),
+        ],
+        &[(
+            "api.py",
+            "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get('/reviews')\ndef reviews():\n    return [1]\n\n\ndef list_items():\n    return [2]\n\n\ntool('list_items')(list_items)\n\n\ndef plain():\n    return 1\n",
+        )],
+    );
+    let md = impact_markdown(api.path());
+    assert!(md.contains(ENTRY_LIST), "{md}");
+    assert!(
+        md.contains("api.py::reviews (6-8) — registered by `router.get` — reached through the framework, not traced"),
+        "{md}"
+    );
+    assert!(
+        md.contains("api.py::list_items (11-12) — registered by `tool('list_items')` — reached through the framework, not traced"),
+        "{md}"
+    );
+    assert!(!md.contains("referenced from api.py"), "{md}");
+    assert!(md.contains("0 caller(s) outside the diff"), "{md}");
+    // The negative control: a plain function keeps its claim.
+    let (claims, roles) = md.split_once(ENTRY_LIST).unwrap_or_else(|| panic!("{md}"));
+    assert!(
+        claims.contains("no static test link:\n  - api.py::plain"),
+        "{md}"
+    );
+    assert!(!roles.contains("api.py::plain"), "{md}");
+    assert!(
+        !claims.contains("api.py::reviews") && !claims.contains("api.py::list_items"),
+        "{md}"
+    );
+
+    let server = |tested: bool| {
+        let mut files = vec![(
+            "srv.py",
+            "from http.server import BaseHTTPRequestHandler, HTTPServer\n\n\nclass Handler(BaseHTTPRequestHandler):\n    def do_POST(self):\n        self.send_response(200)\n\n\ndef make_server():\n    return HTTPServer(('', 0), Handler)\n",
+        )];
+        files.push((
+            "tests/test_server.py",
+            if tested {
+                "from srv import make_server\n\n\ndef test_server():\n    s = make_server()\n    assert s\n"
+            } else {
+                "def test_other():\n    assert True\n"
+            },
+        ));
+        repo(
+            &files,
+            &[(
+                "srv.py",
+                "from http.server import BaseHTTPRequestHandler, HTTPServer\n\n\nclass Handler(BaseHTTPRequestHandler):\n    def do_POST(self):\n        self.send_response(201)\n\n\ndef make_server():\n    return HTTPServer(('', 0), Handler)\n",
+            )],
+        )
+    };
+    let linked = server(true);
+    let md = impact_markdown(linked.path());
+    assert!(
+        md.contains("dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via make_server"),
+        "{md}"
+    );
+    assert_no_negative_claim(&md);
+    let unlinked = server(false);
+    let md = impact_markdown(unlinked.path());
+    // The class link is modelled: no test reaching it is a true finding, with
+    // the role named, and no entry-point exemption.
+    let (claims, roles) = md.split_once(ENTRY_LIST).unwrap_or((md.as_str(), ""));
+    assert!(
+        claims.contains(
+            "no static test link:\n  - srv.py::do_POST (5-6) — dispatched by `BaseHTTPRequestHandler`"
+        ),
+        "{md}"
+    );
+    assert!(!roles.contains("srv.py::do_POST"), "{md}");
+    assert!(!md.contains("callers not resolved"), "{md}");
 }

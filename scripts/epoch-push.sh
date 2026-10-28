@@ -30,34 +30,29 @@ gh_repo=$(git remote -v | sed -nE 's#.*github\.com[:/]([^ ]+/[^ ]+) \(push\)$#\1
 epoch_pr() { gh pr list -R "$gh_repo" --head next --base main --state open --json number -q '.[0].number // empty'; }
 
 fold() {
+  # Check before rebase: a contributor's identity must survive even a refused fold.
+  local me foreign
+  me=$(git config user.email)
+  foreign=$(
+    git log --format='%h %an <%ae>' "$src/main..HEAD" | grep -vF "<$me>" || true
+    git log --format=%B "$src/main..HEAD" | grep -i '^Co-authored-by:' || true
+  )
+  [[ -z "$foreign" ]] || die "commits by someone else sit above main — land them on main as themselves first:
+$foreign"
   # Another session may have folded its work since our last fetch: replay only our own
   # commits onto its epoch (the fork point follows the rewritten `next`), then onto `main`,
   # which contributors' pull requests and dependency bumps move underneath the epoch.
   if has_next "$src"; then git rebase --quiet --fork-point "$src/next"; fi
   git rebase --quiet "$src/main"
 
-  local commits oldest msg tree epoch
-  commits=$(git rev-list --reverse "$src/main..HEAD")
-  [[ -n "$commits" ]] || {
+  local msg tree epoch
+  [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$src/main")" ]] || {
     echo "epoch-push: nothing above main"
     return
   }
-  # A contributor's commit is theirs: it lands on main as itself, never inside an epoch.
-  local me foreign
-  me=$(git config user.email)
-  foreign=$(git log --format='%h %an <%ae>' "$src/main..HEAD" | grep -vF "<$me>" || true)
-  [[ -z "$foreign" ]] || die "commits by someone else sit above main — land them on main as themselves first:
-$foreign"
-  oldest=$(printf '%s\n' "$commits" | head -1)
   msg=$(mktemp)
   trap 'rm -f "$msg"' RETURN
-  {
-    git log -1 --format=%B "$oldest"
-    for c in $(printf '%s\n' "$commits" | tail -n +2); do
-      echo "- $(git log -1 --format=%s "$c")"
-      git log -1 --format=%B "$c" | grep -iE '^(fixes|closes|resolves) #[0-9]+' || true
-    done
-  } | git stripspace >"$msg"
+  git log --reverse --format=%B "$src/main..HEAD" | git stripspace >"$msg"
 
   # The tree is the one every folded commit already took through pre-commit; the hooks a
   # plain `git commit` runs afterwards still run, so the repository's own policies apply.

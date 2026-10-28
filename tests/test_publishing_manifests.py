@@ -83,6 +83,7 @@ class TestClaudePlugin:
         installed plugin must start the version it was reviewed at."""
         server = _load("plugin/.mcp.json")["mcpServers"]["diffctx"]
         assert server["command"] == "uvx"
+        assert server["env"]["UV_ISOLATED"] == "1"
         # `uvx <package>==<version> <subcommand>` and no option: the only shape
         # the directory reads as a locked launch. `-c constraints.txt` made it
         # report "Launcher lock invalid"; `--from` read as an unconfirmed pin.
@@ -117,6 +118,7 @@ class TestClaudePlugin:
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]
         assert server["command"] == "uvx"
+        assert server["env"]["UV_ISOLATED"] == "1"
         assert server["args"] == UVX_ARGS
 
     @pytest.mark.parametrize("command", ["diffctx", "impact", "commit"])
@@ -228,6 +230,7 @@ class TestPluginHook:
         pin = f'"diffctx[mcp]=={__version__}"'
         for name in ("diffctx-impact.sh", "diffctx-session.sh"):
             text = (self.HOOKS / name).read_text(encoding="utf-8")
+            assert "export UV_ISOLATED=1" in text
             for fetcher in ("curl", "wget", "releases/download", "checksums", "constraints"):
                 assert fetcher not in text, (name, fetcher)
         impact = (self.HOOKS / "diffctx-impact.sh").read_text(encoding="utf-8")

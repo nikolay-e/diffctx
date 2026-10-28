@@ -273,7 +273,7 @@ pub fn build_symbol_impact(
 ) -> Result<crate::impact::ImpactOutput> {
     let _run = crate::profile::run("symbol");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
-    let state = compute_scored_state_anchored(
+    let state = match compute_scored_state_anchored(
         root_dir,
         Anchor::Symbol(query),
         paths,
@@ -281,7 +281,18 @@ pub fn build_symbol_impact(
         scoring_mode,
         timeout,
         true,
-    )?;
+    ) {
+        Ok(state) => state,
+        Err(e) => {
+            return match e.downcast::<SymbolQueryError>() {
+                Ok(SymbolQueryError {
+                    named: Some(named), ..
+                }) => Ok(crate::impact::symbol_named_output(root_dir, query, named)),
+                Ok(q) => Err(q.into()),
+                Err(e) => Err(e),
+            };
+        }
+    };
     Ok(crate::impact::build_impact(
         &state,
         None,
@@ -755,6 +766,9 @@ const MAX_SYMBOL_FILES: usize = 256;
 pub struct SymbolQueryError {
     pub message: String,
     pub malformed: bool,
+    /// Files that spell a name nothing defines: the answer instead of the
+    /// error (Forgejo #114).
+    pub named: Option<crate::impact::SymbolNamed>,
 }
 
 impl std::fmt::Display for SymbolQueryError {
@@ -863,6 +877,7 @@ fn resolve_symbol_change_set(
                 "--symbol takes NAME, PATH:NAME or a qualified Owner.NAME, got {query:?}"
             ),
             malformed: true,
+            named: None,
         }
         .into());
     };
@@ -993,13 +1008,28 @@ fn resolve_symbol_change_set(
         } else {
             String::new()
         };
+        let unread = unanalysed_namers(root_dir, &files, &fragments, run);
+        // `Cart.total` names an owner's definition: the word `total` spelled
+        // elsewhere is no answer to it.
+        let named = (segments.len() == 1 && !files.is_empty())
+            .then(|| git::grep_word_first_lines(root_dir, name, &pathspec).ok())
+            .flatten()
+            .and_then(|found| {
+                let lines = found
+                    .rows
+                    .into_iter()
+                    .filter(|(p, _, _)| !is_lockfile_path(Path::new(p)))
+                    .collect();
+                crate::impact::symbol_named(root_dir, &run.source(), lines, &unread)
+            });
         return Err(SymbolQueryError {
             message: format!(
                 "no definition of {full:?} found{}{capped}{}",
                 path.map(|p| format!(" in {p}")).unwrap_or_default(),
-                unanalysed_namers(root_dir, &files, &fragments, run)
+                unread
             ),
             malformed: false,
+            named,
         }
         .into());
     }

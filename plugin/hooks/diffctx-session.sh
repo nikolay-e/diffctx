@@ -10,6 +10,9 @@
 # session's context and does most of the lookups (#543).
 set -u
 
+# A source-installed tool can share the pin while carrying different code.
+export UV_ISOLATED=1
+
 payload=''
 [[ -t 0 ]] || payload=$(cat 2>/dev/null)
 event=SessionStart
@@ -29,6 +32,6 @@ command -v uvx >/dev/null 2>&1 || exit 0
 
 [[ $event == SessionStart ]] && (uvx -q "diffctx[mcp]==1.20.0" --version </dev/null >/dev/null 2>&1 &)
 
-context='diffctx is installed. Before committing or pushing a multi-file change, run: uvx diffctx==1.20.0 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To review a commit or say what it affects, call the diffctx_context tool with mode=impact (diff_ref HEAD~1..HEAD for the last commit). To find who calls a name and which tests reach it without a pending change: uvx diffctx==1.20.0 . --symbol NAME -f md. The plugin also injects this once a git commit/merge/push ran and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself.'
+context='diffctx is installed. Before committing or pushing a multi-file change, run: UV_ISOLATED=1 uvx diffctx==1.20.0 . --diff --mode impact -f md  (what the change reaches outside its diff: callers, their tests, cross-commit overlap). To review a commit or say what it affects, call the diffctx_context tool with mode=impact (diff_ref HEAD~1..HEAD for the last commit). To find who calls a name and which tests reach it without a pending change: UV_ISOLATED=1 uvx diffctx==1.20.0 . --symbol NAME -f md. The plugin also injects this once a git commit/merge/push ran and after git diff; a commit with no diffctx block is not a clean result (the hook may not have run), so run the command yourself.'
 printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"%s"}}\n' "$event" "$context"
 exit 0

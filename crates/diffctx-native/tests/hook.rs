@@ -261,7 +261,8 @@ fn a_commit_with_an_outside_caller_gets_the_impact_once() {
         context.contains("reachable from tests: tests/test_checkout.py"),
         "{context}"
     );
-    assert!(context.contains("Check these callers"), "{context}");
+    // Its one caller is reached by a test: nothing in it asks for a check (#656).
+    assert!(!context.contains("before going on"), "{context}");
     assert!(context.chars().count() <= 9_200, "{}", context.len());
     let out = output_of(&first, "PostToolUse");
     assert!(
@@ -1319,6 +1320,82 @@ fn a_search_on_a_clean_tree_is_answered_as_symbol_would() {
     assert_eq!(search("git log --oneline | grep restock").stdout, "");
 }
 
+/// R2, Forgejo #114: a lookup of a name no file defines but a config and a
+/// script spell gets one line saying so, once per name; a name nothing spells
+/// stays silent (the grep that led here printed the lines already).
+#[test]
+fn a_search_for_a_name_only_text_spells_gets_one_line() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(
+        repo,
+        "rules/backup.yaml",
+        "groups:\n  - expr: time() - restic_last_success_seconds > 86400\n",
+    );
+    write(
+        repo,
+        "scripts/backup.sh",
+        "#!/bin/sh\necho restic_last_success_seconds\n",
+    );
+    write(
+        repo,
+        "docs/notes.md",
+        "Watch restic_last_success_seconds.\n",
+    );
+    commit_all(repo, "backup rules");
+    let search = |query: &str| {
+        hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &search_payload(repo, "Bash", query),
+        )
+    };
+    let metric = "restic_last_success_seconds";
+    let line = context_of(&search(&format!("grep -rn {metric} .")));
+    assert_eq!(
+        line,
+        format!(
+            "`{metric}`: no definition; named textually in 2 file(s), no binding \u{2014} `diffctx . --symbol {metric} -f md` lists them"
+        )
+    );
+    assert_eq!(
+        search(&format!("grep -rn {metric} .")).stdout,
+        "",
+        "once per name"
+    );
+    assert_eq!(search("grep -rn no_such_name_here .").stdout, "");
+
+    // Only a lookup gets the line: an alternation (`SHA|TODO`) and a bare
+    // common word that files spell are searches for text, not for a symbol.
+    write(
+        repo,
+        "rules/prune.yaml",
+        "expr: restic_prune_seconds\nsteps: pytest\n",
+    );
+    write(
+        repo,
+        "scripts/prune.sh",
+        "#!/bin/sh\necho restic_prune_seconds\npytest -q\n",
+    );
+    commit_all(repo, "prune rules");
+    let silent = |query: &str| {
+        let out = search(query);
+        assert_eq!(out.stdout, "", "{query}: {}", last_log_line(cache.path()));
+    };
+    silent("grep -rnE 'restic_prune_seconds|TODO' .");
+    silent("grep -rn pytest .");
+    // A silenced shape does not burn the name: the lookup that follows is
+    // answered.
+    let line = context_of(&search("grep -rn restic_prune_seconds ."));
+    assert!(
+        line.starts_with("`restic_prune_seconds`: no definition; named textually in 2 file(s)"),
+        "{line}"
+    );
+}
+
 /// A search the hook cannot place, and a name defined all over, get no
 /// answer: a grep of `$OUT/notes.tsv` read as a search of the cwd's
 /// repository, and `main` with 44 definitions printed the first two.
@@ -1435,6 +1512,9 @@ fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
     let scoped = context_of(&search("grep -n restock legacy/stock.py"));
     assert!(scoped.contains("legacy/stock.py::rerun"), "{scoped}");
     assert!(!scoped.contains("shop/shelf.py"), "{scoped}");
+    // A glob path searches the directory it starts in.
+    let globbed = context_of(&search("grep -n restock shop/*.py"));
+    assert!(globbed.contains("shop/shelf.py::refill"), "{globbed}");
     let docs = context_of(&search("grep -rn restock ."));
     assert!(docs.contains("shop/shelf.py::refill"), "{docs}");
     for query in [
@@ -1897,6 +1977,55 @@ fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
     assert!(!context.contains("shop/checkout.py::charge"), "{context}");
 }
 
+/// R1: a word match is listed as text and never asks for a check; a resolved
+/// caller no test reaches still does.
+#[test]
+fn a_word_match_asks_for_no_check_a_resolved_caller_does() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    let rates = |n: u32| {
+        format!(
+            "class Rates {{\n    public static int Rate() {{\n        return {n};\n    }}\n}}\n"
+        )
+    };
+    write(repo, "src/Rates.cs", &rates(1));
+    write(
+        repo,
+        "src/Invoice.cs",
+        "class Invoice {\n    int Total() {\n        return Rates.Rate() * 3;\n    }\n}\n",
+    );
+    commit_all(repo, "rates");
+    write(repo, "src/Rates.cs", &rates(2));
+    let text = run_line(repo, cache.path(), "git commit -am 'rate'");
+    let context = context_of(&text);
+    assert!(
+        context
+            .contains("Named in code outside the diff (a textual match, not a resolved binding):"),
+        "{context}"
+    );
+    assert!(context.contains("src/Invoice.cs:"), "{context}");
+    assert!(!context.contains("called from src/Invoice.cs"), "{context}");
+    assert!(!context.contains("before going on"), "{context}");
+
+    write(
+        repo,
+        "shop/inventory.py",
+        "def restock(item):\n    return item.count + 2\n",
+    );
+    let resolved = run_line(repo, cache.path(), "git commit -am 'restock'");
+    let context = context_of(&resolved);
+    assert!(
+        context.contains("called from shop/shelf.py::refill"),
+        "{context}"
+    );
+    assert!(
+        context.contains("Check the 1 caller(s) no static test link reaches before going on"),
+        "{context}"
+    );
+}
+
 #[test]
 fn the_automatic_answer_fits_its_token_cap() {
     let tmp = repo_with_pending_change();
@@ -1924,7 +2053,7 @@ fn the_automatic_answer_fits_its_token_cap() {
         .split_once("What it reaches outside the diff:\n")
         .map(|(_, b)| b)
         .unwrap()
-        .rsplit_once("\nCheck these callers")
+        .rsplit_once("\nCheck the ")
         .map(|(b, _)| b)
         .unwrap();
     let words = body.split_whitespace().count();

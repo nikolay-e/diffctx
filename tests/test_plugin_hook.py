@@ -254,7 +254,7 @@ def test_the_session_context_says_a_silent_commit_is_no_clean_result(tmp_path, b
         assert json.loads(result.stdout)["hookSpecificOutput"]["hookEventName"] == event
         context = _context(result.stdout)
         assert "a commit with no diffctx block is not a clean result" in context
-        assert re.search(r"run: uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
+        assert re.search(r"run: UV_ISOLATED=1 uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", context), context
 
 
 def _search(repo: Path, tool: str, query: str, session: str = "s1") -> str:
