@@ -1298,9 +1298,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Key the OS upgrade layer to today
-        id: apt
-        run: echo "refresh=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Login to dhi.io (read-only token)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
 
       - name: Build and push by digest
         id: build
@@ -1311,7 +1314,6 @@ jobs:
           build-args: |
             VERSION=${{ needs.prepare-version.outputs.version }}
             DIFFCTX_BUILD_SHA=${{ needs.prepare-version.outputs.commit_sha }}
-            APT_REFRESH=${{ steps.apt.outputs.refresh }}
           outputs: >-
             type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 

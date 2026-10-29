@@ -162,16 +162,25 @@ jobs:
   docker-build:
     name: Docker image builds
     runs-on: ubuntu-latest
+    # The base images come from dhi.io, which needs a login, and a fork's PR gets no secrets: its
+    # image is built by the push to main after the merge, as the release's is.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      - name: Log in to dhi.io (read-only token)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
       - name: Build image
         run: >-
           docker build -f Dockerfile -t diffctx:ci
-          --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}"
-          --build-arg "APT_REFRESH=$(date -u +%F)" .
+          --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}" .
 
       # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
       # the latest commit's diff fits a fixed budget depends on what that
