@@ -47,7 +47,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  "Programming Language :: Python :: 3.15",
   "Topic :: Software Development",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: Software Development :: Version Control :: Git",
@@ -144,6 +143,7 @@ lint.mccabe.max-complexity = 15
 [tool.pyproject-fmt]
 column_width = 130
 keep_full_version = true
+max_supported_python = "3.14"
 
 [tool.mypy]
 files = [ "src" ]
