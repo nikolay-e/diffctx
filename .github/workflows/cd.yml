@@ -70,6 +70,21 @@ jobs:
             exit 1
           fi
 
+      # Forgejo #85's proof that RELEASE_PUSH_TOKEN can write: finalize-release never runs in a
+      # build_only dispatch, so this creates and deletes a throwaway ref. Remove it after one green run.
+      - name: Probe RELEASE_PUSH_TOKEN (build_only)
+        if: inputs.build_only
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          gh api "repos/${REPO_FULL_NAME}" --jq '.permissions | "admin=\(.admin) push=\(.push)"'
+          gh api "repos/${REPO_FULL_NAME}" --jq '.permissions.push' | grep -qx true
+          probe="release-token-probe-${GITHUB_RUN_ID}"
+          gh api -X POST "repos/${REPO_FULL_NAME}/git/refs" -f "ref=refs/heads/${probe}" -f "sha=${GITHUB_SHA}" --silent
+          gh api -X DELETE "repos/${REPO_FULL_NAME}/git/refs/heads/${probe}"
+          echo "RELEASE_PUSH_TOKEN created and deleted refs/heads/${probe}"
+
       - name: Validate version format (PEP 440)
         env:
           VERSION: ${{ github.event.inputs.version }}
