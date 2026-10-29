@@ -1,0 +1,60 @@
+name: keys_route_007_express_use_and_router
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:javascript
+- lang:typescript
+repo:
+  initial_files:
+    server/package.json: |
+      {"name": "server", "main": "src/app.js"}
+    server/src/app.js: |
+      const express = require('express');
+      const users = require('./routes/users');
+
+      const app = express();
+      app.use('/api/users', users);
+
+      module.exports = app;
+    server/src/routes/users.js: |
+      const express = require('express');
+
+      const router = express.Router();
+
+      router.get('/:id', (req, res) => res.json({ id: req.params.id }));
+
+      module.exports = router;
+    web/src/users.ts: |
+      export const posts = (id: string) => fetch(`/api/users/${id}/posts`);
+    web/src/feed.ts: |
+      export const feedPosts = (id: string) => fetch(`/v2/users/${id}/posts`);
+  changed_files:
+    server/src/routes/users.js: |
+      const express = require('express');
+
+      const router = express.Router();
+
+      router.get('/:id', (req, res) => res.json({ id: req.params.id }));
+      router.get('/:id/posts', (req, res) => res.json([]));
+
+      module.exports = router;
+  commit_message: List the posts of a user
+fragments:
+- id: handler
+  selector:
+    path: server/src/routes/users.js
+    anchor: "'/:id/posts'"
+- id: client
+  selector:
+    path: web/src/users.ts
+    anchor: '/posts'
+- id: feed
+  selector:
+    path: web/src/feed.ts
+oracle:
+  required:
+  - handler
+  - client
+  forbidden:
+  - feed
+min_score: 60

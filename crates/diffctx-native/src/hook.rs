@@ -46,10 +46,17 @@ const MANUAL_SEEN_TTL: Duration = Duration::from_secs(15 * 60);
 /// be shorter than that.
 pub const HOOK_DEADLINE_SECS: u64 = 30;
 
-/// What the pipeline itself may spend, inside `HOOK_DEADLINE_SECS`: the
-/// engine's deadline is cooperative and the line log runs after it, so the
-/// gap is what keeps the whole answer under the ceiling.
+/// What the pipeline itself may spend of a whole `HOOK_DEADLINE_SECS`: the
+/// engine's deadline is cooperative and it renders what it read after it, so
+/// the gap is what keeps the answer under the ceiling. A review gets this
+/// share of what is left of the ceiling, not of the whole (Forgejo #113).
 pub const PIPELINE_SECS: u64 = 20;
+
+/// How long past `HOOK_DEADLINE_SECS` a review that stopped at its own
+/// deadline may take to hand back what it read. Behind it stands Claude
+/// Code's own kill at the hook's configured timeout (60 s in the plugin),
+/// which prints nothing.
+const TAIL_GRACE_SECS: u64 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
@@ -759,6 +766,16 @@ fn pattern_names(pattern: &str) -> Vec<String> {
     names
 }
 
+/// A pattern that is one identifier and nothing else, with or without word
+/// anchors (`\b`): no alternation, no regex metacharacter.
+fn is_lookup_pattern(pattern: &str) -> bool {
+    let bare = pattern
+        .trim()
+        .trim_start_matches("\\b")
+        .trim_end_matches("\\b");
+    !bare.is_empty() && bare.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
 /// A directory only the shell could expand: a variable, a command
 /// substitution, another user's home (`~user`).
 /// `$NAME` and `${NAME}` replaced by what the line set them to; any other
@@ -1136,16 +1153,28 @@ impl Before {
 /// What a git statement can record: a commit on `HEAD`, a pushed ref, or
 /// either for a verb the hook does not know (an alias, `am`, a new verb).
 /// What it did record is read off git's reflog once the line ran (#508).
+/// `kinds` are the reflog actions a statement on `HEAD` can write; none
+/// named is any of them. A line that can only merge claims no commit
+/// another session makes meanwhile (Forgejo #97).
 #[derive(Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Moves {
     head: bool,
     pushed: bool,
+    #[serde(default)]
+    kinds: u8,
 }
+
+const COMMIT: u8 = 1;
+const MERGE: u8 = 2;
+const CHERRY_PICK: u8 = 4;
+const REVERT: u8 = 8;
+const AM: u8 = 16;
 
 impl Moves {
     const ANY: Moves = Moves {
         head: true,
         pushed: true,
+        kinds: 0,
     };
 
     fn any(self) -> bool {
@@ -1153,10 +1182,20 @@ impl Moves {
     }
 
     fn or(self, other: Moves) -> Moves {
+        let unnamed = |m: Moves| m.head && m.kinds == 0;
         Moves {
             head: self.head || other.head,
             pushed: self.pushed || other.pushed,
+            kinds: if unnamed(self) || unnamed(other) {
+                0
+            } else {
+                self.kinds | other.kinds
+            },
         }
+    }
+
+    fn can_write(self, kind: u8) -> bool {
+        self.kinds == 0 || self.kinds & kind != 0
     }
 }
 
@@ -1177,10 +1216,18 @@ fn moves_of(st: &Statement) -> Moves {
         "push" => Moves {
             head: false,
             pushed: true,
+            kinds: 0,
         },
         "commit" | "merge" | "cherry-pick" | "revert" | "am" => Moves {
             head: true,
             pushed: false,
+            kinds: match st.verb.as_str() {
+                "commit" => COMMIT,
+                "merge" => MERGE,
+                "cherry-pick" => CHERRY_PICK,
+                "revert" => REVERT,
+                _ => AM,
+            },
         },
         v if v == "grep" || v == "git grep" || v.starts_with("gh ") => Moves::default(),
         v if LANDS_NOTHING.split_whitespace().any(|w| w == v) => Moves::default(),
@@ -1278,50 +1325,23 @@ fn before_key(command: &str, session: Option<&str>) -> String {
 }
 
 /// What the line recorded in `before.root`, by git's own reflog: a push
-/// (what a remote-tracking ref moved over), else a commit, merge,
+/// (the `old..new` git printed for it, else what a remote-tracking ref moved
+/// over by a push since the line started), else a commit, merge,
 /// cherry-pick, revert or `am` on `HEAD`. A checkout, reset, pull or rebase
 /// moved `HEAD` without recording this session's change, and is not
 /// reviewed. The count is of the other ranges the same push moved: refs
 /// moved over one range (a mirror's two remotes) are one (#608).
-fn landed(before: &Before) -> Option<(PathBuf, String, &'static str, usize)> {
+fn landed(
+    before: &Before,
+    output: &Output,
+    session: Option<&str>,
+) -> Option<(PathBuf, String, &'static str, usize)> {
     let live = before.live_root()?;
     let root = live.as_path();
     let now = refs_now(root)?;
-    let old_of = |name: &str| {
-        before
-            .remotes
-            .iter()
-            .find(|(r, _)| r == name)
-            .map(|(_, o)| o.clone())
-    };
-    let pushed_over = |name: &str, new: &str| -> Option<String> {
-        // What the push itself moved the ref over: a `pull` on the same line
-        // moves it first, and the value this line started from would count
-        // the commits that pull brought in as pushed (#462).
-        let moved_over = git_out(
-            root,
-            &["rev-parse", "--verify", "--quiet", &format!("{name}@{{1}}")],
-        );
-        let base = match moved_over.or_else(|| old_of(name)) {
-            Some(old) => old,
-            // A new branch: the commits past where it left the remote's default.
-            None => {
-                let remote = name.strip_prefix("refs/remotes/")?.split('/').next()?;
-                let default = ["HEAD", "main", "master"]
-                    .iter()
-                    .map(|b| format!("refs/remotes/{remote}/{b}"))
-                    .find(|r| r != name && crate::git::rev_oid(root, r).is_some())?;
-                git_out(root, &["merge-base", &default, new])?
-            }
-        };
-        Some(format!("{base}..{new}"))
-    };
     let mut pushed: Vec<String> = Vec::new();
-    for (name, new) in now.remotes.iter().filter(|_| before.moves.pushed) {
-        let by_push = old_of(name).as_deref() != Some(new.as_str())
-            && git_out(root, &["reflog", "-1", "--format=%gs", name])
-                .is_some_and(|s| s.starts_with("update by push"));
-        if let Some(range) = by_push.then(|| pushed_over(name, new)).flatten() {
+    if before.moves.pushed {
+        for range in pushed_ranges(root, before, &now, output) {
             if !pushed.contains(&range) {
                 pushed.push(range);
             }
@@ -1365,6 +1385,16 @@ fn landed(before: &Before) -> Option<(PathBuf, String, &'static str, usize)> {
             }
             _ => continue,
         };
+        let kind = match (action, verb) {
+            ("am", _) => AM,
+            (_, "commit") => COMMIT,
+            (_, "cherry-pick") => CHERRY_PICK,
+            (_, "revert") => REVERT,
+            _ => MERGE,
+        };
+        if !before.moves.can_write(kind) || claimed_by_another(&new, session) {
+            continue;
+        }
         let amend = action == "commit (amend)";
         if !(if amend {
             ours.contains(&old)
@@ -1390,7 +1420,193 @@ fn landed(before: &Before) -> Option<(PathBuf, String, &'static str, usize)> {
         last = Some((new, verb));
     }
     let (end, verb) = last?;
+    for oid in &ours[1..] {
+        claim(oid, session);
+    }
     Some((live, format!("{}..{end}", start?), verb, 0))
+}
+
+/// A commit a session's hook took as its line's is no other session's: the
+/// marker names the session, so a background line of another one that could
+/// have written it does not claim it again (Forgejo #97).
+fn claim(oid: &str, session: Option<&str>) {
+    let session = file_safe(session);
+    if !session.is_empty() {
+        mark_seen_with(&format!("claim-{oid}"), &session);
+    }
+}
+
+fn claimed_by_another(oid: &str, session: Option<&str>) -> bool {
+    let session = file_safe(session);
+    !session.is_empty()
+        && seen_headline(&format!("claim-{oid}"), SEEN_TTL)
+            .is_some_and(|by| !by.is_empty() && by != session)
+}
+
+/// What a line printed, as its `PostToolUse` carries it: git's report of
+/// each ref a push touched, `old..new  from -> to` (no range for a new
+/// branch or a rejection). `None` when the payload holds no output, as for a
+/// line still running in the background.
+struct Output {
+    updates: Option<Vec<Update>>,
+    /// The line asks a push to print nothing (`-q`), so that no line says
+    /// whether it pushed.
+    quiet: bool,
+}
+
+struct Update {
+    /// The ref's `old..new`, abbreviated as git prints them.
+    range: Option<(String, String)>,
+    /// The ref on the remote: a branch (`main`), or for a fetch's report the
+    /// tracking ref it updated (`origin/main`).
+    to: String,
+}
+
+impl Output {
+    fn none() -> Self {
+        Self {
+            updates: None,
+            quiet: false,
+        }
+    }
+
+    fn of(payload: &serde_json::Value, command: &str) -> Self {
+        let response = &payload["tool_response"];
+        let text = match response {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Object(_) if !in_background(payload) => {
+                let parts: Vec<&str> = ["stdout", "stderr"]
+                    .iter()
+                    .filter_map(|k| response[*k].as_str())
+                    .collect();
+                (!parts.is_empty()).then(|| parts.join("\n"))
+            }
+            _ => None,
+        };
+        let quiet = statements(command)
+            .iter()
+            .any(|st| st.verb == "push" && st.args.iter().any(|a| a == "-q" || a == "--quiet"));
+        Self {
+            updates: text.map(|t| t.lines().filter_map(update_of).collect()),
+            quiet,
+        }
+    }
+}
+
+/// `   ae8a63af7..d4ce1daad  main -> main`, the forced `+ a...b`, or the
+/// `* [new branch]  topic -> topic` that has no range.
+fn update_of(line: &str) -> Option<Update> {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let arrow = words.iter().position(|w| *w == "->")?;
+    let to = words.get(arrow + 1)?.to_string();
+    let hex = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit());
+    let range = words[..arrow]
+        .iter()
+        .find_map(|w| w.split_once("...").or_else(|| w.split_once("..")))
+        .filter(|(old, new)| hex(old) && hex(new))
+        .map(|(old, new)| (old.to_string(), new.to_string()));
+    Some(Update { range, to })
+}
+
+/// The ranges this line pushed. What git printed for it is exact: no ref
+/// that moved meanwhile, no stale tracking ref of a second alias, no peer's
+/// push says otherwise. A push line is told from a fetch's by its target
+/// being a branch some remote has (`main`), not a tracking ref (`origin/main`).
+/// A branch the push created has no range printed: its tracking ref's
+/// reflog says. Without output (a line in the background), or when the line
+/// asked for none, the first push the remote-tracking refs record since the
+/// line started; a line that printed no push line pushed nothing, whatever a
+/// peer moved (Forgejo #121).
+fn pushed_ranges(root: &Path, before: &Before, now: &Before, output: &Output) -> Vec<String> {
+    let branch_of = |name: &str| {
+        name.strip_prefix("refs/remotes/")
+            .and_then(|rest| rest.split_once('/'))
+            .map(|(_, branch)| branch.to_string())
+    };
+    let started = |name: &str| before.remotes.iter().find(|(r, _)| r == name);
+    let Some(updates) = output
+        .updates
+        .as_ref()
+        .filter(|u| !u.is_empty() || !output.quiet)
+    else {
+        return now
+            .remotes
+            .iter()
+            .filter(|(name, new)| started(name).map(|(_, o)| o) != Some(new))
+            .filter_map(|(name, _)| first_push_since(root, before, name))
+            .collect();
+    };
+    let pushed_to = |branch: &str| {
+        updates.iter().any(|u| {
+            u.to == branch
+                && now
+                    .remotes
+                    .iter()
+                    .any(|(r, _)| branch_of(r).as_deref() == Some(branch))
+        })
+    };
+    let mut ranges = Vec::new();
+    for (old, new) in updates
+        .iter()
+        .filter_map(|u| u.range.as_ref().filter(|_| pushed_to(&u.to)))
+    {
+        if let (Some(old), Some(new)) = (
+            crate::git::rev_oid(root, old),
+            crate::git::rev_oid(root, new),
+        ) {
+            ranges.push(format!("{old}..{new}"));
+        }
+    }
+    // Created by this line: not a ref the line started with.
+    for (name, _) in now
+        .remotes
+        .iter()
+        .filter(|(name, _)| started(name).is_none())
+    {
+        if branch_of(name).is_some_and(|branch| pushed_to(&branch)) {
+            ranges.extend(first_push_since(root, before, name));
+        }
+    }
+    ranges
+}
+
+/// The first push `name`'s reflog records after the value the line started
+/// from, as the range it moved the ref over; a new branch is measured from
+/// where it left the remote's default.
+fn first_push_since(root: &Path, before: &Before, name: &str) -> Option<String> {
+    let started = before
+        .remotes
+        .iter()
+        .find(|(r, _)| r == name)
+        .map(|(_, o)| o.as_str());
+    let log = git_out(root, &["reflog", "show", "--format=%H\t%gs", name])?;
+    // Newest first: each entry's ref value, and what moved it there.
+    let mut entries: Vec<(&str, &str)> = Vec::new();
+    for line in log.lines() {
+        let (oid, subject) = line.split_once('\t')?;
+        if Some(oid) == started {
+            break;
+        }
+        entries.push((oid, subject));
+    }
+    let followed_by = |i: usize| entries.get(i + 1).map(|(oid, _)| *oid).or(started);
+    let (i, (pushed, _)) = entries
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, (_, subject))| subject.starts_with("update by push"))?;
+    match followed_by(i) {
+        Some(old) => Some(format!("{old}..{pushed}")),
+        None => {
+            let remote = name.strip_prefix("refs/remotes/")?.split('/').next()?;
+            let default = ["HEAD", "main", "master"]
+                .iter()
+                .map(|b| format!("refs/remotes/{remote}/{b}"))
+                .find(|r| r != name && crate::git::rev_oid(root, r).is_some())?;
+            let base = git_out(root, &["merge-base", &default, pushed])?;
+            Some(format!("{base}..{pushed}"))
+        }
+    }
 }
 
 /// FNV-1a, 64-bit: no dependency, and no collision that matters at the
@@ -1815,7 +2031,8 @@ fn prepare_landed(
         .and_then(|s| serde_json::from_str(&s).ok())
         .ok_or("no-record")?;
     unmark(&key);
-    let found = landed_in(&record, false, trace)?;
+    let output = Output::of(payload, command);
+    let found = landed_in(&record, false, &output, trace)?;
     if !found.is_empty() {
         forget_pending(trace.session.as_deref(), &found);
         return Ok(found);
@@ -1832,12 +2049,18 @@ fn prepare_landed(
 }
 
 /// Every repository of `record` that moved, as a range to review each.
-fn landed_in(record: &Record, late: bool, trace: &mut Trace) -> Result<Vec<Prepared>, Silence> {
+fn landed_in(
+    record: &Record,
+    late: bool,
+    output: &Output,
+    trace: &mut Trace,
+) -> Result<Vec<Prepared>, Silence> {
     let mut found = Vec::new();
     let mut ranges = Vec::new();
     let mut unreadable = None;
     for before in &record.repos {
-        let Some((root, range, verb, also)) = landed(before) else {
+        let Some((root, range, verb, also)) = landed(before, output, trace.session.as_deref())
+        else {
             continue;
         };
         if found.is_empty() {
@@ -1929,7 +2152,7 @@ fn pending_review(event: Event, session: Option<&str>, started: Instant) -> Opti
     let mut answers = Vec::new();
     let mut reviewed = false;
     for record in records {
-        match landed_in(&record, true, &mut trace) {
+        match landed_in(&record, true, &Output::none(), &mut trace) {
             Ok(found) if !found.is_empty() => {
                 reviewed = true;
                 for p in found {
@@ -2316,16 +2539,16 @@ fn own_changes(
     if changed.is_empty() {
         return Err("clean");
     }
+    let ledger = bracketed(payload["session_id"].as_str(), root);
     let Some(writes) = payload["transcript_path"]
         .as_str()
-        .and_then(|t| session_writes(Path::new(t)))
+        .and_then(|t| session_writes(Path::new(t), ledger))
     else {
         return Ok(None);
     };
     let top = canonical(root);
-    let (files, others): (Vec<String>, Vec<String>) = changed
-        .into_iter()
-        .partition(|p| writes.wrote(&top.join(p)));
+    let (files, others): (Vec<String>, Vec<String>) =
+        changed.into_iter().partition(|p| writes.wrote(&top, p));
     if files.is_empty() {
         return Err("not-this-session");
     }
@@ -2348,14 +2571,16 @@ fn changed_paths(root: &Path, staged: bool) -> Vec<String> {
     paths
 }
 
-/// What a session's transcripts show it wrote: the files its edit tools
-/// named, and when its shell ran (#453).
+/// What a session wrote, by its transcripts and by the calls the hook
+/// bracketed: the files its edit tools named, what its Bash calls changed
+/// (#453, #662), and when the calls it did not bracket ran.
 #[derive(Default)]
 struct Writes {
     files: rustc_hash::FxHashSet<PathBuf>,
-    /// Each Bash call that returned, from its call to its result, in
-    /// milliseconds since the epoch.
+    /// Each unbracketed Bash call that returned, from its call to its
+    /// result, in milliseconds since the epoch.
     shell: Vec<(i64, i64)>,
+    ledger: Bracketed,
 }
 
 /// How far a file time may sit outside a shell call's span: a file system
@@ -2363,13 +2588,16 @@ struct Writes {
 const SHELL_SLACK_MS: i64 = 1000;
 
 impl Writes {
-    /// An edit tool named the file, or it last changed while a Bash call of
-    /// the session ran: a `sed -i`, a heredoc rewrite, a `git rm`. Another
-    /// session's edit lands in those spans only when it was made while this
-    /// session's shell ran, so a shared checkout stays split (#404).
-    fn wrote(&self, path: &Path) -> bool {
-        self.files.contains(path)
-            || changed_at(path).is_some_and(|at| {
+    /// An edit tool named the file, a bracketed Bash call changed it, or it
+    /// last changed while an unbracketed Bash call of the session ran: a
+    /// `sed -i`, a heredoc rewrite, a `git rm`. Another session's edit lands
+    /// in those spans only when it was made while this session's shell ran,
+    /// so a shared checkout stays split (#404).
+    fn wrote(&self, root: &Path, rel: &str) -> bool {
+        let path = root.join(rel);
+        self.ledger.paths.contains(rel)
+            || self.files.contains(&path)
+            || changed_at(&path).is_some_and(|at| {
                 self.shell
                     .iter()
                     .any(|(from, to)| from - SHELL_SLACK_MS <= at && at <= to + SHELL_SLACK_MS)
@@ -2397,17 +2625,184 @@ impl Writes {
                     }
                 }
                 (Some("tool_result"), _) => {
-                    let started = item["tool_use_id"]
-                        .as_str()
-                        .and_then(|id| running.remove(id));
+                    let id = item["tool_use_id"].as_str();
+                    let started = id.and_then(|id| running.remove(id));
                     if let (Some(from), Some(to)) = (started, at) {
-                        self.shell.push((from, to));
+                        if !id.is_some_and(|id| self.ledger.calls.contains(id)) {
+                            self.shell.push((from, to));
+                        }
                     }
                 }
                 _ => {}
             }
         }
     }
+}
+
+/// What the hook saw each Bash call of a session change in a checkout: its
+/// `PreToolUse` and `PostToolUse` both read the paths that differ from `HEAD`
+/// and what the working tree holds at each, and the call wrote what differs
+/// between them. A transcript's times cannot say it: a call's span also holds
+/// the wait before it ran, a peer's write inside it, a later rewrite moves a
+/// file out of it, and the call being answered has no result yet (#662,
+/// #674, Forgejo #117, #93).
+#[derive(Default)]
+struct Bracketed {
+    /// The calls bracketed, whose transcript spans no longer stand for them.
+    calls: rustc_hash::FxHashSet<String>,
+    /// The paths they changed, relative to the checkout.
+    paths: rustc_hash::FxHashSet<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BracketedCall {
+    id: String,
+    root: PathBuf,
+    paths: Vec<String>,
+}
+
+/// More dirty paths than this and a call is left to its transcript span: the
+/// two listings would cost more than the attribution is worth.
+const MAX_BRACKETED_PATHS: usize = 20_000;
+
+/// Every path the index or working tree holds differently from `HEAD`, with
+/// the stat identity of what the working tree holds there (0: nothing).
+fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
+    let status = crate::git::run_git_z(
+        root,
+        &[
+            "--no-optional-locks",
+            "status",
+            "--porcelain",
+            "-z",
+            "--untracked-files=all",
+            "--no-renames",
+        ],
+    )
+    .ok()?;
+    if status.len() > MAX_BRACKETED_PATHS {
+        return None;
+    }
+    Some(
+        status
+            .iter()
+            .filter_map(|entry| {
+                let path = entry.get(3..)?;
+                Some((path.to_string(), stat_identity(&root.join(path))))
+            })
+            .collect(),
+    )
+}
+
+fn stat_identity(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    let nanos = |t: std::io::Result<SystemTime>| {
+        t.ok()
+            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_nanos())
+    };
+    let mut hash = Fnv::new();
+    hash.feed(&meta.len().to_le_bytes())
+        .feed(&nanos(meta.modified()).to_le_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        hash.feed(&meta.ctime().to_le_bytes())
+            .feed(&meta.ctime_nsec().to_le_bytes())
+            .feed(&meta.ino().to_le_bytes());
+    }
+    hash.0 | 1
+}
+
+fn bracket_key(session: &str, id: &str) -> String {
+    session_key(&format!("bracket-{}", file_safe(Some(id))), Some(session))
+}
+
+fn ledger_path(session: &str) -> Option<PathBuf> {
+    marker(&session_key("wrote", Some(session)))
+}
+
+/// The `PreToolUse` of a Bash call leaves what the checkout holds; its
+/// `PostToolUse` adds what differs to the session's ledger. Never an
+/// answer: a call that cannot be bracketed stays with its transcript span.
+fn bracket(event: Event, payload: &serde_json::Value) {
+    if payload["tool_name"].as_str() != Some("Bash") {
+        return;
+    }
+    let (Some(session), Some(id)) = (
+        payload["session_id"].as_str(),
+        payload["tool_use_id"].as_str(),
+    ) else {
+        return;
+    };
+    let key = bracket_key(session, id);
+    if event == Event::PreToolUse {
+        let _phase = crate::profile::phase("hook.bracket");
+        if let Some(stats) = repo_root(payload, None).and_then(|root| {
+            let stats = dirty_stats(&root)?;
+            serde_json::to_string(&(root, stats)).ok()
+        }) {
+            mark_seen_with(&key, &stats);
+        }
+        return;
+    }
+    let Some((root, before)) = seen_headline(&key, SEEN_TTL)
+        .and_then(|s| serde_json::from_str::<(PathBuf, FxHashMap<String, u64>)>(&s).ok())
+    else {
+        return;
+    };
+    unmark(&key);
+    let Some(after) = dirty_stats(&root) else {
+        return;
+    };
+    let mut paths: Vec<String> = after
+        .iter()
+        .filter(|(path, id)| before.get(*path) != Some(id))
+        .map(|(path, _)| path.clone())
+        .chain(
+            before
+                .keys()
+                .filter(|path| !after.contains_key(*path))
+                .cloned(),
+        )
+        .collect();
+    paths.sort();
+    let call = BracketedCall {
+        id: id.to_string(),
+        root,
+        paths,
+    };
+    if let (Some(path), Ok(mut line)) = (ledger_path(session), serde_json::to_string(&call)) {
+        line.push('\n');
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| f.write_all(line.as_bytes()));
+    }
+}
+
+/// What the session's bracketed calls changed in `root`.
+fn bracketed(session: Option<&str>, root: &Path) -> Bracketed {
+    let mut ledger = Bracketed::default();
+    let Some(text) = session
+        .and_then(ledger_path)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+    else {
+        return ledger;
+    };
+    for call in text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<BracketedCall>(line).ok())
+        .filter(|call| call.root == root)
+    {
+        ledger.calls.insert(call.id);
+        ledger.paths.extend(call.paths);
+    }
+    ledger
 }
 
 /// When a path last changed, content or name, in milliseconds since the
@@ -2455,7 +2850,7 @@ fn epoch_ms(stamp: &str) -> Option<i64> {
 /// What this session and its subagents (`<transcript>/subagents/`) wrote,
 /// streamed line by line. `None` when the transcripts cannot be read whole
 /// within the budget.
-fn session_writes(transcript: &Path) -> Option<Writes> {
+fn session_writes(transcript: &Path, ledger: Bracketed) -> Option<Writes> {
     use std::io::{BufRead as _, Read as _};
     let mut sources = vec![transcript.to_path_buf()];
     if let Ok(dir) = std::fs::read_dir(transcript.with_extension("").join("subagents")) {
@@ -2465,7 +2860,10 @@ fn session_writes(transcript: &Path) -> Option<Writes> {
         );
     }
     let mut left = TRANSCRIPT_BUDGET;
-    let mut writes = Writes::default();
+    let mut writes = Writes {
+        ledger,
+        ..Writes::default()
+    };
     // Bash calls by id, until their result says when they returned.
     let mut running: FxHashMap<String, i64> = FxHashMap::default();
     let mut line = Vec::new();
@@ -2529,7 +2927,7 @@ fn reminder(event: Event, headline: &str) -> String {
     )
 }
 
-fn run_impact(root: &Path, range: &str) -> Result<crate::impact::ImpactOutput, Silence> {
+fn run_impact(root: &Path, range: &str, secs: u64) -> Result<crate::impact::ImpactOutput, Silence> {
     let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
     crate::pipeline::build_diff_context_impact(
         root,
@@ -2537,7 +2935,7 @@ fn run_impact(root: &Path, range: &str) -> Result<crate::impact::ImpactOutput, S
         &[],
         DEFAULT_PPR_ALPHA,
         scoring,
-        PIPELINE_SECS,
+        secs,
     )
     .map_err(|_| "error:pipeline")
 }
@@ -2655,13 +3053,48 @@ fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
     })
 }
 
+/// A review the time ran out on says so and names what it may have left:
+/// the range's files with no caller listed, which is either no caller found
+/// or the run stopping before it reached them. `paths` are the range's,
+/// read before the review began.
+fn stopped_note(output: &crate::impact::ImpactOutput, range: &str, paths: &[String]) -> String {
+    if !output
+        .limits
+        .contains(&crate::resource::LimitReason::Deadline)
+    {
+        return String::new();
+    }
+    let listed: rustc_hash::FxHashSet<&str> =
+        output.changed.iter().map(|c| c.path.as_str()).collect();
+    let unlisted: Vec<String> = paths
+        .iter()
+        .filter(|p| !listed.contains(p.as_str()))
+        .cloned()
+        .collect();
+    let which = if unlisted.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " {} of the {} changed file(s) list no caller above, because none was found or the run stopped before it reached them ({}).",
+            unlisted.len(),
+            paths.len(),
+            some_of(&unlisted)
+        )
+    };
+    format!(
+        "diffctx stopped at the hook's budget before it finished {range}.{which} `diffctx <repo> --diff {range} --mode impact` runs the review to the end.\n"
+    )
+}
+
 fn impact_context(
     event: Event,
     trigger: &Trigger,
     root: &Path,
     range: &str,
+    secs: u64,
+    paths: &[String],
 ) -> Result<Answer, Silence> {
-    let mut output = run_impact(root, range)?;
+    let mut output = run_impact(root, range, secs)?;
     let hedge = match trigger {
         Trigger::Inspect { own: Some(own), .. } if !own.others.is_empty() => {
             named_in_unread(root, own)
@@ -2673,24 +3106,53 @@ fn impact_context(
     }
     output.range_name = range_name(trigger, range);
     let partial = !output.limits.is_empty();
-    // With no caller listed, what is left to check is a contract or an
-    // untested definition, not a caller (#463).
-    let check = if output.changed.iter().any(|c| !c.callers.is_empty()) {
-        "Check these callers"
-    } else {
-        "Check these"
-    };
+    let check = what_to_check(&output, hedge.is_some());
+    let stopped = stopped_note(&output, range, paths);
     let text = crate::impact::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
     let headline = text.lines().next().unwrap_or_default().to_string();
     Ok(Answer {
         context: format!(
-            "{} What it reaches outside the diff:\n{text}\n{}{check} before going on, or tell the user why they are unaffected.",
+            "{} What it reaches outside the diff:\n{text}\n{stopped}{}{}",
             lead_of(event, trigger),
             hedge.map(|h| format!("{h}\n")).unwrap_or_default(),
+            check
+                .map(|c| format!(
+                    "Check {c} before going on, or tell the user why they are unaffected."
+                ))
+                .unwrap_or_default(),
         ),
         headline,
         partial,
     })
+}
+
+/// What in a review a reader must act on, named; `None` when every row is
+/// context — a caller a test reaches, a config naming the file — and a
+/// constant "check these" under it taught skipping the block (#656).
+fn what_to_check(output: &crate::impact::ImpactOutput, hedged: bool) -> Option<String> {
+    let untested = output
+        .changed
+        .iter()
+        .flat_map(|c| &c.callers)
+        .filter(|c| crate::impact::without_test_link(c))
+        .count()
+        + output.truncated_untested;
+    let mut parts: Vec<String> = Vec::new();
+    if untested > 0 {
+        parts.push(format!(
+            "the {untested} caller(s) no static test link reaches"
+        ));
+    }
+    if !output.stale_references.is_empty() || output.stale_references_omitted > 0 {
+        parts.push("the lines still naming a removed path".to_string());
+    }
+    if !output.contracts.is_empty() || output.contracts_omitted > 0 {
+        parts.push("the changed contract(s)".to_string());
+    }
+    if hedged && parts.is_empty() {
+        parts.push("the files read as committed".to_string());
+    }
+    (!parts.is_empty()).then(|| parts.join(" and "))
 }
 
 /// A text search the agent ran: a Bash grep/rg/ag/`git grep`, or the Grep
@@ -2750,13 +3212,27 @@ fn searched(payload: &serde_json::Value) -> Option<Searched> {
         .map(|p| join_dir(dir.as_deref(), p))
         .collect();
     Some(Searched {
-        dir: paths.first().cloned().or(dir),
+        dir: paths
+            .first()
+            .map(|p| match p.contains(['*', '?', '[']) {
+                true => before_glob(Path::new(p)).to_string_lossy().into_owned(),
+                false => p.clone(),
+            })
+            .or(dir),
         paths,
         pattern: args.pattern,
         inverted: args.inverted,
         revisions: args.revisions,
         found,
     })
+}
+
+/// A glob searches the directory it starts in (`src/*.rs`, `-- '*.py'`):
+/// read as a directory, it named no repository and the search went unanswered.
+fn before_glob(path: &Path) -> PathBuf {
+    path.components()
+        .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
+        .collect()
 }
 
 /// The files a search's output names at the head of its lines
@@ -2810,11 +3286,7 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
         .iter()
         .flat_map(|cwd| looked.iter().map(move |p| resolve_dir(cwd, *p)))
         .filter_map(|p| {
-            // A glob searches the directory it starts in (`-- '*.py'`).
-            let p: PathBuf = p
-                .components()
-                .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
-                .collect();
+            let p = before_glob(&p);
             let p = dunce::canonicalize(&p).unwrap_or(p);
             let rel = p.strip_prefix(&root).ok()?;
             Some(rel.to_string_lossy().replace('\\', "/"))
@@ -2984,7 +3456,8 @@ fn search_answer(
         }
     }
     if !others.is_empty() {
-        match symbol_answer(&root, &others, &scope, started, trace) {
+        let lookup = is_lookup_pattern(&search.pattern);
+        match symbol_answer(&root, &others, &scope, lookup, started, trace) {
             Ok(text) => answers.push(text),
             Err(why) => silence = why,
         }
@@ -3021,7 +3494,7 @@ fn edited_answer(
     mark_seen_with(&tries, &(attempt + 1).to_string());
     let root = root.to_path_buf();
     let known = within_deadline(started, move || {
-        run_impact(&root, "HEAD").map(known_answers)
+        run_impact(&root, "HEAD", PIPELINE_SECS).map(known_answers)
     })?;
     unmark(&tries);
     let mut answers = Vec::new();
@@ -3066,6 +3539,7 @@ fn symbol_answer(
     root: &Path,
     names: &[String],
     scope: &Scope,
+    lookup: bool,
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
@@ -3084,9 +3558,15 @@ fn symbol_answer(
     let mut silence = "empty";
     for name in fresh {
         mark_seen(&key(name));
-        match one_symbol_answer(root, name, scope, started) {
+        match one_symbol_answer(root, name, scope, lookup, started) {
             Ok(text) => answers.push(text),
-            Err(why) => silence = why,
+            Err(why) => {
+                // A shape that is no lookup does not use the name up.
+                if why == "not-a-lookup" {
+                    unmark(&key(name));
+                }
+                silence = why;
+            }
         }
     }
     if answers.is_empty() {
@@ -3099,6 +3579,7 @@ fn one_symbol_answer(
     root: &Path,
     name: &str,
     scope: &Scope,
+    is_lookup: bool,
     started: Instant,
 ) -> Result<String, Silence> {
     let (root, lookup) = (root.to_path_buf(), name.to_string());
@@ -3114,6 +3595,22 @@ fn one_symbol_answer(
         )
         .map_err(|_| "no-symbol")
     })?;
+    // No definition, but files spell it: one line, since the grep that led
+    // here printed the lines and cannot say no binding was found (R2). Only a
+    // lookup of a name code would spell asks that: an alternation or a plain
+    // word is a search for text.
+    if let Some(named) = &output.symbol_named {
+        if !is_lookup {
+            return Err("not-a-lookup");
+        }
+        if !crate::impact::distinctive(name) {
+            return Err("no-symbol");
+        }
+        return Ok(format!(
+            "`{name}`: no definition; named textually in {} file(s), no binding \u{2014} `diffctx . --symbol {name} -f md` lists them",
+            named.files
+        ));
+    }
     // A definition outside where the search looked, with no caller there,
     // is another symbol of the same name: a `models` module of another
     // subproject, a `segments` the grepped file never reaches (#646, fj#95).
@@ -3127,8 +3624,13 @@ fn one_symbol_answer(
     // The answer adds what grep cannot: the callers it resolved and the
     // tests that reach them. Without one it says nothing, because a caller
     // in a file no model reads (an `.astro` page, a template, a class name
-    // in markup) would read as none.
-    if output.changed.iter().all(|c| c.callers.is_empty()) {
+    // in markup) would read as none. A word match is no resolved caller:
+    // the grep that led here printed those lines already.
+    if output
+        .changed
+        .iter()
+        .all(|c| c.callers.iter().all(crate::impact::is_textual))
+    {
         return Err("empty");
     }
     // A name defined all over (`main`, `run`, `new`) is no lookup a short
@@ -3184,6 +3686,45 @@ fn within_deadline<T: Send + 'static>(
     }
 }
 
+/// The review of one range inside the hook's one budget (Forgejo #113). The
+/// engine's own deadline is cooperative: it stops the phase it is in, then
+/// renders what it read, and that tail has no deadline of its own. The
+/// engine therefore gets its share of what is left of the ceiling, so time
+/// the hook spent before the review no longer comes out of the tail; and
+/// at the ceiling the hook waits `TAIL_GRACE_SECS` more for the partial
+/// answer the engine is already rendering, where it used to drop it for a
+/// bare timeout. Only a run that does not return in that time is a timeout.
+fn review_within_budget(
+    started: Instant,
+    work: impl FnOnce(u64) -> Result<Answer, Silence> + Send + 'static,
+) -> Result<Answer, Silence> {
+    let left = HOOK_DEADLINE_SECS.saturating_sub(started.elapsed().as_secs());
+    if left == 0 {
+        return Err("timeout");
+    }
+    let engine_secs = (left * PIPELINE_SECS / HOOK_DEADLINE_SECS).max(1);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(crate::profile::carry(move || {
+        let _ = tx.send(work(engine_secs));
+    }));
+    for wait in [left, TAIL_GRACE_SECS] {
+        match rx.recv_timeout(Duration::from_secs(wait)) {
+            Ok(result) => return result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Err("error:panic"),
+        }
+    }
+    Err("timeout")
+}
+
+/// The files a range changes, read before its review begins: past the
+/// ceiling the hook's own git calls are refused, and a review cut short must
+/// still name what it may have left.
+fn range_paths(root: &Path, range: &str) -> Vec<String> {
+    let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
+    crate::git::run_git_z(root, &args).unwrap_or_default()
+}
+
 /// The hook's whole decision on one stdin payload. An answer is marked
 /// delivered only once it is returned for printing; a run that timed out or
 /// failed is retried on a later command, at most `MAX_ATTEMPTS` times per
@@ -3198,6 +3739,7 @@ fn decide(
     let payload: serde_json::Value =
         serde_json::from_str(stdin_json).map_err(|_| "error:payload")?;
     trace.session = payload["session_id"].as_str().map(str::to_string);
+    bracket(event, &payload);
     let command = payload["tool_input"]["command"]
         .as_str()
         .unwrap_or_default();
@@ -3320,6 +3862,7 @@ fn answer(
                 event,
                 &prepared.range,
                 "retry-exhausted",
+                &[],
                 trace,
             ));
         }
@@ -3336,16 +3879,19 @@ fn answer(
         ..
     } = prepared;
     let reviewed = range.clone();
-    let answer = within_deadline(started, move || {
-        impact_context(event, &trigger, &root, &range)
+    let paths = range_paths(&root, &range);
+    let named = paths.clone();
+    let recorded = !matches!(trigger, Trigger::Inspect { .. });
+    let answer = review_within_budget(started, move |secs| {
+        impact_context(event, &trigger, &root, &range, secs, &named)
     });
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
         Err("empty") => mark_delivered(&key, "", false),
         Ok(a) => mark_delivered(&key, &a.headline, a.partial),
-        // What landed and was not reviewed is said so: silence there reads
-        // as a clean review (#612, #613).
-        Err(why) if landed => return Ok(not_reviewed(event, &reviewed, why, trace)),
+        // A change that was not reviewed is said so, and which files it
+        // changes: silence there reads as a clean review (#612, #613).
+        Err(why) if recorded => return Ok(not_reviewed(event, &reviewed, why, &paths, trace)),
         Err(_) => return answer.map(|_| String::new()),
     }
     // A partial answer keeps its attempt: it is retried, but not forever.
@@ -3380,17 +3926,32 @@ fn nothing_reached(event: Event, trace: &mut Trace) -> String {
     )
 }
 
-fn not_reviewed(event: Event, range: &str, why: Silence, trace: &mut Trace) -> String {
+fn not_reviewed(
+    event: Event,
+    range: &str,
+    why: Silence,
+    paths: &[String],
+    trace: &mut Trace,
+) -> String {
     trace.noted = Some(why);
     let how = match why {
         "timeout" => "the review ran past the hook's deadline",
         "retry-exhausted" => "earlier attempts at this change stopped at a limit",
         _ => "the review failed",
     };
+    let unread = if paths.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " It changes {} file(s), none of them reviewed: {}.",
+            paths.len(),
+            some_of(paths)
+        )
+    };
     hook_json(
         event,
         &format!(
-            "diffctx did not review {range}: {how}. Run `diffctx <repo> --diff {range} --mode impact` in that repository before going on."
+            "diffctx did not review {range}: {how}.{unread} Run `diffctx <repo> --diff {range} --mode impact` in that repository before going on."
         ),
         false,
     )

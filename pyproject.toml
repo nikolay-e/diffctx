@@ -101,10 +101,11 @@ scripts.diffctx-mcp = "diffctx.mcp.launch:main"
 eval = [
   "charset-normalizer>=3.0,<4.0",
   "datasets>=5.0.1,<6.0",
-  "huggingface-hub>=1.27.0,<2.0",
+  "huggingface-hub>=2.3,<2.4",
   "numpy>=2.2.6,<3.0",
   "pathspec>=0.11,<2.0",
   "pebble>=5.2.1,<6.0",
+  "pyarrow>=25.0,<27.0",
   "pyyaml>=6.0,<7.0",
   "rank-bm25>=0.2.2,<1.0",
   "scipy>=1.15.3,<2.0",
@@ -112,10 +113,9 @@ eval = [
 ]
 
 [tool.maturin]
-python-source = "src"
 module-name = "diffctx._diffctx"
+python-source = "src"
 manifest-path = "crates/diffctx-native/Cargo.toml"
-features = [ "pyo3/extension-module", "python" ]
 # The version is patched in every surface by the cd.yml release bump; that
 # step is the single list of where it lives.
 include = [
@@ -128,10 +128,11 @@ include = [
   { path = "crates/diffctx-native/src/**/*", format = "sdist" },
   { path = "rust-toolchain.toml", format = "sdist" },
 ]
+features = [ "pyo3/extension-module", "python" ]
 
 [tool.black]
-line-length = 130
 target-version = [ "py310" ]
+line-length = 130
 
 [tool.ruff]
 target-version = "py310"
@@ -143,57 +144,36 @@ lint.mccabe.max-complexity = 15
 [tool.pyproject-fmt]
 column_width = 130
 keep_full_version = true
-
-[tool.pytest]
-ini_options.testpaths = [ "tests" ]
-ini_options.pythonpath = [ "src" ]
-ini_options.norecursedirs = [ ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis" ]
-ini_options.addopts = "-n auto --dist worksteal"
-ini_options.truncation_limit_lines = 100
-ini_options.asyncio_mode = "auto"
-
-[tool.coverage]
-run.branch = true
-run.omit = [ "*/__pycache__/*" ]
-run.source = [ "diffctx" ]
-report.exclude_lines = [
-  "@(abc\\.)?abstractmethod",
-  "if __name__ == .__main__.:",
-  "if TYPE_CHECKING:",
-  "pragma: no cover",
-]
-report.fail_under = 40
-report.show_missing = true
-report.skip_empty = true
+max_supported_python = "3.14"
 
 [tool.mypy]
+files = [ "src" ]
 python_version = "3.10"
-strict = true
-warn_return_any = true
-warn_unused_configs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
-no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
+warn_return_any = true
 warn_unreachable = true
-files = [ "src" ]
+strict = true
+warn_unused_configs = true
+no_implicit_optional = true
 
 [[tool.mypy.overrides]]
 module = [
+  "anyio",
+  "anyio.*",
+  "charset_normalizer",
+  "diffctx._diffctx",
   "mcp",
   "mcp.server",
   "mcp.server.mcpserver",
   "mcp.server.mcpserver.exceptions",
   "mcp.types",
-  "anyio",
-  "anyio.*",
-  "diffctx._diffctx",
   "pathspec",
-  "charset_normalizer",
 ]
 ignore_missing_imports = true
 
@@ -208,10 +188,32 @@ disable_error_code = [ "type-arg" ]
 module = [ "diffctx.mcp.*" ]
 disallow_untyped_decorators = false
 
+[tool.pytest]
+ini_options.testpaths = [ "tests" ]
+ini_options.pythonpath = [ "src" ]
+ini_options.norecursedirs = [ ".git", ".hypothesis", ".mypy_cache", ".pytest_cache", "__pycache__" ]
+ini_options.addopts = "-n auto --dist worksteal"
+ini_options.truncation_limit_lines = 100
+ini_options.asyncio_mode = "auto"
+
+[tool.coverage]
+run.source = [ "diffctx" ]
+run.omit = [ "*/__pycache__/*" ]
+run.branch = true
+report.fail_under = 40
+report.exclude_lines = [
+  "@(abc\\.)?abstractmethod",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "pragma: no cover",
+]
+report.skip_empty = true
+report.show_missing = true
+
 [tool.commitizen]
 name = "cz_conventional_commits"
+version_files = [ "CITATION.cff:^version", "src/diffctx/version.py:__version__" ]
 tag_format = "v$version"
-version_files = [ "src/diffctx/version.py:__version__", "CITATION.cff:^version" ]
 
 [tool.importlinter]
 root_package = "diffctx"

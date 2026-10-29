@@ -1,0 +1,54 @@
+name: keys_env_016_renamed_values_key
+tags:
+- xkeys:env
+- xkeys:rename
+- lang:python
+- lang:yaml
+repo:
+  initial_files:
+    charts/api/Chart.yaml: |
+      apiVersion: v2
+      name: api
+      version: 0.1.0
+    charts/api/values.yaml: |
+      replicas: 1
+      env:
+        - name: CACHE_HOST
+          value: redis:6379
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/api/app.py: |
+      import os
+
+      HOST = os.environ["CACHE_HOST"]
+    docs/cache.md: |
+      # Cache
+
+      The worker keeps its own CACHE_HOST in its environment.
+  changed_files:
+    charts/api/values.yaml: |
+      replicas: 1
+      env:
+        - name: CACHE_ENDPOINT
+          value: redis:6379
+  commit_message: Rename the api chart cache host
+fragments:
+- id: values
+  selector:
+    path: charts/api/values.yaml
+    anchor: 'CACHE_ENDPOINT'
+- id: api_app
+  selector:
+    path: services/api/app.py
+    anchor: 'CACHE_HOST'
+- id: notes
+  selector:
+    path: docs/cache.md
+oracle:
+  required:
+  - values
+  - api_app
+  forbidden:
+  - notes
+min_score: 60

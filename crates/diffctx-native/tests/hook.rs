@@ -261,7 +261,8 @@ fn a_commit_with_an_outside_caller_gets_the_impact_once() {
         context.contains("reachable from tests: tests/test_checkout.py"),
         "{context}"
     );
-    assert!(context.contains("Check these callers"), "{context}");
+    // Its one caller is reached by a test: nothing in it asks for a check (#656).
+    assert!(!context.contains("before going on"), "{context}");
     assert!(context.chars().count() <= 9_200, "{}", context.len());
     let out = output_of(&first, "PostToolUse");
     assert!(
@@ -1319,6 +1320,82 @@ fn a_search_on_a_clean_tree_is_answered_as_symbol_would() {
     assert_eq!(search("git log --oneline | grep restock").stdout, "");
 }
 
+/// R2, Forgejo #114: a lookup of a name no file defines but a config and a
+/// script spell gets one line saying so, once per name; a name nothing spells
+/// stays silent (the grep that led here printed the lines already).
+#[test]
+fn a_search_for_a_name_only_text_spells_gets_one_line() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(
+        repo,
+        "rules/backup.yaml",
+        "groups:\n  - expr: time() - restic_last_success_seconds > 86400\n",
+    );
+    write(
+        repo,
+        "scripts/backup.sh",
+        "#!/bin/sh\necho restic_last_success_seconds\n",
+    );
+    write(
+        repo,
+        "docs/notes.md",
+        "Watch restic_last_success_seconds.\n",
+    );
+    commit_all(repo, "backup rules");
+    let search = |query: &str| {
+        hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &search_payload(repo, "Bash", query),
+        )
+    };
+    let metric = "restic_last_success_seconds";
+    let line = context_of(&search(&format!("grep -rn {metric} .")));
+    assert_eq!(
+        line,
+        format!(
+            "`{metric}`: no definition; named textually in 2 file(s), no binding \u{2014} `diffctx . --symbol {metric} -f md` lists them"
+        )
+    );
+    assert_eq!(
+        search(&format!("grep -rn {metric} .")).stdout,
+        "",
+        "once per name"
+    );
+    assert_eq!(search("grep -rn no_such_name_here .").stdout, "");
+
+    // Only a lookup gets the line: an alternation (`SHA|TODO`) and a bare
+    // common word that files spell are searches for text, not for a symbol.
+    write(
+        repo,
+        "rules/prune.yaml",
+        "expr: restic_prune_seconds\nsteps: pytest\n",
+    );
+    write(
+        repo,
+        "scripts/prune.sh",
+        "#!/bin/sh\necho restic_prune_seconds\npytest -q\n",
+    );
+    commit_all(repo, "prune rules");
+    let silent = |query: &str| {
+        let out = search(query);
+        assert_eq!(out.stdout, "", "{query}: {}", last_log_line(cache.path()));
+    };
+    silent("grep -rnE 'restic_prune_seconds|TODO' .");
+    silent("grep -rn pytest .");
+    // A silenced shape does not burn the name: the lookup that follows is
+    // answered.
+    let line = context_of(&search("grep -rn restic_prune_seconds ."));
+    assert!(
+        line.starts_with("`restic_prune_seconds`: no definition; named textually in 2 file(s)"),
+        "{line}"
+    );
+}
+
 /// A search the hook cannot place, and a name defined all over, get no
 /// answer: a grep of `$OUT/notes.tsv` read as a search of the cwd's
 /// repository, and `main` with 44 definitions printed the first two.
@@ -1435,6 +1512,9 @@ fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
     let scoped = context_of(&search("grep -n restock legacy/stock.py"));
     assert!(scoped.contains("legacy/stock.py::rerun"), "{scoped}");
     assert!(!scoped.contains("shop/shelf.py"), "{scoped}");
+    // A glob path searches the directory it starts in.
+    let globbed = context_of(&search("grep -n restock shop/*.py"));
+    assert!(globbed.contains("shop/shelf.py::refill"), "{globbed}");
     let docs = context_of(&search("grep -rn restock ."));
     assert!(docs.contains("shop/shelf.py::refill"), "{docs}");
     for query in [
@@ -1642,6 +1722,126 @@ fn a_partial_answer_is_retried_a_bounded_number_of_times() {
         vec![true, true, false, false],
         "partial, retried once, then left alone"
     );
+}
+
+/// A wide change in one commit, the shape of Forgejo #113: `n` modules each
+/// edited, each called from a module of its own.
+fn repo_with_wide_change(n: usize) -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["init", "-q", "."]);
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    for i in 0..n {
+        write(
+            repo,
+            &format!("pkg/m{i:02}.py"),
+            &format!("def f{i:02}(x):\n    return x + 1\n"),
+        );
+        write(
+            repo,
+            &format!("app/use{i:02}.py"),
+            &format!(
+                "from pkg.m{i:02} import f{i:02}\n\n\ndef run{i:02}(x):\n    return f{i:02}(x)\n"
+            ),
+        );
+    }
+    commit_all(repo, "initial");
+    for i in 0..n {
+        write(
+            repo,
+            &format!("pkg/m{i:02}.py"),
+            &format!("def f{i:02}(x):\n    return x + 2\n"),
+        );
+    }
+    tmp
+}
+
+/// Forgejo #113: a review of a wide change that the deadline cuts is a
+/// partial answer that says how many of the range's files list no caller and
+/// which, and the command that finishes it. The run's deadline fires at its
+/// 20th poll, whatever the clock says; 50 changed definitions poll far more
+/// often than that, so the cut always falls inside the run. Before, the
+/// partial note named only the reason.
+#[test]
+fn a_commit_review_the_deadline_cut_names_the_files_it_did_not_reach() {
+    let tmp = repo_with_wide_change(50);
+    let cache = TempDir::new().unwrap();
+    let env = [("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", Path::new("20"))];
+    let h = line_in("s1", tmp.path(), cache.path(), &env, "git commit -qam wide");
+    let context = context_of(&h);
+    assert!(context.contains("partial"), "{context}");
+    assert!(
+        context.contains("diffctx stopped at the hook's budget before it finished"),
+        "{context}"
+    );
+    assert!(
+        context.contains(" of the 50 changed file(s) list no caller above"),
+        "{context}"
+    );
+    assert!(context.contains("pkg/m"), "{context}");
+    assert!(
+        context.contains("--mode impact` runs the review to the end"),
+        "{context}"
+    );
+}
+
+/// The strict gate's commit gets the same partial answer, before it runs: it
+/// never denies on a partial review, and says what it did not reach.
+#[test]
+fn the_strict_gate_gets_a_partial_answer_naming_what_it_did_not_reach() {
+    let tmp = repo_with_wide_change(50);
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let env = [("DIFFCTX_TEST_DEADLINE_EXPIRED", Path::new("1"))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m wide"),
+    );
+    let out = output_of(&h, "PreToolUse");
+    assert!(out.get("permissionDecision").is_none(), "{out}");
+    let context = out["additionalContext"].as_str().unwrap();
+    assert!(context.contains("partial"), "{context}");
+    assert!(
+        context.contains(" of the 50 changed file(s) list no caller above"),
+        "{context}"
+    );
+}
+
+/// A commit or pull request the hook was asked to review before it ran, and
+/// could not, says so and names what it changes: silence there read as a
+/// clean review. The strict run refuses the undeclared setting, so the
+/// pipeline fails.
+#[test]
+fn a_gated_commit_whose_review_failed_names_the_files_it_did_not_review() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let env = [
+        ("DIFFCTX_EVAL_STRICT", Path::new("1")),
+        ("DIFFCTX_NOT_A_SETTING", Path::new("1")),
+    ];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(
+        context.contains("It changes 1 file(s), none of them reviewed: shop/pricing.py"),
+        "{context}"
+    );
+    assert!(context.contains("--mode impact"), "{context}");
 }
 
 /// #612, #613: a commit whose review failed is said to be unreviewed, with
@@ -1897,6 +2097,55 @@ fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
     assert!(!context.contains("shop/checkout.py::charge"), "{context}");
 }
 
+/// R1: a word match is listed as text and never asks for a check; a resolved
+/// caller no test reaches still does.
+#[test]
+fn a_word_match_asks_for_no_check_a_resolved_caller_does() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    let rates = |n: u32| {
+        format!(
+            "class Rates {{\n    public static int Rate() {{\n        return {n};\n    }}\n}}\n"
+        )
+    };
+    write(repo, "src/Rates.cs", &rates(1));
+    write(
+        repo,
+        "src/Invoice.cs",
+        "class Invoice {\n    int Total() {\n        return Rates.Rate() * 3;\n    }\n}\n",
+    );
+    commit_all(repo, "rates");
+    write(repo, "src/Rates.cs", &rates(2));
+    let text = run_line(repo, cache.path(), "git commit -am 'rate'");
+    let context = context_of(&text);
+    assert!(
+        context
+            .contains("Named in code outside the diff (a textual match, not a resolved binding):"),
+        "{context}"
+    );
+    assert!(context.contains("src/Invoice.cs:"), "{context}");
+    assert!(!context.contains("called from src/Invoice.cs"), "{context}");
+    assert!(!context.contains("before going on"), "{context}");
+
+    write(
+        repo,
+        "shop/inventory.py",
+        "def restock(item):\n    return item.count + 2\n",
+    );
+    let resolved = run_line(repo, cache.path(), "git commit -am 'restock'");
+    let context = context_of(&resolved);
+    assert!(
+        context.contains("called from shop/shelf.py::refill"),
+        "{context}"
+    );
+    assert!(
+        context.contains("Check the 1 caller(s) no static test link reaches before going on"),
+        "{context}"
+    );
+}
+
 #[test]
 fn the_automatic_answer_fits_its_token_cap() {
     let tmp = repo_with_pending_change();
@@ -1924,7 +2173,7 @@ fn the_automatic_answer_fits_its_token_cap() {
         .split_once("What it reaches outside the diff:\n")
         .map(|(_, b)| b)
         .unwrap()
-        .rsplit_once("\nCheck these callers")
+        .rsplit_once("\nCheck the ")
         .map(|(b, _)| b)
         .unwrap();
     let words = body.split_whitespace().count();
@@ -2362,6 +2611,225 @@ fn a_push_after_a_pull_on_the_same_line_reviews_only_what_it_sent() {
     }
 }
 
+/// `command` run through `sh` in `cwd`, and what it printed: git's own report
+/// of a push, which the hook's payload carries as `tool_response`. A push
+/// that fails still reports.
+fn sh_printed(cwd: &Path, command: &str) -> String {
+    let out = Command::new("sh")
+        .current_dir(cwd)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .args(["-c", command])
+        .output()
+        .expect("run sh");
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+/// A repository whose `main` is on `origin` (a bare remote) with the pending
+/// change stashed: `commit_vat` commits it as this session's own change.
+fn repo_beside_a_bare_remote() -> (TempDir, TempDir) {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let remote = TempDir::new().unwrap();
+    git(remote.path(), &["init", "-q", "--bare", "-b", "main", "."]);
+    git(
+        repo,
+        &["remote", "add", "origin", &remote.path().to_string_lossy()],
+    );
+    git(repo, &["stash", "-q"]);
+    git(repo, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    git(repo, &["fetch", "-q", "origin"]);
+    git(repo, &["stash", "pop", "-q"]);
+    (tmp, remote)
+}
+
+fn after_with_output(session: &str, repo: &Path, command: &str, printed: &str) -> String {
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&payload_in_session(session, repo, command)).unwrap();
+    doc["hook_event_name"] = "PostToolUse".into();
+    doc["tool_response"] = serde_json::json!({"stdout": "", "stderr": printed});
+    doc.to_string()
+}
+
+/// Forgejo #121, the #618 shape: a peer sharing the repository pushes while
+/// this line's `PostToolUse` has not run yet, and the remote-tracking ref
+/// they moved is the one this push moved. The review covers the `old..new`
+/// git printed for this push, whatever the ref reads by then.
+#[test]
+fn a_push_reviews_the_range_git_printed_not_a_peers_that_landed_meanwhile() {
+    for printed in [true, false] {
+        let (tmp, _remote) = repo_beside_a_bare_remote();
+        let repo = tmp.path();
+        commit_all(repo, "vat");
+        let cache = TempDir::new().unwrap();
+        let command = "git push origin HEAD:main";
+        let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
+        assert_eq!(pre.stdout, "");
+        let output = sh_printed(repo, command);
+        // A peer's worktree of the same repository pushes on top.
+        let peer = TempDir::new().unwrap();
+        let wt = peer.path().join("wt");
+        git(
+            repo,
+            &["worktree", "add", "-q", "--detach", &wt.to_string_lossy()],
+        );
+        add_unrelated_edit(&wt);
+        commit_all(&wt, "restock elsewhere");
+        git(&wt, &["push", "-q", "origin", "HEAD:main"]);
+        let after = if printed {
+            after_with_output("s1", repo, command, &output)
+        } else {
+            in_session("s1", &payload_for("PostToolUse", repo, command))
+        };
+        let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
+        assert!(
+            context.contains("shop/checkout.py::charge"),
+            "printed={printed}: {context}"
+        );
+        assert!(
+            !context.contains("shop/shelf.py"),
+            "printed={printed}: the peer's push is not this line's: {context}"
+        );
+    }
+}
+
+/// Forgejo #121: a branch the push created prints no range, and a push git
+/// rejected prints none either; the first is reviewed from where it left the
+/// remote's default, the second reviews nothing, whatever a peer pushed.
+#[test]
+fn a_new_branch_is_reviewed_and_a_rejected_push_is_not() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "-b", "topic"]);
+    commit_all(repo, "vat");
+    let cache = TempDir::new().unwrap();
+    let command = "git push origin HEAD";
+    let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
+    assert_eq!(pre.stdout, "");
+    let output = sh_printed(repo, command);
+    assert!(output.contains("[new branch]"), "{output}");
+    let after = after_with_output("s1", repo, command, &output);
+    let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+
+    // A peer's worktree pushes `main` first, so this line's push is rejected.
+    git(repo, &["checkout", "-q", "main"]);
+    git(repo, &["reset", "-q", "--hard", "origin/main"]);
+    add_unrelated_edit(repo);
+    commit_all(repo, "restock");
+    let peer = TempDir::new().unwrap();
+    let wt = peer.path().join("wt");
+    git(
+        repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &wt.to_string_lossy(),
+            "origin/main",
+        ],
+    );
+    write(&wt, "shop/tax.py", "def rate(country):\n    return 0.19\n");
+    commit_all(&wt, "tax");
+    let command = "git push origin HEAD:main";
+    let pre = hook(repo, cache.path(), &payload_in_session("s2", repo, command));
+    assert_eq!(pre.stdout, "");
+    git(&wt, &["push", "-q", "origin", "HEAD:main"]);
+    let output = sh_printed(repo, command);
+    assert!(output.contains("[rejected]"), "{output}");
+    let after = after_with_output("s2", repo, command, &output);
+    let h = hook_with(repo, cache.path(), "posttooluse", &[], &after);
+    assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
+}
+
+/// Forgejo #121, the #462 shape: a push through a second remote alias, whose
+/// tracking ref was left behind, is the range git printed, not everything
+/// since the stale ref.
+#[test]
+fn a_push_through_a_stale_alias_reviews_what_git_printed() {
+    let (tmp, remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    git(
+        repo,
+        &["remote", "add", "forgejo", &remote.path().to_string_lossy()],
+    );
+    git(repo, &["fetch", "-q", "forgejo"]);
+    // Pushed through `origin` since: `forgejo/main` is behind.
+    git(repo, &["stash", "-q"]);
+    add_unrelated_edit(repo);
+    commit_all(repo, "restock");
+    git(repo, &["push", "-q", "origin", "HEAD:main"]);
+    git(repo, &["stash", "pop", "-q"]);
+    commit_all(repo, "vat");
+    let cache = TempDir::new().unwrap();
+    let command = "git push forgejo HEAD:main";
+    let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
+    assert_eq!(pre.stdout, "");
+    let output = sh_printed(repo, command);
+    let after = after_with_output("s1", repo, command, &output);
+    let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(
+        !context.contains("shop/shelf.py"),
+        "the restock was on the remote already: {context}"
+    );
+}
+
+/// Forgejo #97: a background line that may merge claims what its own reflog
+/// entries show, not a commit another session lands in the checkout while it
+/// waits, whether or not that session's hook has already taken it.
+#[test]
+fn a_commit_a_peer_lands_is_not_a_background_lines() {
+    for (background, peer_has_hook) in [
+        (
+            "git fetch -q origin && git merge -q --ff-only origin/main",
+            false,
+        ),
+        (
+            "sh -c 'git fetch -q origin; git merge -q --ff-only origin/main'",
+            true,
+        ),
+    ] {
+        let (tmp, _remote) = repo_beside_a_bare_remote();
+        let repo = tmp.path();
+        git(repo, &["stash", "-q"]);
+        let cache = TempDir::new().unwrap();
+        let mut launched: serde_json::Value =
+            serde_json::from_str(&payload_in_session("a", repo, background)).unwrap();
+        launched["tool_input"]["run_in_background"] = true.into();
+        let pre = hook(repo, cache.path(), &launched.to_string());
+        assert_eq!(pre.stdout, "");
+        launched["hook_event_name"] = "PostToolUse".into();
+        launched["tool_response"] = serde_json::json!({"backgroundTaskId": "b1", "stdout": ""});
+        hook_with(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &launched.to_string(),
+        );
+        // Another session commits in the same checkout.
+        add_unrelated_edit(repo);
+        let command = "git commit -qam restock";
+        if peer_has_hook {
+            let h = line_in("b", repo, cache.path(), &[], command);
+            assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+        } else {
+            sh(repo, &[], command);
+        }
+        let next = payload_in_session("a", repo, "git log --oneline -1");
+        let h = hook(repo, cache.path(), &next);
+        assert_eq!(
+            h.stdout,
+            "",
+            "{background}: {}",
+            last_log_line(cache.path())
+        );
+    }
+}
+
 /// #448: a name defined only in an untracked file is the pending change's
 /// as much as an edited one: a search for it is answered with its callers.
 #[test]
@@ -2785,6 +3253,201 @@ fn a_file_the_sessions_shell_wrote_is_its_own() {
         "{}",
         h.stdout
     );
+}
+
+/// One Bash call as the plugin sees it: the `PreToolUse` that brackets it,
+/// what it does to the checkout, and the `PostToolUse` whose answer is
+/// returned. The payloads carry the call's id and the session's transcript.
+fn bracketed_call(
+    session: &str,
+    id: &str,
+    repo: &Path,
+    cache: &Path,
+    transcript: &Path,
+    command: &str,
+    effect: impl FnOnce(),
+) -> Hook {
+    let payload = |event: &str| {
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&payload_for(event, repo, command)).unwrap();
+        doc["session_id"] = session.into();
+        doc["tool_use_id"] = id.into();
+        doc["transcript_path"] = transcript.to_string_lossy().to_string().into();
+        doc.to_string()
+    };
+    let pre = hook_with(repo, cache, "pretooluse", &[], &payload("PreToolUse"));
+    assert_eq!(pre.stdout, "", "{command}: nothing to say before it runs");
+    effect();
+    hook_with(repo, cache, "posttooluse", &[], &payload("PostToolUse"))
+}
+
+/// What a session's own files are named in an answer: `inventory.restock`
+/// (its edit) is reviewed, `pricing.total` (another session's) is counted.
+fn assert_inventory_only(h: &Hook) {
+    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+    assert!(
+        !h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+}
+
+/// #662, Forgejo #93: a command that rewrites a file and inspects it in one
+/// line has no result in the transcript when its own `PostToolUse` runs; what
+/// it wrote is still the session's.
+#[test]
+fn a_file_the_inspecting_call_itself_rewrote_is_its_own() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(&main, bash_call("c1", std::time::SystemTime::now(), None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1/10/ shop/inventory.py && git diff",
+        || add_unrelated_edit(repo),
+    );
+    assert_inventory_only(&h);
+}
+
+/// #674: another process rewriting a file the session wrote (a stash and
+/// restore by a peer's pre-commit, a formatter) moves its time out of the
+/// call's span; the write stays the session's.
+#[test]
+fn a_file_another_process_rewrites_later_is_still_its_own() {
+    use std::time::{Duration, SystemTime};
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    let cache = TempDir::new().unwrap();
+    let from = SystemTime::now();
+    std::fs::write(&main, bash_call("c1", from, None)).unwrap();
+    let appended = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "printf '    # more\\n' >> shop/inventory.py",
+        || add_unrelated_edit(repo),
+    );
+    assert_eq!(appended.stdout, "", "no inspection yet");
+    let to = SystemTime::now();
+    // The same bytes again, an hour on.
+    let inventory = std::fs::OpenOptions::new()
+        .write(true)
+        .open(repo.join("shop/inventory.py"))
+        .unwrap();
+    inventory
+        .set_modified(to + Duration::from_secs(3600))
+        .unwrap();
+    drop(inventory);
+    std::fs::write(
+        &main,
+        [bash_call("c1", from, Some(to)), bash_call("c2", to, None)].concat(),
+    )
+    .unwrap();
+    let h = bracketed_call("b", "c2", repo, cache.path(), &main, "git diff", || {});
+    assert_inventory_only(&h);
+}
+
+/// Forgejo #117: a peer's file written while this session's call was still
+/// waiting to run (approval, the hooks before it) falls inside the call's
+/// transcript span, but not inside the call.
+#[test]
+fn a_file_written_before_the_call_ran_is_not_its_own() {
+    use std::time::{Duration, SystemTime};
+    // `pricing.total` is a peer's edit, just made.
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    let now = SystemTime::now();
+    std::fs::write(
+        &main,
+        bash_call(
+            "c1",
+            now - Duration::from_secs(30),
+            Some(now + Duration::from_secs(30)),
+        ),
+    )
+    .unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1/10/ shop/inventory.py && git diff",
+        || add_unrelated_edit(repo),
+    );
+    assert_inventory_only(&h);
+}
+
+/// #668: the old paths of a renamed directory are as much the session's
+/// write as the new ones.
+#[test]
+fn the_old_paths_of_a_renamed_directory_are_its_own() {
+    use std::time::{Duration, SystemTime};
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    support::init_repo(repo);
+    write(repo, "a/t/x.yaml", "k: 1\n");
+    write(repo, "a/y.yaml", "k: 2\n");
+    commit_all(repo, "init");
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    let from = SystemTime::now();
+    std::fs::write(&main, bash_call("c1", from, None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let moved = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "git mv a/y.yaml a/z.yaml && git mv a/t b",
+        || {
+            git(repo, &["mv", "a/y.yaml", "a/z.yaml"]);
+            git(repo, &["mv", "a/t", "b"]);
+        },
+    );
+    assert_eq!(moved.stdout, "", "no inspection yet");
+    let to = SystemTime::now() + Duration::from_millis(1);
+    std::fs::write(
+        &main,
+        [bash_call("c1", from, Some(to)), bash_call("c2", to, None)].concat(),
+    )
+    .unwrap();
+    let h = bracketed_call(
+        "b",
+        "c2",
+        repo,
+        cache.path(),
+        &main,
+        "git diff --cached",
+        || {},
+    );
+    assert!(
+        !h.stdout.contains("show no write by this session"),
+        "{}",
+        h.stdout
+    );
+    assert!(h.stdout.contains("2 changed file(s)"), "{}", h.stdout);
 }
 
 /// #453: a definition the session added, called from the pending text of a

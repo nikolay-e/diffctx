@@ -1,0 +1,25 @@
+{
+  "benchmark": "Agent Retrieval Bench, subset edit2ripple (arXiv 2607.24882)",
+  "evaluator": {
+    "repository": "https://github.com/eyuansu62/agent-retrieval-bench.git",
+    "commit": "9e4d68937f29d5967afd62f4f6a24c1478298133",
+    "licence": "MIT (code, metadata, reports); the release corpus stays under the upstream project licences",
+    "tokenizer": "regex_code_tokenizer_v1"
+  },
+  "dataset": {
+    "hf_repo": "eyuansu71/agent_retrieval_bench",
+    "revision": "5901e1ee3aff048290db72edf9c63bc498b79ea3",
+    "release": "v2_edit2ripple",
+    "archive": "releases/v2_edit2ripple/agent_retrieval_bench_v2_edit2ripple.tar.zst",
+    "archive_sha256": "a174196d69b531d176a65c76fea928b3f1c893710baa4efccc48e901ff404b2c",
+    "samples_sha256": "31d97ffe815dda8730149880c0159239a986eceb306e5a5df816dfc420717cef",
+    "samples": 58,
+    "snapshots": 44
+  },
+  "protocol": {
+    "seeding": "diff-only",
+    "seed": "the anchor diff applied on the sample's base commit as one commit; the intent text is not used",
+    "ranking": "files by their best fragment score from diffctx locate at 8000 tokens (selected items plus the capped overflow list), anchor dropped, candidates restricted to the release corpus (candidate filter all_files), top 20 stored",
+    "budgets": [4000, 8000, 16000, 32000]
+  }
+}

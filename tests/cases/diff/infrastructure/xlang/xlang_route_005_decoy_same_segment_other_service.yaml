@@ -1,0 +1,68 @@
+name: xlang_route_005_decoy_same_segment_other_service
+tags:
+- xlang:decoy
+- xlang:route
+- lang:python
+- lang:go
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    backend/api/data.py: |
+      from flask import Blueprint, jsonify, request
+
+      data_bp = Blueprint("data", __name__, url_prefix="/data")
+
+
+      @data_bp.route("/range", methods=["GET"])
+      def api_range():
+          return jsonify(load_range(request.args["start_date"], request.args["end_date"]))
+    frontend/src/lib/api.ts: |
+      export const api = {
+        range: (start: string, end: string) => request(`/api/data/range?start_date=${start}&end_date=${end}`),
+      };
+    exporter/main.go: "package main\n\nimport \"net/http\"\n\nfunc main() {\n\tmux := http.NewServeMux()\n\tmux.HandleFunc(\"/export/range\", exportRange)\n\thttp.ListenAndServe(\":9000\", mux)\n}\n\nfunc exportRange(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\"csv\"))\n}\n"
+    frontend/src/lib/exportApi.ts: |
+      export const downloadRange = (start: string, end: string) =>
+        fetch(`/export/range?from=${start}&to=${end}`);
+    exporter/main_test.go: "package main\n\nimport (\n\t\"net/http/httptest\"\n\t\"testing\"\n)\n\nfunc TestExportRange(t *testing.T) {\n\trec := httptest.NewRecorder()\n\texportRange(rec, httptest.NewRequest(\"GET\", \"/export/range\", nil))\n}\n"
+  changed_files:
+    backend/api/data.py: |
+      from flask import Blueprint, jsonify, request
+
+      data_bp = Blueprint("data", __name__, url_prefix="/data")
+
+
+      @data_bp.route("/range", methods=["GET"])
+      def api_range():
+          return jsonify(load_range(request.args["start_date"], request.args["end_date"], request.args.get("metric")))
+  commit_message: The data range can be narrowed to one metric
+fragments:
+- id: handler
+  selector:
+    path: backend/api/data.py
+    anchor: request.args.get("metric")
+- id: client
+  selector:
+    path: frontend/src/lib/api.ts
+    anchor: /api/data/range
+- id: no_export_go
+  selector:
+    path: exporter/main.go
+- id: no_export_ts
+  selector:
+    path: frontend/src/lib/exportApi.ts
+- id: no_export_test
+  selector:
+    path: exporter/main_test.go
+oracle:
+  required:
+  - handler
+  - client
+  allowed: []
+  forbidden:
+  - no_export_go
+  - no_export_ts
+  - no_export_test

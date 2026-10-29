@@ -1,0 +1,89 @@
+name: keys_route_006_spring_class_and_method
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:java
+- lang:typescript
+repo:
+  initial_files:
+    orders/pom.xml: |
+      <project>
+        <artifactId>orders</artifactId>
+      </project>
+    orders/src/main/java/app/OrderController.java: |
+      package app;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.PathVariable;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      @RequestMapping("/api/orders")
+      public class OrderController {
+
+          @GetMapping("/{id}")
+          public Order one(@PathVariable long id) {
+              return new Order(id);
+          }
+      }
+    orders/src/test/java/app/OrderControllerTest.java: |
+      package app;
+
+      class OrderControllerTest {
+          void listsTheItems() throws Exception {
+              mockMvc.perform(get("/api/orders/7/items")).andExpect(status().isOk());
+          }
+      }
+    web/src/orders.ts: |
+      export const items = (id: string) => fetch(`/api/orders/${id}/items`);
+    web/src/invoices.ts: |
+      export const invoiceItems = (id: string) => fetch(`/api/invoices/${id}/items`);
+  changed_files:
+    orders/src/main/java/app/OrderController.java: |
+      package app;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.PathVariable;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      @RequestMapping("/api/orders")
+      public class OrderController {
+
+          @GetMapping("/{id}")
+          public Order one(@PathVariable long id) {
+              return new Order(id);
+          }
+
+          @GetMapping("/{id}/items")
+          public java.util.List<Item> items(@PathVariable long id) {
+              return java.util.List.of();
+          }
+      }
+  commit_message: List the items of an order
+fragments:
+- id: handler
+  selector:
+    path: orders/src/main/java/app/OrderController.java
+    anchor: '@GetMapping("/{id}/items")'
+- id: test
+  selector:
+    path: orders/src/test/java/app/OrderControllerTest.java
+    anchor: '/api/orders/7/items'
+- id: client
+  selector:
+    path: web/src/orders.ts
+    anchor: '/items'
+- id: invoices
+  selector:
+    path: web/src/invoices.ts
+oracle:
+  required:
+  - handler
+  - test
+  - client
+  forbidden:
+  - invoices
+min_score: 60

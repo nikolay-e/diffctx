@@ -1,0 +1,49 @@
+name: keys_env_010_two_definitions_two_units_compose
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - API_LOG=info
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - WORKER_LOG=info
+            - PAYMENTS_MODE=sandbox
+  changed_files:
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - API_LOG=info
+            - PAYMENTS_MODE=live
+  commit_message: Run the api payments live
+fragments:
+- id: api_compose
+  selector:
+    path: services/api/docker-compose.yml
+    anchor: 'PAYMENTS_MODE=live'
+- id: worker_compose
+  selector:
+    path: services/worker/docker-compose.yml
+oracle:
+  required:
+  - api_compose
+  forbidden:
+  - worker_compose
+min_score: 60

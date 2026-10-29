@@ -13,7 +13,7 @@ from .project_graph import graph_root
 
 QuotientGraph = Any  # opaque PyQuotientGraph from the Rust extension
 
-_DENSE_EDGE_TYPES = frozenset({"config", "config_generic"})
+_DENSE_EDGE_TYPES = frozenset({"config", "key_match", "config_generic"})
 _BACKLINK_DOMINANCE_RATIO = 0.8
 _HOTSPOT_DEGREE_WEIGHT = 0.5
 _HOTSPOT_CHURN_WEIGHT = 0.5

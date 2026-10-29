@@ -43,9 +43,6 @@ static BACKEND_SERVICE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r##"(?m)service:\s?\n\s{1,20}name:\s?['"]?([^'"#\n]{1,200})"##).unwrap()
 });
 
-static IMAGE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r##"(?m)^\s{1,20}image:\s?['"]?([^'"#\n]{1,300})"##).unwrap());
-
 static SELECTOR_MATCH_LABELS_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)selector:\s?\n\s{1,20}matchLabels:\s?\n((?:\s{1,20}[a-zA-Z0-9_./-]{1,100}:\s?[^\n:]+\n){1,50})")
         .unwrap()
@@ -407,16 +404,12 @@ fn split_documents(lines: &[String]) -> Vec<(u32, &[String])> {
     docs
 }
 
-/// A place inside a manifest: which view, and which span of it.
-type Site = (usize, Span);
-
 struct K8sIndex {
     configmaps: FxHashMap<String, Vec<FragmentId>>,
     secrets: FxHashMap<String, Vec<FragmentId>>,
     services: FxHashMap<String, Vec<FragmentId>>,
     pvcs: FxHashMap<String, Vec<FragmentId>>,
     pods_with_labels: Vec<(usize, LabelMap)>,
-    images: FxHashMap<String, Vec<Site>>,
 }
 
 impl K8sIndex {
@@ -427,7 +420,6 @@ impl K8sIndex {
             services: FxHashMap::default(),
             pvcs: FxHashMap::default(),
             pods_with_labels: Vec::new(),
-            images: FxHashMap::default(),
         }
     }
 }
@@ -446,19 +438,6 @@ fn index_by_kind(kind: Option<&str>, name: &str, frag_id: &FragmentId, idx: &mut
         .push(frag_id.clone());
 }
 
-fn index_images(view_idx: usize, view: &ManifestView, idx: &mut K8sIndex) {
-    for cap in IMAGE_RE.captures_iter(&view.content) {
-        let Some(m) = cap.get(1) else { continue };
-        let image = m.as_str().trim();
-        if !image.is_empty() && !image.starts_with('$') {
-            idx.images
-                .entry(image.to_string())
-                .or_default()
-                .push((view_idx, (m.start(), m.end())));
-        }
-    }
-}
-
 fn index_view(view_idx: usize, view: &ManifestView, idx: &mut K8sIndex) {
     let (kind, name) = extract_resource_info(&view.content);
 
@@ -474,8 +453,6 @@ fn index_view(view_idx: usize, view: &ManifestView, idx: &mut K8sIndex) {
             }
         }
     }
-
-    index_images(view_idx, view, idx);
 }
 
 fn build_resource_index(views: &[ManifestView]) -> K8sIndex {
@@ -615,49 +592,6 @@ fn build_selector_edges(
     }
 }
 
-fn build_image_edges(
-    views: &[ManifestView],
-    view: &ManifestView,
-    images: &FxHashMap<String, Vec<Site>>,
-    edges: &mut EdgeDict,
-) {
-    for cap in IMAGE_RE.captures_iter(&view.content) {
-        let Some(m) = cap.get(1) else { continue };
-        let image = m.as_str().trim();
-        if image.is_empty() || image.starts_with('$') {
-            continue;
-        }
-        let Some(sites) = images.get(image) else {
-            continue;
-        };
-        // A shared base image is vocabulary, not a relation: past the same bar
-        // every other reference channel applies (MAX_FILES_PER_KEY), it would
-        // link every workload in the cluster pairwise at naming weight.
-        let mut distinct: Vec<usize> = sites.iter().map(|(v, _)| *v).collect();
-        distinct.sort_unstable();
-        distinct.dedup();
-        if distinct.len() > super::generic::MAX_FILES_PER_KEY {
-            continue;
-        }
-        let src = view.anchor((m.start(), m.end()));
-        for (other_view, span) in sites {
-            if std::ptr::eq(&views[*other_view], view) {
-                continue;
-            }
-            let dst = views[*other_view].anchor(*span);
-            if dst != src {
-                add_edge(
-                    edges,
-                    src,
-                    dst,
-                    KUBERNETES.image_weight,
-                    KUBERNETES.reverse_factor,
-                );
-            }
-        }
-    }
-}
-
 pub struct KubernetesEdgeBuilder;
 
 impl EdgeBuilder for KubernetesEdgeBuilder {
@@ -676,7 +610,6 @@ impl EdgeBuilder for KubernetesEdgeBuilder {
             build_service_edges(view, &idx, &mut edges);
             build_volume_edges(view, &idx, &mut edges);
             build_selector_edges(&views, view, &idx.pods_with_labels, &mut edges);
-            build_image_edges(&views, view, &idx.images, &mut edges);
         }
 
         edges
@@ -750,7 +683,6 @@ mod tests {
             &*SECRET_NAME_RE,
             &*SERVICE_NAME_RE,
             &*BACKEND_SERVICE_RE,
-            &*IMAGE_RE,
             &*SELECTOR_MATCH_LABELS_RE,
             &*LABELS_RE,
             &*LABEL_PAIR_RE,

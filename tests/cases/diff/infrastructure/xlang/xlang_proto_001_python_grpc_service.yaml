@@ -1,0 +1,114 @@
+name: xlang_proto_001_python_grpc_service
+tags:
+- xlang:proto
+- lang:protobuf
+- lang:python
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    proto/catalog/v1/catalog.proto: |
+      syntax = "proto3";
+
+      package catalog.v1;
+
+      service CatalogService {
+        rpc GetItem(GetItemRequest) returns (Item);
+      }
+
+      message GetItemRequest {
+        string item_id = 1;
+      }
+
+      message Item {
+        string item_id = 1;
+        string title = 2;
+      }
+    server/catalog_service.py: |
+      import grpc
+
+      from gen import catalog_pb2, catalog_pb2_grpc
+
+
+      class CatalogService(catalog_pb2_grpc.CatalogServiceServicer):
+          def GetItem(self, request: catalog_pb2.GetItemRequest, context) -> catalog_pb2.Item:
+              return catalog_pb2.Item(item_id=request.item_id, title="untitled")
+
+
+      def serve(server: grpc.Server) -> None:
+          catalog_pb2_grpc.add_CatalogServiceServicer_to_server(CatalogService(), server)
+    client/catalog_client.py: |
+      import grpc
+
+      from gen import catalog_pb2, catalog_pb2_grpc
+
+
+      def get_item(channel: grpc.Channel, item_id: str) -> catalog_pb2.Item:
+          stub = catalog_pb2_grpc.CatalogServiceStub(channel)
+          return stub.GetItem(catalog_pb2.GetItemRequest(item_id=item_id))
+    server/health_service.py: |
+      from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+
+
+      def register(server) -> None:
+          servicer = health.HealthServicer()
+          servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+          health_pb2_grpc.add_HealthServicer_to_server(servicer, server)
+    buf.yaml: |
+      version: v2
+      modules:
+        - path: proto
+  changed_files:
+    proto/catalog/v1/catalog.proto: |
+      syntax = "proto3";
+
+      package catalog.v1;
+
+      service CatalogService {
+        rpc GetItem(GetItemRequest) returns (Item);
+      }
+
+      message GetItemRequest {
+        string item_id = 1;
+        bool include_archived = 2;
+      }
+
+      message Item {
+        string item_id = 1;
+        string title = 2;
+      }
+  commit_message: A lookup can ask for archived items
+fragments:
+- id: proto_field
+  selector:
+    path: proto/catalog/v1/catalog.proto
+    anchor: bool include_archived = 2;
+- id: server_impl
+  selector:
+    path: server/catalog_service.py
+    anchor: catalog_pb2_grpc.CatalogServiceServicer
+- id: server_request
+  selector:
+    path: server/catalog_service.py
+    anchor: catalog_pb2.GetItemRequest
+- id: client_stub
+  selector:
+    path: client/catalog_client.py
+    anchor: catalog_pb2_grpc.CatalogServiceStub
+- id: buf
+  selector:
+    path: buf.yaml
+- id: no_health
+  selector:
+    path: server/health_service.py
+oracle:
+  required:
+  - proto_field
+  - server_impl
+  - server_request
+  - client_stub
+  allowed:
+  - buf
+  forbidden:
+  - no_health

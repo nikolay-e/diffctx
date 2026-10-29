@@ -1,0 +1,63 @@
+name: keys_table_003_two_schemas_one_name
+tags:
+- xkeys:table
+- xkeys:decoy
+- lang:python
+- lang:sql
+repo:
+  initial_files:
+    stems/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    stems/migrations/0007_create_assets.sql: |
+      CREATE TABLE stems.assets (
+        id serial PRIMARY KEY,
+        path text
+      );
+    stems/models.py: |
+      from sqlalchemy.orm import declarative_base
+
+      Base = declarative_base()
+
+
+      class Asset(Base):
+          __tablename__ = "assets"
+          __table_args__ = {"schema": "stems"}
+    library/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    library/migrations/0001_init.sql: |
+      CREATE TABLE library.assets (
+        id serial PRIMARY KEY,
+        title text
+      );
+    library/search.py: |
+      def titles(db):
+          return db.execute("SELECT title FROM library.assets ORDER BY title")
+  changed_files:
+    stems/migrations/0008_assets_checksum.sql: |
+      ALTER TABLE stems.assets ADD COLUMN checksum text;
+  commit_message: Add a checksum to the stem assets
+fragments:
+- id: migration
+  selector:
+    path: stems/migrations/0008_assets_checksum.sql
+    anchor: 'ALTER TABLE stems.assets'
+- id: stem_models
+  selector:
+    path: stems/models.py
+    anchor: '__tablename__'
+- id: library_init
+  selector:
+    path: library/migrations/0001_init.sql
+- id: library_search
+  selector:
+    path: library/search.py
+oracle:
+  required:
+  - migration
+  - stem_models
+  forbidden:
+  - library_init
+  - library_search
+min_score: 60

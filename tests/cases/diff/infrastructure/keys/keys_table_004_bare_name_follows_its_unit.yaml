@@ -1,0 +1,36 @@
+name: keys_table_004_bare_name_follows_its_unit
+tags:
+- xkeys:table
+- lang:python
+- lang:sql
+repo:
+  initial_files:
+    ledger/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    ledger/migrations/0003_create_entries.sql: |
+      CREATE TABLE ledger.entries (
+        id serial PRIMARY KEY,
+        amount numeric
+      );
+    ledger/repo.py: |
+      def balance(db):
+          return db.execute("SELECT sum(amount) FROM entries")
+  changed_files:
+    ledger/migrations/0004_entries_memo.sql: |
+      ALTER TABLE ledger.entries ADD COLUMN memo text;
+  commit_message: Add a memo to ledger entries
+fragments:
+- id: migration
+  selector:
+    path: ledger/migrations/0004_entries_memo.sql
+    anchor: 'ALTER TABLE ledger.entries'
+- id: repo
+  selector:
+    path: ledger/repo.py
+    anchor: 'FROM entries'
+oracle:
+  required:
+  - migration
+  - repo
+min_score: 60

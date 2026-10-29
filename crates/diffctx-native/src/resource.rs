@@ -299,6 +299,7 @@ struct Inner {
     withheld: Mutex<BTreeSet<String>>,
     head_rev: Mutex<Option<String>>,
     source: Mutex<Option<crate::source::Source>>,
+    changed_lines: Mutex<Option<Arc<crate::changed_lines::ChangedLines>>>,
     /// Polls left before the logical clock fires; `None` outside a test.
     polls_left: Option<AtomicU64>,
     /// Answers that depend on a path alone (is it a repository, what
@@ -356,6 +357,7 @@ impl RunContext {
                 withheld: Mutex::new(BTreeSet::new()),
                 head_rev: Mutex::new(None),
                 source: Mutex::new(None),
+                changed_lines: Mutex::new(None),
                 polls_left,
                 memo: Mutex::default(),
             }),
@@ -406,6 +408,16 @@ impl RunContext {
     pub fn set_source(&self, source: crate::source::Source) {
         source.report_to(RunNotes(Arc::downgrade(&self.inner)));
         *self.inner.source.lock().unwrap() = Some(source);
+    }
+
+    /// The lines the change touched, for the readers that tell a changed
+    /// line from an untouched one in a changed file.
+    pub fn set_changed_lines(&self, lines: crate::changed_lines::ChangedLines) {
+        *self.inner.changed_lines.lock().unwrap() = Some(Arc::new(lines));
+    }
+
+    pub fn changed_lines(&self) -> Option<Arc<crate::changed_lines::ChangedLines>> {
+        self.inner.changed_lines.lock().unwrap().clone()
     }
 
     pub fn lossy_files(&self) -> Vec<String> {
@@ -578,6 +590,10 @@ thread_local! {
     /// charged through `poll_emissions`, so the orchestrator charges only the
     /// remainder when the builder returns — never the same edge twice.
     static SELF_REPORTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The change's lines on a thread the run's context is not published to
+    /// (the discovery strategies run on rayon workers).
+    static CHANGED_LINES: RefCell<Option<Arc<crate::changed_lines::ChangedLines>>> =
+        const { RefCell::new(None) };
 }
 
 pub struct ScopedContext {
@@ -666,6 +682,31 @@ pub fn with_cancel<T>(flag: Arc<AtomicBool>, f: impl FnOnce() -> T) -> T {
     }
     let _restore = Restore(PENDING_CANCEL.with(|c| c.replace(Some(flag))));
     f()
+}
+
+/// Runs `f` with the change's lines published to this thread.
+pub fn with_changed_lines<T>(
+    lines: Option<Arc<crate::changed_lines::ChangedLines>>,
+    f: impl FnOnce() -> T,
+) -> T {
+    let prev = CHANGED_LINES.with(|c| c.replace(lines));
+    struct Restore(Option<Arc<crate::changed_lines::ChangedLines>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            CHANGED_LINES.with(|c| *c.borrow_mut() = prev);
+        }
+    }
+    let _restore = Restore(prev);
+    f()
+}
+
+/// The lines the current run's change touched; `None` outside a run that
+/// knows them (then every line counts as changed).
+pub fn current_changed_lines() -> Option<Arc<crate::changed_lines::ChangedLines>> {
+    CHANGED_LINES
+        .with(|c| c.borrow().clone())
+        .or_else(|| with_current(RunContext::changed_lines).flatten())
 }
 
 pub fn current_source() -> Option<crate::source::Source> {

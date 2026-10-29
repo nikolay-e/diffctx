@@ -432,7 +432,7 @@ def _is_graph_mode(args: ParsedArgs) -> bool:
 
 
 _ARCHITECTURAL_EDGE_TYPES: frozenset[str] = frozenset(
-    {"semantic", "structural", "config_generic", "document", "sibling", "test_edge", "history"}
+    {"semantic", "structural", "key_match", "config_generic", "document", "sibling", "test_edge", "history"}
 )
 
 

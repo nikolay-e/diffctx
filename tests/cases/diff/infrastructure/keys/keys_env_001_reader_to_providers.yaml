@@ -1,0 +1,76 @@
+name: keys_env_001_reader_to_providers
+tags:
+- xkeys:env
+- lang:python
+- lang:yaml
+repo:
+  initial_files:
+    api/app.py: |
+      import os
+
+      DB = os.environ["DATABASE_URL"]
+
+
+      def boot():
+          return DB
+    worker/tasks.py: |
+      import os
+
+      REDIS = os.getenv("REDIS_URL")
+
+
+      def run():
+          return REDIS
+    .env.example: |
+      DATABASE_URL=postgres://localhost/app
+      REDIS_URL=redis://localhost:6379/0
+    docker-compose.yml: |
+      services:
+        api:
+          build: ./api
+          environment:
+            - DATABASE_URL=postgres://db/app
+            - REDIS_URL=redis://cache:6379/0
+    docs/setup.md: |
+      # Setup
+
+      Copy the example file and set REDIS_URL to your cache.
+  changed_files:
+    api/app.py: |
+      import os
+
+      DB = os.environ["DATABASE_URL"]
+      CACHE = os.environ["REDIS_URL"]
+
+
+      def boot():
+          return DB, CACHE
+  commit_message: Read the cache url from the environment
+fragments:
+- id: app
+  selector:
+    path: api/app.py
+    anchor: 'os.environ["REDIS_URL"]'
+- id: dotenv
+  selector:
+    path: .env.example
+    anchor: 'REDIS_URL=redis'
+- id: compose
+  selector:
+    path: docker-compose.yml
+    anchor: 'REDIS_URL=redis'
+- id: other_reader
+  selector:
+    path: worker/tasks.py
+- id: prose
+  selector:
+    path: docs/setup.md
+oracle:
+  required:
+  - app
+  - dotenv
+  - compose
+  forbidden:
+  - other_reader
+  - prose
+min_score: 60

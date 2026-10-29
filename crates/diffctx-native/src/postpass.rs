@@ -23,10 +23,7 @@ fn find_dangling_semantic_names(
                 return;
             }
             let cat = graph.edge_category(&frag.id, nbr_id);
-            if cat
-                .map(|c| c != crate::graph::EdgeCategory::Semantic)
-                .unwrap_or(true)
-            {
+            if cat.map(|c| !c.acts_as_reference()).unwrap_or(true) {
                 return;
             }
             if let Some(nbr_frag) = frag_by_id.get(nbr_id) {

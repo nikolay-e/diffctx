@@ -14,7 +14,7 @@ pub enum EdgeCategory {
     Structural,
     Sibling,
     Config,
-    ConfigGeneric,
+    KeyMatch,
     Document,
     Similarity,
     History,
@@ -42,7 +42,9 @@ impl EdgeCategory {
             "structural" => Self::Structural,
             "sibling" => Self::Sibling,
             "config" => Self::Config,
-            "config_generic" => Self::ConfigGeneric,
+            // `config_generic` is the name this category had until the typed
+            // key table: still accepted wherever a user types one.
+            "key_match" | "config_generic" => Self::KeyMatch,
             "document" => Self::Document,
             "similarity" => Self::Similarity,
             "history" => Self::History,
@@ -57,7 +59,7 @@ impl EdgeCategory {
             Self::Structural => "structural",
             Self::Sibling => "sibling",
             Self::Config => "config",
-            Self::ConfigGeneric => "config_generic",
+            Self::KeyMatch => "key_match",
             Self::Document => "document",
             Self::Similarity => "similarity",
             Self::History => "history",
@@ -66,8 +68,15 @@ impl EdgeCategory {
         }
     }
 
+    /// Name matches took part in the damping, the dangling-reference check and
+    /// the hub-noise filter as `Semantic` edges for as long as the tags
+    /// fallback was one; they keep that part now that it is `KeyMatch`.
+    pub(crate) fn acts_as_reference(self) -> bool {
+        matches!(self, Self::Semantic | Self::KeyMatch)
+    }
+
     fn is_suppression_exempt(self) -> bool {
-        matches!(self, Self::Semantic | Self::Structural | Self::TestEdge)
+        self.acts_as_reference() || matches!(self, Self::Structural | Self::TestEdge)
     }
 }
 
@@ -684,7 +693,7 @@ impl SuppressionFactors {
         if dst_deg > self.d_p95 && !category.is_suppression_exempt() {
             w /= dst_deg.ln_1p().max(1.0);
         }
-        if category == EdgeCategory::Semantic {
+        if category.acts_as_reference() {
             let src_deg = self.sem_file_deg[src as usize];
             if src_deg >= GRAPH_FILTERING.hub_out_degree_threshold as u32 {
                 w /= (src_deg as f64).sqrt();

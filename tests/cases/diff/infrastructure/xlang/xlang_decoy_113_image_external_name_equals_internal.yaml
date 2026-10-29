@@ -1,0 +1,65 @@
+name: xlang_decoy_113_image_external_name_equals_internal
+tags:
+- xlang:decoy
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    edge/compose.yml: |
+      services:
+        proxy:
+          image: nginx:1.29-alpine
+          ports:
+            - "80:80"
+    .github/workflows/build.yml: |
+      name: build
+      jobs:
+        nginx:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: images/nginx
+                push: true
+                tags: reg.example.com/acme/nginx:${{ github.sha }}
+    images/nginx/Dockerfile: |
+      FROM nginx:1.29-alpine
+      COPY nginx.conf /etc/nginx/nginx.conf
+    deploy/chart/values.yaml: |
+      web:
+        image:
+          repository: reg.example.com/acme/nginx
+          tag: ''
+  changed_files:
+    edge/compose.yml: |
+      services:
+        proxy:
+          image: nginx:1.30-alpine
+          ports:
+            - "80:80"
+  commit_message: Run the edge proxy on nginx 1.30
+fragments:
+- id: proxy_bump
+  selector:
+    path: edge/compose.yml
+    anchor: 'image: nginx:1.30-alpine'
+- id: no_build_ci
+  selector:
+    path: .github/workflows/build.yml
+- id: no_nginx_dockerfile
+  selector:
+    path: images/nginx/Dockerfile
+- id: no_chart_values
+  selector:
+    path: deploy/chart/values.yaml
+oracle:
+  required:
+  - proxy_bump
+  allowed: []
+  forbidden:
+  - no_build_ci
+  - no_nginx_dockerfile
+  - no_chart_values

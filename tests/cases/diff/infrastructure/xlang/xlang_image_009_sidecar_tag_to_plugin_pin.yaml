@@ -1,0 +1,105 @@
+name: xlang_image_009_sidecar_tag_to_plugin_pin
+tags:
+- xlang:image
+- lang:yaml
+- lang:python
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    chart/values.yaml: |
+      fetcher:
+        enabled: true
+        # Tag and digest in one string, so a bump moves both.
+        tokenProvider:
+          enabled: true
+          image: vendor/pot-provider:2.0.0@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          port: 4416
+    chart/templates/fetcher.yaml: |
+      {{- if .Values.fetcher.enabled }}
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-fetcher
+      spec:
+        template:
+          spec:
+            containers:
+              - name: fetcher
+                image: "{{ .Values.fetcher.image.repository }}:{{ .Values.fetcher.image.tag }}"
+              - name: pot-provider
+                image: "{{ .Values.fetcher.tokenProvider.image }}"
+                args: ["--host", "127.0.0.1", "--port", {{ .Values.fetcher.tokenProvider.port | quote }}]
+      {{- end }}
+    fetcher/requirements.txt: |
+      yt-dlp==2026.9.1
+      pot-provider==2.0.0
+      mutagen==1.47.0
+    fetcher/tests/test_download.py: |
+      import re
+      from pathlib import Path
+
+      ROOT = Path(__file__).resolve().parents[2]
+
+
+      def test_the_plugin_and_the_sidecar_are_the_same_release():
+          requirements = (ROOT / "fetcher/requirements.txt").read_text()
+          values = (ROOT / "chart/values.yaml").read_text()
+          plugin = re.search(r"^pot-provider==(\S+)$", requirements, re.M).group(1)
+          sidecar = re.search(r"^\s+image: vendor/pot-provider:([^@\s]+)@sha256:[0-9a-f]{64}$", values, re.M)
+          assert sidecar, "the sidecar is pinned as one tag@digest string"
+          assert plugin == sidecar.group(1)
+    fetcher/download.py: |
+      import os
+
+      POT_PROVIDER_URL = os.getenv("POT_PROVIDER_URL")
+    chart/templates/frontend.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-frontend
+      spec:
+        replicas: 1
+  changed_files:
+    chart/values.yaml: |
+      fetcher:
+        enabled: true
+        # Tag and digest in one string, so a bump moves both.
+        tokenProvider:
+          enabled: true
+          image: vendor/pot-provider:2.0.2@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          port: 4416
+  commit_message: Run the token sidecar at 2.0.2
+fragments:
+- id: values_sidecar
+  selector:
+    path: chart/values.yaml
+    anchor: 'image: vendor/pot-provider:2.0.2@'
+- id: test_regex
+  selector:
+    path: fetcher/tests/test_download.py
+    anchor: 'image: vendor/pot-provider:'
+- id: requirements_pin
+  selector:
+    path: fetcher/requirements.txt
+    anchor: pot-provider==2.0.0
+- id: fetcher_tpl
+  selector:
+    path: chart/templates/fetcher.yaml
+- id: download_py
+  selector:
+    path: fetcher/download.py
+- id: no_frontend_tpl
+  selector:
+    path: chart/templates/frontend.yaml
+oracle:
+  required:
+  - values_sidecar
+  - test_regex
+  - requirements_pin
+  allowed:
+  - fetcher_tpl
+  - download_py
+  forbidden:
+  - no_frontend_tpl

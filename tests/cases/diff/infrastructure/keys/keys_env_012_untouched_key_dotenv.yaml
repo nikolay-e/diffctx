@@ -1,0 +1,47 @@
+name: keys_env_012_untouched_key_dotenv
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/api/.env.example: |
+      DATABASE_URL=postgres://localhost/api
+    services/api/app.py: |
+      import os
+
+      TTL = int(os.environ.get("API_TOKEN_TTL", "30"))
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/app.py: |
+      import os
+
+      DB = os.environ["DATABASE_URL"]
+  changed_files:
+    services/api/.env.example: |
+      DATABASE_URL=postgres://localhost/api
+      API_TOKEN_TTL=60
+  commit_message: Set the api token lifetime
+fragments:
+- id: dotenv
+  selector:
+    path: services/api/.env.example
+    anchor: 'API_TOKEN_TTL=60'
+- id: api_app
+  selector:
+    path: services/api/app.py
+    anchor: 'API_TOKEN_TTL'
+- id: worker_app
+  selector:
+    path: services/worker/app.py
+oracle:
+  required:
+  - dotenv
+  - api_app
+  forbidden:
+  - worker_app
+min_score: 60

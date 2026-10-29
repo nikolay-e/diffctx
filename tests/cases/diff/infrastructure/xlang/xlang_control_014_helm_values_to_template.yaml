@@ -1,0 +1,117 @@
+name: xlang_control_014_helm_values_to_template
+tags:
+- xlang:control
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:easy
+repo:
+  initial_files:
+    chart/values.yaml: |
+      cache:
+        mountPath: /var/cache/library
+
+      fetcher:
+        enabled: true
+        image:
+          repository: reg.example.com/acme/fetcher
+          tag: ''
+        # Seconds between two requests to the upstream.
+        minIntervalSeconds: 8
+        cookies:
+          secretName: ''
+          key: cookies.txt
+
+      separator:
+        enabled: false
+        device: cuda
+    chart/templates/fetcher.yaml: |
+      {{- if .Values.fetcher.enabled }}
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-fetcher
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app.kubernetes.io/component: fetcher
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/component: fetcher
+          spec:
+            containers:
+              - name: fetcher
+                image: "{{ .Values.fetcher.image.repository }}:{{ .Values.fetcher.image.tag }}"
+                env:
+                  - name: FETCH_MIN_INTERVAL_S
+                    value: {{ .Values.fetcher.minIntervalSeconds | quote }}
+                  {{- if .Values.fetcher.cookies.secretName }}
+                  - name: COOKIES_FILE
+                    value: /tmp/cookies.txt
+                  {{- end }}
+      {{- end }}
+    chart/templates/separator.yaml: |
+      {{- if .Values.separator.enabled }}
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: {{ .Release.Name }}-separator
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: separator
+                env:
+                  - name: SEPARATOR_DEVICE
+                    value: {{ .Values.separator.device | quote }}
+      {{- end }}
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: media-stack
+      version: 0.4.0
+  changed_files:
+    chart/values.yaml: |
+      cache:
+        mountPath: /var/cache/library
+
+      fetcher:
+        enabled: true
+        image:
+          repository: reg.example.com/acme/fetcher
+          tag: ''
+        # Seconds between two requests to the upstream.
+        minIntervalSeconds: 10
+        cookies:
+          secretName: ''
+          key: cookies.txt
+
+      separator:
+        enabled: false
+        device: cuda
+  commit_message: Wait ten seconds between upstream requests
+fragments:
+- id: values_interval
+  selector:
+    path: chart/values.yaml
+    anchor: 'minIntervalSeconds: 10'
+- id: tpl_interval
+  selector:
+    path: chart/templates/fetcher.yaml
+    anchor: .Values.fetcher.minIntervalSeconds
+- id: chart_yaml
+  selector:
+    path: chart/Chart.yaml
+- id: no_separator_tpl
+  selector:
+    path: chart/templates/separator.yaml
+oracle:
+  required:
+  - values_interval
+  - tpl_interval
+  allowed:
+  - chart_yaml
+  forbidden:
+  - no_separator_tpl

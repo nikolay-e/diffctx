@@ -1,0 +1,197 @@
+name: xlang_env_002_python_getenv_to_helm_env
+tags:
+- xlang:env
+- lang:python
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    fetcher/download.py: |
+      # One request at a time and a pause between them.
+      import os
+      import threading
+      import time
+
+      MIN_INTERVAL_S = float(os.getenv("FETCH_MIN_INTERVAL_S", "8"))
+      COOKIES_FILE = os.getenv("COOKIES_FILE") or None
+
+      _pace = threading.Lock()
+      _last_request = 0.0
+
+
+      def _paced() -> None:
+          global _last_request
+          wait = _last_request + MIN_INTERVAL_S - time.monotonic()
+          if wait > 0:
+              time.sleep(wait)
+          _last_request = time.monotonic()
+    fetcher/app.py: |
+      from fastapi import FastAPI
+
+      from fetcher import download
+
+      app = FastAPI()
+
+
+      @app.post("/fetch")
+      def fetch() -> dict:
+          download._paced()
+          return {"ok": True}
+    tests/test_pacing.py: |
+      from fetcher import download
+
+
+      def test_interval_is_positive():
+          assert download.MIN_INTERVAL_S > 0
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: media-stack
+      version: 0.4.0
+    chart/values.yaml: |
+      cache:
+        mountPath: /var/cache/library
+
+      fetcher:
+        enabled: true
+        image:
+          repository: reg.example.com/acme/fetcher
+          tag: ''
+        # Seconds between two requests, drawn at random between the two bounds each time.
+        minIntervalSeconds: 8
+        maxIntervalSeconds: 25
+
+      separator:
+        enabled: false
+        image:
+          repository: reg.example.com/acme/separator
+          tag: ''
+        device: cuda
+    chart/templates/fetcher.yaml: |
+      {{- if .Values.fetcher.enabled }}
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-fetcher
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app.kubernetes.io/component: fetcher
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/component: fetcher
+          spec:
+            containers:
+              - name: fetcher
+                image: "{{ .Values.fetcher.image.repository }}:{{ .Values.fetcher.image.tag }}"
+                env:
+                  - name: CACHE_ROOT
+                    value: {{ .Values.cache.mountPath | quote }}
+                  - name: FETCH_MIN_INTERVAL_S
+                    value: {{ .Values.fetcher.minIntervalSeconds | quote }}
+                  - name: FETCH_MAX_INTERVAL_S
+                    value: {{ .Values.fetcher.maxIntervalSeconds | quote }}
+                  - name: HOME
+                    value: /tmp
+      {{- end }}
+    chart/templates/separator.yaml: |
+      {{- if .Values.separator.enabled }}
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: {{ .Release.Name }}-separator
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: separator
+                image: "{{ .Values.separator.image.repository }}:{{ .Values.separator.image.tag }}"
+                env:
+                  - name: CACHE_ROOT
+                    value: {{ .Values.cache.mountPath | quote }}
+                  - name: SEPARATOR_DEVICE
+                    value: {{ .Values.separator.device | quote }}
+      {{- end }}
+    fetcher/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+      COPY fetcher/ ./fetcher/
+      CMD ["uvicorn", "fetcher.app:app", "--host", "0.0.0.0", "--port", "8000"]
+  changed_files:
+    fetcher/download.py: |
+      # One request at a time, never on a metronome: each gap is drawn anew.
+      import os
+      import random
+      import threading
+      import time
+
+      MIN_INTERVAL_S = float(os.getenv("FETCH_MIN_INTERVAL_S", "8"))
+      MAX_INTERVAL_S = float(os.getenv("FETCH_MAX_INTERVAL_S", "25"))
+      COOKIES_FILE = os.getenv("COOKIES_FILE") or None
+
+      _pace = threading.Lock()
+      _next_allowed = 0.0
+      _random = random.SystemRandom()
+
+
+      def next_gap(rng: random.Random = _random) -> float:
+          return rng.uniform(MIN_INTERVAL_S, max(MIN_INTERVAL_S, MAX_INTERVAL_S))
+
+
+      def _paced() -> None:
+          global _next_allowed
+          wait = _next_allowed - time.monotonic()
+          if wait > 0:
+              time.sleep(wait)
+          _next_allowed = time.monotonic() + next_gap()
+  commit_message: Draw the gap between requests at random
+fragments:
+- id: download_max
+  selector:
+    path: fetcher/download.py
+    anchor: MAX_INTERVAL_S = float(
+- id: download_gap
+  selector:
+    path: fetcher/download.py
+    anchor: def next_gap(
+- id: tpl_max_env
+  selector:
+    path: chart/templates/fetcher.yaml
+    anchor: 'name: FETCH_MAX_INTERVAL_S'
+- id: values
+  selector:
+    path: chart/values.yaml
+- id: chart_yaml
+  selector:
+    path: chart/Chart.yaml
+- id: app
+  selector:
+    path: fetcher/app.py
+- id: test_pacing
+  selector:
+    path: tests/test_pacing.py
+- id: no_separator_tpl
+  selector:
+    path: chart/templates/separator.yaml
+- id: no_fetcher_dockerfile
+  selector:
+    path: fetcher/Dockerfile
+oracle:
+  required:
+  - download_max
+  - download_gap
+  - tpl_max_env
+  allowed:
+  - values
+  - chart_yaml
+  - app
+  - test_pacing
+  forbidden:
+  - no_separator_tpl
+  - no_fetcher_dockerfile

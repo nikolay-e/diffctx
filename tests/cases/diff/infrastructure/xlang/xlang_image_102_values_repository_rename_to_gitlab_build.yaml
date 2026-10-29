@@ -1,0 +1,91 @@
+name: xlang_image_102_values_repository_rename_to_gitlab_build
+tags:
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    chart/values.yaml: |
+      api:
+        image:
+          repository: reg.example.com/acme/api
+          tag: ''
+      web:
+        image:
+          repository: reg.example.com/acme/web
+          tag: ''
+    .gitlab-ci.yml: |
+      stages: [build]
+
+      build-api:
+        stage: build
+        script:
+          - docker build -f api/Dockerfile -t reg.example.com/acme/api-server:$CI_COMMIT_SHORT_SHA api
+          - docker push reg.example.com/acme/api-server:$CI_COMMIT_SHORT_SHA
+
+      build-web:
+        stage: build
+        script:
+          - docker build -f web/Dockerfile -t reg.example.com/acme/web:$CI_COMMIT_SHORT_SHA web
+          - docker push reg.example.com/acme/web:$CI_COMMIT_SHORT_SHA
+    api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    web/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    chart/templates/api.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+  changed_files:
+    chart/values.yaml: |
+      api:
+        image:
+          repository: reg.example.com/acme/api-server
+          tag: ''
+      web:
+        image:
+          repository: reg.example.com/acme/web
+          tag: ''
+  commit_message: The api image is published as api-server
+fragments:
+- id: values_repo
+  selector:
+    path: chart/values.yaml
+    anchor: 'repository: reg.example.com/acme/api-server'
+- id: ci_build_api
+  selector:
+    path: .gitlab-ci.yml
+    anchor: -t reg.example.com/acme/api-server:$CI_COMMIT_SHORT_SHA
+- id: api_dockerfile
+  selector:
+    path: api/Dockerfile
+- id: api_tpl
+  selector:
+    path: chart/templates/api.yaml
+- id: no_web_dockerfile
+  selector:
+    path: web/Dockerfile
+oracle:
+  required:
+  - values_repo
+  - ci_build_api
+  allowed:
+  - api_dockerfile
+  - api_tpl
+  forbidden:
+  - no_web_dockerfile

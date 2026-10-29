@@ -41,7 +41,7 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: "0.26"
+    rev: "v0.27"
     hooks:
       - id: validate-pyproject
         name: validate-pyproject (PEP 621 schema)
@@ -50,7 +50,7 @@ repos:
   # PYPROJECT.TOML FORMATTING
   # ============================================================================
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "v2.18.1"
+    rev: "v2.30.3"
     hooks:
       - id: pyproject-fmt
         name: pyproject-fmt (normalize pyproject.toml)
@@ -59,7 +59,7 @@ repos:
   # GITHUB ACTIONS VALIDATION
   # ============================================================================
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.35.0
+    rev: 0.39.0
     hooks:
       - id: check-github-workflows
         name: Validate GitHub workflows
@@ -97,13 +97,13 @@ repos:
   # CODE FORMATTING
   # ============================================================================
   - repo: https://github.com/psf/black
-    rev: 26.1.0
+    rev: 26.10.1
     hooks:
       - id: black
         language_version: python3
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
+    rev: v3.22.0
     hooks:
       - id: pyupgrade
         name: pyupgrade (auto-upgrade Python syntax)
@@ -128,7 +128,7 @@ repos:
   # LINTING (Ruff for speed + correctness)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.3
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)
@@ -158,7 +158,7 @@ repos:
         exclude: ^datasets/dcbench/v1/instances/
 
   - repo: https://github.com/semgrep/pre-commit
-    rev: v1.149.0
+    rev: v1.182.1
     hooks:
       - id: semgrep
         name: semgrep (AST-based security & policy)
@@ -215,7 +215,7 @@ repos:
   # CODE DUPLICATION DETECTION
   # ============================================================================
   - repo: https://github.com/PyCQA/pylint
-    rev: v4.0.10
+    rev: v4.1.3
     hooks:
       - id: pylint
         name: pylint (duplicate code detection)
@@ -266,7 +266,7 @@ repos:
   # MARKDOWN LINTING
   # ============================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.49.1
+    rev: v0.50.0
     hooks:
       - id: markdownlint
         name: Lint Markdown files
@@ -338,7 +338,7 @@ repos:
   # COMMIT MESSAGE QUALITY
   # ============================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.18.1
+    rev: v4.19.3
     hooks:
       - id: commitizen
         stages: [commit-msg]

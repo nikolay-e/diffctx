@@ -1,0 +1,113 @@
+name: xlang_image_105_k8s_manifest_image_to_build_script
+tags:
+- xlang:image
+- lang:yaml
+- lang:shell
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    deploy/worker.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: worker
+        template:
+          metadata:
+            labels:
+              app: worker
+          spec:
+            containers:
+              - name: worker
+                image: reg.example.com/acme/worker:1.8.0
+                args: ["run"]
+    scripts/build-images.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      VERSION="${VERSION:?}"
+      docker build -f worker/Dockerfile -t reg.example.com/acme/worker:${VERSION} .
+      docker build -f scheduler/Dockerfile -t reg.example.com/acme/scheduler:${VERSION} .
+    worker/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    scheduler/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    deploy/scheduler.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: scheduler
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: scheduler
+        template:
+          metadata:
+            labels:
+              app: scheduler
+          spec:
+            containers:
+              - name: scheduler
+                image: reg.example.com/acme/scheduler:1.2.0
+                args: ["run"]
+  changed_files:
+    deploy/worker.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: worker
+        template:
+          metadata:
+            labels:
+              app: worker
+          spec:
+            containers:
+              - name: worker
+                image: reg.example.com/acme/worker:1.9.0
+                args: ["run"]
+  commit_message: Run worker 1.9.0
+fragments:
+- id: manifest_image
+  selector:
+    path: deploy/worker.yaml
+    anchor: 'image: reg.example.com/acme/worker:1.9.0'
+- id: build_worker
+  selector:
+    path: scripts/build-images.sh
+    anchor: '-t reg.example.com/acme/worker:'
+- id: worker_dockerfile
+  selector:
+    path: worker/Dockerfile
+- id: no_scheduler_dockerfile
+  selector:
+    path: scheduler/Dockerfile
+- id: no_scheduler_manifest
+  selector:
+    path: deploy/scheduler.yaml
+oracle:
+  required:
+  - manifest_image
+  - build_worker
+  allowed:
+  - worker_dockerfile
+  forbidden:
+  - no_scheduler_dockerfile
+  - no_scheduler_manifest

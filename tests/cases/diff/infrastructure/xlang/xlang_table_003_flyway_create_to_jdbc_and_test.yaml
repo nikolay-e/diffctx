@@ -1,0 +1,112 @@
+name: xlang_table_003_flyway_create_to_jdbc_and_test
+tags:
+- xlang:table
+- lang:sql
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    app/src/main/resources/db/ops/V005__missed_query_days.sql: |
+      -- What listeners looked for and the library did not have. Keyed by the normalised query and the
+      -- day: who asked is not kept, only what and how often.
+      CREATE TABLE ops.missed_query_days (
+          query text NOT NULL,
+          day date NOT NULL,
+          times integer NOT NULL DEFAULT 1,
+          last_at timestamp with time zone NOT NULL DEFAULT now(),
+          PRIMARY KEY (query, day)
+      );
+
+      CREATE INDEX missed_query_days_day ON ops.missed_query_days (day);
+
+      COMMENT ON TABLE ops.missed_query_days IS 'disposable: searches that found nothing, by text and day, with no user';
+    app/src/main/resources/db/ops/V001__ops.sql: |
+      CREATE SCHEMA ops;
+
+      CREATE TABLE ops.bug_reports (
+          id uuid PRIMARY KEY,
+          body text NOT NULL
+      );
+    adapter-shared/src/main/kotlin/dev/acme/adaptershared/MissedQueries.kt: |
+      package dev.acme.adaptershared
+
+      import org.springframework.jdbc.core.JdbcTemplate
+      import org.springframework.scheduling.annotation.Scheduled
+
+      class MissedQueries(private val jdbc: JdbcTemplate) {
+          @Scheduled(cron = "\${app.search.missed.reap-cron:0 37 4 * * *}")
+          fun reapExpired() {
+              jdbc.update("DELETE FROM ops.missed_query_days WHERE day < (now() AT TIME ZONE 'UTC')::date - ?", RETENTION_DAYS)
+          }
+
+          private companion object {
+              const val RETENTION_DAYS = 400
+
+              const val RECORD =
+                  "INSERT INTO ops.missed_query_days AS d (query, day) VALUES (?, (now() AT TIME ZONE 'UTC')::date) " +
+                      "ON CONFLICT (query, day) DO UPDATE SET times = d.times + 1, last_at = now()"
+          }
+      }
+    app/src/test/kotlin/dev/acme/app/integration/MissedQueriesIntegrationTest.kt: |
+      package dev.acme.app.integration
+
+      class MissedQueriesIntegrationTest : IntegrationTestBase() {
+          fun reset() {
+              jdbc.update("DELETE FROM ops.missed_query_days")
+          }
+      }
+    adapter-shared/src/main/kotlin/dev/acme/adaptershared/BugReports.kt: |
+      package dev.acme.adaptershared
+
+      import org.springframework.jdbc.core.JdbcTemplate
+
+      class BugReports(private val jdbc: JdbcTemplate) {
+          fun count(): Int = jdbc.queryForObject("SELECT count(*) FROM ops.bug_reports", Int::class.java)!!
+      }
+  changed_files:
+    app/src/main/resources/db/ops/V005__missed_query_days.sql: |
+      -- What listeners looked for and the library did not have. Keyed by the normalised query and the
+      -- day: who asked is not kept, only what and how often.
+      CREATE TABLE ops.missed_query_days (
+          query text NOT NULL,
+          day date NOT NULL,
+          times integer NOT NULL DEFAULT 1,
+          last_at timestamp with time zone NOT NULL DEFAULT now(),
+          first_at timestamp with time zone NOT NULL DEFAULT now(),
+          PRIMARY KEY (query, day)
+      );
+
+      CREATE INDEX missed_query_days_day ON ops.missed_query_days (day);
+
+      COMMENT ON TABLE ops.missed_query_days IS 'disposable: searches that found nothing, by text and day, with no user';
+  commit_message: Keep when a query was first missed
+fragments:
+- id: v5_first_at
+  selector:
+    path: app/src/main/resources/db/ops/V005__missed_query_days.sql
+    anchor: first_at timestamp with time zone
+- id: service_sql
+  selector:
+    path: adapter-shared/src/main/kotlin/dev/acme/adaptershared/MissedQueries.kt
+    anchor: DELETE FROM ops.missed_query_days
+- id: it_delete
+  selector:
+    path: app/src/test/kotlin/dev/acme/app/integration/MissedQueriesIntegrationTest.kt
+    anchor: DELETE FROM ops.missed_query_days
+- id: v1_support
+  selector:
+    path: app/src/main/resources/db/ops/V001__ops.sql
+- id: no_bug_reports
+  selector:
+    path: adapter-shared/src/main/kotlin/dev/acme/adaptershared/BugReports.kt
+oracle:
+  required:
+  - v5_first_at
+  - service_sql
+  - it_delete
+  allowed:
+  - v1_support
+  forbidden:
+  - no_bug_reports

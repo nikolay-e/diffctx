@@ -25,6 +25,9 @@ const DOWNSHIFT_MAX_SHARE: f64 = 0.5;
 // Above this share of the parent the excerpt saves too little to be worth
 // rendering as a separate fragment — the parent itself is the better answer.
 const MAX_SHARE_OF_PARENT: f64 = 0.7;
+// A gap of fewer lines than this is shown, not elided: a marker for it costs
+// more than the lines it hides.
+const MIN_ELIDED_LINES: u32 = 2;
 
 fn hunk_window(parent: &Fragment, hunks: &[DiffHunk]) -> Option<(u32, u32)> {
     let (mut lo, mut hi) = (u32::MAX, 0u32);
@@ -57,7 +60,7 @@ fn excerpt_from(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
     let end = (hunk_hi + CONTEXT_LINES).min(parent.end_line());
     let span = end - start + 1;
     if f64::from(span) > f64::from(parent.line_count()) * MAX_SHARE_OF_PARENT {
-        return None;
+        return sparse_excerpt(parent, hunks);
     }
 
     let offset = (start - parent.start_line()) as usize;
@@ -71,6 +74,67 @@ fn excerpt_from(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
         return None;
     }
 
+    Some(Fragment {
+        id: FragmentId::new(parent.id.path.clone(), start, end),
+        kind: FragmentKind::Excerpt,
+        identifiers: extract_identifiers(&content, 3),
+        content: Arc::from(content),
+        token_count: 0,
+        symbol_name: parent.symbol_name.clone(),
+    })
+}
+
+/// The changed windows of a core whose changes lie far apart — each hunk with
+/// its context, the unchanged lines between them elided by a marker — for a
+/// core whose one contiguous window would be most of it. Only the budget
+/// fallback uses it: a block scalar holding a dashboard's JSON is one
+/// definition, and clipping its head showed none of the lines that changed
+/// deep inside it (Forgejo #101). Its range runs from the first window to the
+/// last, and is never the core's own, which would make it pass for the core.
+fn sparse_excerpt(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
+    let mut windows: Vec<(u32, u32)> = hunks
+        .iter()
+        .filter(|h| h.path.as_ref() == parent.path())
+        .map(|h| h.core_selection_range())
+        .filter(|&(lo, hi)| lo <= parent.end_line() && hi >= parent.start_line())
+        .map(|(lo, hi)| {
+            (
+                lo.saturating_sub(CONTEXT_LINES).max(parent.start_line()),
+                (hi + CONTEXT_LINES).min(parent.end_line()),
+            )
+        })
+        .collect();
+    windows.sort_unstable();
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for (lo, hi) in windows {
+        match merged.last_mut() {
+            Some(last) if lo <= last.1 + MIN_ELIDED_LINES => last.1 = last.1.max(hi),
+            _ => merged.push((lo, hi)),
+        }
+    }
+    let shown: u32 = merged.iter().map(|(lo, hi)| hi - lo + 1).sum();
+    if merged.len() < 2 || f64::from(shown) > f64::from(parent.line_count()) * MAX_SHARE_OF_PARENT {
+        return None;
+    }
+    let (start, end) = (merged[0].0, merged[merged.len() - 1].1);
+    if (start, end) == (parent.start_line(), parent.end_line()) {
+        return None;
+    }
+
+    let lines: Vec<&str> = parent.content.lines().collect();
+    let line = |n: u32| lines.get((n - parent.start_line()) as usize).copied();
+    let mut content = String::new();
+    for (i, &(lo, hi)) in merged.iter().enumerate() {
+        if i > 0 {
+            let gap = lo - merged[i - 1].1 - 1;
+            content.push_str(&format!("… [{gap} unchanged lines]\n"));
+        }
+        for n in lo..=hi {
+            content.push_str(line(n)?);
+            content.push('\n');
+        }
+    }
+    content.pop();
     Some(Fragment {
         id: FragmentId::new(parent.id.path.clone(), start, end),
         kind: FragmentKind::Excerpt,
@@ -192,6 +256,34 @@ mod tests {
         let parent = chunk("app.py", 1, 40);
         let excerpt = excerpt_from(&parent, &[hunk("app.py", 5, 20)]).expect("excerpt");
         assert!(!crate::excerpt::is_downshift_worthwhile(&parent, &excerpt));
+    }
+
+    /// Forgejo #101: two far-apart changes in one big definition show as two
+    /// windows with the gap named, not as the head of the definition.
+    #[test]
+    fn far_apart_changes_become_windows_with_the_gap_named() {
+        let parent = chunk("cm.yml", 1, 200);
+        let excerpt = excerpt_from(&parent, &[hunk("cm.yml", 20, 1), hunk("cm.yml", 180, 1)])
+            .expect("sparse excerpt");
+
+        assert_eq!(excerpt.kind, FragmentKind::Excerpt);
+        assert_eq!((excerpt.start_line(), excerpt.end_line()), (17, 183));
+        assert!(excerpt.content.contains("line 20"));
+        assert!(excerpt.content.contains("line 180"));
+        assert!(excerpt.content.contains("… [153 unchanged lines]"));
+        assert!(!excerpt.content.contains("line 100"));
+        assert!(!is_downshift_worthwhile(&parent, &excerpt));
+    }
+
+    /// The sparse excerpt never takes the core's own range, which would make
+    /// it pass for the core; nor is it cut when its windows are most of it.
+    #[test]
+    fn a_sparse_excerpt_is_none_when_it_would_pass_for_the_core_or_is_most_of_it() {
+        let parent = chunk("cm.yml", 1, 200);
+        let at_both_ends = [hunk("cm.yml", 1, 1), hunk("cm.yml", 200, 1)];
+        assert!(excerpt_from(&parent, &at_both_ends).is_none());
+        let most_of_it = [hunk("cm.yml", 5, 90), hunk("cm.yml", 150, 40)];
+        assert!(excerpt_from(&parent, &most_of_it).is_none());
     }
 
     #[test]

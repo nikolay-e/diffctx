@@ -78,6 +78,27 @@ def validate_scope(repo_path: str) -> Path:
     return Path(repo_path).resolve()
 
 
+def validate_scope_paths(paths: list[str], scope: Path, repo_root: Path) -> list[str]:
+    """The `paths` argument as the absolute spellings the CLI hands the engine.
+
+    Relative names are read against the directory asked about, as the CLI reads
+    them against its working directory. Each must stay inside the repository
+    root, so a `..` or a symlink cannot widen the analysis past it.
+    """
+    resolved: list[str] = []
+    for given in paths:
+        if not given.strip():
+            raise ValueError("paths: an empty path names nothing; give a directory or file inside the repository")
+        path = (scope / given).resolve()
+        _check_allowed(path, given)
+        if not path.is_relative_to(repo_root):
+            raise ValueError(f"Path is outside the repository: {given}")
+        if not path.exists():
+            raise ValueError(f"No such path: {given}")
+        resolved.append(str(path))
+    return resolved
+
+
 def validate_dir_path(dir_path: str) -> Path:
     path = Path(dir_path).resolve()
     _check_allowed(path, dir_path)

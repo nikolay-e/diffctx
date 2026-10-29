@@ -1,0 +1,50 @@
+name: keys_env_008_sibling_app_decoy
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:typescript
+repo:
+  initial_files:
+    apps/web/src/api.ts: |
+      export const host = process.env.SEARCH_HOST;
+    apps/web/package.json: |
+      {
+        "name": "web"
+      }
+    apps/web/.env.example: |
+      SEARCH_HOST=localhost:9200
+    apps/admin/src/search.ts: |
+      export const admin = process.env.SEARCH_HOST;
+    apps/admin/package.json: |
+      {
+        "name": "admin"
+      }
+    apps/admin/.env.example: |
+      SEARCH_HOST=search.admin.internal:9200
+  changed_files:
+    apps/web/src/api.ts: |
+      export const host = process.env.SEARCH_HOST ?? 'localhost:9200';
+  commit_message: Default the search host
+fragments:
+- id: api
+  selector:
+    path: apps/web/src/api.ts
+    anchor: 'localhost:9200'
+- id: web_env
+  selector:
+    path: apps/web/.env.example
+    anchor: 'SEARCH_HOST='
+- id: admin_env
+  selector:
+    path: apps/admin/.env.example
+- id: admin_code
+  selector:
+    path: apps/admin/src/search.ts
+oracle:
+  required:
+  - api
+  - web_env
+  forbidden:
+  - admin_env
+  - admin_code
+min_score: 60

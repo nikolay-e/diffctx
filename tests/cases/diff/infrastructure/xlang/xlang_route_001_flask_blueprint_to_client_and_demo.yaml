@@ -1,0 +1,170 @@
+name: xlang_route_001_flask_blueprint_to_client_and_demo
+tags:
+- xlang:route
+- lang:python
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    backend/api/data.py: |
+      from flask import Blueprint, jsonify, request
+      from flask_login import current_user, login_required
+
+      from data_loaders import get_race_predictions_data, get_tracker_activities_data, load_range
+
+      data_bp = Blueprint("data", __name__, url_prefix="/data")
+
+
+      @data_bp.route("/range", methods=["GET"])
+      @login_required
+      def api_range():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          return jsonify(load_range(start_date, end_date, current_user.id))
+
+
+      @data_bp.route("/activities/tracker", methods=["GET"])
+      @login_required
+      def api_tracker_activities():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          result = get_tracker_activities_data(start_date, end_date, current_user.id)
+          return jsonify(result)
+
+
+      @data_bp.route("/race-predictions", methods=["GET"])
+      @login_required
+      def api_race_predictions():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          return jsonify(get_race_predictions_data(start_date, end_date, current_user.id))
+    backend/api/__init__.py: |
+      from flask import Blueprint
+
+      from api.data import data_bp
+      from api.notes import notes_bp
+
+      api = Blueprint("api", __name__, url_prefix="/api")
+      api.register_blueprint(data_bp)
+      api.register_blueprint(notes_bp)
+    backend/api/notes.py: |
+      from flask import Blueprint, jsonify
+
+      notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
+
+
+      @notes_bp.route("/", methods=["GET"])
+      def list_notes():
+          return jsonify([])
+    frontend/src/lib/api.ts: |
+      const API_BASE = "/api";
+
+      async function request<T>(path: string): Promise<T> {
+        const response = await fetch(`${API_BASE}${path}`);
+        return response.json() as Promise<T>;
+      }
+
+      export const api = {
+        range: (startDate: string, endDate: string) =>
+          request(`/data/range?start_date=${startDate}&end_date=${endDate}`),
+        trackerActivities: (startDate: string, endDate: string) =>
+          request(`/data/activities/tracker?start_date=${startDate}&end_date=${endDate}`),
+        racePredictions: (startDate: string, endDate: string) =>
+          request(`/data/race-predictions?start_date=${startDate}&end_date=${endDate}`),
+      };
+    frontend/src/demo/resolveDemo.ts: |
+      const RANGED_GET_ROUTES = new Map<string, (start: string | null, end: string | null) => unknown>([
+        ["/data/range", (start, end) => filterByRange(fixtures["range"], start, end)],
+        ["/data/activities/tracker", (start, end) => filterByRange(fixtures["tracker-activities"], start, end)],
+        ["/data/race-predictions", (start, end) => filterByRange(fixtures["race-predictions"], start, end)],
+      ]);
+    frontend/nginx.conf: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://backend:8080/;
+              proxy_read_timeout 60s;
+          }
+      }
+    frontend/src/lib/notesApi.ts: |
+      export async function listNotes(): Promise<unknown[]> {
+        const response = await fetch("/api/notes/");
+        return response.json();
+      }
+    backend/tests/test_api_data.py: |
+      def test_tracker_activities_requires_login(client):
+          response = client.get("/api/data/activities/tracker?start_date=2026-01-01&end_date=2026-01-31")
+          assert response.status_code == 401
+  changed_files:
+    backend/api/data.py: |
+      from flask import Blueprint, jsonify, request
+      from flask_login import current_user, login_required
+
+      from data_loaders import get_race_predictions_data, get_tracker_activities_data, load_range
+
+      data_bp = Blueprint("data", __name__, url_prefix="/data")
+
+
+      @data_bp.route("/range", methods=["GET"])
+      @login_required
+      def api_range():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          return jsonify(load_range(start_date, end_date, current_user.id))
+
+
+      @data_bp.route("/activities/tracker", methods=["GET"])
+      @login_required
+      def api_tracker_activities():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          result = get_tracker_activities_data(start_date, end_date, current_user.id)
+          limit = request.args.get("limit", type=int)
+          return jsonify(result[:limit] if limit else result)
+
+
+      @data_bp.route("/race-predictions", methods=["GET"])
+      @login_required
+      def api_race_predictions():
+          start_date, end_date = _parse_date_range(request.args.get("start_date"), request.args.get("end_date"))
+          return jsonify(get_race_predictions_data(start_date, end_date, current_user.id))
+  commit_message: Let the client cap the tracker activity list
+fragments:
+- id: handler
+  selector:
+    path: backend/api/data.py
+    anchor: limit = request.args.get("limit", type=int)
+- id: client_call
+  selector:
+    path: frontend/src/lib/api.ts
+    anchor: /data/activities/tracker?start_date=
+- id: demo_route
+  selector:
+    path: frontend/src/demo/resolveDemo.ts
+    anchor: '"/data/activities/tracker"'
+- id: test_call
+  selector:
+    path: backend/tests/test_api_data.py
+    anchor: /api/data/activities/tracker
+- id: api_init
+  selector:
+    path: backend/api/__init__.py
+- id: nginx
+  selector:
+    path: frontend/nginx.conf
+- id: no_notes_py
+  selector:
+    path: backend/api/notes.py
+- id: no_notes_ts
+  selector:
+    path: frontend/src/lib/notesApi.ts
+oracle:
+  required:
+  - handler
+  - client_call
+  - demo_route
+  - test_call
+  allowed:
+  - api_init
+  - nginx
+  forbidden:
+  - no_notes_py
+  - no_notes_ts

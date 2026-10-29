@@ -34,6 +34,14 @@ author and dates — and release tags name what the published wheels were built
 from. Dependency bumps land on `main` and the
 epoch rebases over them.
 
+## The plugin directory moves only on the owner's word
+
+Anthropic's directory reviews the `plugin-release` branch, and every push to it
+requeues that review. Nothing moves it without the owner's explicit word in the
+session: `cd.yml`'s `move_plugin_release` defaults to false and the agent
+deny-list refuses a push to it. Our own marketplace (`.claude-plugin/` on
+`main`) carries every release as soon as it lands.
+
 ## Output-changing changes are judged by correctness
 
 A change either keeps selection output identical (E-class) or moves it
@@ -57,9 +65,11 @@ never by its byte distance from the old output.
 
 ## Reading test and oracle results
 
-- **A test never times the run.** A wall-clock bound is green on a laptop and
-  red on a loaded CI runner (a 2.5 s gate measured 2.8 s on Linux and 5.5 s on
-  Windows). Stop a run with `DIFFCTX_TEST_DEADLINE_EXPIRED=1` or
+- **A test never times the run, and nothing a gate drives decides on a clock.**
+  A wall-clock bound is green on a laptop and red on a loaded CI runner (a 2.5 s
+  gate measured 2.8 s on Linux and 5.5 s on Windows; a hook that answered a
+  further searched name only under 2 s passed in release and failed in the debug
+  build pre-commit runs). Stop a run with `DIFFCTX_TEST_DEADLINE_EXPIRED=1` or
   `DIFFCTX_TEST_DEADLINE_AFTER_POLLS=n` and assert what it read or named.
 - **A test that clones a bare remote names the branch** (`clone -b main`):
   CI's git defaults to `master`, so the clone comes up empty and the push is

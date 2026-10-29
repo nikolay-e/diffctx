@@ -1,0 +1,83 @@
+name: xlang_image_107_ci_tags_rename_to_consumers
+tags:
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    .github/workflows/build.yml: |
+      name: build
+      jobs:
+        api:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: api
+                push: true
+                tags: reg.example.com/acme/api:${{ github.sha }}
+    deploy/compose.yml: |
+      services:
+        api:
+          image: reg.example.com/acme/api:main
+          ports:
+            - "8080:8080"
+        db:
+          image: postgres:17-alpine
+    deploy/chart/values.yaml: |
+      api:
+        image:
+          repository: reg.example.com/acme/api
+          tag: ''
+    api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    deploy/other/compose.yml: |
+      services:
+        mailer:
+          image: registry.other.test/vendor/mailer:2
+  changed_files:
+    .github/workflows/build.yml: |
+      name: build
+      jobs:
+        api:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: api
+                push: true
+                tags: reg.example.com/acme/api-server:${{ github.sha }}
+  commit_message: Publish the api image as api-server
+fragments:
+- id: ci_new_tags
+  selector:
+    path: .github/workflows/build.yml
+    anchor: 'tags: reg.example.com/acme/api-server:'
+- id: compose_api
+  selector:
+    path: deploy/compose.yml
+    anchor: 'image: reg.example.com/acme/api:main'
+- id: values_api
+  selector:
+    path: deploy/chart/values.yaml
+    anchor: 'repository: reg.example.com/acme/api'
+- id: api_dockerfile
+  selector:
+    path: api/Dockerfile
+- id: no_mailer_compose
+  selector:
+    path: deploy/other/compose.yml
+oracle:
+  required:
+  - ci_new_tags
+  - compose_api
+  - values_api
+  allowed:
+  - api_dockerfile
+  forbidden:
+  - no_mailer_compose

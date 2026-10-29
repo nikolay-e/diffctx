@@ -1,0 +1,86 @@
+name: xlang_tech_003_nginx_envsubst_template
+tags:
+- xlang:tech
+- lang:shell
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    web/nginx/default.conf.template: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://${BACKEND_HOST}:8080/;
+              proxy_read_timeout 60s;
+          }
+      }
+    web/Dockerfile: |
+      FROM nginx:1.31-alpine
+      COPY web/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+    deploy/compose.yml: |
+      services:
+        web:
+          build:
+            context: .
+            dockerfile: web/Dockerfile
+          environment:
+            BACKEND_HOST: backend
+            BACKEND_PORT: "8080"
+        backend:
+          image: app/backend:dev
+    web/nginx/upstream.conf: |
+      # Included by the template-free dev server.
+      set $backend_host backend;
+      set $backend_port 8080;
+      proxy_pass http://$backend_host:$backend_port;
+    worker/settings.py: |
+      import os
+
+      BACKEND_HOST = "localhost"
+      BACKEND_PORT = int(os.environ.get("WORKER_BACKEND_PORT", "8080"))
+  changed_files:
+    web/nginx/default.conf.template: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/;
+              proxy_read_timeout 60s;
+          }
+      }
+  commit_message: The proxy reaches the backend on a configurable port
+fragments:
+- id: tpl_port
+  selector:
+    path: web/nginx/default.conf.template
+    anchor: ${BACKEND_PORT}
+- id: compose_port
+  selector:
+    path: deploy/compose.yml
+    anchor: 'BACKEND_PORT:'
+- id: compose_host
+  selector:
+    path: deploy/compose.yml
+    anchor: 'BACKEND_HOST:'
+- id: dockerfile
+  selector:
+    path: web/Dockerfile
+- id: no_upstream_conf
+  selector:
+    path: web/nginx/upstream.conf
+- id: no_worker_settings
+  selector:
+    path: worker/settings.py
+oracle:
+  required:
+  - tpl_port
+  - compose_port
+  - compose_host
+  allowed:
+  - dockerfile
+  forbidden:
+  - no_upstream_conf
+  - no_worker_settings

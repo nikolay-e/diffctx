@@ -1,0 +1,137 @@
+name: xlang_route_002_spring_mapping_to_client_and_tests
+tags:
+- xlang:route
+- lang:kotlin
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    backend/adapter/src/main/kotlin/dev/acme/adapter/SearchController.kt: |
+      package dev.acme.adapter
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RequestParam
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping("/v1")
+      class SearchController(private val search: SearchPort) {
+          @GetMapping("/search")
+          fun search(
+              @RequestParam q: String,
+              @RequestParam(defaultValue = "20") limit: Int,
+          ): SearchResponse = search.run(q, limit)
+      }
+    backend/adapter/src/main/kotlin/dev/acme/adapter/RecommendController.kt: |
+      package dev.acme.adapter
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping("/v1/recommend")
+      class RecommendController(private val recommend: RecommendPort) {
+          @GetMapping("/search")
+          fun search(): List<String> = recommend.suggestions()
+      }
+    packages/core/src/api/search.service.ts: |
+      export class SearchService {
+        constructor(private readonly client: ApiClient) {}
+
+        async search(q: string, limit = 20): Promise<SearchResponse> {
+          return this.client.get<SearchResponse>('/v1/search', { params: { q, limit } });
+        }
+      }
+    packages/core/src/api/recommend.service.ts: |
+      export class RecommendService {
+        constructor(private readonly client: ApiClient) {}
+
+        async suggestions(): Promise<string[]> {
+          return this.client.get<string[]>('/v1/recommend/search');
+        }
+      }
+    web/tests/e2e/unified-search.mocked.spec.ts: |
+      // The unified answer (`GET /v1/search`) joins the device hits after the debounce.
+      import { test, expect } from '@playwright/test';
+
+      test('search joins server hits', async ({ page }) => {
+        await page.route('**/v1/search*', route => route.fulfill({ json: { groups: [] } }));
+        await page.goto('/search');
+        await expect(page.getByRole('searchbox')).toBeVisible();
+      });
+    backend/app/src/test/kotlin/dev/acme/app/integration/SearchIntegrationTest.kt: |
+      package dev.acme.app.integration
+
+      class SearchIntegrationTest : IntegrationTestBase() {
+          fun search(q: String) = get("/v1/search", token, "q" to q)
+      }
+    chart/templates/monitoring.yaml: |
+      # The slow-request rule: clients reach the library through /v1/library and /v1/search instead,
+      # and this rule already covers the legacy paths at its own threshold.
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: backend-latency
+      spec:
+        groups: []
+  changed_files:
+    backend/adapter/src/main/kotlin/dev/acme/adapter/SearchController.kt: |
+      package dev.acme.adapter
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RequestParam
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping("/v1")
+      class SearchController(private val search: SearchPort) {
+          @GetMapping("/search")
+          fun search(
+              @RequestParam q: String,
+              @RequestParam(defaultValue = "20") limit: Int,
+              @RequestParam(required = false) kind: String?,
+          ): SearchResponse = search.run(q, limit, kind)
+      }
+  commit_message: Narrow a search to one kind of hit
+fragments:
+- id: ctrl_kind
+  selector:
+    path: backend/adapter/src/main/kotlin/dev/acme/adapter/SearchController.kt
+    anchor: '@RequestParam(required = false) kind: String?'
+- id: ts_client
+  selector:
+    path: packages/core/src/api/search.service.ts
+    anchor: '''/v1/search'''
+- id: e2e_mock
+  selector:
+    path: web/tests/e2e/unified-search.mocked.spec.ts
+    anchor: '**/v1/search*'
+- id: it_get
+  selector:
+    path: backend/app/src/test/kotlin/dev/acme/app/integration/SearchIntegrationTest.kt
+    anchor: get("/v1/search"
+- id: no_recommend_ctrl
+  selector:
+    path: backend/adapter/src/main/kotlin/dev/acme/adapter/RecommendController.kt
+- id: no_recommend_ts
+  selector:
+    path: packages/core/src/api/recommend.service.ts
+- id: no_monitoring
+  selector:
+    path: chart/templates/monitoring.yaml
+oracle:
+  required:
+  - ctrl_kind
+  - ts_client
+  - e2e_mock
+  - it_get
+  allowed: []
+  forbidden:
+  - no_recommend_ctrl
+  - no_recommend_ts
+  - no_monitoring

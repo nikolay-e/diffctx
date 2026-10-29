@@ -20,7 +20,7 @@ pub struct CategoryWeights {
     pub structural: f64,
     pub sibling: f64,
     pub config: f64,
-    pub config_generic: f64,
+    pub key_match: f64,
     pub document: f64,
     pub similarity: f64,
     pub history: f64,
@@ -35,7 +35,7 @@ impl Default for CategoryWeights {
             structural: 1.0,
             sibling: 1.0,
             config: 1.0,
-            config_generic: 1.0,
+            key_match: 1.0,
             document: 1.0,
             similarity: 1.0,
             history: 1.0,
@@ -53,7 +53,7 @@ impl CategoryWeights {
             EdgeCategory::Structural => self.structural,
             EdgeCategory::Sibling => self.sibling,
             EdgeCategory::Config => self.config,
-            EdgeCategory::ConfigGeneric => self.config_generic,
+            EdgeCategory::KeyMatch => self.key_match,
             EdgeCategory::Document => self.document,
             EdgeCategory::Similarity => self.similarity,
             EdgeCategory::History => self.history,
@@ -77,7 +77,7 @@ mod tests {
             EdgeCategory::Structural,
             EdgeCategory::Sibling,
             EdgeCategory::Config,
-            EdgeCategory::ConfigGeneric,
+            EdgeCategory::KeyMatch,
             EdgeCategory::Document,
             EdgeCategory::Similarity,
             EdgeCategory::History,
@@ -95,7 +95,7 @@ mod tests {
             structural: 0.2,
             sibling: 0.3,
             config: 0.4,
-            config_generic: 0.5,
+            key_match: 0.5,
             document: 0.6,
             similarity: 0.7,
             history: 0.8,
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(w.multiplier(EdgeCategory::Structural), 0.2);
         assert_eq!(w.multiplier(EdgeCategory::Sibling), 0.3);
         assert_eq!(w.multiplier(EdgeCategory::Config), 0.4);
-        assert_eq!(w.multiplier(EdgeCategory::ConfigGeneric), 0.5);
+        assert_eq!(w.multiplier(EdgeCategory::KeyMatch), 0.5);
         assert_eq!(w.multiplier(EdgeCategory::Document), 0.6);
         assert_eq!(w.multiplier(EdgeCategory::Similarity), 0.7);
         assert_eq!(w.multiplier(EdgeCategory::History), 0.8);

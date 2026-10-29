@@ -1,0 +1,52 @@
+name: keys_env_002_provider_to_reader
+tags:
+- xkeys:env
+- lang:python
+- lang:shell
+repo:
+  initial_files:
+    backend/payments.py: |
+      import os
+
+
+      def verify(body):
+          secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+          return secret is not None and body
+    backend/audit.py: |
+      stripe_webhook_secret_rotation_days = 90
+
+
+      def due(days):
+          return days > stripe_webhook_secret_rotation_days
+    .env.example: |
+      DATABASE_URL=postgres://localhost/app
+    frontend/src/env.ts: |
+      export const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  changed_files:
+    .env.example: |
+      DATABASE_URL=postgres://localhost/app
+      STRIPE_WEBHOOK_SECRET=whsec_example
+  commit_message: Add the webhook secret to the example environment
+fragments:
+- id: dotenv
+  selector:
+    path: .env.example
+    anchor: 'STRIPE_WEBHOOK_SECRET=whsec'
+- id: payments
+  selector:
+    path: backend/payments.py
+    anchor: 'os.getenv("STRIPE_WEBHOOK_SECRET")'
+- id: audit
+  selector:
+    path: backend/audit.py
+- id: frontend
+  selector:
+    path: frontend/src/env.ts
+oracle:
+  required:
+  - dotenv
+  - payments
+  forbidden:
+  - audit
+  - frontend
+min_score: 60

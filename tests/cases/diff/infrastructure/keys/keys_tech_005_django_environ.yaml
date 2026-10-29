@@ -1,0 +1,49 @@
+name: keys_tech_005_django_environ
+tags:
+- xkeys:env
+- xkeys:tech
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    shop/Dockerfile: |
+      FROM python:3.12
+      COPY . /srv
+    shop/shop/settings.py: |
+      import environ
+
+      env = environ.Env()
+      DEBUG = False
+    shop/.env.example: |
+      DJANGO_SECRET_KEY=dev-shop
+    blog/Dockerfile: |
+      FROM python:3.12
+      COPY . /srv
+    blog/.env.example: |
+      DJANGO_SECRET_KEY=dev
+  changed_files:
+    shop/shop/settings.py: |
+      import environ
+
+      env = environ.Env()
+      SECRET_KEY = env('DJANGO_SECRET_KEY')
+  commit_message: Read the secret key from the environment
+fragments:
+- id: settings
+  selector:
+    path: shop/shop/settings.py
+    anchor: 'DJANGO_SECRET_KEY'
+- id: dotenv
+  selector:
+    path: shop/.env.example
+    anchor: 'DJANGO_SECRET_KEY'
+- id: blog_env
+  selector:
+    path: blog/.env.example
+oracle:
+  required:
+  - settings
+  - dotenv
+  forbidden:
+  - blog_env
+min_score: 60

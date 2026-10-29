@@ -46,6 +46,101 @@ pub fn fragment_rows(path: &str, content: &str) -> Vec<FragmentRow> {
     rows
 }
 
+/// A cross-file edge of the graph the engine builds over a repository's
+/// final state, as the file pair it relates and the category that survived
+/// the merge.
+pub struct FileEdge {
+    pub category: &'static str,
+    pub src: String,
+    pub dst: String,
+    pub weight: f64,
+}
+
+/// The fragments of every file of the tree after the change.
+fn final_state_fragments(repo: &MemoryRepo) -> Vec<Fragment> {
+    let all_files = merge_file_contents(&repo.initial_files, &repo.changed_files);
+    let mut paths: Vec<&String> = all_files.keys().collect();
+    paths.sort();
+    let mut fragments: Vec<Fragment> = Vec::new();
+    let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
+    for path in paths {
+        for f in fragment_file(Arc::from(path.as_str()), &all_files[path]) {
+            if seen.insert(f.id.clone()) {
+                fragments.push(f);
+            }
+        }
+    }
+    fragments
+}
+
+/// Every cross-file edge `collect_capped_edges` keeps over the files of the
+/// repository after the change — the whole final tree, not the discovery
+/// universe of one run, so a link is measured whether or not a given diff
+/// would have admitted its endpoint. Selection is untouched.
+pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
+    let fragments = final_state_fragments(repo);
+    let capped = crate::edges::collect_capped_edges(
+        &fragments,
+        None,
+        false,
+        &crate::resource::RunContext::unbounded(),
+    );
+    let mut out: Vec<FileEdge> = capped
+        .edges
+        .iter()
+        .filter_map(|e| {
+            let src = &capped.idx_to_node[e.src as usize].path;
+            let dst = &capped.idx_to_node[e.dst as usize].path;
+            (src != dst).then(|| FileEdge {
+                category: e.category.as_str(),
+                src: src.to_string(),
+                dst: dst.to_string(),
+                weight: e.weight,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| (&a.src, &a.dst, a.category).cmp(&(&b.src, &b.dst, b.category)));
+    out
+}
+
+/// A link of the typed key table: two files that name the same environment
+/// variable or image, with the key and how each file spells it.
+pub struct TypedKeyLink {
+    pub kind: &'static str,
+    pub strength: &'static str,
+    pub key: String,
+    pub a: String,
+    pub b: String,
+    pub a_mechanism: &'static str,
+    pub b_mechanism: &'static str,
+}
+
+/// The typed key links that count for the change, before they become edges:
+/// what the `key_links` gate scores. A changed file's untouched key is not
+/// part of the change.
+pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
+    let fragments = final_state_fragments(repo);
+    let run = crate::resource::RunContext::unbounded();
+    run.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(
+        &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
+    ));
+    let _in_run = run.enter();
+    let mut links: Vec<TypedKeyLink> = crate::edges::config_edges::typed_links(&fragments, None)
+        .into_iter()
+        .map(|l| TypedKeyLink {
+            kind: l.kind,
+            strength: l.strength,
+            key: l.key,
+            a: l.a_path,
+            b: l.b_path,
+            a_mechanism: l.a_mechanism,
+            b_mechanism: l.b_mechanism,
+        })
+        .collect();
+    links.sort_by(|x, y| (&x.kind, &x.key, &x.a, &x.b).cmp(&(&y.kind, &y.key, &y.a, &y.b)));
+    links
+}
+
 pub fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
@@ -74,6 +169,9 @@ pub fn build_diff_context_in_memory(
 
     let mut config = PipelineConfig::from_mode(scoring_mode);
     config.ppr_alpha = alpha;
+    let run = crate::resource::RunContext::unbounded();
+    run.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(&diff_text));
+    let _in_run = run.enter();
 
     // The product's discovery ensemble — structural, test-file, BM25 top-k —
     // over the in-memory files. The harness used to run the structural
@@ -93,7 +191,7 @@ pub fn build_diff_context_in_memory(
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
         source: crate::source::Source::default(),
-        run: crate::resource::RunContext::unbounded(),
+        run: run.clone(),
     };
     let (discovered, _attribution) =
         crate::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);
@@ -132,7 +230,6 @@ pub fn build_diff_context_in_memory(
 
     // The corpus harness has no timeout contract; before #210 it inherited
     // whatever ceiling the last in-process run left behind.
-    let run = crate::resource::RunContext::unbounded();
     let crate::pipeline::ScoredFragments {
         all_fragments,
         core_ids,

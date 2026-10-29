@@ -1,0 +1,50 @@
+name: keys_env_006_dockerfile_env
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    app/settings.py: |
+      import os
+
+      LEVEL = os.environ.get("LOG_LEVEL", "warning")
+    app/Dockerfile: |
+      FROM python:3.12-slim
+      ENV PYTHONUNBUFFERED=1
+      COPY . /srv
+    .env.example: |
+      SMTP_HOST=localhost
+      SMTP_PORT=25
+    scripts/seed.env: |
+      SEED_COUNT=10
+  changed_files:
+    app/Dockerfile: |
+      FROM python:3.12-slim
+      ENV PYTHONUNBUFFERED=1
+      ENV LOG_LEVEL=info
+      COPY . /srv
+  commit_message: Default the log level in the image
+fragments:
+- id: dockerfile
+  selector:
+    path: app/Dockerfile
+    anchor: 'ENV LOG_LEVEL=info'
+- id: settings
+  selector:
+    path: app/settings.py
+    anchor: 'os.environ.get("LOG_LEVEL"'
+- id: dotenv
+  selector:
+    path: .env.example
+- id: seed
+  selector:
+    path: scripts/seed.env
+oracle:
+  required:
+  - dockerfile
+  - settings
+  forbidden:
+  - dotenv
+  - seed
+min_score: 60

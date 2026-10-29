@@ -1,0 +1,54 @@
+name: keys_env_018_two_services_no_marker
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    backend/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          hikari:
+            minimum-idle: 2
+            connection-timeout: 3000
+    backend/.env.example: |
+      SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE=10
+    reports/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          hikari:
+            maximum-pool-size: 4
+            idle-timeout: 60000
+    README.md: |
+      # Platform
+
+      Two services, one directory each, no build files between them. Each keeps
+      its own settings in its application file.
+  changed_files:
+    backend/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          hikari:
+            minimum-idle: 2
+            maximum-pool-size: 20
+            connection-timeout: 3000
+  commit_message: Size the backend connection pool
+fragments:
+- id: backend_yml
+  selector:
+    path: backend/src/main/resources/application.yml
+    anchor: 'maximum-pool-size'
+- id: backend_env
+  selector:
+    path: backend/.env.example
+    anchor: 'SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE'
+- id: reports_yml
+  selector:
+    path: reports/src/main/resources/application.yml
+oracle:
+  required:
+  - backend_yml
+  - backend_env
+  forbidden:
+  - reports_yml
+min_score: 60

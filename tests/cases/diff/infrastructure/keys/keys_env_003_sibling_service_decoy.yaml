@@ -1,0 +1,56 @@
+name: keys_env_003_sibling_service_decoy
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    services/api/app.py: |
+      import os
+
+      QUEUE = os.environ.get("QUEUE_URL")
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+      CMD ["python", "app.py"]
+    services/api/.env.example: |
+      QUEUE_URL=amqp://localhost/api
+    services/worker/consumer.py: |
+      import os
+
+      QUEUE = os.environ.get("QUEUE_URL")
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+      CMD ["python", "consumer.py"]
+    services/worker/.env.example: |
+      QUEUE_URL=amqp://localhost/worker
+  changed_files:
+    services/api/app.py: |
+      import os
+
+      QUEUE = os.environ.get("QUEUE_URL", "amqp://localhost/default")
+  commit_message: Default the queue url
+fragments:
+- id: app
+  selector:
+    path: services/api/app.py
+    anchor: 'amqp://localhost/default'
+- id: api_env
+  selector:
+    path: services/api/.env.example
+    anchor: 'QUEUE_URL=amqp'
+- id: worker_env
+  selector:
+    path: services/worker/.env.example
+- id: worker_code
+  selector:
+    path: services/worker/consumer.py
+oracle:
+  required:
+  - app
+  - api_env
+  forbidden:
+  - worker_env
+  - worker_code
+min_score: 60

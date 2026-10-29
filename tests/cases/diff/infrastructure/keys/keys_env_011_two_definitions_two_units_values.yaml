@@ -1,0 +1,50 @@
+name: keys_env_011_two_definitions_two_units_values
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    charts/api/Chart.yaml: |
+      apiVersion: v2
+      name: api
+      version: 0.1.0
+    charts/api/values.yaml: |
+      replicas: 1
+      env:
+        - name: API_LOG
+          value: info
+    charts/web/Chart.yaml: |
+      apiVersion: v2
+      name: web
+      version: 0.1.0
+    charts/web/values.yaml: |
+      replicas: 1
+      env:
+        - name: WEB_LOG
+          value: info
+        - name: TRACE_SAMPLE
+          value: "0.1"
+  changed_files:
+    charts/api/values.yaml: |
+      replicas: 1
+      env:
+        - name: API_LOG
+          value: info
+        - name: TRACE_SAMPLE
+          value: "0.5"
+  commit_message: Sample more traces in the api
+fragments:
+- id: api_values
+  selector:
+    path: charts/api/values.yaml
+    anchor: 'value: "0.5"'
+- id: web_values
+  selector:
+    path: charts/web/values.yaml
+oracle:
+  required:
+  - api_values
+  forbidden:
+  - web_values
+min_score: 60

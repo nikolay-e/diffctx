@@ -1,0 +1,71 @@
+name: keys_route_004_flask_blueprint_prefix
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:python
+- lang:typescript
+repo:
+  initial_files:
+    shop/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    shop/app/__init__.py: |
+      from flask import Flask
+
+      from .users import bp
+
+
+      def create_app():
+          app = Flask(__name__)
+          app.register_blueprint(bp)
+          return app
+    shop/app/users.py: |
+      from flask import Blueprint, jsonify
+
+      bp = Blueprint("users", __name__, url_prefix="/api/users")
+
+
+      @bp.route("/<int:user_id>")
+      def one(user_id):
+          return jsonify({"id": user_id})
+    web/src/users.ts: |
+      export const profile = (id: string) => fetch(`/api/users/${id}`);
+      export const avatar = (id: string) => fetch(`/api/users/${id}/avatar`);
+    web/src/admin.ts: |
+      export const adminImage = (id: string) => fetch(`/admin/users/${id}/avatar`);
+      export const adminList = () => fetch("/admin/users");
+  changed_files:
+    shop/app/users.py: |
+      from flask import Blueprint, jsonify
+
+      bp = Blueprint("users", __name__, url_prefix="/api/users")
+
+
+      @bp.route("/<int:user_id>")
+      def one(user_id):
+          return jsonify({"id": user_id})
+
+
+      @bp.route("/<int:user_id>/avatar")
+      def portrait(user_id):
+          return jsonify({"url": f"/img/{user_id}.png"})
+  commit_message: Serve the user avatar
+fragments:
+- id: handler
+  selector:
+    path: shop/app/users.py
+    anchor: '"/<int:user_id>/avatar"'
+- id: users_client
+  selector:
+    path: web/src/users.ts
+    anchor: '/avatar'
+- id: admin_client
+  selector:
+    path: web/src/admin.ts
+oracle:
+  required:
+  - handler
+  - users_client
+  forbidden:
+  - admin_client
+min_score: 60

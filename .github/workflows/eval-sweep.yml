@@ -2,13 +2,17 @@ name: eval-sweep
 
 # Multi-runner parallel sweep across method × budget × test_set.
 #
-# Two modes (select at dispatch):
-#   smoke — GitHub-hosted ubuntu-latest, 1 cell (ppr×64000×swebench_verified),
-#            5 instances, no Hetzner provisioning. Quick sanity check.
-#   full  — Hetzner CCX63 (4 × self-hosted runners), complete 75-cell matrix,
-#            baked repo cache. Production sweep.
+# Three modes (select at dispatch):
+#   smoke    — GitHub-hosted ubuntu-latest, 1 cell (ppr×64000×swebench_verified),
+#              5 instances, no Hetzner provisioning. Quick sanity check.
+#   full     — Hetzner CCX63 (4 × self-hosted runners), complete 75-cell matrix,
+#              baked repo cache. Production sweep.
+#   external — free GitHub-hosted runners only: builds diffctx from `engine_ref`
+#              and runs the named `dataset`s (registry: .github/scripts/
+#              external_cells.py) that live outside the sweep matrix. The summary
+#              is the run's `external-summary-*` artifact; nothing is committed.
 #
-# Trigger via workflow_dispatch. Results are committed to eval-results/sweep.
+# Trigger via workflow_dispatch. Sweep results are committed to eval-results/sweep.
 
 'on':
   workflow_dispatch:
@@ -18,15 +22,36 @@ name: eval-sweep
         required: true
         default: smoke
         type: choice
-        options: [smoke, full]
+        options: [smoke, full, external]
       methods:
         description: 'full mode: comma-separated methods to run (ppr,ego,bm25,internal-bm25,rrf,pit,aider) or all'
         required: false
         default: all
         type: string
+      dataset:
+        description: 'external mode: comma-separated datasets (see .github/scripts/external_cells.py) or all'
+        required: false
+        default: arb_edit2ripple
+        type: string
+      engine_ref:
+        description: 'external mode: commit, branch or tag diffctx is built from (default: the dispatched ref)'
+        required: false
+        default: ''
+        type: string
+      arb_baselines:
+        description: "external mode: also rerun the benchmark's own ARB baselines (they do not depend on the engine)"
+        required: false
+        default: false
+        type: boolean
 
+# An external run serializes only against the same dataset and engine, so two
+# datasets dispatched together do not queue behind each other (a third pending
+# run in one group cancels the second).
 concurrency:
-  group: eval-sweep
+  group: >-
+    ${{ inputs.mode == 'external'
+    && format('eval-sweep-external-{0}-{1}', inputs.dataset, inputs.engine_ref || github.ref_name)
+    || 'eval-sweep' }}
   cancel-in-progress: false
 
 env:
@@ -895,14 +920,14 @@ jobs:
   # ============================================================================
   aggregate:
     needs: [prep, sweep-smoke, sweep-full]
-    if: always()
+    if: always() && inputs.mode != 'external'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.12'
 
@@ -1062,3 +1087,182 @@ jobs:
           curl -sf -X DELETE "https://api.hetzner.cloud/v1/servers/${SERVER_ID}" \
             -H "Authorization: Bearer ${HCLOUD_TOKEN}" || true
           echo "Server ${SERVER_ID} deletion requested."
+
+  # ============================================================================
+  # 6. External mode — free hosted runners, the engine built from `engine_ref`
+  # ============================================================================
+  ext-prep:
+    if: inputs.mode == 'external'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      engine_sha: ${{ steps.engine.outputs.sha }}
+      cells: ${{ steps.cells.outputs.cells }}
+      datasets: ${{ steps.cells.outputs.datasets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: engine
+        env:
+          ENGINE_REF: ${{ inputs.engine_ref || github.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse --verify "${ENGINE_REF}^{commit}")"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "engine ${ENGINE_REF} -> ${sha}"
+      - id: cells
+        env:
+          DATASET: ${{ inputs.dataset }}
+        run: python3 .github/scripts/external_cells.py "${DATASET}" >> "$GITHUB_OUTPUT"
+
+  ext-build:
+    needs: ext-prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.ext-prep.outputs.engine_sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.92.0"
+      # No cargo cache: this job builds `engine_ref`, any ref, and a cache it
+      # saved would be restored by later runs (CodeQL actions/cache-poisoning).
+      # No trusted job saves this key, so a restore-only step would never hit.
+      - name: Build the engine wheel
+        run: |
+          set -euo pipefail
+          pip install --only-binary :all: "maturin==1.10.2"
+          maturin build --release --locked --out dist
+          ls -la dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: ext-wheel
+          path: dist/*.whl
+          retention-days: 7
+          if-no-files-found: error
+
+  ext-run:
+    needs: [ext-prep, ext-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.ext-prep.outputs.cells) }}
+    steps:
+      # The harness is the dispatched ref; the engine is whatever `engine_ref`
+      # built into the wheel. The two are separate on purpose, so one harness
+      # measures several engines.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: ext-wheel
+          path: dist
+      - name: Install the engine wheel and the eval dependency group
+        run: |
+          set -euo pipefail
+          uv venv "${RUNNER_TEMP}/venv"
+          uv export --frozen --only-group eval --no-emit-project --no-hashes -o "${RUNNER_TEMP}/eval-requirements.txt"
+          uv pip install --python "${RUNNER_TEMP}/venv/bin/python" -r "${RUNNER_TEMP}/eval-requirements.txt" dist/*.whl
+          echo "${RUNNER_TEMP}/venv/bin" >> "$GITHUB_PATH"
+      - name: Run the shard
+        env:
+          EXTERNAL_WORK: ${{ runner.temp }}/work
+          DATASET: ${{ matrix.dataset }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
+        run: |
+          set -euo pipefail
+          df -h .
+          shard_out="out/${DATASET}/shard-${SHARD}"
+          .github/scripts/external_run.sh "${DATASET}" "${SHARD}" "${SHARDS}" "${shard_out}" 2>&1 | tee run.log
+          df -h .
+      - name: Upload the shard output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: ext-shard-${{ matrix.dataset }}-${{ matrix.shard }}
+          path: |
+            out/${{ matrix.dataset }}/shard-${{ matrix.shard }}/
+            run.log
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+  ext-aggregate:
+    needs: [ext-prep, ext-run]
+    if: always() && inputs.mode == 'external' && needs.ext-prep.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        dataset: ${{ fromJSON(needs.ext-prep.outputs.datasets) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: ext-wheel
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          pattern: ext-shard-${{ matrix.dataset }}-*
+          path: shards
+      - name: Install the engine wheel and the eval dependency group
+        run: |
+          set -euo pipefail
+          uv venv "${RUNNER_TEMP}/venv"
+          uv export --frozen --only-group eval --no-emit-project --no-hashes -o "${RUNNER_TEMP}/eval-requirements.txt"
+          uv pip install --python "${RUNNER_TEMP}/venv/bin/python" -r "${RUNNER_TEMP}/eval-requirements.txt" dist/*.whl
+          echo "${RUNNER_TEMP}/venv/bin" >> "$GITHUB_PATH"
+      - name: Merge the shards
+        env:
+          EXTERNAL_WORK: ${{ runner.temp }}/work
+          DATASET: ${{ matrix.dataset }}
+          ENGINE_SHA: ${{ needs.ext-prep.outputs.engine_sha }}
+          EXTERNAL_BASELINES: ${{ inputs.arb_baselines && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          # With several artifacts download-artifact makes one directory per
+          # artifact, with a single one it extracts in place; either way the
+          # shard directories sit under .../out/<dataset>/shard-N.
+          mkdir -p merged-shards
+          while IFS= read -r d; do
+            cp -r "${d}" "merged-shards/$(basename "${d}")"
+          done < <(find shards -type d -name 'shard-*' -path "*/out/${DATASET}/shard-*" -prune)
+          ls merged-shards
+          .github/scripts/external_merge.sh "${DATASET}" merged-shards "summary/${DATASET}" "${ENGINE_SHA}"
+          {
+            echo "### ${DATASET} @ ${ENGINE_SHA}"
+            echo '```json'
+            head -c 6000 "summary/${DATASET}/summary.json"
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: external-summary-${{ matrix.dataset }}-${{ needs.ext-prep.outputs.engine_sha }}
+          path: summary/${{ matrix.dataset }}/
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: true

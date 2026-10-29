@@ -1,0 +1,92 @@
+name: xlang_tech_001_spring_relaxed_binding_to_env
+tags:
+- xlang:tech
+- lang:yaml
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    backend/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:app}?prepareThreshold=0
+          username: ${DB_USERNAME:app}
+          hikari:
+            maximum-pool-size: 20
+            minimum-idle: 20
+            connection-timeout: 20000
+    deploy/compose.yml: |
+      services:
+        backend:
+          image: app/backend:dev
+          environment:
+            DB_HOST: db
+            SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "20"
+            SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "20"
+            SPRING_PROFILES_ACTIVE: prod
+        db:
+          image: postgres:17-alpine
+    reports/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          url: jdbc:postgresql://${DB_HOST:localhost}:5432/reports
+          hikari:
+            maximum-pool-size: 5
+    reports/deploy/compose.yml: |
+      services:
+        reports:
+          image: app/reports:dev
+          environment:
+            SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+    backend/src/main/kotlin/dev/acme/Application.kt: |
+      package dev.acme
+
+      import org.springframework.boot.autoconfigure.SpringBootApplication
+      import org.springframework.boot.runApplication
+
+      @SpringBootApplication
+      class Application
+
+      fun main(args: Array<String>) {
+          runApplication<Application>(*args)
+      }
+  changed_files:
+    backend/src/main/resources/application.yml: |
+      spring:
+        datasource:
+          url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:app}?prepareThreshold=0
+          username: ${DB_USERNAME:app}
+          hikari:
+            maximum-pool-size: 30
+            minimum-idle: 20
+            connection-timeout: 20000
+  commit_message: A larger connection pool for the backend
+fragments:
+- id: pool_size
+  selector:
+    path: backend/src/main/resources/application.yml
+    anchor: 'maximum-pool-size: 30'
+- id: compose_pool
+  selector:
+    path: deploy/compose.yml
+    anchor: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+- id: application_kt
+  selector:
+    path: backend/src/main/kotlin/dev/acme/Application.kt
+- id: no_reports_yml
+  selector:
+    path: reports/src/main/resources/application.yml
+- id: no_reports_compose
+  selector:
+    path: reports/deploy/compose.yml
+oracle:
+  required:
+  - pool_size
+  - compose_pool
+  allowed:
+  - application_kt
+  forbidden:
+  - no_reports_yml
+  - no_reports_compose

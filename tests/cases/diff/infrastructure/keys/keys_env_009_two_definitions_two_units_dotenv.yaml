@@ -1,0 +1,37 @@
+name: keys_env_009_two_definitions_two_units_dotenv
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:shell
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/api/.env.example: |
+      API_LOG=info
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/.env.example: |
+      WORKER_LOG=info
+      AUDIT_SINK_URL=http://audit.internal/worker
+  changed_files:
+    services/api/.env.example: |
+      API_LOG=info
+      AUDIT_SINK_URL=http://audit.internal/api
+  commit_message: Point the api at the audit sink
+fragments:
+- id: api_env
+  selector:
+    path: services/api/.env.example
+    anchor: 'AUDIT_SINK_URL=http://audit.internal/api'
+- id: worker_env
+  selector:
+    path: services/worker/.env.example
+oracle:
+  required:
+  - api_env
+  forbidden:
+  - worker_env
+min_score: 60

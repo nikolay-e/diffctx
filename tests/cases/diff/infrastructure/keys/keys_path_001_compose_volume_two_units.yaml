@@ -1,0 +1,54 @@
+name: keys_path_001_compose_volume_two_units
+tags:
+- xkeys:path
+- xkeys:decoy
+- lang:yaml
+- lang:json
+repo:
+  initial_files:
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          volumes:
+            - ./realm.json:/opt/realm.json:ro
+    services/api/realm.json: |
+      {
+        "realm": "api"
+      }
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/realm.json: |
+      {
+        "realm": "worker"
+      }
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+  changed_files:
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          volumes:
+            - ./realm.json:/opt/realm.json:rw
+  commit_message: Make the api realm writable
+fragments:
+- id: compose
+  selector:
+    path: services/api/docker-compose.yml
+    anchor: ':rw'
+- id: api_realm
+  selector:
+    path: services/api/realm.json
+- id: worker_realm
+  selector:
+    path: services/worker/realm.json
+oracle:
+  required:
+  - compose
+  - api_realm
+  forbidden:
+  - worker_realm
+min_score: 60

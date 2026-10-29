@@ -1,0 +1,64 @@
+name: keys_image_002_dockerfile_to_build_decl
+tags:
+- xkeys:image
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    docker-compose.yml: |
+      services:
+        web:
+          build: ./web
+          image: acme/web:dev
+        api:
+          build: ./api
+          image: acme/api:dev
+    web/Dockerfile: |
+      FROM node:22-slim
+      COPY . /app
+      CMD ["node", "server.js"]
+    api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+      CMD ["python", "app.py"]
+    deploy/api.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                image: acme/api:1
+  changed_files:
+    web/Dockerfile: |
+      FROM node:22-slim
+      WORKDIR /app
+      COPY . /app
+      CMD ["node", "server.js"]
+  commit_message: Set a workdir in the web image
+fragments:
+- id: dockerfile
+  selector:
+    path: web/Dockerfile
+    anchor: 'WORKDIR /app'
+- id: compose
+  selector:
+    path: docker-compose.yml
+    anchor: 'image: acme/web:dev'
+- id: api_dockerfile
+  selector:
+    path: api/Dockerfile
+- id: api_manifest
+  selector:
+    path: deploy/api.yaml
+oracle:
+  required:
+  - dockerfile
+  - compose
+  forbidden:
+  - api_dockerfile
+  - api_manifest
+min_score: 60

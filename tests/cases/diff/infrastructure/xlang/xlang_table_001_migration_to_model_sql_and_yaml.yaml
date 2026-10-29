@@ -1,0 +1,154 @@
+name: xlang_table_001_migration_to_model_sql_and_yaml
+tags:
+- xlang:table
+- lang:python
+- lang:sql
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    migrations/versions/099_ringband_tables.py: |
+      """Ringband tables"""
+
+      from alembic import op
+      import sqlalchemy as sa
+
+      revision = "099_ringband_tables"
+      down_revision = "098_previous"
+
+
+      def upgrade():
+          op.create_table(
+              "ringband_sleep",
+              sa.Column("id", sa.Integer(), primary_key=True),
+              sa.Column("user_id", sa.Integer(), nullable=False),
+              sa.Column("date", sa.Date(), nullable=False),
+              sa.Column("total_sleep_seconds", sa.Integer()),
+              sa.Column("average_heart_rate", sa.Float()),
+              sa.Column("average_hrv", sa.Float()),
+          )
+    src/models/wearables.py: |
+      from sqlalchemy import Column, Date, Float, Integer, UniqueConstraint
+
+      from models.base import Base, TimestampMixin, UserOwnedMixin
+
+
+      class RingbandSleep(UserOwnedMixin, TimestampMixin, Base):
+          __tablename__ = "ringband_sleep"
+
+          date = Column(Date, nullable=False)
+          total_sleep_seconds = Column(Integer)
+          average_heart_rate = Column(Float)
+          average_hrv = Column(Float)
+
+          __table_args__ = (UniqueConstraint("user_id", "date", name="_user_ringband_sleep_date_uc"),)
+    src/models/sleep_periods.py: |
+      from sqlalchemy import Column, DateTime, Integer
+
+      from models.base import Base, UserOwnedMixin
+
+
+      class RingbandSleepPeriod(UserOwnedMixin, Base):
+          __tablename__ = "ringband_sleep_periods"
+
+          start_time = Column(DateTime, nullable=False)
+          total_sleep_seconds = Column(Integer)
+    src/sync_manager.py: |
+      _STRAPX_GAP_QUERY = "SELECT DISTINCT date FROM strapx_recovery WHERE user_id = :uid AND date >= :start"
+      _RINGBAND_GAP_QUERY = "SELECT DISTINCT date FROM ringband_sleep WHERE user_id = :uid AND date >= :start"
+    src/config/metrics.yaml: |
+      metrics:
+        - key: ringband_sleep_hr_avg
+          label: Ringband average sleeping heart rate
+          raw_source: {table: ringband_sleep, column: average_heart_rate}
+        - key: ringband_hrv
+          label: Ringband average HRV
+          raw_source: {table: ringband_sleep, column: average_hrv}
+    src/config/metric_labels.yaml: |
+      # Display names; keys are metric keys, not tables.
+      ringband_sleep_score: Sleep score
+      ringband_sleep_hr_avg: Sleeping heart rate
+    src/tools/journal.py: |
+      JOURNAL_QUERY = "SELECT entry_date, body FROM journal_entries WHERE user_id = :uid ORDER BY entry_date"
+  changed_files:
+    migrations/versions/100_ringband_rmssd.py: |
+      """Add ringband_sleep.average_rmssd
+
+      Revision ID: 100_ringband_rmssd
+      Revises: 099_ringband_tables
+      """
+
+      from alembic import op
+      import sqlalchemy as sa
+
+      revision = "100_ringband_rmssd"
+      down_revision = "099_ringband_tables"
+
+
+      def upgrade():
+          op.add_column("ringband_sleep", sa.Column("average_rmssd", sa.Float(), nullable=True))
+
+
+      def downgrade():
+          op.drop_column("ringband_sleep", "average_rmssd")
+    src/models/wearables.py: |
+      from sqlalchemy import Column, Date, Float, Integer, UniqueConstraint
+
+      from models.base import Base, TimestampMixin, UserOwnedMixin
+
+
+      class RingbandSleep(UserOwnedMixin, TimestampMixin, Base):
+          __tablename__ = "ringband_sleep"
+
+          date = Column(Date, nullable=False)
+          total_sleep_seconds = Column(Integer)
+          average_heart_rate = Column(Float)
+          average_hrv = Column(Float)
+          average_rmssd = Column(Float)
+
+          __table_args__ = (UniqueConstraint("user_id", "date", name="_user_ringband_sleep_date_uc"),)
+  commit_message: Store the night's RMSSD beside the HRV average
+fragments:
+- id: migration_col
+  selector:
+    path: migrations/versions/100_ringband_rmssd.py
+    anchor: op.add_column("ringband_sleep"
+- id: model_col
+  selector:
+    path: src/models/wearables.py
+    anchor: average_rmssd = Column(Float)
+- id: create_migration
+  selector:
+    path: migrations/versions/099_ringband_tables.py
+    anchor: '"ringband_sleep"'
+- id: raw_sql
+  selector:
+    path: src/sync_manager.py
+    anchor: FROM ringband_sleep WHERE
+- id: metrics_yaml
+  selector:
+    path: src/config/metrics.yaml
+    anchor: 'table: ringband_sleep'
+- id: no_periods_model
+  selector:
+    path: src/models/sleep_periods.py
+- id: no_metric_labels
+  selector:
+    path: src/config/metric_labels.yaml
+- id: no_journal_sql
+  selector:
+    path: src/tools/journal.py
+oracle:
+  required:
+  - migration_col
+  - model_col
+  - raw_sql
+  - metrics_yaml
+  allowed:
+  - create_migration
+  forbidden:
+  - no_periods_model
+  - no_metric_labels
+  - no_journal_sql

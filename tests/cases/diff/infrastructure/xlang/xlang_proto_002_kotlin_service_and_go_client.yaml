@@ -1,0 +1,105 @@
+name: xlang_proto_002_kotlin_service_and_go_client
+tags:
+- xlang:proto
+- lang:protobuf
+- lang:kotlin
+- lang:go
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    proto/account/v1/account.proto: |
+      syntax = "proto3";
+
+      package account.v1;
+
+      option java_package = "dev.acme.account.v1";
+      option go_package = "example.com/acme/gen/account/v1;accountv1";
+
+      service AccountService {
+        rpc Rename(RenameRequest) returns (RenameResponse);
+      }
+
+      message RenameRequest {
+        string account_id = 1;
+        string display_name = 2;
+      }
+
+      message RenameResponse {
+        bool ok = 1;
+      }
+    server/src/main/kotlin/dev/acme/account/AccountServiceImpl.kt: |
+      package dev.acme.account
+
+      import dev.acme.account.v1.AccountServiceGrpcKt
+      import dev.acme.account.v1.RenameRequest
+      import dev.acme.account.v1.RenameResponse
+      import net.devh.boot.grpc.server.service.GrpcService
+
+      @GrpcService
+      class AccountServiceImpl : AccountServiceGrpcKt.AccountServiceCoroutineImplBase() {
+          override suspend fun rename(request: RenameRequest): RenameResponse =
+              RenameResponse.newBuilder().setOk(true).build()
+      }
+    gateway/account_client.go: "package gateway\n\nimport (\n\t\"context\"\n\n\taccountv1 \"example.com/acme/gen/account/v1\"\n\t\"google.golang.org/grpc\"\n)\n\nfunc Rename(ctx context.Context, conn *grpc.ClientConn, id, name string) (bool, error) {\n\tclient := accountv1.NewAccountServiceClient(conn)\n\tres, err := client.Rename(ctx, &accountv1.RenameRequest{AccountId: id, DisplayName: name})\n\tif err != nil {\n\t\treturn false, err\n\t}\n\treturn res.GetOk(), nil\n}\n"
+    server/src/main/kotlin/dev/acme/account/ProfileServiceImpl.kt: |
+      package dev.acme.account
+
+      import dev.acme.profile.v1.ProfileServiceGrpcKt
+      import net.devh.boot.grpc.server.service.GrpcService
+
+      @GrpcService
+      class ProfileServiceImpl : ProfileServiceGrpcKt.ProfileServiceCoroutineImplBase()
+  changed_files:
+    proto/account/v1/account.proto: |
+      syntax = "proto3";
+
+      package account.v1;
+
+      option java_package = "dev.acme.account.v1";
+      option go_package = "example.com/acme/gen/account/v1;accountv1";
+
+      service AccountService {
+        rpc Rename(RenameRequest) returns (RenameResponse);
+      }
+
+      message RenameRequest {
+        string account_id = 1;
+        string display_name = 2;
+      }
+
+      message RenameResponse {
+        bool ok = 1;
+        string previous_name = 2;
+      }
+  commit_message: Rename answers with the name it replaced
+fragments:
+- id: proto_field
+  selector:
+    path: proto/account/v1/account.proto
+    anchor: string previous_name = 2;
+- id: kotlin_impl
+  selector:
+    path: server/src/main/kotlin/dev/acme/account/AccountServiceImpl.kt
+    anchor: AccountServiceGrpcKt.AccountServiceCoroutineImplBase
+- id: kotlin_response
+  selector:
+    path: server/src/main/kotlin/dev/acme/account/AccountServiceImpl.kt
+    anchor: RenameResponse
+- id: go_client
+  selector:
+    path: gateway/account_client.go
+    anchor: accountv1.NewAccountServiceClient
+- id: no_profile_impl
+  selector:
+    path: server/src/main/kotlin/dev/acme/account/ProfileServiceImpl.kt
+oracle:
+  required:
+  - proto_field
+  - kotlin_impl
+  - kotlin_response
+  - go_client
+  allowed: []
+  forbidden:
+  - no_profile_impl

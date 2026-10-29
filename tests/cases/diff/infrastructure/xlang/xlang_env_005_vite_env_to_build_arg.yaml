@@ -1,0 +1,98 @@
+name: xlang_env_005_vite_env_to_build_arg
+tags:
+- xlang:env
+- lang:typescript
+- lang:dockerfile
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    frontend/src/lib/version.ts: |
+      export const APP_VERSION: string = import.meta.env.VITE_APP_VERSION ?? "0.0.0-placeholder";
+    frontend/.env.example: |
+      # Same-origin /api by default; override for split-origin local dev.
+      VITE_API_URL=/api
+
+      # Injected at Docker build via the VITE_APP_VERSION build arg.
+      VITE_APP_VERSION=0.0.0-placeholder
+
+      # Dev-only: where the Vite dev-server proxies /api to (see vite.config.ts).
+      VITE_DEV_API_TARGET=http://localhost:8080
+    frontend/Dockerfile: |
+      FROM node:26-slim AS builder
+      WORKDIR /app
+      COPY package.json package-lock.json ./
+      RUN npm ci
+      COPY . .
+      ARG VITE_APP_VERSION=0.0.0-placeholder
+      ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+      RUN npm run build
+
+      FROM nginx:1.31 AS production
+      COPY --from=builder /app/dist /usr/share/nginx/html
+    frontend/playwright.config.ts: |
+      import { defineConfig } from "@playwright/test";
+
+      const stamp = process.env.E2E_BASE_URL || process.env.VITE_APP_VERSION ? undefined : "local";
+      if (stamp) process.env.VITE_APP_VERSION = stamp;
+
+      export default defineConfig({
+        testDir: "./tests/e2e",
+        retries: process.env.CI ? 2 : 0,
+      });
+    frontend/src/lib/api.ts: |
+      const API_BASE = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "");
+
+      export async function get(path: string): Promise<Response> {
+        return fetch(`${API_BASE}${path}`);
+      }
+    frontend/vite.config.ts: |
+      import { defineConfig } from "vite";
+
+      export default defineConfig({
+        server: {
+          proxy: {
+            "/api": { target: process.env.VITE_DEV_API_TARGET ?? "http://localhost:8080" },
+          },
+        },
+      });
+  changed_files:
+    frontend/src/lib/version.ts: |
+      const raw: string | undefined = import.meta.env.VITE_APP_VERSION;
+
+      export const APP_VERSION: string = raw && raw.length > 0 ? raw : "0.0.0-dev";
+  commit_message: An empty version stamp falls back to a dev label
+fragments:
+- id: version_read
+  selector:
+    path: frontend/src/lib/version.ts
+    anchor: import.meta.env.VITE_APP_VERSION
+- id: dotenv_version
+  selector:
+    path: frontend/.env.example
+    anchor: VITE_APP_VERSION=0.0.0-placeholder
+- id: dockerfile_arg
+  selector:
+    path: frontend/Dockerfile
+    anchor: ARG VITE_APP_VERSION=0.0.0-placeholder
+- id: playwright_stamp
+  selector:
+    path: frontend/playwright.config.ts
+    anchor: process.env.VITE_APP_VERSION
+- id: no_api_ts
+  selector:
+    path: frontend/src/lib/api.ts
+- id: no_vite_config
+  selector:
+    path: frontend/vite.config.ts
+oracle:
+  required:
+  - version_read
+  - dotenv_version
+  - dockerfile_arg
+  - playwright_stamp
+  allowed: []
+  forbidden:
+  - no_api_ts
+  - no_vite_config

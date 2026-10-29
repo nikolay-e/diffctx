@@ -75,12 +75,14 @@ impl DiscoveryStrategy for DefaultDiscovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
 
-        let mut discovered = crate::edges::discover_all_related_files(
-            &ctx.changed_files,
-            &ctx.all_candidates,
-            Some(ctx.root_dir.as_path()),
-            Some(&ctx.file_cache),
-        );
+        let mut discovered = crate::resource::with_changed_lines(ctx.run.changed_lines(), || {
+            crate::edges::discover_all_related_files(
+                &ctx.changed_files,
+                &ctx.all_candidates,
+                Some(ctx.root_dir.as_path()),
+                Some(&ctx.file_cache),
+            )
+        });
         discovered.retain(|p| !changed_set.contains(p.as_path()));
 
         let rare_files = expand_by_rare_identifiers(ctx);

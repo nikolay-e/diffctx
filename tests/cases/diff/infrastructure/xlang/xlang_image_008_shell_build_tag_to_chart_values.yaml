@@ -1,0 +1,120 @@
+name: xlang_image_008_shell_build_tag_to_chart_values
+tags:
+- xlang:image
+- lang:dockerfile
+- lang:shell
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    apps/backend/Dockerfile: |
+      FROM eclipse-temurin:21-jre
+      WORKDIR /srv
+      COPY apps/backend/build/libs/app.jar app.jar
+      USER 10001
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+    apps/web/Dockerfile: |
+      FROM node:26-slim AS builder
+      WORKDIR /app
+      COPY apps/web/ .
+      RUN npm ci && npm run build
+
+      FROM nginx:1.31-alpine AS production
+      COPY --from=builder /app/dist /usr/share/nginx/html
+    charts/stack/ci/acceptance-test.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+      TAG="${TAG:-acceptance}"
+
+      echo "==> Building this commit's images"
+      docker build -f "${REPO_ROOT}/apps/backend/Dockerfile" -t "reg.example.com/acme/backend:${TAG}" "${REPO_ROOT}"
+      docker build -f "${REPO_ROOT}/apps/web/Dockerfile" --target production -t "reg.example.com/acme/frontend:${TAG}" "${REPO_ROOT}"
+
+      echo "==> Installing the chart"
+      helm install t "${REPO_ROOT}/charts/stack" \
+        --set "backend.image.repository=reg.example.com/acme/backend" \
+        --set "backend.image.tag=${TAG}" \
+        --set "frontend.image.repository=reg.example.com/acme/frontend" \
+        --set "frontend.image.tag=${TAG}"
+    charts/stack/ci/render-test.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      helm template t charts/stack | grep -q "kind: Deployment"
+    charts/stack/Chart.yaml: |
+      apiVersion: v2
+      name: stack
+      version: 0.9.0
+    charts/stack/values.yaml: |
+      backend:
+        image:
+          repository: reg.example.com/acme/backend
+          tag: ''
+      frontend:
+        image:
+          repository: reg.example.com/acme/frontend
+          tag: ''
+    charts/stack/templates/backend.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-backend
+      spec:
+        selector:
+          matchLabels:
+            app: backend
+        template:
+          metadata:
+            labels:
+              app: backend
+          spec:
+            containers:
+              - name: backend
+                image: "{{ .Values.backend.image.repository }}:{{ required "backend.image.tag is required" .Values.backend.image.tag }}"
+  changed_files:
+    apps/backend/Dockerfile: |
+      FROM eclipse-temurin:25-jre
+      WORKDIR /srv
+      COPY apps/backend/build/libs/app.jar app.jar
+      USER 10001
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+  commit_message: Run the backend on Java 25
+fragments:
+- id: backend_from
+  selector:
+    path: apps/backend/Dockerfile
+    anchor: FROM eclipse-temurin:25-jre
+- id: ci_build_backend
+  selector:
+    path: charts/stack/ci/acceptance-test.sh
+    anchor: -f "${REPO_ROOT}/apps/backend/Dockerfile" -t "reg.example.com/acme/backend:${TAG}"
+- id: values_backend_repo
+  selector:
+    path: charts/stack/values.yaml
+    anchor: 'repository: reg.example.com/acme/backend'
+- id: backend_tpl
+  selector:
+    path: charts/stack/templates/backend.yaml
+- id: chart_yaml
+  selector:
+    path: charts/stack/Chart.yaml
+- id: no_web_dockerfile
+  selector:
+    path: apps/web/Dockerfile
+- id: no_render_test
+  selector:
+    path: charts/stack/ci/render-test.sh
+oracle:
+  required:
+  - backend_from
+  - ci_build_backend
+  - values_backend_repo
+  allowed:
+  - backend_tpl
+  - chart_yaml
+  forbidden:
+  - no_web_dockerfile
+  - no_render_test

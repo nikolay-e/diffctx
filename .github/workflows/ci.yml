@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.12'
           enable-cache: true
@@ -36,9 +36,9 @@ jobs:
       # cargo has to be on PATH at the pinned version rather than whatever the
       # runner image happens to ship.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
           components: rustfmt, clippy
 
       - name: Cache pre-commit
@@ -71,9 +71,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
@@ -97,9 +97,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -135,9 +135,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -162,16 +162,28 @@ jobs:
   docker-build:
     name: Docker image builds
     runs-on: ubuntu-latest
+    # The base images come from dhi.io, which needs a login, and a fork's or Dependabot's PR gets no
+    # secrets: its image is built by the push to main after the merge, as the release's is.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      - name: Log in to dhi.io (read-only token)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
       - name: Build image
         run: >-
           docker build -f Dockerfile -t diffctx:ci
-          --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}"
-          --build-arg "APT_REFRESH=$(date -u +%F)" .
+          --build-arg "DIFFCTX_BUILD_SHA=${GITHUB_SHA}" .
 
       # A synthetic two-commit repo, not this repo's own HEAD~1..HEAD: whether
       # the latest commit's diff fits a fixed budget depends on what that
@@ -215,7 +227,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.10'
           enable-cache: true
@@ -223,9 +235,9 @@ jobs:
       # Same reason as the pre-commit job: installing this package compiles the
       # native extension, so cargo has to be on PATH at the pinned version.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Install Linters and Type Checker
         run: |
@@ -258,9 +270,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
           components: rustfmt, clippy
 
       - name: Cache Cargo
@@ -304,9 +316,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -372,15 +384,15 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv with Python ${{ matrix.python-version }}
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
           components: rustfmt, clippy
 
       - name: Cache Cargo
@@ -472,15 +484,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.12'
           enable-cache: true
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Install dependencies and a browser
         run: |
@@ -505,7 +517,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.12'
           enable-cache: true
@@ -513,9 +525,9 @@ jobs:
       # Installing this package compiles the native extension, so cargo must
       # be on PATH at the pinned version.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Install dependencies
         run: |
@@ -545,7 +557,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.12'
           enable-cache: true
@@ -553,9 +565,9 @@ jobs:
       # Installing this package compiles the native extension, so cargo must
       # be on PATH at the pinned version.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: "1.92.0"
+          toolchain: "1.99.1"
 
       - name: Install dependencies
         run: |

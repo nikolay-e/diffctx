@@ -1,0 +1,31 @@
+{
+ "dataset": "CfgNet-500 (labelled candidate configuration dependencies, 10 Spring Boot projects)",
+ "paper": {
+  "title": "A Methodology for Evaluating RAG Systems: A Case Study On Configuration Dependency Validation",
+  "arxiv": "2410.08801",
+  "subject_systems": "table of subject systems with version (SHA)"
+ },
+ "labels_source": {
+  "repo": "AI-4-SE/rag-config-val",
+  "commit": "59508729d5b0d7e900090dae20afc5d73e09f28d",
+  "path": "data/evaluation/all_dependencies.csv",
+  "licence": "none declared: fetched at runtime, never committed",
+  "sha256": "d4d606445298d35877d2ada17f634c8524f3e57c9ac4c76e13e9bd3d36c73df4",
+  "rows": 500,
+  "true_rows": 199,
+  "false_rows": 301,
+  "rows_per_project": 50
+ },
+ "projects": {
+  "mall": {"repo": "macrozheng/mall", "sha": "70a226f"},
+  "apollo": {"repo": "apolloconfig/apollo", "sha": "49bd8cc"},
+  "litemall": {"repo": "linlinjava/litemall", "sha": "92ffc39"},
+  "piggymetrics": {"repo": "sqshq/piggymetrics", "sha": "6bb2cf9"},
+  "spring-boot-admin": {"repo": "codecentric/spring-boot-admin", "sha": "60be5d1"},
+  "mall-swarm": {"repo": "macrozheng/mall-swarm", "sha": "fd5246c"},
+  "Spring-Cloud-Platform": {"repo": "wxiaoqi/Spring-Cloud-Platform", "sha": "9aad435"},
+  "pig": {"repo": "pig-mesh/pig", "sha": "8e10249"},
+  "jetlinks-community": {"repo": "jetlinks/jetlinks-community", "sha": "1ad1e44"},
+  "music-website": {"repo": "Yin-Hongwei/music-website", "sha": "12e1b0a", "full_sha": "12e1b0a04da530e48d9072b36eda1bd811f5cea7"}
+ }
+}

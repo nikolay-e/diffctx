@@ -1,0 +1,150 @@
+name: xlang_table_004_decoy_attribute_and_log_event_named_like_table
+tags:
+- xlang:decoy
+- xlang:table
+- lang:python
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    migrations/versions/017_tracker_fields.py: |
+      """Tracker fields"""
+
+      from alembic import op
+      import sqlalchemy as sa
+
+      revision = "017_tracker_fields"
+      down_revision = "016_previous"
+
+
+      def upgrade():
+          op.create_table(
+              "trackerlog_activities",
+              sa.Column("id", sa.Integer(), primary_key=True),
+              sa.Column("activity_id", sa.String(50), nullable=False),
+          )
+    src/models/tracker.py: |
+      from sqlalchemy import Column, Date, Integer, String
+      from sqlalchemy.orm import relationship
+
+      from models.base import Base, UserOwnedMixin
+
+
+      class TrackerlogActivity(UserOwnedMixin, Base):
+          __tablename__ = "trackerlog_activities"
+
+          activity_id = Column(String(50), nullable=False)
+          date = Column(Date, nullable=False)
+
+          user = relationship("User", back_populates="trackerlog_activities")
+    src/models/users.py: |
+      from sqlalchemy.orm import relationship
+
+      from models.base import Base
+
+
+      class User(Base):
+          __tablename__ = "users"
+
+          trackerlog_activities = relationship("TrackerlogActivity", back_populates="user")
+    src/pull_tracker_data.py: |
+      import structlog
+
+      logger = structlog.get_logger()
+
+
+      def fetch_activities(client, start, end):
+          results = client.get_activities(start, end)
+          logger.info("trackerlog_activities_fetched", start_date=start, end_date=end, count=len(results))
+          return results
+    src/application/training_log.py: |
+      def aggregate(trackerlog_activities, window_start):
+          return [a for a in trackerlog_activities if a["date"] >= window_start]
+    src/models/tracker_summary.py: |
+      from sqlalchemy import Column, Integer
+
+      from models.base import Base, UserOwnedMixin
+
+
+      class TrackerlogActivitySummary(UserOwnedMixin, Base):
+          __tablename__ = "trackerlog_activities_summary"
+
+          total = Column(Integer)
+  changed_files:
+    migrations/versions/018_tracker_hr_zones.py: |
+      """Add trackerlog_activities.hr_zone_one_seconds
+
+      Revision ID: 018_tracker_hr_zones
+      Revises: 017_tracker_fields
+      """
+
+      from alembic import op
+      import sqlalchemy as sa
+
+      revision = "018_tracker_hr_zones"
+      down_revision = "017_tracker_fields"
+
+
+      def upgrade():
+          op.add_column("trackerlog_activities", sa.Column("hr_zone_one_seconds", sa.Integer()))
+
+
+      def downgrade():
+          op.drop_column("trackerlog_activities", "hr_zone_one_seconds")
+    src/models/tracker.py: |
+      from sqlalchemy import Column, Date, Integer, String
+      from sqlalchemy.orm import relationship
+
+      from models.base import Base, UserOwnedMixin
+
+
+      class TrackerlogActivity(UserOwnedMixin, Base):
+          __tablename__ = "trackerlog_activities"
+
+          activity_id = Column(String(50), nullable=False)
+          date = Column(Date, nullable=False)
+          hr_zone_one_seconds = Column(Integer)
+
+          user = relationship("User", back_populates="trackerlog_activities")
+  commit_message: Store seconds in the first heart-rate zone
+fragments:
+- id: migration
+  selector:
+    path: migrations/versions/018_tracker_hr_zones.py
+    anchor: op.add_column("trackerlog_activities"
+- id: model
+  selector:
+    path: src/models/tracker.py
+    anchor: __tablename__ = "trackerlog_activities"
+- id: model_col
+  selector:
+    path: src/models/tracker.py
+    anchor: hr_zone_one_seconds = Column(Integer)
+- id: create_017
+  selector:
+    path: migrations/versions/017_tracker_fields.py
+- id: users_rel
+  selector:
+    path: src/models/users.py
+- id: no_pull_log
+  selector:
+    path: src/pull_tracker_data.py
+- id: no_training_log
+  selector:
+    path: src/application/training_log.py
+- id: no_summary_model
+  selector:
+    path: src/models/tracker_summary.py
+oracle:
+  required:
+  - migration
+  - model
+  - model_col
+  allowed:
+  - create_017
+  - users_rel
+  forbidden:
+  - no_pull_log
+  - no_training_log
+  - no_summary_model

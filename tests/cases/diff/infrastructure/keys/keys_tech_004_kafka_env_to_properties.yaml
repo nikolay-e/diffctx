@@ -1,0 +1,46 @@
+name: keys_tech_004_kafka_env_to_properties
+tags:
+- xkeys:env
+- xkeys:tech
+- lang:yaml
+repo:
+  initial_files:
+    broker/Dockerfile: |
+      FROM bitnami/kafka:3.7
+    broker/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - KAFKA_CFG_NODE_ID=1
+    broker/config/server.properties: |
+      node.id=1
+      advertised.listeners=PLAINTEXT://broker:9092
+    broker/README.md: |
+      # Broker
+
+      Single-node Kafka for local development. The compose file starts it; the
+      server properties file carries the listener and node settings.
+  changed_files:
+    broker/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - KAFKA_CFG_NODE_ID=1
+            - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://broker:9092
+  commit_message: Advertise the broker
+fragments:
+- id: compose
+  selector:
+    path: broker/docker-compose.yml
+    anchor: 'KAFKA_CFG_ADVERTISED_LISTENERS'
+- id: props
+  selector:
+    path: broker/config/server.properties
+    anchor: 'advertised.listeners'
+oracle:
+  required:
+  - compose
+  - props
+min_score: 60

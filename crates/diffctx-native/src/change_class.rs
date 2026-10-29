@@ -271,7 +271,7 @@ pub fn settle_layout(runs: &mut [HunkText], new: Option<&str>) {
 }
 
 /// `new` with the runs undone, or `None` when the runs do not describe it.
-fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
+pub(crate) fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
     let lines: Vec<&str> = new.lines().collect();
     let mut old: Vec<&str> = Vec::with_capacity(lines.len());
     let mut next = 0usize;

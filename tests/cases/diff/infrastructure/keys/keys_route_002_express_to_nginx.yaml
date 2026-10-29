@@ -1,0 +1,52 @@
+name: keys_route_002_express_to_nginx
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:javascript
+repo:
+  initial_files:
+    server/app.js: |
+      const app = require('express')();
+
+      app.get('/api/payments/status', (req, res) => res.json({}));
+    deploy/nginx.conf: |
+      server {
+        location /api/payments/status {
+          proxy_pass http://app;
+        }
+        location /api/payments/charge {
+          proxy_pass http://app;
+        }
+      }
+    deploy/refunds.conf: |
+      server {
+        location /api/payments/refund {
+          proxy_pass http://refunds;
+        }
+      }
+  changed_files:
+    server/app.js: |
+      const app = require('express')();
+
+      app.get('/api/payments/status', (req, res) => res.json({}));
+      app.post('/api/payments/charge', (req, res) => res.json({}));
+  commit_message: Add the charge route
+fragments:
+- id: app
+  selector:
+    path: server/app.js
+    anchor: '/api/payments/charge'
+- id: nginx
+  selector:
+    path: deploy/nginx.conf
+    anchor: 'location /api/payments/charge'
+- id: refunds
+  selector:
+    path: deploy/refunds.conf
+oracle:
+  required:
+  - app
+  - nginx
+  forbidden:
+  - refunds
+min_score: 60

@@ -1,0 +1,88 @@
+name: keys_route_005_fastapi_include_router
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:python
+- lang:typescript
+- lang:yaml
+repo:
+  initial_files:
+    api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    api/main.py: |
+      from fastapi import FastAPI
+
+      from app.routers import items
+
+      app = FastAPI()
+      app.include_router(items.router, prefix="/api")
+    api/app/routers/items.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter(prefix="/items", tags=["items"])
+
+
+      @router.get("/{item_id}")
+      def one(item_id: int):
+          return {"id": item_id}
+    api/tests/test_items.py: |
+      def test_stock(client):
+          assert client.get("/api/items/1/stock").status_code == 200
+    api/openapi.yaml: |
+      openapi: 3.0.0
+      paths:
+        /api/items/{item_id}/stock:
+          get:
+            summary: Stock level of an item
+    web/src/stock.ts: |
+      const API = "/api";
+
+      export const stock = (id: string) => fetch(`${API}/items/${id}/stock`);
+    web/src/legacy.ts: |
+      export const legacyStock = (id: string) => fetch(`/items/${id}/stock`);
+  changed_files:
+    api/app/routers/items.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter(prefix="/items", tags=["items"])
+
+
+      @router.get("/{item_id}")
+      def one(item_id: int):
+          return {"id": item_id}
+
+
+      @router.get("/{item_id}/stock")
+      def stock(item_id: int):
+          return {"id": item_id, "stock": 0}
+  commit_message: Add the item stock route
+fragments:
+- id: handler
+  selector:
+    path: api/app/routers/items.py
+    anchor: '"/{item_id}/stock"'
+- id: test
+  selector:
+    path: api/tests/test_items.py
+    anchor: '/api/items/1/stock'
+- id: spec
+  selector:
+    path: api/openapi.yaml
+    anchor: '/api/items/{item_id}/stock'
+- id: client
+  selector:
+    path: web/src/stock.ts
+    anchor: '/items/'
+- id: legacy
+  selector:
+    path: web/src/legacy.ts
+oracle:
+  required:
+  - handler
+  - test
+  - spec
+  - client
+  forbidden:
+  - legacy
+min_score: 60

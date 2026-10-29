@@ -1,0 +1,53 @@
+name: keys_image_005_registryless_key
+tags:
+- xkeys:image
+- lang:yaml
+repo:
+  initial_files:
+    docker-compose.yml: |
+      services:
+        web:
+          build: ./web
+          image: registry.example.com/acme/web
+    web/Dockerfile: |
+      FROM node:22-slim
+      COPY . /app
+    deploy/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: acme/web:2
+  changed_files:
+    deploy/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: acme/web:3
+  commit_message: Bump the web manifest
+fragments:
+- id: manifest
+  selector:
+    path: deploy/web.yaml
+    anchor: 'image: acme/web:3'
+- id: compose
+  selector:
+    path: docker-compose.yml
+    anchor: 'image: registry.example.com/acme/web'
+oracle:
+  required:
+  - manifest
+  - compose
+  forbidden:
+min_score: 60

@@ -1,0 +1,208 @@
+name: xlang_decoy_013_image_pinned_by_many_consumers
+tags:
+- xlang:decoy
+- xlang:image
+- lang:dockerfile
+- lang:yaml
+- lang:shell
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    images/toolbox/Dockerfile: |
+      # toolbox: the shell-bearing toolbox every CI step runs in.
+      ARG IMAGE_VERSION=1.33.13
+
+      FROM debian:13-slim
+      RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git jq \
+       && rm -rf /var/lib/apt/lists/*
+      USER 65532:65532
+    ci/build-images.sh: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      docker build -f images/toolbox/Dockerfile -t "reg.example.com/acme/images/toolbox:${TAG}" images/toolbox
+      docker build -f images/fileshare/Dockerfile -t "reg.example.com/acme/images/fileshare:${TAG}" images/fileshare
+    images/fileshare/Dockerfile: |
+      FROM alpine:3.23
+      RUN apk add --no-cache fileshare
+    ci/templates/lint-terraform.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: lint-terraform
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo lint-terraform"]
+    ci/templates/lint-ansible.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: lint-ansible
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo lint-ansible"]
+    ci/templates/publish-chart.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: publish-chart
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo publish-chart"]
+    ci/templates/check-freshness.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: check-freshness
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo check-freshness"]
+    ci/templates/nightly-probe.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: nightly-probe
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo nightly-probe"]
+    ci/templates/build-image.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: build-image
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo build-image"]
+    ci/templates/scan-code.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: scan-code
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo scan-code"]
+    ci/templates/run-component.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: run-component
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo run-component"]
+    ci/templates/report-status.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: report-status
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo report-status"]
+    ci/templates/check-deps.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: check-deps
+      spec:
+        templates:
+          - name: main
+            container:
+              image: reg.example.com/acme/images/toolbox:1.33.13
+              command: [sh, -c, "echo check-deps"]
+  changed_files:
+    images/toolbox/Dockerfile: |
+      # toolbox: the shell-bearing toolbox every CI step runs in.
+      ARG IMAGE_VERSION=1.33.13
+
+      FROM debian:13-slim
+      RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git jq yq \
+       && rm -rf /var/lib/apt/lists/*
+      USER 65532:65532
+  commit_message: toolbox carries yq
+fragments:
+- id: dockerfile_pkg
+  selector:
+    path: images/toolbox/Dockerfile
+    anchor: curl git jq yq
+- id: build_script
+  selector:
+    path: ci/build-images.sh
+    anchor: docker build -f images/toolbox/Dockerfile
+- id: no_fileshare_dockerfile
+  selector:
+    path: images/fileshare/Dockerfile
+- id: no_lint_terraform
+  selector:
+    path: ci/templates/lint-terraform.yaml
+- id: no_lint_ansible
+  selector:
+    path: ci/templates/lint-ansible.yaml
+- id: no_publish_chart
+  selector:
+    path: ci/templates/publish-chart.yaml
+- id: no_check_freshness
+  selector:
+    path: ci/templates/check-freshness.yaml
+- id: no_nightly_probe
+  selector:
+    path: ci/templates/nightly-probe.yaml
+- id: no_build_image
+  selector:
+    path: ci/templates/build-image.yaml
+- id: no_scan_code
+  selector:
+    path: ci/templates/scan-code.yaml
+- id: no_run_component
+  selector:
+    path: ci/templates/run-component.yaml
+- id: no_report_status
+  selector:
+    path: ci/templates/report-status.yaml
+- id: no_check_deps
+  selector:
+    path: ci/templates/check-deps.yaml
+oracle:
+  required:
+  - dockerfile_pkg
+  - build_script
+  allowed: []
+  forbidden:
+  - no_fileshare_dockerfile
+  - no_lint_terraform
+  - no_lint_ansible
+  - no_publish_chart
+  - no_check_freshness
+  - no_nightly_probe
+  - no_build_image
+  - no_scan_code
+  - no_run_component
+  - no_report_status
+  - no_check_deps

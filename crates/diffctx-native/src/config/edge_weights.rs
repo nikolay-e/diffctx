@@ -12,7 +12,6 @@ pub struct KubernetesWeights {
     pub configmap_secret_weight: f64,
     pub service_weight: f64,
     pub selector_weight: f64,
-    pub image_weight: f64,
     pub reverse_factor: f64,
 }
 
@@ -104,7 +103,6 @@ pub const KUBERNETES: KubernetesWeights = KubernetesWeights {
     configmap_secret_weight: 0.70,
     service_weight: 0.60,
     selector_weight: 0.55,
-    image_weight: 0.40,
     reverse_factor: 0.45,
 };
 pub const HELM: HelmWeights = HelmWeights {

@@ -53,7 +53,7 @@ the deployed defaults now carry $\tau = 0.05$, $\beta_{core} = 0.4$:
 The per-`EdgeCategory` multipliers $w_\tau$, defined in
 `crates/diffctx-native/src/config/category_weights.rs`. There are
 exactly ten categories — `Semantic`, `Structural`, `Sibling`, `Config`,
-`ConfigGeneric`, `Document`, `Similarity`, `History`, `TestEdge`,
+`KeyMatch` (was `ConfigGeneric`), `Document`, `Similarity`, `History`, `TestEdge`,
 `Generic` — and one scalar multiplier per category. Every fine-grained
 edge weight from `weights.rs` is multiplied by its category's $w_\tau$
 before scoring.

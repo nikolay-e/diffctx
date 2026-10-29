@@ -1,0 +1,56 @@
+name: keys_env_013_untouched_key_compose
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:python
+- lang:yaml
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - DATABASE_URL=info
+    services/api/app.py: |
+      import os
+
+      TTL = int(os.environ.get("SESSION_TTL", "30"))
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/tasks.py: |
+      import os
+
+      DB = os.environ["DATABASE_URL"]
+  changed_files:
+    services/api/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - DATABASE_URL=info
+            - SESSION_TTL=120
+  commit_message: Lengthen the api session
+fragments:
+- id: compose
+  selector:
+    path: services/api/docker-compose.yml
+    anchor: 'SESSION_TTL=120'
+- id: api_app
+  selector:
+    path: services/api/app.py
+    anchor: 'SESSION_TTL'
+- id: worker_tasks
+  selector:
+    path: services/worker/tasks.py
+oracle:
+  required:
+  - compose
+  - api_app
+  forbidden:
+  - worker_tasks
+min_score: 60

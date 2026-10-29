@@ -1,0 +1,82 @@
+name: xlang_image_103_compose_image_bump_to_ci_tags
+tags:
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    compose.yml: |
+      services:
+        api:
+          build:
+            context: api
+          image: reg.example.com/acme/api:2025.10
+          ports:
+            - "8080:8080"
+        cache:
+          image: redis:7-alpine
+    .github/workflows/publish.yml: |
+      name: publish
+      on:
+        push:
+          tags: ["v*"]
+      jobs:
+        api:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v5
+            - uses: docker/build-push-action@v6
+              with:
+                context: api
+                push: true
+                tags: |
+                  reg.example.com/acme/api:${{ github.ref_name }}
+                  reg.example.com/acme/api:latest
+        docs:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v5
+            - run: make docs
+    api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    docs/Makefile: "docs:\n\tmkdocs build\n"
+  changed_files:
+    compose.yml: |
+      services:
+        api:
+          build:
+            context: api
+          image: reg.example.com/acme/api:2025.11
+          ports:
+            - "8080:8080"
+        cache:
+          image: redis:7-alpine
+  commit_message: Use the November api build locally
+fragments:
+- id: compose_image
+  selector:
+    path: compose.yml
+    anchor: 'image: reg.example.com/acme/api:2025.11'
+- id: ci_tags
+  selector:
+    path: .github/workflows/publish.yml
+    anchor: reg.example.com/acme/api:latest
+- id: api_dockerfile
+  selector:
+    path: api/Dockerfile
+- id: no_docs_makefile
+  selector:
+    path: docs/Makefile
+oracle:
+  required:
+  - compose_image
+  - ci_tags
+  allowed:
+  - api_dockerfile
+  forbidden:
+  - no_docs_makefile

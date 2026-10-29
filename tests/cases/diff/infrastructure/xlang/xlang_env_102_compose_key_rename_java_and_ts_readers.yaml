@@ -1,0 +1,84 @@
+name: xlang_env_102_compose_key_rename_java_and_ts_readers
+tags:
+- xlang:env
+- lang:yaml
+- lang:java
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    compose.yml: |
+      services:
+        payments:
+          build: ./payments
+          environment:
+            PAYMENTS_TIMEOUT: "30"
+            PAYMENTS_CURRENCY: EUR
+        web:
+          build: ./web
+    payments/src/main/java/dev/acme/payments/Settings.java: |
+      package dev.acme.payments;
+
+      public final class Settings {
+          public static final int TIMEOUT_SECONDS = Integer.parseInt(System.getenv().getOrDefault("PAYMENTS_TIMEOUT", "30"));
+          public static final String CURRENCY = System.getenv().getOrDefault("PAYMENTS_CURRENCY", "EUR");
+      }
+    web/server/payments.ts: |
+      export const paymentsTimeoutMs = Number(process.env.PAYMENTS_TIMEOUT ?? "30") * 1000;
+    web/server/currency.ts: |
+      export const currency = process.env.PAYMENTS_CURRENCY ?? "EUR";
+    billing/compose.yml: |
+      services:
+        billing:
+          build: .
+          environment:
+            BILLING_TIMEOUT: "60"
+    billing/src/settings.py: |
+      import os
+
+      TIMEOUT = int(os.environ["BILLING_TIMEOUT"])
+  changed_files:
+    compose.yml: |
+      services:
+        payments:
+          build: ./payments
+          environment:
+            PAYMENTS_TIMEOUT_SECONDS: "30"
+            PAYMENTS_CURRENCY: EUR
+        web:
+          build: ./web
+  commit_message: The payments timeout carries its unit in the name
+fragments:
+- id: compose_rename
+  selector:
+    path: compose.yml
+    anchor: 'PAYMENTS_TIMEOUT_SECONDS:'
+- id: java_reader
+  selector:
+    path: payments/src/main/java/dev/acme/payments/Settings.java
+    anchor: '"PAYMENTS_TIMEOUT"'
+- id: ts_reader
+  selector:
+    path: web/server/payments.ts
+    anchor: process.env.PAYMENTS_TIMEOUT
+- id: ts_currency
+  selector:
+    path: web/server/currency.ts
+- id: no_billing_compose
+  selector:
+    path: billing/compose.yml
+- id: no_billing_settings
+  selector:
+    path: billing/src/settings.py
+oracle:
+  required:
+  - compose_rename
+  - java_reader
+  - ts_reader
+  allowed:
+  - ts_currency
+  forbidden:
+  - no_billing_compose
+  - no_billing_settings

@@ -1,0 +1,69 @@
+name: xlang_decoy_111_image_same_name_other_registry
+tags:
+- xlang:decoy
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    chart/values.yaml: |
+      journal:
+        image: reg.example.com/acme/journal:1.4.0
+    .github/workflows/build.yml: |
+      name: build
+      jobs:
+        journal:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: journal
+                push: true
+                tags: reg.example.com/acme/journal:${{ github.sha }}
+    journal/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    vendor-chart/values.yaml: |
+      journal:
+        image: registry.other.test/vendor/journal:7.2.0
+    .gitlab-ci.yml: |
+      mirror-journal:
+        script:
+          - docker pull registry.other.test/vendor/journal:7.2.0
+          - docker build -t registry.other.test/vendor/journal-local:7.2.0 vendor/journal
+  changed_files:
+    chart/values.yaml: |
+      journal:
+        image: reg.example.com/acme/journal:1.5.0
+  commit_message: Roll the journal chart to 1.5.0
+fragments:
+- id: values_bump
+  selector:
+    path: chart/values.yaml
+    anchor: 'image: reg.example.com/acme/journal:1.5.0'
+- id: ci_tags
+  selector:
+    path: .github/workflows/build.yml
+    anchor: 'tags: reg.example.com/acme/journal:'
+- id: journal_dockerfile
+  selector:
+    path: journal/Dockerfile
+- id: no_vendor_values
+  selector:
+    path: vendor-chart/values.yaml
+- id: no_mirror_ci
+  selector:
+    path: .gitlab-ci.yml
+oracle:
+  required:
+  - values_bump
+  - ci_tags
+  allowed:
+  - journal_dockerfile
+  forbidden:
+  - no_vendor_values
+  - no_mirror_ci

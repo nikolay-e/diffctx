@@ -1149,3 +1149,41 @@ fn inline_html_script_top_level_and_function_calls_are_callers() {
         set(&["call multi.html:9-9"])
     );
 }
+
+/// Forgejo #106: `const Card = lazy(() => import('./Card'))` binds the
+/// module's default export, so the component it renders is referenced there.
+/// A same-named default export of another module, and a lazy import of a
+/// module whose default export is another component, are not callers.
+#[test]
+fn a_lazy_import_binds_the_default_export_of_a_relative_module() {
+    let card = "export default function Card() {\n  return <div>Old</div>;\n}\n";
+    let tmp = repo(
+        &[
+            ("src/Card.tsx", card),
+            (
+                "src/App.tsx",
+                "import { lazy, Suspense } from 'react';\nconst Card = lazy(() => import('./Card'));\nexport function App() {\n  return <Suspense fallback={null}><Card /></Suspense>;\n}\n",
+            ),
+            (
+                "src/Async.tsx",
+                "import React from 'react';\nconst Card = React.lazy(async () => import('./Card'));\nexport function Async() {\n  return <Card />;\n}\n",
+            ),
+            (
+                "src/other/Card.tsx",
+                "export default function Card() {\n  return <div>other</div>;\n}\n",
+            ),
+            (
+                "src/Decoy.tsx",
+                "import { lazy } from 'react';\nconst Card = lazy(() => import('./other/Card'));\nexport function Decoy() {\n  return <Card />;\n}\n",
+            ),
+        ],
+        &[("src/Card.tsx", &card.replace("Old", "New"))],
+    );
+    assert_eq!(
+        callers(&impact(tmp.path()), "src/Card.tsx", "Card"),
+        set(&[
+            "reference src/App.tsx::App",
+            "reference src/Async.tsx::Async"
+        ])
+    );
+}

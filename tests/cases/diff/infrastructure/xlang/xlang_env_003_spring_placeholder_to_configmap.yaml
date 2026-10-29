@@ -1,0 +1,165 @@
+name: xlang_env_003_spring_placeholder_to_configmap
+tags:
+- xlang:env
+- lang:kotlin
+- lang:yaml
+- change:multi_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    backend/app/src/main/resources/application.yml: |
+      server:
+        port: 8080
+      app:
+        mpd:
+          bind-address: ${MPD_BIND_ADDRESS:127.0.0.1}
+        llm:
+          enabled: ${LLM_ENABLED:false}
+          model: ${LLM_MODEL:small-model-1}
+          api-key: ${LLM_API_KEY:#{null}}
+          base-url: ${LLM_BASE_URL:http://gateway.svc.cluster.local:8080}
+          max-tokens: ${LLM_MAX_TOKENS:1024}
+    backend/infra-llm/src/main/kotlin/dev/acme/infra/llm/LlmClient.kt: |
+      package dev.acme.infra.llm
+
+      import org.springframework.beans.factory.annotation.Value
+      import org.springframework.stereotype.Component
+
+      @Component
+      class LlmClient(
+          @Value("\${app.llm.enabled:false}") private val enabled: Boolean,
+          @Value("\${app.llm.api-key:#{null}}") private val apiKey: String?,
+          @Value("\${app.llm.model:small-model-1}") private val model: String,
+          @Value("\${app.llm.base-url:http://gateway.svc.cluster.local:8080}") private val baseUrl: String,
+          @Value("\${app.llm.max-tokens:1024}") private val maxTokens: Int,
+      ) {
+          fun complete(prompt: String): String? {
+              if (!enabled || apiKey == null) return null
+              return post(baseUrl, model, maxTokens, prompt)
+          }
+
+          private fun post(baseUrl: String, model: String, maxTokens: Int, prompt: String): String? = null
+      }
+    chart/values.yaml: |
+      backend:
+        config:
+          mpd:
+            bindAddress: 127.0.0.1
+          llm:
+            enabled: false # adaptive LLM-DJ; routes through the in-cluster gateway
+            # Gateway model alias.
+            model: 'small-model-1'
+            baseUrl: 'http://gateway.svc.cluster.local:8080'
+          embedding:
+            enabled: false
+      frontend:
+        replicas: 1
+    chart/templates/backend-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: {{ .Release.Name }}-backend
+      data:
+        SERVER_PORT: "8080"
+        MPD_BIND_ADDRESS: {{ .Values.backend.config.mpd.bindAddress | quote }}
+        LLM_ENABLED: {{ default false .Values.backend.config.llm.enabled | quote }}
+        LLM_MODEL: {{ .Values.backend.config.llm.model | quote }}
+        LLM_BASE_URL: {{ .Values.backend.config.llm.baseUrl | quote }}
+        EMBEDDING_ENABLED: {{ default false .Values.backend.config.embedding.enabled | quote }}
+    backend/app/src/test/resources/application-test.yml: |
+      app:
+        llm:
+          enabled: false
+        embedding:
+          base-url: ${EMBEDDING_BASE_URL:http://localhost:9999}
+    chart/templates/frontend.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-frontend
+      spec:
+        replicas: {{ .Values.frontend.replicas }}
+  changed_files:
+    backend/app/src/main/resources/application.yml: |
+      server:
+        port: 8080
+      app:
+        mpd:
+          bind-address: ${MPD_BIND_ADDRESS:127.0.0.1}
+        llm:
+          enabled: ${LLM_ENABLED:false}
+          model: ${LLM_MODEL:small-model-2}
+          api-key: ${LLM_API_KEY:#{null}}
+          base-url: ${LLM_BASE_URL:http://gateway.svc.cluster.local:8080}
+          max-tokens: ${LLM_MAX_TOKENS:1024}
+    backend/infra-llm/src/main/kotlin/dev/acme/infra/llm/LlmClient.kt: |
+      package dev.acme.infra.llm
+
+      import org.springframework.beans.factory.annotation.Value
+      import org.springframework.stereotype.Component
+
+      @Component
+      class LlmClient(
+          @Value("\${app.llm.enabled:false}") private val enabled: Boolean,
+          @Value("\${app.llm.api-key:#{null}}") private val apiKey: String?,
+          @Value("\${app.llm.model:small-model-2}") private val model: String,
+          @Value("\${app.llm.base-url:http://gateway.svc.cluster.local:8080}") private val baseUrl: String,
+          @Value("\${app.llm.max-tokens:1024}") private val maxTokens: Int,
+      ) {
+          fun complete(prompt: String): String? {
+              if (!enabled || apiKey == null) return null
+              return post(baseUrl, model, maxTokens, prompt)
+          }
+
+          private fun post(baseUrl: String, model: String, maxTokens: Int, prompt: String): String? = null
+      }
+    chart/values.yaml: |
+      backend:
+        config:
+          mpd:
+            bindAddress: 127.0.0.1
+          llm:
+            enabled: false # adaptive LLM-DJ; routes through the in-cluster gateway
+            # Gateway model alias, and one the gateway still serves: a default naming a dropped
+            # model was a model-not-found for any install without an override.
+            model: 'small-model-2'
+            baseUrl: 'http://gateway.svc.cluster.local:8080'
+          embedding:
+            enabled: false
+      frontend:
+        replicas: 1
+  commit_message: The LLM model default names one the gateway still serves
+fragments:
+- id: app_yml_model
+  selector:
+    path: backend/app/src/main/resources/application.yml
+    anchor: 'model: ${LLM_MODEL:small-model-2}'
+- id: client_model
+  selector:
+    path: backend/infra-llm/src/main/kotlin/dev/acme/infra/llm/LlmClient.kt
+    anchor: app.llm.model:small-model-2
+- id: values_model
+  selector:
+    path: chart/values.yaml
+    anchor: 'model: ''small-model-2'''
+- id: cm_llm_model
+  selector:
+    path: chart/templates/backend-config.yaml
+    anchor: 'LLM_MODEL:'
+- id: test_yml
+  selector:
+    path: backend/app/src/test/resources/application-test.yml
+- id: no_frontend_tpl
+  selector:
+    path: chart/templates/frontend.yaml
+oracle:
+  required:
+  - app_yml_model
+  - client_model
+  - values_model
+  - cm_llm_model
+  allowed:
+  - test_yml
+  forbidden:
+  - no_frontend_tpl

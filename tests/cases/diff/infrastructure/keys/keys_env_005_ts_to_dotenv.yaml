@@ -1,0 +1,41 @@
+name: keys_env_005_ts_to_dotenv
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:typescript
+repo:
+  initial_files:
+    web/src/config.ts: |
+      export const base = process.env.NEXT_PUBLIC_API_URL;
+    web/.env.example: |
+      NEXT_PUBLIC_API_URL=http://localhost:8000
+    api/.env.example: |
+      API_URL=http://localhost:8000
+      API_KEY=dev
+    api/server.py: |
+      import os
+
+      KEY = os.environ["API_KEY"]
+  changed_files:
+    web/src/config.ts: |
+      export const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+  commit_message: Default the api base url
+fragments:
+- id: config
+  selector:
+    path: web/src/config.ts
+    anchor: 'http://localhost:3000'
+- id: web_env
+  selector:
+    path: web/.env.example
+    anchor: 'NEXT_PUBLIC_API_URL'
+- id: api_env
+  selector:
+    path: api/.env.example
+oracle:
+  required:
+  - config
+  - web_env
+  forbidden:
+  - api_env
+min_score: 60

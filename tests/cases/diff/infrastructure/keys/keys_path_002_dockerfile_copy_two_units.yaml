@@ -1,0 +1,42 @@
+name: keys_path_002_dockerfile_copy_two_units
+tags:
+- xkeys:path
+- xkeys:decoy
+- lang:toml
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY ./settings.toml /app/settings.toml
+    services/api/settings.toml: |
+      [service]
+      name = "api"
+    services/worker/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    services/worker/settings.toml: |
+      [service]
+      name = "worker"
+  changed_files:
+    services/api/Dockerfile: |
+      FROM python:3.13-slim
+      COPY ./settings.toml /app/settings.toml
+  commit_message: Move the api image to 3.13
+fragments:
+- id: dockerfile
+  selector:
+    path: services/api/Dockerfile
+    anchor: 'python:3.13-slim'
+- id: api_settings
+  selector:
+    path: services/api/settings.toml
+- id: worker_settings
+  selector:
+    path: services/worker/settings.toml
+oracle:
+  required:
+  - dockerfile
+  - api_settings
+  forbidden:
+  - worker_settings
+min_score: 60

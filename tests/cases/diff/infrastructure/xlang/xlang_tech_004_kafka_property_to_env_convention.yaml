@@ -1,0 +1,65 @@
+name: xlang_tech_004_kafka_property_to_env_convention
+tags:
+- xlang:tech
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    kafka/server.properties: |
+      broker.id=1
+      log.retention.hours=168
+      log.retention.check.interval.ms=300000
+      num.partitions=3
+    deploy/compose.yml: |
+      services:
+        kafka:
+          image: kafka/broker:3.9
+          environment:
+            KAFKA_CFG_NODE_ID: "1"
+            KAFKA_CFG_LOG_RETENTION_HOURS: "168"
+            KAFKA_CFG_NUM_PARTITIONS: "3"
+        consumer:
+          build: ./consumer
+          environment:
+            KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    consumer/app.py: |
+      import os
+
+      BOOTSTRAP = os.environ["KAFKA_BOOTSTRAP_SERVERS"]
+      GROUP_ID = os.environ.get("KAFKA_GROUP_ID", "consumer")
+    docs/retention.md: |
+      # Retention
+
+      Topics keep data for `log.retention.hours` hours unless a topic overrides it.
+  changed_files:
+    kafka/server.properties: |
+      broker.id=1
+      log.retention.hours=72
+      log.retention.check.interval.ms=300000
+      num.partitions=3
+  commit_message: Keep broker logs for three days
+fragments:
+- id: props_retention
+  selector:
+    path: kafka/server.properties
+    anchor: log.retention.hours=72
+- id: compose_retention
+  selector:
+    path: deploy/compose.yml
+    anchor: KAFKA_CFG_LOG_RETENTION_HOURS
+- id: retention_doc
+  selector:
+    path: docs/retention.md
+- id: no_consumer
+  selector:
+    path: consumer/app.py
+oracle:
+  required:
+  - props_retention
+  - compose_retention
+  allowed:
+  - retention_doc
+  forbidden:
+  - no_consumer

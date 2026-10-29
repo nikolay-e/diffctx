@@ -173,8 +173,12 @@ fn collect_capped_edges_from(
         .iter()
         .map(|(_, builder)| builder.is_fallback())
         .collect();
+    let key_table_flags: Vec<bool> = all_builders
+        .iter()
+        .map(|(_, builder)| builder.is_key_table())
+        .collect();
 
-    let per_builder_log: Vec<Vec<LoggedEmission>> = all_builders
+    let per_builder: Vec<(Vec<LoggedEmission>, Vec<(String, String)>)> = all_builders
         .par_iter()
         .enumerate()
         .map(|(builder_idx, (name, builder))| {
@@ -182,11 +186,11 @@ fn collect_capped_edges_from(
             // cap has fired contributes nothing: the graph is partial and
             // the coverage block says so.
             if !ctx.check() || ctx.over_contributions() {
-                return Vec::new();
+                return (Vec::new(), Vec::new());
             }
             let _in_builder = ctx.enter();
             let t = std::time::Instant::now();
-            let edges = builder.build(fragments, repo_root);
+            let (edges, decided) = builder.build_deciding(fragments, repo_root);
             ctx.charge_remaining(edges.len() as u64);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
                 // The index is the registration order within
@@ -209,29 +213,66 @@ fn collect_capped_edges_from(
                     weight,
                 });
             }
-            log
+            (log, decided)
         })
         .collect();
     drop(all_builders);
+    let (mut per_builder_log, decided): (Vec<_>, Vec<_>) = per_builder.into_iter().unzip();
+
+    // A name match between two files the typed key table has already ruled on
+    // adds nothing: it linked them (and the pair has its typed edge) or it
+    // refused them, and the shared word is no reason to overrule it. The same
+    // holds between a changed environment record and a file that only spells
+    // its name (a local constant), since the table resolved that name typed.
+    let ruled_on: FxHashSet<(String, String)> = decided.into_iter().flatten().collect();
+    if !ruled_on.is_empty() {
+        for (builder_idx, log) in per_builder_log.iter_mut().enumerate() {
+            if builder_meta[builder_idx].0 != EdgeCategory::KeyMatch {
+                continue;
+            }
+            log.retain(|e| {
+                let (a, b) = (
+                    idx_to_node[e.src as usize].path.as_ref(),
+                    idx_to_node[e.dst as usize].path.as_ref(),
+                );
+                let key = if a <= b { (a, b) } else { (b, a) };
+                !ruled_on.contains(&(key.0.to_string(), key.1.to_string()))
+            });
+        }
+    }
 
     // Fallback builders (tags) only count where the dedicated builders came
     // back empty: an emission survives only if at least one endpoint file has
-    // no dedicated semantic edge. Dual coverage was measured as pure noise —
+    // no dedicated edge. Dedicated means a parsed reference (Semantic) or a
+    // typed key link at naming strength — not a proximity channel
+    // (structural, sibling, similarity, history), which nearly every file has
+    // and would starve the fallback, and not the other config builders'
+    // edges, whose pairs the tags mass measurably carries.
+    // Dual coverage was measured as pure noise —
     // a tags edge duplicating a real import/call edge adds mass, not reach —
     // while a parser-degraded file genuinely has nothing else (#131).
     // A per-pair cross-language escape was tried and measured net-negative
     // (#217, 2026-08-19: −4/+0 corpus — `.ts`/`.tsx` count as different
     // languages, so same-project pairs slipped back in); a retry needs
     // language-FAMILY granularity first.
-    let mut per_builder_log = per_builder_log;
     if fallback_flags.iter().any(|&f| f) {
         let mut dedicated_files: FxHashSet<&str> = FxHashSet::default();
         for (builder_idx, log) in per_builder_log.iter().enumerate() {
-            if fallback_flags[builder_idx] || builder_meta[builder_idx].0 != EdgeCategory::Semantic
-            {
+            // Dedicated coverage is a parsed reference (Semantic) or a typed
+            // key link at naming strength: the relation tags would only
+            // duplicate. The other config builders' edges are different
+            // relations (a selector, a config map) whose pair the tags mass
+            // measurably carries, and a weak image key is below the floor.
+            let counts = !fallback_flags[builder_idx]
+                && (builder_meta[builder_idx].0 == EdgeCategory::Semantic
+                    || key_table_flags[builder_idx]);
+            if !counts {
                 continue;
             }
-            for e in log {
+            for e in log
+                .iter()
+                .filter(|e| !key_table_flags[builder_idx] || e.weight >= NAMING_WEIGHT_FLOOR)
+            {
                 dedicated_files.insert(idx_to_node[e.src as usize].path.as_ref());
                 dedicated_files.insert(idx_to_node[e.dst as usize].path.as_ref());
             }
@@ -316,7 +357,7 @@ fn collect_capped_edges_from(
             in_degree[e.dst as usize] += 1;
             out_degree[e.src as usize] += 1;
             category_entries.push((e.src, e.dst, category));
-            if category == EdgeCategory::Semantic {
+            if category.acts_as_reference() {
                 sem_out_files
                     .entry(e.src)
                     .or_default()
@@ -475,7 +516,7 @@ pub fn naming_reachable_files(
 }
 
 /// Files reachable through DECLARED-relation edges — any Semantic, Config,
-/// ConfigGeneric, Document or TestEdge channel — within `max_depth` hops.
+/// KeyMatch, Document or TestEdge channel — within `max_depth` hops.
 /// Wider than `naming_reachable_files`: it admits the low-weight declared
 /// channels (config keys, tags at 0.30, latex/terraform references) while
 /// still refusing proximity, lexical similarity and co-change. This is the
@@ -500,7 +541,7 @@ pub fn declared_reachable_files(
                 e.category,
                 EdgeCategory::Semantic
                     | EdgeCategory::Config
-                    | EdgeCategory::ConfigGeneric
+                    | EdgeCategory::KeyMatch
                     | EdgeCategory::Document
                     | EdgeCategory::TestEdge
             )
@@ -603,27 +644,137 @@ mod fallback_gate_tests {
             &crate::resource::RunContext::unbounded(),
         );
         assert!(
-            has_semantic_pair(&capped, "u1.xyz", "u2.xyz"),
+            has_fallback_pair(&capped, "u1.xyz", "u2.xyz"),
             "fallback must still connect files no dedicated builder covers"
         );
         assert!(
-            !has_semantic_pair(&capped, "a.c", "c.c"),
+            !has_fallback_pair(&capped, "a.c", "c.c"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
         );
     }
 
     // Category matters: two files in one directory legitimately share a
-    // structural sibling edge; the class under test is the SEMANTIC tags link.
-    fn has_semantic_pair(capped: &CappedEdges, a: &str, b: &str) -> bool {
+    // structural sibling edge; the class under test is the tags fallback link.
+    fn has_fallback_pair(capped: &CappedEdges, a: &str, b: &str) -> bool {
         let node_path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
         capped.edges.iter().any(|e| {
-            if e.category != EdgeCategory::Semantic {
+            if e.category != EdgeCategory::KeyMatch {
                 return false;
             }
             let s = node_path(e.src);
             let d = node_path(e.dst);
             (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
         })
+    }
+
+    /// A typed key link is a parsed relation like an import: the files it
+    /// joins keep no tags edge on top of it, which is the same noise as a
+    /// duplicated import edge (#131) on the files that had no import channel.
+    #[test]
+    fn a_typed_key_link_stands_in_for_the_tags_edge_on_the_same_pair() {
+        let files = [
+            (
+                "app/server.py",
+                "import os\n\ndef boot():\n    return os.environ[\"REDIS_URL\"]\n# zzsharedzz\n",
+            ),
+            (
+                "deploy/server.yaml",
+                "kind: Deployment\nspec:\n  containers:\n    - name: s\n      env:\n        - name: REDIS_URL\n          value: x\n# zzsharedzz\n",
+            ),
+            ("notes/a.xyz", "zzsharedzz here\n"),
+            ("notes/b.xyz", "zzsharedzz there\n"),
+        ];
+        let fragments: Vec<Fragment> = files
+            .iter()
+            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .collect();
+        let capped = collect_capped_edges(
+            &fragments,
+            None,
+            false,
+            &crate::resource::RunContext::unbounded(),
+        );
+        let categories = |a: &str, b: &str| -> std::collections::BTreeSet<&'static str> {
+            let path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
+            capped
+                .edges
+                .iter()
+                .filter(|e| {
+                    let (s, d) = (path(e.src), path(e.dst));
+                    (s.ends_with(a) && d.ends_with(b)) || (s.ends_with(b) && d.ends_with(a))
+                })
+                .map(|e| e.category.as_str())
+                .collect()
+        };
+        assert_eq!(
+            categories("app/server.py", "deploy/server.yaml"),
+            ["config"].into_iter().collect(),
+            "the pair keeps the typed link and no tags edge beside it"
+        );
+        assert!(
+            categories("notes/a.xyz", "notes/b.xyz").contains("key_match"),
+            "files no dedicated builder covers keep the fallback"
+        );
+    }
+
+    /// Two definitions of one variable in two units: the typed key table
+    /// refuses to link them, and the shared word must not overrule it by
+    /// another name.
+    #[test]
+    fn a_pair_the_key_table_refused_gets_no_name_match() {
+        let files = [
+            ("svc/api/Dockerfile", "FROM python:3.12\n"),
+            ("svc/api/.env.example", "ZZSINKURL=http://a\n"),
+            ("svc/worker/Dockerfile", "FROM python:3.12\n"),
+            ("svc/worker/.env.example", "ZZSINKURL=http://b\n"),
+        ];
+        let fragments: Vec<Fragment> = files
+            .iter()
+            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .collect();
+        let capped = collect_capped_edges(
+            &fragments,
+            None,
+            false,
+            &crate::resource::RunContext::unbounded(),
+        );
+        assert!(
+            !has_fallback_pair(&capped, "svc/api/.env.example", "svc/worker/.env.example"),
+            "the table ruled on this pair"
+        );
+    }
+
+    /// The variable the change sets is tied typed to its reader; a load-test
+    /// script that only spells the same word as a local constant is not what
+    /// the change reaches, so the name match drops that pair. Without the
+    /// reader the key is unresolved and the name match is all there is.
+    #[test]
+    fn a_resolved_variable_is_not_name_matched_to_a_local_constant() {
+        let diff = "diff --git a/svc/app.env b/svc/app.env\n--- a/svc/app.env\n+++ b/svc/app.env\n@@ -1 +1 @@\n+ZZSINKHOST=http://a\n";
+        let env = ("svc/app.env", "ZZSINKHOST=http://a\n");
+        let reader = (
+            "svc/app.py",
+            "import os\n\ndef boot():\n    return os.environ[\"ZZSINKHOST\"]\n",
+        );
+        let constant = ("tools/loadtest.py", "ZZSINKHOST = \"http://localhost:9\"\n");
+        let key_match = |files: &[(&str, &str)]| {
+            let fragments: Vec<Fragment> = files
+                .iter()
+                .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+                .collect();
+            let ctx = crate::resource::RunContext::unbounded();
+            ctx.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(diff));
+            let capped = collect_capped_edges(&fragments, None, false, &ctx);
+            has_fallback_pair(&capped, "svc/app.env", "tools/loadtest.py")
+        };
+        assert!(
+            key_match(&[env, constant]),
+            "an unresolved key keeps the name match"
+        );
+        assert!(
+            !key_match(&[env, reader, constant]),
+            "a typed key owns its name"
+        );
     }
 
     /// `proj/a.c` is dedicated (it includes a header) and shares one name with
@@ -659,19 +810,19 @@ mod fallback_gate_tests {
             &crate::resource::RunContext::unbounded(),
         );
         assert!(
-            !has_semantic_pair(&capped, "proj/a.c", "proj/e.c"),
+            !has_fallback_pair(&capped, "proj/a.c", "proj/e.c"),
             "a parsed file of a covered language: no edge is its builder's answer (#286)"
         );
         assert!(
-            has_semantic_pair(&capped, "proj/a.c", "proj/f.c"),
+            has_fallback_pair(&capped, "proj/a.c", "proj/f.c"),
             "a file its parser could not read keeps the fallback"
         );
         assert!(
-            has_semantic_pair(&capped, "proj/a.c", "proj/g.proto"),
+            has_fallback_pair(&capped, "proj/a.c", "proj/g.proto"),
             "a declarative file keeps the fallback in a covered language"
         );
         assert!(
-            !has_semantic_pair(&capped, "proj/a.c", "bin/other"),
+            !has_fallback_pair(&capped, "proj/a.c", "bin/other"),
             "an extensionless script is the language its shebang names, covered by `bin/run`"
         );
     }
@@ -698,7 +849,7 @@ mod fallback_gate_tests {
         capped
             .edges
             .iter()
-            .filter(|e| e.category == EdgeCategory::Semantic)
+            .filter(|e| matches!(e.category, EdgeCategory::Semantic | EdgeCategory::KeyMatch))
             .filter(|e| node(e.src).path.as_ref() == path || node(e.dst).path.as_ref() == path)
             .map(|e| format!("{} -> {}", name(e.src), name(e.dst)))
             .collect()

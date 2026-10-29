@@ -1,0 +1,69 @@
+name: keys_proto_001_message_to_python
+tags:
+- xkeys:proto
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    proto/shop/orders.proto: |
+      syntax = "proto3";
+      package shop;
+
+      message Order {
+        int64 id = 1;
+      }
+    services/api/server.py: |
+      import orders_pb2
+
+
+      def make():
+          return orders_pb2.OrderItem(id=1)
+    proto/legacy/old_orders.proto: |
+      syntax = "proto3";
+      package legacy;
+
+      message OrderItem {
+        int64 id = 1;
+      }
+    services/legacy/client.py: |
+      import old_orders_pb2
+
+
+      def item():
+          return old_orders_pb2.OrderItem(id=2)
+  changed_files:
+    proto/shop/orders.proto: |
+      syntax = "proto3";
+      package shop;
+
+      message Order {
+        int64 id = 1;
+      }
+
+      message OrderItem {
+        int64 id = 1;
+      }
+  commit_message: Add the order item message
+fragments:
+- id: orders
+  selector:
+    path: proto/shop/orders.proto
+    anchor: 'message OrderItem'
+- id: legacy_proto
+  selector:
+    path: proto/legacy/old_orders.proto
+- id: legacy_client
+  selector:
+    path: services/legacy/client.py
+- id: api
+  selector:
+    path: services/api/server.py
+    anchor: 'orders_pb2.OrderItem'
+oracle:
+  required:
+  - orders
+  - api
+  forbidden:
+  - legacy_proto
+  - legacy_client
+min_score: 60

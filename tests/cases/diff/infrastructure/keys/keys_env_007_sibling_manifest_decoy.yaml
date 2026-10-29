@@ -1,0 +1,88 @@
+name: keys_env_007_sibling_manifest_decoy
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:go
+- lang:yaml
+repo:
+  initial_files:
+    services/billing/main.go: |
+      package main
+
+      import "os"
+
+      func ledger() string {
+      	return os.Getenv("LEDGER_URL")
+      }
+
+      func main() { _ = ledger() }
+    services/billing/Dockerfile: |
+      FROM golang:1.23
+      COPY . /src
+      RUN go build -o /bin/billing .
+    services/billing/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: billing
+      spec:
+        template:
+          spec:
+            containers:
+              - name: billing
+                image: registry.example.com/team/billing:1
+                env:
+                  - name: LEDGER_URL
+                    value: http://ledger.internal
+    services/audit/Dockerfile: |
+      FROM golang:1.23
+      COPY . /src
+      RUN go build -o /bin/audit .
+    services/audit/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: audit
+      spec:
+        template:
+          spec:
+            containers:
+              - name: audit
+                image: registry.example.com/team/audit:1
+                env:
+                  - name: LEDGER_URL
+                    value: http://ledger.audit.internal
+  changed_files:
+    services/billing/main.go: |
+      package main
+
+      import (
+      	"os"
+      	"strings"
+      )
+
+      func ledger() string {
+      	return strings.TrimSpace(os.Getenv("LEDGER_URL"))
+      }
+
+      func main() { _ = ledger() }
+  commit_message: Trim the ledger url
+fragments:
+- id: main
+  selector:
+    path: services/billing/main.go
+    anchor: 'strings.TrimSpace'
+- id: billing
+  selector:
+    path: services/billing/deploy.yaml
+    anchor: 'name: LEDGER_URL'
+- id: audit
+  selector:
+    path: services/audit/deploy.yaml
+oracle:
+  required:
+  - main
+  - billing
+  forbidden:
+  - audit
+min_score: 60

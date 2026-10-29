@@ -1,0 +1,116 @@
+name: xlang_table_002_flyway_alter_to_entity_and_jdbc
+tags:
+- xlang:table
+- lang:sql
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    persistence/stems/src/main/resources/db/stems/V001__stems.sql: |
+      CREATE SCHEMA stems;
+
+      CREATE TABLE stems.assets (
+          track_id uuid PRIMARY KEY,
+          instrumental_path text,
+          fail_count integer NOT NULL DEFAULT 0
+      );
+    persistence/stems/src/main/kotlin/dev/acme/persistence/stems/entity/StemAssetEntity.kt: |
+      package dev.acme.persistence.stems.entity
+
+      import jakarta.persistence.Column
+      import jakarta.persistence.Entity
+      import jakarta.persistence.Id
+      import jakarta.persistence.Table
+      import java.time.Instant
+      import java.util.UUID
+
+      @Entity
+      @Table(name = "assets", schema = "stems")
+      class StemAssetEntity(
+          @Id
+          @Column(name = "track_id")
+          val trackId: UUID = UUID.randomUUID(),
+          @Column(name = "instrumental_path")
+          val instrumentalPath: String? = null,
+          @Column(name = "failure_terminal", nullable = false)
+          val failureTerminal: Boolean = false,
+      )
+    app/src/main/kotlin/dev/acme/app/library/TrackContentInvalidator.kt: |
+      package dev.acme.app.library
+
+      import org.springframework.jdbc.core.JdbcTemplate
+
+      class TrackContentInvalidator(private val jdbc: JdbcTemplate) {
+          fun forget(trackId: java.util.UUID) {
+              val paths = jdbc.queryForList("SELECT instrumental_path FROM stems.assets WHERE track_id = ?", trackId)
+              jdbc.update("DELETE FROM stems.assets WHERE track_id = ?", trackId)
+          }
+      }
+    worker/src/main/kotlin/dev/acme/worker/stems/StemAssetReclaimer.kt: |
+      package dev.acme.worker.stems
+
+      import org.slf4j.LoggerFactory
+
+      class StemAssetReclaimer {
+          private val log = LoggerFactory.getLogger(javaClass)
+
+          fun reclaim(stale: List<String>, reason: String) {
+              log.info("Reclaiming {} stems assets {}", stale.size, reason)
+          }
+      }
+    persistence/library/src/main/kotlin/dev/acme/persistence/library/entity/LibraryAssetEntity.kt: |
+      package dev.acme.persistence.library.entity
+
+      import jakarta.persistence.Entity
+      import jakarta.persistence.Id
+      import jakarta.persistence.Table
+
+      @Entity
+      @Table(name = "assets", schema = "library")
+      class LibraryAssetEntity(@Id val id: java.util.UUID = java.util.UUID.randomUUID())
+  changed_files:
+    persistence/stems/src/main/resources/db/stems/V003__stems_terminal_verdict.sql: |
+      -- Whether a failure row is the separator's final answer about the recording, as against a spent
+      -- retry budget.
+      ALTER TABLE stems.assets
+          ADD COLUMN failure_terminal boolean NOT NULL DEFAULT false;
+  commit_message: Record whether a failure is the separator's final answer
+fragments:
+- id: v3_alter
+  selector:
+    path: persistence/stems/src/main/resources/db/stems/V003__stems_terminal_verdict.sql
+    anchor: ALTER TABLE stems.assets
+- id: entity_table
+  selector:
+    path: persistence/stems/src/main/kotlin/dev/acme/persistence/stems/entity/StemAssetEntity.kt
+    anchor: '@Table(name = "assets", schema = "stems")'
+- id: entity_col
+  selector:
+    path: persistence/stems/src/main/kotlin/dev/acme/persistence/stems/entity/StemAssetEntity.kt
+    anchor: '@Column(name = "failure_terminal"'
+- id: jdbc
+  selector:
+    path: app/src/main/kotlin/dev/acme/app/library/TrackContentInvalidator.kt
+    anchor: FROM stems.assets
+- id: v1_create
+  selector:
+    path: persistence/stems/src/main/resources/db/stems/V001__stems.sql
+- id: no_reclaimer_log
+  selector:
+    path: worker/src/main/kotlin/dev/acme/worker/stems/StemAssetReclaimer.kt
+- id: no_library_entity
+  selector:
+    path: persistence/library/src/main/kotlin/dev/acme/persistence/library/entity/LibraryAssetEntity.kt
+oracle:
+  required:
+  - v3_alter
+  - entity_table
+  - entity_col
+  - jdbc
+  allowed:
+  - v1_create
+  forbidden:
+  - no_reclaimer_log
+  - no_library_entity

@@ -27,6 +27,17 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("test_naming", EdgeWeightConfig::new(0.50, 0.50)),
         ("test_reverse", EdgeWeightConfig::new(0.30, 1.0)),
         ("config_code", EdgeWeightConfig::new(0.35, 0.50)),
+        // The typed key table (`edges/config_edges/keys.rs`). Both start at
+        // the config-to-code weight; the weak image key, which drops the
+        // registry, sits below the naming floor. Calibration is v3 C1 (#246).
+        ("config_env", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_image", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_image_weak", EdgeWeightConfig::new(0.25, 0.50)),
+        ("config_route", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_route_prefix", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_table", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_proto", EdgeWeightConfig::new(0.35, 0.50)),
+        ("config_proto_weak", EdgeWeightConfig::new(0.25, 0.50)),
         ("sibling", EdgeWeightConfig::new(0.05, 1.0)),
         ("cochange", EdgeWeightConfig::new(0.40, 1.0)),
         ("doc_structure", EdgeWeightConfig::new(0.30, 0.83)),

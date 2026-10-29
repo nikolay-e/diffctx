@@ -1,0 +1,86 @@
+name: xlang_route_006_decoy_path_in_comment
+tags:
+- xlang:decoy
+- xlang:route
+- lang:python
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    api/items.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter(prefix="/items")
+
+
+      @router.get("/{item_id}/history")
+      async def item_history(item_id: str):
+          return await load_history(item_id)
+    web/src/lib/items.ts: |
+      export const itemHistory = (id: string) => fetch(`/items/${id}/history`).then(r => r.json());
+    tests/test_items.py: |
+      def test_history(client):
+          assert client.get("/items/42/history").status_code == 200
+    scripts/migrate_legacy.py: |
+      # The old /items/{item_id}/history endpoint returned a flat list; callers were moved to the
+      # paginated shape in the last release, so this script only rewrites stored cursors.
+      def rewrite_cursors(rows):
+          return [{"cursor": row["cursor"], "page": 1} for row in rows]
+    docs/changelog.md: |
+      # Changelog
+
+      - `/items/{item_id}/history` now caps its answer; ask for the next page with a cursor.
+    api/orders.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter(prefix="/orders")
+
+
+      @router.get("/{order_id}/history")
+      async def order_history(order_id: str):
+          return await load_order_history(order_id)
+  changed_files:
+    api/items.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter(prefix="/items")
+
+
+      @router.get("/{item_id}/history")
+      async def item_history(item_id: str):
+          return await load_history(item_id, limit=100)
+  commit_message: Cap an item's history at a hundred rows
+fragments:
+- id: handler
+  selector:
+    path: api/items.py
+    anchor: limit=100
+- id: web_call
+  selector:
+    path: web/src/lib/items.ts
+    anchor: /items/${id}/history
+- id: test_call
+  selector:
+    path: tests/test_items.py
+    anchor: /items/42/history
+- id: changelog
+  selector:
+    path: docs/changelog.md
+- id: no_migrate_comment
+  selector:
+    path: scripts/migrate_legacy.py
+- id: no_orders_route
+  selector:
+    path: api/orders.py
+oracle:
+  required:
+  - handler
+  - web_call
+  - test_call
+  allowed:
+  - changelog
+  forbidden:
+  - no_migrate_comment
+  - no_orders_route

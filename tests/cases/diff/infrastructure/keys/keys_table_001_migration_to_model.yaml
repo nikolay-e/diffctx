@@ -1,0 +1,77 @@
+name: keys_table_001_migration_to_model
+tags:
+- xkeys:table
+- xkeys:decoy
+- lang:python
+- lang:sql
+repo:
+  initial_files:
+    app/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    app/migrations/0041_create_orders.sql: |
+      CREATE TABLE orders (
+        id serial PRIMARY KEY,
+        total numeric
+      );
+    app/models.py: |
+      from sqlalchemy.orm import declarative_base
+
+      Base = declarative_base()
+
+
+      class Order(Base):
+          __tablename__ = "orders"
+    app/reports.py: |
+      def totals(db):
+          return db.execute("SELECT sum(total) FROM orders")
+    app/cache.py: |
+      orders = []
+      orders_total = 0
+
+
+      def remember(order):
+          orders.append(order)
+    billing/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    billing/models.py: |
+      from sqlalchemy.orm import declarative_base
+
+      Base = declarative_base()
+
+
+      class Order(Base):
+          __tablename__ = "orders"
+  changed_files:
+    app/migrations/0042_orders_note.sql: |
+      ALTER TABLE orders ADD COLUMN note text;
+  commit_message: Add a note to orders
+fragments:
+- id: migration
+  selector:
+    path: app/migrations/0042_orders_note.sql
+    anchor: 'ALTER TABLE orders'
+- id: models
+  selector:
+    path: app/models.py
+    anchor: '__tablename__'
+- id: reports
+  selector:
+    path: app/reports.py
+    anchor: 'FROM orders'
+- id: cache
+  selector:
+    path: app/cache.py
+- id: billing_models
+  selector:
+    path: billing/models.py
+oracle:
+  required:
+  - migration
+  - models
+  - reports
+  forbidden:
+  - cache
+  - billing_models
+min_score: 60

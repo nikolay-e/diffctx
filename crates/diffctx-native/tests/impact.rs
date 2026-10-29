@@ -2025,6 +2025,36 @@ fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
     );
 }
 
+/// #656: once a symbol has a resolved caller, the files the repository
+/// chose to withhold cannot turn the answer into a zero; counting them on
+/// every lookup only taught the reader to skip the header.
+#[test]
+fn a_symbol_with_callers_does_not_count_withheld_files() {
+    let tmp = repo(
+        &[
+            (".diffctx/ignore", "app/tests/\n"),
+            ("app/__init__.py", ""),
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+            (
+                "app/run.py",
+                "from app.conf import workers\n\n\ndef start():\n    return workers(4)\n",
+            ),
+        ],
+        &[(
+            "app/tests/test_conf.py",
+            "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 2\n",
+        )],
+    );
+    let out = diffctx()
+        .current_dir(tmp.path())
+        .args(["--symbol", "workers", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("app/run.py::start"), "{text}");
+    assert!(!text.contains("withheld"), "{text}");
+}
+
 /// A class moved within its file, text unchanged, changes nothing a caller
 /// sees; moved and edited, it does.
 #[test]
@@ -2792,8 +2822,10 @@ fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
         )],
     );
     let md = impact_markdown(ts.path(), "HEAD~1..HEAD");
+    // The file imports the class, so a binding model checked the row: the
+    // receiver is unknown, which reads "possible", not a word match.
     assert!(
-        md.contains("save") && md.contains("use.ts::persist"),
+        md.contains("possibly called from use.ts::persist") && !md.contains("use.ts:4 names save"),
         "{md}"
     );
     let rb = repo(
@@ -2904,16 +2936,30 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
         "package web\n\nobject Contracts {\n  def theme(): String = {\n    \"light\"\n  }\n}\n",
     )];
     // One project: the lexical link stands, so the probe below is not vacuous.
+    // The word match is listed as text; its link stays in the JSON row.
+    let tests_of_the_namer = |doc: &serde_json::Value| -> Vec<String> {
+        doc["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|c| c["callers"].as_array().unwrap())
+            .filter(|c| c["evidence"] == "name")
+            .filter_map(|c| c["tested_by"].as_str().map(str::to_string))
+            .collect()
+    };
     let together = repo(&files(false), &change);
-    let md = impact_markdown(together.path(), "HEAD~1..HEAD");
-    assert!(
-        md.contains("quiz/src/test/scala/quiz/ConfigTest.scala"),
-        "{md}"
+    let doc = impact(together.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        tests_of_the_namer(&doc),
+        ["quiz/src/test/scala/quiz/ConfigTest.scala"],
+        "{doc}"
     );
     let apart = repo(&files(true), &change);
+    let doc = impact(apart.path(), "HEAD~1..HEAD");
+    assert!(tests_of_the_namer(&doc).is_empty(), "{doc}");
     let md = impact_markdown(apart.path(), "HEAD~1..HEAD");
     assert!(
-        md.contains("web/src/main/scala/web/Config.scala::generated"),
+        md.contains("web/src/main/scala/web/Config.scala:5 names theme"),
         "{md}"
     );
     assert!(!md.contains("ConfigTest.scala"), "{md}");
@@ -3134,17 +3180,19 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
             .output()
             .expect("run diffctx")
     };
+    // The files are listed as text, and the answer still says a definition
+    // may sit in them: they were read as text, not analysed.
     let unparsed = symbol("relax_step");
-    assert!(!unparsed.status.success());
-    let err = String::from_utf8_lossy(&unparsed.stderr);
+    assert!(unparsed.status.success());
+    let out = String::from_utf8_lossy(&unparsed.stdout);
     assert!(
-        err.contains("2 file(s) naming it were read as text"),
-        "{err}"
+        out.contains("2 file(s) naming it were read as text"),
+        "{out}"
     );
-    assert!(err.contains("fortran: no grammar in this build"), "{err}");
+    assert!(out.contains("fortran: no grammar in this build"), "{out}");
     assert!(
-        err.contains("num/solver.f90") && err.contains("num/use.f90"),
-        "{err}"
+        out.contains("num/solver.f90:") && out.contains("num/use.f90:"),
+        "{out}"
     );
 
     let missing = symbol("nowhere_spelled");
@@ -4177,7 +4225,10 @@ fn a_namer_over_the_size_cap_is_named_as_a_possible_caller() {
     );
     commit_all(repo, "change");
     let md = impact_markdown(repo, "HEAD~1..HEAD");
-    assert!(md.contains("src/big.rs (over the size cap)"), "{md}");
+    assert!(
+        md.contains("src/big.rs names is_test_path (over the size cap)"),
+        "{md}"
+    );
     assert!(md.contains("called from src/small.rs::small_use"), "{md}");
 }
 
@@ -4451,4 +4502,144 @@ fn a_stale_reference_outlives_routine_callers_under_the_budget() {
         assert!(text.contains(&format!("docs/note{n}.md")), "{text}");
     }
     assert!(text.contains("weaker caller(s) omitted"), "{text}");
+}
+
+/// One config per host, `lines` addresses long, all spelled with `noun`.
+fn host_config(host: usize, noun: &str, lines: usize) -> String {
+    (0..lines)
+        .map(|k| format!("url_{k}: http://svc-{host:02}.example.org:8080/v1/{noun}/{k}\n"))
+        .collect()
+}
+
+/// Forgejo #109: the values of every changed config are search terms, and
+/// `git grep` matches each against every line, so an epoch of hundreds of
+/// configs ran a 10 s answer past 300 s. The search takes the smallest
+/// changes first, a bounded number of terms from each, and counts the
+/// configs it left out, which stay "not followed".
+#[test]
+fn a_key_search_over_many_changed_configs_is_capped_and_counts_the_rest() {
+    let sizes = |noun: &str| -> Vec<(String, String)> {
+        (0..20)
+            .map(|host| {
+                let lines = if host == 0 { 1 } else { 20 };
+                (
+                    format!("cfg/svc_{host:02}.yaml"),
+                    host_config(host, noun, lines),
+                )
+            })
+            .collect()
+    };
+    let readers = [
+        (
+            "app/dashboard.yaml".to_string(),
+            "target: http://svc-00.example.org:8080/v1/items/0\n".to_string(),
+        ),
+        (
+            "app/other.yaml".to_string(),
+            "target: http://svc-19.example.org:8080/v1/items/0\n".to_string(),
+        ),
+    ];
+    let before: Vec<(String, String)> = sizes("items").into_iter().chain(readers).collect();
+    let after = sizes("things");
+    let before: Vec<(&str, &str)> = before
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    let after: Vec<(&str, &str)> = after
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    let tmp = repo(&before, &after);
+
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "app/dashboard.yaml:1 names http://svc-00.example.org:8080/v1/items/0 (cfg/svc_00.yaml)"
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains(
+            "(key search capped: the keys and values of 14 changed config(s) were not searched)"
+        ),
+        "{md}"
+    );
+    assert!(!md.contains("app/other.yaml"), "{md}");
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        doc["key_searches"].as_array().map(Vec::len),
+        Some(6),
+        "{doc}"
+    );
+    assert!(
+        !doc["key_searches"].to_string().contains("svc_19"),
+        "the largest change was searched: {doc}"
+    );
+}
+
+/// Forgejo #109: a run stopped at any poll inside the key search returns,
+/// names the deadline, and lists no line the whole run does not.
+#[test]
+fn a_key_search_stopped_at_any_poll_answers_a_subset_or_the_whole() {
+    let configs = |noun: &str| -> Vec<(String, String)> {
+        (0..4)
+            .map(|host| {
+                (
+                    format!("cfg/svc_{host:02}.yaml"),
+                    host_config(host, noun, 2),
+                )
+            })
+            .collect()
+    };
+    let readers = [(
+        "app/dashboard.yaml".to_string(),
+        "a: http://svc-00.example.org:8080/v1/items/0\nb: http://svc-02.example.org:8080/v1/items/1\n"
+            .to_string(),
+    )];
+    let before: Vec<(String, String)> = configs("items").into_iter().chain(readers).collect();
+    let after = configs("things");
+    let before: Vec<(&str, &str)> = before
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    let after: Vec<(&str, &str)> = after
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    let tmp = repo(&before, &after);
+    let repo = tmp.path();
+
+    let named = |doc: &serde_json::Value| -> Vec<String> {
+        doc["named_by"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(|r| format!("{}:{} {}", r["path"], r["line"], r["key"]))
+            .collect()
+    };
+    let truth = named(&impact(repo, "HEAD~1..HEAD"));
+    assert_eq!(truth.len(), 2, "{truth:?}");
+    let stopped = |doc: &serde_json::Value| doc["limits"].to_string().contains("deadline");
+    let sweep = support::sweep_polls(
+        |n| {
+            impact_env(
+                repo,
+                "HEAD~1..HEAD",
+                &[("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", &n.to_string())],
+            )
+        },
+        |doc| !stopped(doc),
+    );
+    assert!(sweep.len() > 1, "no poll stopped the run");
+    for (n, doc) in sweep {
+        let got = named(&doc);
+        assert!(
+            got.iter().all(|c| truth.contains(c)),
+            "poll {n}: lines beyond the whole run: {got:?} vs {truth:?}"
+        );
+        if !stopped(&doc) {
+            assert_eq!(got, truth, "poll {n}: a smaller answer that looks complete");
+        }
+    }
 }

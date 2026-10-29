@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::canon::{KeyCache, canon_tokens, for_each_name_key};
 use crate::config::extensions::{CODE_EXTENSIONS, CONFIG_EXTENSIONS};
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
@@ -101,8 +102,6 @@ static PROPERTIES_KEY_RE: Lazy<Regex> =
 static XML_ELEMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<([a-zA-Z_][\w.-]*)[>\s/]").unwrap());
 
-static SEPARATOR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[_-]").unwrap());
-
 fn is_config_file(path: &Path) -> bool {
     let ext = base::file_ext(path);
     if ext.is_empty() {
@@ -132,25 +131,27 @@ fn patterns_for_suffix(suffix: &str) -> Vec<&'static Regex> {
     }
 }
 
-fn expand_config_key(key: &str) -> FxHashSet<String> {
-    let mut result = FxHashSet::default();
-    if key.len() < 2 {
-        return result;
+/// The canonical keys one config key stands for: itself, whole, and, for a
+/// name made of words (`max_pool_size`, `max-pool-size`, `maxPoolSize`), each
+/// of its words. A key that is a path or a dotted setting (`spring.datasource.url`)
+/// stands only for itself.
+fn expand_config_key(raw: &str) -> Vec<(String, bool)> {
+    let tokens = canon_tokens(raw);
+    let whole = tokens.join("_");
+    if whole.len() < 2 {
+        return Vec::new();
     }
-    result.insert(key.to_string());
-    if key.contains('_') || key.contains('-') {
-        let parts: Vec<&str> = SEPARATOR_RE.split(key).collect();
-        for p in &parts {
-            if p.len() >= 3 {
-                result.insert(p.to_string());
-            }
-        }
-        let joined: String = key.chars().filter(|c| *c != '_' && *c != '-').collect();
-        if joined.len() >= 4 {
-            result.insert(joined);
-        }
+    let mut keys = vec![(whole, true)];
+    let words_only = !raw.contains(['.', '/', ':']);
+    if tokens.len() > 1 && words_only && raw.contains(['_', '-']) {
+        keys.extend(
+            tokens
+                .into_iter()
+                .filter(|t| t.len() >= 3)
+                .map(|t| (t, false)),
+        );
     }
-    result
+    keys
 }
 
 /// Every key a config file spells, its sub-words included, each marked
@@ -161,10 +162,8 @@ fn extract_config_keys(suffix: &str, content: &str) -> FxHashMap<String, bool> {
     for pat in patterns {
         for cap in pat.captures_iter(content) {
             if let Some(m) = cap.get(1) {
-                let raw_key = m.as_str().to_lowercase();
-                for expanded in expand_config_key(&raw_key) {
-                    let whole = expanded == raw_key;
-                    *keys.entry(expanded).or_default() |= whole;
+                for (key, whole) in expand_config_key(m.as_str()) {
+                    *keys.entry(key).or_default() |= whole;
                 }
             }
         }
@@ -172,43 +171,11 @@ fn extract_config_keys(suffix: &str, content: &str) -> FxHashMap<String, bool> {
     keys
 }
 
-fn is_word_byte(b: u8) -> bool {
-    // Non-ASCII bytes count as word bytes: the regex `\b` this check replaced
-    // treats a Unicode letter as a word character, so `token` inside
-    // `tokenización` was NOT a match (#216). Treating every non-ASCII byte as
-    // a word byte is the conservative direction — it can only reject matches
-    // adjacent to non-ASCII punctuation that `\b` would have accepted, never
-    // admit ones it rejected.
-    b.is_ascii_alphanumeric() || b == b'_' || !b.is_ascii()
-}
-
-fn build_key_patterns(keys: &FxHashSet<String>) -> Vec<Regex> {
-    let mut patterns = Vec::new();
-    for key in keys {
-        if key.len() >= 4 && !STOPWORDS.contains(key.as_str()) {
-            let escaped = regex::escape(key);
-            if let Ok(re) = Regex::new(&format!("(?i)\\b{}\\b", escaped)) {
-                patterns.push(re);
-            }
-        }
-    }
-    patterns
-}
-
-fn content_matches_any_pattern(content: &str, patterns: &[Regex]) -> bool {
-    for pat in patterns {
-        if pat.is_match(content) {
-            return true;
-        }
-    }
-    false
-}
-
 pub struct ConfigToCodeEdgeBuilder;
 
 impl EdgeBuilder for ConfigToCodeEdgeBuilder {
     fn category_label(&self) -> Option<&str> {
-        Some("config_generic")
+        Some("key_match")
     }
 
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -230,15 +197,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             return FxHashMap::default();
         }
 
-        // One automaton over every distinct key instead of per-config regex
-        // sweeps of every code fragment: the per-pair form is
-        // O(configs x code x patterns) and stood at 42s of a 94s envoy run.
-        // Keys whose edge characters are not word characters (or not ASCII)
-        // keep the regex path — `\b` anchors relative to those differently
-        // than a manual boundary check, and exactness is what makes this a
-        // pure speedup.
         let mut key_to_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
-        let mut fallback_patterns: Vec<(Regex, usize)> = Vec::new();
         let mut spelled_whole: FxHashSet<String> = FxHashSet::default();
         for (ci, cfg) in config_frags.iter().enumerate() {
             let suffix = base::file_ext(Path::new(cfg.path()));
@@ -247,17 +206,9 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                     continue;
                 }
                 if whole {
-                    spelled_whole.insert(key.to_lowercase());
+                    spelled_whole.insert(key.clone());
                 }
-                let bytes = key.as_bytes();
-                let word_edges = key.is_ascii()
-                    && is_word_byte(bytes[0])
-                    && is_word_byte(bytes[bytes.len() - 1]);
-                if word_edges {
-                    key_to_cfgs.entry(key.to_lowercase()).or_default().push(ci);
-                } else if let Ok(re) = Regex::new(&format!("(?i)\\b{}\\b", regex::escape(&key))) {
-                    fallback_patterns.push((re, ci));
-                }
+                key_to_cfgs.entry(key).or_default().push(ci);
             }
         }
         // The ambiguity bar holds on the config side too: a sub-word most
@@ -279,46 +230,21 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         };
         key_to_cfgs
             .retain(|key, cis| !vocabulary(per_key_files(cis), !spelled_whole.contains(key)));
-        let mut fallback_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
-        for (re, ci) in &fallback_patterns {
-            fallback_cfgs
-                .entry(re.as_str().to_string())
-                .or_default()
-                .push(*ci);
-        }
-        fallback_patterns
-            .retain(|(re, _)| !vocabulary(per_key_files(&fallback_cfgs[re.as_str()]), false));
-        if key_to_cfgs.is_empty() && fallback_patterns.is_empty() {
+        if key_to_cfgs.is_empty() {
             return FxHashMap::default();
         }
 
         let keys: Vec<&String> = key_to_cfgs.keys().collect();
-        let automaton = match aho_corasick::AhoCorasick::builder()
-            .ascii_case_insensitive(true)
-            .build(&keys)
-        {
-            Ok(ac) => Some(ac),
-            Err(e) => {
-                // A failed build silences the entire keyed channel (only the
-                // fallback regexes still run) — that must never be silent.
-                tracing::warn!(
-                    "config-edge AhoCorasick build failed over {} keys — keyed channel disabled: {e}",
-                    keys.len()
-                );
-                None
-            }
-        };
+        let key_index: FxHashMap<&str, usize> = keys
+            .iter()
+            .enumerate()
+            .map(|(i, k)| (k.as_str(), i))
+            .collect();
 
-        // Document-frequency gate, same ambiguity bar as
-        // `CFamilySemanticWeights::max_files_per_name`: a key matched in more
-        // distinct code files than this is vocabulary, not a config-to-code
-        // dependency. Without it a lockfile's package names ("react",
-        // "lodash") match nearly every source fragment and this builder alone
-        // ran past the pipeline deadline on a sentry-scale yarn->pnpm commit
-        // (#116) — the emission map, not the automaton, was the cost.
-        let mut key_files: Vec<FxHashSet<&str>> = vec![FxHashSet::default(); keys.len()];
-        let mut fallback_files: Vec<FxHashSet<&str>> =
-            vec![FxHashSet::default(); fallback_patterns.len()];
+        // Which keys each code fragment spells, read once: the document
+        // frequency below and the emission after it share the scan.
+        let mut cache = KeyCache::default();
+        let mut hits: Vec<(usize, Vec<usize>)> = Vec::new();
         for (i, code_frag) in code_frags.iter().enumerate() {
             // This scan alone outran the whole pipeline timeout on a
             // sentry-scale commit (#116); the between-builders deadline check
@@ -326,23 +252,29 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             if !crate::resource::poll_current_every(i, 64) {
                 break;
             }
-            let content = code_frag.content.as_ref();
-            if let Some(ac) = &automaton {
-                for m in ac.find_overlapping_iter(content) {
-                    let b = content.as_bytes();
-                    let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
-                    let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
-                    if before_ok && after_ok {
-                        let ki = m.pattern().as_usize();
-                        if key_files[ki].len() <= MAX_FILES_PER_KEY {
-                            key_files[ki].insert(code_frag.path());
-                        }
-                    }
+            let mut spelled: FxHashSet<usize> = FxHashSet::default();
+            for_each_name_key(code_frag.content.as_ref(), &mut cache, |k| {
+                if let Some(&ki) = key_index.get(k) {
+                    spelled.insert(ki);
                 }
+            });
+            if !spelled.is_empty() {
+                hits.push((i, spelled.into_iter().collect()));
             }
-            for (fi, (re, _)) in fallback_patterns.iter().enumerate() {
-                if fallback_files[fi].len() <= MAX_FILES_PER_KEY && re.is_match(content) {
-                    fallback_files[fi].insert(code_frag.path());
+        }
+
+        // Document-frequency gate, same ambiguity bar as
+        // `CFamilySemanticWeights::max_files_per_name`: a key matched in more
+        // distinct code files than this is vocabulary, not a config-to-code
+        // dependency. Without it a lockfile's package names ("react",
+        // "lodash") match nearly every source fragment and this builder alone
+        // ran past the pipeline deadline on a sentry-scale yarn->pnpm commit
+        // (#116) — the emission map, not the scan, was the cost.
+        let mut key_files: Vec<FxHashSet<&str>> = vec![FxHashSet::default(); keys.len()];
+        for (i, spelled) in &hits {
+            for &ki in spelled {
+                if key_files[ki].len() <= MAX_FILES_PER_KEY {
+                    key_files[ki].insert(code_frags[*i].path());
                 }
             }
         }
@@ -350,36 +282,18 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             .iter()
             .map(|s| s.len() <= MAX_FILES_PER_KEY)
             .collect();
-        let fallback_alive: Vec<bool> = fallback_files
-            .iter()
-            .map(|s| s.len() <= MAX_FILES_PER_KEY)
-            .collect();
 
         let mut edges: EdgeDict = FxHashMap::default();
         let mut reported = 0u64;
-        for (i, code_frag) in code_frags.iter().enumerate() {
-            if !crate::resource::poll_emissions(i, 64, edges.len() as u64, &mut reported) {
+        for (n, (i, spelled)) in hits.iter().enumerate() {
+            if !crate::resource::poll_emissions(n, 64, edges.len() as u64, &mut reported) {
                 break;
             }
-            let content = code_frag.content.as_ref();
+            let code_frag = code_frags[*i];
             let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
-            if let Some(ac) = &automaton {
-                for m in ac.find_overlapping_iter(content) {
-                    let ki = m.pattern().as_usize();
-                    if !key_alive[ki] {
-                        continue;
-                    }
-                    let b = content.as_bytes();
-                    let before_ok = m.start() == 0 || !is_word_byte(b[m.start() - 1]);
-                    let after_ok = m.end() == b.len() || !is_word_byte(b[m.end()]);
-                    if before_ok && after_ok {
-                        matched_cfgs.extend(key_to_cfgs[keys[ki]].iter());
-                    }
-                }
-            }
-            for (fi, (re, ci)) in fallback_patterns.iter().enumerate() {
-                if fallback_alive[fi] && !matched_cfgs.contains(ci) && re.is_match(content) {
-                    matched_cfgs.insert(*ci);
+            for &ki in spelled {
+                if key_alive[ki] {
+                    matched_cfgs.extend(key_to_cfgs[keys[ki]].iter());
                 }
             }
             for ci in matched_cfgs {
@@ -409,27 +323,27 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             return vec![];
         }
 
-        let mut all_keys = FxHashSet::default();
+        let mut all_keys: FxHashSet<String> = FxHashSet::default();
         for cfg_path in &config_changed {
             let content = match base::read_file_cached(cfg_path, file_cache) {
                 Some(c) => c,
                 None => continue,
             };
             let suffix = base::file_ext(cfg_path);
-            all_keys.extend(extract_config_keys(&suffix, &content).into_keys());
+            all_keys.extend(
+                extract_config_keys(&suffix, &content)
+                    .into_keys()
+                    .filter(|k| k.len() >= 4 && !STOPWORDS.contains(k.as_str())),
+            );
         }
 
         if all_keys.is_empty() {
             return vec![];
         }
 
-        let patterns = build_key_patterns(&all_keys);
-        if patterns.is_empty() {
-            return vec![];
-        }
-
         let changed_set: FxHashSet<&PathBuf> = changed.iter().collect();
         let mut discovered = Vec::new();
+        let mut cache = KeyCache::default();
 
         for candidate in candidates {
             if changed_set.contains(candidate) || !is_code_file(candidate) {
@@ -439,7 +353,9 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                 Some(c) => c,
                 None => continue,
             };
-            if content_matches_any_pattern(&content, &patterns) {
+            let mut spelled = false;
+            for_each_name_key(&content, &mut cache, |k| spelled |= all_keys.contains(k));
+            if spelled {
                 discovered.push(candidate.clone());
             }
         }
@@ -483,5 +399,21 @@ mod tests {
             !edges.contains_key(&(cfg.id.clone(), miss.id.clone())),
             "`sesion` inside `sesion\u{00e9}s` is not a word match"
         );
+    }
+
+    /// One setting is spelled three ways across a YAML key, a TypeScript
+    /// property and a Python constant; a name that merely shares two of its
+    /// words is another setting.
+    #[test]
+    fn one_setting_in_every_spelling_links_config_to_code() {
+        let cfg = frag("app.yaml", "max-pool-size: 10\n");
+        let camel = frag("a.ts", "const n = cfg.maxPoolSize;\n");
+        let snake = frag("b.py", "MAX_POOL_SIZE = 1\n");
+        let other = frag("c.py", "pool_size = 2\n");
+        let frags = vec![cfg.clone(), camel.clone(), snake.clone(), other.clone()];
+        let edges = ConfigToCodeEdgeBuilder.build(&frags, None);
+        assert!(edges.contains_key(&(cfg.id.clone(), camel.id.clone())));
+        assert!(edges.contains_key(&(cfg.id.clone(), snake.id.clone())));
+        assert!(!edges.contains_key(&(cfg.id.clone(), other.id.clone())));
     }
 }

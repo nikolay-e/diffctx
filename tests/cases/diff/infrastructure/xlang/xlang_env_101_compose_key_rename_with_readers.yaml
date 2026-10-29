@@ -1,0 +1,92 @@
+name: xlang_env_101_compose_key_rename_with_readers
+tags:
+- xlang:env
+- lang:yaml
+- lang:python
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    deploy/compose.yml: |
+      services:
+        api:
+          build: ./api
+          environment:
+            DB_URL: postgresql://app:dev@db:5432/app # pragma: allowlist secret
+            LOG_LEVEL: info
+        db:
+          image: postgres:17-alpine
+    api/config.py: |
+      import os
+
+      DB_URL = os.environ["DB_URL"]
+      LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
+    api/migrate.py: |
+      import os
+
+      import psycopg
+
+      def run() -> None:
+          with psycopg.connect(os.environ["DB_URL"]) as conn:
+              conn.execute("select 1")
+    .env.example: |
+      DB_URL=postgresql://app:password@localhost:5432/app
+      LOG_LEVEL=info
+    deploy/k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: api
+      data:
+        DB_URL: postgresql://app@db.svc.cluster.local:5432/app
+        LOG_LEVEL: info
+    worker/config.py: |
+      import os
+
+      QUEUE_URL = os.environ["QUEUE_URL"]
+  changed_files:
+    deploy/compose.yml: |
+      services:
+        api:
+          build: ./api
+          environment:
+            DATABASE_URL: postgresql://app:dev@db:5432/app # pragma: allowlist secret
+            LOG_LEVEL: info
+        db:
+          image: postgres:17-alpine
+  commit_message: The compose stack names the database URL DATABASE_URL
+fragments:
+- id: compose_rename
+  selector:
+    path: deploy/compose.yml
+    anchor: 'DATABASE_URL: postgresql://'
+- id: config_reader
+  selector:
+    path: api/config.py
+    anchor: os.environ["DB_URL"]
+- id: migrate_reader
+  selector:
+    path: api/migrate.py
+    anchor: os.environ["DB_URL"]
+- id: dotenv_old
+  selector:
+    path: .env.example
+    anchor: DB_URL=
+- id: configmap_old
+  selector:
+    path: deploy/k8s/configmap.yaml
+    anchor: 'DB_URL:'
+- id: no_worker_config
+  selector:
+    path: worker/config.py
+oracle:
+  required:
+  - compose_rename
+  - config_reader
+  - migrate_reader
+  - dotenv_old
+  - configmap_old
+  allowed: []
+  forbidden:
+  - no_worker_config

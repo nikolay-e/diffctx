@@ -5,17 +5,16 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::DOCKER;
-use crate::types::Fragment;
+use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, link_by_name, link_by_path_match,
+    self, EdgeBuilder, FragmentIndex, MAX_FILES_PER_PATH_REF, add_edge, link_by_name,
+    link_by_path_match,
 };
 
 static DOCKERFILE_COPY_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?mi)^(?:COPY|ADD)\s+(?:--[^\s]+\s+)*(.+)").unwrap());
-static DOCKERFILE_ENV_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?mi)^ENV\s+(\w+)").unwrap());
-static DOCKERFILE_ARG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?mi)^ARG\s+(\w+)").unwrap());
 
 static COMPOSE_BUILD_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r##"(?m)^\s+build:\s*['"]?([^'"#\n]+)"##).unwrap());
@@ -103,6 +102,59 @@ fn collect_compose_refs(content: &str) -> FxHashSet<String> {
     refs
 }
 
+/// The repo-relative path `reference` names from a file in `base_dir`; `None`
+/// for a reference that is not a plain relative path (absolute, a variable, a
+/// URL, a wildcard) or that climbs out of the repository.
+fn resolve_declared(base_dir: &str, reference: &str) -> Option<String> {
+    if reference.starts_with('/')
+        || reference.contains(['$', '*', '{', ':'])
+        || reference.trim_matches('.').is_empty()
+    {
+        return None;
+    }
+    let joined = if base_dir.is_empty() {
+        reference.to_string()
+    } else {
+        format!("{base_dir}/{reference}")
+    };
+    base::normalize_lexical(&joined).filter(|p| !p.is_empty())
+}
+
+fn dir_of(rel: &str) -> &str {
+    rel.rsplit_once('/').map_or("", |(dir, _)| dir)
+}
+
+/// Links a path a Docker file spells (a `COPY` source, a compose volume or
+/// build) to the file or directory it names from the declaring file's own
+/// directory. Only when nothing lives there does the reference fall back to
+/// the bare-name channel: `./realm.json` in `services/api/` is that file, not
+/// every `realm.json` in the repository.
+#[allow(clippy::too_many_arguments)]
+fn link_declared(
+    src: &FragmentId,
+    declaring_rel: &str,
+    reference: &str,
+    idx: &FragmentIndex,
+    edges: &mut EdgeDict,
+    weight: f64,
+    reverse_factor: f64,
+) {
+    if let Some(resolved) = resolve_declared(dir_of(declaring_rel), reference) {
+        let targets = idx.representatives_at(&resolved);
+        if !targets.is_empty() {
+            if targets.len() <= MAX_FILES_PER_PATH_REF {
+                for target in targets {
+                    if target != src {
+                        add_edge(edges, src, target, weight, reverse_factor);
+                    }
+                }
+            }
+            return;
+        }
+    }
+    link_by_name(src, reference, idx, edges, weight, reverse_factor);
+}
+
 pub struct DockerEdgeBuilder;
 
 impl EdgeBuilder for DockerEdgeBuilder {
@@ -125,40 +177,17 @@ impl EdgeBuilder for DockerEdgeBuilder {
 
         for df in &dockerfiles {
             let copy_refs = collect_dockerfile_refs(&df.content);
+            let df_rel = base::index_key_of(df.path(), repo_root);
             for r in &copy_refs {
-                link_by_name(
+                link_declared(
                     &df.id,
+                    &df_rel,
                     r,
                     &idx,
                     &mut edges,
                     DOCKER.copy_weight,
                     DOCKER.reverse_factor,
                 );
-            }
-
-            let has_env = DOCKERFILE_ENV_RE.is_match(&df.content);
-            let has_arg = DOCKERFILE_ARG_RE.is_match(&df.content);
-            if has_env || has_arg {
-                for f in fragments {
-                    let fpath = Path::new(f.path());
-                    let fname = fpath
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    let ext = fpath
-                        .extension()
-                        .map(|e| e.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    if (ext == "env" || fname.starts_with(".env")) && f.id != df.id {
-                        add_edge(
-                            &mut edges,
-                            &df.id,
-                            &f.id,
-                            DOCKER.weight,
-                            DOCKER.reverse_factor,
-                        );
-                    }
-                }
             }
         }
 
@@ -179,10 +208,12 @@ impl EdgeBuilder for DockerEdgeBuilder {
                 }
             }
 
+            let cf_rel = base::index_key_of(cf.path(), repo_root);
             let compose_refs = collect_compose_refs(&cf.content);
             for r in &compose_refs {
-                link_by_name(
+                link_declared(
                     &cf.id,
+                    &cf_rel,
                     r,
                     &idx,
                     &mut edges,
@@ -234,8 +265,9 @@ impl EdgeBuilder for DockerEdgeBuilder {
                 if let Some(m) = cap.get(1) {
                     let vol = strip_dot_slash(m.as_str().trim());
                     if !vol.is_empty() {
-                        link_by_name(
+                        link_declared(
                             &cf.id,
+                            &cf_rel,
                             vol,
                             &idx,
                             &mut edges,
@@ -257,30 +289,63 @@ impl EdgeBuilder for DockerEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        base::discover_by_extracted_path_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_dockerfile(p) || is_compose_file(p),
-            |p, c| {
-                let mut refs = FxHashSet::default();
-                if is_dockerfile(p) {
-                    refs.extend(collect_dockerfile_refs(c));
+        let candidate_rels: Vec<(String, &PathBuf)> = candidates
+            .iter()
+            .map(|c| (base::index_key_of(&c.to_string_lossy(), repo_root), c))
+            .collect();
+        let changed_set: FxHashSet<&PathBuf> = changed.iter().collect();
+        let mut found: FxHashSet<PathBuf> = FxHashSet::default();
+        // A reference that names a file or directory from its declaring file
+        // brings that and nothing else; only one that names nothing there
+        // falls back to the bare name.
+        let mut fallback: FxHashSet<String> = FxHashSet::default();
+        for path in changed
+            .iter()
+            .filter(|p| is_dockerfile(p) || is_compose_file(p))
+        {
+            let Some(content) = base::read_file_cached(path, file_cache) else {
+                continue;
+            };
+            let mut refs = FxHashSet::default();
+            if is_dockerfile(path) {
+                refs.extend(collect_dockerfile_refs(&content));
+            }
+            if is_compose_file(path) {
+                refs.extend(collect_compose_refs(&content));
+            }
+            let rel = base::index_key_of(&path.to_string_lossy(), repo_root);
+            for r in refs {
+                let hits: Vec<&PathBuf> = resolve_declared(dir_of(&rel), &r)
+                    .map(|resolved| {
+                        let under = format!("{resolved}/");
+                        candidate_rels
+                            .iter()
+                            .filter(|(c, _)| *c == resolved || c.starts_with(&under))
+                            .map(|(_, c)| *c)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if hits.is_empty() {
+                    fallback.insert(r);
+                } else if hits.len() <= MAX_FILES_PER_PATH_REF {
+                    found.extend(hits.into_iter().cloned());
                 }
-                if is_compose_file(p) {
-                    refs.extend(collect_compose_refs(c));
-                }
-                refs
-            },
-        )
+            }
+        }
+        found.extend(base::discover_files_by_refs(
+            &fallback, changed, candidates, repo_root,
+        ));
+        found.retain(|p| !changed_set.contains(p));
+        let mut out: Vec<PathBuf> = found.into_iter().collect();
+        out.sort();
+        out
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FragmentId, FragmentKind};
+    use crate::types::FragmentKind;
     use std::sync::Arc;
 
     fn frag(path: &str, content: &str) -> Fragment {
@@ -324,6 +389,49 @@ mod tests {
         assert!(
             !targets.iter().any(|t| t == "/repo/src/other.py"),
             "linked outside the context: {targets:?}"
+        );
+    }
+
+    fn targets_of(edges: &EdgeDict, from: &str) -> Vec<String> {
+        let mut t: Vec<String> = edges
+            .keys()
+            .filter(|(src, _)| src.path.as_ref() == from)
+            .map(|(_, dst)| dst.path.to_string())
+            .collect();
+        t.sort();
+        t.dedup();
+        t
+    }
+
+    /// `./realm.json` in `services/api/` is that file, not every `realm.json`.
+    #[test]
+    fn a_relative_volume_names_the_file_beside_the_compose_file() {
+        let fragments = vec![
+            frag(
+                "services/api/docker-compose.yml",
+                "services:\n  app:\n    volumes:\n      - ./realm.json:/opt/realm.json\n",
+            ),
+            frag("services/api/realm.json", "{}\n"),
+            frag("services/worker/realm.json", "{}\n"),
+        ];
+        let edges = DockerEdgeBuilder.build(&fragments, None);
+        assert_eq!(
+            targets_of(&edges, "services/api/docker-compose.yml"),
+            vec!["services/api/realm.json".to_string()]
+        );
+    }
+
+    /// Nothing at the declared path: the bare name is all there is to go on.
+    #[test]
+    fn a_path_that_does_not_exist_falls_back_to_the_bare_name() {
+        let fragments = vec![
+            frag("docker/Dockerfile", "FROM python:3.12\nCOPY app.py /srv/\n"),
+            frag("src/app.py", "print(1)\n"),
+        ];
+        let edges = DockerEdgeBuilder.build(&fragments, None);
+        assert_eq!(
+            targets_of(&edges, "docker/Dockerfile"),
+            vec!["src/app.py".to_string()]
         );
     }
 }

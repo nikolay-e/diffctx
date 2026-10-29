@@ -1,0 +1,77 @@
+name: keys_route_008_go_subrouter_and_test
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:go
+- lang:typescript
+repo:
+  initial_files:
+    pay/go.mod: |
+      module example.com/pay
+
+      go 1.22
+    pay/server.go: |
+      package pay
+
+      import "github.com/gorilla/mux"
+
+      func Routes() *mux.Router {
+      	r := mux.NewRouter()
+      	api := r.PathPrefix("/api").Subrouter()
+      	api.HandleFunc("/orders/{id}", showOrder)
+      	return r
+      }
+    pay/server_test.go: |
+      package pay
+
+      import (
+      	"net/http/httptest"
+      	"testing"
+      )
+
+      func TestRefund(t *testing.T) {
+      	req := httptest.NewRequest("POST", "/api/orders/7/refund", nil)
+      	_ = req
+      }
+    web/src/refund.ts: |
+      export const refund = (id: string) => fetch(`/api/orders/${id}/refund`, { method: "POST" });
+    web/src/legacy.ts: |
+      export const legacyRefund = (id: string) => fetch(`/orders/${id}/refund`, { method: "POST" });
+  changed_files:
+    pay/server.go: |
+      package pay
+
+      import "github.com/gorilla/mux"
+
+      func Routes() *mux.Router {
+      	r := mux.NewRouter()
+      	api := r.PathPrefix("/api").Subrouter()
+      	api.HandleFunc("/orders/{id}", showOrder)
+      	api.HandleFunc("/orders/{id}/refund", refundOrder)
+      	return r
+      }
+  commit_message: Add the refund route
+fragments:
+- id: handler
+  selector:
+    path: pay/server.go
+    anchor: '"/orders/{id}/refund"'
+- id: test
+  selector:
+    path: pay/server_test.go
+    anchor: '/api/orders/7/refund'
+- id: client
+  selector:
+    path: web/src/refund.ts
+    anchor: '/refund'
+- id: legacy
+  selector:
+    path: web/src/legacy.ts
+oracle:
+  required:
+  - handler
+  - test
+  - client
+  forbidden:
+  - legacy
+min_score: 60

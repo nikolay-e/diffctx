@@ -15,7 +15,7 @@ last commit (`HEAD~1..HEAD`).
    surrounding fragments (callers, callees, types, tests).
 
 Without the MCP server, run the same analysis instead of reading files by
-hand: `uvx diffctx==1.20.0 . --diff <range> --mode impact -f md`, then
+hand: `UV_ISOLATED=1 uvx diffctx==1.20.0 . --diff <range> --mode impact -f md`, then
 `--mode pack`.
 
 Explain the change from those answers: what it does, what it reaches outside

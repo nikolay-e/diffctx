@@ -1,0 +1,122 @@
+name: xlang_image_007_compose_build_to_service_image
+tags:
+- xlang:image
+- lang:dockerfile
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    journal/api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY journal/api/pyproject.toml .
+      RUN pip install --no-cache-dir .
+      COPY journal/api/src/ ./src/
+      USER 65532:65532
+      CMD ["python", "-m", "app"]
+    journal/web/Dockerfile: |
+      FROM nginx:1.31-alpine
+      COPY journal/web/nginx.conf /etc/nginx/nginx.conf
+    e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: app
+            POSTGRES_DB: app_e2e
+        idp:
+          image: idp/server:26.7.5
+          command: [start-dev, --import-realm]
+          volumes:
+            - ./realm.json:/opt/idp/data/import/realm.json:ro
+        api:
+          image: app-e2e/api:local
+          build:
+            context: ../..
+            dockerfile: journal/api/Dockerfile
+            args: {GIT_SHA: e2e}
+          read_only: true
+          depends_on:
+            db: {condition: service_healthy}
+        seed:
+          image: app-e2e/api:local
+          entrypoint: [python, /e2e/seed.py]
+          volumes:
+            - ./seed.py:/e2e/seed.py:ro
+          depends_on:
+            api: {condition: service_healthy}
+        web:
+          build:
+            context: ../..
+            dockerfile: journal/web/Dockerfile
+          volumes:
+            - ./upstream.conf:/etc/nginx/upstream.conf:ro
+          depends_on:
+            api: {condition: service_healthy}
+        edge:
+          image: caddy:2.11-alpine
+          command: [caddy, reverse-proxy, --from, "https://app.e2e", --to, "http://web:8080"]
+    e2e/seed.py: |
+      import sys
+
+      from app.cli import main
+
+      sys.exit(main(["group", "add"]))
+    e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true
+      }
+    e2e/upstream.conf: |
+      resolver 10.96.0.10 valid=10s;
+      set $backend api;
+  changed_files:
+    journal/api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY journal/api/pyproject.toml .
+      RUN pip install --no-cache-dir .
+      COPY journal/api/src/ ./src/
+      ARG GIT_SHA=unknown
+      ENV GIT_SHA=${GIT_SHA}
+      USER 65532:65532
+      CMD ["python", "-m", "app"]
+  commit_message: Stamp the build's commit into the api image
+fragments:
+- id: api_arg
+  selector:
+    path: journal/api/Dockerfile
+    anchor: ARG GIT_SHA=unknown
+- id: compose_api_build
+  selector:
+    path: e2e/compose.yml
+    anchor: 'dockerfile: journal/api/Dockerfile'
+- id: compose_seed_image
+  selector:
+    path: e2e/compose.yml
+    anchor: 'image: app-e2e/api:local'
+- id: seed_py
+  selector:
+    path: e2e/seed.py
+- id: no_web_dockerfile
+  selector:
+    path: journal/web/Dockerfile
+- id: no_realm
+  selector:
+    path: e2e/realm.json
+- id: no_upstream
+  selector:
+    path: e2e/upstream.conf
+oracle:
+  required:
+  - api_arg
+  - compose_api_build
+  allowed:
+  - compose_seed_image
+  - seed_py
+  forbidden:
+  - no_web_dockerfile
+  - no_realm
+  - no_upstream

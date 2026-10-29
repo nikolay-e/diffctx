@@ -15,6 +15,8 @@ paper and `CLAUDE.md`.
 | Aider baselines | `--baseline aider_fair\|aider_oracle --aider-request-timeout 600` (separate from the diffctx kill-switch `--timeout-per-instance`) |
 | Bit-equivalence gate (mandatory for perf refactors) | `python -m eval equivalence --a <run_old> --b <run_new>` — identical selected sets / used_tokens / metrics. The 40-instance sample is `eval/manifests/equiv/` (5 / 15 / 20 ids, every k-th of each sorted v1 test split, so it is reconstructable from git): run `run-final` twice with `--manifests-dir eval/manifests/equiv`, once per build, and compare |
 | Full sweep (CI) | `.github/workflows/eval-sweep.yml` (`workflow_dispatch`, mode=smoke\|full) |
+| External datasets on free hosted runners (CI) | `gh workflow run eval-sweep.yml --ref <branch> -f mode=external -f dataset=arb_edit2ripple,contextbench_nontrivial,swerebench_infra,cfgnet500 -f engine_ref=<sha>` — builds the engine from `engine_ref`, runs the shards, uploads `external-summary-<dataset>-<sha>`; `-f arb_baselines=true` also reruns the benchmark's own ARB baselines |
+| Compare engine wall time between two external runs | `python -m eval external-timing --base <run id\|dir> --head <run id\|dir>` |
 | Per-cell metrics / sweep aggregation | `python -m eval cell-metrics ...` / `python -m eval aggregate-sweep ...` |
 | Probe one-at-a-time parameter sensitivity | `bash scripts/sensitivity_check.sh` |
 
@@ -216,6 +218,27 @@ not this sentence), factors `[0.50, 0.75, 1.25, 1.50]` → 69 runs
 in CI by `.github/workflows/sensitivity-check.yml`. Output: stdout table
 `param | factor | value | tokens | Δ% | Jaccard`. Runs on a single diff —
 smoke test, not calibration ground truth.
+
+## External mode
+
+`mode=external` of `eval-sweep.yml` runs datasets that are not in the sweep
+matrix. A dataset is registered in `.github/scripts/external_cells.py` (shard
+count), `external_run.sh` (one shard) and `external_merge.sh` (the summary); the
+workflow names none. `engine_ref` (default: the dispatched ref) is built into a
+wheel once; the harness is the dispatched ref, so one harness measures several
+engines.
+
+| Dataset | CLI | What it measures |
+|---|---|---|
+| `arb_edit2ripple` | `python -m eval arb-edit2ripple fetch\|run\|baseline-inputs`; scorer and baselines in `.github/scripts/arb_score.py`, `arb_baselines.py` (run with the pinned evaluator in its own venv) | Agent Retrieval Bench edit2ripple, diff-seeded; pins in `datasets/external-pins/arb_edit2ripple.json` |
+| `contextbench_nontrivial` | `python -m eval cb-nontrivial prepare\|summarize`, then `run-final` | the Verified instances whose gold goes beyond the patch; the sweep's own metrics |
+| `swerebench_infra` | `python -m eval swerebench-infra build\|verify\|run\|summarize` | code to infra and infra to code co-change recall; manifest `datasets/xlang/swerebench_infra.json` |
+| `cfgnet500` | `python -m eval cfgnet500 run\|summarize` | file-level graph links against the 500 labelled candidates; pins `datasets/xlang/cfgnet500_pins.json` |
+
+Numbers and caveats: `BENCHMARKS.md`, "External benchmarks (after v2)". A
+dataset's shard output keeps every instance with its status, failures included,
+so a denominator never shrinks silently. Local smoke is one instance per
+dataset; reported numbers come from CI only.
 
 ## Output directory layout
 

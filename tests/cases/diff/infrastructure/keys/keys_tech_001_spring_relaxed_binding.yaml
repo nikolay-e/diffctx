@@ -1,0 +1,88 @@
+name: keys_tech_001_spring_relaxed_binding
+tags:
+- xkeys:env
+- xkeys:tech
+- xkeys:decoy
+- lang:java
+- lang:yaml
+repo:
+  initial_files:
+    billing/Dockerfile: |
+      FROM eclipse-temurin:21
+      COPY . /srv
+    billing/src/main/resources/application.properties: |
+      server.port=8080
+    billing/src/main/java/app/Invoice.java: |
+      package app;
+
+      public class Invoice {
+          private final long cents;
+
+          public Invoice(long cents) {
+              this.cents = cents;
+          }
+
+          public long total(int quantity) {
+              return cents * quantity;
+          }
+
+          public String label() {
+              return "invoice-" + cents;
+          }
+      }
+    billing/src/main/java/app/Customer.java: |
+      package app;
+
+      public class Customer {
+          private final String name;
+
+          public Customer(String name) {
+              this.name = name;
+          }
+
+          public String greeting() {
+              return "Dear " + name;
+          }
+      }
+    billing/README.md: |
+      # Billing
+
+      Issues invoices for the storefront. Run it with the compose file next to
+      this document; settings live in the application properties.
+    billing/docker-compose.yml: |
+      services:
+        app:
+          environment:
+            - SPRING_MAIN_LOGSTARTUPINFO=true
+    ledger/Dockerfile: |
+      FROM eclipse-temurin:21
+      COPY . /srv
+    ledger/docker-compose.yml: |
+      services:
+        app:
+          environment:
+            - SPRING_MAIN_LOGSTARTUPINFO=true
+  changed_files:
+    billing/src/main/resources/application.properties: |
+      server.port=8080
+      spring.main.log-startup-info=false
+  commit_message: Silence the billing startup banner
+fragments:
+- id: props
+  selector:
+    path: billing/src/main/resources/application.properties
+    anchor: 'log-startup-info'
+- id: compose
+  selector:
+    path: billing/docker-compose.yml
+    anchor: 'SPRING_MAIN_LOGSTARTUPINFO'
+- id: ledger_compose
+  selector:
+    path: ledger/docker-compose.yml
+oracle:
+  required:
+  - props
+  - compose
+  forbidden:
+  - ledger_compose
+min_score: 60

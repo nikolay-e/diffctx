@@ -1,0 +1,56 @@
+name: keys_route_001_handler_to_fetch
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:python
+- lang:typescript
+repo:
+  initial_files:
+    services/api/main.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter()
+
+
+      @router.get("/api/orders/{order_id}")
+      def order(order_id: int):
+          return {"id": order_id}
+    web/src/orders.ts: |
+      export const items = (id: string) => fetch(`/api/orders/${id}/items`);
+    web/src/search.ts: |
+      export const find = (q: string) => fetch(`/api/orders/search?q=${q}`);
+  changed_files:
+    services/api/main.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter()
+
+
+      @router.get("/api/orders/{order_id}")
+      def order(order_id: int):
+          return {"id": order_id}
+
+
+      @router.get("/api/orders/{order_id}/items")
+      def items(order_id: int):
+          return []
+  commit_message: Add the order items route
+fragments:
+- id: handler
+  selector:
+    path: services/api/main.py
+    anchor: '"/api/orders/{order_id}/items"'
+- id: orders
+  selector:
+    path: web/src/orders.ts
+    anchor: '/items'
+- id: search
+  selector:
+    path: web/src/search.ts
+oracle:
+  required:
+  - handler
+  - orders
+  forbidden:
+  - search
+min_score: 60

@@ -1,0 +1,113 @@
+name: xlang_route_003_nginx_location_to_flask_routes
+tags:
+- xlang:route
+- lang:python
+- lang:shell
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    frontend/nginx.conf: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://backend:8080/;
+              proxy_read_timeout 60s;
+          }
+
+          # StrapX OAuth routes proxy to backend
+          location /strapx/ {
+              proxy_pass http://backend:8080$request_uri;
+              proxy_read_timeout 60s;
+          }
+
+          # FitBand OAuth routes proxy to backend
+          location /fitband/ {
+              proxy_pass http://backend:8080$request_uri;
+              proxy_read_timeout 60s;
+          }
+      }
+    backend/routes.py: |
+      from flask import redirect
+
+      from app import app
+
+
+      @app.route("/fitband/authorize")
+      def fitband_authorize():
+          return redirect("https://auth.fitband.example/oauth/authorize")
+
+
+      @app.route("/fitband/callback")
+      def fitband_callback():
+          return "linked"
+
+
+      @app.route("/strapx/authorize")
+      def strapx_authorize():
+          return redirect("https://auth.strapx.example/oauth/authorize")
+    backend/tests/test_fitband.py: |
+      def test_authorize_redirects(client):
+          response = client.get("/fitband/authorize")
+          assert response.status_code == 302
+
+
+      def test_callback_links(client):
+          assert client.get("/fitband/callback?code=good&state=ours").status_code == 200
+    backend/tests/test_strapx.py: |
+      def test_authorize_redirects(client):
+          assert client.get("/strapx/authorize").status_code == 302
+  changed_files:
+    frontend/nginx.conf: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://backend:8080/;
+              proxy_read_timeout 60s;
+          }
+
+          # StrapX OAuth routes proxy to backend
+          location /strapx/ {
+              proxy_pass http://backend:8080$request_uri;
+              proxy_read_timeout 60s;
+          }
+
+          # FitBand OAuth routes proxy to backend
+          location /fitband/ {
+              proxy_pass http://backend:8080$request_uri;
+              proxy_read_timeout 120s;
+          }
+      }
+  commit_message: The FitBand link flow gets a two-minute proxy timeout
+fragments:
+- id: nginx_loc
+  selector:
+    path: frontend/nginx.conf
+    anchor: proxy_read_timeout 120s;
+- id: routes_auth
+  selector:
+    path: backend/routes.py
+    anchor: '@app.route("/fitband/authorize")'
+- id: routes_cb
+  selector:
+    path: backend/routes.py
+    anchor: '@app.route("/fitband/callback")'
+- id: test_fitband
+  selector:
+    path: backend/tests/test_fitband.py
+    anchor: '"/fitband/authorize"'
+- id: no_test_strapx
+  selector:
+    path: backend/tests/test_strapx.py
+oracle:
+  required:
+  - nginx_loc
+  - routes_auth
+  - routes_cb
+  - test_fitband
+  allowed: []
+  forbidden:
+  - no_test_strapx

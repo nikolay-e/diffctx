@@ -1,0 +1,103 @@
+name: xlang_decoy_012_env_name_equals_identifier
+tags:
+- xlang:decoy
+- xlang:env
+- lang:python
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    e2e/compose.yml: |
+      services:
+        web:
+          build:
+            context: ../..
+            dockerfile: ledger/Dockerfile
+          environment:
+            DATABASE_URL: postgresql+psycopg2://ledger:e2e@db:5432/ledger # pragma: allowlist secret
+            REDIS_URL: redis://redis:6379/0
+            ALLOWED_ORIGINS: http://ledger.e2e
+            DB_WAIT_TIMEOUT: "120"
+    ledger/db.py: |
+      import os
+      import time
+
+
+      def wait_for_database(connect) -> None:
+          deadline = time.monotonic() + int(os.environ.get("DB_WAIT_TIMEOUT", "60"))
+          while time.monotonic() < deadline:
+              try:
+                  connect()
+                  return
+              except OSError:
+                  time.sleep(1)
+          raise TimeoutError("database did not come up")
+    ledger/config.py: |
+      import os
+
+      DATABASE_URL = os.environ["DATABASE_URL"]
+      REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    tools/loadtest.py: |
+      import time
+
+      # Seconds the load generator waits for its own warm-up; nothing reads the environment here.
+      DB_WAIT_TIMEOUT = 30
+
+
+      def warm_up() -> None:
+          time.sleep(DB_WAIT_TIMEOUT)
+    docs/runbook.md: |
+      # Runbook
+
+      If the stack is slow to start, raise DB_WAIT_TIMEOUT in the compose file and rerun.
+    ledger/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY ledger/ .
+      CMD ["python", "-m", "ledger"]
+  changed_files:
+    e2e/compose.yml: |
+      services:
+        web:
+          build:
+            context: ../..
+            dockerfile: ledger/Dockerfile
+          environment:
+            DATABASE_URL: postgresql+psycopg2://ledger:e2e@db:5432/ledger # pragma: allowlist secret
+            REDIS_URL: redis://redis:6379/0
+            ALLOWED_ORIGINS: http://ledger.e2e
+            DB_WAIT_TIMEOUT: "180"
+  commit_message: The e2e stack waits three minutes for its database
+fragments:
+- id: compose_wait
+  selector:
+    path: e2e/compose.yml
+    anchor: 'DB_WAIT_TIMEOUT: "180"'
+- id: db_wait
+  selector:
+    path: ledger/db.py
+    anchor: os.environ.get("DB_WAIT_TIMEOUT"
+- id: config_py
+  selector:
+    path: ledger/config.py
+- id: runbook
+  selector:
+    path: docs/runbook.md
+- id: dockerfile
+  selector:
+    path: ledger/Dockerfile
+- id: no_loadtest
+  selector:
+    path: tools/loadtest.py
+oracle:
+  required:
+  - compose_wait
+  - db_wait
+  allowed:
+  - config_py
+  - runbook
+  - dockerfile
+  forbidden:
+  - no_loadtest

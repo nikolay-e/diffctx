@@ -1,0 +1,93 @@
+name: xlang_image_101_values_tag_bump_to_ci_tags
+tags:
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    deploy/chart/values.yaml: |
+      journal:
+        enabled: true
+        image: reg.example.com/acme/journal:1.4.0
+        port: 8080
+    .github/workflows/build.yml: |
+      name: build
+      on:
+        push:
+          branches: [main]
+      jobs:
+        journal:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v5
+            - uses: docker/build-push-action@v6
+              with:
+                context: journal
+                push: true
+                tags: reg.example.com/acme/journal:${{ github.sha }}
+        worker:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v5
+            - uses: docker/build-push-action@v6
+              with:
+                context: worker
+                push: true
+                tags: reg.example.com/acme/worker:${{ github.sha }}
+    journal/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    worker/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    deploy/chart/templates/journal.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: journal
+      spec:
+        template:
+          spec:
+            containers:
+              - name: journal
+                image: "{{ .Values.journal.image }}"
+  changed_files:
+    deploy/chart/values.yaml: |
+      journal:
+        enabled: true
+        image: reg.example.com/acme/journal:1.5.0
+        port: 8080
+  commit_message: Roll the journal chart to 1.5.0
+fragments:
+- id: values_bump
+  selector:
+    path: deploy/chart/values.yaml
+    anchor: 'image: reg.example.com/acme/journal:1.5.0'
+- id: ci_journal_tags
+  selector:
+    path: .github/workflows/build.yml
+    anchor: 'tags: reg.example.com/acme/journal:'
+- id: journal_dockerfile
+  selector:
+    path: journal/Dockerfile
+- id: journal_tpl
+  selector:
+    path: deploy/chart/templates/journal.yaml
+- id: no_worker_dockerfile
+  selector:
+    path: worker/Dockerfile
+oracle:
+  required:
+  - values_bump
+  - ci_journal_tags
+  allowed:
+  - journal_dockerfile
+  - journal_tpl
+  forbidden:
+  - no_worker_dockerfile

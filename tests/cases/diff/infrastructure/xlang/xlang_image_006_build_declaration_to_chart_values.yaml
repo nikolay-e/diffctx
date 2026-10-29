@@ -1,0 +1,191 @@
+name: xlang_image_006_build_declaration_to_chart_values
+tags:
+- xlang:image
+- lang:dockerfile
+- lang:json
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    journal/Dockerfile: |
+      FROM python:3.13-slim AS runtime
+      WORKDIR /app
+      COPY journal/pyproject.toml .
+      RUN pip install --no-cache-dir .
+      COPY journal/src/ ./src/
+      USER 65532:65532
+      CMD ["python", "-m", "journal"]
+    journal/src/app.py: |
+      def main() -> None:
+          print("journal")
+    worker/Dockerfile: |
+      FROM python:3.13-slim AS runtime
+      WORKDIR /app
+      COPY worker/pyproject.toml .
+      RUN pip install --no-cache-dir .
+      COPY worker/src/ ./src/
+      USER 65532:65532
+      CMD ["python", "-m", "worker"]
+    components.json: |
+      {
+        "components": [
+          {
+            "name": "journal",
+            "paths": [
+              "journal/"
+            ],
+            "deps": [],
+            "ci": {
+              "pg": {
+                "image": "postgres:17-alpine",
+                "user": "journal",
+                "db": "journal_test"
+              }
+            },
+            "images": [
+              {
+                "name": "reg.example.com/acme/journal",
+                "dockerfile": "journal/Dockerfile",
+                "target": "runtime",
+                "context": ".",
+                "args": ""
+              }
+            ],
+            "tests": [
+              {
+                "lane": "tests",
+                "kind": "db",
+                "name": "journal",
+                "image": "python:3.14-slim",
+                "workdir": "journal",
+                "script": "pip install -e . && pytest"
+              }
+            ]
+          },
+          {
+            "name": "worker",
+            "paths": [
+              "worker/"
+            ],
+            "deps": [],
+            "ci": {
+              "pg": {
+                "image": "postgres:17-alpine",
+                "user": "worker",
+                "db": "worker_test"
+              }
+            },
+            "images": [
+              {
+                "name": "reg.example.com/acme/worker",
+                "dockerfile": "worker/Dockerfile",
+                "target": "runtime",
+                "context": ".",
+                "args": ""
+              }
+            ],
+            "tests": [
+              {
+                "lane": "tests",
+                "kind": "db",
+                "name": "worker",
+                "image": "python:3.14-slim",
+                "workdir": "worker",
+                "script": "pip install -e . && pytest"
+              }
+            ]
+          }
+        ]
+      }
+    deploy/charts/journal/Chart.yaml: |
+      apiVersion: v2
+      name: journal
+      version: 0.2.0
+    deploy/charts/journal/values.yaml: |
+      image:
+        repository: reg.example.com/acme/journal
+        pullPolicy: IfNotPresent
+        tag: ''
+      replicas: 1
+    deploy/charts/journal/values.images.yaml: |
+      image:
+        repository: reg.example.com/acme/journal
+        tag: main-ea8aa93
+    deploy/charts/journal/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: journal
+      spec:
+        replicas: {{ .Values.replicas }}
+        selector:
+          matchLabels:
+            app: journal
+        template:
+          metadata:
+            labels:
+              app: journal
+          spec:
+            containers:
+              - name: journal
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    deploy/charts/worker/values.images.yaml: |
+      image:
+        repository: reg.example.com/acme/worker
+        tag: main-91c4d20
+  changed_files:
+    journal/Dockerfile: |
+      FROM python:3.14-slim AS runtime
+      WORKDIR /app
+      COPY journal/pyproject.toml .
+      RUN pip install --no-cache-dir .
+      COPY journal/src/ ./src/
+      USER 65532:65532
+      CMD ["python", "-m", "journal"]
+  commit_message: Move the journal runtime to Python 3.14
+fragments:
+- id: dockerfile_from
+  selector:
+    path: journal/Dockerfile
+    anchor: FROM python:3.14-slim AS runtime
+- id: components_build
+  selector:
+    path: components.json
+    anchor: '"dockerfile": "journal/Dockerfile"'
+- id: values_images
+  selector:
+    path: deploy/charts/journal/values.images.yaml
+    anchor: 'repository: reg.example.com/acme/journal'
+- id: values
+  selector:
+    path: deploy/charts/journal/values.yaml
+- id: chart_yaml
+  selector:
+    path: deploy/charts/journal/Chart.yaml
+- id: deployment_tpl
+  selector:
+    path: deploy/charts/journal/templates/deployment.yaml
+- id: journal_app
+  selector:
+    path: journal/src/app.py
+- id: no_worker_dockerfile
+  selector:
+    path: worker/Dockerfile
+- id: no_worker_values_images
+  selector:
+    path: deploy/charts/worker/values.images.yaml
+oracle:
+  required:
+  - dockerfile_from
+  - components_build
+  - values_images
+  allowed:
+  - values
+  - chart_yaml
+  - deployment_tpl
+  - journal_app
+  forbidden:
+  - no_worker_dockerfile
+  - no_worker_values_images

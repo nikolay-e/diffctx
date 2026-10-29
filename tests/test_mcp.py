@@ -1052,6 +1052,153 @@ class TestDefaultMode:
         assert "src/main.py" in text
 
 
+class TestPathsScopeAMonorepo:
+    """A range over a monorepo touches children nobody asked about, and the tool
+    had no way to leave them out: the call passed its deadline and the only way
+    out was the CLI's positional paths (Forgejo #107)."""
+
+    @pytest.fixture
+    def monorepo(self, tmp_path):
+        repo = Pygit2Repo(tmp_path / "monorepo")
+        repo.add_file("svc_a/calc.py", "def add(a, b):\n    return a + b\n")
+        repo.add_file("svc_a/main.py", "from calc import add\n\ndef run():\n    return add(1, 2)\n")
+        repo.add_file("svc_b/ops.py", "def mul(a, b):\n    return a * b\n")
+        repo.add_file("svc_b/use.py", "from ops import mul\n\ndef go():\n    return mul(2, 3)\n")
+        repo.commit("base")
+        repo.add_file("svc_a/calc.py", "def add(a, b, c=0):\n    return a + b + c\n")
+        repo.add_file("svc_b/ops.py", "def mul(a, b, c=1):\n    return a * b * c\n")
+        repo.commit("widen both")
+        return repo
+
+    @staticmethod
+    async def _ask(server, repo_path, **arguments):
+        args = {"repo_path": str(repo_path), "diff_ref": "HEAD~1..HEAD", **arguments}
+        return _get_text(await server.call_tool("diffctx_context", args))
+
+    @pytest.mark.asyncio
+    async def test_without_paths_the_whole_range_is_analysed(self, server, monorepo):
+        text = await self._ask(server, monorepo.path)
+        assert "svc_a/main.py" in text
+        assert "svc_b/use.py" in text
+
+    @pytest.mark.asyncio
+    async def test_paths_leave_the_other_children_out_of_impact(self, server, monorepo):
+        text = await self._ask(server, monorepo.path, paths=["svc_a"])
+        assert "svc_a/main.py" in text
+        assert "svc_b" not in text
+
+    @pytest.mark.asyncio
+    async def test_two_children_are_both_analysed(self, server, monorepo):
+        text = await self._ask(server, monorepo.path, paths=["svc_a", "svc_b"])
+        assert "svc_a/main.py" in text
+        assert "svc_b/use.py" in text
+
+    @pytest.mark.asyncio
+    async def test_an_absolute_path_scopes_like_a_relative_one(self, server, monorepo):
+        relative = await self._ask(server, monorepo.path, paths=["svc_a"])
+        absolute = await self._ask(server, monorepo.path, paths=[str(monorepo.path / "svc_a")])
+        assert absolute == relative
+
+    @pytest.mark.asyncio
+    async def test_a_relative_path_is_read_against_the_directory_asked_about(self, server, monorepo):
+        text = await self._ask(server, monorepo.path / "svc_a", paths=["../svc_b"])
+        assert "svc_b/use.py" in text
+        assert "svc_a" not in text
+
+    @pytest.mark.asyncio
+    async def test_a_file_scope_analyses_that_file_alone_as_the_cli_does(self, server, monorepo):
+        text = await self._ask(server, monorepo.path, paths=["svc_a/calc.py"])
+        assert "1 changed file(s), 0 caller(s)" in text
+        assert "svc_a/main.py" not in text
+
+    @pytest.mark.asyncio
+    async def test_paths_scope_locate(self, server, monorepo):
+        text = await self._ask(server, monorepo.path, mode="locate", paths=["svc_a"])
+        assert "svc_a/calc.py" in text
+        assert "svc_b" not in text
+
+    @pytest.mark.asyncio
+    async def test_paths_scope_pack(self, server, monorepo):
+        text = await self._ask(server, monorepo.path, mode="pack", paths=["svc_a"])
+        assert "calc.py" in text
+        assert "svc_b" not in text
+
+    @pytest.mark.asyncio
+    async def test_paths_scope_a_symbol_lookup(self, server, monorepo):
+        args = {"repo_path": str(monorepo.path), "symbol": "add", "paths": ["svc_a"]}
+        text = _get_text(await server.call_tool("diffctx_context", args))
+        assert "svc_a/calc.py" in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("given", "refusal"),
+        [
+            ("../elsewhere", "Path is outside the repository: ../elsewhere"),
+            ("escape", "Path is outside the repository: escape"),
+            ("svc_c", "No such path: svc_c"),
+            ("  ", "an empty path names nothing"),
+        ],
+    )
+    async def test_a_path_that_is_not_a_child_of_the_repository_is_refused(self, server, monorepo, tmp_path, given, refusal):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (monorepo.path / "escape").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ToolError) as exc:
+            await self._ask(server, monorepo.path, paths=[given])
+        message = str(exc.value)
+        assert refusal in message
+        assert str(tmp_path) not in message
+
+    @pytest.mark.asyncio
+    async def test_a_path_outside_the_allowed_roots_is_refused_before_the_filesystem_is_asked(
+        self, server, monorepo, monkeypatch
+    ):
+        monkeypatch.setenv("DIFFCTX_ALLOWED_PATHS", str(monorepo.path))
+        with pytest.raises(ToolError) as exc:
+            await self._ask(server, monorepo.path, paths=["../missing"])
+        assert "outside the roots this server is allowed to read: ../missing" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_fragment_ids_refuse_paths(self, server, monorepo):
+        with pytest.raises(ToolError, match="call again without paths"):
+            await self._ask(server, monorepo.path, mode="locate", fragment_ids=["svc_a/calc.py:1-2"], paths=["svc_a"])
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode", ["impact", "locate", "pack"])
+    async def test_a_deadline_names_the_scoped_cli_form(self, server, monorepo, monkeypatch, mode):
+        from diffctx.mcp import server as server_module
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
+            await self._ask(server, monorepo.path, mode=mode)
+        message = str(exc.value)
+        assert f"diffctx <child1> <child2> --diff 'HEAD~1..HEAD' --mode {mode}" in message
+        assert "Scope it with paths" in message
+        assert str(monorepo.path) not in message
+
+    @pytest.mark.asyncio
+    async def test_a_deadline_on_a_scoped_call_names_the_paths_given(self, server, monorepo, monkeypatch):
+        from diffctx.mcp import server as server_module
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
+            await self._ask(server, monorepo.path, paths=["svc_a", "svc_b"])
+        message = str(exc.value)
+        assert "Narrow paths further" in message
+        assert "diffctx svc_a svc_b --diff 'HEAD~1..HEAD' --mode impact" in message
+        assert str(monorepo.path) not in message
+
+    @pytest.mark.asyncio
+    async def test_a_symbol_deadline_names_the_scoped_symbol_form(self, server, monorepo, monkeypatch):
+        from diffctx.mcp import server as server_module
+
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        args = {"repo_path": str(monorepo.path), "symbol": "add", "paths": ["svc_a"]}
+        with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
+            await server.call_tool("diffctx_context", args)
+        assert "diffctx svc_a --symbol add" in str(exc.value)
+
+
 class TestProgressiveDisclosure:
     """The two-call shape #127 collapsed the server onto: rank, then read.
 

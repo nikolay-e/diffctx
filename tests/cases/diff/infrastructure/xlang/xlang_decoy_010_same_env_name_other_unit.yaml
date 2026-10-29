@@ -1,0 +1,164 @@
+name: xlang_decoy_010_same_env_name_other_unit
+tags:
+- xlang:decoy
+- xlang:env
+- lang:json
+- lang:yaml
+- lang:typescript
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    ledger/e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "clients": [
+          {
+            "clientId": "ledger",
+            "secret": "${E2E_CLIENT_SECRET}"
+          }
+        ],
+        "users": [
+          {
+            "username": "reader",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          },
+          {
+            "username": "stranger",
+            "credentials": [{ "type": "password", "value": "e2e-password", "temporary": false }]
+          }
+        ]
+      }
+    ledger/e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: ledger
+        keycloak:
+          image: keycloak/keycloak:26.7.5
+          command: [start-dev, --import-realm]
+          # realm.json reads these: JSON holds no allowlist comment.
+          environment:
+            E2E_CLIENT_SECRET: e2e-client-secret # pragma: allowlist secret
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+          volumes:
+            - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+        e2e:
+          image: playwright/runner:v1.63
+          environment:
+            E2E_BASE_URL: http://ledger.e2e
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+    ledger/frontend/tests/e2e/auth.setup.ts: |
+      import { test as setup } from "@playwright/test";
+
+      setup("sign in", async ({ page }) => {
+        await page.goto("/login");
+        await page.fill("#password", process.env.E2E_KC_PASSWORD ?? "");
+        await page.click("button[type=submit]");
+      });
+    journal/e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "clients": [
+          {
+            "clientId": "journal",
+            "secret": "${E2E_CLIENT_SECRET}"
+          }
+        ],
+        "users": [
+          {
+            "username": "reader",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          },
+          {
+            "username": "stranger",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          }
+        ]
+      }
+    journal/e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: journal
+        keycloak:
+          image: keycloak/keycloak:26.7.5
+          command: [start-dev, --import-realm]
+          # realm.json reads these: JSON holds no allowlist comment.
+          environment:
+            E2E_CLIENT_SECRET: e2e-client-secret # pragma: allowlist secret
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+          volumes:
+            - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+        e2e:
+          image: playwright/runner:v1.63
+          environment:
+            E2E_BASE_URL: http://journal.e2e
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+    journal/e2e/tests/door.spec.ts: |
+      import { test as setup } from "@playwright/test";
+
+      setup("open the door", async ({ page }) => {
+        await page.goto("/login");
+        await page.fill("#password", process.env.E2E_KC_PASSWORD ?? "");
+        await page.click("button[type=submit]");
+      });
+  changed_files:
+    ledger/e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "clients": [
+          {
+            "clientId": "ledger",
+            "secret": "${E2E_CLIENT_SECRET}"
+          }
+        ],
+        "users": [
+          {
+            "username": "reader",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          },
+          {
+            "username": "stranger",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          }
+        ]
+      }
+  commit_message: The stranger's password comes from the environment like the reader's
+fragments:
+- id: realm_pw
+  selector:
+    path: ledger/e2e/realm.json
+    anchor: '"value": "${E2E_KC_PASSWORD}"'
+- id: compose_pw
+  selector:
+    path: ledger/e2e/compose.yml
+    anchor: 'E2E_KC_PASSWORD: e2e-password'
+- id: auth_setup
+  selector:
+    path: ledger/frontend/tests/e2e/auth.setup.ts
+- id: no_other_realm
+  selector:
+    path: journal/e2e/realm.json
+- id: no_other_compose
+  selector:
+    path: journal/e2e/compose.yml
+- id: no_other_spec
+  selector:
+    path: journal/e2e/tests/door.spec.ts
+oracle:
+  required:
+  - realm_pw
+  - compose_pw
+  allowed:
+  - auth_setup
+  forbidden:
+  - no_other_realm
+  - no_other_compose
+  - no_other_spec

@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
 from functools import partial, wraps
 from pathlib import Path
-from typing import ParamSpec, TypeVar
+from typing import NamedTuple, ParamSpec, TypeVar
 
 import anyio
 import anyio.to_thread
@@ -27,7 +28,7 @@ from diffctx.clipboard import ClipboardError, copy_to_clipboard
 from diffctx.tokens import count_tokens
 
 from .fetch import fetch_result
-from .security import validate_repo_path, validate_scope
+from .security import validate_repo_path, validate_scope, validate_scope_paths
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +82,32 @@ _DEFAULT_TIMEOUT_SECONDS: int = _ENGINE_DEFAULT_TIMEOUT
 _DEFAULT_DIFF_REF_TIMEOUT_SECONDS = 10
 
 
-def _deadline_message(tool: str) -> str:
+def _deadline_message(tool: str, hint: str = "") -> str:
     return (
         f"{tool}: exceeded the {_DEFAULT_TIMEOUT_SECONDS}s deadline. "
         "Narrow the request (an explicit diff_range, a subdirectory, tighter patterns) "
-        "or run on a smaller subtree."
+        f"or run on a smaller subtree.{hint}"
     )
 
 
-async def _run_with_deadline(tool: str, work: Callable[[], _T]) -> _T:
+class _Scoping(NamedTuple):
+    """What the `paths` argument means to the engine and to a deadline message."""
+
+    engine_paths: list[str]
+    deadline_hint: str
+
+
+def _scoping(paths: list[str] | None, engine_paths: list[str], question: str) -> _Scoping:
+    # The CLI form a monorepo caller can run when the tool's deadline is shorter
+    # than the question needs (#107). A path given first as a child of the
+    # repository would be dropped by the CLI as nested, so the form names the
+    # children alone, as the caller wrote them.
+    children = shlex.join(paths) if paths else "<child1> <child2>"
+    advice = "Narrow paths further" if paths else "Scope it with paths (the child directories under review)"
+    return _Scoping(engine_paths, f" {advice}, or run the scoped CLI from the repository: diffctx {children} {question}")
+
+
+async def _run_with_deadline(tool: str, work: Callable[[], _T], hint: str = "") -> _T:
     # The call fails fast and the worker is abandoned rather than awaited, so
     # the server stays responsive; the token then stops the native run at its
     # next poll and kills its git children, so the abandoned worker does not
@@ -100,7 +118,7 @@ async def _run_with_deadline(tool: str, work: Callable[[], _T]) -> _T:
             result: _T = await anyio.to_thread.run_sync(partial(token.scope, work), abandon_on_cancel=True)
             return result
     except TimeoutError as e:
-        raise ValueError(_deadline_message(tool)) from e
+        raise ValueError(_deadline_message(tool, hint)) from e
     finally:
         token.cancel()
 
@@ -139,7 +157,9 @@ def _git_failure(diff_ref: str, e: GitError) -> ValueError:
     return ValueError(f"Git error: {e}")
 
 
-async def _locate_response(validated_path: Path, diff_range: str, budget_tokens: int, clipboard: bool, max_tokens: int) -> str:
+async def _locate_response(
+    validated_path: Path, diff_range: str, budget_tokens: int, clipboard: bool, max_tokens: int, scoping: _Scoping
+) -> str:
     try:
         payload = await _run_with_deadline(
             "diffctx_context",
@@ -149,7 +169,9 @@ async def _locate_response(validated_path: Path, diff_range: str, budget_tokens:
                 diff_range=diff_range,
                 budget_tokens=budget_tokens,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
+                paths=scoping.engine_paths,
             ),
+            scoping.deadline_hint,
         )
     except GitError as e:
         raise _git_failure(diff_range, e) from e
@@ -173,6 +195,7 @@ async def _impact_response(
     clipboard: bool,
     max_tokens: int,
     budget_tokens: int,
+    scoping: _Scoping,
     symbol: str | None = None,
 ) -> str:
     try:
@@ -183,10 +206,12 @@ async def _impact_response(
                 root_dir=validated_path,
                 diff_range=diff_range,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
+                paths=scoping.engine_paths,
                 markdown=True,
                 symbol=symbol,
                 budget=budget_tokens,
             ),
+            scoping.deadline_hint,
         )
     except GitError as e:
         raise _git_failure(diff_range, e) from e
@@ -351,19 +376,22 @@ async def diffctx_context(
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     include_raw_diff: bool = False,
     symbol: str | None = None,
+    paths: list[str] | None = None,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     scope = validate_scope(repo_path)
     _validate_max_tokens(max_tokens)
     _validate_budget_tokens(budget_tokens)
     budget_tokens, note = _budget_within(budget_tokens, max_tokens)
+    engine_paths = validate_scope_paths(paths, scope, validated_path) if paths else []
     if symbol is not None:
         if diff_ref or fragment_ids or mode != "impact":
             raise ValueError(
                 'symbol looks the name up in the working tree: call again with mode="impact" '
                 "and drop diff_ref and fragment_ids"
             )
-        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, symbol=symbol)
+        scoping = _scoping(paths, engine_paths, f"--symbol {shlex.quote(symbol)}")
+        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, scoping, symbol=symbol)
         return _with_note(note, reply, max_tokens)
     ref = diff_ref if diff_ref else await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
@@ -372,18 +400,21 @@ async def diffctx_context(
     # two-call shape something the caller has to remember rather than something
     # the arguments express.
     if fragment_ids:
+        if paths:
+            raise ValueError("fragment_ids already name their fragments: call again without paths")
         return await _fetch_response(validated_path, ref, fragment_ids, clipboard, max_tokens)
 
     if mode not in ("pack", "locate", "impact"):
         raise ValueError(f'mode must be "pack", "locate" or "impact", got {mode!r}')
     if include_raw_diff and mode != "pack":
         raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
+    scoping = _scoping(paths, engine_paths, f"--diff {shlex.quote(ref)} --mode {mode}")
     if mode == "impact":
-        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens)
+        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens, scoping)
         return _with_note(note, reply, max_tokens)
     if mode == "locate":
-        return await _locate_response(scope, ref, budget_tokens, clipboard, max_tokens)
-    reply = await _pack_response(scope, ref, budget_tokens, clipboard, max_tokens, include_raw_diff)
+        return await _locate_response(scope, ref, budget_tokens, clipboard, max_tokens, scoping)
+    reply = await _pack_response(scope, ref, budget_tokens, clipboard, max_tokens, include_raw_diff, scoping)
     return _with_note(note, reply, max_tokens)
 
 
@@ -402,7 +433,13 @@ async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: lis
 
 
 async def _pack_response(
-    validated_path: Path, diff_ref: str, budget_tokens: int, clipboard: bool, max_tokens: int, include_raw_diff: bool
+    validated_path: Path,
+    diff_ref: str,
+    budget_tokens: int,
+    clipboard: bool,
+    max_tokens: int,
+    include_raw_diff: bool,
+    scoping: _Scoping,
 ) -> str:
     try:
         result = await _run_with_deadline(
@@ -414,7 +451,9 @@ async def _pack_response(
                 budget_tokens=budget_tokens,
                 timeout=_DEFAULT_TIMEOUT_SECONDS,
                 with_raw_diff=include_raw_diff,
+                paths=scoping.engine_paths,
             ),
+            scoping.deadline_hint,
         )
     except GitError as e:
         raise _git_failure(diff_ref, e) from e

@@ -1,0 +1,101 @@
+name: xlang_control_015_terraform_variable_to_use
+tags:
+- xlang:control
+- lang:terraform
+- change:single_file
+- context:cross_module
+- difficulty:easy
+repo:
+  initial_files:
+    terraform/variables.tf: |
+      variable "api_token" {
+        description = "Provider API token"
+        type        = string
+        sensitive   = true
+      }
+
+      variable "away_until" {
+        description = "RFC3339 time until which the node's own IP is tunnelled (remote sessions). Empty = at home."
+        type        = string
+        default     = ""
+        validation {
+          condition     = var.away_until == "" || can(timeadd(var.away_until, "0s"))
+          error_message = "away_until must be empty or an RFC3339 time."
+        }
+      }
+    terraform/devices.tf: |
+      locals {
+        # Setting `away_until` is the whole away-session recovery: it creates the route.
+        away_active = var.away_until != "" && timecmp(var.away_until, plantimestamp()) > 0
+      }
+
+      resource "tunnel_route" "node_away" {
+        count   = local.away_active ? 1 : 0
+        network = "10.0.0.5/32"
+      }
+
+      check "away_deadline" {
+        assert {
+          condition     = var.away_until == "" || local.away_active
+          error_message = "away_until (${var.away_until}) has passed: clear it in terraform.tfvars."
+        }
+      }
+    terraform/dns.tf: |
+      resource "dns_record" "www" {
+        zone_id = var.zone_id
+        name    = "www"
+        type    = "CNAME"
+        content = "example.com"
+      }
+    terraform/README.md: |
+      # Terraform
+
+      `away_until` (a deadline) adds the node's `/32` for a remote session.
+    terraform/terraform.tfvars.example: |
+      api_token  = ""
+      away_until = ""
+  changed_files:
+    terraform/variables.tf: |
+      variable "api_token" {
+        description = "Provider API token"
+        type        = string
+        sensitive   = true
+      }
+
+      variable "away_until" {
+        description = "RFC3339 time until which the node's own IP is tunnelled (remote sessions). Empty = at home."
+        type        = string
+        default     = ""
+        validation {
+          condition     = var.away_until == "" || can(timeadd(var.away_until, "0s"))
+          error_message = "away_until must be empty or an RFC3339 time, e.g. 2026-10-05T18:00:00Z."
+        }
+      }
+  commit_message: The away deadline's error shows an example time
+fragments:
+- id: variables_msg
+  selector:
+    path: terraform/variables.tf
+    anchor: e.g. 2026-10-05T18:00:00Z
+- id: devices_use
+  selector:
+    path: terraform/devices.tf
+    anchor: var.away_until
+- id: readme
+  selector:
+    path: terraform/README.md
+- id: tfvars_example
+  selector:
+    path: terraform/terraform.tfvars.example
+- id: no_dns
+  selector:
+    path: terraform/dns.tf
+oracle:
+  required:
+  - variables_msg
+  - devices_use
+  allowed:
+  - readme
+  - tfvars_example
+  forbidden:
+  - no_dns

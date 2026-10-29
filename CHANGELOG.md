@@ -7,6 +7,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Files that name the same environment variable or container image are linked
+  across formats. A variable read in code (Python, JS/TS, Go, Rust,
+  Java/Kotlin, Ruby, shell) meets the `.env`, compose, Kubernetes, Helm,
+  CI, Dockerfile and Terraform files that set it; an image built by a
+  pipeline or a compose `build:` meets the manifests, values and Dockerfiles
+  that run it, and the Dockerfile the build names. A name that more than
+  eight files spell is vocabulary and links nothing, an image nothing in the
+  repository builds links nothing, and a sibling service's copy of the same
+  name is left out when a nearer one exists. A changed file now brings in its
+  counterparts.
+
+- The same typed links cover HTTP routes (a handler and the calls, nginx
+  locations, Ingress paths and OpenAPI documents that name its path), database
+  tables (migrations, ORM models and raw SQL) and protobuf messages and
+  services (a `.proto` and the code generated from it). Spring properties and
+  their `SPRING_*` variables and `${...}` placeholders, `django-environ`
+  reads in settings, nginx `envsubst` templates and the Kafka image
+  variables are read by the rules their documentation states; Redis, whose
+  images define none, stays plain name equality.
+- A route is linked at the path the framework serves, not the one its decorator
+  spells: a Flask blueprint's `url_prefix`, a FastAPI router's `prefix` and
+  the `include_router` that mounts it (also from another file), a Spring class
+  mapping in front of its method mappings, an Express `app.use('/api', router)`,
+  a Go `PathPrefix(...).Subrouter()` or `Group(...)`. Calls spelled with a
+  base-URL constant or template (`${API}/orders`, `API + "/orders"`), test
+  clients (`MockMvc`, `httptest`, `TestRestTemplate`) and a literal id in a
+  path meet the handler, and an nginx `location` or an Ingress path matches by
+  prefix.
+- A removed key in a YAML provider (a compose variable, a values or manifest
+  env item) still names its readers and the other providers.
+- The MCP tool takes `paths`, the CLI's positional paths: the analysis covers
+  those children of a monorepo instead of the whole range. A call that passes
+  its deadline names the scoped CLI form (`diffctx <child1> <child2> --diff
+  <range> --mode impact`) instead of leaving the tool as the only way out.
+
+### Changed
+
+- Untyped name matches (the config-to-code scan and the shared-identifier
+  fallback) are one category, `key_match`, which replaces `config_generic`
+  (still accepted wherever a category is typed). A name match between two
+  files the typed links already ruled on is dropped, and so is one between a
+  changed file and a script that only spells, as a local constant, the name of
+  an environment variable the change ties to its readers.
+- One spelling decides whether two files name the same thing:
+  `DATABASE_URL`, `databaseUrl` and `database-url` are one key for the
+  config-to-code links and the shared-identifier fallback.
+- A Dockerfile's `ENV` and `ARG` no longer link it to every `.env` file, and
+  two Kubernetes manifests no longer link because they run the same image;
+  both relations come from the typed key links.
+
+### Fixed
+
+- A table keeps the schema it is spelled behind: `stems.assets` and
+  `library.assets` are two tables, so a migration of one no longer pulls in the
+  other's model or queries. A name written without a schema is the one its own
+  service's migrations give it, and meets only that service.
+- The hook read a session's own edits off file times against its transcript:
+  a file the inspecting call itself rewrote, one a peer's process rewrote
+  after the session wrote it, the old paths of a renamed directory, and a
+  peer's file written while a call waited to run all landed on the wrong
+  side. `PreToolUse` and `PostToolUse` of each Bash call now read what the
+  checkout holds before and after it, and the paths that differ are the
+  session's, kept for the rest of the session (#662, #668, #674, Forgejo #93,
+  #117). Calls the hook did not see keep the transcript's span.
+- A push review covered the range a remote-tracking ref moved over, so a
+  push a peer made in the shared repository meanwhile, or a second remote
+  alias left behind, was reviewed in place of the line's own. It covers the
+  `old..new` git printed for the push (Forgejo #121).
+- A commit or push review of a wide change (about 50 files of a large
+  repository) ran past the hook's budget, and the agent got a bare timeout
+  line or nothing. The engine's deadline was a fixed share that started after
+  the hook's own work and left its tail no time, and the ceiling dropped the
+  partial answer the engine was rendering. The engine now gets its share of
+  the time left, the hook waits a further 10 s for that partial answer, a
+  partial answer names the changed files with no caller listed and the
+  command that finishes the review, and a commit, push or pull request the
+  review could not cover says which files it changes (Forgejo #113).
+- A background line that could only merge claimed a commit another session
+  landed in the checkout while it waited, and delivered it as a late
+  review. A line claims only the reflog actions its statements can write,
+  and not a commit another session's hook already took (Forgejo #97).
+- A search over a glob path (`grep -n 'fn total' src/*.rs`) got no answer: the
+  hook looked for a repository at `src/*.rs`. A glob now searches the directory
+  it starts in, as a path search does.
+- Impact counted a test file the repository holds but no link reaches (a
+  crate's unchanged `tests/*.rs`) as no test in view, so an untested caller
+  got no negative claim; any test file in the tree now makes the absence of a
+  link a finding. Changed data files (`.csv`, `.log`, `.txt` other than pip's
+  `requirements*`/`constraints*` and `CMakeLists.txt`) are no longer counted
+  as "not followed"; an extensionless changed file (`Procfile`, `CODEOWNERS`)
+  still is (Forgejo #123).
+- A C-style loop counter (`for (let k = 1; ...)`) is no longer a definition,
+  so a change on the loop line lists no `k` (Forgejo #94).
+- A file generated from another (`GENERATED from src/x.jsonnet`) is not listed
+  as a separate consumer when its source names the changed file too (Forgejo
+  #110).
+- An unresolved receiver (`x.impact`, `w.write(...)`) in a sibling project
+  that has its own manifest and never imports the module is no possible
+  caller of a definition in another project root (Forgejo #86, Refs #649).
+- "Named by path": a sentence in a config's string (a JSON dump, a
+  `description:`) is no consumer, and pages and templates rank behind scripts
+  and configs so the cap drops them first (Refs #673).
+- A component loaded with `const Card = lazy(() => import('./Card'))` had no
+  callers: the dynamic import now binds the module's default export, so the
+  component it renders is a reference to it (Forgejo #106).
+- A change deep inside a YAML block scalar (a dashboard's JSON in a ConfigMap)
+  showed the head of the scalar when the budget could not hold it, and
+  `--mode locate` pointed there. The changed lines now come first, with the
+  unchanged lines between them counted (Forgejo #101).
+- A changed YAML, JSON or TOML value that another file spells was reported
+  "not followed" unless it held a camelCase or CONSTANT_CASE word. The value
+  itself (`up{job="demo"}`, an address, an image, a path) is now searched whole,
+  as the keys were, and the file that spells it is named with its line. A key
+  of the typed key table (an environment variable, an image, a route, a table)
+  names its readers through the table, which knows `{id}` and `<int:id>` are
+  one route (Forgejo #109). The value search is bounded: the smallest changes
+  are searched first, at most 16 terms from each config and 96 in all, and the
+  configs left out stay "not followed" with their count named.
+
 ## [1.20.0] - 2026-10-22
 
 ### Changed

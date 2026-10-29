@@ -1,0 +1,202 @@
+name: xlang_env_001_pydantic_settings_fields
+tags:
+- xlang:env
+- lang:python
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    src/settings.py: |
+      from functools import lru_cache
+
+      from pydantic import AliasChoices, Field
+      from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+      class AppSettings(BaseSettings):
+          model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+          secret_key: str
+          postgres_user: str = "app_user"
+          postgres_password: str
+          postgres_db: str = Field(default="app", validation_alias=AliasChoices("postgres_db", "db_name"))
+          postgres_host: str = "localhost"
+          postgres_port: int = 5432
+
+          strapx_client_id: str | None = None
+          strapx_client_secret: str | None = None
+          strapx_redirect_uri: str | None = None
+
+          sync_interval_minutes: int = 5
+
+
+      @lru_cache
+      def get_settings() -> AppSettings:
+          return AppSettings()
+    docker-compose.yml: |
+      services:
+        backend:
+          build: .
+          ports:
+            - "8080:8080"
+          environment:
+            - SECRET_KEY=${SECRET_KEY}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            - POSTGRES_HOST=db
+            # OAuth Credentials (OPTIONAL)
+            - STRAPX_CLIENT_ID=${STRAPX_CLIENT_ID:-}
+            - STRAPX_CLIENT_SECRET=${STRAPX_CLIENT_SECRET:-}
+            - FITBAND_CLIENT_ID=${FITBAND_CLIENT_ID:-}
+            - FITBAND_CLIENT_SECRET=${FITBAND_CLIENT_SECRET:-}
+            - FITBAND_REDIRECT_URI=${FITBAND_REDIRECT_URI:-}
+            # Runtime Config
+            - PYTHONUNBUFFERED=1
+          depends_on:
+            - db
+        db:
+          image: postgres:17-alpine
+          environment:
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    .env.example: |
+      # Database
+      POSTGRES_PASSWORD=
+      SECRET_KEY=
+
+      # StrapX OAuth Credentials - OPTIONAL
+      STRAPX_CLIENT_ID=
+      STRAPX_CLIENT_SECRET=
+
+      # FitBand OAuth Credentials - OPTIONAL (personal tokens were retired, OAuth is the only way in)
+      FITBAND_CLIENT_ID=
+      FITBAND_CLIENT_SECRET=
+      FITBAND_REDIRECT_URI=
+
+      # Scheduler Configuration - OPTIONAL
+      SYNC_INTERVAL_MINUTES=5
+    src/providers/strapx_client.py: |
+      import requests
+
+      from settings import get_settings
+
+      TOKEN_URL = "https://api.strapx.example/oauth/token"
+
+
+      def exchange_code(code: str) -> dict:
+          settings = get_settings()
+          response = requests.post(
+              TOKEN_URL,
+              data={
+                  "grant_type": "authorization_code",
+                  "code": code,
+                  "client_id": settings.strapx_client_id,
+                  "client_secret": settings.strapx_client_secret,
+                  "redirect_uri": settings.strapx_redirect_uri,
+              },
+              timeout=30,
+          )
+          response.raise_for_status()
+          return response.json()
+    frontend/nginx.conf: |
+      server {
+          listen 8080;
+
+          location /api/ {
+              proxy_pass http://backend:8080;
+          }
+
+          # StrapX OAuth routes proxy to backend
+          location /strapx/ {
+              proxy_pass http://backend:8080$request_uri;
+              proxy_set_header Host $host;
+              proxy_read_timeout 60s;
+          }
+      }
+    docs/operations.md: |
+      # Operations
+
+      Before linking a FitBand account, set FITBAND_CLIENT_ID, FITBAND_CLIENT_SECRET and
+      FITBAND_REDIRECT_URI in the deployment's environment, then restart the backend.
+    tests/test_settings.py: |
+      from settings import AppSettings
+
+
+      def test_defaults(monkeypatch):
+          monkeypatch.setenv("SECRET_KEY", "x")
+          monkeypatch.setenv("POSTGRES_PASSWORD", "x")
+          assert AppSettings().sync_interval_minutes == 5
+  changed_files:
+    src/settings.py: |
+      from functools import lru_cache
+
+      from pydantic import AliasChoices, Field
+      from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+      class AppSettings(BaseSettings):
+          model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+          secret_key: str
+          postgres_user: str = "app_user"
+          postgres_password: str
+          postgres_db: str = Field(default="app", validation_alias=AliasChoices("postgres_db", "db_name"))
+          postgres_host: str = "localhost"
+          postgres_port: int = 5432
+
+          strapx_client_id: str | None = None
+          strapx_client_secret: str | None = None
+          strapx_redirect_uri: str | None = None
+
+          fitband_client_id: str | None = None
+          fitband_client_secret: str | None = None
+          fitband_redirect_uri: str | None = None
+
+          sync_interval_minutes: int = 5
+
+
+      @lru_cache
+      def get_settings() -> AppSettings:
+          return AppSettings()
+  commit_message: Read the FitBand OAuth credentials from the environment
+fragments:
+- id: settings_fitband
+  selector:
+    path: src/settings.py
+    anchor: 'fitband_client_id: str | None = None'
+- id: settings_fitband_secret
+  selector:
+    path: src/settings.py
+    anchor: 'fitband_client_secret: str | None = None'
+- id: compose_fitband
+  selector:
+    path: docker-compose.yml
+    anchor: FITBAND_CLIENT_ID=${FITBAND_CLIENT_ID:-}
+- id: dotenv_fitband
+  selector:
+    path: .env.example
+    anchor: FITBAND_CLIENT_ID=
+- id: docs_operations
+  selector:
+    path: docs/operations.md
+- id: test_settings
+  selector:
+    path: tests/test_settings.py
+- id: no_strapx_client
+  selector:
+    path: src/providers/strapx_client.py
+- id: no_nginx
+  selector:
+    path: frontend/nginx.conf
+oracle:
+  required:
+  - settings_fitband
+  - settings_fitband_secret
+  - compose_fitband
+  - dotenv_fitband
+  allowed:
+  - docs_operations
+  - test_settings
+  forbidden:
+  - no_strapx_client
+  - no_nginx

@@ -1,0 +1,116 @@
+name: xlang_image_104_kustomize_images_to_ci_build
+tags:
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    deploy/overlays/prod/kustomization.yaml: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - deployment.yaml
+        - service.yaml
+      images:
+        - name: web
+          newName: reg.example.com/acme/web
+          newTag: v3.1.0
+        - name: sidecar
+          newName: reg.example.com/acme/sidecar
+          newTag: v1.0.0
+    deploy/overlays/prod/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: web
+              - name: sidecar
+                image: sidecar
+    deploy/overlays/prod/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        ports:
+          - port: 80
+    .gitlab-ci.yml: |
+      build:
+        stage: build
+        script:
+          - docker build -t reg.example.com/acme/web:$TAG web
+          - docker build -t reg.example.com/acme/sidecar:$TAG sidecar
+          - docker push reg.example.com/acme/web:$TAG
+          - docker push reg.example.com/acme/sidecar:$TAG
+    web/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "app"]
+    deploy/overlays/staging/kustomization.yaml: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - ../prod
+      images:
+        - name: web
+          newName: registry.other.test/vendor/web
+          newTag: nightly
+  changed_files:
+    deploy/overlays/prod/kustomization.yaml: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - deployment.yaml
+        - service.yaml
+      images:
+        - name: web
+          newName: reg.example.com/acme/web
+          newTag: v3.2.0
+        - name: sidecar
+          newName: reg.example.com/acme/sidecar
+          newTag: v1.0.0
+  commit_message: Promote web v3.2.0 in prod
+fragments:
+- id: kz_web_tag
+  selector:
+    path: deploy/overlays/prod/kustomization.yaml
+    anchor: 'newName: reg.example.com/acme/web'
+- id: kz_new_tag
+  selector:
+    path: deploy/overlays/prod/kustomization.yaml
+    anchor: 'newTag: v3.2.0'
+- id: ci_web_build
+  selector:
+    path: .gitlab-ci.yml
+    anchor: docker build -t reg.example.com/acme/web:$TAG web
+- id: prod_deployment
+  selector:
+    path: deploy/overlays/prod/deployment.yaml
+- id: prod_service
+  selector:
+    path: deploy/overlays/prod/service.yaml
+- id: web_dockerfile
+  selector:
+    path: web/Dockerfile
+- id: no_staging_kz
+  selector:
+    path: deploy/overlays/staging/kustomization.yaml
+oracle:
+  required:
+  - kz_new_tag
+  - ci_web_build
+  allowed:
+  - kz_web_tag
+  - prod_deployment
+  - prod_service
+  - web_dockerfile
+  forbidden:
+  - no_staging_kz

@@ -1,0 +1,173 @@
+name: xlang_decoy_011_shared_external_image
+tags:
+- xlang:decoy
+- xlang:image
+- lang:yaml
+- lang:json
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    ledger/e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: ledger
+        keycloak:
+          image: keycloak/keycloak:26.7.5
+          command: [start-dev, --import-realm]
+          # realm.json reads these: JSON holds no allowlist comment.
+          environment:
+            E2E_CLIENT_SECRET: e2e-client-secret # pragma: allowlist secret
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+          volumes:
+            - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+        e2e:
+          image: playwright/runner:v1.63
+          environment:
+            E2E_BASE_URL: http://ledger.e2e
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+    ledger/e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "clients": [
+          {
+            "clientId": "ledger",
+            "secret": "${E2E_CLIENT_SECRET}"
+          }
+        ],
+        "users": [
+          {
+            "username": "reader",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          },
+          {
+            "username": "stranger",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          }
+        ]
+      }
+    journal/e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: journal
+        keycloak:
+          image: keycloak/keycloak:26.7.5
+          command: [start-dev, --import-realm]
+          # realm.json reads these: JSON holds no allowlist comment.
+          environment:
+            E2E_CLIENT_SECRET: e2e-client-secret # pragma: allowlist secret
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+          volumes:
+            - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+        e2e:
+          image: playwright/runner:v1.63
+          environment:
+            E2E_BASE_URL: http://journal.e2e
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+    journal/e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "clients": [
+          {
+            "clientId": "journal",
+            "secret": "${E2E_CLIENT_SECRET}"
+          }
+        ],
+        "users": [
+          {
+            "username": "reader",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          },
+          {
+            "username": "stranger",
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          }
+        ]
+      }
+    ci/e2e-journal.yml: |
+      name: e2e-journal
+      on: [pull_request]
+      jobs:
+        e2e:
+          runs-on: ubuntu-latest
+          services:
+            keycloak:
+              image: keycloak/keycloak:26.7.5
+              ports: ["8080:8080"]
+          steps:
+            - uses: actions/checkout@v5
+            - run: npx playwright test
+              working-directory: journal/e2e
+    ledger/frontend/Dockerfile: |
+      FROM node:26-slim AS builder
+      WORKDIR /app
+      COPY . .
+      RUN npm ci && npm run build
+    journal/frontend/Dockerfile: |
+      FROM node:26-slim AS builder
+      WORKDIR /app
+      COPY . .
+      RUN npm ci && npm run build
+  changed_files:
+    ledger/e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: ledger
+        keycloak:
+          image: keycloak/keycloak:26.8.0
+          command: [start-dev, --import-realm]
+          # realm.json reads these: JSON holds no allowlist comment.
+          environment:
+            E2E_CLIENT_SECRET: e2e-client-secret # pragma: allowlist secret
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+          volumes:
+            - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+        e2e:
+          image: playwright/runner:v1.63
+          environment:
+            E2E_BASE_URL: http://ledger.e2e
+            E2E_KC_PASSWORD: e2e-password # pragma: allowlist secret
+  commit_message: Move the throwaway identity provider to 26.8.0
+fragments:
+- id: compose_kc
+  selector:
+    path: ledger/e2e/compose.yml
+    anchor: 'image: keycloak/keycloak:26.8.0'
+- id: ledger_realm
+  selector:
+    path: ledger/e2e/realm.json
+- id: no_other_compose
+  selector:
+    path: journal/e2e/compose.yml
+- id: no_other_realm
+  selector:
+    path: journal/e2e/realm.json
+- id: no_ci_services
+  selector:
+    path: ci/e2e-journal.yml
+- id: no_ledger_frontend
+  selector:
+    path: ledger/frontend/Dockerfile
+- id: no_journal_frontend
+  selector:
+    path: journal/frontend/Dockerfile
+oracle:
+  required:
+  - compose_kc
+  allowed:
+  - ledger_realm
+  forbidden:
+  - no_other_compose
+  - no_other_realm
+  - no_ci_services
+  - no_ledger_frontend
+  - no_journal_frontend

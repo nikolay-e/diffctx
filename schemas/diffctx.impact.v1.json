@@ -30,6 +30,17 @@
         "null"
       ]
     },
+    "symbol_named": {
+      "description": "A `--symbol` name no file defines but files spell as a word: where,\nas text. `changed` is empty then (Forgejo #114).",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SymbolNamed"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "changed_files": {
       "description": "What git tracks and the change modifies; untracked work is listed\napart, in `untracked_files`.",
       "type": "array",
@@ -74,6 +85,13 @@
       "type": "integer",
       "format": "uint",
       "minimum": 0
+    },
+    "key_searches": {
+      "description": "The changed files outside code whose changed keys were searched as\ntext; the lines naming them are in `named_by` with their `key`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/KeySearch"
+      }
     },
     "collection_reads": {
       "description": "Lines outside the change that read a changed entry's Astro content\ncollection by name: `getCollection('blog')` reads every entry under\n`src/content/blog/`, and no import or path leads there (#432).",
@@ -163,6 +181,13 @@
         "type": "string"
       }
     },
+    "entry_unlisted": {
+      "description": "The changed definitions of that kind a runner or a framework enters\nwithout a caller (a script, a program's `main`, a registered or\ndispatched handler), named by role: `path::symbol (lines) — role`.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "layout_only": {
       "description": "Changed definitions whose hunks are comments, formatting or a\nverbatim move only, which no caller sees, so their callers were not\ntraced (#370): `path::symbol (lines)` each. Unsaid, a comment edit\nread \"no resolved static callers\" while the function had three (#498).",
       "type": "array",
@@ -211,6 +236,51 @@
     "tests_known"
   ],
   "$defs": {
+    "SymbolNamed": {
+      "description": "The files outside documents and data that spell a name nothing defines:\na textual match, not a resolved binding.",
+      "type": "object",
+      "properties": {
+        "files": {
+          "description": "Every file that spells the name, listed or not.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "rows": {
+          "description": "Code and config first, `MAX_TEXTUAL_SHOWN` of them.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NamedFile"
+          }
+        },
+        "caveat": {
+          "description": "What this build read as text and so could not tell a definition in\n(#454); empty when every file naming the symbol was analysed.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "rows"
+      ]
+    },
+    "NamedFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "description": "The first line that spells the name.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ]
+    },
     "StaleReference": {
       "type": "object",
       "properties": {
@@ -252,12 +322,45 @@
         "target": {
           "description": "The changed file the line names.",
           "type": "string"
+        },
+        "key": {
+          "description": "A key the change touched in `target`, which the line spells: a\ntextual match, not a resolved binding (#686).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "path",
         "line",
         "target"
+      ]
+    },
+    "KeySearch": {
+      "description": "A changed file outside code whose changed keys were searched as text.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "named": {
+          "description": "The lines outside the diff naming any of them.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "keys",
+        "named"
       ]
     },
     "CollectionRead": {
@@ -313,6 +416,13 @@
           "items": {
             "$ref": "#/$defs/Caller"
           }
+        },
+        "entry": {
+          "description": "The role that gives this definition an implicit caller: a test its\nrunner runs, a script's own guard, a program's `main`, a handler a\nframework registers or dispatches (R3). Such a definition is no test\ngap and its callers are not hedged.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "unresolved": {
           "description": "Why callers could not be resolved at all: a name defined in many\nfiles in a language without a binding model, a trait method reached\nthrough dynamic dispatch. Its empty `callers` is then no finding.",
@@ -398,7 +508,7 @@
           ]
         },
         "evidence": {
-          "description": "`resolved`: an import binding links the reference to the changed\ndefinition (Python, JavaScript, TypeScript). `name`: the lexical model\nof a language without a binding model — a mention in code of a file\nthat names the module. `candidate`: the binding or the receiver is not\nknown; `reason` says which.",
+          "description": "`resolved`: a binding links the reference to the changed definition.\n`name`: a word match — the lexical model of a language without a\nbinding model, or a removed definition's name found by search; the\ntext form lists it as text and never counts it as a caller.\n`candidate`: the binding or the receiver is not known; `reason` says\nwhich.",
           "type": "string"
         },
         "reason": {

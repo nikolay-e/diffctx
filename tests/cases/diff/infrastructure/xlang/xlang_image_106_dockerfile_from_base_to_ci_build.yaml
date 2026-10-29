@@ -1,0 +1,66 @@
+name: xlang_image_106_dockerfile_from_base_to_ci_build
+tags:
+- xlang:image
+- lang:dockerfile
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    service/Dockerfile: |
+      FROM reg.example.com/acme/base-python:3
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "service"]
+    images/base-python/Dockerfile: |
+      FROM python:3.13-slim
+      RUN pip install --no-cache-dir uv
+    .github/workflows/base-images.yml: |
+      name: base-images
+      on:
+        push:
+          paths: ["images/**"]
+      jobs:
+        base-python:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v5
+            - uses: docker/build-push-action@v6
+              with:
+                context: images/base-python
+                push: true
+                tags: reg.example.com/acme/base-python:3
+    images/base-node/Dockerfile: |
+      FROM node:26-slim
+      RUN corepack enable
+  changed_files:
+    service/Dockerfile: |
+      FROM reg.example.com/acme/base-python:4
+      WORKDIR /app
+      COPY . .
+      CMD ["python", "-m", "service"]
+  commit_message: Build the service on base-python 4
+fragments:
+- id: from_base
+  selector:
+    path: service/Dockerfile
+    anchor: FROM reg.example.com/acme/base-python:4
+- id: ci_base_tags
+  selector:
+    path: .github/workflows/base-images.yml
+    anchor: 'tags: reg.example.com/acme/base-python:'
+- id: base_dockerfile
+  selector:
+    path: images/base-python/Dockerfile
+- id: no_base_node
+  selector:
+    path: images/base-node/Dockerfile
+oracle:
+  required:
+  - from_base
+  - ci_base_tags
+  allowed:
+  - base_dockerfile
+  forbidden:
+  - no_base_node

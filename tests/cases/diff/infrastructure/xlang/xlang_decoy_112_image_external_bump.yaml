@@ -1,0 +1,79 @@
+name: xlang_decoy_112_image_external_bump
+tags:
+- xlang:decoy
+- xlang:image
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    deploy/compose.yml: |
+      services:
+        db:
+          image: postgres:17.4-alpine
+          environment:
+            POSTGRES_DB: app
+        api:
+          image: reg.example.com/acme/api:main
+    e2e/compose.yml: |
+      services:
+        db:
+          image: postgres:17.4-alpine
+    ci/db-tests.yml: |
+      name: db-tests
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          services:
+            postgres:
+              image: postgres:17.4-alpine
+    tools/backup/Dockerfile: |
+      FROM postgres:17.4-alpine
+      COPY dump.sh /usr/local/bin/dump.sh
+    .github/workflows/build.yml: |
+      name: build
+      jobs:
+        api:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: api
+                tags: reg.example.com/acme/api:${{ github.sha }}
+  changed_files:
+    deploy/compose.yml: |
+      services:
+        db:
+          image: postgres:17.5-alpine
+          environment:
+            POSTGRES_DB: app
+        api:
+          image: reg.example.com/acme/api:main
+  commit_message: Move the dev database to 17.5
+fragments:
+- id: db_bump
+  selector:
+    path: deploy/compose.yml
+    anchor: 'image: postgres:17.5-alpine'
+- id: no_e2e_compose
+  selector:
+    path: e2e/compose.yml
+- id: no_ci_services
+  selector:
+    path: ci/db-tests.yml
+- id: no_backup_dockerfile
+  selector:
+    path: tools/backup/Dockerfile
+- id: no_build_ci
+  selector:
+    path: .github/workflows/build.yml
+oracle:
+  required:
+  - db_bump
+  allowed: []
+  forbidden:
+  - no_e2e_compose
+  - no_ci_services
+  - no_backup_dockerfile
+  - no_build_ci

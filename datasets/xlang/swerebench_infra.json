@@ -1,0 +1,5516 @@
+{
+ "dataset": "nebius/SWE-rebench-V2",
+ "revision": "10483de0f50fe5da545942705a76c6150171af7f",
+ "license": "CC-BY-4.0",
+ "rule_version": 1,
+ "rule": "gold patch modifies (exists at base) >=1 code file and >=1 infra file; <= 25 seed files per side; sample <= 200: infra-class strata (rarest kind first), CI-only cut to 50, floor 3, proportional remainder, language round-robin, <= 4 per repo, sha256-ordered; instances whose paths trip the repository's public-content gate are replaced",
+ "dataset_rows": 32079,
+ "qualifying": {
+  "total": 1215,
+  "by_language": {
+   "c": 20,
+   "clojure": 2,
+   "cpp": 5,
+   "csharp": 2,
+   "dart": 12,
+   "elixir": 23,
+   "go": 430,
+   "java": 67,
+   "js": 107,
+   "julia": 14,
+   "kotlin": 6,
+   "lua": 1,
+   "ocaml": 1,
+   "php": 40,
+   "python": 268,
+   "rust": 116,
+   "scala": 4,
+   "swift": 8,
+   "ts": 89
+  },
+  "by_infra_kind": {
+   "ci": 970,
+   "compose": 25,
+   "dockerfile": 93,
+   "env_template": 16,
+   "helm": 92,
+   "k8s": 93,
+   "terraform": 9
+  },
+  "by_stratum": {
+   "ci": 927,
+   "compose": 22,
+   "dockerfile": 89,
+   "env_template": 16,
+   "helm": 85,
+   "k8s": 67,
+   "terraform": 9
+  },
+  "repos": 729
+ },
+ "publication_exclusions": {
+  "rule": "instances whose paths trip the repository's public-content gate are replaced",
+  "instance_ids": [
+   "kubermatic__kubermatic-14558"
+  ]
+ },
+ "sample": {
+  "total": 200,
+  "by_language": {
+   "c": 6,
+   "clojure": 1,
+   "cpp": 3,
+   "csharp": 2,
+   "dart": 2,
+   "elixir": 6,
+   "go": 110,
+   "java": 11,
+   "js": 10,
+   "julia": 2,
+   "kotlin": 2,
+   "lua": 1,
+   "ocaml": 1,
+   "php": 8,
+   "python": 15,
+   "rust": 7,
+   "scala": 2,
+   "swift": 2,
+   "ts": 9
+  },
+  "by_infra_kind": {
+   "ci": 58,
+   "compose": 17,
+   "dockerfile": 62,
+   "env_template": 11,
+   "helm": 48,
+   "k8s": 46,
+   "terraform": 7
+  },
+  "by_stratum": {
+   "ci": 33,
+   "compose": 15,
+   "dockerfile": 59,
+   "env_template": 11,
+   "helm": 43,
+   "k8s": 32,
+   "terraform": 7
+  },
+  "repos": 147
+ },
+ "label_sample_ids": [
+  "analysis-dev__diktat-953",
+  "apache__streampipes-1337",
+  "aquasecurity__starboard-1008",
+  "aquasecurity__starboard-331",
+  "aquasecurity__tfsec-909",
+  "aquasecurity__tfsec-969",
+  "auth0__nextjs-auth0-1198",
+  "carlspring__s3fs-nio-711",
+  "danvergara__dblab-126",
+  "datadog__dd-trace-js-2249",
+  "equinor__design-system-3725",
+  "external-secrets__external-secrets-4941",
+  "fortio__fortio-621",
+  "getmoto__moto-8237",
+  "hashgraph__hedera-local-node-868",
+  "jupyter-incubator__sparkmagic-389",
+  "kubermatic__kubermatic-9224",
+  "kubermatic__kubermatic-9261",
+  "kubernetes-sigs__security-profiles-operator-1600",
+  "kubernetes__kops-16681",
+  "mainflux__mainflux-1355",
+  "mill1000__midea-msmart-99",
+  "mrparkers__terraform-provider-keycloak-507",
+  "opengovsg__gogovsg-158",
+  "pravega__zookeeper-operator-201",
+  "rare-technologies__smart_open-771",
+  "redhat-developer__service-binding-operator-67",
+  "serverless__serverless-4056",
+  "verygoodopensource__very_good_cli-618",
+  "whatyouhide__redix-125"
+ ],
+ "instances": [
+  {
+   "instance_id": "abahmed__kwatch-135",
+   "repo": "abahmed/kwatch",
+   "base_commit": "2e9f5e3ba1a93ce13a3db550b79609b27487c961",
+   "language": "go",
+   "code_files": [
+    "controller/controller.go",
+    "controller/start.go",
+    "main.go",
+    "provider/discord.go",
+    "provider/email.go",
+    "provider/mattermost.go",
+    "provider/opsgenie.go",
+    "provider/pagerduty.go",
+    "provider/provider.go",
+    "provider/rocketchat.go",
+    "provider/slack.go",
+    "provider/teams.go",
+    "provider/telegram.go",
+    "upgrader/upgrader.go",
+    "util/util.go"
+   ],
+   "infra_files": [
+    "deploy/config.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "abahmed__kwatch-205",
+   "repo": "abahmed/kwatch",
+   "base_commit": "cdbfb2f6cab711fd74234af3e77811624a62cb3e",
+   "language": "go",
+   "code_files": [
+    "alertmanager/alertmanager.go",
+    "alertmanager/dingtalk/dingtalk.go",
+    "alertmanager/discord/discord.go",
+    "alertmanager/email/email.go",
+    "alertmanager/feishu/feishu.go",
+    "alertmanager/matrix/matrix.go",
+    "alertmanager/mattermost/mattermost.go",
+    "alertmanager/opsgenie/opsgenie.go",
+    "alertmanager/pagerduty/pagerduty.go",
+    "alertmanager/rocketchat/rocketchat.go",
+    "alertmanager/slack/slack.go",
+    "alertmanager/teams/teams.go",
+    "alertmanager/telegram/telegram.go",
+    "alertmanager/webhook/webhook.go",
+    "event/format.go"
+   ],
+   "infra_files": [
+    "deploy/chart/templates/rbac.yaml",
+    "deploy/deploy.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "adobe__elixir-styler-93",
+   "repo": "adobe/elixir-styler",
+   "base_commit": "6a1eff242f7afad73d252eb43f335a254bdebb40",
+   "language": "elixir",
+   "code_files": [
+    "lib/style/pipes.ex",
+    "lib/style/single_node.ex",
+    "mix.exs"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "analysis-dev__diktat-953",
+   "repo": "analysis-dev/diktat",
+   "base_commit": "ab8d603ec5aa9ac22f597114c13222ae84f37bfe",
+   "language": "kotlin",
+   "code_files": [
+    "diktat-maven-plugin/src/main/kotlin/org/cqfn/diktat/plugin/maven/DiktatBaseMojo.kt",
+    "diktat-rules/src/main/kotlin/org/cqfn/diktat/ruleset/rules/DiktatRuleSetProvider.kt",
+    "diktat-rules/src/main/kotlin/org/cqfn/diktat/ruleset/rules/chapter4/calculations/AccurateCalculationsRule.kt"
+   ],
+   "infra_files": [
+    ".github/workflows/diktat_snapshot.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "andig__evcc-171",
+   "repo": "andig/evcc",
+   "base_commit": "4f033fb4c59b15a88000fbeeb8875634c0a15d6c",
+   "language": "go",
+   "code_files": [
+    "charger/nrgble/nrg_linux.go",
+    "charger/nrgble_linux.go",
+    "charger/nrgconnect.go",
+    "core/loadpoint.go",
+    "meter/sma.go",
+    "provider/config.go",
+    "provider/http.go",
+    "provider/mqtt.go",
+    "util/jq/jq.go"
+   ],
+   "infra_files": [
+    "Dockerfile",
+    "tmpl.Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "apache__camel-k-866",
+   "repo": "apache/camel-k",
+   "base_commit": "d23c546720b263d3ccdaa2d1afdf0c079a3df912",
+   "language": "go",
+   "code_files": [
+    "pkg/metadata/metadata.go",
+    "pkg/metadata/types.go",
+    "pkg/trait/dependencies.go",
+    "pkg/util/source/inspector.go",
+    "pkg/util/source/inspector_groovy.go",
+    "pkg/util/source/inspector_java_script.go",
+    "pkg/util/source/inspector_java_source.go",
+    "pkg/util/source/inspector_kotlin.go",
+    "pkg/util/source/inspector_xml.go",
+    "pkg/util/source/inspector_yaml.go",
+    "pkg/util/source/types.go"
+   ],
+   "infra_files": [
+    "deploy/olm-catalog/camel-k/1.0.0-M1-SNAPSHOT/camel-k.v1.0.0-M1-SNAPSHOT.clusterserviceversion.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "apache__jena-2803",
+   "repo": "apache/jena",
+   "base_commit": "08209aea91d5aea22956866be6fb886d53653e63",
+   "language": "java",
+   "code_files": [
+    "jena-base/src/main/java/org/apache/jena/atlas/lib/cache/CacheSimple.java"
+   ],
+   "infra_files": [
+    ".github/workflows/maven.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "apache__streampipes-1337",
+   "repo": "apache/streampipes",
+   "base_commit": "0f6bcf55f27b1c0640dd3adf9abef7b8dbc92289",
+   "language": "java",
+   "code_files": [
+    "streampipes-model/src/main/java/org/apache/streampipes/model/datalake/DataSeries.java"
+   ],
+   "infra_files": [
+    "installer/cli/.env",
+    "installer/compose/.env",
+    "installer/k8s/Chart.yaml",
+    "installer/k8s/values.yaml"
+   ],
+   "infra_kinds": [
+    "env_template",
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__starboard-1008",
+   "repo": "aquasecurity/starboard",
+   "base_commit": "f402b840693724f36e197afd95b63d4162149bf1",
+   "language": "go",
+   "code_files": [
+    "pkg/plugin/trivy/plugin.go"
+   ],
+   "infra_files": [
+    "deploy/helm/templates/config.yaml",
+    "deploy/helm/values.yaml",
+    "deploy/static/03-starboard-operator.config.yaml",
+    "deploy/static/starboard.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__starboard-1108",
+   "repo": "aquasecurity/starboard",
+   "base_commit": "4d5855a213b1cde4ad1d5eaf3f045b4e1ca03e4c",
+   "language": "go",
+   "code_files": [
+    "pkg/cmd/get_clustercompliancereport.go",
+    "pkg/compliance/clustercompliancereport.go",
+    "pkg/compliance/io.go",
+    "pkg/operator/operator.go",
+    "pkg/starboard/config.go"
+   ],
+   "infra_files": [
+    "deploy/helm/templates/config.yaml",
+    "deploy/helm/values.yaml",
+    "deploy/static/03-starboard-operator.config.yaml",
+    "deploy/static/starboard.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__starboard-331",
+   "repo": "aquasecurity/starboard",
+   "base_commit": "64802a777391d3eca4781d859c092f357b5856fe",
+   "language": "go",
+   "code_files": [
+    "pkg/kubehunter/scanner.go",
+    "pkg/starboard/config.go"
+   ],
+   "infra_files": [
+    "deploy/init/03-starboard.cm.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__starboard-443",
+   "repo": "aquasecurity/starboard",
+   "base_commit": "89d860af02d8a5aa64b2004128142361b13686c3",
+   "language": "go",
+   "code_files": [
+    "pkg/plugin/trivy/plugin.go"
+   ],
+   "infra_files": [
+    "deploy/helm/templates/configmap.yaml",
+    "deploy/helm/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__tfsec-909",
+   "repo": "aquasecurity/tfsec",
+   "base_commit": "130bc3adc6032ca6089b0f3d000b5f6b85eae383",
+   "language": "go",
+   "code_files": [
+    "cmd/tfsec/main.go",
+    "internal/app/tfsec/parser/evaluator.go",
+    "internal/app/tfsec/parser/option.go",
+    "internal/app/tfsec/parser/parser.go",
+    "internal/app/tfsec/scanner/option.go",
+    "internal/app/tfsec/scanner/scanner.go"
+   ],
+   "infra_files": [
+    "example/moduleWithIgnore/main.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "aquasecurity__tfsec-969",
+   "repo": "aquasecurity/tfsec",
+   "base_commit": "880831573d9067faa754f2a2cff61caccd0ac80f",
+   "language": "go",
+   "code_files": [
+    "internal/app/tfsec/block/hclattribute.go"
+   ],
+   "infra_files": [
+    "example/counts/main.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "arabold__docs-mcp-server-27",
+   "repo": "arabold/docs-mcp-server",
+   "base_commit": "98b0e9e8d41aa8f6ec1a10811142c04882480dae",
+   "language": "ts",
+   "code_files": [
+    "src/mcp/index.ts",
+    "src/store/DocumentStore.ts",
+    "src/store/errors.ts"
+   ],
+   "infra_files": [
+    ".env.example",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile",
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "argoproj-labs__applicationset-146",
+   "repo": "argoproj-labs/applicationset",
+   "base_commit": "8e576ff9b393a25e8bccd5678b3d04922e1cf55b",
+   "language": "go",
+   "code_files": [
+    "pkg/utils/util.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "argoproj-labs__applicationset-197",
+   "repo": "argoproj-labs/applicationset",
+   "base_commit": "cc682df523fc91544b3f6d17f9a777e9827658cd",
+   "language": "go",
+   "code_files": [
+    "api/v1alpha1/applicationset_types.go",
+    "pkg/controllers/applicationset_controller.go"
+   ],
+   "infra_files": [
+    "manifests/crds/argoproj.io_applicationsets.yaml",
+    "manifests/install-with-argo-cd.yaml",
+    "manifests/install.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "argoproj-labs__applicationset-215",
+   "repo": "argoproj-labs/applicationset",
+   "base_commit": "85f8d904cadb9595656dd12c312310ef00a27099",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/controllers/applicationset_controller.go",
+    "pkg/generators/cluster.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "argoproj-labs__applicationset-282",
+   "repo": "argoproj-labs/applicationset",
+   "base_commit": "4918254c774d1fafefcaeac6bb9f5e88090fedb8",
+   "language": "go",
+   "code_files": [
+    "api/v1alpha1/applicationset_types.go",
+    "api/v1alpha1/zz_generated.deepcopy.go",
+    "pkg/controllers/applicationset_controller.go",
+    "pkg/utils/clusterUtils.go",
+    "pkg/utils/util.go"
+   ],
+   "infra_files": [
+    "manifests/crds/argoproj.io_applicationsets.yaml",
+    "manifests/install-with-argo-cd.yaml",
+    "manifests/install.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "argoproj__argo-2365",
+   "repo": "argoproj/argo",
+   "base_commit": "135088284acd1ced004374d20928c017fbf9cac7",
+   "language": "go",
+   "code_files": [
+    "persist/sqldb/migrate.go",
+    "persist/sqldb/workflow_archive.go",
+    "pkg/apiclient/argo-kube-client.go",
+    "server/apiserver/argoserver.go",
+    "server/cronworkflow/cron_workflow_server.go",
+    "server/workflow/workflow_server.go",
+    "server/workflowarchive/archived_workflow_server.go",
+    "workflow/controller/config_controller.go"
+   ],
+   "infra_files": [
+    "manifests/cluster-install/argo-server-rbac/argo-server-clusterole.yaml",
+    "manifests/install.yaml",
+    "manifests/namespace-install.yaml",
+    "manifests/namespace-install/argo-server-rbac/argo-server-role.yaml",
+    "manifests/quick-start-mysql.yaml",
+    "manifests/quick-start-no-db.yaml",
+    "manifests/quick-start-postgres.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "argoproj__argo-4644",
+   "repo": "argoproj/argo",
+   "base_commit": "ae0c0bb84ebcd51b02e3137ea30f9dc215bdf80a",
+   "language": "go",
+   "code_files": [
+    "pkg/apiclient/info/info.pb.go",
+    "server/auth/sso/sso.go",
+    "server/auth/types/claims.go",
+    "server/info/info_server.go",
+    "ui/src/app/userinfo/components/user-info.tsx",
+    "ui/src/models/info.ts",
+    "workflow/common/common.go",
+    "workflow/creator/creator.go"
+   ],
+   "infra_files": [
+    "manifests/quick-start/sso/overlays/argo-server-sa.yaml",
+    "manifests/quick-start/sso/overlays/workflow-controller-configmap.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "asterinas__asterinas-1466",
+   "repo": "asterinas/asterinas",
+   "base_commit": "4658b62f90ec326fa4a0054f3a44e8ab70b1e7f7",
+   "language": "rust",
+   "code_files": [
+    "kernel/src/fs/file_table.rs",
+    "kernel/src/fs/procfs/pid/mod.rs",
+    "kernel/src/fs/utils/flock.rs",
+    "kernel/src/fs/utils/range_lock/mod.rs",
+    "kernel/src/syscall/mod.rs",
+    "osdk/src/arch.rs",
+    "ostd/src/arch/x86/iommu/dma_remapping/mod.rs",
+    "ostd/src/arch/x86/iommu/registers/mod.rs",
+    "ostd/src/arch/x86/irq.rs"
+   ],
+   "infra_files": [
+    ".github/workflows/benchmark_asterinas.yml",
+    ".github/workflows/publish_osdk_and_ostd.yml",
+    ".github/workflows/publish_website.yml",
+    ".github/workflows/push_git_tag.yml",
+    "tools/docker/Dockerfile.jinja"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "asterinas__asterinas-1486",
+   "repo": "asterinas/asterinas",
+   "base_commit": "fe8e451c4fc511c0c8a652262fde999bc31588ab",
+   "language": "rust",
+   "code_files": [
+    "kernel/src/fs/file_table.rs",
+    "kernel/src/fs/procfs/pid/mod.rs",
+    "kernel/src/fs/utils/flock.rs",
+    "kernel/src/syscall/mod.rs",
+    "osdk/src/arch.rs",
+    "ostd/src/arch/x86/iommu/dma_remapping/mod.rs",
+    "ostd/src/arch/x86/iommu/registers/mod.rs"
+   ],
+   "infra_files": [
+    ".github/workflows/benchmark_asterinas.yml",
+    ".github/workflows/publish_osdk_and_ostd.yml",
+    ".github/workflows/publish_website.yml",
+    ".github/workflows/push_git_tag.yml",
+    "tools/docker/Dockerfile.jinja"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "atlassian__gostatsd-310",
+   "repo": "atlassian/gostatsd",
+   "base_commit": "ef54071cd8db4924271b342a06e830c0c29de71e",
+   "language": "go",
+   "code_files": [
+    "metric_map.go",
+    "pkg/backends/datadog/datadog.go",
+    "pkg/statsd/handler_http_forwarder_v2.go"
+   ],
+   "infra_files": [
+    "examples/cloudproviders/k8s/daemonset.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "auth0__nextjs-auth0-1198",
+   "repo": "auth0/nextjs-auth0",
+   "base_commit": "fb2542c4469bf36e139039736088e48a115b2d74",
+   "language": "ts",
+   "code_files": [
+    "examples/kitchen-sink-example/pages/api/shows.ts",
+    "src/config.ts"
+   ],
+   "infra_files": [
+    "examples/kitchen-sink-example/.env.production"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "azure__azure-service-bus-go-169",
+   "repo": "Azure/azure-service-bus-go",
+   "base_commit": "a123c25216cb63dc061547d06036b0af7b1586d6",
+   "language": "go",
+   "code_files": [
+    "message.go",
+    "message_session.go",
+    "namespace.go",
+    "rpc.go",
+    "session.go"
+   ],
+   "infra_files": [
+    "azuredeploy.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "azure__draft-217",
+   "repo": "Azure/draft",
+   "base_commit": "d41992791e38f01e6211c760840302f4d6ff68e2",
+   "language": "go",
+   "code_files": [
+    "cmd/create.go",
+    "pkg/languages/defaults/python.go",
+    "pkg/languages/languages.go"
+   ],
+   "infra_files": [
+    ".github/workflows/integration-linux.yml",
+    "template/dockerfiles/python/Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "badges__shields-3644",
+   "repo": "badges/shields",
+   "base_commit": "c6ef885b7508d342963d0600d27282950d1e646b",
+   "language": "js",
+   "code_files": [
+    "core/badge-urls/make-badge-url.js",
+    "core/base-service/legacy-request-handler.js",
+    "core/base-service/legacy-result-sender.js",
+    "core/base-service/redirector.js",
+    "core/base-service/route.js",
+    "core/server/server.js",
+    "gh-badges/lib/svg-to-img.js"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "brimsec__zq-2309",
+   "repo": "brimsec/zq",
+   "base_commit": "06b50f4a67c7016d7b33c3b372877e8ee0f95dfd",
+   "language": "go",
+   "code_files": [
+    "compiler/kernel/expr.go",
+    "expr/eval.go",
+    "expr/function/time.go",
+    "proc/groupby/groupby.go"
+   ],
+   "infra_files": [
+    "k8s/cluster.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "carlspring__s3fs-nio-711",
+   "repo": "carlspring/s3fs-nio",
+   "base_commit": "97ce1fe384cce3c77d2fe05c3dad1a88d1b8c5d2",
+   "language": "java",
+   "code_files": [
+    "build.gradle.kts",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3Factory.java",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileChannel.java",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileSystem.java",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileSystemProvider.java",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3OutputStream.java",
+    "src/main/java/org/carlspring/cloud/storage/s3fs/S3SeekableByteChannel.java"
+   ],
+   "infra_files": [
+    ".github/workflows/build.yml",
+    ".github/workflows/command-deploy-pr-snapshot.yaml",
+    "docs/docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "clojure-lsp__clojure-lsp-258",
+   "repo": "clojure-lsp/clojure-lsp",
+   "base_commit": "cdd9b61e7a79d03f3bcb2991eff60386aca232bd",
+   "language": "clojure",
+   "code_files": [
+    "src/clojure_lsp/feature/call_hierarchy.clj",
+    "src/clojure_lsp/feature/refactor.clj",
+    "src/clojure_lsp/feature/references.clj",
+    "src/clojure_lsp/handlers.clj",
+    "src/clojure_lsp/main.clj"
+   ],
+   "infra_files": [
+    ".github/workflows/release.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "clusternet__clusternet-885",
+   "repo": "clusternet/clusternet",
+   "base_commit": "466b29bbca476764c3e269a993cdc20ff972a0f6",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/apps/v1alpha1/localization.go",
+    "pkg/controllermanager/deployer/localizer/patch.go",
+    "pkg/generated/applyconfiguration/apps/v1alpha1/overrideconfig.go"
+   ],
+   "infra_files": [
+    "manifests/crds/apps.clusternet.io_globalizations.yaml",
+    "manifests/crds/apps.clusternet.io_localizations.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "codenotary__immudb-1839",
+   "repo": "codenotary/immudb",
+   "base_commit": "5239923f912e05604b9834e5b10df9ed473aa5ec",
+   "language": "go",
+   "code_files": [
+    "pkg/server/session.go"
+   ],
+   "infra_files": [
+    ".github/workflows/push.yml",
+    "Dockerfile",
+    "build/Dockerfile",
+    "build/Dockerfile.alma",
+    "build/Dockerfile.full",
+    "build/Dockerfile.rndpass",
+    "helm/Chart.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile",
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "commanded__commanded-203",
+   "repo": "commanded/commanded",
+   "base_commit": "e7fb0a7564f14144a5546cb934f7ada74c304fb7",
+   "language": "elixir",
+   "code_files": [
+    "lib/commanded/aggregates/aggregate.ex",
+    "lib/commanded/assertions/event_assertions.ex",
+    "lib/commanded/event/handler.ex",
+    "lib/commanded/event/mapper.ex",
+    "lib/commanded/event_store/adapters/in_memory.ex",
+    "lib/commanded/event_store/event_store.ex",
+    "lib/commanded/process_managers/process_router.ex"
+   ],
+   "infra_files": [
+    ".travis.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "containrrr__watchtower-1142",
+   "repo": "containrrr/watchtower",
+   "base_commit": "b3b45ab19e57dc822d3341d9a586919a49d2900e",
+   "language": "go",
+   "code_files": [
+    "cmd/root.go",
+    "pkg/api/api.go",
+    "pkg/notifications/email.go",
+    "pkg/notifications/notifier.go",
+    "pkg/notifications/shoutrrr.go",
+    "pkg/types/convertible_notifier.go"
+   ],
+   "infra_files": [
+    "dockerfiles/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "coreoffice__corexlsx-135",
+   "repo": "CoreOffice/CoreXLSX",
+   "base_commit": "e390c5766897e3ce871ac71d748c113d290f4bd7",
+   "language": "swift",
+   "code_files": [
+    "Sources/CoreXLSX/Worksheet/Cell.swift",
+    "Sources/CoreXLSX/Worksheet/CellQueries.swift",
+    "Sources/CoreXLSX/XLSXFile.swift"
+   ],
+   "infra_files": [
+    "azure-pipelines.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "cross-rs__cross-994",
+   "repo": "cross-rs/cross",
+   "base_commit": "a93c2b7fcd571d360081535d903e68fb7c56d184",
+   "language": "rust",
+   "code_files": [
+    "src/bin/commands/containers.rs",
+    "src/docker/shared.rs"
+   ],
+   "infra_files": [
+    "docker/Dockerfile.mips64-unknown-linux-muslabi64"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "danvergara__dblab-126",
+   "repo": "danvergara/dblab",
+   "base_commit": "49e5932b45534d1de1f8cda5f5f2ebb4e5e32228",
+   "language": "go",
+   "code_files": [
+    "cmd/root.go",
+    "pkg/client/client.go",
+    "pkg/command/command.go",
+    "pkg/config/config.go"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "danvergara__dblab-48",
+   "repo": "danvergara/dblab",
+   "base_commit": "74438aef93bae04edbc702c3f376edeadd162415",
+   "language": "go",
+   "code_files": [
+    "cmd/root.go",
+    "pkg/config/config.go"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "datadog__dd-trace-js-2249",
+   "repo": "DataDog/dd-trace-js",
+   "base_commit": "de7f0af5671f09d056a5c05b902c5b53584b8278",
+   "language": "js",
+   "code_files": [
+    "packages/datadog-instrumentations/src/connect.js",
+    "packages/datadog-instrumentations/src/koa.js",
+    "packages/datadog-instrumentations/src/mocha.js",
+    "packages/datadog-instrumentations/src/restify.js",
+    "packages/datadog-instrumentations/src/router.js",
+    "packages/datadog-plugin-restify/src/index.js",
+    "packages/dd-trace/src/opentracing/span.js"
+   ],
+   "infra_files": [
+    ".github/workflows/core.yml",
+    ".github/workflows/plugins.yml",
+    ".github/workflows/profiling.yml",
+    ".github/workflows/project.yml",
+    ".github/workflows/tracing.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "deislabs__ratify-116",
+   "repo": "deislabs/ratify",
+   "base_commit": "240121ee091f5e62bebcbc6c514ea5b82fc50398",
+   "language": "go",
+   "code_files": [
+    "httpserver/handlers.go",
+    "pkg/executor/core/executor.go"
+   ],
+   "infra_files": [
+    "charts/ratify/templates/configmap.yaml",
+    "charts/ratify/templates/secret.yaml",
+    "charts/ratify/values.yaml",
+    "httpserver/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile",
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "deislabs__ratify-1343",
+   "repo": "deislabs/ratify",
+   "base_commit": "75976cc1d250df781768b48812a10e9cba4e2054",
+   "language": "go",
+   "code_files": [
+    "cmd/ratify/main.go"
+   ],
+   "infra_files": [
+    ".github/workflows/publish-dev-assets.yml",
+    ".github/workflows/publish-package.yml",
+    "httpserver/Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "deislabs__ratify-667",
+   "repo": "deislabs/ratify",
+   "base_commit": "59fe0be0080d4ac7ed6190e9e90787a5387cc926",
+   "language": "go",
+   "code_files": [
+    "pkg/common/oras/authprovider/azure/azureworkloadidentity.go"
+   ],
+   "infra_files": [
+    "charts/ratify/templates/configmap.yaml",
+    "charts/ratify/templates/serviceaccount.yaml",
+    "charts/ratify/templates/store.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "docker__compose-9179",
+   "repo": "docker/compose",
+   "base_commit": "236cd0c9d2f293bacf250161ec6c4f3cdc37c37a",
+   "language": "go",
+   "code_files": [
+    "cmd/compose/create.go",
+    "cmd/compose/list.go",
+    "cmd/compose/restart.go",
+    "cmd/compose/version.go",
+    "pkg/api/api.go",
+    "pkg/compose/build.go",
+    "pkg/compose/build_classic.go",
+    "pkg/compose/create.go",
+    "pkg/compose/down.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "elastic__apm-agent-php-691",
+   "repo": "elastic/apm-agent-php",
+   "base_commit": "068c1b793186ec91720ff2707a9991e5821b2bcb",
+   "language": "php",
+   "code_files": [
+    "src/ext/lifecycle.c"
+   ],
+   "infra_files": [
+    "Dockerfile",
+    "Dockerfile.alpine"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "elastic__apm-agent-php-692",
+   "repo": "elastic/apm-agent-php",
+   "base_commit": "254f4658977e4c914a1a9eaf4190b80b90286754",
+   "language": "php",
+   "code_files": [
+    "src/ext/lifecycle.c"
+   ],
+   "infra_files": [
+    "Dockerfile",
+    "Dockerfile.alpine"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "elastic__synthetics-258",
+   "repo": "elastic/synthetics",
+   "base_commit": "fd276376482a2225061f07e8653138b17a5cf750",
+   "language": "ts",
+   "code_files": [
+    "src/core/runner.ts",
+    "src/reporters/json.ts"
+   ],
+   "infra_files": [
+    ".ci/Jenkinsfile",
+    "examples/todos/Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "envoyproxy__gateway-6326",
+   "repo": "envoyproxy/gateway",
+   "base_commit": "9925189efe6107e7badc5bfb0e3940de42df6f1a",
+   "language": "go",
+   "code_files": [
+    "api/v1alpha1/envoygateway_types.go",
+    "api/v1alpha1/securitypolicy_types.go",
+    "api/v1alpha1/zz_generated.deepcopy.go",
+    "internal/gatewayapi/helpers.go",
+    "internal/gatewayapi/securitypolicy.go",
+    "internal/provider/kubernetes/kubernetes.go",
+    "internal/provider/kubernetes/status_updater.go"
+   ],
+   "infra_files": [
+    "charts/gateway-crds-helm/templates/generated/gateway.envoyproxy.io_securitypolicies.yaml",
+    "charts/gateway-helm/crds/generated/gateway.envoyproxy.io_securitypolicies.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "equinor__design-system-3725",
+   "repo": "equinor/design-system",
+   "base_commit": "b2263f5692c64c0cdff4dc723cca5ab5cdbb43c0",
+   "language": "ts",
+   "code_files": [
+    "packages/eds-core-react/src/components/Accordion/index.ts",
+    "packages/eds-core-react/src/components/Banner/index.ts",
+    "packages/eds-core-react/src/components/Breadcrumbs/index.ts",
+    "packages/eds-core-react/src/components/Button/index.ts",
+    "packages/eds-core-react/src/components/Card/index.ts",
+    "packages/eds-core-react/src/components/Dialog/index.ts",
+    "packages/eds-core-react/src/components/List/index.ts",
+    "packages/eds-core-react/src/components/Menu/index.tsx",
+    "packages/eds-core-react/src/components/Popover/index.ts",
+    "packages/eds-core-react/src/components/SideBar/index.ts",
+    "packages/eds-core-react/src/components/SideSheet/SideSheet.tsx",
+    "packages/eds-core-react/src/components/Snackbar/index.ts",
+    "packages/eds-core-react/src/components/Table/index.tsx",
+    "packages/eds-core-react/src/components/TableOfContents/index.ts",
+    "packages/eds-core-react/src/components/Tabs/index.ts",
+    "packages/eds-core-react/src/components/TopBar/index.tsx"
+   ],
+   "infra_files": [
+    "packages/eds-lab-react/Dockerfile.storybook"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "ergochat__ergo-1927",
+   "repo": "ergochat/ergo",
+   "base_commit": "6bd94391efa4d91c740f93837180e3804937b332",
+   "language": "go",
+   "code_files": [
+    "irc/channel.go",
+    "irc/channelmanager.go",
+    "irc/channelreg.go",
+    "irc/client.go",
+    "irc/config.go",
+    "irc/handlers.go",
+    "irc/history/history.go",
+    "irc/histserv.go",
+    "irc/import.go",
+    "irc/monitor.go",
+    "irc/nickname.go",
+    "irc/types.go",
+    "irc/utils/types.go",
+    "irc/znc.go"
+   ],
+   "infra_files": [
+    ".github/workflows/build.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "evant__kotlin-inject-168",
+   "repo": "evant/kotlin-inject",
+   "base_commit": "adf42e4649d60e464ca5a053c6130942d01d38e0",
+   "language": "kotlin",
+   "code_files": [
+    "build-logic/src/main/kotlin/kotlin-inject.multiplatform.gradle.kts",
+    "kotlin-inject-runtime/build.gradle.kts",
+    "kotlin-inject-runtime/src/jvmMain/kotlin/me/tatarka/inject/internal/LazyMap.kt",
+    "kotlin-inject-runtime/src/nativeMain/kotlin/me/tatarka/inject/internal/LazyMap.kt"
+   ],
+   "infra_files": [
+    ".circleci/config.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "evcc-io__evcc-9996",
+   "repo": "evcc-io/evcc",
+   "base_commit": "6331fd57b1087a2cf15e039467c396f6067fc495",
+   "language": "go",
+   "code_files": [
+    "server/socket_helper.go"
+   ],
+   "infra_files": [
+    "util/templates/includes/switchsocket.tpl"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "external-secrets__external-secrets-3292",
+   "repo": "external-secrets/external-secrets",
+   "base_commit": "84731616f4c7c57244c73fc4553e342c5cb79b96",
+   "language": "go",
+   "code_files": [
+    "apis/externalsecrets/v1alpha1/pushsecret_types.go",
+    "pkg/controllers/pushsecret/pushsecret_controller.go",
+    "pkg/utils/utils.go"
+   ],
+   "infra_files": [
+    "deploy/crds/bundle.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "external-secrets__external-secrets-4229",
+   "repo": "external-secrets/external-secrets",
+   "base_commit": "f5f31410a50459590ce450cec20b0617a3cd70bf",
+   "language": "go",
+   "code_files": [
+    "apis/generators/v1alpha1/types_ecr.go",
+    "pkg/generator/ecr/ecr.go"
+   ],
+   "infra_files": [
+    ".github/workflows/helm.yml",
+    "deploy/crds/bundle.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "external-secrets__external-secrets-4507",
+   "repo": "external-secrets/external-secrets",
+   "base_commit": "e284531c6dd61f9101dc19f60c25780ecc0d8e86",
+   "language": "go",
+   "code_files": [
+    "pkg/provider/azure/keyvault/keyvault.go"
+   ],
+   "infra_files": [
+    "docs/snippets/azkv-pushsecret-secret.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "external-secrets__external-secrets-4941",
+   "repo": "external-secrets/external-secrets",
+   "base_commit": "71bf9617a13e054fbe212dce31d1ca6a8cd006f8",
+   "language": "go",
+   "code_files": [
+    "apis/externalsecrets/v1/secretstore_gitlab_types.go",
+    "apis/externalsecrets/v1/zz_generated.deepcopy.go",
+    "apis/externalsecrets/v1beta1/secretstore_gitlab_types.go",
+    "apis/externalsecrets/v1beta1/zz_generated.deepcopy.go",
+    "pkg/provider/gitlab/provider.go"
+   ],
+   "infra_files": [
+    "deploy/crds/bundle.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "fermyon__spin-1235",
+   "repo": "fermyon/spin",
+   "base_commit": "8f33ca92dd863fa935f60c0a4ef393de4c464cad",
+   "language": "rust",
+   "code_files": [
+    "crates/loader/src/lib.rs",
+    "crates/loader/src/local/mod.rs",
+    "crates/trigger/src/lib.rs"
+   ],
+   "infra_files": [
+    "examples/config-rust/.env"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "fission__fission-2755",
+   "repo": "fission/fission",
+   "base_commit": "ce42dbc6479106fc01e1fdfe1a8d442f4ac49329",
+   "language": "go",
+   "code_files": [
+    "pkg/builder/client/client.go",
+    "pkg/executor/executortype/container/containermgr.go",
+    "pkg/executor/executortype/newdeploy/newdeploymgr.go",
+    "pkg/executor/executortype/poolmgr/gp.go",
+    "pkg/executor/executortype/poolmgr/gpm.go",
+    "pkg/executor/metrics/metrics.go",
+    "pkg/fission-cli/cmd/environment/create.go",
+    "pkg/fission-cli/cmd/environment/update.go",
+    "pkg/fission-cli/cmd/function/create.go",
+    "pkg/fission-cli/cmd/function/run_container.go",
+    "pkg/fission-cli/cmd/function/update.go",
+    "pkg/fission-cli/cmd/httptrigger/create.go",
+    "pkg/fission-cli/cmd/httptrigger/update.go",
+    "pkg/fission-cli/cmd/kubewatch/create.go",
+    "pkg/fission-cli/cmd/mqtrigger/create.go",
+    "pkg/fission-cli/cmd/mqtrigger/update.go",
+    "pkg/fission-cli/cmd/package/create.go",
+    "pkg/fission-cli/cmd/package/package.go",
+    "pkg/fission-cli/cmd/package/update.go",
+    "pkg/fission-cli/cmd/timetrigger/create.go",
+    "pkg/fission-cli/cmd/timetrigger/update.go",
+    "pkg/utils/metrics/http_metrics.go",
+    "pkg/utils/namespace.go",
+    "pkg/utils/profile/profile.go"
+   ],
+   "infra_files": [
+    "charts/fission-all/Chart.yaml",
+    "charts/fission-all/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "fluid-cloudnative__fluid-3786",
+   "repo": "fluid-cloudnative/fluid",
+   "base_commit": "d8b3366e7fbad693717a95df0534ea3dc1440456",
+   "language": "go",
+   "code_files": [
+    "pkg/common/vineyard.go",
+    "pkg/ddc/jindocache/transform.go",
+    "pkg/ddc/vineyard/transform.go",
+    "pkg/ddc/vineyard/utils.go"
+   ],
+   "infra_files": [
+    "charts/fluid/fluid/templates/controller/vineyardruntime_controller.yaml",
+    "charts/fluid/fluid/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "fortio__fortio-621",
+   "repo": "fortio/fortio",
+   "base_commit": "cbf33f75537fc3fb79069c04a6ba120035c3a0c7",
+   "language": "go",
+   "code_files": [
+    "fhttp/http_client.go",
+    "fhttp/http_forwarder.go",
+    "fhttp/http_server.go",
+    "jrpc/jrpcClient.go",
+    "jrpc/jrpcServer.go",
+    "rapi/restHandler.go",
+    "ui/uihandler.go",
+    "version/version.go"
+   ],
+   "infra_files": [
+    ".circleci/config.yml",
+    "Dockerfile",
+    "Dockerfile.build",
+    "Dockerfile.echosrv",
+    "Dockerfile.fcurl",
+    "release/Dockerfile.in"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "gardener__machine-controller-manager-492",
+   "repo": "gardener/machine-controller-manager",
+   "base_commit": "56e6831e0e89621c42391aba392b8c9fe3644de6",
+   "language": "go",
+   "code_files": [
+    "cmd/machine-controller-manager/app/options/options.go",
+    "pkg/apis/machine/types.go",
+    "pkg/apis/machine/v1alpha1/aws_machineclass_types.go",
+    "pkg/apis/machine/v1alpha1/zz_generated.conversion.go",
+    "pkg/apis/machine/v1alpha1/zz_generated.deepcopy.go",
+    "pkg/apis/machine/zz_generated.deepcopy.go",
+    "pkg/controller/controller_utils.go",
+    "pkg/controller/deployment_machineset_util.go",
+    "pkg/controller/machine.go",
+    "pkg/controller/machine_util.go",
+    "pkg/driver/driver_aws.go",
+    "pkg/openapi/openapi_generated.go",
+    "pkg/util/provider/app/options/options.go"
+   ],
+   "infra_files": [
+    "kubernetes/crds/machine.sapcloud.io_machinedeployments.yaml",
+    "kubernetes/deployment/in-tree/control-cluster-role.yaml",
+    "kubernetes/deployment/out-of-tree/control-cluster-role.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "geoswift__geoswift-284",
+   "repo": "GEOSwift/GEOSwift",
+   "base_commit": "939c9e7f19a084a425239dd8e2c744beb78da7d6",
+   "language": "swift",
+   "code_files": [
+    "Package.swift"
+   ],
+   "infra_files": [
+    ".github/workflows/main.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "getmoto__moto-6716",
+   "repo": "getmoto/moto",
+   "base_commit": "a853fd714d133c9a9ca0479cb99537d9a39d85bf",
+   "language": "python",
+   "code_files": [
+    "moto/__init__.py",
+    "moto/iam/models.py",
+    "moto/kms/utils.py"
+   ],
+   "infra_files": [
+    ".github/workflows/release.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "getmoto__moto-8237",
+   "repo": "getmoto/moto",
+   "base_commit": "fa4352a9aab6e6e518f22975a8cccce1fff4a0e2",
+   "language": "python",
+   "code_files": [
+    "moto/rds/models.py",
+    "moto/rds/responses.py"
+   ],
+   "infra_files": [
+    "other_langs/terraform/rds/providers.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "google__yamlfmt-17",
+   "repo": "google/yamlfmt",
+   "base_commit": "492069b988af92f3c9c5ddc4ffaa135735d37d06",
+   "language": "go",
+   "code_files": [
+    "engine/engine.go",
+    "engine/errors.go"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yaml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "googlecloudplatform__pgadapter-1674",
+   "repo": "GoogleCloudPlatform/pgadapter",
+   "base_commit": "076db91cf055925b49250e440b9c88d723b29a59",
+   "language": "java",
+   "code_files": [
+    "samples/dotnet/npgsql-sample/Program.cs",
+    "src/main/java/com/google/cloud/spanner/pgadapter/parsers/ArrayParser.java",
+    "src/main/java/com/google/cloud/spanner/pgadapter/parsers/Parser.java",
+    "src/main/java/com/google/cloud/spanner/pgadapter/statements/PgCatalog.java",
+    "src/main/java/com/google/cloud/spanner/pgadapter/utils/ClientAutoDetector.java",
+    "src/main/java/com/google/cloud/spanner/pgadapter/utils/Converter.java"
+   ],
+   "infra_files": [
+    ".github/workflows/integration.yaml",
+    ".github/workflows/samples.yaml",
+    "samples/cloud-run/python/Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "googlecloudplatform__pgadapter-2774",
+   "repo": "GoogleCloudPlatform/pgadapter",
+   "base_commit": "b473b4593571620936fa0cda7a08ca41a3b8207f",
+   "language": "java",
+   "code_files": [
+    "src/main/java/com/google/cloud/spanner/pgadapter/ConnectionHandler.java",
+    "src/main/java/com/google/cloud/spanner/pgadapter/statements/BackendConnection.java"
+   ],
+   "infra_files": [
+    "samples/sidecar-proxy/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "googlecloudplatform__spark-on-k8s-operator-1261",
+   "repo": "GoogleCloudPlatform/spark-on-k8s-operator",
+   "base_commit": "24a884258e9857266f34e425f400f2f883599735",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/controller/sparkapplication/controller.go"
+   ],
+   "infra_files": [
+    "charts/spark-operator-chart/Chart.yaml",
+    "charts/spark-operator-chart/templates/deployment.yaml",
+    "charts/spark-operator-chart/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "goreleaser__goreleaser-2626",
+   "repo": "goreleaser/goreleaser",
+   "base_commit": "47d0e827436f3c2ed8caac9d7f508b2a862c0e00",
+   "language": "go",
+   "code_files": [
+    "internal/linux/arch.go",
+    "internal/pipe/git/git.go",
+    "internal/pipe/mattermost/mattermost.go",
+    "internal/pipe/reddit/reddit.go",
+    "internal/pipe/release/release.go",
+    "internal/pipe/slack/slack.go",
+    "internal/pipe/smtp/smtp.go",
+    "internal/pipe/teams/teams.go",
+    "internal/pipe/telegram/telegram.go",
+    "internal/pipe/twitter/twitter.go",
+    "internal/tmpl/tmpl.go",
+    "pkg/context/context.go"
+   ],
+   "infra_files": [
+    ".github/workflows/build.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "gravitee-io__graviteeio-access-management-398",
+   "repo": "gravitee-io/graviteeio-access-management",
+   "base_commit": "65c1bad0625ea90d0ed16358c9a049a901f3f149",
+   "language": "java",
+   "code_files": [
+    "gravitee-am-gateway/gravitee-am-gateway-handler/src/main/java/io/gravitee/am/gateway/handler/oauth2/request/OAuth2Request.java",
+    "gravitee-am-gateway/gravitee-am-gateway-handler/src/main/java/io/gravitee/am/gateway/handler/oauth2/token/impl/TokenEnhancerImpl.java",
+    "gravitee-am-gateway/gravitee-am-gateway-handler/src/main/java/io/gravitee/am/gateway/handler/oidc/idtoken/IDToken.java",
+    "gravitee-am-gateway/gravitee-am-gateway-handler/src/main/java/io/gravitee/am/gateway/handler/oidc/idtoken/impl/IDTokenServiceImpl.java",
+    "gravitee-am-gateway/gravitee-am-gateway-handler/src/main/java/io/gravitee/am/gateway/handler/vertx/handler/oauth2/endpoint/authorization/AuthorizationRequestParseHandler.java",
+    "gravitee-am-identityprovider/gravitee-am-identityprovider-inline/src/main/java/io/gravitee/am/identityprovider/inline/InlineIdentityProviderMapper.java",
+    "gravitee-am-identityprovider/gravitee-am-identityprovider-inline/src/main/java/io/gravitee/am/identityprovider/inline/authentication/InlineAuthenticationProvider.java",
+    "gravitee-am-identityprovider/gravitee-am-identityprovider-inline/src/main/java/io/gravitee/am/identityprovider/inline/model/User.java"
+   ],
+   "infra_files": [
+    "docker/compose/docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "guacsec__guac-2394",
+   "repo": "guacsec/guac",
+   "base_commit": "279cf5b8fd9132ccfd3b20de537e39df503b165a",
+   "language": "go",
+   "code_files": [
+    "internal/client/depsdevclient/deps_dev_client.go",
+    "pkg/handler/processor/ite6/ite6.go",
+    "pkg/handler/processor/process/process.go"
+   ],
+   "infra_files": [
+    "pkg/assembler/backends/ent/migrate/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "hashgraph__hedera-local-node-868",
+   "repo": "hashgraph/hedera-local-node",
+   "base_commit": "8f70b8eefe32ffa85bf5cae47da6a1ea00c03331",
+   "language": "ts",
+   "code_files": [
+    "src/Errors/LocalNodeErrors.ts",
+    "src/constants.ts",
+    "src/data/StateData.ts",
+    "src/index.ts",
+    "src/services/CLIService.ts",
+    "src/state/InitState.ts",
+    "src/types/CLIOptions.ts"
+   ],
+   "infra_files": [
+    ".env",
+    ".github/workflows/flow-pull-request-checks.yaml",
+    "docker-compose-state-migration.yml",
+    "docker-compose.multinode.yml",
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "compose",
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "hashicorp__consul-7280",
+   "repo": "hashicorp/consul",
+   "base_commit": "629a3ff08a33133073bfe65cf412b6a76892d7e1",
+   "language": "go",
+   "code_files": [
+    "agent/agent.go",
+    "agent/config/builder.go",
+    "agent/config/default.go",
+    "agent/config/runtime.go",
+    "agent/consul/acl_endpoint.go",
+    "agent/consul/acl_oss.go",
+    "agent/keyring.go",
+    "agent/proxycfg/state.go",
+    "agent/xds/routes.go",
+    "ui-v2/app/routes/dc/services/show.js",
+    "ui-v2/app/services/client/http.js"
+   ],
+   "infra_files": [
+    ".circleci/config.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "helidon-io__helidon-7982",
+   "repo": "helidon-io/helidon",
+   "base_commit": "c7a3b66f2e90dfe643feef2729753c85ebe93d71",
+   "language": "java",
+   "code_files": [
+    "metrics/providers/micrometer/src/main/java/io/helidon/metrics/providers/micrometer/MicrometerPrometheusFormatter.java",
+    "webserver/webserver/src/main/java/io/helidon/webserver/http1/Http1ServerResponse.java"
+   ],
+   "infra_files": [
+    "archetypes/helidon/src/main/archetype/common/files/Dockerfile.jlink.mustache",
+    "archetypes/helidon/src/main/archetype/common/files/Dockerfile.mustache",
+    "examples/employee-app/Dockerfile",
+    "examples/integrations/cdi/datasource-hikaricp/Dockerfile",
+    "examples/quickstarts/helidon-quickstart-mp/Dockerfile",
+    "examples/quickstarts/helidon-quickstart-mp/Dockerfile.jlink",
+    "examples/quickstarts/helidon-quickstart-se/Dockerfile.jlink",
+    "examples/quickstarts/helidon-standalone-quickstart-mp/Dockerfile",
+    "examples/quickstarts/helidon-standalone-quickstart-mp/Dockerfile.jlink",
+    "examples/quickstarts/helidon-standalone-quickstart-se/Dockerfile",
+    "examples/quickstarts/helidon-standalone-quickstart-se/Dockerfile.jlink",
+    "examples/translator-app/backend/Dockerfile",
+    "examples/translator-app/frontend/Dockerfile",
+    "examples/webserver/opentracing/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "helm__chart-testing-280",
+   "repo": "helm/chart-testing",
+   "base_commit": "21e0f7a1d3fb05467f28a54bd3fd2ca181c7f6a1",
+   "language": "go",
+   "code_files": [
+    "ct/cmd/root.go",
+    "pkg/chart/chart.go",
+    "pkg/config/config.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "honeycombio__terraform-provider-honeycombio-211",
+   "repo": "honeycombio/terraform-provider-honeycombio",
+   "base_commit": "12c41edf6572f6130b7f196e03dad40f7303f8c4",
+   "language": "go",
+   "code_files": [
+    "client/board.go",
+    "honeycombio/resource_board.go"
+   ],
+   "infra_files": [
+    "example/board_with_annotations/main.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "istio__fortio-173",
+   "repo": "istio/fortio",
+   "base_commit": "182ba7673e59c2e4c3d29db148c9b387e600a44d",
+   "language": "go",
+   "code_files": [
+    "fgrpc/grpcrunner.go",
+    "fhttp/http.go",
+    "fhttp/httprunner.go",
+    "ui/uihandler.go"
+   ],
+   "infra_files": [
+    ".circleci/config.yml",
+    "Dockerfile",
+    "Dockerfile.build",
+    "Dockerfile.echosrv",
+    "release/Dockerfile.in"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "istio__fortio-206",
+   "repo": "istio/fortio",
+   "base_commit": "81373633763f8b508d51f288b906d47bfa73eab9",
+   "language": "go",
+   "code_files": [
+    "echosrv/echo.go",
+    "fgrpc/grpcrunner.go",
+    "fgrpc/pingsrv.go",
+    "fhttp/http_server.go",
+    "fhttp/httprunner.go",
+    "fnet/network.go",
+    "fortio_main.go",
+    "periodic/periodic.go",
+    "ui/uihandler.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "istio__istio-35950",
+   "repo": "istio/istio",
+   "base_commit": "d4a6c0035df9d8883806626b40d522ec7307f603",
+   "language": "go",
+   "code_files": [
+    "pilot/pkg/features/pilot.go",
+    "pilot/pkg/model/push_context.go",
+    "pilot/pkg/serviceregistry/kube/controller/controller.go",
+    "pilot/pkg/serviceregistry/kube/controller/multicluster.go",
+    "pilot/pkg/xds/monitoring.go"
+   ],
+   "infra_files": [
+    "releasenotes/notes/35883.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "istio__istio-50088",
+   "repo": "istio/istio",
+   "base_commit": "0ac48980d05d85a9027b0b99ae4ac62a6e7543b7",
+   "language": "go",
+   "code_files": [
+    "pilot/pkg/serviceregistry/kube/controller/controller.go",
+    "pilot/pkg/serviceregistry/serviceentry/controller.go",
+    "pkg/config/analysis/analyzers/util/proxyconfig.go"
+   ],
+   "infra_files": [
+    "manifests/charts/ztunnel/templates/daemonset.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "istio__istio-50202",
+   "repo": "istio/istio",
+   "base_commit": "3cc06285111ff3a69e72a1fdda77eb8825b54e62",
+   "language": "go",
+   "code_files": [
+    "pilot/pkg/config/kube/gateway/conditions.go",
+    "pilot/pkg/model/sidecar.go",
+    "pilot/pkg/networking/core/tracing.go",
+    "pilot/pkg/xds/cds.go",
+    "pilot/pkg/xds/eds.go",
+    "pilot/pkg/xds/lds.go",
+    "pilot/pkg/xds/nds.go",
+    "pilot/pkg/xds/proxy_dependencies.go"
+   ],
+   "infra_files": [
+    "manifests/charts/base/files/profile-openshift.yaml",
+    "manifests/charts/default/files/profile-openshift.yaml",
+    "manifests/charts/gateway/files/profile-openshift.yaml",
+    "manifests/charts/gateway/templates/deployment.yaml",
+    "manifests/charts/gateways/istio-egress/files/profile-openshift.yaml",
+    "manifests/charts/gateways/istio-ingress/files/profile-openshift.yaml",
+    "manifests/charts/istio-cni/files/profile-openshift.yaml",
+    "manifests/charts/istio-control/istio-discovery/files/profile-openshift.yaml",
+    "manifests/charts/istio-operator/files/profile-openshift.yaml",
+    "manifests/charts/istiod-remote/files/profile-openshift.yaml",
+    "manifests/charts/ztunnel/files/profile-openshift.yaml",
+    "manifests/helm-profiles/openshift.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "istio__istio-51939",
+   "repo": "istio/istio",
+   "base_commit": "bd7effa0464ebdeffd2d6274f14073cd13f6180c",
+   "language": "go",
+   "code_files": [
+    "pilot/pkg/model/service.go",
+    "pilot/pkg/networking/core/listener_waypoint.go",
+    "pilot/pkg/serviceregistry/serviceentry/controller.go",
+    "pilot/pkg/serviceregistry/serviceentry/conversion.go",
+    "pilot/pkg/xds/filters/filters.go"
+   ],
+   "infra_files": [
+    "manifests/charts/ztunnel/templates/daemonset.yaml",
+    "manifests/charts/ztunnel/templates/rbac.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "jenkins-x__lighthouse-1106",
+   "repo": "jenkins-x/lighthouse",
+   "base_commit": "5ba891cdfef9048c9c1e4ef6367244e5f72ea957",
+   "language": "go",
+   "code_files": [
+    "cmd/tektoncontroller/main.go",
+    "pkg/engines/tekton/controller.go"
+   ],
+   "infra_files": [
+    "charts/lighthouse/templates/tekton-controller-deployment.yaml",
+    "charts/lighthouse/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "jfrog__terraform-provider-xray-274",
+   "repo": "jfrog/terraform-provider-xray",
+   "base_commit": "25f8f738c5b4c2e617ed00a1d8ca4fece7957325",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/xray/provider.go",
+    "pkg/xray/resource/resource_xray_license_policy.go"
+   ],
+   "infra_files": [
+    "sample.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "juliaai__mljbase.jl-992",
+   "repo": "JuliaAI/MLJBase.jl",
+   "base_commit": "d65ed1f12ecca80674c66a332fa96d651830a56c",
+   "language": "julia",
+   "code_files": [
+    "src/interface/data_utils.jl"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "juliastats__mixedmodels.jl-837",
+   "repo": "JuliaStats/MixedModels.jl",
+   "base_commit": "418a65fe851473807247c210a5b675c06c0c8f21",
+   "language": "julia",
+   "code_files": [
+    "src/MixedModels.jl",
+    "src/randomeffectsterm.jl",
+    "src/schema.jl",
+    "src/utilities.jl"
+   ],
+   "infra_files": [
+    ".github/workflows/minimum.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "jupyter-incubator__sparkmagic-389",
+   "repo": "jupyter-incubator/sparkmagic",
+   "base_commit": "8a5f139f8f02a3e9a3dae0b75f98ef7fc092b31d",
+   "language": "python",
+   "code_files": [
+    "autovizwidget/autovizwidget/__init__.py",
+    "hdijupyterutils/hdijupyterutils/__init__.py",
+    "sparkmagic/sparkmagic/__init__.py",
+    "sparkmagic/sparkmagic/controllerwidget/magicscontrollerwidget.py",
+    "sparkmagic/sparkmagic/controllerwidget/manageendpointwidget.py",
+    "sparkmagic/sparkmagic/livyclientlib/livyreliablehttpclient.py",
+    "sparkmagic/sparkmagic/livyclientlib/livysession.py",
+    "sparkmagic/sparkmagic/livyclientlib/sessionmanager.py",
+    "sparkmagic/sparkmagic/livyclientlib/sparkcontroller.py"
+   ],
+   "infra_files": [
+    "Dockerfile.jupyter"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "kaito-project__kaito-1035",
+   "repo": "kaito-project/kaito",
+   "base_commit": "9798552aa880be23399ac5dbefc1d9807e72bfa4",
+   "language": "go",
+   "code_files": [
+    "api/v1beta1/workspace_types.go",
+    "api/v1beta1/workspace_validation.go",
+    "pkg/model/interface.go",
+    "pkg/utils/common.go",
+    "pkg/workspace/inference/preset-inferences.go",
+    "pkg/workspace/manifests/manifests.go",
+    "presets/workspace/models/metadata.go"
+   ],
+   "infra_files": [
+    "charts/kaito/workspace/crds/kaito.sh_workspaces.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kinto__kinto-1919",
+   "repo": "Kinto/kinto",
+   "base_commit": "302a63a2c9a571396d7519c6ba2de58353ffed65",
+   "language": "python",
+   "code_files": [
+    "kinto/core/authorization.py",
+    "kinto/core/errors.py",
+    "kinto/core/resource/__init__.py",
+    "kinto/core/storage/exceptions.py",
+    "kinto/core/storage/postgresql/__init__.py",
+    "kinto/plugins/default_bucket/__init__.py",
+    "setup.py"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "knative-sandbox__eventing-kafka-694",
+   "repo": "knative-sandbox/eventing-kafka",
+   "base_commit": "93e022038d306fcda1e9db0e902ac41b8e73f987",
+   "language": "go",
+   "code_files": [
+    "pkg/source/adapter/adapter.go",
+    "pkg/source/mtadapter/adapter.go",
+    "vendor/knative.dev/eventing/pkg/channel/fanout/fanout_message_handler.go"
+   ],
+   "infra_files": [
+    "config/source/multi/deployments/adapter.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kong__kubernetes-ingress-controller-7538",
+   "repo": "Kong/kubernetes-ingress-controller",
+   "base_commit": "4ee641eb4edfbf5649f1dbe941d086498472049e",
+   "language": "go",
+   "code_files": [
+    "internal/dataplane/kongstate/kongstate.go",
+    "internal/dataplane/translator/translate_upstreams.go",
+    "internal/dataplane/translator/translator.go",
+    "internal/manager/run.go",
+    "internal/versions/versions.go"
+   ],
+   "infra_files": [
+    "Dockerfile.debug",
+    "config/crd/incubator/kustomization.yaml",
+    "config/crd/kustomization.yaml"
+   ],
+   "infra_kinds": [
+    "dockerfile",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kong__kubernetes-ingress-controller-7583",
+   "repo": "Kong/kubernetes-ingress-controller",
+   "base_commit": "dcb3ad4ac6609895ca7007d0479000c66d11f326",
+   "language": "go",
+   "code_files": [
+    "internal/dataplane/kongstate/kongupstreampolicy.go"
+   ],
+   "infra_files": [
+    "config/crd/incubator/kustomization.yaml",
+    "config/crd/kustomization.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kovetskiy__mark-351",
+   "repo": "kovetskiy/mark",
+   "base_commit": "295d17e6f30452127d1032e9c57ca6d55700eef7",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/mark/markdown.go"
+   ],
+   "infra_files": [
+    "docker-compose.yaml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "kozea__weasyprint-2326",
+   "repo": "Kozea/WeasyPrint",
+   "base_commit": "3c6f9a5a55b79563e32c766a1b5409e1d20b3601",
+   "language": "python",
+   "code_files": [
+    "weasyprint/layout/preferred.py",
+    "weasyprint/text/ffi.py"
+   ],
+   "infra_files": [
+    ".github/workflows/exe.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "kripken__emscripten-5647",
+   "repo": "kripken/emscripten",
+   "base_commit": "6c4e897759e48581caa182d293a277278cbd7612",
+   "language": "c",
+   "code_files": [
+    "embuilder.py",
+    "emcc.py",
+    "emscripten.py",
+    "tools/emterpretify.py",
+    "tools/ffdb.py",
+    "tools/ports/__init__.py",
+    "tools/ports/binaryen.py",
+    "tools/system_libs.py"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "kubean-io__kubean-499",
+   "repo": "kubean-io/kubean",
+   "base_commit": "dd63ef01ee1e40625fd02f435c18caa74d34766c",
+   "language": "go",
+   "code_files": [
+    "pkg/controllers/clusterops/controller.go"
+   ],
+   "infra_files": [
+    "charts/kubean/templates/serviceaccount.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubermatic__kubermatic-6013",
+   "repo": "kubermatic/kubermatic",
+   "base_commit": "4bcab42765728a46a53b29fe329fb25b65ff1b5d",
+   "language": "go",
+   "code_files": [
+    "pkg/controller/operator/common/defaults.go",
+    "pkg/controller/user-cluster-controller-manager/cluster-role-labeler/cluster_role_labeler.go",
+    "pkg/controller/user-cluster-controller-manager/owner-binding-creator/owner_binding_creator.go"
+   ],
+   "infra_files": [
+    "charts/kubermatic/Chart.yaml",
+    "charts/kubermatic/static/master/accessible-addons.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubermatic__kubermatic-6501",
+   "repo": "kubermatic/kubermatic",
+   "base_commit": "82311ff0b821fc88882f0cb8ba72a1ad507e35fd",
+   "language": "go",
+   "code_files": [
+    "pkg/api/v1/types.go",
+    "pkg/controller/seed-controller-manager/kubernetes/health.go",
+    "pkg/controller/user-cluster-controller-manager/resources/controller.go",
+    "pkg/controller/user-cluster-controller-manager/resources/reconciler.go",
+    "pkg/controller/user-cluster-controller-manager/resources/resources/core-dns/configmap.go",
+    "pkg/controller/user-cluster-controller-manager/resources/resources/core-dns/deployment.go",
+    "pkg/crd/kubermatic/v1/cluster.go",
+    "pkg/handler/common/cluster.go",
+    "pkg/resources/dns/dns.go"
+   ],
+   "infra_files": [
+    "cmd/etcd-launcher/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "kubermatic__kubermatic-9224",
+   "repo": "kubermatic/kubermatic",
+   "base_commit": "befbecd080545cdc54e0ca20f5488b8477b30388",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/kubermatic/v1/addon.go",
+    "pkg/apis/kubermatic/v1/zz_generated.deepcopy.go",
+    "pkg/controller/seed-controller-manager/addon/addon_controller.go",
+    "pkg/handler/common/addon.go",
+    "pkg/install/crdmigration/clones.go",
+    "pkg/provider/kubernetes/addon.go",
+    "pkg/resources/apiserver/networkpolicy.go"
+   ],
+   "infra_files": [
+    "charts/monitoring/prometheus/rules/kubermatic-seed-kubermatic.yaml",
+    "charts/monitoring/prometheus/rules/src/kubermatic-seed/kubermatic.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubermatic__kubermatic-9261",
+   "repo": "kubermatic/kubermatic",
+   "base_commit": "fd279023c5d98ddbda9864711827f22571672b98",
+   "language": "go",
+   "code_files": [
+    "codegen/example-yaml/main.go",
+    "pkg/apis/kubermatic/v1/datacenter.go",
+    "pkg/ee/metering/cronjob.go",
+    "pkg/ee/metering/reconcile.go",
+    "pkg/webhook/seed/validation.go"
+   ],
+   "infra_files": [
+    "charts/kubermatic-operator/crd/k8c.io/kubermatic.k8c.io_seeds.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-csi__external-attacher-213",
+   "repo": "kubernetes-csi/external-attacher",
+   "base_commit": "57193d79d0e3d1ea377e42c7176790b0d97f2bd9",
+   "language": "go",
+   "code_files": [
+    "cmd/csi-attacher/main.go",
+    "pkg/controller/csi_handler.go",
+    "pkg/controller/util.go"
+   ],
+   "infra_files": [
+    "deploy/kubernetes/rbac.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-csi__external-snapshotter-526",
+   "repo": "kubernetes-csi/external-snapshotter",
+   "base_commit": "73f3def762aac526216ae8a213f477c34e836b7a",
+   "language": "go",
+   "code_files": [
+    "pkg/common-controller/snapshot_controller.go",
+    "pkg/sidecar-controller/snapshot_controller.go"
+   ],
+   "infra_files": [
+    "deploy/kubernetes/csi-snapshotter/rbac-csi-snapshotter.yaml",
+    "deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__cloud-provider-azure-7568",
+   "repo": "kubernetes-sigs/cloud-provider-azure",
+   "base_commit": "ab9c23b4ea4022cd2c49724b9f900c10874206d8",
+   "language": "go",
+   "code_files": [
+    "pkg/provider/azure_loadbalancer.go",
+    "pkg/provider/azure_privatelinkservice.go",
+    "pkg/provider/azure_utils.go",
+    "pkg/provider/azure_vmss.go"
+   ],
+   "infra_files": [
+    "Dockerfile",
+    "cloud-node-manager.Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__kubefed-1400",
+   "repo": "kubernetes-sigs/kubefed",
+   "base_commit": "ad65b8c7f5be422192b260cf822715d851713e02",
+   "language": "go",
+   "code_files": [
+    "cmd/controller-manager/app/controller-manager.go",
+    "pkg/apis/core/v1beta1/defaults/defaults.go",
+    "pkg/apis/core/v1beta1/kubefedconfig_types.go",
+    "pkg/apis/core/v1beta1/validation/validation.go",
+    "pkg/apis/core/v1beta1/zz_generated.deepcopy.go",
+    "pkg/controller/federatedtypeconfig/controller.go",
+    "pkg/controller/kubefedcluster/controller.go",
+    "pkg/controller/schedulingmanager/controller.go",
+    "pkg/controller/schedulingpreference/controller.go",
+    "pkg/controller/status/controller.go",
+    "pkg/controller/sync/controller.go",
+    "pkg/controller/util/controllerconfig.go",
+    "pkg/controller/util/worker.go"
+   ],
+   "infra_files": [
+    "charts/kubefed/charts/controllermanager/crds/crds.yaml",
+    "charts/kubefed/charts/controllermanager/templates/kubefedconfig.yaml",
+    "charts/kubefed/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__kueue-152",
+   "repo": "kubernetes-sigs/kueue",
+   "base_commit": "0f5615a776aea8ff93e15f3d348f3a7f68a13214",
+   "language": "go",
+   "code_files": [
+    "api/v1alpha1/clusterqueue_types.go",
+    "api/v1alpha1/zz_generated.deepcopy.go",
+    "pkg/cache/cache.go",
+    "pkg/scheduler/scheduler.go",
+    "pkg/util/pointer/pointer.go"
+   ],
+   "infra_files": [
+    "config/samples/single-clusterqueue-setup.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__kueue-153",
+   "repo": "kubernetes-sigs/kueue",
+   "base_commit": "646d0ed313f2f3e3f82c70ccfbca5661d6f34614",
+   "language": "go",
+   "code_files": [
+    "api/v1alpha1/clusterqueue_types.go",
+    "api/v1alpha1/zz_generated.deepcopy.go",
+    "pkg/cache/cache.go",
+    "pkg/controller/core/clusterqueue_controller.go",
+    "pkg/controller/core/queuedworkload_controller.go",
+    "pkg/queue/manager.go",
+    "pkg/scheduler/scheduler.go",
+    "pkg/util/pointer/pointer.go"
+   ],
+   "infra_files": [
+    "config/samples/single-clusterqueue-setup.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__node-feature-discovery-1781",
+   "repo": "kubernetes-sigs/node-feature-discovery",
+   "base_commit": "ee7795cda5a82a4a480c2716274fdd6a74fe84cb",
+   "language": "go",
+   "code_files": [
+    "cmd/nfd-master/main.go",
+    "cmd/nfd-worker/main.go",
+    "pkg/nfd-master/nfd-master.go",
+    "pkg/nfd-worker/nfd-worker.go",
+    "source/memory/memory.go"
+   ],
+   "infra_files": [
+    "deployment/helm/node-feature-discovery/templates/clusterrole.yaml",
+    "deployment/helm/node-feature-discovery/templates/clusterrolebinding.yaml",
+    "deployment/helm/node-feature-discovery/templates/master.yaml",
+    "deployment/helm/node-feature-discovery/templates/nfd-gc.yaml",
+    "deployment/helm/node-feature-discovery/templates/service.yaml",
+    "deployment/helm/node-feature-discovery/templates/serviceaccount.yaml",
+    "deployment/helm/node-feature-discovery/templates/worker.yaml",
+    "deployment/helm/node-feature-discovery/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__security-profiles-operator-1236",
+   "repo": "kubernetes-sigs/security-profiles-operator",
+   "base_commit": "29d1b6b018093dddf75f7f677378e27da0f97990",
+   "language": "c",
+   "code_files": [
+    "internal/pkg/manager/nodestatus/nodestatus.go",
+    "internal/pkg/manager/recordingmerger/merge_utils.go",
+    "internal/pkg/nodestatus/nodestatus.go",
+    "internal/pkg/util/finalizers.go"
+   ],
+   "infra_files": [
+    "bundle/manifests/security-profiles-operator.clusterserviceversion.yaml",
+    "deploy/base/role.yaml",
+    "deploy/helm/templates/static-resources.yaml",
+    "deploy/namespace-operator.yaml",
+    "deploy/openshift-dev.yaml",
+    "deploy/operator.yaml",
+    "deploy/overlays/webhook/role.yaml",
+    "deploy/webhook-operator.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__security-profiles-operator-1278",
+   "repo": "kubernetes-sigs/security-profiles-operator",
+   "base_commit": "c44cab40b927f8e17022c385618b902b0f4ec093",
+   "language": "c",
+   "code_files": [
+    "api/selinuxprofile/v1alpha2/selinuxprofile_types.go",
+    "internal/pkg/translator/obj2cil.go"
+   ],
+   "infra_files": [
+    "Dockerfile.build-image",
+    "bundle/manifests/security-profiles-operator.x-k8s.io_selinuxprofiles.yaml",
+    "deploy/base-crds/crds/selinuxpolicy.yaml",
+    "deploy/helm/crds/crds.yaml",
+    "deploy/kustomize-deployment/kustomization.yaml",
+    "deploy/namespace-operator.yaml",
+    "deploy/openshift-dev.yaml",
+    "deploy/operator.yaml",
+    "deploy/webhook-operator.yaml"
+   ],
+   "infra_kinds": [
+    "dockerfile",
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes-sigs__security-profiles-operator-1600",
+   "repo": "kubernetes-sigs/security-profiles-operator",
+   "base_commit": "f51ef67222d1a5a62ddee1a168a478bf04c82053",
+   "language": "c",
+   "code_files": [
+    "internal/pkg/manager/spod/setup.go",
+    "internal/pkg/manager/spod/spod_controller.go",
+    "internal/pkg/util/constants.go",
+    "internal/pkg/util/kubernetes.go"
+   ],
+   "infra_files": [
+    ".github/workflows/build.yml",
+    "bundle/manifests/security-profiles-operator-profile_v1_configmap.yaml",
+    "bundle/manifests/security-profiles-operator.clusterserviceversion.yaml",
+    "deploy/base/kustomization.yaml",
+    "deploy/base/role.yaml",
+    "deploy/helm/templates/static-resources.yaml",
+    "deploy/namespace-operator.yaml",
+    "deploy/openshift-dev.yaml",
+    "deploy/openshift-downstream.yaml",
+    "deploy/operator.yaml",
+    "deploy/overlays/webhook/role.yaml",
+    "deploy/webhook-operator.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes__kops-15916",
+   "repo": "kubernetes/kops",
+   "base_commit": "bd6c6852dc6bdc3312457fb3108563fce47488a8",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/kops/cluster.go",
+    "pkg/apis/kops/v1alpha2/cluster.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.deepcopy.go",
+    "pkg/apis/kops/v1alpha3/cluster.go",
+    "pkg/apis/kops/v1alpha3/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha3/zz_generated.deepcopy.go",
+    "pkg/apis/kops/zz_generated.deepcopy.go"
+   ],
+   "infra_files": [
+    "k8s/crds/kops.k8s.io_clusters.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes__kops-16605",
+   "repo": "kubernetes/kops",
+   "base_commit": "e6c27b25281010d7bb0a37410446f88f435b4418",
+   "language": "go",
+   "code_files": [
+    "nodeup/pkg/model/kube_controller_manager.go",
+    "nodeup/pkg/model/kube_scheduler.go",
+    "pkg/apis/kops/componentconfig.go",
+    "pkg/apis/kops/v1alpha2/componentconfig.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.deepcopy.go",
+    "pkg/apis/kops/v1alpha3/componentconfig.go",
+    "pkg/apis/kops/v1alpha3/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha3/zz_generated.deepcopy.go",
+    "pkg/apis/kops/zz_generated.deepcopy.go"
+   ],
+   "infra_files": [
+    "k8s/crds/kops.k8s.io_clusters.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes__kops-16681",
+   "repo": "kubernetes/kops",
+   "base_commit": "ae8fa06e07e703efd16ed38afdb12ae7bdce41c0",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/kops/networking.go",
+    "pkg/apis/kops/v1alpha2/networking.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha3/networking.go",
+    "pkg/apis/kops/v1alpha3/zz_generated.conversion.go"
+   ],
+   "infra_files": [
+    "k8s/crds/kops.k8s.io_clusters.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kubernetes__kops-7487",
+   "repo": "kubernetes/kops",
+   "base_commit": "7406e0320efac78fd7793538d436c11e0c15c50e",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/kops/componentconfig.go",
+    "pkg/apis/kops/v1alpha1/componentconfig.go",
+    "pkg/apis/kops/v1alpha1/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha1/zz_generated.deepcopy.go",
+    "pkg/apis/kops/v1alpha2/componentconfig.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.conversion.go",
+    "pkg/apis/kops/v1alpha2/zz_generated.deepcopy.go",
+    "pkg/apis/kops/zz_generated.deepcopy.go"
+   ],
+   "infra_files": [
+    "k8s/crds/kops.k8s.io_clusters.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "kurator-dev__kurator-667",
+   "repo": "kurator-dev/kurator",
+   "base_commit": "19220c18ea2ca59ca40fc68c98701da777fe4a99",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/apps/v1alpha1/types.go",
+    "pkg/fleet-manager/application/controller.go",
+    "pkg/fleet-manager/application/helper.go",
+    "pkg/fleet-manager/application/rollout_helper.go",
+    "pkg/fleet-manager/fleet_cluster.go",
+    "pkg/webhooks/application_webhook.go"
+   ],
+   "infra_files": [
+    "manifests/charts/fleet-manager/crds/apps.kurator.dev_applications.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "linkerd__linkerd2-11875",
+   "repo": "linkerd/linkerd2",
+   "base_commit": "31e1334f9eb13aa8e0caa581d052196592a2d95f",
+   "language": "go",
+   "code_files": [
+    "controller/k8s/api.go",
+    "multicluster/cmd/service-mirror/main.go",
+    "multicluster/service-mirror/cluster_watcher.go",
+    "pkg/charts/cni/values.go",
+    "policy-controller/src/admission.rs",
+    "policy-controller/src/lib.rs"
+   ],
+   "infra_files": [
+    "charts/linkerd-crds/templates/policy/meshtls-authentication.yaml",
+    "charts/linkerd2-cni/templates/cni-plugin.yaml",
+    "charts/linkerd2-cni/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "linkerd__linkerd2-5399",
+   "repo": "linkerd/linkerd2",
+   "base_commit": "589f36c4c288dd22e0a7b95b6e9eab40360897f4",
+   "language": "go",
+   "code_files": [
+    "cli/cmd/check.go",
+    "cli/cmd/inject.go",
+    "cli/cmd/install.go",
+    "cli/cmd/options.go",
+    "cli/cmd/upgrade.go",
+    "cli/cmd/upgrade_legacy.go",
+    "controller/cmd/tap/main.go",
+    "controller/tap/apiserver.go",
+    "controller/webhook/server.go",
+    "pkg/charts/linkerd2/values.go",
+    "pkg/tls/creds_watcher.go"
+   ],
+   "infra_files": [
+    "charts/linkerd2-cni/templates/cni-plugin.yaml",
+    "charts/linkerd2-cni/values.yaml",
+    "jaeger/charts/jaeger/Chart.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "linkerd__linkerd2-5454",
+   "repo": "linkerd/linkerd2",
+   "base_commit": "df84a08ac88757c54588734e1082963e8a23fe44",
+   "language": "go",
+   "code_files": [
+    "pkg/inject/inject.go"
+   ],
+   "infra_files": [
+    "charts/linkerd2/templates/controller.yaml",
+    "charts/linkerd2/templates/destination.yaml",
+    "charts/linkerd2/templates/identity.yaml",
+    "charts/linkerd2/templates/proxy-injector.yaml",
+    "charts/linkerd2/templates/sp-validator.yaml",
+    "viz/charts/linkerd-viz/templates/grafana.yaml",
+    "viz/charts/linkerd-viz/templates/prometheus.yaml",
+    "viz/charts/linkerd-viz/templates/tap.yaml",
+    "viz/charts/linkerd-viz/templates/web.yaml",
+    "viz/charts/linkerd-viz/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "mageddo__dns-proxy-server-381",
+   "repo": "mageddo/dns-proxy-server",
+   "base_commit": "469307be3e0313ec803281b97e35d2d1b6ab5a2b",
+   "language": "java",
+   "code_files": [
+    "src/main/java/com/mageddo/dnsproxyserver/docker/DockerConnectionCheck.java",
+    "src/main/java/com/mageddo/dnsproxyserver/server/dns/IP.java",
+    "src/main/java/com/mageddo/dnsproxyserver/server/dns/solver/SolverSystem.java"
+   ],
+   "infra_files": [
+    "examples/api-gateway_service-discovery_reverse-proxy/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "mainflux__mainflux-1355",
+   "repo": "mainflux/mainflux",
+   "base_commit": "e334569d8111c6ed1c5ea851f82f15c634fa08c8",
+   "language": "go",
+   "code_files": [
+    "cmd/users/main.go",
+    "users/api/requests.go",
+    "users/api/transport.go",
+    "users/service.go",
+    "users/users.go"
+   ],
+   "infra_files": [
+    ".env"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "metal3-io__baremetal-operator-602",
+   "repo": "metal3-io/baremetal-operator",
+   "base_commit": "c88ecccbd9f33af3b1b1b84e75af653a8f6d87fb",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/metal3/v1alpha1/baremetalhost_types.go",
+    "pkg/controller/baremetalhost/baremetalhost_controller.go",
+    "pkg/provisioner/ironic/ironic.go"
+   ],
+   "infra_files": [
+    "deploy/crds/metal3.io_baremetalhosts_crd.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "microsoft__kiota-6368",
+   "repo": "microsoft/kiota",
+   "base_commit": "b1e6a979416e50792ca63b38c52a63d5f00fe37f",
+   "language": "csharp",
+   "code_files": [
+    "src/Kiota.Builder/Writers/Go/CodeEnumWriter.cs",
+    "src/Kiota.Builder/Writers/Go/CodeFileDeclarationWriter.cs",
+    "src/Kiota.Builder/Writers/Go/CodeProprietableBlockDeclarationWriter.cs",
+    "src/Kiota.Builder/Writers/Go/GoConventionService.cs"
+   ],
+   "infra_files": [
+    ".devcontainer/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "mikedh__trimesh-2312",
+   "repo": "mikedh/trimesh",
+   "base_commit": "6ed17ba4656b2f71ba45228e9a91fc1f8ae09f00",
+   "language": "python",
+   "code_files": [
+    "trimesh/__init__.py",
+    "trimesh/boolean.py",
+    "trimesh/exchange/xaml.py",
+    "trimesh/interfaces/__init__.py",
+    "trimesh/path/polygons.py",
+    "trimesh/util.py",
+    "trimesh/viewer/widget.py"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "mill1000__midea-msmart-132",
+   "repo": "mill1000/midea-msmart",
+   "base_commit": "9dc35b6bdb0644c9b1e84464cad2f70d4cfd9a47",
+   "language": "python",
+   "code_files": [
+    "msmart/cli.py",
+    "msmart/device/AC/command.py",
+    "msmart/device/AC/device.py"
+   ],
+   "infra_files": [
+    ".github/workflows/prune-ghcr.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "mill1000__midea-msmart-99",
+   "repo": "mill1000/midea-msmart",
+   "base_commit": "210d02ef551345c43ca2e40873a9d6080c1297b8",
+   "language": "python",
+   "code_files": [
+    "msmart/device/AC/command.py",
+    "msmart/device/AC/device.py"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "mintlayer__mintlayer-core-1879",
+   "repo": "mintlayer/mintlayer-core",
+   "base_commit": "c142a1c2bd31dcfa090dfd05f28aebe9ddd34d08",
+   "language": "rust",
+   "code_files": [
+    "build-tools/docker/build.py",
+    "node-gui/backend/src/backend_impl.rs",
+    "wallet/wallet-rpc-client/src/handles_client/mod.rs",
+    "wallet/wallet-rpc-lib/src/rpc/mod.rs",
+    "wallet/wallet-rpc-lib/src/rpc/server_impl.rs",
+    "wallet/wallet-rpc-lib/src/service/worker.rs"
+   ],
+   "infra_files": [
+    "build-tools/docker/Dockerfile.builder",
+    "build-tools/docker/example-mainnet-dns-server/.env",
+    "build-tools/docker/example-mainnet-dns-server/docker-compose.yml",
+    "build-tools/docker/example-mainnet/.env",
+    "build-tools/docker/example-mainnet/docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose",
+    "dockerfile",
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "moov-io__customers-221",
+   "repo": "moov-io/customers",
+   "base_commit": "8f0f61e7204a5d693b8b85707155c0b5600b635d",
+   "language": "go",
+   "code_files": [
+    "pkg/client/api_customers.go",
+    "pkg/customers/address.go",
+    "pkg/customers/customer_search.go",
+    "pkg/customers/customers.go"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "motdotla__node-lambda-553",
+   "repo": "motdotla/node-lambda",
+   "base_commit": "a7a6e91e6619a1a96fc74a83eaf0b89a83703375",
+   "language": "js",
+   "code_files": [
+    "lib/main.js"
+   ],
+   "infra_files": [
+    "lib/.env.example"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "motdotla__node-lambda-701",
+   "repo": "motdotla/node-lambda",
+   "base_commit": "b261e2db63f34aca740590e68906954e95f1ca89",
+   "language": "js",
+   "code_files": [
+    "lib/main.js"
+   ],
+   "infra_files": [
+    "lib/.env.example"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "mransan__ocaml-protoc-209",
+   "repo": "mransan/ocaml-protoc",
+   "base_commit": "88f4e00679d2c08cadea4b68ad5410b938b18fef",
+   "language": "ocaml",
+   "code_files": [
+    "src/compilerlib/pb_exception.ml",
+    "src/compilerlib/pb_exception.mli",
+    "src/compilerlib/pb_location.ml",
+    "src/compilerlib/pb_parsing.ml"
+   ],
+   "infra_files": [
+    ".github/workflows/main.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "mrparkers__terraform-provider-keycloak-507",
+   "repo": "mrparkers/terraform-provider-keycloak",
+   "base_commit": "356432ed754bf063ae4697d948b90cc73ce8cfbf",
+   "language": "go",
+   "code_files": [
+    "keycloak/identity_provider.go",
+    "keycloak/keycloak_client.go",
+    "provider/provider.go",
+    "provider/resource_keycloak_group_roles.go",
+    "provider/resource_keycloak_saml_identity_provider.go"
+   ],
+   "infra_files": [
+    "example/main.tf"
+   ],
+   "infra_kinds": [
+    "terraform"
+   ]
+  },
+  {
+   "instance_id": "nearform__sql-41",
+   "repo": "nearform/sql",
+   "base_commit": "64254c4b200a69f5878fccb867c39f14ec9273ab",
+   "language": "js",
+   "code_files": [
+    "SQL.d.ts",
+    "SQL.js",
+    "sqlmap/users.js"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "oam-dev__kubevela-1756",
+   "repo": "oam-dev/kubevela",
+   "base_commit": "2c9cf94817aafc88a02f328364534a728cb71d90",
+   "language": "go",
+   "code_files": [
+    "apis/types/capability.go",
+    "pkg/cue/convert.go",
+    "references/plugins/references.go"
+   ],
+   "infra_files": [
+    "charts/vela-core/templates/defwithtemplate/webservice.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "opengovsg__gogovsg-158",
+   "repo": "opengovsg/GoGovSG",
+   "base_commit": "afba70b1807850602077fc3874375d5bad4ee690",
+   "language": "ts",
+   "code_files": [
+    "src/server/api/redirect.ts"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "opensuse__umoci-282",
+   "repo": "openSUSE/umoci",
+   "base_commit": "2fba7f866648def2d9add33e48659952fc6b412e",
+   "language": "go",
+   "code_files": [
+    "cmd/umoci/raw-runtime-config.go",
+    "cmd/umoci/raw-unpack.go",
+    "cmd/umoci/unpack.go",
+    "mutate/mutate.go",
+    "oci/cas/dir/dir.go",
+    "oci/casext/blob.go",
+    "oci/layer/unpack.go",
+    "utils.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "openzeppelin__rust-contracts-stylus-130",
+   "repo": "OpenZeppelin/rust-contracts-stylus",
+   "base_commit": "a9d6dd7cd72a5dc6294d9bb7698f1de78d8242fc",
+   "language": "rust",
+   "code_files": [
+    "contracts/src/lib.rs",
+    "lib/crypto/src/lib.rs"
+   ],
+   "infra_files": [
+    ".github/workflows/check-wasm.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "owncloud__ocis-5392",
+   "repo": "owncloud/ocis",
+   "base_commit": "078698fdf4e7c684669172f82df6efa8c84ac0b1",
+   "language": "go",
+   "code_files": [
+    "services/graph/pkg/identity/ldap.go",
+    "services/settings/ui/components/settings/SettingMultiChoice.vue",
+    "services/settings/ui/components/settings/SettingSingleChoice.vue",
+    "services/web/pkg/config/defaults/defaultconfig.go"
+   ],
+   "infra_files": [
+    ".drone.env"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "pandas-dev__pandas-61041",
+   "repo": "pandas-dev/pandas",
+   "base_commit": "938763edea1ca4c5343f4174f0af4e72088ccbda",
+   "language": "python",
+   "code_files": [
+    "pandas/compat/pyarrow.py",
+    "pandas/core/frame.py",
+    "pandas/io/common.py",
+    "pandas/io/json/_normalize.py"
+   ],
+   "infra_files": [
+    ".github/workflows/docbuild-and-upload.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "phoenixframework__phoenix-5481",
+   "repo": "phoenixframework/phoenix",
+   "base_commit": "97f7cebbf1bb2ab963d945b0f2271d9eb9405364",
+   "language": "elixir",
+   "code_files": [
+    "installer/templates/phx_web/components/core_components.ex",
+    "lib/mix/tasks/phx.gen.auth.ex",
+    "lib/mix/tasks/phx.gen.json.ex",
+    "lib/mix/tasks/phx.gen.release.ex",
+    "lib/mix/tasks/phx.routes.ex",
+    "lib/phoenix/channel.ex",
+    "lib/phoenix/channel/server.ex",
+    "lib/phoenix/code_reloader/proxy.ex",
+    "lib/phoenix/endpoint.ex",
+    "lib/phoenix/router.ex",
+    "lib/phoenix/socket.ex",
+    "priv/templates/phx.gen.live/core_components.ex"
+   ],
+   "infra_files": [
+    "priv/templates/phx.gen.release/Dockerfile.eex"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "phoenixframework__phoenix-5510",
+   "repo": "phoenixframework/phoenix",
+   "base_commit": "97f7cebbf1bb2ab963d945b0f2271d9eb9405364",
+   "language": "elixir",
+   "code_files": [
+    "installer/templates/phx_web/components/core_components.ex",
+    "lib/mix/tasks/phx.gen.release.ex",
+    "lib/mix/tasks/phx.routes.ex",
+    "lib/phoenix/channel.ex",
+    "lib/phoenix/channel/server.ex",
+    "lib/phoenix/code_reloader/proxy.ex",
+    "lib/phoenix/endpoint.ex",
+    "lib/phoenix/socket.ex",
+    "priv/templates/phx.gen.live/core_components.ex"
+   ],
+   "infra_files": [
+    "priv/templates/phx.gen.release/Dockerfile.eex"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "phoenixframework__phoenix-5853",
+   "repo": "phoenixframework/phoenix",
+   "base_commit": "41c631030b76624598b491b652a90f68310bfeb0",
+   "language": "elixir",
+   "code_files": [
+    "installer/templates/phx_web/components/core_components.ex",
+    "lib/mix/tasks/phx.digest.clean.ex",
+    "lib/mix/tasks/phx.digest.ex",
+    "lib/mix/tasks/phx.routes.ex",
+    "lib/phoenix/logger.ex",
+    "lib/phoenix/router.ex",
+    "lib/phoenix/router/console_formatter.ex",
+    "priv/templates/phx.gen.live/core_components.ex"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    "priv/templates/phx.gen.release/Dockerfile.eex"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "php-cs-fixer__php-cs-fixer-8068",
+   "repo": "PHP-CS-Fixer/PHP-CS-Fixer",
+   "base_commit": "2aa88524f789d3d9e11c09cd8a3ba41614cf2839",
+   "language": "php",
+   "code_files": [
+    "src/AbstractDoctrineAnnotationFixer.php",
+    "src/Console/Application.php",
+    "src/Fixer/Alias/RandomApiMigrationFixer.php",
+    "src/Fixer/ClassNotation/ClassAttributesSeparationFixer.php",
+    "src/Fixer/ClassNotation/FinalInternalClassFixer.php",
+    "src/Fixer/ClassNotation/OrderedClassElementsFixer.php",
+    "src/Fixer/ConstantNotation/NativeConstantInvocationFixer.php",
+    "src/Fixer/FunctionNotation/NativeFunctionInvocationFixer.php",
+    "src/Fixer/Operator/BinaryOperatorSpacesFixer.php",
+    "src/Fixer/Phpdoc/GeneralPhpdocTagRenameFixer.php",
+    "src/Fixer/Phpdoc/PhpdocAlignFixer.php",
+    "src/Fixer/Phpdoc/PhpdocNoAliasTagFixer.php",
+    "src/Fixer/Phpdoc/PhpdocReturnSelfReferenceFixer.php",
+    "src/Fixer/Phpdoc/PhpdocTagTypeFixer.php",
+    "src/FixerConfiguration/FixerConfigurationResolver.php",
+    "src/Runner/Runner.php"
+   ],
+   "infra_files": [
+    ".github/workflows/release.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "php__pie-176",
+   "repo": "php/pie",
+   "base_commit": "286930c108049832c02ba216575f093e704fd99a",
+   "language": "php",
+   "code_files": [
+    "src/Command/CommandHelper.php",
+    "src/ComposerIntegration/ComposerIntegrationHandler.php",
+    "src/ComposerIntegration/PieComposerFactory.php",
+    "src/Container.php"
+   ],
+   "infra_files": [
+    ".github/docs/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "plexsystems__konstraint-251",
+   "repo": "plexsystems/konstraint",
+   "base_commit": "5510920dfedaf9d10f3641a14082684cfb4fedb6",
+   "language": "go",
+   "code_files": [
+    "internal/commands/create.go",
+    "internal/rego/matchers.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "pravega__zookeeper-operator-201",
+   "repo": "pravega/zookeeper-operator",
+   "base_commit": "72fd1b8d3dbb7877d43ab27684b4740019ff9877",
+   "language": "go",
+   "code_files": [
+    "cmd/manager/main.go",
+    "pkg/apis/zookeeper/v1beta1/zookeepercluster_types.go",
+    "pkg/controller/zookeepercluster/zookeepercluster_controller.go",
+    "pkg/zk/generators.go"
+   ],
+   "infra_files": [
+    "charts/zookeeper-operator/Chart.yaml",
+    "charts/zookeeper-operator/templates/_helpers.tpl",
+    "charts/zookeeper-operator/templates/operator.yaml",
+    "charts/zookeeper-operator/values.yaml",
+    "charts/zookeeper/Chart.yaml",
+    "charts/zookeeper/templates/_helpers.tpl",
+    "charts/zookeeper/templates/post-install-upgrade-hooks.yaml",
+    "charts/zookeeper/values.yaml",
+    "deploy/crds/zookeeper_v1beta1_zookeepercluster_cr.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "pravega__zookeeper-operator-334",
+   "repo": "pravega/zookeeper-operator",
+   "base_commit": "fd714b40e4148221dd9ab0c27b5693f51a95ee2a",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/zookeeper/v1beta1/zookeepercluster_types.go",
+    "pkg/apis/zookeeper/v1beta1/zz_generated.deepcopy.go",
+    "pkg/zk/generators.go"
+   ],
+   "infra_files": [
+    "charts/zookeeper-operator/templates/zookeeper.pravega.io_zookeeperclusters_crd.yaml",
+    "charts/zookeeper/values.yaml",
+    "deploy/crds/zookeeper.pravega.io_zookeeperclusters_crd.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "pravega__zookeeper-operator-473",
+   "repo": "pravega/zookeeper-operator",
+   "base_commit": "daac1bdeaace91e4c6e7b712afe7415b2c24df44",
+   "language": "go",
+   "code_files": [
+    "api/v1beta1/zookeepercluster_types.go"
+   ],
+   "infra_files": [
+    "charts/zookeeper-operator/Chart.yaml",
+    "charts/zookeeper-operator/values.yaml",
+    "charts/zookeeper/Chart.yaml",
+    "charts/zookeeper/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "pravega__zookeeper-operator-522",
+   "repo": "pravega/zookeeper-operator",
+   "base_commit": "adcf3bf0adaf1aef2c3f0fb89aff8c5bde1e0021",
+   "language": "go",
+   "code_files": [
+    "api/v1beta1/zookeepercluster_types.go",
+    "api/v1beta1/zz_generated.deepcopy.go",
+    "pkg/zk/generators.go"
+   ],
+   "infra_files": [
+    "charts/zookeeper-operator/templates/zookeeper.pravega.io_zookeeperclusters_crd.yaml",
+    "charts/zookeeper/templates/zookeeper.yaml",
+    "charts/zookeeper/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "prestashop__prestashop-33758",
+   "repo": "PrestaShop/PrestaShop",
+   "base_commit": "cbb0d3ee38cf7e59ba0564ef09b092e1379a1e78",
+   "language": "php",
+   "code_files": [
+    "admin-dev/index.php",
+    "app/AppKernel.php",
+    "classes/controller/AdminController.php",
+    "classes/controller/Controller.php",
+    "classes/controller/FrontController.php",
+    "classes/lang/KeysReference/FeatureFlagLang.php",
+    "controllers/admin/DummyAdminController.php",
+    "index.php",
+    "install-dev/controllers/console/process.php",
+    "install-dev/init.php",
+    "src/Adapter/ContainerBuilder.php",
+    "src/Adapter/Product/Repository/ProductRepository.php",
+    "src/Core/FeatureFlag/FeatureFlagSettings.php",
+    "src/PrestaShopBundle/PrestaShopBundle.php",
+    "src/PrestaShopBundle/Service/Command/AbstractCommand.php"
+   ],
+   "infra_files": [
+    ".env"
+   ],
+   "infra_kinds": [
+    "env_template"
+   ]
+  },
+  {
+   "instance_id": "pyro-ppl__numpyro-1960",
+   "repo": "pyro-ppl/numpyro",
+   "base_commit": "f529fb0ecee621a1cb80439db4483c48c2cea135",
+   "language": "python",
+   "code_files": [
+    "numpyro/distributions/util.py",
+    "setup.py"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    "docker/dev/Dockerfile",
+    "docker/release/Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "quansight__ragna-333",
+   "repo": "Quansight/ragna",
+   "base_commit": "dbc7be704b4b157bc626ef8cc44da2757e2508be",
+   "language": "python",
+   "code_files": [
+    "ragna/core/_rag.py",
+    "ragna/deploy/_api/core.py",
+    "ragna/deploy/_cli/core.py",
+    "ragna/deploy/_ui/app.py",
+    "scripts/docs/gen_files.py"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "rancher__fleet-1053",
+   "repo": "rancher/fleet",
+   "base_commit": "fce3ebce08e6d403884275338db8e2add87dec05",
+   "language": "go",
+   "code_files": [
+    "pkg/agent/agent.go",
+    "pkg/agent/manifest.go",
+    "pkg/config/config.go",
+    "pkg/controllers/manageagent/manageagent.go"
+   ],
+   "infra_files": [
+    "charts/fleet/templates/configmap.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "randombit__botan-3931",
+   "repo": "randombit/botan",
+   "base_commit": "3fed83ddf658074f4996a679353cda427e5e8840",
+   "language": "cpp",
+   "code_files": [
+    "src/lib/block/aes/aes_armv8/aes_armv8.cpp",
+    "src/lib/block/shacal2/shacal2_armv8/shacal2_arvm8.cpp",
+    "src/lib/block/sm4/sm4_armv8/sm4_armv8.cpp",
+    "src/lib/hash/sha1/sha1_armv8/sha1_armv8.cpp",
+    "src/lib/hash/sha2_32/sha2_32_armv8/sha2_32_armv8.cpp",
+    "src/lib/hash/sha2_64/sha2_64_armv8/sha2_64_armv8.cpp",
+    "src/lib/utils/simd/simd_32.h",
+    "src/python/botan3.py",
+    "src/scripts/ci_build.py"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "randombit__botan-4222",
+   "repo": "randombit/botan",
+   "base_commit": "50b368ac54ae81b949c431956333848bf5a780d7",
+   "language": "cpp",
+   "code_files": [
+    "configure.py",
+    "src/lib/math/bigint/bigint.cpp",
+    "src/lib/math/bigint/bigint.h",
+    "src/lib/math/numbertheory/nistp_redc.cpp",
+    "src/lib/math/pcurves/pcurves_impl/pcurves_impl.h",
+    "src/lib/math/pcurves/pcurves_impl/pcurves_solinas.h",
+    "src/lib/math/pcurves/pcurves_impl/pcurves_util.h",
+    "src/lib/pubkey/ec_group/ec_inner_bn.cpp",
+    "src/lib/utils/ct_utils.h",
+    "src/lib/utils/loadstor.h",
+    "src/scripts/ci_build.py"
+   ],
+   "infra_files": [
+    ".github/workflows/nightly.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "rare-technologies__smart_open-771",
+   "repo": "RaRe-Technologies/smart_open",
+   "base_commit": "7ab4dda19a34014199cba13fdfaa0794a071adad",
+   "language": "python",
+   "code_files": [
+    "setup.py",
+    "smart_open/ftp.py",
+    "smart_open/s3.py"
+   ],
+   "infra_files": [
+    ".github/workflows/python-package.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "ratify-project__ratify-2010",
+   "repo": "ratify-project/ratify",
+   "base_commit": "f04f76838a8280f4fe9e3fbeb4233f41f18eacb3",
+   "language": "go",
+   "code_files": [
+    "config/crlConfig.go",
+    "pkg/verifier/notation/notationrevocationfactory.go",
+    "pkg/verifier/notation/revocationfactory.go"
+   ],
+   "infra_files": [
+    "charts/ratify/templates/configmap.yaml",
+    "charts/ratify/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "redhat-developer__service-binding-operator-67",
+   "repo": "redhat-developer/service-binding-operator",
+   "base_commit": "5f24c864f5f50e0c35f95514c4f202d53ef26be9",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/apps/v1alpha1/servicebindingrequest_types.go",
+    "pkg/apis/apps/v1alpha1/zz_generated.openapi.go",
+    "pkg/controller/servicebindingrequest/planner.go"
+   ],
+   "infra_files": [
+    "deploy/crds/apps_v1alpha1_servicebindingrequest_crd.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "redis__lettuce-3148",
+   "repo": "redis/lettuce",
+   "base_commit": "d3848d15e4fe7a786338a730cd4d178c0303fc47",
+   "language": "java",
+   "code_files": [
+    "src/main/java/io/lettuce/core/dynamic/SimpleBatcher.java"
+   ],
+   "infra_files": [
+    ".github/workflows/stale-issues.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "redis__redis-py-1895",
+   "repo": "redis/redis-py",
+   "base_commit": "7d23974a62982d1b4b5586a648f8e7b17eccc6e5",
+   "language": "python",
+   "code_files": [
+    "redis/connection.py",
+    "redis/retry.py"
+   ],
+   "infra_files": [
+    "docker/base/Dockerfile.cluster"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "replicatedhq__troubleshoot-180",
+   "repo": "replicatedhq/troubleshoot",
+   "base_commit": "b1e1dbb42a3396c8747ed0c4cae9f93612c36e1d",
+   "language": "go",
+   "code_files": [
+    "cmd/troubleshoot/cli/run.go",
+    "pkg/analyze/node_resources.go"
+   ],
+   "infra_files": [
+    "sample-troubleshoot.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "scalameta__scalameta-3386",
+   "repo": "scalameta/scalameta",
+   "base_commit": "d52c192c229bcc411da61ecc801545cc2feca997",
+   "language": "scala",
+   "code_files": [
+    "semanticdb/metacp/src/main/scala/scala/meta/internal/javacp/Javacp.scala"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "scalameta__scalameta-4129",
+   "repo": "scalameta/scalameta",
+   "base_commit": "9db2f240eab762c02d6482ee6647ec6a2c786af5",
+   "language": "scala",
+   "code_files": [
+    "project/Versions.scala",
+    "semanticdb/scalac/library/src/main/scala/scala/meta/internal/semanticdb/scalac/TextDocumentOps.scala"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "sendgrid__sendgrid-java-449",
+   "repo": "sendgrid/sendgrid-java",
+   "base_commit": "816451fd1ad6334e9235f11437a1b10d03f9b3ff",
+   "language": "java",
+   "code_files": [
+    "examples/helpers/mail/Example.java",
+    "src/main/java/com/sendgrid/helpers/mail/objects/Personalization.java"
+   ],
+   "infra_files": [
+    "docker/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "serverless__serverless-2937",
+   "repo": "serverless/serverless",
+   "base_commit": "158b1bf6cc164e40c94ec7f0171c53bf6024f583",
+   "language": "js",
+   "code_files": [
+    "lib/classes/Utils.js",
+    "lib/plugins/aws/deploy/compile/events/iot/index.js",
+    "lib/plugins/aws/deploy/lib/configureStack.js",
+    "lib/plugins/aws/invokeLocal/index.js",
+    "lib/plugins/create/create.js",
+    "scripts/postinstall.js",
+    "scripts/preuninstall.js"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "serverless__serverless-4056",
+   "repo": "serverless/serverless",
+   "base_commit": "b06a891b928a732ef2ab23863fd1c41f4a855266",
+   "language": "js",
+   "code_files": [
+    "lib/plugins/create/create.js"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "serverless__serverless-4058",
+   "repo": "serverless/serverless",
+   "base_commit": "cb1882d27301bd46b8eba310d5cca430eb78a6dd",
+   "language": "js",
+   "code_files": [
+    "lib/plugins/create/create.js"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "serverless__serverless-7699",
+   "repo": "serverless/serverless",
+   "base_commit": "4a0c890d30477696aaacae4b63e6110ca2ed4010",
+   "language": "js",
+   "code_files": [
+    "lib/classes/PluginManager.js",
+    "lib/classes/Service.js",
+    "lib/classes/Variables.js",
+    "lib/plugins/aws/deployFunction/index.js",
+    "lib/plugins/aws/info/getApiKeyValues.js",
+    "lib/plugins/aws/lib/naming.js",
+    "lib/plugins/aws/package/compile/events/alb/lib/validate.js",
+    "lib/plugins/aws/package/compile/events/apiGateway/lib/apiKeys.js",
+    "lib/plugins/aws/package/compile/events/apiGateway/lib/usagePlan.js",
+    "lib/plugins/aws/package/compile/events/s3/index.js",
+    "lib/plugins/aws/package/compile/functions/index.js",
+    "lib/plugins/aws/package/lib/mergeIamTemplates.js",
+    "lib/plugins/aws/utils/findReferences.js",
+    "lib/plugins/create/templates/aws-csharp/Handler.cs",
+    "lib/plugins/plugin/install/install.js",
+    "lib/plugins/plugin/uninstall/uninstall.js",
+    "lib/plugins/print/print.js",
+    "lib/utils/config/index.js",
+    "lib/utils/getCommandSuggestion.js",
+    "lib/utils/standalone-patch.js",
+    "lib/utils/yamlAstParser.js"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "shipwright-io__build-1711",
+   "repo": "shipwright-io/build",
+   "base_commit": "2870377e40103e7779e32faa0b0c9d16237b1245",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/build/v1beta1/build_types.go",
+    "pkg/apis/build/v1beta1/buildrun_types.go",
+    "pkg/reconciler/build/build.go",
+    "pkg/reconciler/buildrun/buildrun.go",
+    "pkg/reconciler/buildrun/resources/taskrun.go",
+    "pkg/validate/nodeselector.go",
+    "pkg/validate/validate.go"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    "deploy/crds/shipwright.io_buildruns.yaml",
+    "deploy/crds/shipwright.io_builds.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "shlinkio__shlink-1523",
+   "repo": "shlinkio/shlink",
+   "base_commit": "89ff259be0a47e1f747ca13152d9a942796e28a0",
+   "language": "php",
+   "code_files": [
+    "config/autoload/dependencies.global.php",
+    "config/config.php",
+    "docker/config/shlink_in_docker.local.php",
+    "module/Core/src/EventDispatcher/Event/AbstractVisitEvent.php",
+    "module/Core/src/EventDispatcher/Event/ShortUrlCreated.php",
+    "module/Core/src/EventDispatcher/Event/UrlVisited.php",
+    "module/Core/src/EventDispatcher/LocateVisit.php",
+    "module/Core/src/Visit/VisitsTracker.php",
+    "module/Rest/src/Middleware/ShortUrl/DropDefaultDomainFromRequestMiddleware.php"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/docker-image-build.yml",
+    "Dockerfile",
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "compose",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "skypilot-org__skypilot-5756",
+   "repo": "skypilot-org/skypilot",
+   "base_commit": "74e62b1de7e096f514b08ca0aefaa18de67601a3",
+   "language": "python",
+   "code_files": [
+    "sky/client/sdk.py",
+    "sky/server/constants.py",
+    "sky/server/server.py",
+    "sky/utils/kubernetes/exec_kubeconfig_converter.py"
+   ],
+   "infra_files": [
+    ".github/workflows/helm-docker-release.yaml",
+    "Dockerfile",
+    "charts/skypilot/templates/api-deployment.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile",
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "slawlor__ractor-313",
+   "repo": "slawlor/ractor",
+   "base_commit": "f14e712115a96a34ad92e7fc0dcc82bc017e6711",
+   "language": "rust",
+   "code_files": [
+    "ractor/src/actor/mod.rs",
+    "ractor/src/factory/job.rs",
+    "ractor/src/factory/worker.rs",
+    "ractor_cluster/src/lib.rs",
+    "ractor_cluster/src/net/listener.rs",
+    "ractor_cluster/src/net/session.rs",
+    "ractor_cluster/src/node/mod.rs",
+    "ractor_cluster/src/node/node_session/mod.rs",
+    "ractor_cluster/src/remote_actor/mod.rs",
+    "ractor_playground/src/distributed.rs",
+    "ractor_playground/src/ping_pong.rs"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yaml",
+    ".github/workflows/integration.yaml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "slskd__slskd-1128",
+   "repo": "slskd/slskd",
+   "base_commit": "ff841bc6411be74e99b0b71754d23614a59c7187",
+   "language": "csharp",
+   "code_files": [
+    "src/slskd/Core/Options.cs",
+    "src/slskd/Files/FileService.cs",
+    "src/slskd/Program.cs",
+    "src/slskd/Transfers/Downloads/DownloadService.cs"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "sonatype-nexus-community__nancy-62",
+   "repo": "sonatype-nexus-community/nancy",
+   "base_commit": "fa3fe1f93cf1b6b43e31d9d7313e593f73309b88",
+   "language": "go",
+   "code_files": [
+    "configuration/parse.go"
+   ],
+   "infra_files": [
+    ".circleci/config.yml",
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "ci",
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "spegel-org__spegel-771",
+   "repo": "spegel-org/spegel",
+   "base_commit": "f4fcaf83792cca5e4e5c4101ac121b545f82ca7e",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/oci/containerd.go",
+    "pkg/registry/registry.go"
+   ],
+   "infra_files": [
+    "charts/spegel/templates/daemonset.yaml",
+    "charts/spegel/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "spegel-org__spegel-832",
+   "repo": "spegel-org/spegel",
+   "base_commit": "c0be5b118d564de343fb03b6081f5239373240e1",
+   "language": "go",
+   "code_files": [
+    "main.go",
+    "pkg/oci/containerd.go"
+   ],
+   "infra_files": [
+    "charts/spegel/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "spidernet-io__spiderpool-3241",
+   "repo": "spidernet-io/spiderpool",
+   "base_commit": "d826534843ebb5f5b2b1eeb9b005bd8071dd0e2f",
+   "language": "go",
+   "code_files": [
+    "cmd/spiderpool-agent/cmd/config.go",
+    "cmd/spiderpool-agent/cmd/daemon.go",
+    "cmd/spiderpool-controller/cmd/config.go",
+    "cmd/spiderpool-controller/cmd/daemon.go",
+    "pkg/applicationcontroller/applicationinformers/utils.go",
+    "pkg/ipam/config.go",
+    "pkg/ipam/pool_selections.go",
+    "pkg/ippoolmanager/ippool_informer.go",
+    "pkg/types/k8s.go"
+   ],
+   "infra_files": [
+    "charts/spiderpool/templates/configmap.yaml",
+    "charts/spiderpool/templates/pod.yaml",
+    "charts/spiderpool/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "spotahome__redis-operator-353",
+   "repo": "spotahome/redis-operator",
+   "base_commit": "e047573244d5bce3ab925fe2407bf4a604054b25",
+   "language": "go",
+   "code_files": [
+    "api/redisfailover/v1/types.go",
+    "api/redisfailover/v1/zz_generated.deepcopy.go",
+    "operator/redisfailover/service/generator.go"
+   ],
+   "infra_files": [
+    "charts/redisoperator/Chart.yaml",
+    "charts/redisoperator/crds/databases.spotahome.com_redisfailovers.yaml",
+    "manifests/databases.spotahome.com_redisfailovers.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "statamic__cms-10322",
+   "repo": "statamic/cms",
+   "base_commit": "84af7e16d4ec0ce5d76cd215a8602982fdac2b02",
+   "language": "php",
+   "code_files": [
+    "resources/js/components/fieldtypes/FilesFieldtype.vue",
+    "resources/js/components/structures/Branch.vue",
+    "src/Console/Commands/InstallCollaboration.php",
+    "src/Console/Processes/Git.php",
+    "src/StaticCaching/Middleware/Cache.php",
+    "src/StaticCaching/ServiceProvider.php"
+   ],
+   "infra_files": [
+    ".github/workflows/pint-fix.yml",
+    ".github/workflows/pint-lint.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "substratusai__kubeai-263",
+   "repo": "substratusai/kubeai",
+   "base_commit": "884aa62c81e2f5575a92c60a62f6e8734418a17b",
+   "language": "go",
+   "code_files": [
+    "internal/modelproxy/request.go"
+   ],
+   "infra_files": [
+    "charts/kubeai/values-gke.yaml",
+    "charts/kubeai/values.yaml",
+    "charts/models/values.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "suse-edge__edge-image-builder-506",
+   "repo": "suse-edge/edge-image-builder",
+   "base_commit": "837fa6c40aa292e71892571e0071bd73d5be4da2",
+   "language": "go",
+   "code_files": [
+    "pkg/helm/helm.go",
+    "pkg/image/definition.go",
+    "pkg/registry/helm.go",
+    "pkg/registry/registry.go"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "symfony__flex-831",
+   "repo": "symfony/flex",
+   "base_commit": "5a4f5a9ca4e412b282a29f7e1df3f66ea1bdbb8c",
+   "language": "php",
+   "code_files": [
+    "src/Configurator/DockerComposeConfigurator.php",
+    "src/Downloader.php",
+    "src/Flex.php",
+    "src/Recipe.php"
+   ],
+   "infra_files": [
+    "src/Configurator/DockerfileConfigurator.php"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "tami5__sql.nvim-83",
+   "repo": "tami5/sql.nvim",
+   "base_commit": "77251bc990c5299aed5853d14ad7b968502e11d0",
+   "language": "lua",
+   "code_files": [
+    "lua/sql/table.lua"
+   ],
+   "infra_files": [
+    ".github/workflows/changelog.yml",
+    ".github/workflows/docgen.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "tektoncd__operator-2542",
+   "repo": "tektoncd/operator",
+   "base_commit": "c77fd642deb2f69c624c66f3e2f4ead8f1dce81f",
+   "language": "go",
+   "code_files": [
+    "pkg/reconciler/common/transformers.go",
+    "pkg/reconciler/kubernetes/tektondashboard/transform.go",
+    "pkg/reconciler/kubernetes/tektonresult/transform.go"
+   ],
+   "infra_files": [
+    "charts/tekton-operator/values.yaml",
+    "config/kubernetes/base/operator.yaml",
+    "operatorhub/kubernetes/release-artifacts/bundle/manifests/tektoncd-operator.clusterserviceversion.yaml",
+    "operatorhub/openshift/manifests/bases/openshift-pipelines-operator-rh.clusterserviceversion.template.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "tektoncd__operator-345",
+   "repo": "tektoncd/operator",
+   "base_commit": "f12839d9129f74b332aed6031660105aec326941",
+   "language": "go",
+   "code_files": [
+    "pkg/reconciler/common/common.go",
+    "pkg/reconciler/common/prune.go",
+    "pkg/reconciler/openshift/tektonconfig/rbac.go"
+   ],
+   "infra_files": [
+    "tekton/overlays/nightly-releases/operator-nightly-release-pipeline.yaml"
+   ],
+   "infra_kinds": [
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "un-ts__synckit-145",
+   "repo": "un-ts/synckit",
+   "base_commit": "405317807ead4aba83040d8cef56e87b5a641c11",
+   "language": "ts",
+   "code_files": [
+    "src/index.ts",
+    "src/types.ts"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/pkg-size.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "urlaubsverwaltung__urlaubsverwaltung-4311",
+   "repo": "urlaubsverwaltung/urlaubsverwaltung",
+   "base_commit": "0e04f346ab80c55ea18287b8653ddc1f247d7970",
+   "language": "java",
+   "code_files": [
+    "src/main/java/org/synyx/urlaubsverwaltung/mail/MailProperties.java",
+    "src/main/java/org/synyx/urlaubsverwaltung/mail/MailSenderService.java",
+    "src/main/java/org/synyx/urlaubsverwaltung/mail/MailServiceImpl.java"
+   ],
+   "infra_files": [
+    ".examples/with-docker-compose/docker-compose.yaml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "valkey-io__valkey-1708",
+   "repo": "valkey-io/valkey",
+   "base_commit": "462cba58010a94316ce8ea354f1c376bfa8c94db",
+   "language": "c",
+   "code_files": [
+    "src/cluster_legacy.c",
+    "src/hashtable.c",
+    "src/module.c",
+    "src/rax.c"
+   ],
+   "infra_files": [
+    ".github/workflows/call-build-linux-arm-packages.yml",
+    ".github/workflows/daily.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "valkey-io__valkey-871",
+   "repo": "valkey-io/valkey",
+   "base_commit": "0fc43edc6cf388854bc824f192647cc59f7019e7",
+   "language": "c",
+   "code_files": [
+    "src/cluster_legacy.c",
+    "src/cluster_legacy.h",
+    "src/cluster_slot_stats.c",
+    "src/config.c",
+    "src/networking.c",
+    "src/rdb.c",
+    "src/replication.c",
+    "src/server.c",
+    "src/server.h",
+    "src/t_zset.c",
+    "src/valkey-cli.c"
+   ],
+   "infra_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/clang-format.yml",
+    ".github/workflows/codecov.yml",
+    ".github/workflows/codeql-analysis.yml",
+    ".github/workflows/coverity.yml",
+    ".github/workflows/daily.yml",
+    ".github/workflows/external.yml",
+    ".github/workflows/reply-schemas-linter.yml",
+    ".github/workflows/spell-check.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "vazco__uniforms-818",
+   "repo": "vazco/uniforms",
+   "base_commit": "1057654d1722c21aacc7a38eadf82946fbefbcab",
+   "language": "ts",
+   "code_files": [
+    "packages/uniforms-bootstrap3/src/TextField.tsx",
+    "packages/uniforms-bootstrap4/src/TextField.tsx",
+    "packages/uniforms-semantic/src/TextField.tsx",
+    "packages/uniforms-unstyled/src/TextField.tsx",
+    "packages/uniforms/src/BaseForm.tsx",
+    "packages/uniforms/src/useField.tsx"
+   ],
+   "infra_files": [
+    ".github/workflows/CI.yml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "verygoodopensource__very_good_cli-611",
+   "repo": "VeryGoodOpenSource/very_good_cli",
+   "base_commit": "e01a127758bc539d3c5cd8e98c5cca04f496df34",
+   "language": "dart",
+   "code_files": [
+    "lib/src/commands/create/commands/commands.dart",
+    "lib/src/commands/create/commands/create_subcommand.dart",
+    "lib/src/commands/create/create.dart"
+   ],
+   "infra_files": [
+    ".github/workflows/very_good_cli.yaml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "verygoodopensource__very_good_cli-618",
+   "repo": "VeryGoodOpenSource/very_good_cli",
+   "base_commit": "0a8bef5b1291092819654c5ceb454fed7b5447df",
+   "language": "dart",
+   "code_files": [
+    "lib/src/commands/create/commands/commands.dart",
+    "lib/src/commands/create/create.dart"
+   ],
+   "infra_files": [
+    ".github/workflows/very_good_cli.yaml"
+   ],
+   "infra_kinds": [
+    "ci"
+   ]
+  },
+  {
+   "instance_id": "vmware__tern-295",
+   "repo": "vmware/tern",
+   "base_commit": "27538bdce94f2eaf7d36599d82eb8309fee0fb51",
+   "language": "python",
+   "code_files": [
+    "tern/classes/command.py",
+    "tern/helpers/common.py",
+    "tern/utils/general.py"
+   ],
+   "infra_files": [
+    "tern/utils/dockerfile.py"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "volkovlabs__volkovlabs-dynamictext-panel-338",
+   "repo": "VolkovLabs/volkovlabs-dynamictext-panel",
+   "base_commit": "02746c395599b4a76d05f947db657723d38780a2",
+   "language": "ts",
+   "code_files": [
+    "src/migration.ts"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "weaveworks__flagger-492",
+   "repo": "weaveworks/flagger",
+   "base_commit": "c5dffbaa3f0877e0c1bdea7ab73dfcf194991df9",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/flagger/v1beta1/canary.go",
+    "pkg/apis/istio/v1alpha3/virtual_service.go",
+    "pkg/apis/istio/v1alpha3/zz_generated.deepcopy.go",
+    "pkg/router/istio.go"
+   ],
+   "infra_files": [
+    "charts/flagger/crds/crd.yaml",
+    "kustomize/base/flagger/crd.yaml"
+   ],
+   "infra_kinds": [
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "weaveworks__flagger-715",
+   "repo": "weaveworks/flagger",
+   "base_commit": "690da0005d3fc511a317f7638f262fe1ce4967c7",
+   "language": "go",
+   "code_files": [
+    "pkg/apis/flagger/v1beta1/canary.go",
+    "pkg/router/istio.go"
+   ],
+   "infra_files": [
+    ".circleci/config.yml",
+    "charts/flagger/crds/crd.yaml",
+    "kustomize/base/flagger/crd.yaml"
+   ],
+   "infra_kinds": [
+    "ci",
+    "helm",
+    "k8s"
+   ]
+  },
+  {
+   "instance_id": "whatyouhide__redix-125",
+   "repo": "whatyouhide/redix",
+   "base_commit": "3ef8d112ebe741a97827bb31279ff68239bd1ab0",
+   "language": "elixir",
+   "code_files": [
+    "lib/redix/uri.ex"
+   ],
+   "infra_files": [
+    "docker-compose.yml"
+   ],
+   "infra_kinds": [
+    "compose"
+   ]
+  },
+  {
+   "instance_id": "yonahd__kor-336",
+   "repo": "yonahd/kor",
+   "base_commit": "93e7d8066142e3225ec04e7d699ff2843db97a81",
+   "language": "go",
+   "code_files": [
+    "pkg/kor/jobs.go"
+   ],
+   "infra_files": [
+    "charts/kor/Chart.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "yonahd__kor-417",
+   "repo": "yonahd/kor",
+   "base_commit": "bde4378769588aacfe2bd975b485ebe029f4c5a1",
+   "language": "go",
+   "code_files": [
+    "pkg/kor/all.go",
+    "pkg/kor/delete.go",
+    "pkg/kor/multi.go"
+   ],
+   "infra_files": [
+    "charts/kor/Chart.yaml",
+    "charts/kor/templates/role.yaml"
+   ],
+   "infra_kinds": [
+    "helm"
+   ]
+  },
+  {
+   "instance_id": "zalando__zappr-242",
+   "repo": "zalando/zappr",
+   "base_commit": "ecaae1de59e0fd3da4c715cb12851924460ab949",
+   "language": "js",
+   "code_files": [
+    "client/components/RepositoryList.jsx",
+    "common/util.js",
+    "server/nconf.js",
+    "server/passport.js",
+    "server/service/GithubService.js",
+    "webpack.client.js"
+   ],
+   "infra_files": [
+    "Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  },
+  {
+   "instance_id": "zeek__zeek-3176",
+   "repo": "zeek/zeek",
+   "base_commit": "c23ee3054224c8f73b80867f4d69eba460a13429",
+   "language": "cpp",
+   "code_files": [
+    "src/Scope.cc",
+    "src/module_util.cc"
+   ],
+   "infra_files": [
+    "ci/ubuntu-22.10/Dockerfile"
+   ],
+   "infra_kinds": [
+    "dockerfile"
+   ]
+  }
+ ],
+ "labels": {
+  "protocol": "hand labels written blind (before any diffctx run on these instances): for each modified file on either side, coupled = the other side's hunks (added files included) name the same key, path or symbol; indirect = coupled through a third file or a literal, not a name both sides spell",
+  "note": "Labels were written before any diffctx run on these instances. Two of the 30 changed after the first draw: a per-repo cap fix replaced two instances, and a later replacement of one instance that tripped the public-content gate removed one more and brought back an instance whose label had already been written in the first pass. Every label predates every run on its instance.",
+  "instances": {
+   "analysis-dev__diktat-953": [
+    {
+     "path": ".github/workflows/diktat_snapshot.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "passes -Ddiktat.debug=true; DiktatBaseMojo.kt declares @Parameter(property = \"diktat.debug\")"
+    },
+    {
+     "path": "diktat-maven-plugin/src/main/kotlin/org/cqfn/diktat/plugin/maven/DiktatBaseMojo.kt",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "property key diktat.debug named by the workflow command line"
+    },
+    {
+     "path": "diktat-rules/src/main/kotlin/org/cqfn/diktat/ruleset/rules/DiktatRuleSetProvider.kt",
+     "side": "code",
+     "coupled": false,
+     "evidence": "config-lookup logic fix for the issue; no key or path shared with the workflow"
+    },
+    {
+     "path": "diktat-rules/src/main/kotlin/org/cqfn/diktat/ruleset/rules/chapter4/calculations/AccurateCalculationsRule.kt",
+     "side": "code",
+     "coupled": false,
+     "evidence": "drive-by removal of a println"
+    }
+   ],
+   "apache__streampipes-1337": [
+    {
+     "path": "installer/cli/.env",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "SP_VERSION snapshot bump; the code change is a builder class"
+    },
+    {
+     "path": "installer/compose/.env",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "SP_VERSION snapshot bump"
+    },
+    {
+     "path": "installer/k8s/Chart.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "chart version bump"
+    },
+    {
+     "path": "installer/k8s/values.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "version bump"
+    },
+    {
+     "path": "streampipes-model/src/main/java/org/apache/streampipes/model/datalake/DataSeries.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "new setters for the builder; nothing in the infra files names them"
+    }
+   ],
+   "aquasecurity__starboard-1008": [
+    {
+     "path": "deploy/helm/templates/config.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "key trivy.serverInsecure; plugin.go keyTrivyServerInsecure = \"trivy.serverInsecure\""
+    },
+    {
+     "path": "deploy/helm/values.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "image ref docker.io/aquasec/trivy:0.24.2 is the literal default in plugin.go; serverInsecure value"
+    },
+    {
+     "path": "deploy/static/03-starboard-operator.config.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "trivy.imageRef 0.24.2 matches keyTrivyImageRef default in plugin.go"
+    },
+    {
+     "path": "deploy/static/starboard.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "trivy.imageRef 0.24.2 matches keyTrivyImageRef default in plugin.go"
+    },
+    {
+     "path": "pkg/plugin/trivy/plugin.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "keys trivy.imageRef and trivy.serverInsecure, literal image ref 0.24.2"
+    }
+   ],
+   "aquasecurity__starboard-331": [
+    {
+     "path": "deploy/init/03-starboard.cm.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "key kube-hunter.quick; ConfigData.GetKubeHunterQuick reads \"kube-hunter.quick\""
+    },
+    {
+     "path": "pkg/kubehunter/scanner.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "calls GetKubeHunterQuick, whose key kube-hunter.quick is set in the configmap; names no key itself"
+    },
+    {
+     "path": "pkg/starboard/config.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "default \"kube-hunter.quick\" and getRequiredProperty(\"kube-hunter.quick\")"
+    }
+   ],
+   "aquasecurity__tfsec-909": [
+    {
+     "path": "example/moduleWithIgnore/main.tf",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "ignore comment syntax #tfsec:ignore:AWS052:ws:testworkspace parsed by scanner.go (\":ws:\")"
+    },
+    {
+     "path": "cmd/tfsec/main.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "--workspace flag feeding the workspace the added example (terraform.workspace) is evaluated under"
+    },
+    {
+     "path": "internal/app/tfsec/parser/evaluator.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "SetWorkspace defines terraform.workspace, read by the added example/workspace/main.tf"
+    },
+    {
+     "path": "internal/app/tfsec/parser/option.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "OptionWithWorkspaceName plumbs the name into SetWorkspace"
+    },
+    {
+     "path": "internal/app/tfsec/parser/parser.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "calls evaluator.SetWorkspace(workspaceName)"
+    },
+    {
+     "path": "internal/app/tfsec/scanner/option.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "OptionWithWorkspaceName plumbs the name into isWorkspaceIgnored"
+    },
+    {
+     "path": "internal/app/tfsec/scanner/scanner.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "matches \":ws:<name>:\" in the ignore comment the example file now carries"
+    }
+   ],
+   "aquasecurity__tfsec-969": [
+    {
+     "path": "example/counts/main.tf",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "count + aws_s3_bucket.access-logs-bucket[0].id index reference is the reproducer for the TraverseIndex fix"
+    },
+    {
+     "path": "internal/app/tfsec/block/hclattribute.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "getIndexValue renders the [0] index of a reference like the one in the example"
+    }
+   ],
+   "auth0__nextjs-auth0-1198": [
+    {
+     "path": "examples/kitchen-sink-example/.env.production",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "NEXT_PUBLIC_AUTH0_BASE_URL read by src/config.ts and pages/api/shows.ts"
+    },
+    {
+     "path": "examples/kitchen-sink-example/pages/api/shows.ts",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "process.env.NEXT_PUBLIC_AUTH0_BASE_URL"
+    },
+    {
+     "path": "src/config.ts",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "process.env.NEXT_PUBLIC_AUTH0_BASE_URL fallback"
+    }
+   ],
+   "carlspring__s3fs-nio-711": [
+    {
+     "path": ".github/workflows/build.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "path filter for the new docs workflow"
+    },
+    {
+     "path": ".github/workflows/command-deploy-pr-snapshot.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "comment wording in the snapshot bot"
+    },
+    {
+     "path": "docs/docker-compose.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "mkdocs build service; unrelated to the cache-control feature"
+    },
+    {
+     "path": "build.gradle.kts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "assertj test dependency"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3Factory.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control property constant; no infra file names it"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileChannel.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control plumbing; no infra file names it"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileSystem.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control plumbing; no infra file names it"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3FileSystemProvider.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control plumbing; no infra file names it"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3OutputStream.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control plumbing; no infra file names it"
+    },
+    {
+     "path": "src/main/java/org/carlspring/cloud/storage/s3fs/S3SeekableByteChannel.java",
+     "side": "code",
+     "coupled": false,
+     "evidence": "cache-control plumbing; no infra file names it"
+    }
+   ],
+   "danvergara__dblab-126": [
+    {
+     "path": "docker-compose.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "env DB_SCHEMA=public; pkg/command/command.go os.Getenv(\"DB_SCHEMA\")"
+    },
+    {
+     "path": "pkg/command/command.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "os.Getenv(\"DB_SCHEMA\")"
+    },
+    {
+     "path": "cmd/root.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "--schema flag only; no env or path shared with the compose file"
+    },
+    {
+     "path": "pkg/client/client.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "search_path handling; no env or path shared with the compose file"
+    },
+    {
+     "path": "pkg/config/config.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "config struct field Schema, read from the yaml (not infra)"
+    }
+   ],
+   "datadog__dd-trace-js-2249": [
+    {
+     "path": ".github/workflows/core.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "adds a pull_request trigger"
+    },
+    {
+     "path": ".github/workflows/plugins.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "adds a pull_request trigger"
+    },
+    {
+     "path": ".github/workflows/profiling.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "adds a pull_request trigger"
+    },
+    {
+     "path": ".github/workflows/project.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "adds a pull_request trigger"
+    },
+    {
+     "path": ".github/workflows/tracing.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "adds a pull_request trigger"
+    },
+    {
+     "path": "packages/datadog-instrumentations/src/connect.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "next.apply(this) fix; the seed's new k8s files name no code path or symbol"
+    },
+    {
+     "path": "packages/datadog-instrumentations/src/koa.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "next.apply(this) fix; no shared key with the infra hunks"
+    },
+    {
+     "path": "packages/datadog-instrumentations/src/mocha.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "null-guard fix; no shared key with the infra hunks"
+    },
+    {
+     "path": "packages/datadog-instrumentations/src/restify.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "restify middleware channels; no shared key with the infra hunks"
+    },
+    {
+     "path": "packages/datadog-instrumentations/src/router.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "next.apply(this) fix; no shared key with the infra hunks"
+    },
+    {
+     "path": "packages/datadog-plugin-restify/src/index.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "configure() override; no shared key with the infra hunks"
+    },
+    {
+     "path": "packages/dd-trace/src/opentracing/span.js",
+     "side": "code",
+     "coupled": false,
+     "evidence": "perf_hooks timing change; no shared key with the infra hunks"
+    }
+   ],
+   "equinor__design-system-3725": [
+    {
+     "path": "packages/eds-lab-react/Dockerfile.storybook",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "nginx base image bump; no code file names it"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Accordion/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports for Next.js; unrelated to the nginx image"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Banner/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Breadcrumbs/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Button/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Card/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Dialog/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/List/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Menu/index.tsx",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Popover/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/SideBar/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/SideSheet/SideSheet.tsx",
+     "side": "code",
+     "coupled": false,
+     "evidence": "one CSS line; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Snackbar/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Table/index.tsx",
+     "side": "code",
+     "coupled": false,
+     "evidence": "renamed imports and exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/TableOfContents/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "renamed imports and exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/Tabs/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "barrel re-exports; unrelated"
+    },
+    {
+     "path": "packages/eds-core-react/src/components/TopBar/index.tsx",
+     "side": "code",
+     "coupled": false,
+     "evidence": "renamed imports and exports; unrelated"
+    }
+   ],
+   "external-secrets__external-secrets-4941": [
+    {
+     "path": "deploy/crds/bundle.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "caBundle and caProvider properties of the gitlab provider; types.go json:\"caBundle\" / json:\"caProvider\""
+    },
+    {
+     "path": "apis/externalsecrets/v1/secretstore_gitlab_types.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "CABundle json:\"caBundle\", CAProvider json:\"caProvider\""
+    },
+    {
+     "path": "apis/externalsecrets/v1/zz_generated.deepcopy.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "generated deepcopy of the CABundle / CAProvider fields the CRD describes"
+    },
+    {
+     "path": "apis/externalsecrets/v1beta1/secretstore_gitlab_types.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "CABundle json:\"caBundle\", CAProvider json:\"caProvider\""
+    },
+    {
+     "path": "apis/externalsecrets/v1beta1/zz_generated.deepcopy.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "generated deepcopy of the CABundle / CAProvider fields the CRD describes"
+    },
+    {
+     "path": "pkg/provider/gitlab/provider.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "reads provider.CABundle and provider.CAProvider, the CRD fields"
+    }
+   ],
+   "fortio__fortio-621": [
+    {
+     "path": ".circleci/config.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "fortio.build image v45 to v46 bump; no code names the image"
+    },
+    {
+     "path": "Dockerfile",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "fortio.build image bump"
+    },
+    {
+     "path": "Dockerfile.build",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "golang base image patch bump"
+    },
+    {
+     "path": "Dockerfile.echosrv",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "fortio.build image bump"
+    },
+    {
+     "path": "Dockerfile.fcurl",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "fortio.build image bump"
+    },
+    {
+     "path": "release/Dockerfile.in",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "fortio.build image bump"
+    },
+    {
+     "path": "fhttp/http_client.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "User-Agent moved to jrpc; unrelated to the image bump"
+    },
+    {
+     "path": "fhttp/http_forwarder.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "User-Agent moved to jrpc; unrelated to the image bump"
+    },
+    {
+     "path": "fhttp/http_server.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "nolint comment only"
+    },
+    {
+     "path": "jrpc/jrpcClient.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "Destination headers API, the issue's feature; unrelated to the image bump"
+    },
+    {
+     "path": "jrpc/jrpcServer.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "doc comments; unrelated to the image bump"
+    },
+    {
+     "path": "rapi/restHandler.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "nolint comment only"
+    },
+    {
+     "path": "ui/uihandler.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "nolint comment only"
+    },
+    {
+     "path": "version/version.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "log call replaced; unrelated to the image bump"
+    }
+   ],
+   "getmoto__moto-8237": [
+    {
+     "path": "other_langs/terraform/rds/providers.tf",
+     "side": "infra",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "moto server endpoints (rds, secretsmanager, ec2, iam) the added proxy.tf resources need; names the rds service moto/rds implements"
+    },
+    {
+     "path": "moto/rds/models.py",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "ProxyTargetGroup / ProxyTarget implement what the added proxy.tf declares (aws_db_proxy_default_target_group, aws_db_proxy_target); names match only by tokens"
+    },
+    {
+     "path": "moto/rds/responses.py",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "register_db_proxy_targets / modify target group actions answer the calls Terraform makes for proxy.tf resources"
+    }
+   ],
+   "hashgraph__hedera-local-node-868": [
+    {
+     "path": ".env",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "RECORD_PARSER_ROOT_PATH removed; InitState.ts stops writing the key RECORD_PARSER_ROOT_PATH"
+    },
+    {
+     "path": ".github/workflows/flow-pull-request-checks.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "codecov action pin change"
+    },
+    {
+     "path": "docker-compose-state-migration.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "drops volume ${RECORD_PARSER_ROOT_PATH}; InitState.ts wrote that env key"
+    },
+    {
+     "path": "docker-compose.multinode.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "drops volume ${RECORD_PARSER_ROOT_PATH}; InitState.ts wrote that env key"
+    },
+    {
+     "path": "docker-compose.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "drops volume ${RECORD_PARSER_ROOT_PATH}; InitState.ts wrote that env key (the rest-java service added is unrelated)"
+    },
+    {
+     "path": "src/state/InitState.ts",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "key 'RECORD_PARSER_ROOT_PATH' removed from the written env"
+    },
+    {
+     "path": "src/constants.ts",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "RECORD_PARSER_SOURCE_REL_PATH and RELATIVE_TMP_DIR_PATH name the record-parser directory the compose volume mounted; no shared identifier"
+    },
+    {
+     "path": "src/data/StateData.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "debug state removal; no key shared with the compose or env files"
+    },
+    {
+     "path": "src/index.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "debug command removal; no key shared with the compose or env files"
+    },
+    {
+     "path": "src/services/CLIService.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "debug option removal; no key shared with the compose or env files"
+    },
+    {
+     "path": "src/types/CLIOptions.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "timestamp and enableDebug options removal; no key shared"
+    },
+    {
+     "path": "src/Errors/LocalNodeErrors.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "error constructors removal; no key shared"
+    }
+   ],
+   "jupyter-incubator__sparkmagic-389": [
+    {
+     "path": "Dockerfile.jupyter",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "copies the examples directory into the image; no code file names it"
+    },
+    {
+     "path": "autovizwidget/autovizwidget/__init__.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "version bump"
+    },
+    {
+     "path": "hdijupyterutils/hdijupyterutils/__init__.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "version bump"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/__init__.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "version bump"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/controllerwidget/magicscontrollerwidget.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "auth value lookup; unrelated to the Dockerfile"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/controllerwidget/manageendpointwidget.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "refresh calls; unrelated to the Dockerfile"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/livyclientlib/livyreliablehttpclient.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "endpoint attribute; unrelated to the Dockerfile"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/livyclientlib/livysession.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "endpoint property; unrelated to the Dockerfile"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/livyclientlib/sessionmanager.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "lookup by id and endpoint; unrelated to the Dockerfile"
+    },
+    {
+     "path": "sparkmagic/sparkmagic/livyclientlib/sparkcontroller.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "delete-by-name path; unrelated to the Dockerfile"
+    }
+   ],
+   "kubermatic__kubermatic-9224": [
+    {
+     "path": "charts/monitoring/prometheus/rules/kubermatic-seed-kubermatic.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "alert expression on the openvpn-server deployment; no code names it"
+    },
+    {
+     "path": "charts/monitoring/prometheus/rules/src/kubermatic-seed/kubermatic.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "source copy of the same alert; no code names it"
+    },
+    {
+     "path": "pkg/apis/kubermatic/v1/addon.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "Variables made a pointer; unrelated to the alert rules"
+    },
+    {
+     "path": "pkg/apis/kubermatic/v1/zz_generated.deepcopy.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "generated deepcopy of the pointer change"
+    },
+    {
+     "path": "pkg/controller/seed-controller-manager/addon/addon_controller.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "nil check on Variables"
+    },
+    {
+     "path": "pkg/handler/common/addon.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "pointer Variables handling"
+    },
+    {
+     "path": "pkg/install/crdmigration/clones.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "pointer Variables handling"
+    },
+    {
+     "path": "pkg/provider/kubernetes/addon.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "pointer Variables handling"
+    },
+    {
+     "path": "pkg/resources/apiserver/networkpolicy.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "nodeport-proxy egress rule for LoadBalancer expose strategy; the alert rules do not name it"
+    }
+   ],
+   "kubermatic__kubermatic-9261": [
+    {
+     "path": "charts/kubermatic-operator/crd/k8c.io/kubermatic.k8c.io_seeds.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "metering properties schedule (default 0 1 * * 6) and interval (default 7); datacenter.go json:\"schedule\" / json:\"interval\""
+    },
+    {
+     "path": "pkg/apis/kubermatic/v1/datacenter.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "Schedule json:\"schedule\", Interval json:\"interval\" with the same defaults"
+    },
+    {
+     "path": "codegen/example-yaml/main.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "Schedule \"0 1 * * 6\" and Interval 7 equal the CRD defaults"
+    },
+    {
+     "path": "pkg/ee/metering/cronjob.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "reads mc.Schedule and mc.Interval, the CRD's schedule and interval"
+    },
+    {
+     "path": "pkg/ee/metering/reconcile.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "passes seed.Spec.Metering through; names neither property"
+    },
+    {
+     "path": "pkg/webhook/seed/validation.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "validates Metering.Schedule, the CRD's schedule property"
+    }
+   ],
+   "kubernetes-sigs__security-profiles-operator-1600": [
+    {
+     "path": ".github/workflows/build.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "installs the bom tool at BOM_VERSION; unrelated to the image selection"
+    },
+    {
+     "path": "bundle/manifests/security-profiles-operator-profile_v1_configmap.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "data key selinuxd-image-mapping.json and configmap security-profiles-operator-profile; constants.go SelinuxdImageMappingKey / OperatorConfigMap"
+    },
+    {
+     "path": "bundle/manifests/security-profiles-operator.clusterserviceversion.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "RBAC resourceNames security-profiles-operator-profile; spod_controller.go kubebuilder rbac marker names it"
+    },
+    {
+     "path": "deploy/base/kustomization.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "lists profiles/selinuxd-image-mapping.json; constants.go SelinuxdImageMappingKey = \"selinuxd-image-mapping.json\""
+    },
+    {
+     "path": "deploy/base/role.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "RBAC resourceNames security-profiles-operator-profile; spod_controller.go rbac marker"
+    },
+    {
+     "path": "deploy/helm/templates/static-resources.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "RBAC for security-profiles-operator-profile and the selinuxd-image-mapping.json key"
+    },
+    {
+     "path": "deploy/namespace-operator.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated bundle carrying the same RBAC rule and mapping key"
+    },
+    {
+     "path": "deploy/openshift-dev.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated bundle carrying the same RBAC rule and mapping key"
+    },
+    {
+     "path": "deploy/openshift-downstream.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated bundle carrying the same RBAC rule and mapping key"
+    },
+    {
+     "path": "deploy/operator.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated bundle carrying the same RBAC rule and mapping key"
+    },
+    {
+     "path": "deploy/overlays/webhook/role.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "json-patch index /rules/2 to /rules/3 shifts because the base role gained a rule; no shared name"
+    },
+    {
+     "path": "deploy/webhook-operator.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated bundle carrying the same RBAC rule and mapping key"
+    },
+    {
+     "path": "internal/pkg/manager/spod/setup.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "reads the mapping through util.OperatorConfigMap and util.SelinuxdImageMappingKey; the literals live in constants.go"
+    },
+    {
+     "path": "internal/pkg/manager/spod/spod_controller.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "rbac marker resourceNames=security-profiles-operator-profile, configmaps, get"
+    },
+    {
+     "path": "internal/pkg/util/constants.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "OperatorConfigMap = \"security-profiles-operator-profile\", SelinuxdImageMappingKey = \"selinuxd-image-mapping.json\""
+    },
+    {
+     "path": "internal/pkg/util/kubernetes.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "json:\"regex\" and json:\"image\" parse the mapping the configmaps carry"
+    }
+   ],
+   "kubernetes__kops-16681": [
+    {
+     "path": "k8s/crds/kops.k8s.io_clusters.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "networkPolicyAgentImage property; json:\"networkPolicyAgentImage\" in the networking types"
+    },
+    {
+     "path": "pkg/apis/kops/networking.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "NetworkPolicyAgentImage json:\"networkPolicyAgentImage\""
+    },
+    {
+     "path": "pkg/apis/kops/v1alpha2/networking.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "NetworkPolicyAgentImage json:\"networkPolicyAgentImage\""
+    },
+    {
+     "path": "pkg/apis/kops/v1alpha2/zz_generated.conversion.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "generated conversion of NetworkPolicyAgentImage"
+    },
+    {
+     "path": "pkg/apis/kops/v1alpha3/networking.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "NetworkPolicyAgentImage json:\"networkPolicyAgentImage\""
+    },
+    {
+     "path": "pkg/apis/kops/v1alpha3/zz_generated.conversion.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "generated conversion of NetworkPolicyAgentImage"
+    }
+   ],
+   "mainflux__mainflux-1355": [
+    {
+     "path": ".env",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "MF_USERS_PASS_REGEX; cmd/users/main.go envPassRegex = \"MF_USERS_PASS_REGEX\""
+    },
+    {
+     "path": "cmd/users/main.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "envPassRegex = \"MF_USERS_PASS_REGEX\", default \"^.{8,}$\" equal to the .env value"
+    },
+    {
+     "path": "users/api/requests.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "min length check removed; no env or path shared with .env"
+    },
+    {
+     "path": "users/api/transport.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "maps ErrPasswordFormat to 400; no env shared"
+    },
+    {
+     "path": "users/service.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "applies passRegex; the env name is read only in main.go"
+    },
+    {
+     "path": "users/users.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "min length check removed; no env shared"
+    }
+   ],
+   "mill1000__midea-msmart-99": [
+    {
+     "path": "Dockerfile",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "alpine base pinned to 3.18; no code names it"
+    },
+    {
+     "path": "msmart/device/AC/command.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "additional capabilities request; unrelated to the Dockerfile"
+    },
+    {
+     "path": "msmart/device/AC/device.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "response handling refactor; unrelated to the Dockerfile"
+    }
+   ],
+   "mrparkers__terraform-provider-keycloak-507": [
+    {
+     "path": "example/main.tf",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "additional_headers = {...}; provider.go schema key \"additional_headers\""
+    },
+    {
+     "path": "provider/provider.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "schema \"additional_headers\" read with data.Get(\"additional_headers\")"
+    },
+    {
+     "path": "keycloak/keycloak_client.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "additionalHeaders field applied to requests; the same key as additional_headers after case folding"
+    },
+    {
+     "path": "keycloak/identity_provider.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "SAML principal fields; not in the example hunk"
+    },
+    {
+     "path": "provider/resource_keycloak_group_roles.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "exhaustive flag for group roles; not in the example hunk"
+    },
+    {
+     "path": "provider/resource_keycloak_saml_identity_provider.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "SAML principal type and sync mode; not in the example hunk"
+    }
+   ],
+   "opengovsg__gogovsg-158": [
+    {
+     "path": "Dockerfile",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "node base image moved to 12-alpine3.9; the code change is a redirect template escape"
+    },
+    {
+     "path": "src/server/api/redirect.ts",
+     "side": "code",
+     "coupled": false,
+     "evidence": "encodeLongUrl for the transition page; no name shared with the Dockerfile"
+    }
+   ],
+   "pravega__zookeeper-operator-201": [
+    {
+     "path": "charts/zookeeper-operator/Chart.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "appVersion 0.2.8 equals DefaultZkContainerVersion \"0.2.8\" in zookeepercluster_types.go (a release-version literal)"
+    },
+    {
+     "path": "charts/zookeeper-operator/templates/_helpers.tpl",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "selector label helper moved; no code names it"
+    },
+    {
+     "path": "charts/zookeeper-operator/templates/operator.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "name and component labels; no code names them"
+    },
+    {
+     "path": "charts/zookeeper-operator/values.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "comment on the watch namespace(s) value that main.go reads through k8sutil.GetWatchNamespace; image tag 0.2.8"
+    },
+    {
+     "path": "charts/zookeeper/Chart.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "appVersion 0.2.8 equals DefaultZkContainerVersion (a release-version literal)"
+    },
+    {
+     "path": "charts/zookeeper/templates/_helpers.tpl",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "drops a label; no code names it"
+    },
+    {
+     "path": "charts/zookeeper/templates/post-install-upgrade-hooks.yaml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "hook backoffLimit templated; no code names it"
+    },
+    {
+     "path": "charts/zookeeper/values.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "image tag 0.2.8 equals DefaultZkContainerVersion \"0.2.8\""
+    },
+    {
+     "path": "deploy/crds/zookeeper_v1beta1_zookeepercluster_cr.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "image tag 0.2.8 equals DefaultZkContainerVersion \"0.2.8\""
+    },
+    {
+     "path": "cmd/manager/main.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": true,
+     "evidence": "watch namespaces list parsed from k8sutil.GetWatchNamespace, the value the operator values.yaml comment now documents as comma separated"
+    },
+    {
+     "path": "pkg/apis/zookeeper/v1beta1/zookeepercluster_types.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "DefaultZkContainerVersion = \"0.2.8\" equals the tag in the chart values and the CR"
+    },
+    {
+     "path": "pkg/controller/zookeepercluster/zookeepercluster_controller.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "owner-reference handling in the output sub dirs; no shared name"
+    },
+    {
+     "path": "pkg/zk/generators.go",
+     "side": "code",
+     "coupled": false,
+     "evidence": "owner references removed from generated objects; no shared name"
+    }
+   ],
+   "rare-technologies__smart_open-771": [
+    {
+     "path": ".github/workflows/python-package.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "python 3.11 in the matrix; setup.py adds the classifier 'Programming Language :: Python :: 3.11'"
+    },
+    {
+     "path": "setup.py",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "classifier Python :: 3.11 equals the CI matrix version"
+    },
+    {
+     "path": "smart_open/ftp.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "formatting and TYPE I mode fix; unrelated to the CI matrix"
+    },
+    {
+     "path": "smart_open/s3.py",
+     "side": "code",
+     "coupled": false,
+     "evidence": "zero-byte object fix, the issue itself; unrelated to the CI matrix"
+    }
+   ],
+   "redhat-developer__service-binding-operator-67": [
+    {
+     "path": "deploy/crds/apps_v1alpha1_servicebindingrequest_crd.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "required property resourceKind replaces resourceName; types.go json:\"resourceKind\""
+    },
+    {
+     "path": "pkg/apis/apps/v1alpha1/servicebindingrequest_types.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "ResourceKind json:\"resourceKind\" replaces ResourceName"
+    },
+    {
+     "path": "pkg/apis/apps/v1alpha1/zz_generated.openapi.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "generated schema property \"resourceKind\" and Required list"
+    },
+    {
+     "path": "pkg/controller/servicebindingrequest/planner.go",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "reads BackingServiceSelector.ResourceKind, the CRD's resourceKind"
+    }
+   ],
+   "serverless__serverless-4056": [
+    {
+     "path": "docker-compose.yml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "service aws-nodejs-ecma-script and its volume path; create.js lists the template 'aws-nodejs-ecma-script'"
+    },
+    {
+     "path": "lib/plugins/create/create.js",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "template name 'aws-nodejs-ecma-script'"
+    }
+   ],
+   "verygoodopensource__very_good_cli-618": [
+    {
+     "path": ".github/workflows/very_good_cli.yaml",
+     "side": "infra",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "test path .../flame_game/flame_game_test.dart; commands.dart exports flame_game.dart and create.dart registers flame_game"
+    },
+    {
+     "path": "lib/src/commands/create/commands/commands.dart",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "export 'flame_game.dart' names the flame_game the workflow's e2e test targets"
+    },
+    {
+     "path": "lib/src/commands/create/create.dart",
+     "side": "code",
+     "coupled": true,
+     "indirect": false,
+     "evidence": "addSubcommand CreateFlameGame and the comment 'very_good create flame_game'"
+    }
+   ],
+   "whatyouhide__redix-125": [
+    {
+     "path": "docker-compose.yml",
+     "side": "infra",
+     "coupled": false,
+     "evidence": "stunnel TLS proxy for the rediss tests, functionally related but shares no key, path or symbol with uri.ex"
+    },
+    {
+     "path": "lib/redix/uri.ex",
+     "side": "code",
+     "coupled": false,
+     "evidence": "accepts the rediss scheme and sets ssl; names nothing the compose file names"
+    }
+   ]
+  }
+ }
+}

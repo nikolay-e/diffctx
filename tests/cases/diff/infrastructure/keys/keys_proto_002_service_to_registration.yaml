@@ -1,0 +1,77 @@
+name: keys_proto_002_service_to_registration
+tags:
+- xkeys:proto
+- xkeys:decoy
+- lang:go
+repo:
+  initial_files:
+    cmd/catalog/go.mod: |
+      module example.test/catalog
+
+      go 1.23
+    cmd/catalog/proto/catalog.proto: |
+      syntax = "proto3";
+      package catalog;
+
+      service Catalog {
+        rpc List (Empty) returns (Empty);
+      }
+      message Empty {}
+    cmd/catalog/main.go: |
+      package main
+
+      func main() {
+      	pb.RegisterCatalogServer(srv, &server{})
+      }
+    cmd/inventory/go.mod: |
+      module example.test/inventory
+
+      go 1.23
+    cmd/inventory/proto/catalog.proto: |
+      syntax = "proto3";
+      package inventory;
+
+      service Catalog {
+        rpc Stock (Empty) returns (Empty);
+      }
+      message Empty {}
+    cmd/inventory/main.go: |
+      package main
+
+      func main() {
+      	pb.RegisterCatalogServer(srv, &stock{})
+      }
+  changed_files:
+    cmd/catalog/proto/catalog.proto: |
+      syntax = "proto3";
+      package catalog;
+
+      service Catalog {  // listing and lookup
+        rpc List (Empty) returns (Empty);
+        rpc Get (Empty) returns (Empty);
+      }
+      message Empty {}
+  commit_message: Let callers fetch one catalog entry
+fragments:
+- id: proto
+  selector:
+    path: cmd/catalog/proto/catalog.proto
+    anchor: 'service Catalog'
+- id: main
+  selector:
+    path: cmd/catalog/main.go
+    anchor: 'RegisterCatalogServer'
+- id: inv_proto
+  selector:
+    path: cmd/inventory/proto/catalog.proto
+- id: inv_main
+  selector:
+    path: cmd/inventory/main.go
+oracle:
+  required:
+  - proto
+  - main
+  forbidden:
+  - inv_proto
+  - inv_main
+min_score: 60

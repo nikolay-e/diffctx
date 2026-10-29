@@ -1,0 +1,61 @@
+name: keys_tech_003_nginx_envsubst
+tags:
+- xkeys:env
+- xkeys:tech
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    edge/Dockerfile: |
+      FROM nginx:1.27
+      COPY templates /etc/nginx/templates
+    edge/templates/default.conf.template: |
+      server {
+        listen 80;
+        location / {
+          proxy_pass http://app:8000;
+        }
+      }
+    edge/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - UPSTREAM_URL=http://app:8000
+    legacy/Dockerfile: |
+      FROM python:3.12
+      COPY . /srv
+    legacy/docker-compose.yml: |
+      services:
+        app:
+          build: .
+          environment:
+            - UPSTREAM_URL=http://old:8000
+  changed_files:
+    edge/templates/default.conf.template: |
+      server {
+        listen 80;
+        location / {
+          proxy_pass ${UPSTREAM_URL};
+        }
+      }
+  commit_message: Point the proxy at the configured upstream
+fragments:
+- id: template
+  selector:
+    path: edge/templates/default.conf.template
+    anchor: '${UPSTREAM_URL}'
+- id: compose
+  selector:
+    path: edge/docker-compose.yml
+    anchor: 'UPSTREAM_URL'
+- id: legacy_compose
+  selector:
+    path: legacy/docker-compose.yml
+oracle:
+  required:
+  - template
+  - compose
+  forbidden:
+  - legacy_compose
+min_score: 60

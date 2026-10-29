@@ -21,16 +21,34 @@ algorithm/fragments/fragments_015_markdown_long_heading_truncation
 # selection change (Q-class), tracked as #415.
 algorithm/deletion/deletion_001_caller_of_deleted_module
 config/yaml/yaml_016_pagination_config
+infrastructure/keys/keys_env_001_reader_to_providers
+infrastructure/keys/keys_env_014_untouched_key_manifest
+# Typed link present but too weak to select its counterpart under the corpus budget (the C1
+# calibration gap, #246): backend_env stays out (recall 50%); the forbidden reports file stays out
+# too, which is what the case guards.
+infrastructure/keys/keys_env_018_two_services_no_marker
+infrastructure/keys/keys_image_002_dockerfile_to_build_decl
+infrastructure/keys/keys_path_002_dockerfile_copy_two_units
+infrastructure/keys/keys_proto_002_service_to_registration
+infrastructure/keys/keys_table_002_prisma_to_query
+# Typed link present but too weak to select under the corpus budget — the C1 calibration gap
+# (#246): dotenv is missing (recall 50%, forbidden_rate 0%); the flat probe fails the same way.
+infrastructure/keys/keys_tech_006_spring_yaml_nested_placeholder
+# Same as keys_tech_006: the flat spelling is not selected either, so the nested/flat difference
+# does not show in the corpus budget (recall 50%, forbidden_rate 0%).
+infrastructure/keys/keys_tech_007_spring_yaml_flat_placeholder
 infrastructure/terraform/terraform_010_iam_policy
 infrastructure/terraform/terraform_035_count
 infrastructure/terraform/terraform_037_provisioner
+# Blind xlang case: forbidden staging kustomization is selected and required ci_web_build is
+# missing (recall 50%, forbidden_rate 100%).
+infrastructure/xlang/xlang_image_104_kustomize_images_to_ci_build
 languages/go/go_004_embed_directive
 languages/go/go_033_error_interface
 languages/java/java_006_entity_relations
 languages/javascript/javascript_016_type_import_resolves_definition
 languages/javascript/javascript_022_implements_interface
 languages/javascript/javascript_035_web_worker_message
-languages/javascript/javascript_063_custom_hook
 languages/javascript/javascript_070_intersection_type
 languages/javascript/javascript_076_pick_type
 languages/jvm/jvm_and_compiled_028_java_custom_exception
@@ -76,6 +94,7 @@ synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 # before a 0.069-scoring fragment. That is a calibration question for the v3 cycle.
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
+config/yaml/yaml_010_email_config
 # Builder load-bearing cases whose gold is reachable only through the
 # builder's edge. The edge exists (locate names it); the selection drops it —
 # selection fixes not made yet. Each line is the measured cause.

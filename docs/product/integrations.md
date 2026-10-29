@@ -67,7 +67,8 @@ exists only from 1.12.3 and maps a directory named `mcp` on older releases.
 **The tool.** One tool, `diffctx_context`. By default (`mode=impact`) it
 answers what a change reaches outside its diff — callers, the tests that reach
 them, changed contracts — in under 2k tokens; `symbol` asks the same of a name
-with no change. `mode=locate` ranks the code that explains a diff, and
+with no change; `paths` scopes the analysis to children of a monorepo, as the
+CLI's positional paths do. `mode=locate` ranks the code that explains a diff, and
 `fragment_ids` then reads only the fragments picked; `mode=pack` returns the
 code. `get_tree_map` and `get_file_context` are opt-in via
 `DIFFCTX_MCP_LEGACY_TOOLS=1`; filesystem confinement via

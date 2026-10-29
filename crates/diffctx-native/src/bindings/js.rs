@@ -69,6 +69,16 @@ static JS_DYNAMIC_THEN: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
+/// `const Card = lazy(() => import('./Card'))`, `React.lazy(async () =>
+/// import('./Card'))`: `lazy` resolves the module's default export, so the
+/// constant is that export (Forgejo #106).
+static JS_LAZY_DEFAULT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?s)\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:React\s*\.\s*)?lazy\(\s*(?:async\s*)?\(\s*\)\s*=>\s*(?:await\s+)?import\(\s*['"]([^'"]+)['"]\s*\)\s*,?\s*\)"#,
+    )
+    .unwrap()
+});
+
 pub fn js_bindings(text: &str) -> FileBindings {
     let mut b = FileBindings::default();
     for c in JS_IMPORT.captures_iter(text) {
@@ -89,6 +99,15 @@ pub fn js_bindings(text: &str) -> FileBindings {
     for c in JS_DYNAMIC_THEN.captures_iter(text) {
         b.names
             .insert(c[2].to_string(), Target::Module(c[1].to_string()));
+    }
+    for c in JS_LAZY_DEFAULT.captures_iter(text) {
+        b.names.insert(
+            c[1].to_string(),
+            Target::Member {
+                module: c[2].to_string(),
+                name: "default".to_string(),
+            },
+        );
     }
     b
 }

@@ -1,0 +1,148 @@
+name: xlang_env_004_compose_env_to_seed_script
+tags:
+- xlang:env
+- lang:python
+- lang:yaml
+- lang:json
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    e2e/compose.yml: |
+      x-api-env: &api-env
+        APP_DSN: postgresql://app:e2e@db:5432/app_e2e # pragma: allowlist secret
+        APP_PUBLIC_URL: https://app.e2e
+        APP_OIDC_ISSUER: http://idp.e2e:8080/realms/apps
+        APP_MEDIA_DIR: /var/lib/app/media
+
+      services:
+        db:
+          image: postgres:17-alpine
+          environment:
+            POSTGRES_USER: app
+            POSTGRES_DB: app_e2e
+        api:
+          image: app-e2e/api:local
+          build:
+            context: ../..
+            dockerfile: journal/api/Dockerfile
+          environment: *api-env
+          depends_on:
+            db: {condition: service_healthy}
+        # The operator's commands, run once against the migrated database.
+        seed:
+          image: app-e2e/api:local
+          entrypoint: [python, /e2e/seed.py]
+          environment:
+            <<: *api-env
+            E2E_READER_SUB: e2e00000-0000-4000-8000-000000000001
+          volumes:
+            - ./seed.py:/e2e/seed.py:ro
+          depends_on:
+            api: {condition: service_healthy}
+    e2e/seed.py: |
+      """Seeds the e2e database through the commands an operator runs."""
+
+      import os
+      import sys
+      from pathlib import Path
+
+      from app.cli import main
+
+      READER = "e2e00000-0000-4000-8000-000000000001"
+
+
+      def run(*argv: str) -> None:
+          code = main(list(argv))
+          if code:
+              sys.exit(code)
+
+
+      if __name__ == "__main__":
+          media = Path(os.environ["APP_MEDIA_DIR"])
+          run("group", "add", "--sub", READER)
+          run("import", str(media / "notes.pdf"), "--owner", READER)
+    e2e/realm.json: |
+      {
+        "realm": "apps",
+        "enabled": true,
+        "users": [
+          {
+            "id": "e2e00000-0000-4000-8000-000000000001",
+            "username": "reader",
+            "enabled": true,
+            "credentials": [{ "type": "password", "value": "${E2E_KC_PASSWORD}", "temporary": false }]
+          }
+        ]
+      }
+    e2e/upstream.conf: |
+      resolver 10.96.0.10 valid=10s;
+      set $backend api;
+    e2e/tests/door.spec.ts: |
+      import { test, expect } from "@playwright/test";
+
+      test("the door opens", async ({ page }) => {
+        await page.goto("/");
+        await expect(page).toHaveTitle(/Journal/);
+      });
+    journal/api/Dockerfile: |
+      FROM python:3.13-slim
+      WORKDIR /app
+      COPY journal/api/ .
+      CMD ["python", "-m", "app"]
+  changed_files:
+    e2e/seed.py: |
+      """Seeds the e2e database through the commands an operator runs."""
+
+      import os
+      import sys
+      from pathlib import Path
+
+      from app.cli import main
+
+      READER = os.environ["E2E_READER_SUB"]
+
+
+      def run(*argv: str) -> None:
+          code = main(list(argv))
+          if code:
+              sys.exit(code)
+
+
+      if __name__ == "__main__":
+          media = Path(os.environ["APP_MEDIA_DIR"])
+          run("group", "add", "--sub", READER)
+          run("import", str(media / "notes.pdf"), "--owner", READER)
+  commit_message: Seed the reader the realm names, from the environment
+fragments:
+- id: seed_env
+  selector:
+    path: e2e/seed.py
+    anchor: READER = os.environ["E2E_READER_SUB"]
+- id: compose_sub
+  selector:
+    path: e2e/compose.yml
+    anchor: 'E2E_READER_SUB:'
+- id: realm
+  selector:
+    path: e2e/realm.json
+- id: no_upstream
+  selector:
+    path: e2e/upstream.conf
+- id: no_door_spec
+  selector:
+    path: e2e/tests/door.spec.ts
+- id: no_api_dockerfile
+  selector:
+    path: journal/api/Dockerfile
+oracle:
+  required:
+  - seed_env
+  - compose_sub
+  allowed:
+  - realm
+  forbidden:
+  - no_upstream
+  - no_door_spec
+  - no_api_dockerfile

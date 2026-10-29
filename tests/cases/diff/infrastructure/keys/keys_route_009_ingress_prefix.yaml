@@ -1,0 +1,87 @@
+name: keys_route_009_ingress_prefix
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:python
+- lang:yaml
+repo:
+  initial_files:
+    billing/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    billing/main.py: |
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+
+      @app.get("/billing/invoices/{invoice_id}")
+      def invoice(invoice_id: int):
+          return {"id": invoice_id}
+    deploy/billing-ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: billing
+      spec:
+        rules:
+          - http:
+              paths:
+                - path: /billing
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: billing
+                      port:
+                        number: 8000
+    deploy/shipping-ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: shipping
+      spec:
+        rules:
+          - http:
+              paths:
+                - path: /shipping
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: shipping
+                      port:
+                        number: 8000
+  changed_files:
+    billing/main.py: |
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+
+      @app.get("/billing/invoices/{invoice_id}")
+      def invoice(invoice_id: int):
+          return {"id": invoice_id}
+
+
+      @app.get("/billing/invoices/{invoice_id}/pdf")
+      def pdf(invoice_id: int):
+          return b""
+  commit_message: Serve the invoice pdf
+fragments:
+- id: handler
+  selector:
+    path: billing/main.py
+    anchor: '"/billing/invoices/{invoice_id}/pdf"'
+- id: billing_ingress
+  selector:
+    path: deploy/billing-ingress.yaml
+    anchor: 'path: /billing'
+- id: shipping_ingress
+  selector:
+    path: deploy/shipping-ingress.yaml
+oracle:
+  required:
+  - handler
+  - billing_ingress
+  forbidden:
+  - shipping_ingress
+min_score: 60

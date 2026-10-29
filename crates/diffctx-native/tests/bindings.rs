@@ -516,10 +516,8 @@ fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
         &["--symbol", "src/app/A.scala:build", "-q", "-f", "md"],
     );
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        text.contains("called from src/app/User.scala::go"),
-        "{text}"
-    );
+    assert!(!text.contains("called from src/app/User.scala"), "{text}");
+    assert!(text.contains("src/app/User.scala:5 names build"), "{text}");
 }
 
 #[test]

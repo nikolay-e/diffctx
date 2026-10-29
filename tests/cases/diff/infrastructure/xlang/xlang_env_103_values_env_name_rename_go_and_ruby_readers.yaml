@@ -1,0 +1,93 @@
+name: xlang_env_103_values_env_name_rename_go_and_ruby_readers
+tags:
+- xlang:env
+- lang:yaml
+- lang:go
+- lang:ruby
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    chart/values.yaml: |
+      worker:
+        image:
+          repository: reg.example.com/acme/worker
+          tag: ''
+        env:
+          - name: QUEUE_NAME
+            value: default
+          - name: LOG_LEVEL
+            value: info
+    chart/templates/worker.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+                env:
+                  {{- toYaml .Values.worker.env | nindent 12 }}
+    worker/main.go: "package main\n\nimport \"os\"\n\nfunc queueName() string {\n\tif v, ok := os.LookupEnv(\"QUEUE_NAME\"); ok {\n\t\treturn v\n\t}\n\treturn \"default\"\n}\n"
+    scripts/drain.rb: |
+      queue = ENV.fetch("QUEUE_NAME", "default")
+      puts "draining #{queue}"
+    worker/logging.go: |
+      package main
+
+      import "os"
+
+      var logLevel = os.Getenv("LOG_LEVEL")
+    chart/other/values.yaml: |
+      mailer:
+        env:
+          - name: SMTP_HOST
+            value: smtp.example.test
+  changed_files:
+    chart/values.yaml: |
+      worker:
+        image:
+          repository: reg.example.com/acme/worker
+          tag: ''
+        env:
+          - name: WORK_QUEUE_NAME
+            value: default
+          - name: LOG_LEVEL
+            value: info
+  commit_message: The worker's queue setting is called WORK_QUEUE_NAME
+fragments:
+- id: values_rename
+  selector:
+    path: chart/values.yaml
+    anchor: 'name: WORK_QUEUE_NAME'
+- id: go_reader
+  selector:
+    path: worker/main.go
+    anchor: os.LookupEnv("QUEUE_NAME")
+- id: ruby_reader
+  selector:
+    path: scripts/drain.rb
+    anchor: ENV.fetch("QUEUE_NAME"
+- id: worker_tpl
+  selector:
+    path: chart/templates/worker.yaml
+- id: go_logging
+  selector:
+    path: worker/logging.go
+- id: no_other_values
+  selector:
+    path: chart/other/values.yaml
+oracle:
+  required:
+  - values_rename
+  - go_reader
+  - ruby_reader
+  allowed:
+  - worker_tpl
+  - go_logging
+  forbidden:
+  - no_other_values

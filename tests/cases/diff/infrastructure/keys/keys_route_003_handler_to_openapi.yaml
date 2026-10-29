@@ -1,0 +1,68 @@
+name: keys_route_003_handler_to_openapi
+tags:
+- xkeys:route
+- xkeys:decoy
+- lang:go
+- lang:yaml
+repo:
+  initial_files:
+    cmd/server/main.go: |
+      package main
+
+      import "net/http"
+
+      func main() {
+      	mux := http.NewServeMux()
+      	mux.HandleFunc("/v1/gadgets", func(w http.ResponseWriter, r *http.Request) {})
+      	_ = mux
+      }
+    api/openapi.yaml: |
+      openapi: 3.0.0
+      info:
+        title: shop
+        version: 1.0.0
+      paths:
+        /v1/gadgets:
+          get: {}
+        /v1/widgets/{id}:
+          get: {}
+    api/legacy.yaml: |
+      openapi: 3.0.0
+      info:
+        title: legacy
+        version: 0.1.0
+      paths:
+        /v2/widgets/{id}:
+          get: {}
+  changed_files:
+    cmd/server/main.go: |
+      package main
+
+      import "net/http"
+
+      func main() {
+      	mux := http.NewServeMux()
+      	mux.HandleFunc("/v1/gadgets", func(w http.ResponseWriter, r *http.Request) {})
+      	mux.HandleFunc("/v1/widgets/{id}", func(w http.ResponseWriter, r *http.Request) {})
+      	_ = mux
+      }
+  commit_message: Serve widgets by id
+fragments:
+- id: main
+  selector:
+    path: cmd/server/main.go
+    anchor: '"/v1/widgets/{id}"'
+- id: openapi
+  selector:
+    path: api/openapi.yaml
+    anchor: '/v1/widgets/{id}'
+- id: legacy
+  selector:
+    path: api/legacy.yaml
+oracle:
+  required:
+  - main
+  - openapi
+  forbidden:
+  - legacy
+min_score: 60

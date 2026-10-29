@@ -1,0 +1,74 @@
+name: xlang_table_005_decoy_same_table_other_schema
+tags:
+- xlang:decoy
+- xlang:table
+- lang:sql
+- lang:kotlin
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    app/src/main/resources/db/ops/V010__session_events.sql: |
+      CREATE TABLE ops.session_events (
+          id uuid PRIMARY KEY,
+          occurred_at timestamp with time zone NOT NULL,
+          kind text NOT NULL
+      );
+    app/src/main/kotlin/dev/acme/app/events/SessionEventService.kt: |
+      package dev.acme.app.events
+
+      import org.springframework.jdbc.core.JdbcTemplate
+
+      class SessionEventService(private val jdbc: JdbcTemplate) {
+          fun prune() {
+              jdbc.update("DELETE FROM ops.session_events WHERE occurred_at < now() - interval '30 days'")
+          }
+      }
+    analytics/src/main/resources/db/analytics/V001__session_events.sql: |
+      CREATE TABLE analytics.session_events (
+          id uuid PRIMARY KEY,
+          session_id uuid NOT NULL,
+          position_ms bigint NOT NULL
+      );
+    analytics/src/main/kotlin/dev/acme/analytics/SessionReport.kt: |
+      package dev.acme.analytics
+
+      import org.springframework.jdbc.core.JdbcTemplate
+
+      class SessionReport(private val jdbc: JdbcTemplate) {
+          fun lengthMs(session: java.util.UUID): Long? =
+              jdbc.queryForObject("SELECT max(position_ms) FROM analytics.session_events WHERE session_id = ?", Long::class.java, session)
+      }
+  changed_files:
+    app/src/main/resources/db/ops/V010__session_events.sql: |
+      CREATE TABLE ops.session_events (
+          id uuid PRIMARY KEY,
+          occurred_at timestamp with time zone NOT NULL,
+          kind text NOT NULL,
+          device_id uuid
+      );
+  commit_message: A playback event names the device it came from
+fragments:
+- id: sup_migration
+  selector:
+    path: app/src/main/resources/db/ops/V010__session_events.sql
+    anchor: device_id uuid
+- id: sup_service
+  selector:
+    path: app/src/main/kotlin/dev/acme/app/events/SessionEventService.kt
+    anchor: DELETE FROM ops.session_events
+- id: no_analytics_sql
+  selector:
+    path: analytics/src/main/resources/db/analytics/V001__session_events.sql
+- id: no_analytics_kt
+  selector:
+    path: analytics/src/main/kotlin/dev/acme/analytics/SessionReport.kt
+oracle:
+  required:
+  - sup_migration
+  - sup_service
+  allowed: []
+  forbidden:
+  - no_analytics_sql
+  - no_analytics_kt

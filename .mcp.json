@@ -2,7 +2,10 @@
   "mcpServers": {
     "diffctx": {
       "command": "uvx",
-      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"]
+      "args": ["--from", "diffctx[mcp]", "diffctx-mcp"],
+      "env": {
+        "UV_ISOLATED": "1"
+      }
     }
   }
 }

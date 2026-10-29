@@ -1,0 +1,92 @@
+name: keys_image_001_consumer_to_build
+tags:
+- xkeys:image
+- lang:yaml
+repo:
+  initial_files:
+    .github/workflows/build.yml: |
+      name: build
+      on: push
+      jobs:
+        image:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: docker/build-push-action@v6
+              with:
+                context: ./web
+                push: true
+                tags: ghcr.io/acme-org/web:${{ github.sha }}
+    web/Dockerfile: |
+      FROM node:22-slim
+      COPY . /app
+      CMD ["node", "server.js"]
+    deploy/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: ghcr.io/acme-org/web:1.4.0
+    deploy/db.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: db
+      spec:
+        template:
+          spec:
+            containers:
+              - name: db
+                image: postgres:16
+    deploy/reports-db.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: reports-db
+      spec:
+        template:
+          spec:
+            containers:
+              - name: db
+                image: postgres:16
+  changed_files:
+    deploy/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: ghcr.io/acme-org/web:1.5.0
+  commit_message: Bump the web image
+fragments:
+- id: web
+  selector:
+    path: deploy/web.yaml
+    anchor: 'image: ghcr.io/acme-org/web:1.5.0'
+- id: build
+  selector:
+    path: .github/workflows/build.yml
+    anchor: 'tags: ghcr.io/acme-org/web'
+- id: db
+  selector:
+    path: deploy/db.yaml
+- id: reports
+  selector:
+    path: deploy/reports-db.yaml
+oracle:
+  required:
+  - web
+  - build
+  forbidden:
+  - db
+  - reports
+min_score: 60

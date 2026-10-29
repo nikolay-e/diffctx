@@ -8,6 +8,14 @@ the ignored `results/` directory or CI/release artifacts.
 - `real-world-diff/v1/`: the legacy corpus, labels, provenance, and checksums.
 - `eval-splits/`: frozen manifests with versioned integrity metadata.
 - `external-revisions.json`: pinned revisions for externally hosted datasets.
+- `external-pins/`: pins for one external benchmark each (revision, archive
+  digest, evaluator commit); `arb_edit2ripple.json` is Agent Retrieval Bench.
+- `xlang/`: manifests and pins of the external-mode datasets.
+  `swerebench_infra.json` is the committed infrastructure-slice manifest
+  (instance ids, selection rule, counts and our hand labels; no patches or
+  file contents). `cfgnet500_pins.json` pins the ten project versions and the
+  label file's commit and digest; the labels are fetched at run time and never
+  committed.
 
 ## Licence constraints on external datasets
 

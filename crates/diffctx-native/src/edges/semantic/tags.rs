@@ -1,7 +1,8 @@
 use std::path::Path;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::canon::{KeyCache, for_each_word_key};
 use crate::config::edge_weights::TAGS_SEMANTIC;
 use crate::types::{Fragment, FragmentId};
 
@@ -28,8 +29,18 @@ impl EdgeBuilder for TagsEdgeBuilder {
         true
     }
 
+    fn category_label(&self) -> Option<&str> {
+        Some("key_match")
+    }
+
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let mut ident_index: FxHashMap<&str, Vec<(&FragmentId, &str)>> = FxHashMap::default();
+        // Keyed on the canonical spelling, so `max_pool_size` in a config file
+        // meets `maxPoolSize` in code. A fragment's `identifiers` are already
+        // lowercased, which erased the case boundaries the canonical form
+        // splits on: the words are read again from the text, and the stored
+        // set still contributes what the text does not spell.
+        let mut ident_index: FxHashMap<String, Vec<(&FragmentId, &str)>> = FxHashMap::default();
+        let mut cache = KeyCache::default();
 
         for f in fragments {
             let path = f.path();
@@ -38,14 +49,20 @@ impl EdgeBuilder for TagsEdgeBuilder {
             // Config files keep every word: there the fallback is the link.
             let code = crate::config::extensions::CODE_EXTENSIONS
                 .contains(base::file_ext(Path::new(path)).as_str());
+            let mut keys: FxHashSet<String> = FxHashSet::default();
             for ident in &f.identifiers {
-                if ident.len() >= TAGS_SEMANTIC.min_ident_len
-                    && !(code && SYNTAX_WORDS.contains(ident.to_lowercase().as_str()))
+                keys.insert(cache.key(ident).to_string());
+            }
+            for_each_word_key(&f.content, &mut cache, |k| {
+                if !keys.contains(k) {
+                    keys.insert(k.to_string());
+                }
+            });
+            for key in keys {
+                if key.len() >= TAGS_SEMANTIC.min_ident_len
+                    && !(code && SYNTAX_WORDS.contains(key.as_str()))
                 {
-                    ident_index
-                        .entry(ident.as_str())
-                        .or_default()
-                        .push((&f.id, path));
+                    ident_index.entry(key).or_default().push((&f.id, path));
                 }
             }
         }
@@ -85,5 +102,36 @@ impl EdgeBuilder for TagsEdgeBuilder {
         }
 
         edges
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FragmentKind, extract_identifiers};
+    use std::sync::Arc;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, 3),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(content),
+            identifiers: extract_identifiers(content, 3),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// The fallback keys on the canonical spelling: a snake_case setting in a
+    /// config file meets the same setting in camelCase code, and a name that
+    /// only shares two of its words stays apart.
+    #[test]
+    fn one_name_in_two_spellings_is_one_identifier() {
+        let cfg = frag("app.conf", "max_pool_size = 10\n");
+        let camel = frag("a.xyz", "limit maxPoolSize here\n");
+        let other = frag("b.xyz", "limit poolSize here\n");
+        let edges = TagsEdgeBuilder.build(&[cfg.clone(), camel.clone(), other.clone()], None);
+        assert!(edges.contains_key(&(cfg.id.clone(), camel.id.clone())));
+        assert!(!edges.contains_key(&(cfg.id.clone(), other.id.clone())));
     }
 }

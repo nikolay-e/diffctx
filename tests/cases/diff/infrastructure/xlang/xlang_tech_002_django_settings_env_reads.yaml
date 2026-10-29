@@ -1,0 +1,119 @@
+name: xlang_tech_002_django_settings_env_reads
+tags:
+- xlang:tech
+- lang:python
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    project/settings.py: |
+      import os
+      from pathlib import Path
+
+      BASE_DIR = Path(__file__).resolve().parent.parent
+
+      SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+      DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+      ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",")
+
+      DATABASES = {
+          "default": {
+              "ENGINE": "django.db.backends.postgresql",
+              "NAME": os.environ.get("DB_NAME", "app"),
+              "HOST": os.environ.get("DB_HOST", "localhost"),
+          }
+      }
+    deploy/compose.yml: |
+      services:
+        web:
+          build: .
+          environment:
+            DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+            DJANGO_ALLOWED_HOSTS: app.example.test
+            DJANGO_CSRF_TRUSTED_ORIGINS: https://app.example.test
+            DB_HOST: db
+        db:
+          image: postgres:17-alpine
+    .env.example: |
+      DJANGO_SECRET_KEY=
+      DJANGO_DEBUG=0
+      DJANGO_ALLOWED_HOSTS=localhost
+      DJANGO_CSRF_TRUSTED_ORIGINS=
+    deploy/k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web
+      data:
+        DJANGO_ALLOWED_HOSTS: app.example.test
+        DJANGO_CSRF_TRUSTED_ORIGINS: https://app.example.test
+        DB_HOST: db.svc.cluster.local
+    manage.py: |
+      #!/usr/bin/env python
+      import os
+      import sys
+
+      if __name__ == "__main__":
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings")
+          from django.core.management import execute_from_command_line
+
+          execute_from_command_line(sys.argv)
+    scripts/proxy.py: |
+      import os
+
+      TRUSTED_ORIGINS = os.environ.get("PROXY_TRUSTED_ORIGINS", "")
+  changed_files:
+    project/settings.py: |
+      import os
+      from pathlib import Path
+
+      BASE_DIR = Path(__file__).resolve().parent.parent
+
+      SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+      DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+      ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",")
+      CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o]
+
+      DATABASES = {
+          "default": {
+              "ENGINE": "django.db.backends.postgresql",
+              "NAME": os.environ.get("DB_NAME", "app"),
+              "HOST": os.environ.get("DB_HOST", "localhost"),
+          }
+      }
+  commit_message: Trust configured origins for CSRF checks
+fragments:
+- id: settings_csrf
+  selector:
+    path: project/settings.py
+    anchor: DJANGO_CSRF_TRUSTED_ORIGINS
+- id: compose_csrf
+  selector:
+    path: deploy/compose.yml
+    anchor: 'DJANGO_CSRF_TRUSTED_ORIGINS:'
+- id: dotenv_csrf
+  selector:
+    path: .env.example
+    anchor: DJANGO_CSRF_TRUSTED_ORIGINS=
+- id: configmap_csrf
+  selector:
+    path: deploy/k8s/configmap.yaml
+    anchor: 'DJANGO_CSRF_TRUSTED_ORIGINS:'
+- id: no_manage
+  selector:
+    path: manage.py
+- id: no_proxy
+  selector:
+    path: scripts/proxy.py
+oracle:
+  required:
+  - settings_csrf
+  - compose_csrf
+  - dotenv_csrf
+  - configmap_csrf
+  allowed: []
+  forbidden:
+  - no_manage
+  - no_proxy

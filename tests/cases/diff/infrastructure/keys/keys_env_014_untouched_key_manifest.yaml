@@ -1,0 +1,81 @@
+name: keys_env_014_untouched_key_manifest
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:go
+- lang:yaml
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM golang:1.23
+      COPY . /src
+    services/api/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                image: registry.example.com/team/api:1
+                env:
+                  - name: LEDGER_URL
+                    value: http://ledger.internal
+    services/api/main.go: |
+      package main
+
+      import "os"
+
+      func retries() string { return os.Getenv("RETRY_LIMIT") }
+
+      func main() { _ = retries() }
+    services/audit/Dockerfile: |
+      FROM golang:1.23
+      COPY . /src
+    services/audit/main.go: |
+      package main
+
+      import "os"
+
+      func ledger() string { return os.Getenv("LEDGER_URL") }
+
+      func main() { _ = ledger() }
+  changed_files:
+    services/api/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                image: registry.example.com/team/api:1
+                env:
+                  - name: LEDGER_URL
+                    value: http://ledger.internal
+                  - name: RETRY_LIMIT
+                    value: "3"
+  commit_message: Cap the api retries
+fragments:
+- id: deploy
+  selector:
+    path: services/api/deploy.yaml
+    anchor: 'value: "3"'
+- id: api_main
+  selector:
+    path: services/api/main.go
+    anchor: 'RETRY_LIMIT'
+- id: audit_main
+  selector:
+    path: services/audit/main.go
+oracle:
+  required:
+  - deploy
+  - api_main
+  forbidden:
+  - audit_main
+min_score: 60

@@ -1317,6 +1317,24 @@ fn find_body_node<'a>(node: &Node<'a>) -> Option<Node<'a>> {
         .or_else(|| children(node).find(|c| BODY_NODE_TYPES.contains(&c.kind())))
 }
 
+/// `k` in `for (let k = 1; k <= 20; k++)`: the loop's own counter, which no
+/// importer reaches and no call names, never a definition (Forgejo #94).
+/// `for (const x of xs)` has no declarator to begin with.
+fn is_loop_counter(node: &Node) -> bool {
+    let Some(declaration) = node
+        .parent()
+        .filter(|_| node.kind() == "variable_declarator")
+    else {
+        return false;
+    };
+    declaration.parent().is_some_and(|stmt| {
+        stmt.kind() == "for_statement"
+            && stmt
+                .child_by_field_name("initializer")
+                .is_some_and(|init| init.id() == declaration.id())
+    })
+}
+
 fn has_function_child(node: &Node) -> bool {
     children(node).any(|c| FUNCTION_CHILD_TYPES.contains(&c.kind()))
 }
@@ -1519,7 +1537,7 @@ impl<'a> Walk<'a> {
     }
 
     fn handle_definition_node(&mut self, node: &Node, depth: u32) {
-        if self.kotlin && kotlin::is_local_property(node) {
+        if (self.kotlin && kotlin::is_local_property(node)) || is_loop_counter(node) {
             self.recurse_children(node, depth);
             return;
         }

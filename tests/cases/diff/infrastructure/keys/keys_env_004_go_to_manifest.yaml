@@ -1,0 +1,80 @@
+name: keys_env_004_go_to_manifest
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:go
+- lang:yaml
+repo:
+  initial_files:
+    cmd/server/main.go: |
+      package main
+
+      import "os"
+
+      func ttl() string {
+      	return os.Getenv("CACHE_TTL")
+      }
+
+      func main() { _ = ttl() }
+    deploy/k8s/server.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: server
+      spec:
+        template:
+          spec:
+            containers:
+              - name: server
+                image: registry.example.com/team/server:1
+                env:
+                  - name: CACHE_TTL
+                    value: "60"
+    deploy/k8s/worker.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                image: registry.example.com/team/worker:1
+                env:
+                  - name: CACHE_TTL_JITTER
+                    value: "5"
+  changed_files:
+    cmd/server/main.go: |
+      package main
+
+      import (
+      	"os"
+      	"strings"
+      )
+
+      func ttl() string {
+      	return strings.TrimSpace(os.Getenv("CACHE_TTL"))
+      }
+
+      func main() { _ = ttl() }
+  commit_message: Trim the cache ttl
+fragments:
+- id: main
+  selector:
+    path: cmd/server/main.go
+    anchor: 'strings.TrimSpace(os.Getenv("CACHE_TTL"))'
+- id: server
+  selector:
+    path: deploy/k8s/server.yaml
+    anchor: 'name: CACHE_TTL'
+- id: worker
+  selector:
+    path: deploy/k8s/worker.yaml
+oracle:
+  required:
+  - main
+  - server
+  forbidden:
+  - worker
+min_score: 60

@@ -42,6 +42,26 @@ pub trait EdgeBuilder: Send + Sync {
     fn is_fallback(&self) -> bool {
         false
     }
+
+    /// `build`, and the pairs of files this builder has taken a position on
+    /// without linking them: the typed key table names two files that hold
+    /// the same key and refuses to join them (two definitions in two units),
+    /// and an untyped name match between those files adds nothing to that.
+    /// The same goes for a changed record's file and a file that spells the
+    /// name of a variable the table tied typed, without a record of its own.
+    fn build_deciding(
+        &self,
+        fragments: &[Fragment],
+        repo_root: Option<&Path>,
+    ) -> (EdgeDict, Vec<(String, String)>) {
+        (self.build(fragments, repo_root), Vec::new())
+    }
+
+    /// The typed key table: its links at naming strength count as a file's
+    /// dedicated coverage, so the tags fallback does not stand beside them.
+    fn is_key_table(&self) -> bool {
+        false
+    }
 }
 
 static INDEX_FILE_STEMS: Lazy<FxHashSet<&str>> =
@@ -407,7 +427,7 @@ pub fn link_by_path_match(
 
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`, applied
 /// to path references.
-const MAX_FILES_PER_PATH_REF: usize = 8;
+pub(crate) const MAX_FILES_PER_PATH_REF: usize = 8;
 
 fn component_aligned(path: &str, reference: &str, interior_needle: &str) -> bool {
     if path == reference {
@@ -493,6 +513,23 @@ impl FragmentIndex {
             let (path_lower, rep) = &self.lower_paths[pi as usize];
             (path_lower == &lower).then_some(rep)
         })
+    }
+}
+
+impl FragmentIndex {
+    /// The representatives of the files at the repo-relative `rel`: the file
+    /// itself, or, when `rel` is a directory, every file under it. Empty when
+    /// nothing is there.
+    pub fn representatives_at(&self, rel: &str) -> Vec<&FragmentId> {
+        if let Some(file) = self.representative_of(rel) {
+            return vec![file];
+        }
+        let under = format!("{}/", rel.trim_end_matches('/').to_lowercase());
+        self.lower_paths
+            .iter()
+            .filter(|(path, _)| path.starts_with(&under))
+            .map(|(_, rep)| rep)
+            .collect()
     }
 }
 

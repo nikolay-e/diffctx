@@ -1,0 +1,57 @@
+name: keys_image_004_from_in_repo_base
+tags:
+- xkeys:image
+- xkeys:decoy
+- lang:yaml
+repo:
+  initial_files:
+    .github/workflows/base.yml: |
+      name: base
+      on: workflow_dispatch
+      jobs:
+        base:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: docker build -t ghcr.io/acme-org/base:3 base
+    base/Dockerfile: |
+      FROM debian:12-slim
+      RUN apt-get update
+    app/Dockerfile: |
+      FROM ghcr.io/acme-org/base:3
+      COPY . /srv
+    tools/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+    docs/images.md: |
+      # Images
+
+      The base image is rebuilt by hand when needed.
+  changed_files:
+    app/Dockerfile: |
+      FROM ghcr.io/acme-org/base:4
+      COPY . /srv
+  commit_message: Move the app to base 4
+fragments:
+- id: app
+  selector:
+    path: app/Dockerfile
+    anchor: 'base:4'
+- id: base_ci
+  selector:
+    path: .github/workflows/base.yml
+    anchor: 'docker build -t ghcr.io/acme-org/base:3'
+- id: tools
+  selector:
+    path: tools/Dockerfile
+- id: docs
+  selector:
+    path: docs/images.md
+oracle:
+  required:
+  - app
+  - base_ci
+  forbidden:
+  - tools
+  - docs
+min_score: 60

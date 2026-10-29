@@ -1,0 +1,76 @@
+name: xlang_proto_003_decoy_same_message_other_package
+tags:
+- xlang:decoy
+- xlang:proto
+- lang:protobuf
+- lang:python
+- change:single_file
+- context:cross_module
+- difficulty:hard
+repo:
+  initial_files:
+    proto/catalog/v1/catalog.proto: |
+      syntax = "proto3";
+
+      package catalog.v1;
+
+      message Item {
+        string item_id = 1;
+        string title = 2;
+      }
+    proto/billing/v1/billing.proto: |
+      syntax = "proto3";
+
+      package billing.v1;
+
+      message Item {
+        string sku = 1;
+        int64 price_cents = 2;
+      }
+    catalog/render.py: |
+      from gen import catalog_pb2
+
+
+      def label(item: catalog_pb2.Item) -> str:
+          return item.title
+    billing/invoice.py: |
+      from gen import billing_pb2
+
+
+      def total(items: list[billing_pb2.Item]) -> int:
+          return sum(item.price_cents for item in items)
+  changed_files:
+    proto/catalog/v1/catalog.proto: |
+      syntax = "proto3";
+
+      package catalog.v1;
+
+      message Item {
+        string item_id = 1;
+        string title = 2;
+        string subtitle = 3;
+      }
+  commit_message: A catalog item can carry a subtitle
+fragments:
+- id: proto_field
+  selector:
+    path: proto/catalog/v1/catalog.proto
+    anchor: string subtitle = 3;
+- id: catalog_use
+  selector:
+    path: catalog/render.py
+    anchor: catalog_pb2.Item
+- id: no_billing_proto
+  selector:
+    path: proto/billing/v1/billing.proto
+- id: no_billing_use
+  selector:
+    path: billing/invoice.py
+oracle:
+  required:
+  - proto_field
+  - catalog_use
+  allowed: []
+  forbidden:
+  - no_billing_proto
+  - no_billing_use

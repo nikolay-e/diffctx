@@ -29,6 +29,7 @@ _TOOL_SNAPSHOT = {
             "include_raw_diff",
             "max_tokens",
             "mode",
+            "paths",
             "repo_path",
             "symbol",
         ],

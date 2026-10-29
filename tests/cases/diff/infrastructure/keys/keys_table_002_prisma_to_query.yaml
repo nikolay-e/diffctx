@@ -1,0 +1,44 @@
+name: keys_table_002_prisma_to_query
+tags:
+- xkeys:table
+- xkeys:decoy
+- lang:typescript
+- lang:prisma
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      model Invoice {
+        id Int @id
+        @@map("invoice")
+      }
+    src/billing.ts: |
+      export const open = (db) => db.query("SELECT * FROM invoices WHERE paid = false");
+    src/ui.ts: |
+      export const invoices = await load();
+      export const invoicesShown = invoices.length;
+  changed_files:
+    prisma/schema.prisma: |
+      model Invoice {
+        id Int @id
+        @@map("invoices")
+      }
+  commit_message: Map invoices to the plural table
+fragments:
+- id: schema
+  selector:
+    path: prisma/schema.prisma
+    anchor: '@@map("invoices")'
+- id: billing
+  selector:
+    path: src/billing.ts
+    anchor: 'FROM invoices'
+- id: ui
+  selector:
+    path: src/ui.ts
+oracle:
+  required:
+  - schema
+  - billing
+  forbidden:
+  - ui
+min_score: 60

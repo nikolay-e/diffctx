@@ -1,0 +1,52 @@
+name: keys_env_017_local_constant_decoy
+tags:
+- xkeys:env
+- xkeys:decoy
+- lang:python
+repo:
+  initial_files:
+    services/api/Dockerfile: |
+      FROM python:3.12-slim
+      COPY . /srv
+      CMD ["python", "app.py"]
+    services/api/app.env: |
+      QUEUE_URL=amqp://localhost/api
+      WORKERS=2
+    services/api/app.py: |
+      import os
+
+      QUEUE = os.environ.get("QUEUE_URL")
+
+
+      def publish(body):
+          return (QUEUE, body)
+    tools/loadtest.py: |
+      QUEUE_URL = "amqp://localhost/loadtest"
+
+
+      def burst(n):
+          return [QUEUE_URL] * n
+  changed_files:
+    services/api/app.env: |
+      QUEUE_URL=amqp://localhost/api-v2
+      WORKERS=2
+  commit_message: Point the api at the v2 queue
+fragments:
+- id: env
+  selector:
+    path: services/api/app.env
+    anchor: 'api-v2'
+- id: app
+  selector:
+    path: services/api/app.py
+    anchor: 'os.environ.get'
+- id: loadtest
+  selector:
+    path: tools/loadtest.py
+oracle:
+  required:
+  - env
+  - app
+  forbidden:
+  - loadtest
+min_score: 60

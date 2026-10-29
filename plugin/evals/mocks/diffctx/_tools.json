@@ -72,6 +72,21 @@
             ],
             "default": null,
             "title": "Symbol"
+          },
+          "paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paths"
           }
         },
         "required": [

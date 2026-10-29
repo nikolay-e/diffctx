@@ -1,0 +1,67 @@
+name: keys_tech_002_spring_placeholder
+tags:
+- xkeys:env
+- xkeys:tech
+- xkeys:decoy
+- lang:java
+repo:
+  initial_files:
+    billing/Dockerfile: |
+      FROM eclipse-temurin:21
+      COPY . /srv
+    billing/src/main/resources/application.properties: |
+      demo.currency=EUR
+    billing/src/main/java/app/Invoice.java: |
+      package app;
+
+      public class Invoice {
+          private final long cents;
+
+          public Invoice(long cents) {
+              this.cents = cents;
+          }
+
+          public long total(int quantity) {
+              return cents * quantity;
+          }
+
+          public String label() {
+              return "invoice-" + cents;
+          }
+      }
+    billing/README.md: |
+      # Billing
+
+      Issues invoices for the storefront. Run it with the compose file next to
+      this document; settings live in the application properties.
+    billing/.env.example: |
+      DEMO_ITEMPRICE=10
+    ledger/Dockerfile: |
+      FROM eclipse-temurin:21
+      COPY . /srv
+    ledger/.env.example: |
+      DEMO_ITEMPRICE=25
+  changed_files:
+    billing/src/main/resources/application.properties: |
+      demo.currency=EUR
+      demo.total=${demo.item-price:10}
+  commit_message: Take the item price from the environment
+fragments:
+- id: props
+  selector:
+    path: billing/src/main/resources/application.properties
+    anchor: 'item-price'
+- id: dotenv
+  selector:
+    path: billing/.env.example
+    anchor: 'DEMO_ITEMPRICE'
+- id: ledger_env
+  selector:
+    path: ledger/.env.example
+oracle:
+  required:
+  - props
+  - dotenv
+  forbidden:
+  - ledger_env
+min_score: 60

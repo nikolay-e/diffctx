@@ -79,7 +79,7 @@ fn classify_semantic_edges(
     let mut direct_edge_paths: FxHashSet<Arc<str>> = FxHashSet::default();
 
     graph.for_each_categorized_edge(|src, dst, category| {
-        if category != EdgeCategory::Semantic {
+        if !category.acts_as_reference() {
             return;
         }
         let src_changed = changed_paths.contains(&src.path);
@@ -178,7 +178,7 @@ fn find_config_generic_code_files(
         }
         let other_path = if src_changed { &dst.path } else { &src.path };
         match category {
-            EdgeCategory::ConfigGeneric => {
+            EdgeCategory::KeyMatch => {
                 has_generic_config.insert(other_path.clone());
                 *generic_edge_count.entry(other_path.clone()).or_insert(0) += 1;
             }

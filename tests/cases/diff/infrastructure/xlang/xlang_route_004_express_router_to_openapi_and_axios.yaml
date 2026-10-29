@@ -1,0 +1,135 @@
+name: xlang_route_004_express_router_to_openapi_and_axios
+tags:
+- xlang:route
+- lang:javascript
+- lang:typescript
+- lang:yaml
+- change:single_file
+- context:cross_module
+- difficulty:medium
+repo:
+  initial_files:
+    server/routes/orders.js: |
+      const express = require("express");
+      const { loadItems } = require("../services/orders");
+
+      const router = express.Router();
+
+      router.get("/orders/:id/items", async (req, res) => {
+        const items = await loadItems(req.params.id);
+        res.json(items);
+      });
+
+      module.exports = router;
+    server/routes/invoices.js: |
+      const express = require("express");
+      const { loadLines } = require("../services/invoices");
+
+      const router = express.Router();
+
+      router.get("/invoices/:id/items", async (req, res) => {
+        res.json(await loadLines(req.params.id));
+      });
+
+      module.exports = router;
+    server/app.js: |
+      const express = require("express");
+
+      const app = express();
+      app.use("/api/v1", require("./routes/orders"));
+      app.use("/api/v1", require("./routes/invoices"));
+
+      module.exports = app;
+    server/openapi.yaml: |
+      openapi: 3.0.3
+      info:
+        title: Shop API
+        version: 1.0.0
+      paths:
+        /api/v1/orders/{id}/items:
+          get:
+            summary: Items of an order
+            parameters:
+              - {name: id, in: path, required: true, schema: {type: string}}
+            responses:
+              "200": {description: ok}
+        /api/v1/invoices/{id}/items:
+          get:
+            summary: Lines of an invoice
+            parameters:
+              - {name: id, in: path, required: true, schema: {type: string}}
+            responses:
+              "200": {description: ok}
+    web/src/api/orders.ts: |
+      import axios from "axios";
+
+      export async function fetchOrderItems(id: string) {
+        const { data } = await axios.get(`/api/v1/orders/${id}/items`);
+        return data;
+      }
+    web/src/api/invoices.ts: |
+      import axios from "axios";
+
+      export async function fetchInvoiceLines(id: string) {
+        const { data } = await axios.get(`/api/v1/invoices/${id}/items`);
+        return data;
+      }
+    server/test/orders.test.js: |
+      const request = require("supertest");
+      const app = require("../app");
+
+      test("order items", async () => {
+        const res = await request(app).get("/api/v1/orders/1/items");
+        expect(res.status).toBe(200);
+      });
+  changed_files:
+    server/routes/orders.js: |
+      const express = require("express");
+      const { loadItems } = require("../services/orders");
+
+      const router = express.Router();
+
+      router.get("/orders/:id/items", async (req, res) => {
+        const items = await loadItems(req.params.id, { includeVoided: req.query.voided === "1" });
+        res.json(items);
+      });
+
+      module.exports = router;
+  commit_message: An order's items can include voided lines
+fragments:
+- id: orders_handler
+  selector:
+    path: server/routes/orders.js
+    anchor: 'includeVoided: req.query.voided === "1"'
+- id: openapi_orders
+  selector:
+    path: server/openapi.yaml
+    anchor: '/api/v1/orders/{id}/items:'
+- id: axios_orders
+  selector:
+    path: web/src/api/orders.ts
+    anchor: /api/v1/orders/${id}/items
+- id: test_orders
+  selector:
+    path: server/test/orders.test.js
+    anchor: /api/v1/orders/1/items
+- id: app_js
+  selector:
+    path: server/app.js
+- id: no_invoices_route
+  selector:
+    path: server/routes/invoices.js
+- id: no_invoices_axios
+  selector:
+    path: web/src/api/invoices.ts
+oracle:
+  required:
+  - orders_handler
+  - openapi_orders
+  - axios_orders
+  - test_orders
+  allowed:
+  - app_js
+  forbidden:
+  - no_invoices_route
+  - no_invoices_axios

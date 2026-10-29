@@ -306,6 +306,21 @@ class TestSymbolQuery:
         assert text.startswith("diffctx impact for symbol shop/pricing.py:total")
         assert "shop/checkout.py::charge" in text
 
+    @pytest.mark.asyncio
+    async def test_mcp_symbol_nothing_defines_but_files_spell_is_listed_as_text(self, server, clean_repo):
+        (clean_repo.path / "rules").mkdir()
+        (clean_repo.path / "rules" / "backup.yaml").write_text("- expr: restic_last_success_seconds > 86400\n", encoding="utf-8")
+        (clean_repo.path / "backup.sh").write_text("echo restic_last_success_seconds\n", encoding="utf-8")
+        result = await server.call_tool(
+            "diffctx_context", {"repo_path": str(clean_repo.path), "symbol": "restic_last_success_seconds"}
+        )
+        text = _get_text(result)
+        assert text.startswith(
+            "diffctx impact for symbol restic_last_success_seconds: no definition found; named in 2 file(s) (a textual match, not a resolved binding):"
+        )
+        assert "backup.sh:1" in text
+        assert "rules/backup.yaml:1" in text
+
 
 class TestStagedImpact:
     """`staged` is the index captured once (#354): the disk's unstaged edits
