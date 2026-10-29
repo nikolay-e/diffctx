@@ -18,8 +18,8 @@ ARG DIFFCTX_BUILD_SHA
 WORKDIR /build/crates/diffctx-native
 # target/ is a cache mount so dependencies compile once, not per commit; it is
 # absent from the layer, hence the copy out in the same RUN.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/build/target,sharing=locked \
     cargo build --release --locked --bin diffctx \
     && cp /build/target/release/diffctx /usr/local/bin/diffctx

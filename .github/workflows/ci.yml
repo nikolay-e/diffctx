@@ -162,9 +162,12 @@ jobs:
   docker-build:
     name: Docker image builds
     runs-on: ubuntu-latest
-    # The base images come from dhi.io, which needs a login, and a fork's PR gets no secrets: its
-    # image is built by the push to main after the merge, as the release's is.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # The base images come from dhi.io, which needs a login, and a fork's or Dependabot's PR gets no
+    # secrets: its image is built by the push to main after the merge, as the release's is.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
     permissions:
       contents: read
     steps:
