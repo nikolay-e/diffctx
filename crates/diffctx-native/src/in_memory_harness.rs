@@ -190,7 +190,7 @@ pub fn build_diff_context_in_memory(
         expansion_concepts,
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
-        source: crate::source::Source::default(),
+        source: crate::source::Source::empty(),
         run: run.clone(),
     };
     let (discovered, _attribution) =
@@ -298,8 +298,7 @@ pub fn build_diff_context_in_memory(
         &changed_files,
         remaining,
         Path::new("."),
-        &[],
-        None,
+        &crate::source::Source::empty(),
         &core_ids,
         &FxHashMap::default(),
         &stand_in_ids,

@@ -1,0 +1,40 @@
+name: ws_ts_sibling_package_untyped_call_is_no_caller
+mode: impact
+source: gh#649
+issue_state: open
+tags: [typescript, workspace, project-root, decoy, body-only]
+repo:
+  initial_files:
+    shop/package.json: |
+      { "name": "shop", "version": "1.0.0" }
+    shop/src/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id}`;
+        }
+      }
+    shop/src/loose.ts: |
+      export function showLoose(store: any, id: string): string {
+        return store.loadItem(id);
+      }
+    legacy/package.json: |
+      { "name": "legacy", "version": "1.0.0" }
+    legacy/src/loose.ts: |
+      export function showLegacy(store: any, id: string): string {
+        return store.loadItem(id);
+      }
+  changed_files:
+    shop/src/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id.trim()}`;
+        }
+      }
+  commit_message: "store: normalise ids"
+expect:
+  changed: [shop/src/store.ts::Store.loadItem]
+  relations:
+    - {from: "shop/src/loose.ts::showLoose", to: "shop/src/store.ts::loadItem", kind: calls, resolution: candidate,
+       site: 2}
+  decoys:
+    "shop/src/store.ts::loadItem": [legacy/src/loose.ts]

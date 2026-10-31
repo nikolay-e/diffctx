@@ -51,6 +51,7 @@ pub mod hook;
 pub mod impact;
 pub mod kotlin_bindings;
 pub(crate) mod lang;
+pub use lang::{Cell, CellState, RelationKind, is_precise};
 pub mod locate;
 pub mod render;
 

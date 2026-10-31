@@ -121,8 +121,7 @@ def kind_at(path: str, source: str, line: int, needle: str, is_class: bool = Fal
     col = -1
     for _ in range(nth + 1):
         col = row.index(needle, col + 1)
-    grammar = "python" if path.endswith(".py") else "script"
-    return reference_kind(tree.root_node, (line, col), (line, col + len(needle)), is_class, grammar)
+    return reference_kind(tree.root_node, (line, col), (line, col + len(needle)), is_class, syntax.grammar_for(path))
 
 
 @pytest.mark.parametrize(

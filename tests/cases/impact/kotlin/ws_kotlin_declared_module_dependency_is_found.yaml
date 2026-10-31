@@ -1,0 +1,51 @@
+name: ws_kotlin_declared_module_dependency_is_found
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, workspace, cross-project, gradle-modules, same-package, decoy, body-only]
+repo:
+  initial_files:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+      include(":core", ":app")
+    core/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    core/src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.size
+    app/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+
+      dependencies {
+          implementation(project(":core"))
+      }
+    app/src/main/kotlin/shop/Cli.kt: |
+      package shop
+
+      fun run(items: List<Int>): Int = total(items)
+    scratch/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    scratch/src/main/kotlin/shop/Scratch.kt: |
+      package shop
+
+      fun poke(items: List<Int>): Int = total(items)
+  changed_files:
+    core/src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.sum()
+  commit_message: "pricing: sum the items"
+expect:
+  changed: [core/src/main/kotlin/shop/Pricing.kt::total]
+  relations:
+    - {from: "app/src/main/kotlin/shop/Cli.kt::run", to: "core/src/main/kotlin/shop/Pricing.kt::total", kind: calls,
+       resolution: resolved, site: 3}
+  decoys:
+    "core/src/main/kotlin/shop/Pricing.kt::total": [scratch/src/main/kotlin/shop/Scratch.kt]

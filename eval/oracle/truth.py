@@ -6,10 +6,16 @@ from collections import OrderedDict, defaultdict
 from pathlib import Path
 
 import syntax
+from filters import Filters
 from model import MODULE, Definition, Relation, innermost
 from scipindex import ROLE_IMPORT, ROLE_WRITE, Document, Index, Occurrence, byte_column
 
 TREE_CACHE = 64
+
+
+def _scope(symbol: str, path: str) -> str:
+    """Local symbols are numbered per document, so two documents' `local 3` are different things."""
+    return f"{path}\0{symbol}" if symbol.startswith("local ") else symbol
 
 
 class Snapshot:
@@ -25,17 +31,18 @@ class Snapshot:
         self._trees: OrderedDict[str, syntax.Tree | None] = OrderedDict()
         self._implementers: dict[str, list[tuple[str, str]]] | None = None
         self._occurrences: dict[str, list[tuple[Document, Occurrence]]] | None = None
+        self.filters = Filters(self)
 
-    def references(self, symbol: str) -> list[tuple[Document, Occurrence]]:
-        """Every non-definition occurrence of `symbol`, from one pass over the index."""
+    def references(self, symbol: str, path: str) -> list[tuple[Document, Occurrence]]:
+        """Every non-definition occurrence of `symbol` (a local symbol only within `path`), from one pass over the index."""
         if self._occurrences is None:
             table: dict[str, list[tuple[Document, Occurrence]]] = defaultdict(list)
             for doc in self.index.documents:
                 for occ in doc.occurrences:
                     if occ.symbol and not occ.is_definition:
-                        table[occ.symbol].append((doc, occ))
+                        table[_scope(occ.symbol, doc.path)].append((doc, occ))
             self._occurrences = table
-        return self._occurrences.get(symbol, [])
+        return self._occurrences.get(_scope(symbol, path), [])
 
     def source(self, path: str) -> bytes:
         if path not in self._sources:
@@ -72,7 +79,7 @@ class Snapshot:
             return set()
         found: set[str] = set()
         for occ in doc.occurrences:
-            if occ.is_definition and occ.line == target.name_row and not occ.symbol.startswith("local "):
+            if occ.is_definition and occ.line == target.name_row and occ.symbol:
                 if self.position(doc, occ)[0] == target.name_col:
                     found.add(occ.symbol)
         return found
@@ -127,7 +134,7 @@ def relations_to(snapshot: Snapshot, target: Definition) -> list[Relation]:
         return []
     found: set[Relation] = set()
     for symbol, only in wanted.items():
-        for doc, occ in snapshot.references(symbol):
+        for doc, occ in snapshot.references(symbol, target.path):
             relation = _relation(snapshot, doc, occ, target, only == "instantiates")
             if relation is not None and (only is None or relation.kind == only):
                 found.add(relation)
@@ -148,6 +155,8 @@ def _relation(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Defini
     caller = snapshot.enclosing(doc.path, line)
     if caller is not None and caller.key == target.key:
         return None
+    if snapshot.filters.rejects(doc, occ, target, caller):
+        return None
     from_key = caller.key if caller is not None else f"{doc.path}::{MODULE}"
     return Relation(from_key, target.key, _kind(snapshot, doc, occ, target, names_class), line)
 
@@ -167,5 +176,5 @@ def _kind(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition
         (occ.line, start),
         (end_row, end),
         target.kind == "class" or names_class,
-        "python" if grammar == "python" else "script",
+        grammar,
     )

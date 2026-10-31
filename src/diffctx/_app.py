@@ -684,9 +684,9 @@ def _format_runtime_error(exc: BaseException) -> str:
 def _format_git_error(exc: BaseException) -> str:
     msg = _format_runtime_error(exc)
     if "unknown revision" in msg and "shallow clone" not in msg:
-        match = re.search(r"ambiguous argument '([^']+)'", msg)
+        match = re.search(r"ambiguous argument '([^']+)'|unknown revision '([^']+)'", msg)
         if match:
-            return f"unknown git revision '{match.group(1)}'; check refs with: git log --oneline"
+            return f"unknown git revision '{match.group(1) or match.group(2)}'; check refs with: git log --oneline"
     return f"git error: {msg}" if not msg.startswith("git ") else msg
 
 

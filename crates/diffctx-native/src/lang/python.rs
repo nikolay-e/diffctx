@@ -43,6 +43,7 @@ struct PyDef {
 
 pub(super) struct PythonModel<'a> {
     root: &'a Path,
+    source: &'a Source,
     resolver: Resolver<'a>,
     facts: RefCell<FxHashMap<String, Option<Arc<PythonFacts>>>>,
     defs: Table<(String, String, u32, u32), PyDef>,
@@ -52,6 +53,7 @@ impl<'a> PythonModel<'a> {
     pub(super) fn new(root: &'a Path, source: &'a Source, files: FxHashSet<String>) -> Self {
         Self {
             root,
+            source,
             resolver: Resolver::new(root, source, files),
             facts: RefCell::default(),
             defs: Table::new(),
@@ -250,11 +252,15 @@ impl LanguageFacts for PythonModel<'_> {
     /// The module- and class-level definitions the base declared and the
     /// head no longer does. A function local to another went with the
     /// function around it, which the range changed.
-    fn removed(&self, base: &str, pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
+    fn removed(&self, _base: &str, pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
         let mut out = Vec::new();
         for (old_path, new_path) in pairs.iter().filter(|(old, _)| self.covers(old)) {
-            let Some(old) = crate::git::show_file_at_revision(self.root, base, Path::new(old_path))
+            let Some(old) = self
+                .source
+                .base()
+                .read_lossy(&self.root.join(old_path))
                 .ok()
+                .flatten()
                 .and_then(|text| facts(&text))
             else {
                 continue;

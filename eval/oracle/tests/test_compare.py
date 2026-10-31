@@ -37,7 +37,7 @@ def test_exact_match_is_true_positive_and_extra_is_false_positive():
     assert len(cells) == 1
     calls = cells[0]
     assert (calls["truth"], calls["tp"], calls["fn"], calls["fp"], calls["fcn"]) == (1, 1, 0, 1, False)
-    assert {d["status"] for d in details} == {"tp", "fp"}
+    assert {d["verdict"] for d in details} == {"tp", "fp"}
 
 
 def test_missing_caller_is_false_negative_and_empty_unexplained_answer_is_false_complete_negative():

@@ -261,6 +261,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
         if js_changed.is_empty() {
             return vec![];
         }
+        let snapshot = crate::resource::current_source();
 
         let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
@@ -297,7 +298,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                 {
                     continue;
                 }
-                if let Some(content) = crate::source::read_to_string(candidate) {
+                if let Some(content) = snapshot.read_to_string(candidate) {
                     let imports = extract_import_sources(&content);
                     for imp in &imports {
                         let imp_lower = imp.to_lowercase();
@@ -315,7 +316,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
 
             let exported_names: FxHashSet<String> = frontier
                 .iter()
-                .filter_map(|f| crate::source::read_to_string(f))
+                .filter_map(|f| snapshot.read_to_string(f))
                 .flat_map(|c| extract_exports(&c))
                 .collect();
 
@@ -328,7 +329,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                     {
                         continue;
                     }
-                    if let Some(content) = crate::source::read_to_string(candidate) {
+                    if let Some(content) = snapshot.read_to_string(candidate) {
                         for cap in NAMED_IMPORT_NAMES_RE.captures_iter(&content) {
                             let names: FxHashSet<String> = cap[1]
                                 .split(',')
@@ -353,7 +354,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
 
             let candidate_set: FxHashSet<PathBuf> = candidates.iter().cloned().collect();
             for f in &frontier {
-                if let Some(content) = crate::source::read_to_string(f) {
+                if let Some(content) = snapshot.read_to_string(f) {
                     let sources = extract_import_sources(&content);
                     for source in sources {
                         if source.starts_with('.') {

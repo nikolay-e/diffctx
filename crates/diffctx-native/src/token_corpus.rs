@@ -55,11 +55,18 @@ impl TokenCorpus {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
         let store = TokenCacheStore::open(min_len);
         let oids = if store.is_some() {
-            match ctx.source.list_blobs(&[]) {
-                Some(Ok(blobs)) => blobs.into_iter().map(|b| (b.path, b.oid)).collect(),
-                // The working tree's ids would key another state's tokens.
-                Some(Err(_)) => FxHashMap::default(),
-                None => resolve_cacheable_oids(&ctx.root_dir),
+            if ctx.source.revision().is_none() {
+                resolve_cacheable_oids(&ctx.root_dir)
+            } else {
+                match ctx.source.list() {
+                    Ok(listing) => listing
+                        .blobs
+                        .iter()
+                        .filter_map(|b| Some((b.path.clone(), b.oid.clone()?)))
+                        .collect(),
+                    // The working tree's ids would key another state's tokens.
+                    Err(_) => FxHashMap::default(),
+                }
             }
         } else {
             FxHashMap::default()

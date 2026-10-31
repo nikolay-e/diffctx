@@ -1,0 +1,59 @@
+name: ws_go_replace_dependency_is_found_undeclared_import_is_not
+mode: impact
+source: gh#649
+issue_state: open
+tags: [go, workspace, cross-project, go-mod, decoy, body-only]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    cart/cart.go: |
+      package cart
+
+      func Total(items []int) int {
+          return len(items)
+      }
+    tools/go.mod: |
+      module example.com/tools
+
+      go 1.22
+
+      require example.com/app v0.0.0
+
+      replace example.com/app => ../
+    tools/main.go: |
+      package main
+
+      import "example.com/app/cart"
+
+      func main() {
+          _ = cart.Total([]int{1})
+      }
+    stray/go.mod: |
+      module example.com/stray
+
+      go 1.22
+    stray/use.go: |
+      package stray
+
+      import "example.com/app/cart"
+
+      func Use() int {
+          return cart.Total([]int{1})
+      }
+  changed_files:
+    cart/cart.go: |
+      package cart
+
+      func Total(items []int) int {
+          return len(items) + 0
+      }
+  commit_message: "cart: spell the total out"
+expect:
+  changed: [cart/cart.go::Total]
+  relations:
+    - {from: "tools/main.go::main", to: "cart/cart.go::Total", kind: calls, resolution: resolved, site: 6}
+  decoys:
+    "cart/cart.go::Total": [stray/use.go]

@@ -244,10 +244,8 @@ impl Relation {
     }
 }
 
-/// Cells the registry declares `precise`: for them `kind` is compared
-/// strictly. The registry does not exist yet (wave 2), so none is.
-const PRECISE: &[(&str, Kind)] = &[];
-
+/// Whether the registry declares the cell `precise`: for those `kind` is
+/// compared strictly.
 pub fn precise(language: &str, kind: Kind) -> bool {
-    PRECISE.iter().any(|(l, k)| *l == language && *k == kind)
+    _diffctx::is_precise(language, kind.name())
 }

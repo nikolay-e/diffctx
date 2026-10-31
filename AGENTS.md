@@ -79,11 +79,6 @@ output-changing fix is whether the new output is right — shown on a fixture
 whose right answer is known, and by reading each corpus case that flips,
 never by its byte distance from the old output.
 
-- **A claimed pure refactor** cites `scripts/bitcheck.sh` (`record` on the
-  pre-change build, `check` after: 30 cells against a worktree pinned at a
-  fixed SHA — pack and locate per range and scoring mode, impact per range,
-  three `--symbol` lookups). It drives the native binary only; `writer.py`,
-  `_native/` and `mcp/` need their own byte-diff through the installed wheel.
 - **The full corpus** (`cargo test --release --test yaml_cases`) is the only
   net over the per-language edge and parser tables; a fix that flips cases
   reads them and edits the bidirectional baseline in the same commit.

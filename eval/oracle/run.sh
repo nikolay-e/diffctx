@@ -51,7 +51,7 @@ report_args=(--run "${out}" --bench "${out}/bench.json")
 [ -n "${ORACLE_METAMORPHIC_REPORT:-}" ] && report_args+=(--metamorphic "${ORACLE_METAMORPHIC_REPORT}")
 [ -n "${ORACLE_FAULTS_REPORT:-}" ] && report_args+=(--faults "${ORACLE_FAULTS_REPORT}")
 
-oracle setup
+oracle setup ${select_args[@]+"${select_args[@]}"}
 oracle measure ${select_args[@]+"${select_args[@]}"} ${measure_args[@]+"${measure_args[@]}"} --out "${out}"
 oracle bench ${select_args[@]+"${select_args[@]}"} --out "${out}/bench.json"
 oracle report "${report_args[@]}"

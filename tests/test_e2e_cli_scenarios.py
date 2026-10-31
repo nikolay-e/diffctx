@@ -357,7 +357,8 @@ class TestDiffModeJourneys:
     def test_diff_invalid_range_fails_cleanly(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff", "no_such_ref..HEAD"], cwd=diff_repo.path)
         assert result.returncode == EXIT_ENVIRONMENT
-        assert "unknown git revision 'no_such_ref..HEAD'" in result.stderr
+        # The snapshot layer resolves each side of the range and names the one it cannot.
+        assert "unknown git revision 'no_such_ref'" in result.stderr
         assert "internal error" not in result.stderr
 
     def test_timeout_flag_accepted_and_diff_completes(self, diff_repo):

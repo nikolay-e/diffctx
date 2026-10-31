@@ -97,3 +97,17 @@ def test_byte_column_follows_the_position_encoding():
     assert line[byte_column(line, 8, 3) :].decode() == "total"
     assert byte_column(b"plain total", 6, 2) == 6
     assert byte_column(line, 12, 1) == 12
+
+
+def test_symbols_of_the_compiled_language_indexers_give_container_and_name():
+    rust = parse_symbol("rust-analyzer cargo fd 10.0.0 walk/WorkerState#new().")
+    assert rust is not None and (rust.container, rust.name, rust.module) == (("WorkerState",), "new", "walk")
+
+    trait_impl = parse_symbol("rust-analyzer cargo fd 10.0.0 `fmt`/impl#[Shop][Display]fmt().")
+    assert trait_impl is not None and trait_impl.name == "fmt"
+
+    go = parse_symbol("scip-go gomod github.com/go-chi/chi/v5 v5.0.0 `github.com/go-chi/chi/v5`/Mux#Use().")
+    assert go is not None and (go.container, go.name, go.module) == (("Mux",), "Use", "github.com/go-chi/chi/v5")
+
+    kotlin = parse_symbol("semanticdb maven . . com/squareup/kotlinpoet/FileSpec#toString().")
+    assert kotlin is not None and (kotlin.container, kotlin.name, kotlin.module) == (("FileSpec",), "toString", "kotlinpoet")

@@ -10,18 +10,25 @@ from __future__ import annotations
 import hashlib
 from functools import cache
 
+import tree_sitter_go
 import tree_sitter_javascript
+import tree_sitter_kotlin
 import tree_sitter_python
+import tree_sitter_rust
 import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser, Tree
 
 from model import Definition, grammar_for
 
+SCRIPT_GRAMMARS = ("typescript", "tsx", "javascript")
 GRAMMARS = {
     "python": tree_sitter_python.language,
     "typescript": tree_sitter_typescript.language_typescript,
     "tsx": tree_sitter_typescript.language_tsx,
     "javascript": tree_sitter_javascript.language,
+    "rust": tree_sitter_rust.language,
+    "go": tree_sitter_go.language,
+    "kotlin": tree_sitter_kotlin.language,
 }
 FUNCTION_VALUES = {"arrow_function", "function_expression", "function", "generator_function"}
 TS_DECLARATIONS = {
@@ -40,6 +47,7 @@ TS_DECLARATIONS = {
     "field_definition": "property",
     "property_signature": "property",
 }
+COMMENT_TYPES = {"comment", "line_comment", "block_comment", "multiline_comment"}
 TS_SIGNATURE_FIELDS = ("type_parameters", "parameters", "return_type")
 TS_NAMESPACES = {"internal_module", "module"}
 
@@ -76,7 +84,7 @@ def tokens(node: Node, source: bytes, blank_at: int = -1) -> list[bytes]:
         current = cursor.node
         if current is None:
             return out
-        if current.type == "comment":
+        if current.type in COMMENT_TYPES:
             pass
         elif current.child_count == 0:
             out.append(b"\0name" if current.start_byte == blank_at else source[current.start_byte : current.end_byte])
@@ -110,8 +118,19 @@ class _Collector:
     def text(self, node: Node) -> str:
         return self.source[node.start_byte : node.end_byte].decode("utf-8", "replace")
 
-    def add(self, extent: Node, name_node: Node, kind: str, container: tuple[str, ...], sig_nodes: list[Node | None]) -> None:
+    def add(
+        self,
+        extent: Node,
+        name_node: Node,
+        kind: str,
+        container: tuple[str, ...],
+        sig_nodes: list[Node | None],
+        first_line: int | None = None,
+        decorated: bool | None = None,
+    ) -> None:
+        """Record a definition; `first_line` pulls the extent up over attributes and doc comments that precede it."""
         start, end = _lines(extent)
+        start = min(start, first_line or start)
         signature = " ".join(b.decode("utf-8", "replace") for n in sig_nodes if n is not None for b in tokens(n, self.source))
         self.out.append(
             Definition(
@@ -126,7 +145,11 @@ class _Collector:
                 signature=signature,
                 body_hash=_digest(tokens(extent, self.source)),
                 shape_hash=_digest(tokens(extent, self.source, name_node.start_byte)),
-                decorated=extent.type == "decorated_definition" or any(c.type == "decorator" for c in kids(extent)),
+                decorated=(
+                    decorated
+                    if decorated is not None
+                    else extent.type == "decorated_definition" or any(c.type == "decorator" for c in kids(extent))
+                ),
             )
         )
 
@@ -270,7 +293,15 @@ def definitions(path: str, source: bytes) -> list[Definition]:
     tree = parse(path, source)
     if tree is None:
         return []
-    walker = _PythonWalker(path, source) if grammar_for(path) == "python" else _ScriptWalker(path, source)
+    grammar = grammar_for(path)
+    if grammar == "python":
+        walker: _Collector = _PythonWalker(path, source)
+    elif grammar in SCRIPT_GRAMMARS:
+        walker = _ScriptWalker(path, source)
+    else:
+        from syntax_compiled import WALKERS
+
+        walker = WALKERS[grammar or ""](path, source)
     walker.run(tree.root_node)
     return sorted(walker.out, key=lambda d: (d.start, -d.end))
 
@@ -284,7 +315,13 @@ def reference_kind(root: Node, start: tuple[int, int], end: tuple[int, int], is_
     node: Node | None = root.named_descendant_for_point_range(start, end)
     if node is None:
         return "reads"
-    return _python_kind(node, is_class) if grammar == "python" else _script_kind(node, is_class)
+    if grammar == "python":
+        return _python_kind(node, is_class)
+    if grammar in SCRIPT_GRAMMARS:
+        return _script_kind(node, is_class)
+    from syntax_compiled import REFERENCE_KINDS
+
+    return REFERENCE_KINDS[grammar](node, is_class)
 
 
 def _same(a: Node | None, b: Node) -> bool:
