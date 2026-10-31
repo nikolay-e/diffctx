@@ -1,0 +1,64 @@
+name: rust_inline_test_is_a_test_link
+mode: symbol
+source: gh#528
+issue_state: closed
+tags:
+- rust
+- tests
+- smoke
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod resource;
+    src/resource.rs: |
+      pub fn poll_current() -> u32 {
+          7
+      }
+
+      pub fn poll_emissions() -> u32 {
+          poll_current() + 1
+      }
+
+      pub fn poll_current_every(n: u32) -> u32 {
+          poll_current() * n
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          #[test]
+          fn the_published_context_is_scoped() {
+              assert_eq!(poll_current(), 7);
+          }
+      }
+  commit_message: Change rust inline test is a test link
+query:
+  symbol: poll_current
+expect:
+  relations:
+  - from: src/resource.rs::poll_emissions
+    to: src/resource.rs::poll_current
+    kind: calls
+    resolution: resolved
+    site: 6
+  - from: src/resource.rs::poll_current_every
+    to: src/resource.rs::poll_current
+    kind: calls
+    resolution: resolved
+    site: 10
+  - from: src/resource.rs::the_published_context_is_scoped
+    to: src/resource.rs::poll_current
+    kind: calls
+    resolution: resolved
+    site: 19
+  exact: true
+  definitions:
+  - src/resource.rs::poll_current
+  not_untested:
+  - poll_current

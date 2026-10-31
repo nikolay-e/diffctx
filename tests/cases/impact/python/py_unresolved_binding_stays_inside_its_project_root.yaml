@@ -1,0 +1,36 @@
+name: py_unresolved_binding_stays_inside_its_project_root
+mode: impact
+source: gh#649
+issue_state: open
+tags: [python, project-root, monorepo, decoy]
+repo:
+  initial_files:
+    a/pyproject.toml: |
+      [project]
+      name = "a"
+      version = "0.1.0"
+    a/src/__init__.py: ""
+    a/src/models/__init__.py: |
+      class Row:
+          impact = 0
+          name = ""
+    b/pyproject.toml: |
+      [project]
+      name = "b"
+      version = "0.1.0"
+    b/src/__init__.py: ""
+    b/src/analytics/__init__.py: ""
+    b/src/analytics/quality.py: |
+      def score(row):
+          return row.impact
+  changed_files:
+    a/src/models/__init__.py: |
+      class Row:
+          name = ""
+  commit_message: "models: drop the unused impact attribute"
+expect:
+  removed: [impact]
+  callers:
+    impact: []
+  decoys:
+    impact: [b/src/analytics/quality.py]

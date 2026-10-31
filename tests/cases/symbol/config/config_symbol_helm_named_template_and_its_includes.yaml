@@ -1,0 +1,67 @@
+name: config_symbol_helm_named_template_and_its_includes
+mode: symbol
+source: gh#378
+issue_state: open
+tags:
+- config
+- helm
+- symbol
+- dotted-name
+repo:
+  initial_files:
+    charts/app/Chart.yaml: |
+      apiVersion: v2
+      name: app
+      version: 0.1.0
+    charts/app/templates/_helpers.tpl: |
+      {{- define "chart.waitForDb" -}}
+      wait-for-db
+      {{- end -}}
+
+      {{- define "chart.init" -}}
+      {{ include "chart.waitForDb" . }}
+      {{- end -}}
+    charts/app/templates/deployment.yaml: |
+      spec:
+        initContainers:
+          - name: {{ include "chart.waitForDb" . }}
+    charts/app/templates/job.yaml: |
+      spec:
+        command: {{ include "chart.waitForDb" . }}
+    charts/other/Chart.yaml: |
+      apiVersion: v2
+      name: other
+      version: 0.1.0
+    charts/other/templates/_helpers.tpl: |
+      {{- define "chart.waitForDb" -}}
+      other
+      {{- end -}}
+    charts/other/templates/job.yaml: |
+      spec:
+        command: {{ include "chart.waitForDb" . }}
+  commit_message: Change config symbol helm named template and its includes
+query:
+  symbol: charts/app/templates/_helpers.tpl:chart.waitForDb
+expect:
+  relations:
+  - from: charts/app/templates/_helpers.tpl::chart.init
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 6
+  - from: charts/app/templates/deployment.yaml
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 3
+  - from: charts/app/templates/job.yaml
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    charts/app/templates/_helpers.tpl::chart.waitForDb:
+    - charts/other
+  definitions:
+  - charts/app/templates/_helpers.tpl::chart.waitForDb

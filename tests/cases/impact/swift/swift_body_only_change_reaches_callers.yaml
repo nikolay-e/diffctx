@@ -1,0 +1,92 @@
+name: swift_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- swift
+- body-only
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "Fixture",
+          targets: [
+              .target(name: "Shop"),
+              .testTarget(name: "ShopTests", dependencies: ["Shop"]),
+          ]
+      )
+    Sources/Shop/Pricing.swift: |
+      enum Pricing {
+          static func total(_ items: [Int]) -> Int {
+              items.reduce(0, +)
+          }
+      }
+    Sources/Shop/Checkout.swift: |
+      public struct Checkout {
+          public init() {}
+
+          public func charge(_ items: [Int]) -> Int {
+              Pricing.total(items) + 1
+          }
+      }
+    Sources/Shop/Report.swift: |
+      func build(_ items: [Int]) -> String {
+          "total=" + String(Pricing.total(items))
+      }
+    Sources/Shop/Notes.swift: |
+      // Pricing.total(items) is documented here
+      let note = "Pricing.total(items)"
+    Sources/Shop/Basket.swift: |
+      struct Basket {
+          func total(_ items: [Int]) -> Int { items.count }
+      }
+
+      func size(_ b: Basket) -> Int {
+          b.total([1])
+      }
+    Tests/ShopTests/CheckoutTests.swift: |
+      import XCTest
+      @testable import Shop
+
+      final class CheckoutTests: XCTestCase {
+          func testCharge() {
+              _ = Checkout().charge([1, 2])
+          }
+      }
+  changed_files:
+    Sources/Shop/Pricing.swift: |
+      enum Pricing {
+          static func total(_ items: [Int]) -> Int {
+              items.reduce(0) { $0 + $1 }
+          }
+      }
+  commit_message: Change swift body only change reaches callers
+expect:
+  changed:
+  - Sources/Shop/Pricing.swift::Pricing.total
+  relations:
+  - from: Sources/Shop/Checkout.swift::Checkout.charge
+    to: Sources/Shop/Pricing.swift::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: Sources/Shop/Report.swift::build
+    to: Sources/Shop/Pricing.swift::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: Tests/ShopTests/CheckoutTests.swift::CheckoutTests.testCharge
+    to: Sources/Shop/Checkout.swift::Checkout.charge
+    kind: tests_reach
+    resolution: resolved
+    site: 6
+  exact: true
+  decoys:
+    Sources/Shop/Pricing.swift::Pricing.total:
+    - Sources/Shop/Basket.swift
+    - Sources/Shop/Notes.swift
+  not_untested:
+  - total

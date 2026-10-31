@@ -1,0 +1,50 @@
+name: py_dispatched_do_post_is_reached_through_the_class_a_test_builds
+mode: impact
+source: gh#679
+issue_state: open
+tags: [python, framework-dispatch, tests-reach]
+repo:
+  initial_files:
+    server.py: |
+      from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_POST(self):
+              self.send_response(204)
+              self.end_headers()
+
+
+      def make_server(port):
+          return HTTPServer(("127.0.0.1", port), Handler)
+    tests/test_server.py: |
+      import threading
+      import urllib.request
+
+      from server import make_server
+
+
+      def test_post_answers_204():
+          server = make_server(0)
+          threading.Thread(target=server.serve_forever, daemon=True).start()
+          url = f"http://127.0.0.1:{server.server_port}/"
+          with urllib.request.urlopen(urllib.request.Request(url, data=b"x", method="POST")) as r:
+              assert r.status == 204
+          server.shutdown()
+  changed_files:
+    server.py: |
+      from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_POST(self):
+              self.send_response(202)
+              self.end_headers()
+
+
+      def make_server(port):
+          return HTTPServer(("127.0.0.1", port), Handler)
+  commit_message: "server: accept the post"
+expect:
+  changed: [server.py::do_POST]
+  not_untested: [do_POST]

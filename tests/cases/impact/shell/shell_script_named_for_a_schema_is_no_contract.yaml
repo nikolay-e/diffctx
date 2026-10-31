@@ -1,0 +1,35 @@
+name: shell_script_named_for_a_schema_is_no_contract
+mode: impact
+source: gh#374
+issue_state: closed
+tags:
+- shell
+- contracts
+repo:
+  initial_files:
+    app/scripts/ci/schema-compat.sh: |
+      #!/bin/sh
+      docker build -t compat .
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: local
+          hooks:
+            - id: schema-compat
+              entry: app/scripts/ci/schema-compat.sh
+              language: script
+  changed_files:
+    app/scripts/ci/schema-compat.sh: |
+      #!/bin/sh
+      docker build -t compat -f Dockerfile.compat .
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: local
+          hooks:
+            - id: schema-compat
+              entry: app/scripts/ci/schema-compat.sh
+              language: script
+              files: ^app/
+  commit_message: Change shell script named for a schema is no contract
+expect:
+  not_contracts:
+  - app/scripts/ci/schema-compat.sh

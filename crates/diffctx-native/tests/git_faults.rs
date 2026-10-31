@@ -7,14 +7,21 @@
 // run its deadline does not end hangs, and CI fails it at the job's timeout.
 #![cfg(unix)]
 
+use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tempfile::TempDir;
 
 mod support;
+use support::answer::{
+    changed_rows, coverage_disclosed, fragments, impact_disclosed, items, relations,
+};
+use support::seeds::{Edit, Knobs, Lang, RANGE, seed};
 use support::{claims, diffctx, git};
 
 const TIMEOUT_SECS: u64 = 3;
@@ -36,8 +43,24 @@ fn real_git() -> String {
     String::from_utf8(out.stdout).unwrap().trim().to_string()
 }
 
+// With FAKE_GIT_SLOTS set, every call also claims the next number under that
+// directory, in the order the calls begin, and logs its arguments there; the
+// call numbered FAKE_GIT_FAIL_INDEX fails like a refused read. The numbers
+// are the same for the same run, so a sweep can fail each call in turn.
 const FAKE_GIT: &str = r#"#!/bin/sh
 echo "$*" >> "$FAKE_GIT_CALLS"
+if [ -n "$FAKE_GIT_SLOTS" ]; then
+  until mkdir "$FAKE_GIT_SLOTS/lock" 2>/dev/null; do :; done
+  read -r n < "$FAKE_GIT_SLOTS/next"
+  echo $((n + 1)) > "$FAKE_GIT_SLOTS/next"
+  echo "$*" >> "$FAKE_GIT_SLOTS/calls"
+  rmdir "$FAKE_GIT_SLOTS/lock"
+  if [ "$n" = "$FAKE_GIT_FAIL_INDEX" ]; then
+    echo $$ >> "$FAKE_GIT_PIDS"
+    echo 'fatal: simulated failure of the call' >&2
+    exit 128
+  fi
+fi
 for a in "$@"; do
   if [ "$a" = "$FAKE_GIT_TARGET" ]; then hit=1; fi
 done
@@ -74,13 +97,24 @@ impl Fixture {
     }
 
     fn run(&self, target: &str, mode: &str, args: &[&str]) -> Output {
+        self.run_with(target, mode, args, &[])
+    }
+
+    fn run_with(
+        &self,
+        target: &str,
+        mode: &str,
+        args: &[&str],
+        extra_env: &[(&str, &str)],
+    ) -> Output {
         let bin_dir = self.tmp.path().join("bin");
         let path = format!(
             "{}:{}",
             bin_dir.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        diffctx()
+        let mut command = diffctx();
+        command
             .current_dir(self.repo())
             .args(args)
             .env("PATH", path)
@@ -89,9 +123,11 @@ impl Fixture {
             .env("FAKE_GIT_MODE", mode)
             .env("FAKE_GIT_PIDS", self.pids_file())
             .env("FAKE_GIT_CALLS", self.tmp.path().join("calls"))
-            .env("DIFFCTX_NO_MARKER", "1")
-            .output()
-            .expect("run diffctx")
+            .env("DIFFCTX_NO_MARKER", "1");
+        for (key, value) in extra_env {
+            command.env(key, value);
+        }
+        command.output().expect("run diffctx")
     }
 
     fn impact(&self, target: &str, mode: &str) -> Output {
@@ -190,15 +226,21 @@ fn running(pid: &str) -> bool {
     !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
 }
 
-fn fixture() -> Fixture {
+/// An empty `repo` beside a `bin` whose `git` is the fake one.
+fn scratch() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
-    let repo = tmp.path().join("repo");
     let bin = tmp.path().join("bin");
-    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::create_dir_all(tmp.path().join("repo")).unwrap();
     std::fs::create_dir_all(&bin).unwrap();
     let fake = bin.join("git");
     std::fs::write(&fake, FAKE_GIT).unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    tmp
+}
+
+fn fixture() -> Fixture {
+    let tmp = scratch();
+    let repo = tmp.path().join("repo");
     git(&repo, &["init", "-q", "."]);
     git(&repo, &["config", "user.email", "test@example.com"]);
     git(&repo, &["config", "user.name", "diffctx tests"]);
@@ -562,12 +604,6 @@ fn sweep_fixture() -> Fixture {
     fx
 }
 
-/// Whether the run said it did not see everything.
-fn disclosed(doc: &serde_json::Value) -> bool {
-    let listed = |k: &str| doc[k].as_array().is_some_and(|a| !a.is_empty());
-    listed("limits") || listed("unanalysed_files") || doc["withheld_files"].as_u64() > Some(0)
-}
-
 /// Every git read impact makes, failed in turn: the answer is an error, a
 /// named loss, or the whole truth, never a smaller answer that looks
 /// complete. A failed `git grep` used to drop the removed definition's
@@ -614,7 +650,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
         }
         let doc = json(&out);
         assert!(
-            disclosed(&doc) || claims(&doc) == truth,
+            impact_disclosed(&doc) || claims(&doc) == truth,
             "failing `git {verb}` gave a smaller answer that looks complete: {:?} vs {truth:?}\n{doc:#}",
             claims(&doc)
         );
@@ -643,4 +679,274 @@ fn a_stalled_full_read_names_the_deadline() {
         String::from_utf8_lossy(&out.stdout)
     );
     fx.assert_no_survivors();
+}
+
+// ---- every call of a run, failed in turn (arch migration, stage 1.5) ----
+
+// Sweeps that fail today, test name -> the issue that tracks it (`gh#N` or
+// `fj#N`). Checked both ways: a listed sweep that passes fails until it leaves
+// the list.
+const KNOWN_RED: &[(&str, &str)] = &[
+    ("python_pack", "fj#130"),
+    ("python_locate", "fj#130"),
+    ("typescript_pack", "fj#130"),
+    ("typescript_locate", "fj#130"),
+    ("rust_pack", "fj#130"),
+    ("rust_locate", "fj#130"),
+    ("kotlin_pack", "fj#130"),
+    ("kotlin_locate", "fj#130"),
+];
+
+static SWEEPS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Clone, Copy, Debug)]
+enum Query {
+    Impact,
+    Symbol,
+    Pack,
+    Locate,
+}
+
+impl Query {
+    fn args<'a>(self, range: &'a str, symbol: &'a str) -> Vec<&'a str> {
+        let mut args = vec!["."];
+        match self {
+            Self::Impact => args.extend(["--diff", range, "--mode", "impact", "-f", "json"]),
+            Self::Symbol => args.extend(["--symbol", symbol, "-f", "json"]),
+            Self::Pack => args.extend(["--diff", range, "-f", "json"]),
+            Self::Locate => args.extend(["--diff", range, "--mode", "locate"]),
+        }
+        args.push("-q");
+        args
+    }
+
+    /// What the answer claims: callers, stale references and the definitions
+    /// for impact and symbol, the fragments for pack, the items for locate.
+    fn claims(self, doc: &serde_json::Value) -> BTreeSet<String> {
+        match self {
+            Self::Impact | Self::Symbol => {
+                let mut all = relations(doc);
+                all.extend(changed_rows(doc));
+                all
+            }
+            Self::Pack => fragments(doc),
+            Self::Locate => items(doc),
+        }
+    }
+
+    fn disclosed(self, doc: &serde_json::Value) -> bool {
+        match self {
+            Self::Impact | Self::Symbol => impact_disclosed(doc),
+            Self::Pack | Self::Locate => coverage_disclosed(doc),
+        }
+    }
+}
+
+impl Fixture {
+    /// The query, with the call numbered `fail_at` failed (none: a clean run),
+    /// and the directory the fake git logged the calls it saw in, in order.
+    fn query_failing(
+        &self,
+        query: Query,
+        symbol: &str,
+        fail_at: Option<usize>,
+    ) -> (Output, PathBuf) {
+        let slots = self
+            .tmp
+            .path()
+            .join(format!("slots-{}", SWEEPS.fetch_add(1, Ordering::Relaxed)));
+        std::fs::create_dir_all(&slots).unwrap();
+        std::fs::write(slots.join("next"), "0\n").unwrap();
+        let fail = fail_at.map_or_else(|| "none".to_string(), |n| n.to_string());
+        let args = query.args(&self.range, symbol);
+        let out = self.run_with(
+            "no-such-verb",
+            "none",
+            &args,
+            &[
+                ("FAKE_GIT_SLOTS", slots.to_str().expect("utf-8 path")),
+                ("FAKE_GIT_FAIL_INDEX", &fail),
+            ],
+        );
+        (out, slots)
+    }
+}
+
+/// A failed read ends the run with git's words and a code, or leaves an
+/// answer that names its loss, or leaves the answer the clean run gave.
+fn verdict(query: Query, truth: &BTreeSet<String>, out: &Output) -> Result<(), String> {
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() {
+        return match out.status.code() {
+            Some(1..=4) if !stderr.trim().is_empty() => Ok(()),
+            code => Err(format!(
+                "exit {code:?} with stderr {stderr:?}: an error names what failed and exits with its code"
+            )),
+        };
+    }
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("exit 0 with stdout that is not JSON ({e})"))?;
+    let claims = query.claims(&doc);
+    if query.disclosed(&doc) || &claims == truth {
+        return Ok(());
+    }
+    Err(format!(
+        "a smaller answer that looks complete\nmissing: {:?}\nextra: {:?}",
+        truth.difference(&claims).collect::<Vec<_>>(),
+        claims.difference(truth).collect::<Vec<_>>()
+    ))
+}
+
+/// Every git call the clean run makes, failed in turn, for one language's
+/// seed and one kind of query (#623, #443, #505).
+fn sweep(id: &str, lang: Lang, query: Query) {
+    let knobs = Knobs {
+        stale: true,
+        extra_callers: 2,
+        ..Knobs::default()
+    };
+    let planted = seed(lang, Edit::Signature, &knobs);
+    let tmp = scratch();
+    planted.commit_into(&tmp.path().join("repo"));
+    let fx = Fixture {
+        tmp,
+        range: RANGE.to_string(),
+    };
+    let symbol = format!("{}:{}", planted.target_path, planted.target);
+    let (clean, slots) = fx.query_failing(query, &symbol, None);
+    assert!(
+        clean.status.success(),
+        "{lang:?} {query:?}: the clean run failed: {}",
+        String::from_utf8_lossy(&clean.stderr)
+    );
+    let truth = query.claims(&json(&clean));
+    assert!(
+        !truth.is_empty(),
+        "{lang:?} {query:?}: the clean run claimed nothing, so the sweep measures nothing"
+    );
+    let log = std::fs::read_to_string(slots.join("calls")).expect("the fake git logged its calls");
+    let calls: Vec<&str> = log.lines().collect();
+    assert!(!calls.is_empty(), "the fake git saw no call");
+    let broken: Vec<String> = calls
+        .iter()
+        .enumerate()
+        .filter_map(|(index, call)| {
+            let (out, _) = fx.query_failing(query, &symbol, Some(index));
+            verdict(query, &truth, &out)
+                .err()
+                .map(|why| format!("call {index} (`git {call}`): {why}"))
+        })
+        .collect();
+    let known = KNOWN_RED.iter().find(|(name, _)| *name == id);
+    match known {
+        None => assert!(
+            broken.is_empty(),
+            "{lang:?} {query:?}: {} of {} failed calls left an answer that is neither an error nor a named loss\n{}",
+            broken.len(),
+            calls.len(),
+            broken.join("\n")
+        ),
+        Some((_, issue)) => assert!(
+            !broken.is_empty(),
+            "{id} is listed as known red ({issue}) but passes: remove it from KNOWN_RED"
+        ),
+    }
+    fx.assert_no_survivors();
+}
+
+macro_rules! sweeps {
+    ($($name:ident: $lang:ident, $query:ident;)+) => {
+        mod every_git_call_failed_in_turn {
+            use super::{Lang, Query, sweep};
+
+            $(
+                #[test]
+                fn $name() {
+                    sweep(stringify!($name), Lang::$lang, Query::$query);
+                }
+            )+
+        }
+    };
+}
+
+sweeps! {
+    python_impact: Python, Impact;
+    python_symbol: Python, Symbol;
+    python_pack: Python, Pack;
+    python_locate: Python, Locate;
+    typescript_impact: TypeScript, Impact;
+    typescript_symbol: TypeScript, Symbol;
+    typescript_pack: TypeScript, Pack;
+    typescript_locate: TypeScript, Locate;
+    rust_impact: Rust, Impact;
+    rust_symbol: Rust, Symbol;
+    rust_pack: Rust, Pack;
+    rust_locate: Rust, Locate;
+    kotlin_impact: Kotlin, Impact;
+    kotlin_symbol: Kotlin, Symbol;
+    kotlin_pack: Kotlin, Pack;
+    kotlin_locate: Kotlin, Locate;
+}
+
+/// The changed file is past the size cap, so what it defines is not read: the
+/// answer says so in every mode, and never reads as a change nothing depends
+/// on (#505).
+fn big_changed_file() -> Fixture {
+    let tmp = scratch();
+    let repo = tmp.path().join("repo");
+    git(&repo, &["init", "-q", "."]);
+    git(&repo, &["config", "user.email", "test@example.com"]);
+    git(&repo, &["config", "user.name", "diffctx tests"]);
+    let mut big = String::from("def total(items):\n    return sum(items)\n\n\n");
+    let mut n = 0;
+    while big.len() < 5 * 1024 * 1024 {
+        let _ = write!(big, "def filler_{n}(x):\n    return x + {n}\n\n\n");
+        n += 1;
+    }
+    std::fs::write(repo.join("big.py"), &big).unwrap();
+    std::fs::write(
+        repo.join("checkout.py"),
+        "from big import total\n\n\ndef charge(cart):\n    return total(cart)\n",
+    )
+    .unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "initial"]);
+    let doubled = big.replacen("return sum(items)\n", "return sum(items) * 2\n", 1);
+    std::fs::write(repo.join("big.py"), doubled).unwrap();
+    git(&repo, &["commit", "-qam", "double"]);
+    Fixture {
+        tmp,
+        range: "HEAD~1..HEAD".to_string(),
+    }
+}
+
+#[test]
+fn a_five_megabyte_changed_file_is_a_named_loss() {
+    let fx = big_changed_file();
+    let size = std::fs::metadata(fx.repo().join("big.py")).unwrap().len();
+    assert!(size >= 5 * 1024 * 1024, "the fixture is {size} bytes");
+    let out = fx.impact_within("no-such-verb", "none", ANSWER_TIMEOUT_SECS);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc = json(&out);
+    assert_eq!(doc["empty"], false, "{doc}");
+    assert!(
+        impact_disclosed(&doc) || claims(&doc) == ["total <- checkout.py".to_string()],
+        "an unread changed file must be disclosed, got {doc}"
+    );
+    for (mode, extra) in [("pack", &[][..]), ("locate", &["--mode", "locate"][..])] {
+        let out = fx.pack("no-such-verb", "none", extra);
+        let named = serde_json::from_slice::<serde_json::Value>(&out.stdout)
+            .is_ok_and(|doc| coverage_disclosed(&doc))
+            || (!out.status.success() && !out.stderr.is_empty());
+        assert!(
+            named,
+            "{mode}: stdout={} stderr={}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
 }

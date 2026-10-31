@@ -1,0 +1,69 @@
+name: rust_type_with_trait_impls_is_one_definition
+mode: impact
+source: gh#403
+issue_state: closed
+tags:
+- rust
+- impl-blocks
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod caller;
+      pub mod err;
+      pub mod fmtlib;
+    src/err.rs: |
+      #[derive(Default)]
+      pub struct SymbolQueryError {
+          pub message: String,
+      }
+    src/caller.rs: |
+      use crate::err::SymbolQueryError;
+
+      pub fn fail(text: &str) -> SymbolQueryError {
+          SymbolQueryError { message: text.to_string(), ..Default::default() }
+      }
+    src/fmtlib.rs: |
+      pub struct Other;
+
+      impl std::fmt::Display for Other {
+          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+              write!(f, "other")
+          }
+      }
+  changed_files:
+    src/err.rs: |
+      #[derive(Default)]
+      pub struct SymbolQueryError {
+          pub message: String,
+          pub malformed: bool,
+      }
+
+      impl std::fmt::Display for SymbolQueryError {
+          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+              write!(f, "{}", self.message)
+          }
+      }
+
+      impl std::error::Error for SymbolQueryError {}
+  commit_message: Change rust type with trait impls is one definition
+expect:
+  changed:
+  - src/err.rs::SymbolQueryError
+  - src/err.rs::fmt
+  relations:
+  - from: src/caller.rs::fail
+    to: src/err.rs::SymbolQueryError
+    kind: instantiates
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    src/err.rs::SymbolQueryError:
+    - src/fmtlib.rs
+  unknowns:
+    fmt: dispatched

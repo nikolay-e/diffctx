@@ -1,0 +1,82 @@
+name: rust_removed_private_duplicate_has_no_callers
+mode: impact
+source: gh#519
+issue_state: closed
+tags:
+- rust
+- removal
+- imports
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod a;
+      pub mod b;
+      pub mod bindings;
+      pub mod c;
+      pub mod gone_mod;
+    src/bindings.rs: |
+      pub(crate) fn absorb(x: u32) -> u32 {
+          x + 1
+      }
+    src/a.rs: |
+      fn absorb(x: u32) -> u32 {
+          x + 1
+      }
+
+      pub fn classify(x: u32) -> u32 {
+          absorb(x)
+      }
+    src/b.rs: |
+      use crate::bindings::absorb;
+
+      pub fn other(x: u32) -> u32 {
+          absorb(x) * 2
+      }
+    src/gone_mod.rs: |
+      pub fn gone(x: u32) -> u32 {
+          x
+      }
+
+      pub fn kept(x: u32) -> u32 {
+          x + 2
+      }
+    src/c.rs: |
+      use crate::gone_mod::gone;
+
+      pub fn keep() -> u32 {
+          gone(1)
+      }
+  changed_files:
+    src/a.rs: |
+      use crate::bindings::absorb;
+
+      pub fn classify(x: u32) -> u32 {
+          absorb(x)
+      }
+    src/gone_mod.rs: |
+      pub fn kept(x: u32) -> u32 {
+          x + 2
+      }
+  commit_message: Change rust removed private duplicate has no callers
+expect:
+  changed:
+  - src/gone_mod.rs::gone
+  relations:
+  - from: src/c.rs::keep
+    to: src/gone_mod.rs::gone
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: true
+  decoys:
+    src/a.rs::absorb:
+    - src/a.rs::classify
+    - src/b.rs::other
+    - src/bindings.rs
+  removed:
+  - gone

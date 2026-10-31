@@ -1,0 +1,94 @@
+name: kotlin_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- body-only
+- smoke
+repo:
+  initial_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      object Pricing {
+          fun total(items: List<Int>): Int = items.sum()
+      }
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      class Checkout {
+          fun charge(items: List<Int>): Int = Pricing.total(items) + 1
+      }
+    src/main/kotlin/shop/Report.kt: |
+      package shop
+
+      fun build(items: List<Int>): String = "total=" + Pricing.total(items)
+    src/main/kotlin/legacy/Pricing.kt: |
+      package legacy
+
+      object Pricing {
+          fun total(items: List<Int>): Int = items.size
+      }
+
+      fun legacySum(items: List<Int>): Int = Pricing.total(items)
+    src/test/kotlin/shop/CheckoutTest.kt: |
+      package shop
+
+      import kotlin.test.Test
+      import kotlin.test.assertEquals
+
+      class CheckoutTest {
+          @Test
+          fun chargeAddsOne() {
+              assertEquals(4, Checkout().charge(listOf(1, 2)))
+          }
+      }
+    src/main/kotlin/shop/Notes.kt: |
+      package shop
+
+      // Pricing.total(items) is documented here
+      val note = "Pricing.total(items)"
+    other/src/main/kotlin/other/Pricing.kt: |
+      package other
+
+      object Pricing {
+          fun total(items: List<Int>): Int = items.size
+      }
+
+      fun caller(): Int = Pricing.total(listOf(1))
+  changed_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      object Pricing {
+          fun total(items: List<Int>): Int = items.fold(0) { acc, n -> acc + n }
+      }
+  commit_message: Change kotlin body only change reaches callers
+expect:
+  changed:
+  - src/main/kotlin/shop/Pricing.kt::Pricing.total
+  relations:
+  - from: src/main/kotlin/shop/Checkout.kt::Checkout.charge
+    to: src/main/kotlin/shop/Pricing.kt::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/shop/Report.kt::build
+    to: src/main/kotlin/shop/Pricing.kt::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 3
+  - from: src/test/kotlin/shop/CheckoutTest.kt::CheckoutTest.chargeAddsOne
+    to: src/main/kotlin/shop/Checkout.kt::Checkout.charge
+    kind: tests_reach
+    resolution: resolved
+    site: 9
+  exact: true
+  decoys:
+    src/main/kotlin/shop/Pricing.kt::Pricing.total:
+    - src/main/kotlin/legacy/Pricing.kt
+    - src/main/kotlin/shop/Notes.kt
+    - other/src/main/kotlin/other/Pricing.kt
+  not_untested:
+  - total

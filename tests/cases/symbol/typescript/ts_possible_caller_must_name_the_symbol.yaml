@@ -1,0 +1,40 @@
+name: ts_possible_caller_must_name_the_symbol
+mode: symbol
+source: gh#558
+issue_state: closed
+tags: [typescript, candidate, import-unresolved, decoy]
+repo:
+  initial_files:
+    app_a/frontend/types/api.ts: |
+      export interface ClinicalAlertEvent {
+        id: string;
+        severity: number;
+      }
+    app_a/frontend/alerts.ts: |
+      import type { ClinicalAlertEvent } from './types/api';
+
+      export function describe(event: ClinicalAlertEvent): string {
+        return `${event.id}:${event.severity}`;
+      }
+    app_b/frontend/pdf-service.ts: |
+      import type AutoTableImport from 'jspdf-autotable';
+      import type JsPDFType from 'jspdf';
+
+      type AutoTableFn = typeof AutoTableImport;
+      type JsPDFInstance = InstanceType<typeof JsPDFType>;
+
+      export function render(doc: JsPDFInstance, table: AutoTableFn): void {
+        table(doc, {});
+      }
+query:
+  symbol: ClinicalAlertEvent
+expect:
+  definitions: [app_a/frontend/types/api.ts::ClinicalAlertEvent]
+  relations:
+    - from: "app_a/frontend/alerts.ts::describe"
+      to: "app_a/frontend/types/api.ts::ClinicalAlertEvent"
+      kind: "reads"
+      resolution: "resolved"
+      site: 3
+  decoys:
+    ClinicalAlertEvent: [app_b/frontend/pdf-service.ts]

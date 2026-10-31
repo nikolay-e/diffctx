@@ -1,0 +1,50 @@
+name: rust_unchanged_integration_test_is_in_view
+mode: impact
+source: fj#123
+issue_state: open
+tags:
+- rust
+- tests
+- negative-claims
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub fn add(a: u32, b: u32) -> u32 {
+          a + b
+      }
+
+      pub fn untouched() -> u32 {
+          1
+      }
+    tests/other.rs: |
+      #[test]
+      fn adds() {
+          assert_eq!(fixture::add(1, 2), 3);
+      }
+  changed_files:
+    src/lib.rs: |
+      pub fn add(a: u32, b: u32) -> u32 {
+          a.wrapping_add(b)
+      }
+
+      pub fn untouched() -> u32 {
+          1
+      }
+  commit_message: Change rust unchanged integration test is in view
+expect:
+  changed:
+  - src/lib.rs::add
+  relations:
+  - from: tests/other.rs::adds
+    to: src/lib.rs::add
+    kind: tests_reach
+    resolution: resolved
+    site: 3
+  exact: true
+  not_untested:
+  - add

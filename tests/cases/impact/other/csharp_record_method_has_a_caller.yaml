@@ -1,0 +1,48 @@
+name: csharp_record_method_has_a_caller
+mode: impact
+source: gh#424
+issue_state: open
+tags:
+- tier3
+- csharp
+- record
+repo:
+  initial_files:
+    src/Point.cs: |
+      namespace App;
+
+      public record Point(int X)
+      {
+          public int Twice() => X * 2;
+      }
+    src/Program.cs: |
+      namespace App;
+
+      public class Program
+      {
+          public static int Main()
+          {
+              var p = new Point(1);
+              return p.Twice();
+          }
+      }
+  changed_files:
+    src/Point.cs: |
+      namespace App;
+
+      public record Point(int X)
+      {
+          public int Twice() => X + X;
+      }
+  commit_message: Change csharp record method has a caller
+expect:
+  changed:
+  - src/Point.cs::Point.Twice
+  relations:
+  - from: src/Program.cs::Program.Main
+    to: src/Point.cs::Point.Twice
+    kind: calls
+    resolution: candidate
+    site: 8
+  exact: true
+  no_negative_claims: true

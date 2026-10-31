@@ -1,0 +1,70 @@
+name: rust_trait_method_reached_through_dyn_is_dispatched
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- rust
+- dispatch
+- traits
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod direct;
+      pub mod shape;
+      pub mod total;
+    src/shape.rs: |
+      pub trait Shape {
+          fn area(&self) -> f64;
+      }
+
+      pub struct Circle(pub f64);
+
+      impl Shape for Circle {
+          fn area(&self) -> f64 {
+              3.0 * self.0 * self.0
+          }
+      }
+    src/total.rs: |
+      use crate::shape::Shape;
+
+      pub fn total_area(shapes: &[Box<dyn Shape>]) -> f64 {
+          shapes.iter().map(|s| s.area()).sum()
+      }
+    src/direct.rs: |
+      use crate::shape::{Circle, Shape};
+
+      pub fn unit() -> f64 {
+          let c: Circle = Circle(1.0);
+          c.area()
+      }
+  changed_files:
+    src/shape.rs: |
+      pub trait Shape {
+          fn area(&self) -> f64;
+      }
+
+      pub struct Circle(pub f64);
+
+      impl Shape for Circle {
+          fn area(&self) -> f64 {
+              3.14 * self.0 * self.0
+          }
+      }
+  commit_message: Change rust trait method reached through dyn is dispatched
+expect:
+  changed:
+  - src/shape.rs::Circle.area
+  relations:
+  - from: src/direct.rs::unit
+    to: src/shape.rs::Circle.area
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: false
+  unknowns:
+    area: dispatched

@@ -4128,10 +4128,21 @@ fn upgrade_notice(session: Option<&str>) -> Option<String> {
     ))
 }
 
-fn release_key(name: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = name.split('.').map(|p| p.parse::<u64>().ok());
-    let key = (parts.next()??, parts.next()??, parts.next()??);
-    parts.next().is_none().then_some(key)
+/// Orders `X.Y.Z` releases and the development builds before them, in either
+/// spelling (`2.0.0.dev0`, `2.0.0-dev.0`), `+source` marks ignored: a dev build
+/// sorts after the previous release and before its own (#570).
+fn release_key(name: &str) -> Option<(u64, u64, u64, bool, u64)> {
+    let name = name.split('+').next()?;
+    let (base, dev) = match name.split_once("-dev").or_else(|| name.split_once(".dev")) {
+        Some((base, n)) => (base, Some(n.trim_start_matches('.').parse::<u64>().ok()?)),
+        None => (name, None),
+    };
+    let mut parts = base.split('.').map(|p| p.parse::<u64>().ok());
+    let (major, minor, patch) = (parts.next()??, parts.next()??, parts.next()??);
+    parts
+        .next()
+        .is_none()
+        .then_some((major, minor, patch, dev.is_none(), dev.unwrap_or(0)))
 }
 
 fn with_notice(answer: &str, notice: &str) -> String {
@@ -4147,6 +4158,26 @@ fn with_notice(answer: &str, notice: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dev_build_sorts_after_its_previous_release_and_before_its_own() {
+        let key = |name: &str| release_key(name).unwrap_or_else(|| panic!("{name}"));
+        assert_eq!(key("2.0.0.dev0"), key("2.0.0-dev.0"));
+        assert_eq!(key("2.0.0-dev.0"), key("2.0.0-dev0+source"));
+        assert!(key("1.20.0") < key("2.0.0-dev.0"));
+        assert!(key("2.0.0-dev.0") < key("2.0.0-dev.1"));
+        assert!(key("2.0.0.dev7") < key("2.0.0"));
+        assert!(key("2.0.0") < key("2.0.1.dev0"));
+        for not_a_release in [
+            "1000.0",
+            "not-a-version",
+            "2.0.0.dev",
+            "2.0.0-rc.1",
+            "1.2.3.4",
+        ] {
+            assert_eq!(release_key(not_a_release), None, "{not_a_release}");
+        }
+    }
 
     fn pre(command: &str) -> Option<Trigger> {
         detect(Event::PreToolUse, command).map(|d| d.trigger)

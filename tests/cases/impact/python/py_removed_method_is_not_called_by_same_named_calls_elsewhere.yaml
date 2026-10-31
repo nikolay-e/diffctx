@@ -1,0 +1,57 @@
+name: py_removed_method_is_not_called_by_same_named_calls_elsewhere
+mode: impact
+source: gh#458
+issue_state: closed
+tags: [python, removed-definition, name-match, cross-language, decoy]
+repo:
+  initial_files:
+    lib/profile.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Profile:
+          name: str
+
+          def describe(self):
+              return self.name
+
+          def callback(self):
+              return None
+    lib/parse.py: |
+      def parse(text):
+          try:
+              return int(text)
+          except ValueError:
+              return str(text)
+    web/e2e/home.spec.ts: |
+      import { test, expect } from "@playwright/test";
+
+      test.describe("home", () => {
+        test("loads", async ({ page }) => {
+          const callback = () => page.title();
+          expect(await callback()).toBeTruthy();
+        });
+      });
+    web/src/unit.test.tsx: |
+      import { describe, it } from "vitest";
+
+      describe("widget", () => {
+        it("renders", () => {});
+      });
+  changed_files:
+    lib/profile.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Profile:
+          name: str
+  commit_message: "profile: drop describe and callback"
+expect:
+  callers:
+    describe: []
+    callback: []
+  decoys:
+    describe: [web/e2e/home.spec.ts, web/src/unit.test.tsx]
+    callback: [web/e2e/home.spec.ts]

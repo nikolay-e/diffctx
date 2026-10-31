@@ -103,6 +103,7 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: |
           echo "Setting version to $VERSION"
+          python scripts/release/tree_version.py set "$VERSION"
           python - <<'PY'
           import json, os, re, pathlib
           ver = os.environ["VERSION"]
@@ -112,24 +113,6 @@ jobs:
           s, n = re.subn(r'^version:\s*.*$', f'version: {ver}', s, count=1, flags=re.M)
           assert n == 1, "CITATION.cff has no version line"
           p.write_text(s, encoding="utf-8")
-
-          p = pathlib.Path("src/diffctx/version.py")
-          s = p.read_text(encoding="utf-8")
-          s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
-          assert n == 1, "version.py: __version__ assignment not found"
-          p.write_text(s, encoding="utf-8")
-
-          py = pathlib.Path("pyproject.toml")
-          s = py.read_text(encoding="utf-8")
-          s, n = re.subn(r'(?m)^version\s*=\s*["\'][^"\']+["\']', f'version = "{ver}"', s, count=1)
-          assert n == 1, "pyproject.toml: [project].version not found"
-          py.write_text(s, encoding="utf-8")
-
-          cargo = pathlib.Path("crates/diffctx-native/Cargo.toml")
-          s = cargo.read_text(encoding="utf-8")
-          s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
-          assert n == 1, "Cargo.toml: [package].version not found"
-          cargo.write_text(s, encoding="utf-8")
 
           # The Action's default pin and the plugin manifest are consumer-facing
           # versions: left unbumped, Marketplace and plugin users stay on the
@@ -178,37 +161,13 @@ jobs:
           srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           # The action doc pins `nikolay-e/diffctx@v<semver>` in its examples;
-          # test_version_consistency gates them against __version__, so a
+          # test_version_consistency gates them against the release, so a
           # release that skips this file fails the next full pytest run.
           doc_md = pathlib.Path("docs/product/github-action.md")
           s = doc_md.read_text(encoding="utf-8")
           s, n = re.subn(r"(nikolay-e/diffctx@v)\d+\.\d+\.\d+", r"\g<1>" + ver, s)
           assert n >= 2, "github-action.md: expected at least 2 version pins"
           doc_md.write_text(s, encoding="utf-8")
-
-          lock = pathlib.Path("Cargo.lock")
-          s = lock.read_text(encoding="utf-8")
-          s, n = re.subn(
-              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+',
-              lambda m: m.group(1) + ver,
-              s,
-              count=1,
-          )
-          assert n == 1, "Cargo.lock: diffctx package entry not found"
-          lock.write_text(s, encoding="utf-8")
-
-          # CI installs with `uv sync --locked`, which refuses a lockfile whose
-          # editable diffctx entry lags pyproject — every job after 1.17.0 did.
-          uv_lock = pathlib.Path("uv.lock")
-          s = uv_lock.read_text(encoding="utf-8")
-          s, n = re.subn(
-              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+(?="\nsource = \{ editable = "\." \})',
-              lambda m: m.group(1) + ver,
-              s,
-              count=1,
-          )
-          assert n == 1, "uv.lock: editable diffctx entry not found"
-          uv_lock.write_text(s, encoding="utf-8")
           PY
           echo "version.py:"
           cat src/diffctx/version.py
@@ -1568,3 +1527,180 @@ jobs:
           [[ -n "$RUN_ID" ]] || { echo "::error::no publish-extras.yml run started after $DISPATCHED_AT"; exit 1; }
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
+
+  # The tree moves on the moment a release has shipped (#570): X.Y.(Z+1).dev0,
+  # so a build from source never satisfies the `==X.Y.Z` pin of the release it
+  # follows. Tree surfaces only; every user pin stays on the release. After the
+  # packaging job so the two commits to main never race for the push.
+  open-next-dev-version:
+    name: Open the next development version
+    needs: [prepare-version, finalize-release, update-packaging-manifests]
+    if: |
+      always() &&
+      !inputs.build_only &&
+      needs.finalize-release.result == 'success' &&
+      (needs.update-packaging-manifests.result == 'success' ||
+       needs.update-packaging-manifests.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Commit and push the development version
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "${VERSION} is not a final release: the tree keeps its version."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$TAG_NAME" HEAD; then
+            echo "::error::${TAG_NAME} is not an ancestor of main; the tree is not opened past it"
+            exit 1
+          fi
+          dev=$(python scripts/release/tree_version.py open-dev "$VERSION")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock
+          if git diff --staged --quiet; then
+            echo "main is already at ${dev}."
+            exit 0
+          fi
+          git commit -m "chore: open ${dev}"
+          for _ in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          echo "::error::main kept moving; ${dev} was not pushed"
+          exit 1
+
+  # A fixed issue closes when the fix reaches users (#595): the `smoke` cases
+  # run against what each channel serves, through the binary it installed.
+  # DIFFCTX_CASE_TAG keeps the harness to the tagged impact and symbol cases.
+  smoke-published:
+    name: Post-release smoke (${{ matrix.channel }})
+    needs: [prepare-version, finalize-release, publish-to-pypi, smoke-pypi, publish-extras]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [pypi, npm, plugin]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare-version.outputs.version }}
+    steps:
+      # The release commit carries the cases and the harness that reads them.
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare-version.outputs.commit_sha }}
+
+      - name: Set up uv
+        if: matrix.channel == 'plugin'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+
+      - name: Set up Node
+        if: matrix.channel == 'npm'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # The binary under test is what a user of the channel runs, installed the
+      # way the channel documents it, never one built from this checkout.
+      - name: Install what the channel published
+        run: |
+          case "${{ matrix.channel }}" in
+            pypi)
+              python3 -m venv "${RUNNER_TEMP}/pypi"
+              "${RUNNER_TEMP}/pypi/bin/python" -m pip install --quiet --no-cache-dir \
+                --only-binary :all: "diffctx==${VERSION}"
+              bin="${RUNNER_TEMP}/pypi/bin/diffctx"
+              ;;
+            npm)
+              mkdir "${RUNNER_TEMP}/npm" && cd "${RUNNER_TEMP}/npm"
+              npm init -y >/dev/null
+              npm install --prefer-online --ignore-scripts "diffctx@${VERSION}"
+              node node_modules/diffctx/install.js
+              bin="${RUNNER_TEMP}/npm/node_modules/.bin/diffctx"
+              ;;
+            plugin)
+              # The pin the plugin launches on main, not the version this job
+              # was asked about: a release that forgot to move it fails here.
+              pin=$(jq -r '.mcpServers.diffctx.args[0]' plugin/.mcp.json)
+              [[ "$pin" == "diffctx[mcp]==${VERSION}" ]] || { echo "::error::plugin pin is ${pin}"; exit 1; }
+              mkdir "${RUNNER_TEMP}/plugin"
+              printf '#!/usr/bin/env bash\nexport UV_ISOLATED=1\nexec uvx -q "%s" "$@"\n' "$pin" \
+                > "${RUNNER_TEMP}/plugin/diffctx"
+              chmod +x "${RUNNER_TEMP}/plugin/diffctx"
+              bin="${RUNNER_TEMP}/plugin/diffctx"
+              ;;
+          esac
+          "$bin" --version | grep -qx "diffctx ${VERSION}"
+          echo "DIFFCTX_BIN=${bin}" >> "$GITHUB_ENV"
+
+      - name: Run the smoke cases against it
+        working-directory: crates/diffctx-native
+        env:
+          DIFFCTX_CASE_TAG: smoke
+        run: cargo test --release --locked --test yaml_cases
+
+  # Closing is the last step of a release and never earlier: every channel is
+  # published and the smoke ran on what they serve. The label, not a commit
+  # message, says which issues this release fixed (#595). Forgejo is closed by
+  # hand from the releasing session; no Forgejo credential lives here.
+  close-released-issues:
+    name: Close the issues this release fixed
+    needs:
+      - prepare-version
+      - smoke-published
+      - smoke-pypi-free-threaded
+      - smoke-scoop
+      - publish-crate
+      - publish-mcp-registry
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.prepare-version.outputs.commit_sha }}
+
+      - name: Close the labelled issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: python3 scripts/release/close-released.py --tracker github --repo "$REPO" --tag "$TAG_NAME"
