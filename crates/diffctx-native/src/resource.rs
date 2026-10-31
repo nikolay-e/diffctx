@@ -396,13 +396,21 @@ impl RunContext {
         *self.inner.head_rev.lock().unwrap() = rev;
     }
 
+    /// The current side of the analysis this run serves; a run that was
+    /// given none reads nothing.
     pub fn source(&self) -> crate::source::Source {
         self.inner
             .source
             .lock()
             .unwrap()
             .clone()
-            .unwrap_or_default()
+            .unwrap_or_else(crate::source::Source::empty)
+    }
+
+    /// What bounds a git child started for this run: its I/O deadline and
+    /// its cancellation.
+    pub fn io_limits(&self) -> (Option<Instant>, Arc<AtomicBool>) {
+        (self.inner.io_expires_at, self.inner.cancel.clone())
     }
 
     pub fn set_source(&self, source: crate::source::Source) {
@@ -594,6 +602,8 @@ thread_local! {
     /// (the discovery strategies run on rayon workers).
     static CHANGED_LINES: RefCell<Option<Arc<crate::changed_lines::ChangedLines>>> =
         const { RefCell::new(None) };
+    /// The analysis' source on a thread the run's context is not published to.
+    static SOURCE: RefCell<Option<crate::source::Source>> = const { RefCell::new(None) };
 }
 
 pub struct ScopedContext {
@@ -709,8 +719,29 @@ pub fn current_changed_lines() -> Option<Arc<crate::changed_lines::ChangedLines>
         .or_else(|| with_current(RunContext::changed_lines).flatten())
 }
 
-pub fn current_source() -> Option<crate::source::Source> {
-    with_current(RunContext::source)
+/// The source of the run this thread serves, or of the analysis a worker was
+/// handed with `with_source`. Outside both it reads nothing: there is no
+/// working-tree default to fall back on.
+pub fn current_source() -> crate::source::Source {
+    SOURCE
+        .with(|c| c.borrow().clone())
+        .or_else(|| with_current(RunContext::source))
+        .unwrap_or_else(crate::source::Source::empty)
+}
+
+/// Runs `f` with `source` published to this thread: for rayon workers the
+/// run's context is not published to.
+pub fn with_source<T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> T {
+    let prev = SOURCE.with(|c| c.replace(Some(source.clone())));
+    struct Restore(Option<crate::source::Source>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            SOURCE.with(|c| *c.borrow_mut() = prev);
+        }
+    }
+    let _restore = Restore(prev);
+    f()
 }
 
 /// What bounds a git child started now: the run's I/O deadline and its

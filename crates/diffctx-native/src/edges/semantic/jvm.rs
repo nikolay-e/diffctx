@@ -496,7 +496,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
         else {
             return FxHashMap::default();
         };
-        let source = crate::source::current();
+        let source = crate::resource::current_source();
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;

@@ -623,7 +623,8 @@ fn a_test_importing_through_pytest_configuration_reaches_the_module() {
 /// in a consumer whose `[tool.uv.sources]` names the package are callers,
 /// though another module named `pkg` exists. A consumer without the source
 /// is a possible caller (the module is ambiguous), never none; another
-/// project's own `client_ip` keeps its callers, and a string, a comment and
+/// project's own `client_ip` keeps its callers and gains no guess from a
+/// project that cannot reach it, and a string, a comment and
 /// the lines of a parenthesised import stay off. Control: the package's own
 /// caller answers exactly.
 #[test]
@@ -718,10 +719,10 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
     let doc = symbol(tmp.path(), "apps/other/src/other/pkg.py:client_ip");
     assert_eq!(
         evidenced(&doc, "apps/other/src/other/pkg.py", "client_ip"),
-        set(&[
-            "apps/loose/src/loose/log.py::stamp candidate ambiguous_module",
-            "apps/other/src/other/pkg.py::own resolved -",
-        ]),
+        // `loose` declares a dependency on `pkg` and none on `other`, whose
+        // `other.pkg` module is not importable as `pkg`: it cannot reach
+        // `other`'s own `client_ip`, so it is no hedge there.
+        set(&["apps/other/src/other/pkg.py::own resolved -"]),
         "{doc}"
     );
 }

@@ -33,6 +33,7 @@ class Fixture:
     head: dict[str, str]
     changed: dict[str, str]  # definition key on its reporting side -> status
     caller: tuple[str, str]  # (caller key, body-only target key): a call both snapshots show
+    engine: bool = True  # also run the engine under test on it
 
 
 PYTHON = Fixture(
@@ -84,7 +85,79 @@ TYPESCRIPT = Fixture(
     caller=("src/checkout.ts::charge", "src/pricing.ts::total"),
 )
 
-FIXTURES = {"python": PYTHON, "typescript": TYPESCRIPT}
+RUST = Fixture(
+    language="rust",
+    base={
+        "src/pricing.rs": (
+            "pub const RATE: u32 = 2;\n\n"
+            "pub fn total(items: &[u32]) -> u32 {\n    items.iter().sum()\n}\n\n"
+            "pub fn helper(x: u32) -> u32 {\n    x + 1\n}\n\n"
+            "pub fn mover(x: u32) -> u32 {\n    x * 3\n}\n"
+        ),
+        "src/checkout.rs": "use crate::pricing::total;\n\npub fn charge(items: &[u32]) -> u32 {\n    total(items)\n}\n",
+    },
+    head={
+        "src/pricing.rs": (
+            "pub const RATE: u32 = 2;\n\npub fn total(items: &[u32]) -> u32 {\n    items.iter().sum::<u32>() * RATE\n}\n"
+        ),
+        "src/util.rs": "pub fn mover(x: u32) -> u32 {\n    x * 3\n}\n",
+    },
+    changed={
+        "src/pricing.rs::total": "modified",
+        "src/pricing.rs::helper": "removed",
+        "src/pricing.rs::mover": "moved",
+    },
+    caller=("src/checkout.rs::charge", "src/pricing.rs::total"),
+    engine=False,
+)
+
+GO = Fixture(
+    language="go",
+    base={
+        "pricing.go": (
+            "package shop\n\nconst Rate = 2\n\n"
+            "func Total(items []int) int {\n\treturn len(items)\n}\n\n"
+            "func Helper(x int) int {\n\treturn x + 1\n}\n\n"
+            "func Mover(x int) int {\n\treturn x * 3\n}\n"
+        ),
+        "checkout.go": "package shop\n\nfunc Charge(items []int) int {\n\treturn Total(items)\n}\n",
+    },
+    head={
+        "pricing.go": "package shop\n\nconst Rate = 2\n\nfunc Total(items []int) int {\n\treturn len(items) * Rate\n}\n",
+        "util.go": "package shop\n\nfunc Mover(x int) int {\n\treturn x * 3\n}\n",
+    },
+    changed={"pricing.go::Total": "modified", "pricing.go::Helper": "removed", "pricing.go::Mover": "moved"},
+    caller=("checkout.go::Charge", "pricing.go::Total"),
+    engine=False,
+)
+
+KOTLIN = Fixture(
+    language="kotlin",
+    base={
+        "src/Pricing.kt": (
+            "package shop\n\nconst val RATE = 2\n\n"
+            "fun total(items: List<Int>): Int {\n    return items.size\n}\n\n"
+            "fun helper(x: Int): Int {\n    return x + 1\n}\n\n"
+            "fun mover(x: Int): Int {\n    return x * 3\n}\n"
+        ),
+        "src/Checkout.kt": "package shop\n\nfun charge(items: List<Int>): Int {\n    return total(items)\n}\n",
+    },
+    head={
+        "src/Pricing.kt": (
+            "package shop\n\nconst val RATE = 2\n\nfun total(items: List<Int>): Int {\n    return items.size * RATE\n}\n"
+        ),
+        "src/Util.kt": "package shop\n\nfun mover(x: Int): Int {\n    return x * 3\n}\n",
+    },
+    changed={
+        "src/Pricing.kt::total": "modified",
+        "src/Pricing.kt::helper": "removed",
+        "src/Pricing.kt::mover": "moved",
+    },
+    caller=("src/Checkout.kt::charge", "src/Pricing.kt::total"),
+    engine=False,
+)
+
+FIXTURES = {"python": PYTHON, "typescript": TYPESCRIPT, "rust": RUST, "go": GO, "kotlin": KOTLIN}
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -144,7 +217,7 @@ def engine_problems(fixture: Fixture, repo: Path, base: str, head: str, binary: 
             problems.append(f"{target_key}: caller {caller_key} missing from the answer")
         if cell["fcn"]:
             problems.append(f"{target_key}: empty answer that names no limit")
-    problems += [f"{target_key}: extra caller {d['from']}" for d in details if d["status"] == "fp"]
+    problems += [f"{target_key}: extra caller {d['from']}" for d in details if d["verdict"] == "fp"]
     return problems
 
 
@@ -157,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
     failed = False
     with tempfile.TemporaryDirectory(prefix="oracle-selftest-") as scratch:
         for name, fixture in FIXTURES.items():
+            if not fixture.engine:
+                continue
             repo = Path(scratch) / name
             base, head = build(fixture, repo)
             for problem in engine_problems(fixture, repo, base, head, Path(options.bin)):

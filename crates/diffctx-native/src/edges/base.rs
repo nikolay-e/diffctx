@@ -453,7 +453,9 @@ pub fn read_file_cached<'a>(
     path: &Path,
     cache: Option<&'a FxHashMap<PathBuf, String>>,
 ) -> Option<String> {
-    crate::source::read_cached(path, cache)
+    cache
+        .and_then(|c| c.get(path).cloned())
+        .or_else(|| crate::resource::current_source().read_to_string(path))
 }
 
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {

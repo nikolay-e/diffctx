@@ -130,6 +130,8 @@ serde_yaml = "0.9"
 # Config files read as facts, not text (#328): TOML values and sections.
 toml = "1.1"
 thiserror = "2"
+# The snapshot layer: readers, admission, resolved ranges, the analysis context.
+diffctx-snapshot = { path = "../diffctx-snapshot" }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

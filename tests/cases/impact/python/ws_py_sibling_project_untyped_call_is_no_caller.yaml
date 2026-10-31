@@ -1,0 +1,40 @@
+name: ws_py_sibling_project_untyped_call_is_no_caller
+mode: impact
+source: gh#649
+issue_state: open
+tags: [python, workspace, project-root, decoy, body-only]
+repo:
+  initial_files:
+    a/pyproject.toml: |
+      [project]
+      name = "a"
+      version = "0.1.0"
+    a/src/shop/__init__.py: ""
+    a/src/shop/pricing.py: |
+      class Cart:
+          def total(self):
+              return 0
+    a/src/shop/checkout.py: |
+      def charge(cart):
+          return cart.total()
+    b/pyproject.toml: |
+      [project]
+      name = "b"
+      version = "0.1.0"
+    b/src/shop/__init__.py: ""
+    b/src/shop/report.py: |
+      def build(cart):
+          return cart.total()
+  changed_files:
+    a/src/shop/pricing.py: |
+      class Cart:
+          def total(self):
+              return 1
+  commit_message: "pricing: a cart totals one"
+expect:
+  changed: [a/src/shop/pricing.py::Cart.total]
+  relations:
+    - {from: "a/src/shop/checkout.py::charge", to: "a/src/shop/pricing.py::Cart.total", kind: calls,
+       resolution: candidate, site: 2}
+  decoys:
+    "a/src/shop/pricing.py::Cart.total": [b/src/shop/report.py]

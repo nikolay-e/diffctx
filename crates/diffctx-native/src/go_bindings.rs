@@ -490,13 +490,17 @@ impl<'a> GoResolver<'a> {
     /// declaration moved to another file of the package is still there.
     pub fn removed<'f>(
         &self,
-        base: &str,
+        _base: &str,
         old: &str,
         at: &str,
         files: impl Iterator<Item = &'f str>,
     ) -> Vec<GoDef> {
-        let Some(before) = crate::git::show_file_at_revision(self.root, base, Path::new(old))
+        let Some(before) = self
+            .source
+            .base()
+            .read_lossy(&self.root.join(old))
             .ok()
+            .flatten()
             .and_then(|text| {
                 let tree = crate::parsers::parse_tree("go", &text)?;
                 Some(extract(tree.root_node(), text.as_bytes()))

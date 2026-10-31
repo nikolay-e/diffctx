@@ -1,0 +1,40 @@
+name: ws_kotlin_sibling_build_homonym_is_no_caller
+mode: impact
+source: gh#649
+issue_state: open
+tags: [kotlin, workspace, project-root, same-package, decoy, body-only]
+repo:
+  initial_files:
+    shop/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    shop/src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.size
+    shop/src/main/kotlin/shop/Report.kt: |
+      package shop
+
+      fun build(items: List<Int>): String = "total=" + total(items)
+    legacy/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    legacy/src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun charge(cart: List<Int>): Int = total(cart)
+  changed_files:
+    shop/src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.sum()
+  commit_message: "pricing: sum the items"
+expect:
+  changed: [shop/src/main/kotlin/shop/Pricing.kt::total]
+  relations:
+    - {from: "shop/src/main/kotlin/shop/Report.kt::build", to: "shop/src/main/kotlin/shop/Pricing.kt::total",
+       kind: calls, resolution: resolved, site: 3}
+  decoys:
+    "shop/src/main/kotlin/shop/Pricing.kt::total": [legacy/src/main/kotlin/shop/Checkout.kt]

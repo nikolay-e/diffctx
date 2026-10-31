@@ -192,22 +192,14 @@ impl<'a> Resolver<'a> {
         answer
     }
 
-    /// The file a symlink of the working tree names, where the import of
+    /// The file a symlink of the analysed side names, where the import of
     /// the link lands: Node and Vite load a module by its real path, so
     /// `./client-telemetry.js` linked to a shared module is that module
-    /// (#372). A snapshot lists no links (`Source::list_blobs`), and an
-    /// import of one stays unresolved there.
+    /// (#372). The link is followed inside the snapshot only; an import of
+    /// one that leaves it stays unresolved.
     fn real_path(&self, path: String) -> String {
-        let at = crate::paths::repo_join(self.root, &path);
-        let linked = matches!(self.source, Source::WorkingTree(_))
-            && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink());
-        if !linked {
-            return path;
-        }
-        dunce::canonicalize(self.root)
-            .ok()
-            .zip(dunce::canonicalize(&at).ok())
-            .and_then(|(root, real)| crate::paths::display_rel(&root, &real))
+        self.source
+            .link_target(&path)
             .filter(|real| self.files.contains(real))
             .unwrap_or(path)
     }
