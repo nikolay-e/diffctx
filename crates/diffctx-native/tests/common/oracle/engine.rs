@@ -32,6 +32,10 @@ pub struct Answer {
     pub contracts: Vec<Node>,
     pub empty: bool,
     pub tests_known: bool,
+    /// Every caller row of the JSON, word matches included: (path, evidence).
+    pub caller_rows: Vec<(String, String)>,
+    /// Callers the engine shed to fit its cap; the text header counts them.
+    pub truncated: u64,
     /// A limit, an unanalysed or withheld file, or a name no file defines.
     pub run_disclosure: bool,
     pub markdown: Option<String>,
@@ -97,7 +101,7 @@ pub fn run(case: &Case, name: &str) -> Result<Answer, String> {
             ..Answer::default()
         },
     };
-    if case.expect.no_negative_claims {
+    if case.expect.no_negative_claims || case.mode == Mode::Impact {
         let output = ask(&repo, case, "md")?;
         if let Some(output) = &output {
             dump(name, "md", &output.stdout);
@@ -369,6 +373,7 @@ fn path_relation(from: &Value, target: &str, resolution: Resolution) -> Relation
 pub fn extract(doc: &Value) -> Answer {
     let mut answer = Answer {
         empty: doc.get("empty").and_then(Value::as_bool).unwrap_or(false),
+        truncated: count(doc, "truncated"),
         tests_known: doc
             .get("tests_known")
             .and_then(Value::as_bool)
@@ -396,6 +401,10 @@ pub fn extract(doc: &Value) -> Answer {
             answer.untested.push(definition.clone());
         }
         for caller in items(changed, "callers") {
+            answer.caller_rows.push((
+                text(caller, "path").unwrap_or("").to_string(),
+                text(caller, "evidence").unwrap_or("").to_string(),
+            ));
             // A word match is the textual section of the answer, not a caller.
             if text(caller, "evidence") == Some("name") {
                 continue;

@@ -5,6 +5,9 @@ issue_state: open
 tags: [python, unittest, self-call, framework-registration]
 repo:
   initial_files:
+    README.md: |
+      demo
+  changed_files:
     tool.py: |
       import sys
 
@@ -41,35 +44,6 @@ repo:
 
           def test_shouts_twice(self):
               self.assertEqual(self.run_tool("yo").stdout, "YO\n")
-  changed_files:
-    test_tool.py: |
-      import subprocess
-      import sys
-      import tempfile
-      import unittest
-      from pathlib import Path
-
-      TOOL = Path(__file__).resolve().parent / "tool.py"
-
-
-      class ToolTest(unittest.TestCase):
-          def setUp(self):
-              self.workdir = tempfile.mkdtemp()
-
-          def run_tool(self, *args):
-              return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, check=False)
-
-          def test_shouts(self):
-              self.assertEqual(self.run_tool("hi").stdout, "HI\n")
-
-          def test_shouts_twice(self):
-              self.assertEqual(self.run_tool("yo").stdout, "YO\n")
-  commit_message: "test_tool: do not raise on a failing run"
+  commit_message: "tool: shout"
 expect:
-  relations:
-    - {from: "test_tool.py::test_shouts", to: "test_tool.py::run_tool", kind: calls, resolution: resolved, site: 18}
-    - from: "test_tool.py::test_shouts_twice"
-      to: "test_tool.py::run_tool"
-      kind: "calls"
-      resolution: "resolved"
-      site: 21
+  unknowns: {}

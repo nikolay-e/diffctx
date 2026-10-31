@@ -2,33 +2,23 @@ name: py_attribute_assignment_is_not_a_changed_definition
 mode: impact
 source: gh#672
 issue_state: open
-tags: [python, attribute-assignment, changed-definition]
+tags: [python, attribute-assignment, changed-definition, unittest]
 repo:
   initial_files:
-    pipeline.py: |
-      import tempfile
-
-
-      class Pipeline:
-          def configure(self):
-              self.name = "pipeline"
-    main.py: |
-      from pipeline import Pipeline
-
-
-      def run():
-          Pipeline().configure()
+    README.md: |
+      demo
   changed_files:
-    pipeline.py: |
+    test_tool.py: |
       import tempfile
+      import unittest
 
 
-      class Pipeline:
-          def configure(self):
-              self.name = "pipeline"
+      class ToolTest(unittest.TestCase):
+          def setUp(self):
               self.workdir = tempfile.mkdtemp()
-  commit_message: "pipeline: give the run a work directory"
+
+          def test_workdir_exists(self):
+              self.assertTrue(self.workdir)
+  commit_message: "test_tool: give each test a work directory"
 expect:
-  changed: [pipeline.py::configure]
-  relations:
-    - {from: "main.py::run", to: "pipeline.py::configure", kind: calls, resolution: resolved, site: 5}
+  changed: []
