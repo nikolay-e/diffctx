@@ -6,24 +6,22 @@ counted and excluded; it is never read as an empty answer.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import shutil
 import subprocess
-import tarfile
 import tempfile
 import time
-import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import corpus as corpus_config
+from runners import NEEDS_SANDBOX, PLANNERS, Context
 from scipindex import Index, read_index
+from toolbin import install_tool, tool_path
 
 CACHE = corpus_config.ROOT / "cache"
 TOOLS = corpus_config.ROOT / "tools"
-EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__")
+EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target", ".gradle")
 
 
 @dataclass
@@ -112,43 +110,9 @@ def measure_completeness(index: Index, tree: Path, language: str) -> Completenes
     return result
 
 
-def _command(language: str, tree: Path, out: Path, sha: str, repo: str, home: Path) -> list[str]:
-    bin_dir = TOOLS / "node_modules" / ".bin"
-    if language == "python":
-        environment = home / "environment.json"
-        environment.write_text("[]", encoding="utf-8")  # no pip call: nothing of the repository's environment runs
-        return [
-            str(bin_dir / "scip-python"),
-            "index",
-            ".",
-            f"--project-name={repo}",
-            f"--project-version={sha}",
-            f"--output={out}",
-            f"--environment={environment}",
-            "--quiet",
-        ]
-    command = [str(bin_dir / "scip-typescript"), "index", f"--output={out}"]
-    if not (tree / "tsconfig.json").exists():
-        command.append("--infer-tsconfig")
-    return command
-
-
-def _install_dependencies(tree: Path, env: dict[str, str], timeout: int) -> bool:
-    if not (tree / "package.json").exists():
-        return False
-    flags = ["--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock"]
-    done = subprocess.run(["npm", "install", *flags], cwd=tree, env=env, capture_output=True, timeout=timeout, check=False)
-    return done.returncode == 0
-
-
-def _scip_cli() -> Path | None:
-    binary = CACHE / "bin" / "scip"
-    return binary if binary.exists() else None
-
-
-def _lint(index_path: Path, env: dict[str, str]) -> bool | None:
-    scip = _scip_cli()
-    if scip is None:
+def _lint(corpus: corpus_config.Corpus, index_path: Path, env: dict[str, str]) -> bool | None:
+    scip = tool_path(corpus.tools["scip"])
+    if not scip.exists():
         return None
     return subprocess.run([str(scip), "lint", str(index_path)], env=env, capture_output=True, check=False).returncode == 0
 
@@ -162,9 +126,8 @@ def index_snapshot(
     install: bool = True,
     retry_failed: bool = False,
 ) -> IndexResult:
-    package = corpus_config.INDEXERS[repo.language]
-    version = corpus_config.indexer_versions()[package]
-    slot = CACHE / "index" / repo.name / sha / f"{package.rsplit('/', 1)[-1]}-{version}"
+    package, version = corpus_config.indexer_pin(corpus, repo.language)
+    slot = CACHE / "index" / repo.name / sha / f"{package}-{version}"
     meta = slot / "meta.json"
     if meta.exists():
         cached = json.loads(meta.read_text(encoding="utf-8"))
@@ -177,11 +140,14 @@ def index_snapshot(
         home = Path(home_dir)
         env = scrubbed_env(home)
         result = _run_indexer(corpus, repo, sha, tree, out, home, env, install)
+        if result.reason.startswith(NEEDS_SANDBOX):
+            result.indexer, result.version = package, version
+            return result  # depends on where this runs, not on the commit: not cached
         result.seconds = round(time.monotonic() - started, 1)
         if result.ok:
             index = read_index(out)
             result.completeness = measure_completeness(index, tree, repo.language)
-            result.completeness.lint_ok = _lint(out, env)
+            result.completeness.lint_ok = _lint(corpus, out, env)
             if result.completeness.file_ratio < corpus.min_file_ratio:
                 result.ok, result.reason = False, "incomplete"
     result.indexer, result.version = package, version
@@ -201,16 +167,20 @@ def _run_indexer(
     install: bool,
 ) -> IndexResult:
     result = IndexResult(ok=False, reason="", path=None, indexer="", version="")
-    if repo.language == "typescript" and install:
-        _install_dependencies(tree, env, corpus.index_seconds)
-    command = _command(repo.language, tree, out, sha, repo.name, home)
+    context = Context(corpus, repo, sha, tree, out, home, env, install, corpus.index_seconds)
+    plan = PLANNERS[repo.language](context)
+    if plan.command is None:
+        result.reason = plan.blocked
+        return result
     try:
-        done = subprocess.run(command, cwd=tree, env=env, capture_output=True, timeout=corpus.index_seconds, check=False)
+        done = subprocess.run(
+            plan.command, cwd=tree, env=plan.env, capture_output=True, timeout=corpus.index_seconds, check=False
+        )
     except subprocess.TimeoutExpired:
         result.reason = "timeout"
         return result
     if done.returncode != 0 or not out.exists():
-        tail = done.stderr.decode(errors="replace")[-400:].strip().replace("\n", " | ")
+        tail = (done.stderr + done.stdout).decode(errors="replace")[-400:].strip().replace("\n", " | ")
         result.reason = f"indexer exited {done.returncode}: {tail}"
         return result
     result.ok, result.reason = True, "ok"
@@ -226,29 +196,13 @@ def _from_meta(meta: dict, slot: Path, package: str, version: str) -> IndexResul
     )
 
 
-def setup_tools(corpus: corpus_config.Corpus) -> None:
-    """Install the pinned npm indexers without lifecycle scripts, and the scip CLI after its checksum matches."""
-    with tempfile.TemporaryDirectory(prefix="oracle-home-") as home:
-        env = scrubbed_env(Path(home))
-        subprocess.run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=TOOLS, env=env, check=True)
-    platform = corpus_config.scip_platform()
-    expected = corpus.scip_sha256[platform]
-    target = CACHE / "bin" / "scip"
-    if target.exists():
-        return
-    url = corpus.scip_url.format(version=corpus.scip_version, platform=platform)
-    if not url.startswith("https://"):
-        raise ValueError(f"refusing a non-https download: {url}")
-    with tempfile.TemporaryDirectory(prefix="oracle-scip-") as scratch:
-        archive = Path(scratch) / "scip.tar.gz"
-        with urllib.request.urlopen(url, timeout=120) as response:
-            archive.write_bytes(response.read())
-        actual = hashlib.sha256(archive.read_bytes()).hexdigest()
-        if actual != expected:
-            raise RuntimeError(f"scip CLI checksum mismatch for {platform}: expected {expected}, got {actual}")
-        with tarfile.open(archive) as tar:
-            tar.extractall(Path(scratch) / "out", filter="data")
-        unpacked = next(p for p in (Path(scratch) / "out").rglob("scip") if p.is_file())
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(unpacked), target)
-        target.chmod(0o755)
+def setup_tools(corpus: corpus_config.Corpus, languages: set[str] | None = None) -> None:
+    """Install the pinned npm indexers without lifecycle scripts, and every release binary after its checksum matches."""
+    wanted = languages or set(corpus_config.LANGUAGES)
+    if wanted & set(corpus_config.INDEXERS):
+        with tempfile.TemporaryDirectory(prefix="oracle-home-") as home:
+            env = scrubbed_env(Path(home))
+            subprocess.run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=TOOLS, env=env, check=True)
+    names = {"scip"} | {corpus_config.INDEXER_TOOLS[lang] for lang in wanted if lang in corpus_config.INDEXER_TOOLS}
+    for name in sorted(names):
+        install_tool(corpus.tools[name])

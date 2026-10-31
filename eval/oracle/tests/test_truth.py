@@ -136,3 +136,31 @@ def test_a_definition_without_an_index_symbol_has_no_symbols(tmp_path: Path):
 
     assert snapshot.symbols_of(target(snapshot, "shop/pricing.py::Sub")) == set()
     assert relations_to(snapshot, target(snapshot, "shop/pricing.py::Sub")) == []
+
+
+NESTED = """def outer():
+    def inner():
+        return 1
+
+    return inner()
+"""
+
+
+def test_a_local_symbol_reaches_only_references_in_its_own_document(tmp_path: Path):
+    (tmp_path / "a.py").write_text(NESTED)
+    (tmp_path / "b.py").write_text("x = inner\n")
+    first = Document(
+        "a.py",
+        1,
+        [
+            occurrence(at(NESTED, 1, "inner"), "local 3", ROLE_DEFINITION),
+            occurrence(at(NESTED, 4, "inner"), "local 3"),
+        ],
+        [],
+    )
+    second = Document("b.py", 1, [occurrence(at("x = inner", 0, "inner"), "local 3")], [])
+    snapshot = Snapshot(tmp_path, Index(documents=[first, second]), "python")
+
+    found = relations_to(snapshot, target(snapshot, "a.py::outer.inner"))
+
+    assert [(r.from_key, r.kind, r.site) for r in found] == [("a.py::outer", "calls", 5)]

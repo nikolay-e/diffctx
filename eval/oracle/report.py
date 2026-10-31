@@ -20,6 +20,9 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import adjudication
+from corpus import ROOT
+
 TIERS = {
     "python": 1,
     "typescript": 1,
@@ -214,6 +217,14 @@ SCIP_COLUMNS = [
     ("Weak/answer", "weak_per_answer"),
     ("Kind mism.", "kind_mismatches"),
 ]
+ADJUDICATION_COLUMNS = [
+    ("Language", "language"),
+    ("Adjudicated", "total"),
+    ("SCIP confirmed", "confirmed"),
+    ("Relabelled", "relabelled"),
+    ("Refuted", "refuted"),
+    ("Unresolved", "unresolved"),
+]
 COMPLETENESS_COLUMNS = [
     ("Repo", "repo"),
     ("Snapshots", "snapshots"),
@@ -254,10 +265,16 @@ def table_of(columns: list[tuple[str, str]], rows: list[dict], empty: str) -> st
 
 
 def render(report: dict) -> str:
-    parts = ["# diffctx oracle report", "", "## SCIP truth, by tier, language, mode and relation", ""]
+    parts = ["# diffctx oracle report", "", "## SCIP truth (raw), by tier, language, mode and relation", ""]
     parts.append(table_of(SCIP_COLUMNS, report["scip"], "No scored cells."))
+    if report.get("scip_adjudicated") is not None:
+        parts += ["", "## SCIP truth with the adjudicated overrides", ""]
+        parts += [table_of(SCIP_COLUMNS, report["scip_adjudicated"], "No scored cells.")]
+        parts += ["", "### SCIP against the adjudicated set", "", table_of(ADJUDICATION_COLUMNS, report["adjudication"], "")]
     parts += ["", "## Index completeness", "", table_of(COMPLETENESS_COLUMNS, report["index_completeness"], "No indexes.")]
     parts += ["", f"Changed definitions with no SCIP symbol (not scored): {report['unmapped_definitions']}."]
+    if report.get("filtered_references"):
+        parts += ["", f"SCIP references dropped by the truth filters (see filters.py): {report['filtered_references']}."]
     if report.get("harness"):
         harness = report["harness"]
         parts += ["", "## YAML corpus (harness report)", "", table_of(HARNESS_CASE_COLUMNS, harness["cases"], "")]
@@ -279,20 +296,43 @@ def render(report: dict) -> str:
     return "\n".join(parts) + "\n"
 
 
-def build(run: Path, harness: Path | None, metamorphic: Path | None, faults: Path | None, bench: Path | None) -> dict:
+def build(
+    run: Path,
+    harness: Path | None,
+    metamorphic: Path | None,
+    faults: Path | None,
+    bench: Path | None,
+    adjudicated: Path | None = None,
+) -> dict:
     def optional(name: str) -> list[dict]:
         path = run / name
         return read_records(path) if path.exists() else []
 
-    return {
-        "scip": scip_rows(optional("cells.jsonl")),
+    cells = optional("cells.jsonl")
+    report = {
+        "scip": scip_rows(cells),
         "index_completeness": completeness_rows(optional("indexes.jsonl"), optional("commits.jsonl")),
         "unmapped_definitions": len(optional("unmapped.jsonl")),
+        "filtered_references": dict(sum((Counter(c.get("filtered", {})) for c in optional("commits.jsonl")), Counter())),
         "harness": harness_rows(read_records(harness)) if harness else None,
         "metamorphic": outcome_summary(read_records(metamorphic)) if metamorphic else None,
         "faults": outcome_summary(read_records(faults)) if faults else None,
         "bench": json.loads(bench.read_text(encoding="utf-8")) if bench else None,
+        "scip_adjudicated": None,
+        "adjudication": None,
     }
+    verdicts = adjudication.load_verdicts(adjudicated) if adjudicated and adjudicated.is_dir() else {}
+    if verdicts:
+        rows = adjudication.apply_to_rows(optional("relations.jsonl"), verdicts)
+        report["scip_adjudicated"] = scip_rows(adjudication.cells_from_rows(rows, cells))
+        report["adjudication"] = adjudication.summary(verdicts, repo_languages())
+    return report
+
+
+def repo_languages() -> dict[str, str]:
+    from corpus import load_corpus
+
+    return {repo.name: repo.language for repo in load_corpus().repos}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -302,9 +342,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--metamorphic", type=Path)
     parser.add_argument("--faults", type=Path)
     parser.add_argument("--bench", type=Path)
+    parser.add_argument("--adjudicated", type=Path, default=ROOT / "adjudicated", help="evidence-backed verdicts over SCIP truth")
     parser.add_argument("--out", type=Path, help="directory for report.md and report.json (default: --run)")
     options = parser.parse_args(argv)
-    report = build(options.run, options.harness, options.metamorphic, options.faults, options.bench)
+    report = build(options.run, options.harness, options.metamorphic, options.faults, options.bench, options.adjudicated)
     out = options.out or options.run
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

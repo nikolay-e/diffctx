@@ -54,7 +54,7 @@ const BUDGETS: [u32; 6] = [100, 200, 400, 800, 1600, 3200];
 // Properties that fail today, each with the issue that tracks it (`gh#N` or
 // `fj#N`), named `property/language`. Checked both ways at the default
 // settings: a property that starts passing has to leave the list.
-const KNOWN_RED: &[(&str, &str)] = &[("homonym_decoys/kotlin", "gh#649")];
+const KNOWN_RED: &[(&str, &str)] = &[];
 
 struct Settings {
     cases: u32,

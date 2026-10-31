@@ -2966,7 +2966,10 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
 }
 
 /// A sibling module of one language that imports the definition by its
-/// qualified name is a real dependency: a Maven `it/` module tests `core/`.
+/// qualified name and declares the dependency is a real one: a Maven `it/`
+/// module tests `core/`. Without the declaration it could not compile
+/// against it, and an undeclared import is no caller (the Go and Rust
+/// `ws_*` cases).
 #[test]
 fn a_sibling_module_importing_the_qualified_name_still_guards_it() {
     let pricing = |rate: &str| {
@@ -2986,7 +2989,7 @@ fn a_sibling_module_importing_the_qualified_name_still_guards_it() {
             ),
             (
                 "it/pom.xml",
-                "<project><artifactId>it</artifactId></project>\n",
+                "<project><artifactId>it</artifactId><dependencies><dependency><artifactId>core</artifactId></dependency></dependencies></project>\n",
             ),
             (
                 "core/src/main/java/com/acme/core/Pricing.java",
@@ -3077,7 +3080,11 @@ fn local_functions_and_untyped_attribute_reads_are_not_callers() {
             ),
             (
                 "client.py",
-                "def fetch(session):\n    return session.headers()\n",
+                "import log\n\n\ndef fetch(session):\n    return session.headers()\n",
+            ),
+            (
+                "stray.py",
+                "def poll(session):\n    return session.headers()\n",
             ),
         ],
         &[(
@@ -3089,7 +3096,11 @@ fn local_functions_and_untyped_attribute_reads_are_not_callers() {
     assert!(!md.contains("server.py"), "{md}");
     assert!(
         md.contains("client.py::fetch"),
-        "an untyped call stays possible: {md}"
+        "an untyped call in a module that imports `log` stays possible: {md}"
+    );
+    assert!(
+        !md.contains("stray.py"),
+        "a script that never imports `log` is no hedge (gh#666): {md}"
     );
 }
 

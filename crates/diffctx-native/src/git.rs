@@ -1,16 +1,16 @@
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use wait_timeout::ChildExt;
 
-use crate::config::git::{self, GIT};
+use crate::config::git;
 use crate::types::DiffHunk;
 
 // Thread-local, not a process global: the MCP server runs overlapping
@@ -25,15 +25,13 @@ thread_local! {
 
 pub fn set_git_timeout(secs: u64) {
     GIT_TIMEOUT_SECS.with(|c| c.set(secs));
+    diffctx_snapshot::set_git_timeout(secs);
 }
 
 // PID alone is not unique within a process: the MCP server runs each tool
-// body on its own worker thread, so two overlapping pipelines can both reach
-// `find_ignored_paths_with_source` under the same PID. A shared filename means whoever
-// finishes first deletes the other's still-in-use excludesFile; git tolerates
-// a missing `core.excludesFile` silently, so the loser's `.diffctx/ignore`
-// rules are dropped without error. The counter makes every call's temp path
-// unique regardless of thread interleaving.
+// body on its own worker thread, so two overlapping pipelines can write a temp
+// file under the same PID. The counter makes every call's temp path unique
+// regardless of thread interleaving.
 static TEMP_EXCLUDES_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn git_timeout() -> u64 {
@@ -259,14 +257,6 @@ fn looks_like_duration(spec: &str) -> bool {
     DURATION_SHAPE_RE.is_match(spec)
 }
 
-pub struct ResolvedRange {
-    pub range: Option<String>,
-    /// A duration resolves against the live working tree, so untracked files
-    /// belong in the change set exactly as they do for a bare `--diff`.
-    pub from_duration: bool,
-    pub staged: Option<StagedSnapshot>,
-}
-
 /// The index captured once as a tree: every current-side byte of the run
 /// comes from `tree`, every old one from `base`, whatever the disk or a
 /// later `git add` says. `head` is the commit the snapshot sits on, for the
@@ -282,51 +272,6 @@ pub struct StagedSnapshot {
 /// `--cached`, accepted literally and nowhere else as an option.
 pub fn is_staged_keyword(spec: &str) -> bool {
     matches!(spec.trim(), "staged" | "--cached")
-}
-
-impl ResolvedRange {
-    fn verbatim(diff_range: Option<&str>) -> Self {
-        Self {
-            range: diff_range.map(str::to_string),
-            from_duration: false,
-            staged: None,
-        }
-    }
-}
-
-/// `A..T` where `T` names a tree — the form the plugin hook builds from
-/// `git write-tree` — is a snapshot with content and no history: it gets
-/// the same treatment as `staged`, anchored on `A`.
-fn tree_endpoint(repo_root: &Path, range: &str) -> Option<StagedSnapshot> {
-    let (Some(base), Some(head)) = split_diff_range(range) else {
-        return None;
-    };
-    if !(head.len() >= 7 && head.bytes().all(|b| b.is_ascii_hexdigit()))
-        || validate_rev(&head).is_err()
-    {
-        return None;
-    }
-    let kind = run_git(repo_root, &["cat-file", "-t", &head]).ok()?;
-    (kind.trim() == "tree").then(|| StagedSnapshot {
-        head: rev_oid(repo_root, &base),
-        base,
-        tree: head,
-    })
-}
-
-/// Captures the index, through a copy: `write-tree` on the real one takes
-/// its lock (a concurrent `git add` then reads as an unmerged index) and
-/// rewrites its cache tree. An index with unmerged entries has no tree to
-/// analyse, and falling back to the working tree would answer a different
-/// question, so it is an error naming the cause.
-pub fn capture_staged(repo_root: &Path) -> Result<StagedSnapshot> {
-    capture_planned(repo_root, &[]).map_err(|e| match e {
-        GitError::CommandFailed(reason) => GitError::CommandFailed(format!(
-            "cannot analyse the staged changes: the index cannot be written as a tree \
-             (unmerged entries? resolve them and stage the result) — {reason}"
-        )),
-        e => e,
-    })
 }
 
 /// One `git add`/`git rm` of a command line, run in its own directory.
@@ -438,41 +383,23 @@ fn rev_exists(repo_root: &Path, rev: &str) -> bool {
     run_git(repo_root, &["rev-parse", "--verify", "--quiet", &spec]).is_ok()
 }
 
-/// Resolves a duration spec to the last commit before the window.
-///
-/// Every other range is left untouched. `git diff <that commit>` covers both
-/// the commits made inside the window and the uncommitted work on top.
-///
-/// A ref that happens to look like a duration (a branch `24h`, an abbreviated
-/// sha `24d`) keeps its git meaning: the revision is probed first, so no
-/// existing invocation changes behaviour.
-pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Result<ResolvedRange> {
-    let Some(spec) = diff_range else {
-        return Ok(ResolvedRange::verbatim(None));
-    };
-    if is_staged_keyword(spec) {
-        let staged = capture_staged(repo_root)?;
-        return Ok(ResolvedRange {
-            range: Some(format!("{}..{}", staged.base, staged.tree)),
-            from_duration: false,
-            staged: Some(staged),
-        });
-    }
+/// The last commit before a `--diff 24h` window, the empty tree when the
+/// repository is younger: `None` when `spec` is no window (a revision, a
+/// range, the staged keyword). A ref that happens to look like a duration (a
+/// branch `24h`, an abbreviated sha `24d`) keeps its git meaning. Only the
+/// phrasing of messages and the legacy spelling of the analysed range need
+/// it; the range itself is resolved once by the snapshot layer.
+pub fn duration_base(repo_root: &Path, spec: &str) -> Result<Option<String>> {
     let trimmed = spec.trim();
+    if is_staged_keyword(trimmed) || split_diff_range(trimmed).0.is_some() {
+        return Ok(None);
+    }
     let parsed = parse_duration_seconds(trimmed);
     if parsed.is_none() && !looks_like_duration(trimmed) {
-        if let Some(staged) = tree_endpoint(repo_root, trimmed) {
-            return Ok(ResolvedRange {
-                staged: Some(staged),
-                ..ResolvedRange::verbatim(Some(trimmed))
-            });
-        }
-        return Ok(ResolvedRange::verbatim(Some(&forked_range(
-            repo_root, trimmed,
-        ))));
+        return Ok(None);
     }
     if rev_exists(repo_root, trimmed) {
-        return Ok(ResolvedRange::verbatim(Some(trimmed)));
+        return Ok(None);
     }
     let Some(seconds) = parsed else {
         return Err(GitError::InvalidDuration(trimmed.to_string()));
@@ -482,37 +409,11 @@ pub fn resolve_duration_range(repo_root: &Path, diff_range: Option<&str>) -> Res
     let base = run_git(repo_root, &["rev-list", "-1", &before, "HEAD", "--"])
         .map(|out| out.trim().to_string())
         .unwrap_or_default();
-    let base = if base.is_empty() {
+    Ok(Some(if base.is_empty() {
         empty_tree_oid(repo_root)
     } else {
         base
-    };
-    Ok(ResolvedRange {
-        range: Some(base),
-        from_duration: true,
-        staged: None,
-    })
-}
-
-/// `A..B` and `A...B` as one range: what `B` changed since it forked from
-/// `A`, both sides as commit ids. git's two-dot diff compares the two trees,
-/// so a base that moved on after the fork — a PR's target branch, a stale
-/// remote-tracking ref — read its own later commits as reverts in the change
-/// (#485, #462); a review wants the fork point, as a forge's "files changed"
-/// does. Histories with no common commit, and anything that is not two
-/// commits, stay as written.
-fn forked_range(repo_root: &Path, range: &str) -> String {
-    let (Some(base), Some(head)) = split_diff_range(range) else {
-        return range.to_string();
-    };
-    let (Some(base_oid), Some(head_oid)) = (rev_oid(repo_root, &base), rev_oid(repo_root, &head))
-    else {
-        return range.to_string();
-    };
-    match run_git(repo_root, &["merge-base", &base_oid, &head_oid]) {
-        Ok(fork) => format!("{}..{head_oid}", fork.trim()),
-        Err(_) => range.to_string(),
-    }
+    }))
 }
 
 /// Always targets the repo via `-C`.
@@ -1228,37 +1129,6 @@ pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
     }
 }
 
-pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Result<String> {
-    show_file_bytes_at_revision(repo_root, rev, rel_path)
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
-
-pub fn show_file_bytes_at_revision(
-    repo_root: &Path,
-    rev: &str,
-    rel_path: &Path,
-) -> Result<Vec<u8>> {
-    validate_rev(rev)?;
-    // The spec names a blob: a rewritten separator asks git for a different
-    // file, and on POSIX `src\utils.py` and `src/utils.py` can both exist.
-    let spec = format!(
-        "{}:{}",
-        rev,
-        crate::paths::to_posix_display(rel_path.to_string_lossy())
-    );
-    let mut cmd = git_command(repo_root);
-    cmd.args(["show", &spec])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let child = cmd.spawn()?;
-    let output = supervise(child)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(command_failure(repo_root, &["show"], &stderr));
-    }
-    Ok(output.stdout)
-}
-
 /// Every commit message in `base..head` — subject and body — newest first,
 /// at most `limit` commits, each body cut at `max_chars`. A range used to be
 /// titled by the last commit's subject alone; the body is where a person
@@ -1352,34 +1222,6 @@ pub fn hash_object_paths(repo_root: &Path, paths: &[String]) -> Result<Vec<Strin
     Ok(oids)
 }
 
-/// The size of each blob `rev` holds at `paths`, from `ls-tree -l`: no body
-/// is read, and an argv command leaves a stalled child nothing to hold. A
-/// `cat-file --batch-check` stream here waited out the whole `--timeout` on a
-/// git that answered it with garbage. A path the revision lacks is absent.
-pub fn blob_sizes(repo_root: &Path, rev: &str, paths: &[String]) -> Result<FxHashMap<String, u64>> {
-    validate_rev(rev)?;
-    let mut sizes = FxHashMap::default();
-    // Chunked: Windows caps a command line at 32 K characters.
-    for chunk in paths.chunks(200) {
-        let mut args: Vec<&str> = vec!["ls-tree", "-l", "-z", rev, "--"];
-        args.extend(chunk.iter().map(String::as_str));
-        for record in run_git_z(repo_root, &args)? {
-            // `<mode> blob <oid> <size>\t<path>`
-            let Some((meta, path)) = record.split_once('\t') else {
-                continue;
-            };
-            let mut fields = meta.split_whitespace().skip(1);
-            if fields.next() != Some("blob") {
-                continue;
-            }
-            if let Some(size) = fields.nth(1).and_then(|s| s.parse().ok()) {
-                sizes.insert(path.to_string(), size);
-            }
-        }
-    }
-    Ok(sizes)
-}
-
 /// `git grep`'s stdout; exit 1 means "no match", which is an answer here,
 /// not a failure.
 fn run_grep(repo_root: &Path, args: &[&str]) -> Result<String> {
@@ -1410,11 +1252,15 @@ pub struct Grepped<T> {
 /// at the read: a caller, a stale reference or a declaration in a withheld
 /// file is as withheld as the file. Applied per surface instead, each new
 /// reader of grep printed `.diffctx/ignore`d paths until someone noticed.
-fn admissible<T>(repo_root: &Path, rows: Vec<T>, rel_of: impl Fn(&T) -> String) -> Grepped<T> {
+fn admissible<T>(
+    source: &crate::source::Source,
+    rows: Vec<T>,
+    rel_of: impl Fn(&T) -> String,
+) -> Grepped<T> {
     let mut rels: Vec<String> = rows.iter().map(&rel_of).collect();
     rels.sort_unstable();
     rels.dedup();
-    let withheld = crate::pipeline::withheld_paths(repo_root, &rels);
+    let withheld = source.withheld(&rels);
     if withheld.is_empty() {
         return Grepped { rows, withheld };
     }
@@ -1430,6 +1276,7 @@ fn admissible<T>(repo_root: &Path, rows: Vec<T>, rel_of: impl Fn(&T) -> String) 
 /// tree when `None`) in the files `pathspec` names: (path, line, text).
 pub fn grep_lines_matching(
     repo_root: &Path,
+    source: &crate::source::Source,
     pattern: &str,
     rev: Option<&str>,
     pathspec: &[&str],
@@ -1440,7 +1287,7 @@ pub fn grep_lines_matching(
         args.push("--");
         args.extend_from_slice(pathspec);
     }
-    grep_rows(repo_root, &args, rev)
+    grep_rows(repo_root, source, &args, rev)
 }
 
 /// `git grep -n -z` at `rev` as (repo-relative path, line, text), withheld
@@ -1450,6 +1297,7 @@ pub fn grep_lines_matching(
 /// as called by nothing (#625).
 fn grep_rows(
     repo_root: &Path,
+    source: &crate::source::Source,
     args: &[&str],
     rev: Option<&str>,
 ) -> Result<Grepped<(String, u32, String)>> {
@@ -1468,22 +1316,24 @@ fn grep_rows(
             Some((path.to_string(), no, parts.next()?.to_string()))
         })
         .collect();
-    Ok(admissible(repo_root, rows, |(p, _, _)| p.clone()))
+    Ok(admissible(source, rows, |(p, _, _)| p.clone()))
 }
 
 /// Tracked and unignored untracked files holding `word` as a whole word.
 pub fn grep_files_with_word(
     repo_root: &Path,
+    source: &crate::source::Source,
     word: &str,
     pathspec: &[String],
 ) -> Result<Grepped<PathBuf>> {
-    grep_files(repo_root, &["-w", "-F", "-e", word], pathspec)
+    grep_files(repo_root, source, &["-w", "-F", "-e", word], pathspec)
 }
 
 /// The files with a line that declares `name`: `def name`, `class name`,
 /// `fn name`, `func (r T) name`, `const name =`, `name = function`.
 pub fn grep_files_with_declaration(
     repo_root: &Path,
+    source: &crate::source::Source,
     name: &str,
     pathspec: &[String],
 ) -> Result<Grepped<PathBuf>> {
@@ -1491,10 +1341,15 @@ pub fn grep_files_with_declaration(
     let pattern = format!(
         r#"((def|class|fn|fun|func|function|struct|interface|trait|enum|type|typealias|module|const|let|var|val|object|define)[[:space:]]+(\([^)]*\)[[:space:]]*)?["']?{name}([^[:alnum:]_$]|$))|((^|[^[:alnum:]_$.]){name}[[:space:]]*[:=][[:space:]]*(function|async|\())"#
     );
-    grep_files(repo_root, &["-E", "-e", &pattern], pathspec)
+    grep_files(repo_root, source, &["-E", "-e", &pattern], pathspec)
 }
 
-fn grep_files(repo_root: &Path, pattern: &[&str], pathspec: &[String]) -> Result<Grepped<PathBuf>> {
+fn grep_files(
+    repo_root: &Path,
+    source: &crate::source::Source,
+    pattern: &[&str],
+    pathspec: &[String],
+) -> Result<Grepped<PathBuf>> {
     let mut args: Vec<&str> = vec!["grep", "--untracked", "-l", "-z", "-I"];
     args.extend_from_slice(pattern);
     if !pathspec.is_empty() {
@@ -1507,7 +1362,7 @@ fn grep_files(repo_root: &Path, pattern: &[&str], pathspec: &[String]) -> Result
         .filter(|p| !p.is_empty() && crate::paths::contains_lexically(Path::new(p)))
         .map(str::to_string)
         .collect();
-    let found = admissible(repo_root, rels, String::clone);
+    let found = admissible(source, rels, String::clone);
     Ok(Grepped {
         rows: found
             .rows
@@ -1524,6 +1379,7 @@ fn grep_files(repo_root: &Path, pattern: &[&str], pathspec: &[String]) -> Result
 /// of a monorepo and the run never stopped (#413, #457).
 pub fn grep_code_words(
     repo_root: &Path,
+    source: &crate::source::Source,
     words: &[String],
     rev: Option<&str>,
     per_file: usize,
@@ -1542,13 +1398,14 @@ pub fn grep_code_words(
     args.extend(rev);
     args.push("--");
     args.extend(globs.iter().map(String::as_str));
-    grep_rows(repo_root, &args, rev)
+    grep_rows(repo_root, source, &args, rev)
 }
 
 /// The first line of each file that holds `word` as a whole word, in the
 /// working tree: where a name nothing defines is spelled.
 pub fn grep_word_first_lines(
     repo_root: &Path,
+    source: &crate::source::Source,
     word: &str,
     pathspec: &[String],
 ) -> Result<Grepped<(String, u32, String)>> {
@@ -1558,13 +1415,14 @@ pub fn grep_word_first_lines(
         args.push("--");
         args.extend(pathspec.iter().map(String::as_str));
     }
-    grep_rows(repo_root, &args, None)
+    grep_rows(repo_root, source, &args, None)
 }
 
 /// Every line holding one of `needles` (fixed strings) at `rev`, or in the
 /// working tree when `rev` is `None`: (repo-relative path, line, text).
 pub fn grep_lines(
     repo_root: &Path,
+    source: &crate::source::Source,
     needles: &[String],
     rev: Option<&str>,
 ) -> Result<Grepped<(String, u32, String)>> {
@@ -1575,7 +1433,7 @@ pub fn grep_lines(
     let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
     args.extend(patterns.args.iter().map(String::as_str));
     args.extend(rev);
-    grep_rows(repo_root, &args, rev)
+    grep_rows(repo_root, source, &args, rev)
 }
 
 /// `-f FILE` naming the patterns one per line, or `-e` per pattern when the
@@ -1649,34 +1507,6 @@ pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<
         .collect())
 }
 
-/// Rewrites one `.diffctx/ignore` pattern line to be anchored to the
-/// directory that contains the `.diffctx/` folder (`rel`, repo-root-relative,
-/// "" for the repo root itself), so a pattern declared in `sub/.diffctx/ignore`
-/// only ever matches within `sub/`. The Python tree-mode resolver
-/// (`ignore.py::_process_ignore_line`) implements the same rule; both are
-/// held to `tests/fixtures/ignore_anchor_cases.json`, not to each other's
-/// comments.
-fn anchor_diffctx_ignore_line(line: &str, rel: &str) -> String {
-    let (neg, pat) = match line.strip_prefix('!') {
-        Some(rest) => (true, rest),
-        None => (false, line),
-    };
-    let pat_no_trailing_slash = pat.trim_end_matches('/');
-    let full = if pat_no_trailing_slash.starts_with('/') || pat_no_trailing_slash.contains('/') {
-        let anchored = pat.trim_start_matches('/');
-        if rel.is_empty() {
-            format!("/{anchored}")
-        } else {
-            format!("/{rel}/{anchored}")
-        }
-    } else if rel.is_empty() {
-        pat.to_string()
-    } else {
-        format!("{rel}/**/{pat}")
-    };
-    if neg { format!("!{full}") } else { full }
-}
-
 /// Writes `content` to a fresh file in the system temp directory and returns
 /// its path, or `None` if no such file could be created.
 ///
@@ -1736,735 +1566,10 @@ fn create_new_private_file(path: &Path) -> std::io::Result<std::fs::File> {
     opts.open(path)
 }
 
-/// Finds every `.diffctx/ignore` file tracked or present in `repo_root`
-/// (any depth) and returns its patterns rewritten to be repo-root-relative,
-/// ready to feed into a combined gitignore-syntax exclude file.
-/// `check-ignore` and `ls-files` refuse to run outside a work tree, but the
-/// MCP file reader accepts any directory. A scratch `--git-dir` with the
-/// directory as `--work-tree` lets git's own ignore engine answer for a plain
-/// folder too — the alternative was a second matcher in Python, which is how
-/// `.netrc` got served while selection withheld it (#228).
-fn scratch_git_dir(repo_root: &Path) -> Option<PathBuf> {
-    if is_git_repo(repo_root).unwrap_or(true) {
-        return None;
-    }
-    // Created exclusively, never adopted: a pre-planted directory of this name
-    // would hand `git init` an existing `.git` whose config (excludesFile,
-    // core.* hooks) then decided what this process calls ignored — the same
-    // threat `write_private_temp_file` refuses. `create_dir` fails on an
-    // existing path, so a collision moves on to the next name.
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    let dir = (0..16).find_map(|_| {
-        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let candidate = std::env::temp_dir().join(format!(
-            "diffctx-scratch-git-{}-{nanos:x}-{seq}",
-            std::process::id()
-        ));
-        create_private_dir(&candidate).ok().map(|()| candidate)
-    })?;
-    let ok = Command::new("git")
-        .args(["init", "-q"])
-        .arg(&dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        let _ = std::fs::remove_dir_all(&dir);
-        return None;
-    }
-    Some(dir)
-}
-
-#[cfg(unix)]
-fn create_private_dir(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    std::fs::DirBuilder::new().mode(0o700).create(path)
-}
-
-#[cfg(not(unix))]
-fn create_private_dir(path: &Path) -> std::io::Result<()> {
-    std::fs::create_dir(path)
-}
-
-fn is_bare_repository(repo_root: &Path) -> bool {
-    run_git(repo_root, &["rev-parse", "--is-bare-repository"])
-        .map(|out| out.trim() == "true")
-        .unwrap_or(false)
-}
-
-fn scratch_git_args(scratch: Option<&Path>, repo_root: &Path) -> Vec<String> {
-    match scratch {
-        Some(dir) => vec![
-            format!("--git-dir={}", dir.join(".git").display()),
-            format!("--work-tree={}", repo_root.display()),
-        ],
-        None => Vec::new(),
-    }
-}
-
-/// `Err` when the declared policy could not be read in full — a failed
-/// `ls-files` or an unreadable pattern file. Returning an empty list there
-/// told the caller "no policy declared", which is the one answer that lands a
-/// failed `check-ignore` on the fail-OPEN branch for a repo that did declare
-/// one.
-fn collect_diffctx_ignore_patterns(
-    repo_root: &Path,
-    scratch: Option<&Path>,
-) -> Result<Vec<String>> {
-    // A scratch git dir is this call's own; a repository's policy is the
-    // run's, read once however many times the run asks.
-    match scratch {
-        None => crate::resource::memoized("diffctx_ignore", repo_root, || {
-            read_diffctx_ignore_patterns(repo_root, None)
-        }),
-        Some(_) => read_diffctx_ignore_patterns(repo_root, scratch),
-    }
-}
-
-fn read_diffctx_ignore_patterns(repo_root: &Path, scratch: Option<&Path>) -> Result<Vec<String>> {
-    let mut args = scratch_git_args(scratch, repo_root);
-    args.extend(
-        [
-            "ls-files",
-            "-z",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "--",
-            ":(glob)**/.diffctx/ignore",
-        ]
-        .map(String::from),
-    );
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let files = match run_git_z(repo_root, &arg_refs) {
-        Ok(files) => files,
-        // A bare repository has no working tree to list, so it cannot carry a
-        // `.diffctx/ignore` at all: "no policy" is the true answer there, not
-        // a discovery failure to fail closed on. Checked only on this path,
-        // so the happy path pays nothing.
-        Err(_) if is_bare_repository(repo_root) => Vec::new(),
-        Err(e) => return Err(e),
-    };
-
-    let mut patterns = Vec::new();
-    for raw in &files {
-        let rel_path = unquote_c_style(raw);
-        if !rel_path.ends_with(".diffctx/ignore") {
-            continue;
-        }
-        let rel_dir = rel_path
-            .strip_suffix(".diffctx/ignore")
-            .unwrap_or("")
-            .trim_end_matches('/');
-        let content = std::fs::read_to_string(repo_root.join(&rel_path))
-            .map_err(|e| GitError::CommandFailed(format!("cannot read {rel_path}: {e}")))?;
-        for line in content.lines() {
-            let line = line.trim_end();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            patterns.push(anchor_diffctx_ignore_line(line, rel_dir));
-        }
-    }
-    Ok(patterns)
-}
-
-/// Which rule family excluded a path. `.diffctx/ignore` is a declared
-/// confidentiality policy, so its exclusions are surfaced only as a count;
-/// gitignore exclusions are mundane and can be listed by path (#188).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum IgnoreSource {
-    DiffctxPolicy,
-    Gitignore,
-}
-
-/// Returns the subset of `rel_paths` (repo-root-relative) excluded by either
-/// `.gitignore` (via git's own engine, so nesting/negation/`**` are handled
-/// correctly) or `.diffctx/ignore` (patterns anchored per-directory and fed
-/// to git as a temporary `core.excludesFile`, so the same engine evaluates
-/// both mechanisms uniformly), mapped to the rule family that excluded each.
-/// Best-effort: any failure returns an empty map rather than blocking the
-/// diff pipeline on an ignore-resolution problem.
-///
-/// A `.gitignore` exclusion inherited from an excluded ancestor directory does
-/// NOT count. `--no-index` is required for `.diffctx/ignore` to apply to
-/// tracked files at all, but it also revives git's rule that a file cannot be
-/// re-included once a parent directory is excluded. pandoc excludes every
-/// dotted root entry with `/*.*` and re-includes `!.github/**`: git keeps
-/// `.github/workflows/ci.yml` because it is tracked, while `--no-index`
-/// reports it ignored *via the ancestor* — which silently reduced a real
-/// change to an empty selection (#153). A pattern matching the path itself
-/// still excludes it, so `.diffctx/ignore` and per-directory `.gitignore`
-/// rules (#85) keep working.
-pub fn find_ignored_paths_with_source(
-    repo_root: &Path,
-    rel_paths: &[String],
-) -> rustc_hash::FxHashMap<String, IgnoreSource> {
-    find_ignored_paths_inner(repo_root, rel_paths, true)
-}
-
-/// Every path git calls ignored, ancestor-inherited exclusions included.
-///
-/// The attribution variant above deliberately drops those (a tracked file
-/// under a directory the `--no-index` query reports excluded is not really
-/// ignored — #153). That rule is right for the diff, whose paths are tracked
-/// by construction, and wrong for anything that walks the working tree: there
-/// `.venv/`, `dist/` and `target/` are ignored precisely BY their directory
-/// rule, and answering "not ignored" for their contents is how a glob reader
-/// served files the repository excludes.
-pub fn find_ignored_paths_any(repo_root: &Path, rel_paths: &[String]) -> FxHashSet<String> {
-    find_ignored_paths_inner(repo_root, rel_paths, false)
-        .into_keys()
-        .collect()
-}
-
-fn find_ignored_paths_inner(
-    repo_root: &Path,
-    rel_paths: &[String],
-    drop_ancestor_inherited: bool,
-) -> rustc_hash::FxHashMap<String, IgnoreSource> {
-    if rel_paths.is_empty() {
-        return rustc_hash::FxHashMap::default();
-    }
-
-    let scratch = scratch_git_dir(repo_root);
-    if scratch.is_none() {
-        match is_git_repo(repo_root) {
-            Ok(true) => {}
-            // git did not answer — cut short by the run's deadline, or
-            // refusing to start (dubious ownership, a broken config, git
-            // gone): the policy is unread, not absent. Read as "no git dir",
-            // it published a withheld path (#408).
-            Err(e) => {
-                tracing::error!(
-                    "could not ask git about {} ({e}); all {} queried paths are treated as \
-                     ignored rather than risk publishing them",
-                    repo_root.display(),
-                    rel_paths.len()
-                );
-                return all_withheld(rel_paths);
-            }
-            // A plain directory whose scratch `git init` failed (read-only
-            // TMPDIR) has no policy to read: without a git dir, `ls-files`
-            // cannot run, and treating that as "policy unreadable" withheld
-            // every file of a folder that never declared one. Gitignore
-            // filtering is skipped, as before #228, and secret-by-name still
-            // applies through `is_withheld`.
-            Ok(false) => {
-                tracing::warn!(
-                    "no git dir and no scratch dir for {}; ignore rules skipped",
-                    repo_root.display()
-                );
-                return rustc_hash::FxHashMap::default();
-            }
-        }
-    }
-    let diffctx_patterns = match collect_diffctx_ignore_patterns(repo_root, scratch.as_deref()) {
-        Ok(patterns) => patterns,
-        Err(e) => {
-            tracing::error!(
-                "could not read the repository's .diffctx/ignore policy ({e}); all {} queried \
-                 paths are treated as ignored rather than risk publishing them",
-                rel_paths.len()
-            );
-            if let Some(dir) = scratch {
-                let _ = std::fs::remove_dir_all(dir);
-            }
-            return all_withheld(rel_paths);
-        }
-    };
-    let temp_excludes = if diffctx_patterns.is_empty() {
-        None
-    } else {
-        write_private_temp_file(&diffctx_patterns.join("\n"))
-    };
-
-    // Ancestors are queried alongside the paths themselves so an exclusion can
-    // be attributed: same winning rule on a parent directory means the file was
-    // only caught transitively.
-    let mut queries: Vec<String> = rel_paths.to_vec();
-    let mut ancestors: FxHashSet<String> = FxHashSet::default();
-    for rel in rel_paths {
-        for ancestor in ancestor_dirs(rel) {
-            if ancestors.insert(ancestor.clone()) {
-                queries.push(ancestor);
-            }
-        }
-    }
-
-    // Paths go over stdin, not argv. Every diff path plus every ancestor
-    // directory used to be passed as arguments, so a monorepo-sized range hit
-    // the platform argv limit, `git` failed to spawn, and the fail-open tail
-    // below turned that into "nothing is ignored" — silently disabling the
-    // `.diffctx/ignore` contract exactly when the repo is large enough for it
-    // to matter. stdin has no such ceiling.
-    // `-z` on BOTH sides. Line-delimited input splits a path containing a
-    // newline into two phantom queries: git then answers about `secret` and
-    // `name.py` while the real path `secret\nname.py` never gets a verdict, so
-    // the lookup below misses it and a file the user declared ignored is
-    // published. Verified against git directly — line mode reports the
-    // truncated stem, NUL mode reports the whole path. The rest of this module
-    // is already `-z` throughout.
-    let mut args: Vec<String> = scratch_git_args(scratch.as_deref(), repo_root);
-    args.extend([
-        "check-ignore".into(),
-        "--no-index".into(),
-        "-v".into(),
-        "-z".into(),
-        "--stdin".into(),
-    ]);
-    if let Some(ref path) = temp_excludes {
-        args.insert(0, format!("core.excludesFile={}", path.display()));
-        args.insert(0, "-c".into());
-    }
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    // Paths reach `--stdin` through a file rather than a pipe we write
-    // ourselves. Writing the whole payload into a pipe before reading stdout
-    // deadlocks as soon as it outgrows the pipe buffer: git blocks emitting
-    // matches that nobody is draining, we block on the write, and the pipeline
-    // hangs until the git timeout fires. A file hands the feeding to the kernel,
-    // which needs no second thread to stay correct.
-    let query_file = write_private_temp_file(&format!("{}\0", queries.join("\0")));
-
-    let result = (|| -> Result<rustc_hash::FxHashMap<String, IgnoreSource>> {
-        let Some(ref query_path) = query_file else {
-            return Err(GitError::CommandFailed(
-                "could not stage check-ignore query paths".into(),
-            ));
-        };
-        let mut cmd = git_command(repo_root);
-        cmd.args(&arg_refs)
-            .stdin(Stdio::from(std::fs::File::open(query_path)?))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let child = cmd.spawn()?;
-        let output = supervise(child)?;
-        // Exit code 1 from `check-ignore` means "none of the given paths are
-        // ignored" — not a failure. Any other non-zero code is a real error.
-        if !output.status.success() && output.status.code() != Some(1) {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(GitError::CommandFailed(format!(
-                "git check-ignore failed: {}",
-                stderr.trim()
-            )));
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let excludes_source = temp_excludes.as_ref().map(|p| p.display().to_string());
-
-        let rules = parse_verbose_ignore_records(&stdout);
-
-        Ok(rel_paths
-            .iter()
-            .filter_map(|rel| {
-                let rule = rules.get(rel)?;
-                let from_diffctx = excludes_source
-                    .as_deref()
-                    .is_some_and(|src| rule.starts_with(&format!("{src}:")));
-                if from_diffctx {
-                    Some((rel.clone(), IgnoreSource::DiffctxPolicy))
-                } else if !drop_ancestor_inherited
-                    || !ancestor_dirs(rel)
-                        .iter()
-                        .any(|dir| rules.get(dir) == Some(rule))
-                {
-                    Some((rel.clone(), IgnoreSource::Gitignore))
-                } else {
-                    None
-                }
-            })
-            .collect())
-    })();
-
-    if let Some(path) = temp_excludes {
-        let _ = std::fs::remove_file(path);
-    }
-    if let Some(path) = query_file {
-        let _ = std::fs::remove_file(path);
-    }
-    if let Some(dir) = scratch {
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    // Fail closed only where a policy was actually declared.
-    //
-    // The returned set is "exclude these", so `unwrap_or_default()` answered a
-    // failed check with "nothing is ignored" — the one answer that leaks, and
-    // `.diffctx/ignore` is a security contract. But failing closed
-    // unconditionally is too blunt: `check-ignore` cannot run in a bare clone at
-    // all, and excluding everything turned a supported repo shape into empty
-    // output.
-    //
-    // So the two cases are separated by whether the user declared anything. With
-    // `.diffctx/ignore` patterns present, a failed check must not silently
-    // publish what they asked to withhold. Without them the only loss is
-    // best-effort gitignore filtering, and refusing to emit anything would be a
-    // worse answer than emitting a bare clone's diff. A bare repo has no working
-    // tree, so it never has patterns and always lands on the open branch.
-    let policy_declared = !diffctx_patterns.is_empty();
-    result.unwrap_or_else(|e| {
-        if policy_declared {
-            tracing::error!(
-                "git check-ignore failed ({e}); .diffctx/ignore declares {} pattern(s), so all \
-                 {} queried paths are treated as ignored rather than risk publishing them",
-                diffctx_patterns.len(),
-                rel_paths.len()
-            );
-            all_withheld(rel_paths)
-        } else {
-            tracing::warn!(
-                "git check-ignore failed ({e}); no .diffctx/ignore patterns are declared, so \
-                 gitignore filtering is skipped for this run"
-            );
-            rustc_hash::FxHashMap::default()
-        }
-    })
-}
-
-/// The answer when the policy could not be read: every queried path withheld.
-fn all_withheld(rel_paths: &[String]) -> rustc_hash::FxHashMap<String, IgnoreSource> {
-    rel_paths
-        .iter()
-        .map(|p| (p.clone(), IgnoreSource::DiffctxPolicy))
-        .collect()
-}
-
-/// `check-ignore -v` emits `<source>:<line>:<pattern>\t<path>`; returns the
-/// `<source>:<line>:<pattern>` rule identity and the path it matched.
-///
-/// Split from the right: git prints the pattern raw but C-quotes any path
-/// containing a tab, so the last tab is always the separator. Splitting from
-/// the left mis-parses a pattern that itself contains a tab, and the resulting
-/// lookup miss reports an ignored file as not ignored — i.e. it leaks.
-/// `check-ignore -v -z` emits four NUL-separated fields per match —
-/// `<source>\0<line>\0<pattern>\0<path>\0` — and never quotes the path,
-/// because NUL cannot appear in one.
-///
-/// The text format this replaced (`<source>:<line>:<pattern>\t<path>`) had to
-/// guess where the pattern ended and the path began, and C-quoting made a path
-/// containing a tab or a newline ambiguous. Field-delimited records remove the
-/// guess entirely.
-fn parse_verbose_ignore_records(stdout: &str) -> rustc_hash::FxHashMap<String, String> {
-    let mut rules: rustc_hash::FxHashMap<String, String> = rustc_hash::FxHashMap::default();
-    let fields: Vec<&str> = stdout.split('\0').collect();
-    // A trailing NUL leaves an empty final element; chunks of four skip it.
-    for record in fields.chunks(4) {
-        if record.len() < 4 {
-            break;
-        }
-        let (source, line, pattern, path) = (record[0], record[1], record[2], record[3]);
-        if path.is_empty() {
-            continue;
-        }
-        // `check-ignore -v` also prints a record when the LAST matching
-        // pattern is a negation — the path is then explicitly NOT ignored
-        // (plain `check-ignore` exits 1 for it). Treating any record as "this
-        // path is ignored" inverted the meaning: a repository that un-ignores
-        // a file (`!SECURITY.md`) had that file silently dropped from --diff
-        // output (#193). The same reading is right for `.diffctx/ignore`: a
-        // negation there is the user explicitly re-including a path in the
-        // policy's own terms.
-        if pattern.starts_with('!') {
-            continue;
-        }
-        // The rule identity keeps the text format's shape: callers compare it
-        // against `format!("{excludes_source}:")` to tell a diffctx-declared
-        // exclusion from a gitignore one.
-        rules.insert(path.to_string(), format!("{source}:{line}:{pattern}"));
-    }
-    rules
-}
-
-fn ancestor_dirs(rel: &str) -> Vec<String> {
-    let mut dirs = Vec::new();
-    let mut remainder = rel;
-    while let Some((parent, _)) = remainder.rsplit_once('/') {
-        dirs.push(parent.to_string());
-        remainder = parent;
-    }
-    dirs
-}
-
-/// One `git cat-file --batch` answer, as the connection's worker read it.
-enum BatchReply {
-    Blob(Vec<u8>),
-    /// `missing`, `ambiguous`, or an object that is not a blob (a directory
-    /// path names a tree): nothing this caller can read as a file.
-    Absent,
-    TooLarge(usize),
-    /// The stream can no longer be trusted: malformed framing, early EOF,
-    /// an I/O error. The connection is discarded.
-    Broken(String),
-}
-
-const MAX_BATCH_HEADER_BYTES: u64 = 4096;
-
-/// A live `cat-file --batch` child. The caller owns the `Child` and nothing
-/// else touches it, so killing it never waits on a lock held by a blocked
-/// read; the pipes belong to a worker thread the caller only ever awaits
-/// with a deadline.
-struct BatchConn {
-    child: Child,
-    requests: mpsc::SyncSender<Vec<u8>>,
-    replies: mpsc::Receiver<BatchReply>,
-}
-
-impl BatchConn {
-    fn start(repo_root: &Path) -> Result<Self> {
-        let mut child = git_command(repo_root)
-            .args(["cat-file", "--batch"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
-        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-            kill_tree(&mut child);
-            return Err(GitError::Protocol(
-                "failed to capture the batch pipes".into(),
-            ));
-        };
-        let (requests, request_rx) = mpsc::sync_channel::<Vec<u8>>(1);
-        let (reply_tx, replies) = mpsc::sync_channel(1);
-        std::thread::spawn(move || batch_worker(stdin, stdout, &request_rx, &reply_tx));
-        Ok(Self {
-            child,
-            requests,
-            replies,
-        })
-    }
-
-    /// A graceful close gives git the cleanup allowance to exit on EOF, cut
-    /// to what the run has left; a cancelled or expired run kills at once.
-    fn shut_down(mut self, graceful: Option<&ChildLimits>) {
-        drop(self.requests);
-        if let Some(limits) = graceful {
-            let allowance = Duration::from_secs(GIT.catfile_termination_timeout_seconds)
-                .min(limits.deadline.saturating_duration_since(Instant::now()));
-            if limits.exhausted().is_none()
-                && matches!(self.child.wait_timeout(allowance), Ok(Some(_)))
-            {
-                return;
-            }
-        }
-        kill_tree(&mut self.child);
-    }
-}
-
-fn batch_worker(
-    mut stdin: ChildStdin,
-    stdout: ChildStdout,
-    requests: &mpsc::Receiver<Vec<u8>>,
-    replies: &mpsc::SyncSender<BatchReply>,
-) {
-    let mut reader = BufReader::new(stdout);
-    while let Ok(request) = requests.recv() {
-        let reply = match stdin.write_all(&request).and_then(|()| stdin.flush()) {
-            Ok(()) => read_batch_reply(&mut reader),
-            Err(e) => BatchReply::Broken(format!("write failed: {e}")),
-        };
-        let broken = matches!(reply, BatchReply::Broken(_));
-        if replies.send(reply).is_err() || broken {
-            return;
-        }
-    }
-}
-
-fn read_batch_reply(reader: &mut BufReader<ChildStdout>) -> BatchReply {
-    let mut header = Vec::new();
-    match reader
-        .by_ref()
-        .take(MAX_BATCH_HEADER_BYTES)
-        .read_until(b'\n', &mut header)
-    {
-        Ok(0) => return BatchReply::Broken("unexpected EOF".into()),
-        Ok(_) if header.last() != Some(&b'\n') => {
-            return BatchReply::Broken("unterminated header".into());
-        }
-        Ok(_) => {}
-        Err(e) => return BatchReply::Broken(format!("read failed: {e}")),
-    }
-    let header = String::from_utf8_lossy(&header);
-    let header = header.trim_end();
-    if header.ends_with(" missing") || header.ends_with(" ambiguous") {
-        return BatchReply::Absent;
-    }
-    let mut parts = header.rsplitn(3, ' ');
-    let (Some(size), Some(kind)) = (parts.next(), parts.next()) else {
-        return BatchReply::Broken(format!("malformed header: {header}"));
-    };
-    let Ok(size) = size.parse::<usize>() else {
-        return BatchReply::Broken(format!("invalid size in header: {header}"));
-    };
-    let keep = kind == "blob" && size <= crate::config::limits::MAX_BLOB_READ_BYTES;
-    // An object that is not kept is drained in bounded chunks, so the stream
-    // stays in step for the next request without allocating `size` bytes.
-    let mut body = if keep { vec![0u8; size] } else { Vec::new() };
-    let read = if keep {
-        reader.read_exact(&mut body)
-    } else {
-        std::io::copy(&mut reader.by_ref().take(size as u64), &mut std::io::sink()).and_then(|n| {
-            if n == size as u64 {
-                Ok(())
-            } else {
-                Err(std::io::ErrorKind::UnexpectedEof.into())
-            }
-        })
-    };
-    // The record terminator is part of the protocol: failing to consume it
-    // leaves the stream one byte off for every request after this one.
-    let mut terminator = [0u8; 1];
-    if let Err(e) = read.and_then(|()| reader.read_exact(&mut terminator)) {
-        return BatchReply::Broken(format!("body read failed: {e}"));
-    }
-    if terminator[0] != b'\n' {
-        return BatchReply::Broken("record terminator missing".into());
-    }
-    match (keep, kind) {
-        (true, _) => BatchReply::Blob(body),
-        (false, "blob") => BatchReply::TooLarge(size),
-        (false, _) => BatchReply::Absent,
-    }
-}
-
-pub struct CatFileBatch {
-    repo_root: PathBuf,
-    conn: Option<BatchConn>,
-    /// The run that created the batch: a request from a worker thread the
-    /// run was never published to is held to the same deadline.
-    run: Option<RunLimits>,
-}
-
-impl CatFileBatch {
-    /// The child starts on the first request: a run that reads only the
-    /// working tree never spawns one.
-    pub fn new(repo_root: &Path) -> Result<Self> {
-        Ok(Self {
-            repo_root: repo_root.to_path_buf(),
-            conn: None,
-            run: crate::resource::current_io_limits(),
-        })
-    }
-
-    pub fn get(&mut self, rev: &str, rel_path: &Path) -> Result<String> {
-        self.get_bytes(rev, rel_path)
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-    }
-
-    /// The blob as stored, undecoded: whether it is UTF-8 is the reader's
-    /// finding to disclose, not this layer's to hide.
-    pub fn get_bytes(&mut self, rev: &str, rel_path: &Path) -> Result<Vec<u8>> {
-        validate_rev(rev)?;
-        let display = crate::paths::to_posix_display(rel_path.to_string_lossy());
-        // The batch protocol is line-delimited: a path carrying `\n` (git
-        // emits it unquoted under core.quotePath=false) became two requests,
-        // and every later `get` read the previous request's leftover answer
-        // — another file's body under this file's name. Such a path goes
-        // through argv, where it is one argument whatever it contains.
-        if display.chars().any(|c| c.is_control()) {
-            return show_file_bytes_at_revision(&self.repo_root, rev, rel_path);
-        }
-        let spec = format!("{rev}:{display}");
-        let limits = self.limits();
-        if let Some(stop) = limits.exhausted() {
-            return Err(stop);
-        }
-        let conn = match self.conn.take() {
-            Some(conn) => conn,
-            None => BatchConn::start(&self.repo_root)?,
-        };
-        if conn
-            .requests
-            .send(format!("{spec}\n").into_bytes())
-            .is_err()
-        {
-            conn.shut_down(None);
-            return Err(GitError::Protocol(format!(
-                "connection closed before {spec}"
-            )));
-        }
-        let reply = loop {
-            if let Some(stop) = limits.exhausted() {
-                // A half-consumed stream is never reused: the next request
-                // would read this one's leftover bytes as its own answer.
-                conn.shut_down(None);
-                return Err(stop);
-            }
-            match conn.replies.recv_timeout(limits.next_slice()) {
-                Ok(reply) => break reply,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    break BatchReply::Broken("worker exited".into());
-                }
-            }
-        };
-        match reply {
-            // The stream is discarded; this one file is asked through argv,
-            // under the same deadline, and the next request starts a fresh
-            // connection.
-            BatchReply::Broken(why) => {
-                conn.shut_down(None);
-                tracing::debug!("cat-file batch discarded: {why} ({spec})");
-                show_file_bytes_at_revision(&self.repo_root, rev, rel_path)
-            }
-            reply => {
-                self.conn = Some(conn);
-                match reply {
-                    BatchReply::Blob(bytes) => Ok(bytes),
-                    BatchReply::TooLarge(size) => Err(GitError::BlobTooLarge { size, spec }),
-                    _ => Err(GitError::MissingObject(spec)),
-                }
-            }
-        }
-    }
-
-    fn limits(&self) -> ChildLimits {
-        ChildLimits::of_run(crate::resource::current_io_limits().or_else(|| self.run.clone()))
-    }
-
-    pub fn close(&mut self) {
-        let limits = self.limits();
-        if let Some(conn) = self.conn.take() {
-            conn.shut_down(Some(&limits));
-        }
-    }
-}
-
-impl Drop for CatFileBatch {
-    fn drop(&mut self) {
-        self.close();
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    /// Shared with `tests/test_ignore_anchor_fixture.py`: one table, two
-    /// implementations, no "mirrors" comment to drift.
-    #[test]
-    fn diffctx_ignore_anchoring_matches_the_shared_fixture() {
-        let raw = include_str!("../../../tests/fixtures/ignore_anchor_cases.json");
-        let cases: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
-        assert!(!cases.is_empty());
-        for case in cases {
-            let line = case["line"].as_str().unwrap();
-            let rel = case["rel"].as_str().unwrap();
-            let expected = case["expected"].as_str().unwrap();
-            assert_eq!(
-                super::anchor_diffctx_ignore_line(line, rel),
-                expected,
-                "line={line:?} rel={rel:?}"
-            );
-        }
-    }
-
     use super::*;
     use std::fs;
-    use std::sync::Barrier;
     use tempfile::TempDir;
 
     fn git(dir: &Path, args: &[&str]) {
@@ -2793,11 +1898,10 @@ mod tests {
         write_file(root, "new.txt", "new\n");
         commit_all(root, "new");
 
-        let resolved = resolve_duration_range(root, Some("24h")).expect("resolve");
-        assert!(resolved.from_duration);
-        assert_eq!(resolved.range.as_deref(), Some(old_head.as_str()));
+        let base = duration_base(root, "24h").expect("resolve");
+        assert_eq!(base.as_deref(), Some(old_head.as_str()));
 
-        let diff = get_diff_text(root, resolved.range.as_deref(), &[]).expect("diff");
+        let diff = get_diff_text(root, base.as_deref(), &[]).expect("diff");
         assert!(diff.contains("new.txt"), "window must cover the new commit");
         assert!(
             !diff.contains("old.txt"),
@@ -2813,9 +1917,9 @@ mod tests {
         write_file(root, "only.txt", "only\n");
         commit_all(root, "only");
 
-        let resolved = resolve_duration_range(root, Some("1w")).expect("resolve");
-        assert!(resolved.from_duration);
-        let diff = get_diff_text(root, resolved.range.as_deref(), &[]).expect("diff");
+        let base = duration_base(root, "1w").expect("resolve");
+        assert!(base.is_some());
+        let diff = get_diff_text(root, base.as_deref(), &[]).expect("diff");
         assert!(
             diff.contains("only.txt"),
             "a repo younger than the window is entirely new within it"
@@ -2831,98 +1935,7 @@ mod tests {
         commit_all(root, "a");
         git(root, &["branch", "24h"]);
 
-        let resolved = resolve_duration_range(root, Some("24h")).expect("resolve");
-        assert!(!resolved.from_duration);
-        assert_eq!(resolved.range.as_deref(), Some("24h"));
-    }
-
-    // --- parse_verbose_ignore_records: NUL fields remove every delimiter guess ---
-
-    #[test]
-    fn a_tab_in_the_pattern_no_longer_needs_disambiguating() {
-        // The text format put the pattern and the path on one line separated by
-        // a tab, so a pattern containing a tab had to be split from the right
-        // and hoped for. Fields make it unambiguous.
-        let stdout = ".gitignore\x003\x00foo\tbar\x00some/real/path.txt\x00";
-        let rules = parse_verbose_ignore_records(stdout);
-        assert_eq!(
-            rules.get("some/real/path.txt").map(String::as_str),
-            Some(".gitignore:3:foo\tbar")
-        );
-    }
-
-    /// The leak that forced `-z`. A newline in a filename split the query into
-    /// two phantom paths, git answered about the stem, the real path never got
-    /// a verdict, and a file the user declared ignored was published.
-    #[test]
-    fn a_newline_in_the_path_survives_as_one_record() {
-        let stdout = "excl\x001\x00secret*\x00secret\nname.py\x00";
-        let rules = parse_verbose_ignore_records(stdout);
-        assert_eq!(rules.len(), 1);
-        assert_eq!(
-            rules.get("secret\nname.py").map(String::as_str),
-            Some("excl:1:secret*")
-        );
-    }
-
-    #[test]
-    fn several_records_and_a_trailing_nul_parse_cleanly() {
-        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00b/c.tmp\x00";
-        let rules = parse_verbose_ignore_records(stdout);
-        assert_eq!(rules.len(), 2);
-        assert!(rules.contains_key("a.log"));
-        assert!(rules.contains_key("b/c.tmp"));
-    }
-
-    #[test]
-    fn a_truncated_final_record_is_dropped_not_half_read() {
-        // Killed mid-write, the last record is short. Reading three fields as
-        // four would key a rule under a pattern.
-        let stdout = ".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00*.tmp\x00";
-        let rules = parse_verbose_ignore_records(stdout);
-        assert_eq!(rules.len(), 1);
-        assert!(rules.contains_key("a.log"));
-    }
-
-    // --- anchor_diffctx_ignore_line: 4 reachable outputs, root vs nested, negation ---
-
-    #[test]
-    fn anchor_ignore_line_bare_pattern_at_root() {
-        assert_eq!(anchor_diffctx_ignore_line("*.log", ""), "*.log");
-    }
-
-    #[test]
-    fn anchor_ignore_line_bare_pattern_nested() {
-        assert_eq!(anchor_diffctx_ignore_line("*.log", "sub"), "sub/**/*.log");
-    }
-
-    #[test]
-    fn anchor_ignore_line_slash_pattern_at_root() {
-        assert_eq!(
-            anchor_diffctx_ignore_line("secrets/config.py", ""),
-            "/secrets/config.py"
-        );
-    }
-
-    #[test]
-    fn anchor_ignore_line_slash_pattern_nested() {
-        assert_eq!(
-            anchor_diffctx_ignore_line("secrets/config.py", "sub"),
-            "/sub/secrets/config.py"
-        );
-    }
-
-    #[test]
-    fn anchor_ignore_line_negated_bare_pattern() {
-        assert_eq!(anchor_diffctx_ignore_line("!keep.log", ""), "!keep.log");
-    }
-
-    #[test]
-    fn anchor_ignore_line_negated_slash_pattern_nested() {
-        assert_eq!(
-            anchor_diffctx_ignore_line("!secrets/keep.py", "sub"),
-            "!/sub/secrets/keep.py"
-        );
+        assert_eq!(duration_base(root, "24h").expect("resolve"), None);
     }
 
     // --- unquote_c_style + the quoted diff-header branch ---
@@ -3265,87 +2278,5 @@ mod tests {
             .expect("spawn true");
         let result = wait_with_timeout(child, Duration::from_secs(5), &["true"]);
         assert!(matches!(result, Ok(ref out) if out.status.success()));
-    }
-
-    // --- PID-keyed temp excludesFile: two concurrent calls in one process ---
-
-    #[test]
-    fn ignored_paths_concurrent_calls_both_see_their_own_ignore_rules() {
-        let tmp = TempDir::new().expect("tempdir");
-        let root_a = tmp.path().join("repo_a");
-        let root_b = tmp.path().join("repo_b");
-        fs::create_dir_all(&root_a).expect("mkdir a");
-        fs::create_dir_all(&root_b).expect("mkdir b");
-
-        for (root, secret) in [(&root_a, "secret_a.py"), (&root_b, "secret_b.py")] {
-            init_git_repo(root);
-            write_file(root, "app.py", "print('hi')\n");
-            write_file(root, ".diffctx/ignore", &format!("{secret}\n"));
-            write_file(root, secret, "SECRET\n");
-            commit_all(root, "initial");
-        }
-
-        // Run several concurrent rounds: a single lucky interleaving proved
-        // the pre-fix PID-only path could collide, so repeat to make a
-        // regression reliably visible instead of a one-shot coin flip.
-        for _ in 0..10 {
-            let barrier = Arc::new(Barrier::new(2));
-
-            let root_a_thread = root_a.clone();
-            let barrier_a = Arc::clone(&barrier);
-            let handle_a = std::thread::spawn(move || {
-                barrier_a.wait();
-                find_ignored_paths_with_source(
-                    &root_a_thread,
-                    &["secret_a.py".to_string(), "app.py".to_string()],
-                )
-            });
-
-            let root_b_thread = root_b.clone();
-            let barrier_b = Arc::clone(&barrier);
-            let handle_b = std::thread::spawn(move || {
-                barrier_b.wait();
-                find_ignored_paths_with_source(
-                    &root_b_thread,
-                    &["secret_b.py".to_string(), "app.py".to_string()],
-                )
-            });
-
-            let ignored_a = handle_a.join().expect("thread a panicked");
-            let ignored_b = handle_b.join().expect("thread b panicked");
-
-            assert_eq!(
-                ignored_a.get("secret_a.py"),
-                Some(&IgnoreSource::DiffctxPolicy),
-                "repo A lost its .diffctx/ignore rule to a concurrent call"
-            );
-            assert_eq!(
-                ignored_b.get("secret_b.py"),
-                Some(&IgnoreSource::DiffctxPolicy),
-                "repo B lost its .diffctx/ignore rule to a concurrent call"
-            );
-            assert!(!ignored_a.contains_key("app.py"));
-            assert!(!ignored_b.contains_key("app.py"));
-        }
-    }
-}
-
-#[cfg(test)]
-mod negation_record_tests {
-    use super::*;
-
-    #[test]
-    fn a_negation_record_does_not_mark_the_path_ignored() {
-        // check-ignore -v -z output: source \0 line \0 pattern \0 path \0 ...
-        let stdout = ".gitignore\x001\x00*.tmp\x00drop.tmp\x00.gitignore\x002\x00!NEWDOC.md\x00NEWDOC.md\x00";
-        let rules = parse_verbose_ignore_records(stdout);
-        assert!(
-            rules.contains_key("drop.tmp"),
-            "a positive match must stay an exclusion"
-        );
-        assert!(
-            !rules.contains_key("NEWDOC.md"),
-            "a negation match means the path is explicitly NOT ignored (#193)"
-        );
     }
 }

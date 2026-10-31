@@ -527,16 +527,15 @@ fn resolve_diff_range(py: Python<'_>, root_dir: &str, diff_range: &str) -> PyRes
     // Spawns `git`: holding the GIL across a subprocess blocks every other
     // thread in the interpreter for its whole duration, which is exactly the
     // wall-clock the latency columns are supposed to attribute to diffctx.
-    let resolved = py
-        .detach(move || crate::git::resolve_duration_range(&root, range.as_deref()))
-        .map_err(|e| GitError::new_err(e.to_string()))?;
+    let base = match range {
+        Some(spec) => py
+            .detach(move || crate::git::duration_base(&root, &spec))
+            .map_err(|e| GitError::new_err(e.to_string()))?,
+        None => None,
+    };
     // Every other range resolves too (to its fork point), but what the
     // caller phrases is the window, not a commit id.
-    Ok(if resolved.from_duration {
-        resolved.range.unwrap_or_default()
-    } else {
-        diff_range.to_string()
-    })
+    Ok(base.unwrap_or_else(|| diff_range.to_string()))
 }
 
 #[pyfunction]
@@ -547,7 +546,7 @@ fn get_language_for_file(path: &str) -> Option<String> {
 /// The engine's secret-path policy, for tree mode and the MCP tools (#227).
 #[pyfunction]
 fn is_secret_path(path: &str) -> bool {
-    crate::pipeline::is_secret_path(Path::new(path))
+    crate::source::is_secret_path(Path::new(path))
 }
 
 /// Which of `rel_paths` the engine withholds — secret by name or ignored as

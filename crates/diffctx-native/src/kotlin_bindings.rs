@@ -127,11 +127,9 @@ pub struct KotlinResolver<'a> {
     source: &'a Source,
     dialect: Dialect,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
-    /// Facts of other revisions, by (revision, path): the base side of a
-    /// range is asked for once per changed definition.
+    /// Facts of the base side, by (revision, path): asked for once per
+    /// changed definition.
     facts_at: RefCell<FxHashMap<(String, String), Option<Arc<KotlinFacts>>>>,
-    /// One `git cat-file --batch` for those reads, not a process per file.
-    batch: RefCell<Option<crate::git::CatFileBatch>>,
     type_files: RefCell<FxHashMap<String, Vec<String>>>,
     projects: RefCell<FxHashMap<PathBuf, Option<PathBuf>>>,
     deps: RefCell<FxHashMap<PathBuf, Vec<PathBuf>>>,
@@ -168,7 +166,6 @@ impl<'a> KotlinResolver<'a> {
             dialect,
             facts: RefCell::default(),
             facts_at: RefCell::default(),
-            batch: RefCell::default(),
             type_files: RefCell::default(),
             projects: RefCell::default(),
             deps: RefCell::default(),
@@ -204,23 +201,20 @@ impl<'a> KotlinResolver<'a> {
         })
     }
 
-    /// The facts of `rel` at another revision of the repository.
+    /// The facts of `rel` on the base side of the analysis; `rev` only keys
+    /// the memo.
     pub fn facts_at(&self, rev: &str, rel: &str) -> Option<Arc<KotlinFacts>> {
         let key = (rev.to_string(), rel.to_string());
         if let Some(known) = self.facts_at.borrow().get(&key) {
             return known.clone();
         }
-        let read = {
-            let mut batch = self.batch.borrow_mut();
-            if batch.is_none() {
-                *batch = crate::git::CatFileBatch::new(self.root).ok();
-            }
-            batch
-                .as_mut()
-                .and_then(|b| b.get(rev, Path::new(rel)).ok())
-                .or_else(|| crate::git::show_file_at_revision(self.root, rev, Path::new(rel)).ok())
-        }
-        .and_then(|text| self.parse(rel, &text));
+        let read = self
+            .source
+            .base()
+            .read_lossy(&self.root.join(rel))
+            .ok()
+            .flatten()
+            .and_then(|text| self.parse(rel, &text));
         self.facts_at.borrow_mut().insert(key, read.clone());
         read
     }
@@ -1098,7 +1092,7 @@ impl<'a> KotlinResolver<'a> {
     fn files_declaring(&self, name: &str) -> Vec<String> {
         if self.type_files.borrow().is_empty() {
             let mut index: FxHashMap<String, Vec<String>> = FxHashMap::default();
-            let rev = self.source.rev().map(str::to_string);
+            let rev = self.source.revision().map(str::to_string);
             let keywords = self.dialect.type_keywords();
             let globs: Vec<String> = self
                 .dialect
@@ -1108,6 +1102,7 @@ impl<'a> KotlinResolver<'a> {
                 .collect();
             let declared = crate::git::grep_lines_matching(
                 self.root,
+                self.source,
                 &format!("({})[[:space:]]+[A-Za-z_]", keywords.join("|")),
                 rev.as_deref(),
                 &globs.iter().map(String::as_str).collect::<Vec<_>>(),

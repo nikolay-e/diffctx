@@ -70,7 +70,8 @@ fn impact_markdown(repo: &Path) -> String {
 
 /// #389: `out = []; out.append(x)` appends to a list, whatever else defines
 /// `append`. The same name through a `Report` is the caller, and through a
-/// parameter nothing types it stays possible.
+/// parameter nothing types it stays possible in a module that imports
+/// `report`; a script that never does has no hedge (gh#666).
 #[test]
 fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     let report = |body: &str| {
@@ -94,7 +95,11 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
                 "writer.py",
                 "from report import Report\n\n\ndef write():\n    r = Report()\n    r.append(\"x\")\n",
             ),
-            ("loose.py", "def emit(w):\n    w.append(\"y\")\n"),
+            (
+                "loose.py",
+                "import report\n\n\ndef emit(w):\n    w.append(\"y\")\n",
+            ),
+            ("stray.py", "def drain(w):\n    w.append(\"z\")\n"),
         ],
         &[("report.py", &report("self.lines.append(text.strip())"))],
     );
@@ -103,6 +108,7 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     assert!(md.contains("possibly called from loose.py::emit"), "{md}");
     assert!(!md.contains("lists.py"), "{md}");
     assert!(!md.contains("built.py"), "{md}");
+    assert!(!md.contains("stray.py"), "{md}");
 }
 
 /// #389 on TypeScript: `new Map()` is a `Map`, and its `get` is not
@@ -2480,7 +2486,8 @@ fn a_generated_file_is_listed_under_its_source() {
 /// method, and a project that never imports the module cannot reach it. In a
 /// monorepo of independent projects such a guess stays inside the project
 /// that can import the definition; the sibling's `x.impact` and `w.write`
-/// are not possible callers, the same project's still are.
+/// are not possible callers, the same project's still are when the module
+/// names the definition's (a script that never does is no hedge, gh#666).
 #[test]
 fn an_untyped_guess_stays_within_its_project_root() {
     let item = |attr: &str| format!("class Item:\n    label = 1\n{attr}");
@@ -2492,7 +2499,10 @@ fn an_untyped_guess_stays_within_its_project_root() {
             ("a/src/models/__init__.py", &item("    impact = 1\n")),
             ("a/src/use.py", "def look(y):\n    return y.impact\n"),
             ("a/src/spool.py", &spool("return data")),
-            ("a/src/emit.py", "def emit(w):\n    w.write(\"y\")\n"),
+            (
+                "a/src/emit.py",
+                "import spool\n\n\ndef emit(w):\n    w.write(\"y\")\n",
+            ),
             ("b/pyproject.toml", manifest),
             (
                 "b/src/analytics/q.py",

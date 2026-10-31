@@ -16,6 +16,9 @@ SUFFIX_GRAMMAR = {
     ".jsx": "javascript",
     ".mjs": "javascript",
     ".cjs": "javascript",
+    ".rs": "rust",
+    ".go": "go",
+    ".kt": "kotlin",
 }
 
 

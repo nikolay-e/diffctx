@@ -174,7 +174,7 @@ def _detail(
     reported: TargetAnswer | None,
 ) -> dict:
     return {
-        "status": status,
+        "verdict": status,
         "from": from_key,
         "to": target.key,
         "kind": kind,

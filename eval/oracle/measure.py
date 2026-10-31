@@ -172,6 +172,7 @@ def measure_commit(run: RepoRun, sha: str, rng: random.Random) -> dict:
         run.symbols_left -= 1
         _score_symbol(run, prepared, rng.choice(candidates), work, resolver, {**context, "mode": "symbol"}, record)
     record.update(counts)
+    record["filtered"] = dict(prepared.head.filters.dropped + prepared.base.filters.dropped)
     return record
 
 

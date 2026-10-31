@@ -196,6 +196,141 @@ pub const TIERS: &[(Tier, &str, &[&str])] = &[
     (Tier::Two, "HTML/Astro", &["html", "astro"]),
 ];
 
+/// The relations a capability cell is about: the `kind` of a case's
+/// `relations` (`tests/cases/impact/SCHEMA.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(
+    dead_code,
+    reason = "read by the oracle harness once lib.rs re-exports the cells"
+)]
+pub enum RelationKind {
+    Calls,
+    Reads,
+    Writes,
+    Imports,
+    Reexports,
+    Overrides,
+    Instantiates,
+    PassesAsValue,
+    Configures,
+    Executes,
+    ReferencesPath,
+    TestsReach,
+}
+
+#[allow(
+    dead_code,
+    reason = "read by the oracle harness once lib.rs re-exports the cells"
+)]
+impl RelationKind {
+    pub const ALL: [Self; 12] = [
+        Self::Calls,
+        Self::Reads,
+        Self::Writes,
+        Self::Imports,
+        Self::Reexports,
+        Self::Overrides,
+        Self::Instantiates,
+        Self::PassesAsValue,
+        Self::Configures,
+        Self::Executes,
+        Self::ReferencesPath,
+        Self::TestsReach,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Calls => "calls",
+            Self::Reads => "reads",
+            Self::Writes => "writes",
+            Self::Imports => "imports",
+            Self::Reexports => "reexports",
+            Self::Overrides => "overrides",
+            Self::Instantiates => "instantiates",
+            Self::PassesAsValue => "passes_as_value",
+            Self::Configures => "configures",
+            Self::Executes => "executes",
+            Self::ReferencesPath => "references_path",
+            Self::TestsReach => "tests_reach",
+        }
+    }
+}
+
+/// What the engine promises for one (language, relation) cell (T16).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "read by the oracle harness once lib.rs re-exports the cells"
+)]
+pub enum CellState {
+    /// The oracle gates pass and no older path answers for the cell.
+    Precise,
+    /// Candidates, labelled as candidates.
+    Heuristic,
+    /// A named unknown, never a zero.
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "read by the oracle harness once lib.rs re-exports the cells"
+)]
+pub struct Cell {
+    /// A directory name of the corpus: `python`, `typescript`, `rust`, ...
+    pub language: &'static str,
+    pub relation: RelationKind,
+    pub state: CellState,
+}
+
+/// The corpus languages, each with a path its files carry, which is how the
+/// registry finds the model that reads them.
+const CELL_LANGUAGES: &[(&str, &str)] = &[
+    ("python", "x.py"),
+    ("typescript", "x.ts"),
+    ("rust", "x.rs"),
+    ("kotlin", "X.kt"),
+    ("java", "X.java"),
+    ("swift", "X.swift"),
+    ("go", "x.go"),
+    ("shell", "x.sh"),
+    ("sql", "x.sql"),
+    ("config", "x.yaml"),
+    ("web", "x.html"),
+    ("other", "x.rb"),
+];
+
+/// Cells a decision has made `Precise`: the oracle gate passes and the
+/// replaced path is deleted. None yet; a cell joins this list in the change
+/// that deletes its old path.
+const PRECISE: &[(&str, RelationKind)] = &[];
+
+/// Whether the cell is `Precise`. The oracle harness compares a relation's
+/// `kind` strictly for exactly these cells, and needs no registry to ask.
+#[allow(
+    dead_code,
+    reason = "read by the oracle harness once lib.rs re-exports the cells"
+)]
+pub fn is_precise(language: &str, relation: &str) -> bool {
+    PRECISE
+        .iter()
+        .any(|(l, k)| *l == language && k.name() == relation)
+}
+
+/// The kinds a model answering `relation` finds. The engine reports one
+/// "called from" family and does not say which kind it found, so a model
+/// that answers callers answers every kind a caller can be.
+fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
+    use RelationKind::{Calls, Executes, Instantiates, Overrides, PassesAsValue, Reads};
+    match relation {
+        Relation::Callers if language == "shell" => &[Calls, Executes],
+        Relation::Callers => &[Calls, Reads, Instantiates, PassesAsValue],
+        Relation::Implementations => &[Overrides],
+        Relation::Imports => &[RelationKind::Imports],
+        Relation::Uses | Relation::PublicApi | Relation::Removals => &[],
+    }
+}
+
 /// A definition one model resolved, as that model's own handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
@@ -359,6 +494,45 @@ impl<'a> Registry<'a> {
             listed
         }
     }
+
+    /// Every (language, relation) cell, each in the one state the models of
+    /// this registry make true: `Heuristic` where a model answers the
+    /// relation or the engine names paths, `None` where nothing reads it.
+    #[allow(
+        dead_code,
+        reason = "read by the oracle harness once lib.rs re-exports the cells"
+    )]
+    pub fn cells(&self) -> Vec<Cell> {
+        CELL_LANGUAGES
+            .iter()
+            .flat_map(|&(language, sample)| {
+                RelationKind::ALL.iter().map(move |&relation| Cell {
+                    language,
+                    relation,
+                    state: self.state(language, sample, relation),
+                })
+            })
+            .collect()
+    }
+
+    fn state(&self, language: &str, sample: &str, relation: RelationKind) -> CellState {
+        if is_precise(language, relation.name()) {
+            return CellState::Precise;
+        }
+        let answered = relation == RelationKind::ReferencesPath
+            || self.for_path(sample).is_some_and(|model| {
+                relation == RelationKind::TestsReach
+                    || model
+                        .modelled()
+                        .iter()
+                        .any(|r| kinds_of(language, *r).contains(&relation))
+            });
+        if answered {
+            CellState::Heuristic
+        } else {
+            CellState::None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -394,7 +568,7 @@ mod tests {
     #[test]
     fn a_path_is_tiered_by_its_language_and_by_the_models_that_read_it() {
         let root = tempfile::tempdir().expect("tempdir");
-        let source = Source::default();
+        let source = Source::empty();
         let registry =
             Registry::for_analysis(root.path(), &source, rustc_hash::FxHashSet::default());
         let expected = [
@@ -418,6 +592,39 @@ mod tests {
         for (path, tier) in expected {
             assert_eq!(registry.tier(path), tier, "{path}");
         }
+    }
+
+    #[test]
+    fn every_cell_is_stated_once_and_none_is_precise_yet() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = Source::empty();
+        let registry =
+            Registry::for_analysis(root.path(), &source, rustc_hash::FxHashSet::default());
+        let cells = registry.cells();
+        assert_eq!(cells.len(), CELL_LANGUAGES.len() * RelationKind::ALL.len());
+        assert!(cells.iter().all(|c| c.state != CellState::Precise));
+        let state = |language: &str, relation: RelationKind| {
+            cells
+                .iter()
+                .find(|c| c.language == language && c.relation == relation)
+                .map(|c| c.state)
+        };
+        for language in ["python", "typescript", "rust", "kotlin"] {
+            assert_eq!(
+                state(language, RelationKind::Calls),
+                Some(CellState::Heuristic),
+                "{language} calls"
+            );
+        }
+        for (language, _) in CELL_LANGUAGES {
+            assert_eq!(
+                state(language, RelationKind::ReferencesPath),
+                Some(CellState::Heuristic),
+                "{language} references_path"
+            );
+        }
+        assert_eq!(state("other", RelationKind::Calls), Some(CellState::None));
+        assert_eq!(state("rust", RelationKind::Writes), Some(CellState::None));
     }
 
     #[test]

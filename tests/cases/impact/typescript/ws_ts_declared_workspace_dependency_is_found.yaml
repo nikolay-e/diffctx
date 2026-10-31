@@ -1,0 +1,44 @@
+name: ws_ts_declared_workspace_dependency_is_found
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, workspace, cross-project, npm-workspaces, decoy, body-only]
+repo:
+  initial_files:
+    package.json: |
+      { "name": "monorepo", "private": true, "workspaces": ["packages/*"] }
+    packages/core/package.json: |
+      { "name": "@acme/core", "version": "1.0.0" }
+    packages/core/src/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id}`;
+        }
+      }
+    packages/app/package.json: |
+      { "name": "@acme/app", "version": "1.0.0", "dependencies": { "@acme/core": "workspace:*" } }
+    packages/app/src/loose.ts: |
+      export function showLoose(store: any, id: string): string {
+        return store.loadItem(id);
+      }
+    packages/stray/package.json: |
+      { "name": "@acme/stray", "version": "1.0.0" }
+    packages/stray/src/loose.ts: |
+      export function showStray(store: any, id: string): string {
+        return store.loadItem(id);
+      }
+  changed_files:
+    packages/core/src/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id.trim()}`;
+        }
+      }
+  commit_message: "store: normalise ids"
+expect:
+  changed: [packages/core/src/store.ts::Store.loadItem]
+  relations:
+    - {from: "packages/app/src/loose.ts::showLoose", to: "packages/core/src/store.ts::loadItem", kind: calls,
+       resolution: candidate, site: 2}
+  decoys:
+    "packages/core/src/store.ts::loadItem": [packages/stray/src/loose.ts]

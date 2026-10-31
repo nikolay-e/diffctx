@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 import adjudicate
@@ -14,7 +15,14 @@ from indexing import setup_tools
 
 
 def setup(argv: list[str]) -> int:
-    setup_tools(load_corpus())
+    """Install what the selected repositories (same options as `measure`) need."""
+    parser = argparse.ArgumentParser(prog="setup")
+    parser.add_argument("--repo", action="append")
+    parser.add_argument("--commits", type=int)
+    parser.add_argument("--fast", action="store_true")
+    options = parser.parse_args(argv)
+    corpus = load_corpus()
+    setup_tools(corpus, {repo.language for repo in corpus.select(options.repo, options.fast)})
     return 0
 
 

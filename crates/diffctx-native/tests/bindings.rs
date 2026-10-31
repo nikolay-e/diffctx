@@ -732,10 +732,13 @@ fn a_context_manager_binds_its_target_and_no_binding_spans_lines() {
         ],
         "{doc}"
     );
+    // `client/` imports `mcp` and nothing of `srv`, and declares no
+    // dependency on `server/`: a parameter nothing types in a project that
+    // cannot reach the definition is no possible caller (gh#649, gh#666).
     assert_eq!(
         callers(&doc, "call_tool", "candidate"),
-        vec!["client/tests/test_run.py::test_fixture_session"],
-        "a parameter nothing types stays possible: {doc}"
+        Vec::<&str>::new(),
+        "a project that cannot import the definition is no hedge: {doc}"
     );
 }
 
@@ -799,7 +802,7 @@ fn go_callers_bind_through_the_package_and_the_stated_type() {
     );
     assert_eq!(
         callers(&doc, "Total", "candidate"),
-        Vec::<String>::new(),
+        Vec::<&str>::new(),
         "{doc}"
     );
     assert_eq!(

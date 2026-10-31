@@ -1,0 +1,51 @@
+name: ws_rust_declared_path_dependency_is_found_undeclared_is_not
+mode: impact
+source: gh#649
+issue_state: open
+tags: [rust, workspace, cross-project, path-dependency, decoy, body-only]
+repo:
+  initial_files:
+    core/Cargo.toml: |
+      [package]
+      name = "shop-core"
+      version = "0.1.0"
+      edition = "2021"
+    core/src/lib.rs: |
+      pub mod pricing;
+    core/src/pricing.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.iter().sum()
+      }
+    app/Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      shop-core = { path = "../core" }
+    app/src/lib.rs: |
+      pub fn charge(items: &[u32]) -> u32 {
+          shop_core::pricing::total(items) + 1
+      }
+    stray/Cargo.toml: |
+      [package]
+      name = "stray"
+      version = "0.1.0"
+      edition = "2021"
+    stray/src/lib.rs: |
+      pub fn report(items: &[u32]) -> u32 {
+          shop_core::pricing::total(items)
+      }
+  changed_files:
+    core/src/pricing.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.iter().copied().sum::<u32>()
+      }
+  commit_message: "pricing: sum by value"
+expect:
+  changed: [core/src/pricing.rs::total]
+  relations:
+    - {from: "app/src/lib.rs::charge", to: "core/src/pricing.rs::total", kind: calls, resolution: resolved, site: 2}
+  decoys:
+    "core/src/pricing.rs::total": [stray/src/lib.rs]

@@ -359,14 +359,14 @@ fn a_cat_file_that_exits_at_once_is_recovered_from() {
 #[test]
 fn a_descendant_holding_stdout_cannot_hold_the_run() {
     let fx = fixture();
-    let _ = fx.impact("ls-files", "descendant_holds_stdout");
+    let _ = fx.impact("ls-tree", "descendant_holds_stdout");
     fx.assert_no_survivors();
 }
 
 #[test]
 fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
     let fx = fixture();
-    let out = fx.impact_within("ls-files", "stderr_flood", ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_within("ls-tree", "stderr_flood", ANSWER_TIMEOUT_SECS);
     assert!(
         out.status.success(),
         "{}",
@@ -525,22 +525,25 @@ fn a_policy_the_deadline_left_unread_still_withholds() {
     fx.assert_no_survivors();
 }
 
-/// git refusing to list the policy — dubious ownership, a broken config,
-/// git gone — leaves it unread just as the deadline does, and the path it
-/// withholds stays withheld. The run asks once: whether it is a repository
-/// and what `.diffctx/ignore` declares are answers it keeps.
+/// git refusing to list the snapshot the policy is read from — dubious
+/// ownership, a broken config, git gone — leaves the policy unread just as
+/// the deadline does, and the path it withholds is not published: the run
+/// ends in git's own words instead of answering from a snapshot it could not
+/// admit (fj#130). It asks once: the listing is an answer the run keeps.
 #[test]
 fn a_policy_git_refused_to_read_still_withholds() {
-    let policy = ":(glob)**/.diffctx/ignore";
     for mode in ["impact", "pack"] {
         let fx = withheld_change();
         let out = if mode == "impact" {
-            fx.impact(policy, "fail")
+            fx.impact("ls-tree", "fail")
         } else {
-            fx.pack(policy, "fail", &[])
+            fx.pack("ls-tree", "fail", &[])
         };
-        let doc = json(&out).to_string();
-        assert!(!doc.contains("vault.py"), "{mode}: {doc}");
+        assert_eq!(out.status.code(), Some(3), "{mode}");
+        let published = String::from_utf8_lossy(&out.stdout);
+        assert!(!published.contains("vault.py"), "{mode}: {published}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("simulated failure"), "{mode}: {stderr}");
         let refusals = std::fs::read_to_string(fx.pids_file()).unwrap_or_default();
         assert!(
             !refusals.trim().is_empty(),
@@ -686,16 +689,7 @@ fn a_stalled_full_read_names_the_deadline() {
 // Sweeps that fail today, test name -> the issue that tracks it (`gh#N` or
 // `fj#N`). Checked both ways: a listed sweep that passes fails until it leaves
 // the list.
-const KNOWN_RED: &[(&str, &str)] = &[
-    ("python_pack", "fj#130"),
-    ("python_locate", "fj#130"),
-    ("typescript_pack", "fj#130"),
-    ("typescript_locate", "fj#130"),
-    ("rust_pack", "fj#130"),
-    ("rust_locate", "fj#130"),
-    ("kotlin_pack", "fj#130"),
-    ("kotlin_locate", "fj#130"),
-];
+const KNOWN_RED: &[(&str, &str)] = &[];
 
 static SWEEPS: AtomicUsize = AtomicUsize::new(0);
 

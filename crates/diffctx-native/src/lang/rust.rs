@@ -1223,7 +1223,6 @@ pub(super) struct RustResolver<'a> {
     texts: RefCell<FxHashMap<String, Option<Rc<str>>>>,
     facts: RefCell<FxHashMap<String, Option<Rc<Facts>>>>,
     facts_at: RefCell<FxHashMap<(String, String), Option<Rc<Facts>>>>,
-    batch: RefCell<Option<crate::git::CatFileBatch>>,
     keys: RefCell<FxHashMap<String, ModKey>>,
     packages: RefCell<FxHashMap<String, Option<String>>>,
     crates: OnceCell<FxHashMap<String, String>>,
@@ -1244,7 +1243,6 @@ impl<'a> RustResolver<'a> {
             texts: RefCell::default(),
             facts: RefCell::default(),
             facts_at: RefCell::default(),
-            batch: RefCell::default(),
             keys: RefCell::default(),
             packages: RefCell::default(),
             crates: OnceCell::new(),
@@ -1270,22 +1268,20 @@ impl<'a> RustResolver<'a> {
         })
     }
 
+    /// The facts of `rel` on the base side of the analysis. `rev` only keys
+    /// the memo: the side is the reader's, not a spelling to resolve again.
     fn facts_at(&self, rev: &str, rel: &str) -> Option<Rc<Facts>> {
         memo(
             &self.facts_at,
             (rev.to_string(), rel.to_string()),
             None,
             || {
-                let mut batch = self.batch.borrow_mut();
-                if batch.is_none() {
-                    *batch = crate::git::CatFileBatch::new(self.root).ok();
-                }
-                let text = batch
-                    .as_mut()
-                    .and_then(|b| b.get(rev, Path::new(rel)).ok())
-                    .or_else(|| {
-                        crate::git::show_file_at_revision(self.root, rev, Path::new(rel)).ok()
-                    })?;
+                let text = self
+                    .source
+                    .base()
+                    .read_lossy(&self.root.join(rel))
+                    .ok()
+                    .flatten()?;
                 facts_of(&text).map(Rc::new)
             },
         )

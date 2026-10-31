@@ -6,7 +6,7 @@ import report
 
 def cell(**fields):
     base = {
-        "language": "python", "mode": "impact", "kind": "calls", "repo": "r", "commit": "c1", "truth": 0, "tp": 0, "tp_weak": 0,
+        "language": "python", "mode": "impact", "kind": "calls", "repo": "r", "commit": "c1", "target": "a::f", "truth": 0, "tp": 0, "tp_weak": 0,
         "fn": 0, "fp": 0, "fp_weak": 0, "kind_mismatches": 0, "abstained": False, "fcn": False,
     }  # fmt: skip
     return {**base, **fields}

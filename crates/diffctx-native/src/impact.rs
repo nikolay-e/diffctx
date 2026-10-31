@@ -723,6 +723,54 @@ fn references_module(
         || symbol.is_some_and(|s| imported_from_package(changed, files, caller.path(), s))
 }
 
+/// Whether a JS/TS file names `used` by a relative path of its own import
+/// (`from "../core/store"`, `require("./store.js")`): the specifier states the
+/// target outright, so a project root between them does not break the link.
+/// Only the file's import lines count; a word that happens to be the module's
+/// name does not.
+fn imports_by_relative_path(frags: &[&Fragment], user: &str, used: &str) -> bool {
+    if !matches!(
+        crate::languages::get_language_for_file(user),
+        Some("javascript" | "typescript" | "tsx")
+    ) {
+        return false;
+    }
+    let target = used.rsplit_once('.').map_or(used, |(stem, _)| stem);
+    let target = target.strip_suffix("/index").unwrap_or(target);
+    let dir = user.rsplit_once('/').map_or("", |(dir, _)| dir);
+    frags
+        .iter()
+        .flat_map(|f| f.content.lines())
+        .filter(|line| {
+            let head = line.trim_start();
+            head.starts_with("import")
+                || head.starts_with("export")
+                || head.contains("require(")
+                || head.contains("import(")
+        })
+        .flat_map(|line| line.split(['"', '\'', '`']).skip(1).step_by(2))
+        .filter(|spec| spec.starts_with("./") || spec.starts_with("../"))
+        .any(|spec| {
+            let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+            for part in spec.split('/') {
+                match part {
+                    "" | "." => {}
+                    ".." => {
+                        parts.pop();
+                    }
+                    name => parts.push(name),
+                }
+            }
+            let joined = parts.join("/");
+            let joined = joined
+                .rsplit_once('.')
+                .filter(|(_, e)| ["js", "mjs", "cjs", "ts", "tsx", "mts", "cts", "jsx"].contains(e))
+                .map_or(joined.as_str(), |(stem, _)| stem);
+            let joined = joined.strip_suffix("/index").unwrap_or(joined);
+            joined == target
+        })
+}
+
 /// `from models import Steps` reaches `models/wearables.py::Steps` through
 /// the package that re-exports it: the caller names the package, never the
 /// module (#351). Only an import line naming both the package and the symbol
@@ -1007,7 +1055,12 @@ impl UntracedNamers {
             .collect();
         let grepped = read_or_note(
             state,
-            crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+            crate::git::grep_lines(
+                &state.root_dir,
+                &state.run.source(),
+                &needles,
+                head.as_deref(),
+            ),
         );
         let mut rows: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
         for (path, line, text) in &grepped.rows {
@@ -1478,42 +1531,38 @@ fn declaration_head(content: &str) -> String {
     head.join("\n")
 }
 
-/// The base revision's text of the files whose public signatures impact
-/// compares, read through one `cat-file --batch` and kept: the check of each
-/// public symbol ran `git show` of its whole file, the same few files again
-/// and again. Only a read that succeeded is kept, so a failure is met again
-/// as the first one was.
+/// The base side's text of the files whose public signatures impact compares,
+/// read through the analysis' base reader and kept: the check of each public
+/// symbol read the same few files again and again. Only a read that succeeded
+/// is kept, so a failure is met again as the first one was.
 struct BaseTexts<'a> {
     root: &'a Path,
-    batch: std::cell::RefCell<Option<crate::git::CatFileBatch>>,
-    texts: std::cell::RefCell<FxHashMap<(String, String), std::rc::Rc<str>>>,
+    source: crate::source::Source,
+    texts: std::cell::RefCell<FxHashMap<String, std::rc::Rc<str>>>,
 }
 
 impl<'a> BaseTexts<'a> {
-    fn new(root: &'a Path) -> Self {
+    fn new(root: &'a Path, base: crate::source::Source) -> Self {
         Self {
             root,
-            batch: std::cell::RefCell::new(None),
+            source: base,
             texts: std::cell::RefCell::default(),
         }
     }
 
-    fn read(&self, rev: &str, rel_path: &str) -> crate::git::Result<std::rc::Rc<str>> {
-        let key = (rev.to_string(), rel_path.to_string());
-        if let Some(text) = self.texts.borrow().get(&key) {
-            return Ok(text.clone());
+    /// `Ok(None)`: the base has no such file.
+    fn read(&self, rel_path: &str) -> crate::git::Result<Option<std::rc::Rc<str>>> {
+        if let Some(text) = self.texts.borrow().get(rel_path) {
+            return Ok(Some(text.clone()));
         }
-        let mut batch = self.batch.borrow_mut();
-        if batch.is_none() {
-            *batch = Some(crate::git::CatFileBatch::new(self.root)?);
-        }
-        let text: std::rc::Rc<str> = batch
-            .as_mut()
-            .expect("opened above")
-            .get(rev, Path::new(rel_path))?
-            .into();
-        self.texts.borrow_mut().insert(key, text.clone());
-        Ok(text)
+        let Some(text) = self.source.read_lossy(&self.root.join(rel_path))? else {
+            return Ok(None);
+        };
+        let text: std::rc::Rc<str> = text.into();
+        self.texts
+            .borrow_mut()
+            .insert(rel_path.to_string(), text.clone());
+        Ok(Some(text))
     }
 }
 
@@ -1522,15 +1571,15 @@ impl<'a> BaseTexts<'a> {
 /// is what the callers list already says, and a contracts section repeated
 /// on every refactor teaches the reader to skip it (#325). A file the base
 /// does not have is new, and every export in it is a new contract.
-fn signature_changed(
-    state: &ScoredState,
-    base_texts: &BaseTexts,
-    base: &str,
-    core: &Fragment,
-) -> bool {
+fn signature_changed(state: &ScoredState, base_texts: &BaseTexts, core: &Fragment) -> bool {
     let rel_path = rel(state, core.path());
-    let Ok(old) = base_texts.read(base, &rel_path) else {
-        return true;
+    let old = match base_texts.read(&rel_path) {
+        Ok(Some(old)) => old,
+        Ok(None) => return true,
+        Err(e) => {
+            state.run.note(crate::resource::reason_for(&e));
+            return true;
+        }
     };
     let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     let head = squash(&declaration_head(&core.content));
@@ -1825,20 +1874,9 @@ impl<'a> TestIndex<'a> {
 /// Whether the tree the run reads holds any test file, linked or not.
 fn repo_holds_test_file(state: &ScoredState) -> bool {
     let is_test = |p: &Path| crate::testfiles::is_test_path(p);
-    match state.run.source().list_blobs(&[]) {
-        Some(Ok(blobs)) => state.run.bounded(blobs).any(|b| is_test(&b.path)),
-        Some(Err(_)) => false,
-        None => crate::git::run_git_z(
-            &state.root_dir,
-            &[
-                "ls-files",
-                "-z",
-                "--cached",
-                "--others",
-                "--exclude-standard",
-            ],
-        )
-        .is_ok_and(|files| state.run.bounded(files).any(|f| is_test(Path::new(&f)))),
+    match state.run.source().list() {
+        Ok(listing) => state.run.bounded(&listing.blobs).any(|b| is_test(&b.path)),
+        Err(_) => false,
     }
 }
 
@@ -1884,7 +1922,12 @@ fn binary_tests(state: &ScoredState, diff_range: Option<&str>) -> FxHashMap<Stri
     let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+        crate::git::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            &needles,
+            head.as_deref(),
+        ),
     );
     let mut out: FxHashMap<String, String> = FxHashMap::default();
     for (own, krate, name) in entries {
@@ -2674,7 +2717,7 @@ pub fn build_impact(
     let analysed = state.analysed_range.as_deref().or(diff_range);
     let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
     let base = base_revision(analysed);
-    let base_texts = BaseTexts::new(&state.root_dir);
+    let base_texts = BaseTexts::new(&state.root_dir, state.run.source().base());
 
     let mut changed: Vec<ChangedSymbol> = Vec::new();
     // Schema changes first, then the public symbols something calls, then
@@ -2715,51 +2758,22 @@ pub fn build_impact(
         .into_iter()
         .chain(state.all_fragments.iter().map(|f| rel(state, f.path())))
         .collect();
-    // The directories that hold a project manifest: in a monorepo each
-    // child is one, and a name two siblings both spell links nothing.
-    let projects: FxHashSet<String> = universe
-        .iter()
-        .filter(|p| PROJECT_MANIFESTS.contains(&p.rsplit('/').next().unwrap_or(p.as_str())))
-        .map(|p| p.rsplit_once('/').map_or("", |(dir, _)| dir).to_string())
-        .collect();
-    let project_of = |path: &str| -> String {
-        let rel_path = rel(state, path);
-        let mut dir = rel_path.as_str();
-        while let Some((parent, _)) = dir.rsplit_once('/') {
-            if projects.contains(parent) {
-                return parent.to_string();
-            }
-            dir = parent;
-        }
-        String::new()
+    // A lexical link stops at a project the workspace model says cannot
+    // reference the other: a Python test naming `config` is not a test of
+    // another project's `config.ts`. It crosses through a declared
+    // dependency — a Maven `it/` module importing `com.acme.core.Pricing`, a
+    // workspace crate writing `core_crate::pricing`. A path-explicit relative
+    // JS/TS import names its target outright and is exempt.
+    let one_tree =
+        |user: &str, used: &str| source.may_reference(&rel(state, user), &rel(state, used));
+    let explicit_import = |user: &Fragment, used: &Fragment| {
+        let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
+        files
+            .fragments
+            .get(user.path())
+            .is_some_and(|frags| imports_by_relative_path(frags, &user_rel, &used_rel))
     };
-    // A lexical link stops at a sibling project's manifest: a Python test
-    // naming `config` is not a test of another project's `config.ts`. It
-    // crosses when one language and a qualified name say the dependency is
-    // real — a Maven `it/` module importing `com.acme.core.Pricing`, a
-    // workspace crate writing `core_crate::pricing`.
-    let one_tree = |a: &str, b: &str| {
-        let (pa, pb) = (project_of(a), project_of(b));
-        nests(&pa, &pb) || nests(&pb, &pa)
-    };
-    let one_project = |user: &Fragment, used: &Fragment| {
-        if one_tree(user.path(), used.path()) {
-            return true;
-        }
-        let lang = crate::languages::get_language_for_file;
-        let empty = FxHashSet::default();
-        let words = files.identifiers.get(user.path()).unwrap_or(&empty);
-        lang(user.path()).is_some()
-            && lang(user.path()) == lang(used.path())
-            && Path::new(&rel(state, used.path()))
-                .parent()
-                .into_iter()
-                .flat_map(Path::components)
-                .filter_map(|c| c.as_os_str().to_str())
-                .map(str::to_lowercase)
-                .filter(|d| d.len() >= 2 && !GENERIC_DIRECTORIES.contains(&d.as_str()))
-                .any(|d| words.contains(d.as_str()))
-    };
+    let one_project = |user: &Fragment, used: &Fragment| one_tree(user.path(), used.path());
     // Files the range deleted or renamed away are files an import may still
     // name: resolved, a remaining import of one is a broken caller, not an
     // external package.
@@ -2796,7 +2810,17 @@ pub fn build_impact(
                 },
                 def,
             )
-            .filter(|f| !untyped_guess(f) || one_tree(user.path(), used.path()))
+            .filter(|f| {
+                (one_tree(user.path(), used.path()) || explicit_import(user, used))
+                    && (!untyped_guess(f)
+                        || source.same_package(&path, &rel(state, used.path()))
+                        || references_module(
+                            user,
+                            &files,
+                            used.symbol_name.as_deref().map(base_symbol),
+                            used.path(),
+                        ))
+            })
     };
     let registration = |f: &Fragment| -> Option<String> {
         if is_jvm_path(f.path()) {
@@ -3037,6 +3061,8 @@ pub fn build_impact(
                     }
                     found => found.map(Some).ok_or("binding_rejected"),
                 }
+            } else if !one_tree(frag.path(), core.path()) && !explicit_import(frag, core) {
+                Err("other_project")
             } else if !{
                 let aliases = if member {
                     Vec::new()
@@ -3505,7 +3531,7 @@ pub fn build_impact(
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
                     && lang::rust::module_is_public(&state.run.source(), core.path())
-                    && signature_changed(state, &base_texts, &base, core)
+                    && signature_changed(state, &base_texts, core)
             }
         };
         // A test's declarations are no API: nothing but its runner calls
@@ -3738,7 +3764,6 @@ pub fn build_impact(
         for (sym, contract) in removed_definitions(
             state,
             &defined,
-            &base,
             head_rev.as_deref(),
             &in_a_hunk,
             &binds_to,
@@ -3944,12 +3969,6 @@ pub fn build_impact(
     output
 }
 
-/// Directory names every project has: naming one says nothing about which.
-const GENERIC_DIRECTORIES: &[&str] = &[
-    "src", "main", "java", "kotlin", "scala", "lib", "test", "tests", "app", "pkg", "internal",
-    "cmd", "include", "source", "sources",
-];
-
 /// Definitions the change removed and nothing at the head defines again,
 /// with the lines outside the diff that still name them (#367). They have
 /// no fragment at the head, so the callers graph never reaches them: an
@@ -4018,12 +4037,21 @@ fn removed_by_models(
         })
         .chain(state.deleted_files.iter().map(|p| (p.clone(), None)))
         .collect();
-    let old_paths: Vec<String> = pairs.iter().map(|(old, _)| old.clone()).collect();
-    let base_sizes = crate::git::blob_sizes(&state.root_dir, base, &old_paths).unwrap_or_default();
+    let base_source = state.run.source().base();
+    let over_cap = |old: &str| match base_source.read(&state.root_dir.join(old)) {
+        Ok(bytes) => bytes.is_some_and(|b| b.len() as u64 > cap),
+        Err(e) => match crate::resource::reason_for(&e) {
+            crate::resource::LimitReason::FileTooLarge => true,
+            reason => {
+                state.run.note(reason);
+                false
+            }
+        },
+    };
     let pairs: Vec<(String, Option<String>)> = pairs
         .into_iter()
         .filter(|(old, new)| {
-            let over = base_sizes.get(old).is_some_and(|size| *size > cap);
+            let over = over_cap(old);
             if over {
                 // Named where its removals are reported: the head's path.
                 let named = new.clone().unwrap_or_else(|| old.clone());
@@ -4057,7 +4085,13 @@ fn removed_by_models(
     // counted each withheld data file that spells it.
     let grepped = read_or_note(
         state,
-        crate::git::grep_code_words(&state.root_dir, &names, head, MAX_REMOVED_NAME_HITS + 1),
+        crate::git::grep_code_words(
+            &state.root_dir,
+            &state.run.source(),
+            &names,
+            head,
+            MAX_REMOVED_NAME_HITS + 1,
+        ),
     );
     state.run.note_withheld(grepped.withheld);
     let hits = grepped.rows;
@@ -4200,7 +4234,6 @@ fn removed_by_models(
 fn removed_definitions(
     state: &ScoredState,
     defined: &FxHashMap<&str, FxHashSet<String>>,
-    base: &str,
     head: Option<&str>,
     in_a_hunk: &dyn Fn(&FragmentId) -> bool,
     binds_to: &dyn Fn(&str, &str, &str, &str) -> bool,
@@ -4234,7 +4267,12 @@ fn removed_definitions(
         let old_path = old_path_of.get(h.path.as_str()).copied().unwrap_or(&h.path);
         let before = read_or_note(
             state,
-            crate::git::show_file_at_revision(&state.root_dir, base, Path::new(old_path)),
+            state
+                .run
+                .source()
+                .base()
+                .read_lossy(&state.root_dir.join(old_path))
+                .map(Option::unwrap_or_default),
         );
         let after = state
             .run
@@ -4298,7 +4336,13 @@ fn removed_definitions(
     let mut hits_of: FxHashMap<&str, Vec<(String, u32, String)>> = FxHashMap::default();
     let grepped = read_or_note(
         state,
-        crate::git::grep_code_words(&state.root_dir, &names, head, MAX_REMOVED_HITS_PER_FILE),
+        crate::git::grep_code_words(
+            &state.root_dir,
+            &state.run.source(),
+            &names,
+            head,
+            MAX_REMOVED_HITS_PER_FILE,
+        ),
     );
     state.run.note_withheld(grepped.withheld);
     for (path, line, text) in grepped.rows {
@@ -4493,12 +4537,6 @@ const PROJECT_MANIFESTS: &[&str] = &[
     "deno.json",
 ];
 
-/// Whether the project at `outer` holds the one at `inner`; a path under no
-/// manifest belongs to every project.
-fn nests(outer: &str, inner: &str) -> bool {
-    outer.is_empty() || inner == outer || inner.starts_with(&format!("{outer}/"))
-}
-
 /// A use through a receiver nothing types: any object's attribute or method
 /// of that name. Another project that never imports the module cannot reach
 /// the definition, so such a guess does not cross a project root (#649,
@@ -4667,7 +4705,12 @@ fn stale_references(state: &ScoredState, diff_range: Option<&str>) -> (Vec<Stale
     needles.dedup();
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+        crate::git::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            &needles,
+            head.as_deref(),
+        ),
     );
     state.run.note_withheld(grepped.withheld);
     let lines = grepped.rows;
@@ -5138,7 +5181,12 @@ fn key_references(
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+        crate::git::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            &needles,
+            head.as_deref(),
+        ),
     );
     let changed: FxHashSet<String> = state
         .changed_files
@@ -5265,7 +5313,12 @@ fn named_by_path(state: &ScoredState, diff_range: Option<&str>) -> (Vec<PathRefe
     // withheld count stays the one the answer's own reads give.
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(&state.root_dir, &needles, head.as_deref()),
+        crate::git::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            &needles,
+            head.as_deref(),
+        ),
     );
     // What this change wrote is the diff itself.
     let written: FxHashSet<(&str, &str)> = state
@@ -5415,6 +5468,7 @@ fn read_by_collection(
         state,
         crate::git::grep_lines_matching(
             &state.root_dir,
+            &state.run.source(),
             r"(getCollection|getEntry|getEntries|getEntryBySlug|getDataEntryById)[[:space:]]*\(",
             head.as_deref(),
             &[],

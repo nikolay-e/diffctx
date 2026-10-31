@@ -241,6 +241,7 @@ dependencies = [
  "anyhow",
  "brokk-tree-sitter-kotlin",
  "clap",
+ "diffctx-snapshot",
  "dunce",
  "glob",
  "libc",
@@ -304,6 +305,20 @@ dependencies = [
  "tree-sitter-zig",
  "wait-timeout",
  "walkdir",
+]
+
+[[package]]
+name = "diffctx-snapshot"
+version = "2.0.0-dev.0"
+dependencies = [
+ "dunce",
+ "libc",
+ "rustc-hash",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "wait-timeout",
 ]
 
 [[package]]

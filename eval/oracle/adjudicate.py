@@ -8,14 +8,16 @@ among evidenced options only; that labelling happens in wave 2 with the trace to
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import random
 from collections import defaultdict
 from pathlib import Path
 
+from adjudication import SHA_PREFIX, load_verdicts, verdict_of
+from corpus import ROOT
+
 CLASSES = ("dynamic_dispatch", "framework_registration", "re_export", "disagreement")
-INDEX_FILES = ("__init__.py", "index.ts", "index.tsx", "index.js", "index.mjs", "index.cjs")
+INDEX_FILES = ("__init__.py", "index.ts", "index.tsx", "index.js", "index.mjs", "index.cjs", "mod.rs", "lib.rs")
 SCIP_SEES = {"tp", "tp_weak", "fn"}
 DIFFCTX_SEES = {"tp", "tp_weak", "fp", "fp_weak"}
 
@@ -29,25 +31,25 @@ def classify(row: dict) -> str | None:
     from_path = row["from"].rsplit("::", 1)[0]
     if row["kind"] == "reexports" or (row["kind"] == "imports" and from_path.endswith(INDEX_FILES)):
         return "re_export"
-    return "disagreement" if row["status"] != "tp" else None
+    return "disagreement" if verdict_of(row) != "tp" else None
 
 
 def record(row: dict, hard: str, language: str) -> dict:
+    """A reference to one relation, in the shape of the adjudicated files: the caller, the definition and what SCIP said."""
     from_path = row["from"].rsplit("::", 1)[0]
-    ident = hashlib.sha256(f"{row['repo']}|{row['commit']}|{row['from']}|{row['to']}|{row['kind']}".encode()).hexdigest()[:12]
+    verdict = verdict_of(row)
     return {
-        "id": ident,
         "language": language,
         "class": hard,
         "repo": row["repo"],
-        "sha": row["commit"],
+        "sha": SHA_PREFIX + row["commit"],
         "mode": row["mode"],
         "path": from_path,
         "line": row.get("site"),
         "from": row["from"],
-        "to": row["to"],
-        "kind": row["kind"],
-        "observed": {"scip": row["status"] in SCIP_SEES, "diffctx": row["status"] in DIFFCTX_SEES, "status": row["status"]},
+        "def": row["to"],
+        "scip_kind": row["kind"] if verdict in SCIP_SEES else None,
+        "observed": {"scip": verdict in SCIP_SEES, "diffctx": verdict in DIFFCTX_SEES, "verdict": verdict},
         "label_a": None,
         "evidence_a": None,
         "label_b": None,
@@ -57,12 +59,15 @@ def record(row: dict, hard: str, language: str) -> dict:
     }
 
 
-def sample(rows: list[dict], per_language: int, seed: str) -> dict[str, list[dict]]:
-    """About `per_language` records per language, equal parts per hard class; a short class's share goes to the others."""
+def sample(rows: list[dict], per_language: int, seed: str, done: frozenset | set = frozenset()) -> dict[str, list[dict]]:
+    """About `per_language` records per language, equal parts per hard class; a short class's share goes to the others.
+
+    Relations already adjudicated (`done`: the keys of `load_verdicts`) are not sampled again.
+    """
     pools: dict[str, dict[str, list[dict]]] = defaultdict(lambda: {c: [] for c in CLASSES})
     for row in rows:
         hard = classify(row)
-        if hard is not None:
+        if hard is not None and (row["repo"], row["commit"], row["from"], row["to"]) not in done:
             pools[row["language"]][hard].append(record(row, hard, row["language"]))
     chosen: dict[str, list[dict]] = {}
     for language, by_class in sorted(pools.items()):
@@ -70,25 +75,29 @@ def sample(rows: list[dict], per_language: int, seed: str) -> dict[str, list[dic
         picked: list[dict] = []
         remaining = per_language
         for position, hard in enumerate(CLASSES):
-            pool = sorted(by_class[hard], key=lambda r: r["id"])
+            pool = sorted(by_class[hard], key=lambda r: (r["sha"], r["from"], r["def"]))
             share = remaining // (len(CLASSES) - position)
             take = rng.sample(pool, min(share, len(pool)))
             picked += take
             remaining -= len(take)
-        chosen[language] = sorted(picked, key=lambda r: r["id"])
+        chosen[language] = sorted(picked, key=lambda r: (r["sha"], r["from"], r["def"]))
     return chosen
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="adjudicate", description=__doc__)
     parser.add_argument("--run", type=Path, default=Path("out/latest"))
-    parser.add_argument("--out", type=Path, default=Path("adjudicated"))
+    parser.add_argument("--out", type=Path, default=Path("out/adjudication-sample"))
     parser.add_argument("--limit", type=int, default=200, help="records over all languages")
     parser.add_argument("--seed", default="adjudication")
+    parser.add_argument(
+        "--exclude", type=Path, default=ROOT / "adjudicated", help="directory of adjudicated sets whose relations are skipped"
+    )
     options = parser.parse_args(argv)
     rows = [json.loads(line) for line in (options.run / "relations.jsonl").read_text(encoding="utf-8").splitlines() if line]
     languages = sorted({r["language"] for r in rows})
-    chosen = sample(rows, options.limit // max(1, len(languages)), options.seed)
+    done = set(load_verdicts(options.exclude)) if options.exclude.is_dir() else set()
+    chosen = sample(rows, options.limit // max(1, len(languages)), options.seed, done)
     options.out.mkdir(parents=True, exist_ok=True)
     for language, records in chosen.items():
         (options.out / f"{language}.jsonl").write_text(

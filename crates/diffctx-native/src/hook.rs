@@ -3303,9 +3303,19 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
 fn edited_definitions(root: &Path, within: Option<&[String]>) -> Vec<String> {
     // The pending change as impact reads it, untracked files included: a
     // name defined only in a new file is still the change's (#448).
-    let Ok((mut hunks, _)) =
-        crate::pipeline::collect_hunks_with_untracked(root, Some("HEAD"), &[], true, None)
-    else {
+    let run = crate::resource::RunContext::unbounded();
+    let Ok(analysis) = crate::source::Analysis::at_working_tree(root, &run) else {
+        return Vec::new();
+    };
+    run.set_source(analysis.head());
+    let Ok((mut hunks, _)) = crate::pipeline::collect_hunks_with_untracked(
+        root,
+        Some("HEAD"),
+        &[],
+        true,
+        &run.source(),
+        None,
+    ) else {
         return Vec::new();
     };
     if let Some(files) = within {
@@ -3319,11 +3329,9 @@ fn edited_definitions(root: &Path, within: Option<&[String]>) -> Vec<String> {
     let fragments = crate::fragmentation::fragment_files(
         &files,
         root,
-        &[],
         &mut rustc_hash::FxHashSet::default(),
-        None,
         true,
-        &crate::resource::RunContext::unbounded(),
+        &run,
         &hunks,
     );
     let mut names = Vec::new();

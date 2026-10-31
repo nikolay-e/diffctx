@@ -440,9 +440,7 @@ fn working_tree_is_clean(root: &Path) -> bool {
 }
 
 fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
-    _diffctx::git::resolve_duration_range(root, Some(diff_ref))
-        .map(|resolved| resolved.from_duration)
-        .unwrap_or(false)
+    _diffctx::git::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
 }
 
 #[allow(clippy::too_many_arguments)]

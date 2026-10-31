@@ -515,7 +515,7 @@ impl DiscoveryStrategy for EnsembleDiscovery {
             .strategies
             .par_iter()
             .map(|strategy| {
-                let found = crate::source::with_source(&ctx.source, || strategy.discover(ctx));
+                let found = crate::resource::with_source(&ctx.source, || strategy.discover(ctx));
                 (strategy.name(), found)
             })
             .collect();
@@ -593,7 +593,7 @@ mod tests {
                 expansion_concepts: self.concepts.iter().map(|s| s.to_string()).collect(),
                 file_cache: FxHashMap::default(),
                 token_corpus,
-                source: crate::source::Source::default(),
+                source: crate::source::Source::empty(),
                 run: crate::resource::RunContext::unbounded(),
             }
         }
@@ -941,7 +941,7 @@ mod tests {
                 .map(|(p, text)| (root.join(p), (*text).to_string()))
                 .collect(),
             token_corpus: OnceLock::new(),
-            source: crate::source::Source::default(),
+            source: crate::source::Source::empty(),
             run: crate::resource::RunContext::unbounded(),
         };
         let (ready, unready) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
