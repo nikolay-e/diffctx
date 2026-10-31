@@ -1,0 +1,44 @@
+name: ts_caller_in_an_untouched_route_file_is_found
+mode: impact
+source: fj#68
+issue_state: closed
+tags: [typescript, extension-in-specifier, route-handler]
+repo:
+  initial_files:
+    services/api/src/hub-export.ts: |
+      export function rowsForSession(id: string): string[] {
+        return [id];
+      }
+
+      export async function exportSessionsToHub(ids: string[]): Promise<number> {
+        return rowsForSession(ids[0]).length;
+      }
+    services/api/src/routes/sync.ts: |
+      import { Hono } from 'hono';
+      import { exportSessionsToHub } from '../hub-export.ts';
+
+      const app = new Hono();
+
+      app.post('/push', async (c) => {
+        const count = await exportSessionsToHub(['a']);
+        return c.json({ count });
+      });
+
+      export default app;
+  changed_files:
+    services/api/src/hub-export.ts: |
+      export function rowsForSession(id: string): string[] {
+        return [id, id];
+      }
+
+      export async function exportSessionsToHub(ids: string[]): Promise<number> {
+        return rowsForSession(ids[0]).length + ids.length;
+      }
+  commit_message: "hub-export: count the batch"
+expect:
+  relations:
+    - from: "services/api/src/routes/sync.ts"
+      to: "services/api/src/hub-export.ts::exportSessionsToHub"
+      kind: "calls"
+      resolution: "resolved"
+      site: 7

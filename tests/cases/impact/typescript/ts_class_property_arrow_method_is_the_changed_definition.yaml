@@ -1,0 +1,46 @@
+name: ts_class_property_arrow_method_is_the_changed_definition
+mode: impact
+source: gh#592
+issue_state: closed
+tags: [typescript, class-property-arrow, body-only, tests-reach]
+repo:
+  initial_files:
+    src/manager.ts: |
+      export class Manager {
+        private level = 0;
+        submit = (correct: boolean, streak: number): number => {
+          const promote = correct && streak >= 3;
+          if (promote) {
+            const promotedLevel = this.level + 1;
+            this.level = promotedLevel;
+          }
+          return this.level;
+        };
+      }
+    tests/manager.test.ts: |
+      import { Manager } from '../src/manager';
+
+      it('promotes after three', () => {
+        const m = new Manager();
+        expect(m.submit(true, 3)).toBe(1);
+      });
+  worktree: true
+  changed_files:
+    src/manager.ts: |
+      export class Manager {
+        private level = 0;
+        private readonly passes = (): boolean => this.level < 4;
+        submit = (correct: boolean, streak: number): number => {
+          const promote = correct && streak >= 3 && this.passes();
+          if (promote) {
+            const promotedLevel = 4;
+            this.level = promotedLevel;
+          }
+          return this.level;
+        };
+      }
+expect:
+  changed: [src/manager.ts::submit, src/manager.ts::passes]
+  not_untested: [submit]
+  relations:
+    - {from: "tests/manager.test.ts", to: "src/manager.ts::submit", kind: calls, resolution: resolved, site: 5}

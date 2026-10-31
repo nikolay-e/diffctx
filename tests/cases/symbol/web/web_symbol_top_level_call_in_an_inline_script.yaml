@@ -1,0 +1,44 @@
+name: web_symbol_top_level_call_in_an_inline_script
+mode: symbol
+source: gh#577
+issue_state: closed
+tags:
+- web
+- html
+- inline-script
+- smoke
+repo:
+  initial_files:
+    app.js: |
+      const history = [];
+      export function record(x) { history.push(x); }
+      record(2);
+    page.html: |
+      <!doctype html>
+      <html><body>
+      <script>
+      const history = [];
+      function record(x) { history.push(x); }
+      function restore() { window.history.replaceState(null, "", "/"); }
+      record(1);
+      </script>
+      </body></html>
+  commit_message: Change web symbol top level call in an inline script
+query:
+  symbol: record
+expect:
+  relations:
+  - from: app.js
+    to: app.js::record
+    kind: calls
+    resolution: resolved
+    site: 3
+  - from: page.html
+    to: page.html::record
+    kind: calls
+    resolution: resolved
+    site: 7
+  exact: true
+  definitions:
+  - app.js::record
+  - page.html::record

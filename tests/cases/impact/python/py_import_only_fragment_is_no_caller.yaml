@@ -1,0 +1,24 @@
+name: py_import_only_fragment_is_no_caller
+mode: impact
+source: gh#316
+issue_state: closed
+tags: [python, import-line, decoy]
+repo:
+  initial_files:
+    src/server.py: |
+      def diffctx_context(ref):
+          return ref
+    src/legacy.py: |
+      """Legacy entry points."""
+
+      from src.server import diffctx_context
+  changed_files:
+    src/server.py: |
+      def diffctx_context(ref):
+          return ref or "HEAD"
+  commit_message: "server: default the ref"
+expect:
+  callers:
+    diffctx_context: []
+  decoys:
+    diffctx_context: [src/legacy.py]

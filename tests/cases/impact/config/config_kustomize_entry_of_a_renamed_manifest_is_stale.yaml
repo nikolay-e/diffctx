@@ -1,0 +1,33 @@
+name: config_kustomize_entry_of_a_renamed_manifest_is_stale
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kustomize
+- stale
+- rename
+repo:
+  initial_files:
+    kustomization.yaml: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - deploy.yaml
+        - service.yaml
+    deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+    service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+  renamed_files:
+    deploy.yaml: web-deploy.yaml
+  commit_message: Change config kustomize entry of a renamed manifest is stale
+expect:
+  stale:
+  - kustomization.yaml

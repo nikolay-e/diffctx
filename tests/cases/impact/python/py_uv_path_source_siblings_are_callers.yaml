@@ -1,0 +1,63 @@
+name: py_uv_path_source_siblings_are_callers
+mode: impact
+source: gh#467
+issue_state: closed
+tags: [python, workspace, uv-path-source]
+repo:
+  initial_files:
+    shared/kit/pyproject.toml: |
+      [project]
+      name = "kit"
+      version = "0.1.0"
+    shared/kit/src/kit/__init__.py: |
+      from kit.auth import auth_settings
+    shared/kit/src/kit/auth.py: |
+      def auth_settings():
+          return {"scopes": ["read"]}
+    app_a/pyproject.toml: |
+      [project]
+      name = "app-a"
+      version = "0.1.0"
+      dependencies = ["kit"]
+
+      [tool.uv.sources]
+      kit = { path = "../shared/kit", editable = true }
+    app_a/src/app_a/__init__.py: ""
+    app_a/src/app_a/server.py: |
+      from kit import auth_settings
+
+
+      def serve():
+          return auth_settings()
+    app_b/pyproject.toml: |
+      [project]
+      name = "app-b"
+      version = "0.1.0"
+      dependencies = ["kit"]
+
+      [tool.uv.sources]
+      kit = { path = "../shared/kit", editable = true }
+    app_b/src/app_b/__init__.py: ""
+    app_b/src/app_b/server.py: |
+      from kit import auth_settings
+
+
+      def start():
+          return auth_settings()
+  changed_files:
+    shared/kit/src/kit/auth.py: |
+      def auth_settings():
+          return {"scopes": ["read", "write"]}
+  commit_message: "kit: the door demands write"
+expect:
+  relations:
+    - from: "app_a/src/app_a/server.py::serve"
+      to: "shared/kit/src/kit/auth.py::auth_settings"
+      kind: "calls"
+      resolution: "resolved"
+      site: 5
+    - from: "app_b/src/app_b/server.py::start"
+      to: "shared/kit/src/kit/auth.py::auth_settings"
+      kind: "calls"
+      resolution: "resolved"
+      site: 5

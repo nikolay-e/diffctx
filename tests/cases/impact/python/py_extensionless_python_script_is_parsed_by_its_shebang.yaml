@@ -1,0 +1,35 @@
+name: py_extensionless_python_script_is_parsed_by_its_shebang
+mode: impact
+source: gh#680
+issue_state: open
+tags: [python, extensionless, shebang]
+repo:
+  initial_files:
+    bin/shout: |
+      #!/usr/bin/env python3
+      def shout(text):
+          return text.upper()
+
+
+      def main():
+          print(shout("hi"))
+
+
+      main()
+  worktree: true
+  changed_files:
+    bin/shout: |
+      #!/usr/bin/env python3
+      def shout(text):
+          return text.upper() + "!"
+
+
+      def main():
+          print(shout("hi"))
+
+
+      main()
+expect:
+  changed: [bin/shout::shout]
+  relations:
+    - {from: "bin/shout::main", to: "bin/shout::shout", kind: calls, resolution: resolved, site: 7}

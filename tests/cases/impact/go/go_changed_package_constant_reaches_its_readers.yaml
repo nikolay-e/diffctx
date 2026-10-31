@@ -1,0 +1,68 @@
+name: go_changed_package_constant_reaches_its_readers
+mode: impact
+source: gh#605
+issue_state: open
+tags:
+- go
+- constant
+- reads
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    retry/retry.go: |
+      package retry
+
+      const MaxRetries = 3
+
+      func Attempts() int {
+          return MaxRetries + 1
+      }
+    main.go: |
+      package main
+
+      import "example.com/app/retry"
+
+      func main() {
+          for i := 0; i < retry.MaxRetries; i++ {
+              println(i)
+          }
+      }
+    other/other.go: |
+      package other
+
+      const MaxRetries = 9
+
+      func Limit() int {
+          return MaxRetries
+      }
+  changed_files:
+    retry/retry.go: |
+      package retry
+
+      const MaxRetries = 4
+
+      func Attempts() int {
+          return MaxRetries + 1
+      }
+  commit_message: Change go changed package constant reaches its readers
+expect:
+  changed:
+  - retry/retry.go::MaxRetries
+  relations:
+  - from: retry/retry.go::Attempts
+    to: retry/retry.go::MaxRetries
+    kind: reads
+    resolution: resolved
+    site: 6
+  - from: main.go::main
+    to: retry/retry.go::MaxRetries
+    kind: reads
+    resolution: resolved
+    site: 6
+  exact: true
+  decoys:
+    retry/retry.go::MaxRetries:
+    - other/other.go

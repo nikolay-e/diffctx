@@ -1,0 +1,40 @@
+name: py_flask_route_helper_is_reached_by_the_test_that_posts_to_it
+mode: impact
+source: fj#67
+issue_state: closed
+tags: [python, flask-route, tests-reach, framework-registration]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/store.py: |
+      def write_x(session, key):
+          return (session, key)
+    pkg/api/__init__.py: ""
+    pkg/api/vault.py: |
+      from flask import Blueprint, request
+
+      from pkg.store import write_x
+
+      bp = Blueprint("vault", __name__, url_prefix="/api/vault")
+
+
+      def _reconcile(session, key):
+          return write_x(session, key)
+
+
+      @bp.post("/unlock")
+      def unlock():
+          return _reconcile(request.environ, request.json["key"])
+    tests/test_vault.py: |
+      def test_unlock(client):
+          response = client.post("/api/vault/unlock", json={"key": "k"})
+          assert response.status_code == 200
+  changed_files:
+    pkg/store.py: |
+      def write_x(session, key):
+          return (session, key, True)
+  commit_message: "store: report the write"
+expect:
+  relations:
+    - {from: "pkg/api/vault.py::_reconcile", to: "pkg/store.py::write_x", kind: calls, resolution: resolved, site: 9}
+    - {from: "tests/test_vault.py", to: "pkg/api/vault.py::_reconcile", kind: tests_reach, resolution: resolved}

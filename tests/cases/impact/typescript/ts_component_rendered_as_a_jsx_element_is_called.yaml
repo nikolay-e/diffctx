@@ -1,0 +1,54 @@
+name: ts_component_rendered_as_a_jsx_element_is_called
+mode: impact
+source: gh#504
+issue_state: closed
+tags: [typescript, jsx, component, prop-value]
+repo:
+  initial_files:
+    src/ReadOnlyProviderCard.tsx: |
+      export function ReadOnlyProviderCard({ provider }: { provider: string }) {
+        return <div>{provider}</div>;
+      }
+    src/tooltips.ts: |
+      export function renderCompactTooltip(text: string): string {
+        return text.slice(0, 20);
+      }
+    src/SettingsPage.tsx: |
+      import { ReadOnlyProviderCard } from './ReadOnlyProviderCard';
+      import { renderCompactTooltip } from './tooltips';
+      import { Tip } from './Tip';
+
+      export function SettingsPage({ provider }: { provider: string }) {
+        return (
+          <section>
+            <ReadOnlyProviderCard provider={provider} />
+            <Tip content={renderCompactTooltip} />
+          </section>
+        );
+      }
+    src/Tip.tsx: |
+      export function Tip({ content }: { content: (s: string) => string }) {
+        return <span>{content('tip')}</span>;
+      }
+  changed_files:
+    src/ReadOnlyProviderCard.tsx: |
+      export function ReadOnlyProviderCard({ provider }: { provider: string }) {
+        return <div className="card">{provider}</div>;
+      }
+    src/tooltips.ts: |
+      export function renderCompactTooltip(text: string): string {
+        return text.slice(0, 40);
+      }
+  commit_message: "cards: wider tooltips"
+expect:
+  relations:
+    - from: "src/SettingsPage.tsx::SettingsPage"
+      to: "src/ReadOnlyProviderCard.tsx::ReadOnlyProviderCard"
+      kind: "instantiates"
+      resolution: "resolved"
+      site: 8
+    - from: "src/SettingsPage.tsx::SettingsPage"
+      to: "src/tooltips.ts::renderCompactTooltip"
+      kind: "passes_as_value"
+      resolution: "resolved"
+      site: 9

@@ -1,0 +1,66 @@
+name: rust_binary_run_test_reaches_main
+mode: impact
+source: gh#678
+issue_state: open
+tags:
+- rust
+- tests
+- binary
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "tool"
+      version = "0.1.0"
+      edition = "2021"
+    src/main.rs: |
+      fn greet(name: &str) -> String {
+          format!("hello {name}")
+      }
+
+      fn main() {
+          let arg = std::env::args().nth(1).unwrap_or_default();
+          println!("{}", greet(&arg));
+      }
+    tests/cli.rs: |
+      use std::process::Command;
+
+      #[test]
+      fn greets() {
+          let out = Command::new(env!("CARGO_BIN_EXE_tool")).arg("x").output().unwrap();
+          assert_eq!(String::from_utf8_lossy(&out.stdout), "hello x\n");
+      }
+  changed_files:
+    src/main.rs: |
+      fn greet(name: &str) -> String {
+          format!("hi {name}")
+      }
+
+      fn main() {
+          let arg = std::env::args().nth(1).unwrap_or_default();
+          println!("{}", greet(&arg));
+      }
+    tests/cli.rs: |
+      use std::process::Command;
+
+      #[test]
+      fn greets() {
+          let out = Command::new(env!("CARGO_BIN_EXE_tool")).arg("x").output().unwrap();
+          assert_eq!(String::from_utf8_lossy(&out.stdout), "hi x\n");
+      }
+  commit_message: Change rust binary run test reaches main
+expect:
+  changed:
+  - src/main.rs::greet
+  relations:
+  - from: src/main.rs::main
+    to: src/main.rs::greet
+    kind: calls
+    resolution: resolved
+    site: 7
+  exact: true
+  tested_by:
+    src/main.rs: tests/cli.rs
+  not_untested:
+  - greet
+  - main

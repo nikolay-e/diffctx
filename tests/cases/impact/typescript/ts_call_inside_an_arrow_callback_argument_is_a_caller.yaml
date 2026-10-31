@@ -1,0 +1,33 @@
+name: ts_call_inside_an_arrow_callback_argument_is_a_caller
+mode: impact
+source: gh#480
+issue_state: closed
+tags: [typescript, callback-argument]
+repo:
+  initial_files:
+    apps/web/src/features/taste/taste-record.ts: |
+      export function isTasteLine(line: string): boolean {
+        return line.startsWith('taste:');
+      }
+    apps/web/src/features/taste/taste-contract.ts: |
+      import { isTasteLine } from './taste-record';
+
+      export function otherLines(text: string): string[] {
+        const others = text
+          .split('\n')
+          .filter((line) => !isTasteLine(line));
+        return others;
+      }
+  worktree: true
+  changed_files:
+    apps/web/src/features/taste/taste-record.ts: |
+      export function isTasteLine(line: string): boolean {
+        return line.trimStart().startsWith('taste:');
+      }
+expect:
+  relations:
+    - from: "apps/web/src/features/taste/taste-contract.ts::otherLines"
+      to: "apps/web/src/features/taste/taste-record.ts::isTasteLine"
+      kind: "calls"
+      resolution: "resolved"
+      site: 6

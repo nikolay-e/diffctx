@@ -1,0 +1,34 @@
+name: py_attribute_assignment_is_not_a_changed_definition
+mode: impact
+source: gh#672
+issue_state: open
+tags: [python, attribute-assignment, changed-definition]
+repo:
+  initial_files:
+    pipeline.py: |
+      import tempfile
+
+
+      class Pipeline:
+          def configure(self):
+              self.name = "pipeline"
+    main.py: |
+      from pipeline import Pipeline
+
+
+      def run():
+          Pipeline().configure()
+  changed_files:
+    pipeline.py: |
+      import tempfile
+
+
+      class Pipeline:
+          def configure(self):
+              self.name = "pipeline"
+              self.workdir = tempfile.mkdtemp()
+  commit_message: "pipeline: give the run a work directory"
+expect:
+  changed: [pipeline.py::configure]
+  relations:
+    - {from: "main.py::run", to: "pipeline.py::configure", kind: calls, resolution: resolved, site: 5}

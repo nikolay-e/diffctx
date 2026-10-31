@@ -17,6 +17,34 @@ Setup, suite shape and the per-case YAML corpus gate
 (`crates/diffctx-native/tests/known_below_threshold.txt`, bidirectional: a
 listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 
+## Fixes enter by root, behind a gate
+
+- A new issue is tied to its root first; the root is fixed, not the instance.
+- An instance fix is allowed for a false "all clear", a leak or a broken
+  delivery, or when it ships with a class test.
+- A class test is a case under `tests/cases/{diff,impact,symbol}/` or a
+  metamorphic, fault-sweep or hook-property test, red on the PR's base and green
+  on its head (`.github/scripts/class-test.sh`). The PR body states it in the
+  `Class test:` field, or as `Class test: none — truth|leak|delivery gh#N`.
+- No new language, framework or mode until every Tier-1 cell has a declared,
+  verified state.
+- One root is merged and measured at a time; agents work only inside a cell that
+  already has a gate.
+- A fix on the integration branch labels its issue `fixed-unreleased` and
+  comments `Fixed on relay/arch in <sha>; gate: <case path or test name>`.
+- Commits reference issues as `gh#N` or `fj#N`, never a bare `#N` and never a
+  closing keyword; nothing closes an issue but a release.
+- A release closes every issue carrying the label, after the published artifacts
+  pass the smoke (`scripts/release/close-released.py`);
+  `scripts/release/manifest.py` writes the audit manifest from the labels and
+  comments, never by hand.
+- The tree carries the next development version; every user pin (plugin, Action,
+  docs, `server.json`, npm, Scoop, `CITATION.cff`) stays on the last release
+  until a release moves it.
+- Language tiers are the table in the README and in
+  `crates/diffctx-native/src/lang/mod.rs`; Tier 3 is "not modelled" and never
+  claims an absence.
+
 ## History reads as epochs
 
 `main` is a sequence of epochs — one commit per coherent chunk of the

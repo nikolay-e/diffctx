@@ -1,0 +1,33 @@
+name: py_module_level_calls_stay_beside_function_level_ones
+mode: impact
+source: gh#449
+issue_state: closed
+tags: [python, module-level, sites]
+repo:
+  initial_files:
+    src/__init__.py: ""
+    src/registry.py: |
+      def register(name):
+          return name
+    src/boot.py: |
+      from src.registry import register
+
+
+      def install():
+          register("app")
+
+
+      if True:
+          register("flag")
+
+      register("plain")
+  changed_files:
+    src/registry.py: |
+      def register(name):
+          return name.lower()
+  commit_message: "registry: normalise names"
+expect:
+  relations:
+    - {from: "src/boot.py::install", to: "src/registry.py::register", kind: calls, resolution: resolved, site: 5}
+    - {from: "src/boot.py", to: "src/registry.py::register", kind: calls, resolution: resolved, site: 9}
+    - {from: "src/boot.py", to: "src/registry.py::register", kind: calls, resolution: resolved, site: 11}

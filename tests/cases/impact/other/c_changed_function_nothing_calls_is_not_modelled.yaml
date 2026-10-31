@@ -1,0 +1,30 @@
+name: c_changed_function_nothing_calls_is_not_modelled
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- c
+repo:
+  initial_files:
+    src/greet.c: |
+      #include <stdio.h>
+
+      void greet(const char *name) {
+          printf("hi %s\n", name);
+      }
+  changed_files:
+    src/greet.c: |
+      #include <stdio.h>
+
+      void greet(const char *name) {
+          printf("hello %s\n", name);
+      }
+  commit_message: Change c changed function nothing calls is not modelled
+expect:
+  changed:
+  - src/greet.c::greet
+  unknowns:
+    greet: not_modelled
+  discloses: true
+  no_negative_claims: true

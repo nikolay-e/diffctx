@@ -1,0 +1,34 @@
+name: web_symbol_astro_frontmatter_and_template_calls
+mode: symbol
+source: gh#597
+issue_state: open
+tags:
+- web
+- astro
+- frontmatter
+repo:
+  initial_files:
+    src/lib/math.ts: |
+      export function groups(items: string[]) {
+        return items.map((item) => item.toUpperCase());
+      }
+    src/components/Index.astro: |
+      ---
+      import { groups } from "../lib/math";
+      const { items } = Astro.props;
+      const first = groups(items)[0];
+      ---
+      <p>{first}</p>
+      <ul>{groups(items).map((g) => <li>{g}</li>)}</ul>
+  commit_message: Change web symbol astro frontmatter and template calls
+query:
+  symbol: groups
+expect:
+  relations:
+  - from: src/components/Index.astro
+    to: src/lib/math.ts::groups
+    kind: calls
+    resolution: resolved
+  exact: true
+  definitions:
+  - src/lib/math.ts::groups

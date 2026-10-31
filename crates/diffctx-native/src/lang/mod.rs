@@ -159,6 +159,43 @@ pub enum Relation {
     Imports,
 }
 
+/// How far an answer about a language is promised (T5). Tier 1 is the
+/// declared set whose definitions, callers and test reach are being made
+/// precise. Tier 2 is read by a model of the registry or by another graph and
+/// answers with candidates. Every other language is Tier 3: not modelled, and
+/// no answer about it claims an absence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Tier {
+    One,
+    Two,
+    Three,
+}
+
+/// The README's Tier table: a row per language as the README names it, with
+/// the language names `languages.rs` gives its files, or the extension of a
+/// language it does not name (`.astro`). Tier 3 has no rows.
+#[allow(
+    dead_code,
+    reason = "tests/test_tiers_readme.py reads the README's table off this one"
+)]
+pub const TIERS: &[(Tier, &str, &[&str])] = &[
+    (Tier::One, "Python", &["python"]),
+    (
+        Tier::One,
+        "TypeScript/JavaScript",
+        &["typescript", "tsx", "javascript", "jsx"],
+    ),
+    (Tier::One, "Rust", &["rust"]),
+    (Tier::One, "Kotlin", &["kotlin"]),
+    (Tier::Two, "Go", &["go"]),
+    (Tier::Two, "Java", &["java"]),
+    (Tier::Two, "Swift", &["swift"]),
+    (Tier::Two, "SQL", &["sql"]),
+    (Tier::Two, "shell", &["bash", "zsh"]),
+    (Tier::Two, "YAML/k8s/Helm/Argo", &["yaml"]),
+    (Tier::Two, "HTML/Astro", &["html", "astro"]),
+];
+
 /// A definition one model resolved, as that model's own handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
@@ -293,6 +330,104 @@ impl<'a> Registry<'a> {
     pub fn answers(&self, path: &str, relation: Relation) -> bool {
         self.for_path(path)
             .is_some_and(|m| m.modelled().contains(&relation))
+    }
+
+    /// The tier of `path`: its language's row of `TIERS`, and at least Tier 2
+    /// for a file a model of this registry reads, so a model that joins the
+    /// registry cannot leave its language "not modelled".
+    #[allow(
+        dead_code,
+        reason = "read by this module's tests until a door states it"
+    )]
+    pub fn tier(&self, path: &str) -> Tier {
+        let language = crate::languages::get_language_for_file(path);
+        let extension = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let listed = TIERS
+            .iter()
+            .find(|(_, _, names)| {
+                names
+                    .iter()
+                    .any(|n| Some(*n) == language || n.eq_ignore_ascii_case(extension))
+            })
+            .map_or(Tier::Three, |(tier, _, _)| *tier);
+        if listed == Tier::Three && self.for_path(path).is_some() {
+            Tier::Two
+        } else {
+            listed
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_language_sits_in_two_rows() {
+        let mut seen = std::collections::BTreeSet::new();
+        for (_, _, names) in TIERS {
+            for name in *names {
+                assert!(seen.insert(*name), "{name} is in two rows of TIERS");
+            }
+        }
+    }
+
+    #[test]
+    fn every_name_is_a_language_the_engine_detects_or_an_extension_it_does_not() {
+        let detected: std::collections::BTreeSet<&str> = crate::languages::EXTENSION_TO_LANGUAGE
+            .values()
+            .copied()
+            .collect();
+        for (_, label, names) in TIERS {
+            for name in *names {
+                assert!(
+                    detected.contains(name) || *name == "astro",
+                    "{label}: {name} names no language"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_path_is_tiered_by_its_language_and_by_the_models_that_read_it() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = Source::default();
+        let registry =
+            Registry::for_analysis(root.path(), &source, rustc_hash::FxHashSet::default());
+        let expected = [
+            ("app/main.py", Tier::One),
+            ("web/index.ts", Tier::One),
+            ("src/lib.rs", Tier::One),
+            ("src/App.kt", Tier::One),
+            ("cmd/main.go", Tier::Two),
+            ("src/Main.java", Tier::Two),
+            ("Sources/App.swift", Tier::Two),
+            ("db/q.sql", Tier::Two),
+            ("bin/run.sh", Tier::Two),
+            ("deploy/app.yaml", Tier::Two),
+            ("web/index.html", Tier::Two),
+            ("src/pages/index.astro", Tier::Two),
+            ("lib/users.rb", Tier::Three),
+            ("src/Users.php", Tier::Three),
+            ("src/Users.cs", Tier::Three),
+            ("src/Users.scala", Tier::Three),
+        ];
+        for (path, tier) in expected {
+            assert_eq!(registry.tier(path), tier, "{path}");
+        }
+    }
+
+    #[test]
+    fn tier_one_is_exactly_the_declared_set() {
+        let one: Vec<&str> = TIERS
+            .iter()
+            .filter(|(tier, _, _)| *tier == Tier::One)
+            .map(|(_, label, _)| *label)
+            .collect();
+        assert_eq!(one, ["Python", "TypeScript/JavaScript", "Rust", "Kotlin"]);
     }
 }
 

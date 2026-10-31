@@ -1,0 +1,32 @@
+name: ts_module_level_call_inside_parentheses_is_a_caller
+mode: symbol
+source: gh#520
+issue_state: closed
+tags: [javascript, module-level, parentheses]
+repo:
+  initial_files:
+    lib/report.mjs: |
+      export function readJson(path, fallback = null) {
+        return fallback ?? path;
+      }
+    scripts/a-paren.mjs: |
+      import { readJson } from "../lib/report.mjs";
+      const paths = (readJson("pages.json") || []).map((p) => p.path);
+    scripts/f-paren-only.mjs: |
+      import { readJson } from "../lib/report.mjs";
+      const raw = (readJson("pages.json"));
+    scripts/b-plain.mjs: |
+      import { readJson } from "../lib/report.mjs";
+      const ids = readJson("checks.json").checks.map((c) => c.id);
+    scripts/g-or-only.mjs: |
+      import { readJson } from "../lib/report.mjs";
+      const raw = readJson("pages.json") || [];
+query:
+  symbol: readJson
+expect:
+  definitions: [lib/report.mjs::readJson]
+  relations:
+    - {from: "scripts/a-paren.mjs", to: "lib/report.mjs::readJson", kind: calls, resolution: resolved, site: 2}
+    - {from: "scripts/f-paren-only.mjs", to: "lib/report.mjs::readJson", kind: calls, resolution: resolved, site: 2}
+    - {from: "scripts/b-plain.mjs", to: "lib/report.mjs::readJson", kind: calls, resolution: resolved, site: 2}
+    - {from: "scripts/g-or-only.mjs", to: "lib/report.mjs::readJson", kind: calls, resolution: resolved, site: 2}

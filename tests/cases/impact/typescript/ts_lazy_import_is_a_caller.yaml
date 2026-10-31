@@ -1,0 +1,34 @@
+name: ts_lazy_import_is_a_caller
+mode: impact
+source: gh#479
+issue_state: closed
+tags: [typescript, react-lazy, dynamic-import, smoke]
+repo:
+  initial_files:
+    apps/web/src/features/player/components/MobileFullPlayer.tsx: |
+      export function MobileFullPlayer() {
+        return <div className="player">full</div>;
+      }
+    apps/web/src/features/player/components/PlayerBar.tsx: |
+      import { lazy } from 'react';
+
+      const MobileFullPlayer = lazy(async () =>
+        import('./MobileFullPlayer').then((m) => ({ default: m.MobileFullPlayer }))
+      );
+
+      export function PlayerBar() {
+        return <MobileFullPlayer />;
+      }
+  changed_files:
+    apps/web/src/features/player/components/MobileFullPlayer.tsx: |
+      export function MobileFullPlayer() {
+        return <div className="player player--full">full</div>;
+      }
+  commit_message: "player: full-screen modifier"
+expect:
+  relations:
+    - from: "apps/web/src/features/player/components/PlayerBar.tsx"
+      to: "apps/web/src/features/player/components/MobileFullPlayer.tsx::MobileFullPlayer"
+      kind: "imports"
+      resolution: "resolved"
+      site: 4

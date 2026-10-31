@@ -1,0 +1,30 @@
+name: ruby_changed_method_nothing_calls_is_not_modelled
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- ruby
+repo:
+  initial_files:
+    lib/greeter.rb: |
+      class Greeter
+        def hello(name)
+          "hi #{name}"
+        end
+      end
+  changed_files:
+    lib/greeter.rb: |
+      class Greeter
+        def hello(name)
+          "hello #{name}"
+        end
+      end
+  commit_message: Change ruby changed method nothing calls is not modelled
+expect:
+  changed:
+  - lib/greeter.rb::Greeter.hello
+  unknowns:
+    hello: not_modelled
+  discloses: true
+  no_negative_claims: true

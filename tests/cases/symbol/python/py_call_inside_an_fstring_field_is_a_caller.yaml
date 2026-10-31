@@ -1,0 +1,20 @@
+name: py_call_inside_an_fstring_field_is_a_caller
+mode: symbol
+source: gh#460
+issue_state: closed
+tags: [python, f-string, smoke]
+repo:
+  initial_files:
+    prompts.py: |
+      def fence(text):
+          return "```" + text + "```"
+
+
+      def build(text):
+          return f"Reader's message:\n{fence(text)}"
+query:
+  symbol: fence
+expect:
+  definitions: [prompts.py::fence]
+  relations:
+    - {from: "prompts.py::build", to: "prompts.py::fence", kind: calls, resolution: resolved, site: 6}

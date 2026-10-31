@@ -1,0 +1,64 @@
+name: go_removed_function_keeps_its_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- go
+- removal
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    text/text.go: |
+      package text
+
+      func Slug(s string) string {
+          return s
+      }
+
+      func Keep() int {
+          return 1
+      }
+    page/page.go: |
+      package page
+
+      import "example.com/app/text"
+
+      func Title(s string) string {
+          return text.Slug(s)
+      }
+    other/other.go: |
+      package other
+
+      func Slug(s string) string {
+          return s
+      }
+
+      func Use() string {
+          return Slug("x")
+      }
+  changed_files:
+    text/text.go: |
+      package text
+
+      func Keep() int {
+          return 1
+      }
+  commit_message: Change go removed function keeps its callers
+expect:
+  changed:
+  - text/text.go::Slug
+  relations:
+  - from: page/page.go::Title
+    to: text/text.go::Slug
+    kind: calls
+    resolution: resolved
+    site: 6
+  exact: true
+  decoys:
+    text/text.go::Slug:
+    - other/other.go
+  removed:
+  - Slug

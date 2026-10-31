@@ -1,0 +1,44 @@
+name: py_attribute_names_do_not_bind_across_packages
+mode: impact
+source: gh#353
+issue_state: closed
+tags: [python, attribute-read, cross-package, decoy]
+repo:
+  initial_files:
+    pkg_b/src/bot.py: |
+      class Bot:
+          def message(self, update):
+              return update
+
+          def callback(self, query):
+              return query
+    pkg_a/src/runtime.py: |
+      def main(update, query, sent):
+          text = update.message
+          sent.callback(query)
+          return text
+    pkg_a/tests/test_runtime.py: |
+      class Fake:
+          def __init__(self):
+              self.sent = []
+              self.message = "hi"
+
+
+      def send(update):
+          return update.message
+  changed_files:
+    pkg_b/src/bot.py: |
+      class Bot:
+          def message(self, update):
+              return update.strip()
+
+          def callback(self, query):
+              return query.strip()
+  commit_message: "bot: strip incoming text"
+expect:
+  callers:
+    message: []
+    callback: []
+  decoys:
+    message: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]
+    callback: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]

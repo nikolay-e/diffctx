@@ -1,0 +1,33 @@
+name: erlang_symbol_type_alias_is_a_definition
+mode: symbol
+source: gh#616
+issue_state: open
+tags:
+- tier3
+- erlang
+- types
+repo:
+  initial_files:
+    shop.erl: |
+      -module(shop).
+      -export([total/1]).
+
+      -type price() :: non_neg_integer().
+
+      -spec total([price()]) -> price().
+      total(Items) ->
+          lists:sum(Items).
+    cart.erl: |
+      -module(cart).
+      -export([sum/1]).
+
+      -spec sum([shop:price()]) -> shop:price().
+      sum(Xs) ->
+          shop:total(Xs).
+  commit_message: Change erlang symbol type alias is a definition
+query:
+  symbol: price
+expect:
+  definitions:
+  - shop.erl::price
+  no_negative_claims: true

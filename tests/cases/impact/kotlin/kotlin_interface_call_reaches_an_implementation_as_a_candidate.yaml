@@ -1,0 +1,48 @@
+name: kotlin_interface_call_reaches_an_implementation_as_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- dispatch
+- candidate
+repo:
+  initial_files:
+    src/main/kotlin/p/Repo.kt: |
+      package p
+
+      interface Repo {
+          fun find(id: Int): String
+      }
+
+      class SqlRepo : Repo {
+          override fun find(id: Int): String = "row" + id
+      }
+    src/main/kotlin/p/Service.kt: |
+      package p
+
+      class Service(private val repo: Repo) {
+          fun load(id: Int): String = repo.find(id)
+      }
+  changed_files:
+    src/main/kotlin/p/Repo.kt: |
+      package p
+
+      interface Repo {
+          fun find(id: Int): String
+      }
+
+      class SqlRepo : Repo {
+          override fun find(id: Int): String = "row-" + id
+      }
+  commit_message: Change kotlin interface call reaches an implementation as a candidate
+expect:
+  changed:
+  - src/main/kotlin/p/Repo.kt::SqlRepo.find
+  relations:
+  - from: src/main/kotlin/p/Service.kt::Service.load
+    to: src/main/kotlin/p/Repo.kt::SqlRepo.find
+    kind: calls
+    resolution: candidate
+    site: 4
+  exact: true

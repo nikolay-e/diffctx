@@ -1,0 +1,33 @@
+name: shell_removed_function_is_not_called_by_a_word
+mode: impact
+source: gh#681
+issue_state: open
+tags:
+- shell
+- removal
+- word-match
+repo:
+  initial_files:
+    bin/tool.sh: |
+      #!/bin/sh
+      usage() {
+        echo "usage: tool <x>"
+      }
+      [ $# -gt 0 ] || usage
+    hooks/cap.sh: |
+      #!/bin/sh
+      dir=$HOME/state/usage
+      some-cli /usage > "$dir/out"
+  deleted_files:
+  - bin/tool.sh
+  commit_message: Change shell removed function is not called by a word
+expect:
+  changed:
+  - bin/tool.sh::usage
+  decoys:
+    bin/tool.sh::usage:
+    - hooks/cap.sh
+  callers:
+    usage: []
+  removed:
+  - usage
