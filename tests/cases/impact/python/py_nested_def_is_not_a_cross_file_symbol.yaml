@@ -1,0 +1,24 @@
+name: py_nested_def_is_not_a_cross_file_symbol
+mode: impact
+source: gh#546
+issue_state: open
+tags: [python, nested-def, changed-definition]
+repo:
+  initial_files:
+    README.md: |
+      demo
+    tests/test_smoke.py: |
+      def test_smoke():
+          assert True
+  changed_files:
+    src/cache.py: |
+      def _cache_control(status, uri, upstream=""):
+          headers = {}
+
+          def value(variable):
+              return headers.get(variable, "")
+
+          return value("cache-control") + upstream
+  commit_message: "cache: add the cache-control helper"
+expect:
+  changed: [src/cache.py::_cache_control]

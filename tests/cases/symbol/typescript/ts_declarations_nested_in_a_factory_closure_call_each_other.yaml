@@ -1,0 +1,41 @@
+name: ts_declarations_nested_in_a_factory_closure_call_each_other
+mode: symbol
+source: gh#554
+issue_state: closed
+tags: [typescript, nested-function, closure, zustand-store]
+repo:
+  initial_files:
+    src/store.ts: |
+      import { create } from 'zustand';
+
+      interface Store {
+        play: () => Promise<void>;
+      }
+
+      export const useStore = create<Store>()((set, get) => {
+        let current: string | null = null;
+        function alpha(x: number): number {
+          return x + 1;
+        }
+        function beta(x: number): number {
+          current = String(alpha(x));
+          return x * 2;
+        }
+        async function gamma(x: number): Promise<number> {
+          await Promise.resolve();
+          return beta(x) + alpha(x);
+        }
+        return {
+          play: async () => {
+            await gamma(1);
+            set({});
+          },
+        };
+      });
+query:
+  symbol: alpha
+expect:
+  definitions: [src/store.ts::alpha]
+  relations:
+    - {from: "src/store.ts::beta", to: "src/store.ts::alpha", kind: calls, resolution: resolved, site: 13}
+    - {from: "src/store.ts::gamma", to: "src/store.ts::alpha", kind: calls, resolution: resolved, site: 18}

@@ -1,0 +1,54 @@
+name: config_yaml_names_markdown_and_yaml_targets_by_path
+mode: impact
+source: gh#563
+issue_state: closed
+tags:
+- config
+- markdown
+- references-path
+- smoke
+repo:
+  initial_files:
+    AGENTS.md: |
+      # Agents
+      Rule one.
+    CLAUDE.md: |
+      @AGENTS.md
+    NOTES.md: |
+      Read docs/guide.md first.
+    docs/guide.md: |
+      # Guide
+    deploy/values.yaml: |
+      a: 1
+    refs.yaml: |
+      docs: docs/guide.md
+      values: deploy/values.yaml
+      agents: AGENTS.md
+  changed_files:
+    AGENTS.md: |
+      # Agents
+      Rule two.
+    docs/guide.md: |
+      # Guide
+      x
+    deploy/values.yaml: |
+      a: 2
+  commit_message: Change config yaml names markdown and yaml targets by path
+expect:
+  relations:
+  - from: refs.yaml
+    to: AGENTS.md
+    kind: references_path
+    resolution: resolved
+    site: 3
+  - from: refs.yaml
+    to: docs/guide.md
+    kind: references_path
+    resolution: resolved
+    site: 1
+  - from: refs.yaml
+    to: deploy/values.yaml
+    kind: references_path
+    resolution: resolved
+    site: 2
+  exact: false

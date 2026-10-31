@@ -1,0 +1,57 @@
+name: rust_local_closure_named_like_a_definition
+mode: impact
+source: gh#391
+issue_state: closed
+tags:
+- rust
+- shadowing
+- smoke
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod loader;
+      pub mod other;
+      pub mod reader;
+      pub mod use_it;
+    src/reader.rs: |
+      pub fn read(path: &str) -> String {
+          format!("file:{path}")
+      }
+    src/other.rs: |
+      pub fn read(path: &str) -> usize {
+          path.len()
+      }
+    src/loader.rs: |
+      pub fn load(name: &str) -> String {
+          let read = |p: &str| p.to_uppercase();
+          read(name)
+      }
+    src/use_it.rs: |
+      pub fn show() -> String {
+          crate::reader::read("a")
+      }
+  changed_files:
+    src/reader.rs: |
+      pub fn read(path: &str) -> String {
+          format!("file:{}", path.trim())
+      }
+  commit_message: Change rust local closure named like a definition
+expect:
+  changed:
+  - src/reader.rs::read
+  relations:
+  - from: src/use_it.rs::show
+    to: src/reader.rs::read
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    src/reader.rs::read:
+    - src/loader.rs
+    - src/other.rs

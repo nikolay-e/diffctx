@@ -1,0 +1,75 @@
+name: config_pure_rename_is_no_changed_contract
+mode: impact
+source: gh#593
+issue_state: open
+tags:
+- config
+- rename
+- contracts
+- stale
+repo:
+  initial_files:
+    shared/util.py: |
+      def helper(x):
+          return x
+    group/app/src/core.py: |
+      from shared.util import helper
+
+
+      def f(x):
+          return helper(x)
+    group/app/migrations/versions/001_init.py: |
+      revision = "001"
+      down_revision = None
+
+
+      def upgrade():
+          pass
+    group/app/schemas/Report.json: |
+      {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
+    group/app/pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0"
+
+      [tool.uv.sources]
+      shared = { path = "../../shared", editable = true }
+    group/app/uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "shared"
+      version = "0"
+      source = { editable = "../../shared" }
+    Dockerfile: |
+      FROM python:3.12-slim
+      COPY group/app/schemas/Report.json /schemas/Report.json
+  changed_files:
+    app/pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0"
+
+      [tool.uv.sources]
+      shared = { path = "../shared", editable = true }
+    app/uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "shared"
+      version = "0"
+      source = { editable = "../shared" }
+  renamed_files:
+    group/app/src/core.py: app/src/core.py
+    group/app/migrations/versions/001_init.py: app/migrations/versions/001_init.py
+    group/app/schemas/Report.json: app/schemas/Report.json
+    group/app/pyproject.toml: app/pyproject.toml
+    group/app/uv.lock: app/uv.lock
+  commit_message: Change config pure rename is no changed contract
+expect:
+  changed: []
+  stale:
+  - Dockerfile
+  not_contracts:
+  - app/migrations/versions/001_init.py
+  - app/schemas/Report.json

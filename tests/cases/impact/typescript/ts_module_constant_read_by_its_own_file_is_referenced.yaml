@@ -1,0 +1,51 @@
+name: ts_module_constant_read_by_its_own_file_is_referenced
+mode: impact
+source: gh#503
+issue_state: closed
+tags: [typescript, module-constant, reads]
+repo:
+  initial_files:
+    apps/web/src/features/player/dj-panel-contract.ts: |
+      const PANEL_LINE = /^DJ panel: (\{.*\})$/;
+      const PANEL_KEYS = new Set(['tempo', 'key']);
+
+      function knobs(text: string): string[] {
+        const match = PANEL_LINE.exec(text);
+        return match ? [...PANEL_KEYS] : [];
+      }
+
+      export function readPanel(text: string): string[] {
+        return knobs(text);
+      }
+    apps/web/src/features/player/DjPreferencesPanel.tsx: |
+      import { readPanel } from './dj-panel-contract';
+
+      export function DjPreferencesPanel({ text }: { text: string }) {
+        return <p>{readPanel(text).join(',')}</p>;
+      }
+  changed_files:
+    apps/web/src/features/player/dj-panel-contract.ts: |
+      const PANEL_LINE = /^DJ panel: (\{.*\})\s*$/;
+      const PANEL_KEYS = new Set(['tempo', 'key', 'mood']);
+
+      function knobs(text: string): string[] {
+        const match = PANEL_LINE.exec(text);
+        return match ? [...PANEL_KEYS] : [];
+      }
+
+      export function readPanel(text: string): string[] {
+        return knobs(text);
+      }
+  commit_message: "panel: tolerate trailing space, add mood"
+expect:
+  relations:
+    - from: "apps/web/src/features/player/dj-panel-contract.ts::knobs"
+      to: "apps/web/src/features/player/dj-panel-contract.ts::PANEL_LINE"
+      kind: "reads"
+      resolution: "resolved"
+      site: 5
+    - from: "apps/web/src/features/player/dj-panel-contract.ts::knobs"
+      to: "apps/web/src/features/player/dj-panel-contract.ts::PANEL_KEYS"
+      kind: "reads"
+      resolution: "resolved"
+      site: 6

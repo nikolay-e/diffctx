@@ -1,0 +1,106 @@
+name: go_symbol_package_function_calls_across_packages
+mode: symbol
+source: synthetic
+issue_state: closed
+tags:
+- go
+- packages
+- namesake
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+          sum := 0
+          for _, n := range items {
+              sum += n
+          }
+          return sum
+      }
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      func Charge(items []int) int {
+          return pricing.Total(items) + 1
+      }
+    report/report.go: |
+      package report
+
+      import (
+          "strconv"
+
+          "example.com/app/pricing"
+      )
+
+      func Build(items []int) string {
+          return "total=" + strconv.Itoa(pricing.Total(items))
+      }
+    notes/notes.go: |
+      package notes
+
+      // pricing.Total(items) is documented here
+      const Note = "pricing.Total(items)"
+    other/go.mod: |
+      module example.com/other
+
+      go 1.22
+    other/pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+          return len(items)
+      }
+
+      func Caller() int {
+          return Total([]int{1})
+      }
+    legacy/pricing.go: |
+      package legacy
+
+      func Total(items []int) int {
+          return len(items)
+      }
+
+      func LegacySum(items []int) int {
+          return Total(items)
+      }
+    checkout/checkout_test.go: |
+      package checkout
+
+      import "testing"
+
+      func TestCharge(t *testing.T) {
+          if Charge([]int{1, 2}) != 4 {
+              t.Fatal("charge")
+          }
+      }
+  commit_message: Change go symbol package function calls across packages
+query:
+  symbol: pricing/pricing.go:Total
+expect:
+  relations:
+  - from: checkout/checkout.go::Charge
+    to: pricing/pricing.go::Total
+    kind: calls
+    resolution: resolved
+    site: 6
+  - from: report/report.go::Build
+    to: pricing/pricing.go::Total
+    kind: calls
+    resolution: resolved
+    site: 10
+  exact: true
+  decoys:
+    pricing/pricing.go::Total:
+    - legacy/pricing.go
+    - notes/notes.go
+    - other/pricing/pricing.go
+  definitions:
+  - pricing/pricing.go::Total

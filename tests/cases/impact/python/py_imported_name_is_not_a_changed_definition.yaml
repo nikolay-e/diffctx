@@ -1,0 +1,41 @@
+name: py_imported_name_is_not_a_changed_definition
+mode: impact
+source: gh#468
+issue_state: closed
+tags: [python, import-line, changed-definition]
+repo:
+  initial_files:
+    api/__init__.py: ""
+    api/helpers.py: |
+      def apply_patch(issue, patch):
+          return issue
+    api/issues.py: |
+      from api.helpers import apply_patch
+
+
+      def update_issue(issue, patch):
+          return apply_patch(issue, patch)
+    api/accounts.py: |
+      from api.helpers import apply_patch
+
+
+      def rename(account, patch):
+          return account
+    tests/test_smoke.py: |
+      def test_smoke():
+          assert True
+  changed_files:
+    api/issues.py: |
+      from api.helpers import apply_patch
+
+
+      def update_issue(issue, patch):
+          issue.touched = True
+          return apply_patch(issue, patch)
+  commit_message: "issues: mark patched issues"
+expect:
+  changed: [api/issues.py::update_issue]
+  callers:
+    update_issue: []
+  decoys:
+    update_issue: [api/accounts.py]

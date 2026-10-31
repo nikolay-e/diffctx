@@ -1,0 +1,50 @@
+name: web_test_that_evaluates_a_pages_script_reaches_its_functions
+mode: impact
+source: gh#695
+issue_state: open
+tags:
+- web
+- html
+- inline-script
+- tests
+repo:
+  initial_files:
+    index.html: |
+      <!doctype html>
+      <html><body>
+      <script type="module">
+      function f() { return 1; }
+      window.__t = { f };
+      </script>
+      </body></html>
+    tests/t.mjs: |
+      import { readFileSync } from "node:fs";
+      import vm from "node:vm";
+
+      const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+      const code = html.split("<script type=\"module\">")[1].split("</script>")[0];
+      const ctx = { window: {} };
+      vm.runInNewContext(code, ctx);
+      ctx.window.__t.f();
+  changed_files:
+    index.html: |
+      <!doctype html>
+      <html><body>
+      <script type="module">
+      function f() { return 2; }
+      window.__t = { f };
+      </script>
+      </body></html>
+  commit_message: Change web test that evaluates a pages script reaches its functions
+expect:
+  changed:
+  - index.html::f
+  relations:
+  - from: tests/t.mjs
+    to: index.html
+    kind: references_path
+    resolution: resolved
+    site: 4
+  exact: true
+  not_untested:
+  - f

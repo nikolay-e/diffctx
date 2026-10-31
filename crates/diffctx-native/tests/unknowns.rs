@@ -1859,6 +1859,67 @@ fn a_verdict_needs_a_model() {
     );
 }
 
+/// Tier 3 never claims an absence (T5): a changed function nothing calls, in
+/// a language no model reads, is named as not modelled, and neither the
+/// impact answer nor `--symbol` says that nothing calls it.
+#[test]
+fn a_language_without_a_model_never_claims_an_absence() {
+    let unmodelled: &[(&str, &str, &str, &str)] = &[
+        (
+            "lib/users.rb",
+            "orphan",
+            "class Users\n  def orphan(id)\n    id\n  end\nend\n",
+            "class Users\n  def orphan(id)\n    id + 1\n  end\nend\n",
+        ),
+        (
+            "src/Users.php",
+            "orphan",
+            "<?php\nclass Users {\n  function orphan($id) {\n    return $id;\n  }\n}\n",
+            "<?php\nclass Users {\n  function orphan($id) {\n    return $id + 1;\n  }\n}\n",
+        ),
+        (
+            "src/Users.cs",
+            "Orphan",
+            "class Users {\n  int Orphan(int id) {\n    return id;\n  }\n}\n",
+            "class Users {\n  int Orphan(int id) {\n    return id + 1;\n  }\n}\n",
+        ),
+        (
+            "src/app/Users.scala",
+            "orphan",
+            "package app\n\nobject Users {\n  def orphan(id: Int): Int = {\n    id\n  }\n}\n",
+            "package app\n\nobject Users {\n  def orphan(id: Int): Int = {\n    id + 1\n  }\n}\n",
+        ),
+    ];
+    let absence = [
+        "nothing calls them",
+        "No resolved static callers",
+        "0 caller(s)",
+        "no caller found",
+    ];
+    for (path, symbol, base, change) in unmodelled {
+        let tmp = repo(&[(path, base)], &[(path, change)]);
+        let doc = impact_json(tmp.path());
+        assert_eq!(doc["empty"], false, "{path}: {doc:#}");
+        let named = doc["changed"].as_array().cloned().unwrap_or_default();
+        assert!(
+            named.iter().any(|c| c["symbol"] == *symbol
+                && c["unresolved"].as_str().is_some_and(
+                    |u| u.contains("no binding model") && u.contains("none found is no zero")
+                )),
+            "{path}: {doc:#}"
+        );
+        for (door, md) in [
+            ("impact", impact_markdown(tmp.path())),
+            ("symbol", symbol_markdown(tmp.path(), symbol)),
+        ] {
+            assert!(md.contains("callers unresolved for"), "{path} {door}: {md}");
+            for claim in absence {
+                assert!(!md.contains(claim), "{path} {door}: {claim}\n{md}");
+            }
+        }
+    }
+}
+
 /// #505, #591: a hedge needs reach. A file over the size cap that spells a
 /// changed name but never names its module calls another of that name, so
 /// it is no "callers may be missing"; one that imports the module keeps it.

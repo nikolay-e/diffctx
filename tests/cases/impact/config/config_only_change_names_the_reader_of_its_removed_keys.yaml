@@ -1,0 +1,39 @@
+name: config_only_change_names_the_reader_of_its_removed_keys
+mode: impact
+source: gh#559
+issue_state: closed
+tags:
+- config
+- yaml
+- argo
+- named-by
+- smoke
+repo:
+  initial_files:
+    template.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: build
+      spec:
+        synchronization:
+          mutexes:
+            - name: build-repo
+        entrypoint: main
+    healer.py: |
+      def mutex_blocked(wf):
+          mutex = ((wf.get("status") or {}).get("synchronization") or {}).get("mutex") or {}
+          return [e["mutex"] for e in mutex.get("holding") or []]
+  changed_files:
+    template.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: build
+      spec:
+        entrypoint: main
+  worktree: true
+  commit_message: Change config only change names the reader of its removed keys
+expect:
+  named_by:
+  - healer.py

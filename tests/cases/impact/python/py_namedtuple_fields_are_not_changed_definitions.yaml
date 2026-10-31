@@ -1,0 +1,34 @@
+name: py_namedtuple_fields_are_not_changed_definitions
+mode: impact
+source: fj#129
+issue_state: open
+tags: [python, namedtuple, changed-definition]
+repo:
+  initial_files:
+    server/models.py: |
+      from typing import NamedTuple
+
+
+      class Reading(NamedTuple):
+          sensor: str
+          value: float
+    server/app.py: |
+      from server.models import Reading
+
+
+      def read(sensor):
+          return Reading(sensor, 1.0)
+  changed_files:
+    server/models.py: |
+      from typing import NamedTuple
+
+
+      class Reading(NamedTuple):
+          sensor: str
+          value: float
+          unit: str = "c"
+  commit_message: "models: a unit for readings"
+expect:
+  changed: [server/models.py::Reading]
+  relations:
+    - {from: "server/app.py::read", to: "server/models.py::Reading", kind: instantiates, resolution: resolved, site: 5}

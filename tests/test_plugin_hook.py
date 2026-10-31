@@ -12,11 +12,11 @@ import re
 import shutil
 import subprocess
 import sys
-from importlib.metadata import version
 from pathlib import Path
 
 import pytest
 
+from diffctx._diffctx import BUILD_LABEL
 from tests.framework.pygit2_backend import Pygit2Repo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -191,7 +191,9 @@ def test_a_commit_line_that_ends_in_a_failing_command_is_still_reviewed(tmp_path
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
 @pytest.mark.parametrize("bash", _bashes())
 def test_a_session_on_an_older_plugin_hears_once_that_a_newer_one_is_installed(tmp_path, pending_change, bash):
-    running = version("diffctx")
+    # The hook names the running build as the engine labels it: a development
+    # tree is `2.0.0-dev.0` there and `2.0.0.dev0` in the Python metadata.
+    running = BUILD_LABEL.removesuffix("+source")
     plugins = tmp_path / "plugins"
     for name in (running, "999.0.0"):
         (plugins / name).mkdir(parents=True)

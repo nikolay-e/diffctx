@@ -87,6 +87,18 @@ diffctx .                               # whole-tree export, Markdown
 
 ![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif)
 
+## Language tiers
+
+What an answer promises depends on the file's language. Where diffctx cannot
+resolve a reference it says so; it never prints a zero for a language it does
+not model.
+
+| Tier | Languages | What an answer promises |
+| --- | --- | --- |
+| 1 | Python, TypeScript/JavaScript, Rust, Kotlin | Definitions, callers and the tests that reach them, resolved: the languages the engine is being made exact for |
+| 2 | Go, Java, Swift, SQL, shell, YAML/k8s/Helm/Argo, HTML/Astro | Candidates, each marked with its evidence; exact answers follow Tier 1 |
+| 3 | Every other language | Not modelled: the answer says so, names the files that mention the name, and never claims that nothing calls or reaches it |
+
 ## How it compares
 
 Whole-repo packers export everything; code-graph servers answer queries

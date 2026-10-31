@@ -1,0 +1,44 @@
+name: config_helm_values_key_is_read_by_a_template
+mode: impact
+source: fj#128
+issue_state: open
+tags:
+- config
+- helm
+- values
+- reads
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    chart/values.yaml: |
+      entries:
+        - name: a
+    chart/templates/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: demo
+      data:
+        names: |
+      {{- range .Values.entries }}
+      {{- if .type }}
+          {{ .name }}
+      {{- end }}
+      {{- end }}
+  changed_files:
+    chart/values.yaml: |
+      entries:
+        - name: a
+          type: x
+  commit_message: Change config helm values key is read by a template
+expect:
+  relations:
+  - from: chart/templates/cm.yaml
+    to: chart/values.yaml
+    kind: reads
+    resolution: candidate
+    site: 7
+  exact: true

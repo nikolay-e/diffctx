@@ -1,0 +1,49 @@
+name: java_enum_method_called_through_a_constant
+mode: impact
+source: gh#424
+issue_state: open
+tags:
+- java
+- enum
+repo:
+  initial_files:
+    src/main/java/calc/Op.java: |
+      package calc;
+
+      public enum Op {
+          PLUS, MINUS;
+
+          public int apply(int a, int b) {
+              return this == PLUS ? a + b : a - b;
+          }
+      }
+    src/main/java/calc/Calc.java: |
+      package calc;
+
+      public class Calc {
+          public int sum(int a, int b) {
+              return Op.PLUS.apply(a, b);
+          }
+      }
+  changed_files:
+    src/main/java/calc/Op.java: |
+      package calc;
+
+      public enum Op {
+          PLUS, MINUS;
+
+          public int apply(int a, int b) {
+              return this == PLUS ? Math.addExact(a, b) : a - b;
+          }
+      }
+  commit_message: Change java enum method called through a constant
+expect:
+  changed:
+  - src/main/java/calc/Op.java::Op.apply
+  relations:
+  - from: src/main/java/calc/Calc.java::Calc.sum
+    to: src/main/java/calc/Op.java::Op.apply
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: true

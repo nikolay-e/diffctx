@@ -1,0 +1,65 @@
+name: go_method_call_through_a_typed_receiver
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- go
+- methods
+- receivers
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    cart/cart.go: |
+      package cart
+
+      type Cart struct{ n int }
+
+      func (c *Cart) Add(k int) {
+          c.n += k
+      }
+    fill/fill.go: |
+      package fill
+
+      import "example.com/app/cart"
+
+      func Fill(c *cart.Cart) {
+          c.Add(1)
+      }
+    tally/tally.go: |
+      package tally
+
+      type Tally struct{ n int }
+
+      func (t *Tally) Add(k int) {
+          t.n += k
+      }
+
+      func Count(t *Tally) {
+          t.Add(1)
+      }
+  changed_files:
+    cart/cart.go: |
+      package cart
+
+      type Cart struct{ n int }
+
+      func (c *Cart) Add(k int) {
+          c.n = c.n + k
+      }
+  commit_message: Change go method call through a typed receiver
+expect:
+  changed:
+  - cart/cart.go::Cart.Add
+  relations:
+  - from: fill/fill.go::Fill
+    to: cart/cart.go::Cart.Add
+    kind: calls
+    resolution: resolved
+    site: 6
+  exact: true
+  decoys:
+    cart/cart.go::Cart.Add:
+    - tally/tally.go

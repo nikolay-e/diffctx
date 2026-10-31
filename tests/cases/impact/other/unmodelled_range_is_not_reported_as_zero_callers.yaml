@@ -1,0 +1,65 @@
+name: unmodelled_range_is_not_reported_as_zero_callers
+mode: impact
+source: gh#454
+issue_state: closed
+tags:
+- tier3
+- csharp
+- headline
+- smoke
+repo:
+  initial_files:
+    src/Service1.cs: |
+      namespace App;
+
+      public class Service1
+      {
+          public int Run1() => 1;
+      }
+    src/Service2.cs: |
+      namespace App;
+
+      public class Service2
+      {
+          public int Run2() => 2;
+      }
+    src/Service3.cs: |
+      namespace App;
+
+      public class Service3
+      {
+          public int Run3() => 3;
+      }
+    tools/check.py: |
+      def check():
+          return 1
+  changed_files:
+    src/Service1.cs: |
+      namespace App;
+
+      public class Service1
+      {
+          public int Run1() => 11;
+      }
+    src/Service2.cs: |
+      namespace App;
+
+      public class Service2
+      {
+          public int Run2() => 12;
+      }
+    src/Service3.cs: |
+      namespace App;
+
+      public class Service3
+      {
+          public int Run3() => 13;
+      }
+  commit_message: Change unmodelled range is not reported as zero callers
+expect:
+  unknowns:
+    Run1: not_modelled
+    Run2: not_modelled
+    Run3: not_modelled
+  discloses: true
+  no_negative_claims: true

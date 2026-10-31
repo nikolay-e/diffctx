@@ -1,0 +1,113 @@
+name: rust_function_passed_by_name_is_a_use
+mode: impact
+source: gh#594
+issue_state: closed
+tags:
+- rust
+- passes-as-value
+- tests
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub fn parse_all(items: &[&str]) -> Vec<i64> {
+          items.iter().filter_map(|s| to_ms(s)).collect()
+      }
+
+      pub fn parse_first(items: &[&str]) -> Option<i64> {
+          items.first().copied().and_then(to_ms)
+      }
+
+      pub fn shadowed(items: &[&str], to_ms: fn(&str) -> Option<i64>) -> Vec<i64> {
+          items.iter().copied().filter_map(to_ms).collect()
+      }
+
+      pub struct Clock {
+          pub to_ms: i64,
+      }
+
+      pub fn field(c: &Clock) -> i64 {
+          c.to_ms
+      }
+
+      pub fn text() -> &'static str {
+          // .and_then(to_ms) in a comment
+          "and_then(to_ms)"
+      }
+
+      fn to_ms(stamp: &str) -> Option<i64> {
+          stamp.parse().ok()
+      }
+
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn first() {
+              assert_eq!(super::parse_first(&["1"]), Some(1));
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub fn parse_all(items: &[&str]) -> Vec<i64> {
+          items.iter().filter_map(|s| to_ms(s)).collect()
+      }
+
+      pub fn parse_first(items: &[&str]) -> Option<i64> {
+          items.first().copied().and_then(to_ms)
+      }
+
+      pub fn shadowed(items: &[&str], to_ms: fn(&str) -> Option<i64>) -> Vec<i64> {
+          items.iter().copied().filter_map(to_ms).collect()
+      }
+
+      pub struct Clock {
+          pub to_ms: i64,
+      }
+
+      pub fn field(c: &Clock) -> i64 {
+          c.to_ms
+      }
+
+      pub fn text() -> &'static str {
+          // .and_then(to_ms) in a comment
+          "and_then(to_ms)"
+      }
+
+      fn to_ms(stamp: &str) -> Option<i64> {
+          stamp.trim().parse().ok()
+      }
+
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn first() {
+              assert_eq!(super::parse_first(&["1"]), Some(1));
+          }
+      }
+  commit_message: Change rust function passed by name is a use
+expect:
+  changed:
+  - src/lib.rs::to_ms
+  relations:
+  - from: src/lib.rs::parse_all
+    to: src/lib.rs::to_ms
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: src/lib.rs::parse_first
+    to: src/lib.rs::to_ms
+    kind: passes_as_value
+    resolution: resolved
+    site: 6
+  - from: src/lib.rs::first
+    to: src/lib.rs::parse_first
+    kind: tests_reach
+    resolution: resolved
+    site: 34
+  exact: true
+  not_untested:
+  - to_ms

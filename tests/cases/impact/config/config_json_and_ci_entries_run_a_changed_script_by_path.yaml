@@ -1,0 +1,75 @@
+name: config_json_and_ci_entries_run_a_changed_script_by_path
+mode: impact
+source: gh#523
+issue_state: closed
+tags:
+- config
+- json
+- executes
+- shell
+- smoke
+repo:
+  initial_files:
+    bin/guard.sh: |
+      check() { grep -q x <<<"$1"; }
+    bin/lint.sh: |
+      lint() { echo "$1"; }
+    settings.json: |
+      {
+        "hooks": {
+          "PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "bin/guard.sh"}]},
+            {"matcher": "Edit", "hooks": [{"type": "command", "command": "bin/lint.sh"}]}
+          ]
+        }
+      }
+    package.json: |
+      {
+        "scripts": {
+          "lint": "bash bin/lint.sh",
+          "guard": "./bin/guard.sh"
+        }
+      }
+    .github/workflows/ci.yml: |
+      on: push
+      jobs:
+        lint:
+          runs-on: ubuntu-latest
+          steps:
+            - run: bash bin/lint.sh a
+  changed_files:
+    bin/guard.sh: |
+      check() { grep -q x <<<"$1"; }
+      check "$@"
+    bin/lint.sh: |
+      lint() { echo "$1"; }
+      lint "$@"
+  commit_message: Change config json and ci entries run a changed script by path
+expect:
+  relations:
+  - from: settings.json
+    to: bin/guard.sh
+    kind: executes
+    resolution: resolved
+    site: 4
+  - from: settings.json
+    to: bin/lint.sh
+    kind: executes
+    resolution: resolved
+    site: 5
+  - from: package.json
+    to: bin/lint.sh
+    kind: executes
+    resolution: resolved
+    site: 3
+  - from: package.json
+    to: bin/guard.sh
+    kind: executes
+    resolution: resolved
+    site: 4
+  - from: .github/workflows/ci.yml
+    to: bin/lint.sh
+    kind: executes
+    resolution: resolved
+    site: 6
+  exact: true

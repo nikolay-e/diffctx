@@ -1,0 +1,110 @@
+name: rust_definition_moved_in_a_split_is_not_removed
+mode: impact
+source: gh#540
+issue_state: closed
+tags:
+- rust
+- move
+- rename
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod bindings;
+      pub mod user;
+    src/bindings.rs: |
+      pub fn keep_1(x: u32) -> u32 {
+          x + 1
+      }
+
+      pub fn keep_2(x: u32) -> u32 {
+          x + 2
+      }
+
+      pub fn keep_3(x: u32) -> u32 {
+          x + 3
+      }
+
+      pub fn keep_4(x: u32) -> u32 {
+          x + 4
+      }
+
+      pub fn keep_5(x: u32) -> u32 {
+          x + 5
+      }
+
+      pub fn keep_6(x: u32) -> u32 {
+          x + 6
+      }
+
+      pub fn read(path: &str) -> String {
+          format!("r:{path}")
+      }
+
+      pub fn resolve_python(name: &str) -> String {
+          format!("py:{name}")
+      }
+
+      pub fn resolve_js(name: &str) -> String {
+          format!("js:{name}")
+      }
+    src/user.rs: |
+      pub fn use_it() -> String {
+          crate::bindings::resolve_python("a") + &crate::bindings::resolve_js("b")
+      }
+  changed_files:
+    src/bindings/mod.rs: |
+      pub mod js;
+      pub mod python;
+
+      pub fn keep_1(x: u32) -> u32 {
+          x + 1
+      }
+
+      pub fn keep_2(x: u32) -> u32 {
+          x + 2
+      }
+
+      pub fn keep_3(x: u32) -> u32 {
+          x + 3
+      }
+
+      pub fn keep_4(x: u32) -> u32 {
+          x + 4
+      }
+
+      pub fn keep_5(x: u32) -> u32 {
+          x + 5
+      }
+
+      pub fn keep_6(x: u32) -> u32 {
+          x + 6
+      }
+
+      pub fn read(path: &str) -> String {
+          format!("r:{path}")
+      }
+    src/bindings/python.rs: |
+      pub fn resolve_python(name: &str) -> String {
+          format!("py:{name}")
+      }
+    src/bindings/js.rs: |
+      pub fn resolve_js(name: &str) -> String {
+          format!("js:{name}")
+      }
+    src/user.rs: |
+      use crate::bindings::js::resolve_js;
+      use crate::bindings::python::resolve_python;
+
+      pub fn use_it() -> String {
+          resolve_python("a") + &resolve_js("b")
+      }
+  renamed_files:
+    src/bindings.rs: src/bindings/mod.rs
+  commit_message: Change rust definition moved in a split is not removed
+expect:
+  removed: []

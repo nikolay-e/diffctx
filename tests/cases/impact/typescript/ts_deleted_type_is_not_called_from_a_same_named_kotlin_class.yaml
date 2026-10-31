@@ -1,0 +1,34 @@
+name: ts_deleted_type_is_not_called_from_a_same_named_kotlin_class
+mode: impact
+source: fj#78
+issue_state: closed
+tags: [typescript, removed-definition, cross-language, name-match, decoy]
+repo:
+  initial_files:
+    apps/web/src/LyricsScroller.tsx: |
+      type LyricsLine = Readonly<{ time: number; text: string }>;
+
+      export function LyricsScroller({ lines }: { lines: LyricsLine[] }) {
+        return <ol>{lines.map((l) => <li key={l.time}>{l.text}</li>)}</ol>;
+      }
+    apps/backend/LyricsResolver.kt: |
+      class LyricsResolver {
+          fun resolve(id: String): String = id
+      }
+  changed_files:
+    apps/web/src/LyricsScroller.tsx: |
+      export function LyricsScroller({ lines }: { lines: Readonly<{ time: number; text: string }>[] }) {
+        return <ol>{lines.map((l) => <li key={l.time}>{l.text}</li>)}</ol>;
+      }
+    apps/backend/LrcParser.kt: |
+      data class LyricsLine(val time: Long, val text: String)
+    apps/backend/LyricsResolver.kt: |
+      class LyricsResolver {
+          fun resolve(id: String): LyricsLine = LyricsLine(0, id)
+      }
+  commit_message: "lyrics: inline the line type, parse lrc on the backend"
+expect:
+  callers:
+    "apps/web/src/LyricsScroller.tsx::LyricsLine": []
+  decoys:
+    "apps/web/src/LyricsScroller.tsx::LyricsLine": [apps/backend/LrcParser.kt, apps/backend/LyricsResolver.kt]

@@ -1,0 +1,29 @@
+name: py_tests_importing_through_sys_path_insert_have_a_test_link
+mode: impact
+source: gh#525
+issue_state: closed
+tags: [python, sys-path-insert, tests-reach]
+repo:
+  initial_files:
+    transcribe/jobs.py: |
+      def run_job(directory, engine):
+          return [directory, engine]
+    tests/test_jobs.py: |
+      import sys
+      from pathlib import Path
+
+      sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "transcribe"))
+      import jobs
+
+
+      def test_run_job_names_both():
+          assert jobs.run_job("d", "e") == ["d", "e"]
+  changed_files:
+    transcribe/jobs.py: |
+      def run_job(directory, engine):
+          return [str(directory), engine]
+  commit_message: "jobs: always name the directory as text"
+expect:
+  not_untested: [run_job]
+  callers:
+    run_job: [tests/test_jobs.py::test_run_job_names_both]

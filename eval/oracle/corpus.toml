@@ -1,0 +1,79 @@
+# The oracle's corpus (T10): public repositories under permissive licences, each pinned at a commit.
+# Pins were read with `git ls-remote <url> HEAD` on 2026-10-31; licences from the hosting API.
+# Indexers are pinned in tools/package.json (npm, with integrity hashes in tools/package-lock.json).
+
+[sampling]
+seed = 20261031
+commits = 40       # sampled commits per repository (the full corpus)
+fast_commits = 10  # sampled commits per repository for the `oracle` label
+history = 800      # commits back from the pin the sample is drawn from
+max_code_files = 12  # a commit touching more code files says little about one definition
+definitions_per_repo = 40  # `--symbol` queries per repository
+
+[completeness]
+min_file_ratio = 0.9  # an index covering fewer present code files than this is incomplete
+
+[timeouts]
+index_seconds = 1800
+diffctx_seconds = 300
+
+[scip_cli]
+version = "0.10.0"
+url = "https://github.com/sourcegraph/scip/releases/download/v{version}/scip-{platform}.tar.gz"
+
+[scip_cli.sha256]
+darwin-amd64 = "e1d5eb355e5fcfc1c6d6479dd94cb9334c24262a34e38ff514dd5a2231b779ec"  # pragma: allowlist secret
+darwin-arm64 = "7ea200390e0790b3da8999b7b1cd4e3597700dcb3d354911872523bfe0090779"  # pragma: allowlist secret
+linux-amd64 = "eeb28ebbff443c01609fb1691809958f3f0c7a8651af689a5bc8560061cd8ab0"  # pragma: allowlist secret
+linux-arm64 = "6ab677dc2c4bf2955975d0530766152e45daaa988f9404068d8adecacd0bb24c"  # pragma: allowlist secret
+
+[[repo]]
+name = "click"
+url = "https://github.com/pallets/click.git"
+language = "python"
+license = "BSD-3-Clause"
+sha = "2247b35ea1c47c727d7a06e51fa280e12a863ff6"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "httpx"
+url = "https://github.com/encode/httpx.git"
+language = "python"
+license = "BSD-3-Clause"
+sha = "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "rich"
+url = "https://github.com/Textualize/rich.git"
+language = "python"
+license = "MIT"
+sha = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "got"
+url = "https://github.com/sindresorhus/got.git"
+language = "typescript"
+license = "MIT"
+sha = "6b5aafc1cd538998728be6f45c65b0f80bae01b2"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "hono"
+url = "https://github.com/honojs/hono.git"
+language = "typescript"
+license = "MIT"
+sha = "17ad0e21f5a91c939eeafa3df05793a8ea60f016"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "express"
+url = "https://github.com/expressjs/express.git"
+language = "typescript"
+flavor = "javascript"
+license = "MIT"
+sha = "1c6f1b0fe4000977b9a7b4f34097e4d527dd9824"  # pragma: allowlist secret gitleaks:allow
+
+# Wave 2 fills these: indexers and repositories are chosen with the Rust, Kotlin and Go cells.
+[slots]
+rust = { wave = 2 }
+kotlin = { wave = 2 }
+go = { wave = 2 }

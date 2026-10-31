@@ -1,0 +1,30 @@
+name: py_new_script_module_level_names_are_one_change
+mode: impact
+source: gh#647
+issue_state: open
+tags: [python, new-file, module-level, absence-claim]
+repo:
+  initial_files:
+    README.md: |
+      demo
+    tests/test_smoke.py: |
+      def test_smoke():
+          assert True
+  changed_files:
+    analysis/one_off.py: |
+      THRESHOLD = 3
+      ROWS = [1, 2, 3, 4]
+      LABELS = {"low": 1, "high": 3}
+
+      for row in ROWS:
+          kept = row > THRESHOLD
+
+
+      def summarize(rows):
+          return [r for r in rows if r > THRESHOLD]
+
+
+      print(summarize(ROWS))
+  commit_message: "analysis: one-off threshold study"
+expect:
+  changed: [analysis/one_off.py]

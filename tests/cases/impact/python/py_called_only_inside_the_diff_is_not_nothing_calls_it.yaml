@@ -1,0 +1,39 @@
+name: py_called_only_inside_the_diff_is_not_nothing_calls_it
+mode: impact
+source: gh#441
+issue_state: closed
+tags: [python, called-in-diff, absence-claim]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/rates.py: |
+      def _scale(x):
+          return x * 100
+
+
+      def quote(x):
+          return _scale(x) + 1
+    app/api.py: |
+      from app.rates import quote
+
+
+      def handler(x):
+          return quote(x)
+    tests/test_unrelated.py: |
+      def test_nothing():
+          assert True
+  changed_files:
+    app/rates.py: |
+      def _scale(x):
+          return x * 1000
+
+
+      def quote(x):
+          return _scale(x) + 2
+  commit_message: "rates: finer scale"
+expect:
+  relations:
+    - {from: "app/api.py::handler", to: "app/rates.py::quote", kind: calls, resolution: resolved, site: 5}
+  callers:
+    _scale: []
+  no_negative_claims: true

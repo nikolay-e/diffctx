@@ -1,0 +1,34 @@
+name: ts_local_const_in_the_caller_is_not_the_caller
+mode: impact
+source: gh#452
+issue_state: closed
+tags: [javascript, local-binding, tests-reach, smoke]
+repo:
+  initial_files:
+    tools/rows.mjs: |
+      export function rows(xs) {
+        return xs.map((x) => ({ id: x }));
+      }
+    tools/summary.mjs: |
+      import { rows } from './rows.mjs';
+
+      export function makeSummary(xs) {
+        const items = rows(xs);
+        return items.map((r) => r.id);
+      }
+    tools/summary.test.mjs: |
+      import { makeSummary } from './summary.mjs';
+
+      export function check() {
+        return makeSummary([1]).length === 1;
+      }
+  changed_files:
+    tools/rows.mjs: |
+      export function rows(xs) {
+        return xs.filter(Boolean).map((x) => ({ id: x }));
+      }
+  commit_message: "rows: skip empty entries"
+expect:
+  relations:
+    - {from: "tools/summary.mjs::makeSummary", to: "tools/rows.mjs::rows", kind: calls, resolution: resolved, site: 4}
+    - {from: "tools/summary.test.mjs", to: "tools/summary.mjs::makeSummary", kind: tests_reach, resolution: resolved}

@@ -1,0 +1,48 @@
+name: rust_definition_called_only_from_inside_the_diff
+mode: impact
+source: gh#441
+issue_state: closed
+tags:
+- rust
+- in-diff-callers
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod other;
+      pub mod render;
+    src/render.rs: |
+      fn escape(s: &str) -> String {
+          s.replace('<', "&lt;")
+      }
+
+      pub fn render(s: &str) -> String {
+          escape(s)
+      }
+    src/other.rs: |
+      pub fn noop() -> u32 {
+          1
+      }
+    tests/other.rs: |
+      #[test]
+      fn noop_is_one() {
+          assert_eq!(fixture::other::noop(), 1);
+      }
+  changed_files:
+    src/render.rs: |
+      fn escape(s: &str) -> String {
+          s.replace('<', "&lt;").replace('>', "&gt;")
+      }
+
+      pub fn render(s: &str) -> String {
+          format!("<p>{}</p>", escape(s))
+      }
+  commit_message: Change rust definition called only from inside the diff
+expect:
+  changed:
+  - src/render.rs::escape
+  - src/render.rs::render

@@ -1,0 +1,22 @@
+name: py_module_level_change_is_reached_by_importing_tests
+mode: impact
+source: gh#398
+issue_state: closed
+tags: [python, module-level, tests-reach]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/server.py: |
+      mcp = StrictServer("tools")
+    tests/test_mcp_server.py: |
+      from app.server import mcp
+
+
+      def test_the_server_exposes_tools():
+          assert mcp is not None
+  changed_files:
+    app/server.py: |
+      mcp = StrictServer("tools", strict=True)
+  commit_message: "server: strict mode"
+expect:
+  not_untested: [app/server.py]

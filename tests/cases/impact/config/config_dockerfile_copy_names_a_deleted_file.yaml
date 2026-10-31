@@ -1,0 +1,35 @@
+name: config_dockerfile_copy_names_a_deleted_file
+mode: impact
+source: gh#313
+issue_state: closed
+tags:
+- config
+- docker
+- stale
+- smoke
+repo:
+  initial_files:
+    eslint.config.mjs: |
+      export default [];
+    tsconfig.base.json: |
+      { "compilerOptions": { "strict": true } }
+    Dockerfile: |
+      FROM node:22-alpine
+      WORKDIR /app
+      COPY tsconfig.base.json ./
+      COPY package.json ./
+      RUN npm ci
+    package.json: |
+      { "name": "app", "scripts": { "build": "tsc" } }
+    src/index.ts: |
+      export const x = 1;
+  deleted_files:
+  - eslint.config.mjs
+  - tsconfig.base.json
+  commit_message: Change config dockerfile copy names a deleted file
+expect:
+  stale:
+  - Dockerfile
+  not_stale:
+  - package.json
+  - src/index.ts

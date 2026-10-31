@@ -1,0 +1,43 @@
+name: config_changed_yaml_value_is_followed_into_another_file
+mode: impact
+source: fj#109
+issue_state: open
+tags:
+- config
+- yaml
+- values
+repo:
+  initial_files:
+    rules/alerts.yaml: |
+      groups:
+        - name: demo
+          rules:
+            - alert: DemoDown
+              expr: 'up{job="demo"} == 0'
+    app/dashboard.yaml: |
+      panels:
+        - title: demo
+          query: 'up{job="demo"}'
+    app/other.yaml: |
+      panels:
+        - title: other
+          query: 'up{job="other"}'
+  changed_files:
+    rules/alerts.yaml: |
+      groups:
+        - name: demo
+          rules:
+            - alert: DemoDown
+              expr: 'up{job="demo", pod="x"} == 0'
+  commit_message: Change config changed yaml value is followed into another file
+expect:
+  relations:
+  - from: app/dashboard.yaml
+    to: rules/alerts.yaml
+    kind: reads
+    resolution: candidate
+    site: 3
+  exact: true
+  decoys:
+    rules/alerts.yaml:
+    - app/other.yaml

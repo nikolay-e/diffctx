@@ -1,0 +1,35 @@
+name: py_alias_call_is_attributed_to_the_caller
+mode: impact
+source: gh#344
+issue_state: closed
+tags: [python, import-alias, tests-reach, smoke]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/timing.py: |
+      def elapsed(start):
+          return 0.0 - start
+    shop/checkout.py: |
+      from shop.timing import elapsed as took
+
+
+      def is_slow(start):
+          return took(start) > 1.0
+    tests/test_checkout.py: |
+      from shop.checkout import is_slow
+
+
+      def test_is_slow_after_a_long_wait():
+          assert is_slow(-2.0)
+  changed_files:
+    shop/timing.py: |
+      import time
+
+
+      def elapsed(start):
+          return time.monotonic() - start
+  commit_message: "timing: measure against the monotonic clock"
+expect:
+  relations:
+    - {from: "shop/checkout.py::is_slow", to: "shop/timing.py::elapsed", kind: calls, resolution: resolved, site: 5}
+    - {from: "tests/test_checkout.py", to: "shop/checkout.py::is_slow", kind: tests_reach, resolution: resolved}

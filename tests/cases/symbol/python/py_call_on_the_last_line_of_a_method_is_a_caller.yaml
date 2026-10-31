@@ -1,0 +1,27 @@
+name: py_call_on_the_last_line_of_a_method_is_a_caller
+mode: symbol
+source: gh#421
+issue_state: closed
+tags: [python, same-class, last-line]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/pgc.py: |
+      class PGC:
+          def apply_result(self, node, tick, inbox, result):
+              return (node, tick, inbox, result)
+
+          def _drain_local(self, node, tick, inbox, result):
+              with self.store.tx():
+                  self.apply_result(node, tick, inbox, result)
+
+          def apply_for(self, node, tick, inbox, result):
+              with self.store.tx():
+                  return self.apply_result(node, tick, inbox, result)
+query:
+  symbol: apply_result
+expect:
+  definitions: [pkg/pgc.py::apply_result]
+  relations:
+    - {from: "pkg/pgc.py::_drain_local", to: "pkg/pgc.py::apply_result", kind: calls, resolution: resolved, site: 7}
+    - {from: "pkg/pgc.py::apply_for", to: "pkg/pgc.py::apply_result", kind: calls, resolution: resolved, site: 11}

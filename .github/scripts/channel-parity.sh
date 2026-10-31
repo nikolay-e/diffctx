@@ -33,9 +33,11 @@ check() {
 draft=$(gh release view "v${VERSION}" --repo "$REPO" --json isDraft --jq '.isDraft' 2>/dev/null || echo "missing")
 check "GitHub Release v${VERSION} isDraft" "false" "$draft"
 check "release tags off main" "" "$(bash .github/scripts/release-tags.sh | paste -sd' ' -)"
-unpublished=$(for tag in $(git tag -l 'v*'); do
-  [[ "$(gh release view "$tag" --repo "$REPO" --json isDraft --jq '.isDraft' 2>/dev/null)" = false ]] || echo "$tag"
-done | paste -sd' ' -)
+if unpublished=$(bash .github/scripts/unpublished-release-tags.sh); then
+  unpublished=$(printf '%s\n' "$unpublished" | paste -sd' ' -)
+else
+  unpublished="check failed"
+fi
 check "release tags without a published release" "" "$unpublished"
 
 assets=$(sed -nE "s/.*target: '([^']+)', archive: '([^']+)'.*/diffctx-${VERSION}-\1.\2/p" packaging/npm/install.js | sort)

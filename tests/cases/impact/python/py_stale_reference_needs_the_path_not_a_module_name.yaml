@@ -1,0 +1,32 @@
+name: py_stale_reference_needs_the_path_not_a_module_name
+mode: impact
+source: gh#660
+issue_state: open
+tags: [python, stale-reference, decoy, monorepo]
+repo:
+  initial_files:
+    alpha/tests/conftest.py: |
+      def make_client():
+          return object()
+    alpha/app/config.py: |
+      debug = False
+    beta/tests/conftest.py: |
+      def make_client():
+          return 1
+    beta/tests/test_beta.py: |
+      from tests.conftest import make_client
+
+
+      def test_beta():
+          assert make_client()
+    gamma/web.py: |
+      import flask
+
+      app = flask.Flask(__name__)
+      app.config["TESTING"] = True
+  deleted_files:
+    - alpha/tests/conftest.py
+    - alpha/app/config.py
+  commit_message: "drop alpha"
+expect:
+  not_stale: [beta/tests/test_beta.py, gamma/web.py]

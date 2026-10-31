@@ -1,0 +1,43 @@
+name: go_new_with_an_expression_parses
+mode: impact
+source: gh#690
+issue_state: open
+tags:
+- go
+- parse
+- coverage
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/p
+
+      go 1.26
+    p.go: |
+      package p
+
+      func F() *int { return nil }
+    q.go: |
+      package p
+
+      func G() *int {
+          return F()
+      }
+  changed_files:
+    p.go: |
+      package p
+
+      func F() *int { return new(42) }
+  commit_message: Change go new with an expression parses
+expect:
+  changed:
+  - p.go::F
+  relations:
+  - from: q.go::G
+    to: p.go::F
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: true
+  coverage:
+    p.go::F:
+      calls: complete

@@ -1,0 +1,34 @@
+name: py_keywords_and_builtins_are_not_changed_definitions
+mode: impact
+source: gh#458
+issue_state: closed
+tags: [python, builtin, keyword, changed-definition]
+repo:
+  initial_files:
+    lib/parse.py: |
+      def parse(text):
+          try:
+              return int(text)
+          except ValueError:
+              return str(text)
+    app/cli.py: |
+      def main(argv):
+          return int(argv[0])
+    tests/test_parse.py: |
+      from lib.parse import parse
+
+
+      def test_parse_reads_an_int():
+          assert parse("4") == 4
+  changed_files:
+    lib/parse.py: |
+      def parse(text):
+          try:
+              return int(text.strip())
+          except ValueError:
+              return str(text).strip()
+  commit_message: "parse: strip the text first"
+expect:
+  changed: [lib/parse.py::parse]
+  decoys:
+    parse: [app/cli.py]

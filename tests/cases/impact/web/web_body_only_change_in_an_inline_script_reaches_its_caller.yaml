@@ -1,0 +1,53 @@
+name: web_body_only_change_in_an_inline_script_reaches_its_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- web
+- html
+- inline-script
+- body-only
+repo:
+  initial_files:
+    index.html: |
+      <!doctype html>
+      <html><body>
+      <script>
+      function format(n) {
+        return n.toFixed(2);
+      }
+
+      function render(n) {
+        document.body.textContent = format(n);
+      }
+
+      render(3);
+      </script>
+      </body></html>
+  changed_files:
+    index.html: |
+      <!doctype html>
+      <html><body>
+      <script>
+      function format(n) {
+        return n.toFixed(1);
+      }
+
+      function render(n) {
+        document.body.textContent = format(n);
+      }
+
+      render(3);
+      </script>
+      </body></html>
+  commit_message: Change web body only change in an inline script reaches its caller
+expect:
+  changed:
+  - index.html::format
+  relations:
+  - from: index.html::render
+    to: index.html::format
+    kind: calls
+    resolution: resolved
+    site: 9
+  exact: true

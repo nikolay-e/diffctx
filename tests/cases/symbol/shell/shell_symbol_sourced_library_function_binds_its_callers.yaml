@@ -1,0 +1,97 @@
+name: shell_symbol_sourced_library_function_binds_its_callers
+mode: symbol
+source: gh#533
+issue_state: closed
+tags:
+- shell
+- source
+- hyphen
+- smoke
+repo:
+  initial_files:
+    scripts/lib.sh: |
+      fetch() {
+        curl -s "$1"
+      }
+    scripts/my-lib.sh: |
+      login() {
+        echo ticket
+      }
+    scripts/plain.sh: |
+      . ./lib.sh
+      fetch x
+    scripts/dyn.sh: |
+      source "$(dirname "$0")/lib.sh"
+      fetch y
+    scripts/run.sh: |
+      source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+      source "$(dirname "${BASH_SOURCE[0]}")/my-lib.sh"
+      main() {
+        fetch "https://example.org"
+      }
+      login
+      main "$@"
+    scripts/plain2.sh: |
+      . ./my-lib.sh
+      login
+    scripts/var.sh: |
+      #!/bin/bash
+      SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      source "$SCRIPT_DIR/my-lib.sh"
+      if login; then echo ok; fi
+    scripts/env.sh: |
+      source "$LIB_HOME/my-lib.sh"
+      ticket=$(login)
+    scripts/other.sh: |
+      fetch() {
+        wget "$1"
+      }
+      fetch z
+    scripts/standalone.sh: |
+      fetch q
+    scripts/words.sh: |
+      . ./lib.sh
+      . ./my-lib.sh
+      echo fetch login
+      # fetch it, then login
+      printf '%s\n' "fetch"
+      msg="login"
+    scripts/config.sh: |
+      source "$CONFIG_FILE"
+      login
+    tests/test_lib.sh: |
+      source "$(dirname "$0")/../scripts/lib.sh"
+      fetch t
+  commit_message: Change shell symbol sourced library function binds its callers
+query:
+  symbol: scripts/lib.sh:fetch
+expect:
+  relations:
+  - from: scripts/plain.sh
+    to: scripts/lib.sh::fetch
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: scripts/dyn.sh
+    to: scripts/lib.sh::fetch
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: scripts/run.sh::main
+    to: scripts/lib.sh::fetch
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: tests/test_lib.sh
+    to: scripts/lib.sh::fetch
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    scripts/lib.sh::fetch:
+    - scripts/other.sh
+    - scripts/standalone.sh
+    - scripts/words.sh
+  definitions:
+  - scripts/lib.sh::fetch
