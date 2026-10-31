@@ -1,0 +1,37 @@
+name: ts_top_level_await_module_keeps_its_call_edges
+mode: symbol
+source: gh#481
+issue_state: closed
+tags: [javascript, top-level-await, es-module]
+repo:
+  initial_files:
+    web/app.js: |
+      export function radiusOf(n) {
+        return n * 2;
+      }
+
+      function renderAll(items) {
+        return items.map(radiusOf);
+      }
+
+      async function hydrateFromCache() {
+        return renderAll([1, 2]);
+      }
+
+      async function refresh() {
+        const items = await hydrateFromCache();
+        return renderAll(items);
+      }
+
+      async function init() {
+        await refresh();
+      }
+
+      await init();
+query:
+  symbol: renderAll
+expect:
+  definitions: [web/app.js::renderAll]
+  relations:
+    - {from: "web/app.js::hydrateFromCache", to: "web/app.js::renderAll", kind: calls, resolution: resolved, site: 10}
+    - {from: "web/app.js::refresh", to: "web/app.js::renderAll", kind: calls, resolution: resolved, site: 15}

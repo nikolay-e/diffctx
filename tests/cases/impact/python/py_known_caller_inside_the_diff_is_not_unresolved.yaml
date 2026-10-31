@@ -1,0 +1,40 @@
+name: py_known_caller_inside_the_diff_is_not_unresolved
+mode: impact
+source: fj#124
+issue_state: open
+tags: [python, called-in-diff, nested-class, unknown-vs-answer]
+repo:
+  initial_files:
+    fixture.py: |
+      from http.server import BaseHTTPRequestHandler
+
+
+      def build_handler():
+          class Handler(BaseHTTPRequestHandler):
+              def endpoint(self):
+                  return 42
+
+              def do_GET(self):
+                  return self.endpoint()
+
+          return Handler
+  worktree: true
+  changed_files:
+    fixture.py: |
+      from http.server import BaseHTTPRequestHandler
+
+
+      def build_handler():
+          class Handler(BaseHTTPRequestHandler):
+              def endpoint(self):
+                  return 43
+
+              def do_GET(self):
+                  return self.endpoint() + 1
+
+          return Handler
+query:
+  args: ["--budget", "1500"]
+expect:
+  relations:
+    - {from: "fixture.py::do_GET", to: "fixture.py::endpoint", kind: calls, resolution: resolved, site: 10}

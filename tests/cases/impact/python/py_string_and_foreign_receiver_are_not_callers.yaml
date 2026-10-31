@@ -1,0 +1,51 @@
+name: py_string_and_foreign_receiver_are_not_callers
+mode: impact
+source: gh#345
+issue_state: closed
+tags: [python, string-literal, foreign-receiver, decoy, smoke]
+repo:
+  initial_files:
+    fetcher/__init__.py: ""
+    fetcher/download.py: |
+      def refused(name):
+          return name.startswith("unpinned")
+
+
+      def search(query):
+          return [query]
+    fetcher/fetch.py: |
+      from fetcher import download
+
+
+      def run(query):
+          return download.search(query)
+    tests/test_model_cache.py: |
+      def download_model_files():
+          raise AssertionError("an unpinned model must be refused before it is fetched")
+    tests/test_download.py: |
+      import re
+
+      from fetcher import download
+
+
+      def test_the_release_names_match():
+          assert re.search("1.0", "release 1.0")
+          assert download is not None
+  changed_files:
+    fetcher/download.py: |
+      def refused(name):
+          return name.startswith(("unpinned", "draft"))
+
+
+      def search(query):
+          return [query.strip()]
+  commit_message: "download: refuse drafts, trim queries"
+expect:
+  changed: [fetcher/download.py::refused, fetcher/download.py::search]
+  relations:
+    - {from: "fetcher/fetch.py::run", to: "fetcher/download.py::search", kind: calls, resolution: resolved, site: 5}
+  callers:
+    refused: []
+  decoys:
+    "fetcher/download.py::refused": [tests/test_model_cache.py, tests/test_download.py]
+    "fetcher/download.py::search": [tests/test_model_cache.py, tests/test_download.py]

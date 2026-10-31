@@ -1,0 +1,45 @@
+name: java_symbol_unqualified_same_class_call
+mode: symbol
+source: gh#496
+issue_state: closed
+tags:
+- java
+- same-class
+repo:
+  initial_files:
+    src/main/java/app/Mapper.java: |
+      package app;
+
+      public class Mapper {
+          static int map(int x) {
+              return x * 2;
+          }
+
+          public int toDto(int x) {
+              return map(x) + 1;
+          }
+      }
+    src/test/java/app/MapperTest.java: |
+      package app;
+
+      import org.junit.jupiter.api.Test;
+
+      class MapperTest {
+          @Test
+          void dto() {
+              new Mapper().toDto(1);
+          }
+      }
+  commit_message: Change java symbol unqualified same class call
+query:
+  symbol: map
+expect:
+  relations:
+  - from: src/main/java/app/Mapper.java::Mapper.toDto
+    to: src/main/java/app/Mapper.java::Mapper.map
+    kind: calls
+    resolution: resolved
+    site: 9
+  exact: true
+  definitions:
+  - src/main/java/app/Mapper.java::Mapper.map

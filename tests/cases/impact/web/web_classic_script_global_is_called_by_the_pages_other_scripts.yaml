@@ -1,0 +1,76 @@
+name: web_classic_script_global_is_called_by_the_pages_other_scripts
+mode: impact
+source: gh#602
+issue_state: open
+tags:
+- web
+- html
+- globals
+- decoy
+repo:
+  initial_files:
+    lib.js: |
+      function greet(name) {
+        return "hi " + name;
+      }
+    app.js: |
+      function boot() {
+        document.title = greet("app");
+      }
+      boot();
+    index.html: |
+      <!doctype html>
+      <html>
+      <body>
+      <script src="lib.js"></script>
+      <script src="app.js"></script>
+      <script>
+        document.body.textContent = greet("page");
+      </script>
+      </body>
+      </html>
+    other.js: |
+      const x = { greet() {} };
+      x.greet();
+      // greet("c")
+      const s = "greet(1)";
+    standalone.html: |
+      <!doctype html>
+      <html>
+      <body>
+      <script src="other.js"></script>
+      <script>
+        greet("p");
+      </script>
+      </body>
+      </html>
+  changed_files:
+    lib.js: |
+      function greet(name) {
+        return "hello " + name;
+      }
+  commit_message: Change web classic script global is called by the pages other scripts
+expect:
+  changed:
+  - lib.js::greet
+  relations:
+  - from: app.js::boot
+    to: lib.js::greet
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: index.html
+    to: lib.js::greet
+    kind: calls
+    resolution: resolved
+    site: 7
+  - from: index.html
+    to: lib.js
+    kind: references_path
+    resolution: resolved
+    site: 4
+  exact: true
+  decoys:
+    lib.js::greet:
+    - other.js
+    - standalone.html

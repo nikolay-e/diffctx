@@ -10,8 +10,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from diffctx.version import __version__
-
 PROJECT_ROOT = Path(__file__).parent.parent
 
 UVX_ARGS = ["--from", "diffctx[mcp]", "diffctx-mcp"]
@@ -19,6 +17,11 @@ UVX_ARGS = ["--from", "diffctx[mcp]", "diffctx-mcp"]
 
 def _load(name: str) -> dict:
     return json.loads((PROJECT_ROOT / name).read_text(encoding="utf-8"))
+
+
+# The last release, which is what every manifest below pins; the tree itself is
+# a development version after it (tests/test_version_consistency.py).
+RELEASED = _load("server.json")["version"]
 
 
 class TestSuiteTiming:
@@ -39,9 +42,6 @@ class TestRegistryManifest:
     """server.json is the immutable source for the official MCP registry:
     a bad version or an over-long description fails the publish AFTER the
     PyPI release already shipped, burning the version number."""
-
-    def test_version_matches_package(self):
-        assert _load("server.json")["version"] == __version__
 
     def test_name_is_the_verified_namespace(self):
         assert _load("server.json")["name"] == "io.github.nikolay-e/diffctx"
@@ -71,7 +71,7 @@ class TestRegistryManifest:
 
 class TestClaudePlugin:
     def test_manifest_version_matches_package(self):
-        assert _load("plugin/.claude-plugin/plugin.json")["version"] == __version__
+        assert _load("plugin/.claude-plugin/plugin.json")["version"] == RELEASED
 
     def test_marketplace_lists_the_plugin_folder(self):
         [entry] = _load(".claude-plugin/marketplace.json")["plugins"]
@@ -87,7 +87,7 @@ class TestClaudePlugin:
         # `uvx <package>==<version> <subcommand>` and no option: the only shape
         # the directory reads as a locked launch. `-c constraints.txt` made it
         # report "Launcher lock invalid"; `--from` read as an unconfirmed pin.
-        assert server["args"] == [f"diffctx[mcp]=={__version__}", "mcp"]
+        assert server["args"] == [f"diffctx[mcp]=={RELEASED}", "mcp"]
 
     def test_plugin_uv_lock_pins_the_launcher_tree_from_pypi(self):
         """The directory takes the uv.lock beside .mcp.json as the launcher's
@@ -97,7 +97,7 @@ class TestClaudePlugin:
 
         plugin = PROJECT_ROOT / "plugin"
         project = tomllib.loads((plugin / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        assert project["dependencies"] == [f"diffctx[mcp]=={__version__}"]
+        assert project["dependencies"] == [f"diffctx[mcp]=={RELEASED}"]
 
         lock_path = plugin / "uv.lock"
         # Past 256 KiB the directory does not read a file and holds the version.
@@ -113,7 +113,7 @@ class TestClaudePlugin:
             assert artifacts, package["name"]
             assert all(a["hash"].startswith("sha256:") for a in artifacts), package["name"]
         [diffctx] = [p for p in locked if p["name"] == "diffctx"]
-        assert diffctx["version"] == __version__
+        assert diffctx["version"] == RELEASED
 
     def test_mcp_json_is_self_bootstrapping(self):
         server = _load(".mcp.json")["mcpServers"]["diffctx"]
@@ -227,7 +227,7 @@ class TestPluginHook:
         refused for downloading the release binary). Both scripts launch the
         MCP server's own pinned spec, so the environment its start cached is
         the one the git hook finds offline."""
-        pin = f'"diffctx[mcp]=={__version__}"'
+        pin = f'"diffctx[mcp]=={RELEASED}"'
         for name in ("diffctx-impact.sh", "diffctx-session.sh"):
             text = (self.HOOKS / name).read_text(encoding="utf-8")
             assert "export UV_ISOLATED=1" in text
@@ -238,8 +238,8 @@ class TestPluginHook:
         assert '"${args[@]}"' in impact
         session = (self.HOOKS / "diffctx-session.sh").read_text(encoding="utf-8")
         assert f"uvx -q {pin} --version" in session
-        assert f"uvx diffctx=={__version__} . --diff --mode impact -f md" in session
-        assert f"uvx diffctx=={__version__} . --symbol NAME -f md" in session
+        assert f"uvx diffctx=={RELEASED} . --diff --mode impact -f md" in session
+        assert f"uvx diffctx=={RELEASED} . --symbol NAME -f md" in session
         assert "&)" in session
         assert _load("plugin/hooks/hooks.json")["hooks"]["SessionStart"][0]["hooks"][0]["timeout"] <= 10
 
@@ -250,7 +250,7 @@ class TestPluginHook:
             text = skill.read_text(encoding="utf-8")
             specs = re.findall(r"uvx (diffctx\S*)", text)
             assert specs, skill
-            assert all(spec == f"diffctx=={__version__}" for spec in specs), (skill, specs)
+            assert all(spec == f"diffctx=={RELEASED}" for spec in specs), (skill, specs)
 
     def test_the_hook_options_are_declared(self):
         options = _load("plugin/.claude-plugin/plugin.json")["userConfig"]
@@ -280,7 +280,7 @@ class TestDistributionPins:
         action = (PROJECT_ROOT / "action.yml").read_text(encoding="utf-8")
         m = re.search(r"diffctx-version:.*?default:\s*([\d.]+)", action, re.DOTALL)
         assert m
-        assert m.group(1) == __version__
+        assert m.group(1) == RELEASED
 
     def test_action_docs_pin_a_tag_that_carries_the_action(self):
         """v1.12.2 and older tags predate action.yml — `uses: @<tag>` on them
@@ -288,8 +288,8 @@ class TestDistributionPins:
         docs = (PROJECT_ROOT / "docs/product/github-action.md").read_text(encoding="utf-8")
         pins = {tuple(map(int, v.split("."))) for v in re.findall(r"nikolay-e/diffctx@v([\d.]+)", docs)}
         assert pins
-        release = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", __version__)
-        assert release, f"non-release version string: {__version__}"
+        release = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", RELEASED)
+        assert release, f"non-release version string: {RELEASED}"
         current = tuple(map(int, release.groups()))
         for pin in pins:
             assert (1, 12, 3) <= pin <= current

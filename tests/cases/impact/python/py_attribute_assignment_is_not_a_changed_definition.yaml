@@ -1,0 +1,24 @@
+name: py_attribute_assignment_is_not_a_changed_definition
+mode: impact
+source: gh#672
+issue_state: open
+tags: [python, attribute-assignment, changed-definition, unittest]
+repo:
+  initial_files:
+    README.md: |
+      demo
+  changed_files:
+    test_tool.py: |
+      import tempfile
+      import unittest
+
+
+      class ToolTest(unittest.TestCase):
+          def setUp(self):
+              self.workdir = tempfile.mkdtemp()
+
+          def test_workdir_exists(self):
+              self.assertTrue(self.workdir)
+  commit_message: "test_tool: give each test a work directory"
+expect:
+  changed: []

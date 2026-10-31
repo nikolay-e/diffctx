@@ -1,0 +1,32 @@
+name: py_pytest_fixture_is_used_by_the_tests_that_name_it
+mode: impact
+source: gh#401
+issue_state: closed
+tags: [python, pytest-fixture, framework-registration]
+repo:
+  initial_files:
+    tests/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def flask_client():
+          return object()
+    tests/test_home.py: |
+      def test_home_page(flask_client):
+          assert flask_client is not None
+  changed_files:
+    tests/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def flask_client():
+          return {"testing": True}
+  commit_message: "conftest: configure the client"
+expect:
+  relations:
+    - from: "tests/test_home.py::test_home_page"
+      to: "tests/conftest.py::flask_client"
+      kind: "calls"
+      resolution: "resolved"

@@ -1,0 +1,77 @@
+name: kotlin_symbol_property_read_through_a_typed_receiver
+mode: symbol
+source: gh#561
+issue_state: open
+tags:
+- kotlin
+- properties
+- reads
+repo:
+  initial_files:
+    src/main/kotlin/app/ShopApplication.kt: |
+      package app
+
+      class Context
+
+      class DevicePresence
+
+      class AppContainer {
+          val devicePresence = DevicePresence()
+          val swipeSearch = true
+      }
+
+      val Context.appContainer: AppContainer
+          get() = AppContainer()
+    src/main/kotlin/feature/DevicesViewModel.kt: |
+      package feature
+
+      import app.AppContainer
+      import app.DevicePresence
+
+      class DevicesViewModel(val presence: DevicePresence)
+
+      fun buildDevices(container: AppContainer): DevicesViewModel = DevicesViewModel(container.devicePresence)
+    src/main/kotlin/feature/GroupViewModel.kt: |
+      package feature
+
+      import app.AppContainer
+
+      class GroupViewModel(val presence: Any)
+
+      fun buildGroup(container: AppContainer) = GroupViewModel(presence = container.devicePresence)
+    src/main/kotlin/root/RootScreen.kt: |
+      package root
+
+      import app.Context
+      import app.appContainer
+
+      fun screen(context: Context): Boolean = context.appContainer.swipeSearch
+    src/main/kotlin/other/Other.kt: |
+      package other
+
+      class Other {
+          val devicePresence = "unrelated"
+      }
+
+      fun read(o: Other): String = o.devicePresence
+  commit_message: Change kotlin symbol property read through a typed receiver
+query:
+  symbol: src/main/kotlin/app/ShopApplication.kt:devicePresence
+expect:
+  relations:
+  - from: src/main/kotlin/feature/DevicesViewModel.kt::buildDevices
+    to: src/main/kotlin/app/ShopApplication.kt::AppContainer.devicePresence
+    kind: reads
+    resolution: resolved
+    site: 8
+  - from: src/main/kotlin/feature/GroupViewModel.kt::buildGroup
+    to: src/main/kotlin/app/ShopApplication.kt::AppContainer.devicePresence
+    kind: reads
+    resolution: resolved
+    site: 7
+  exact: true
+  decoys:
+    src/main/kotlin/app/ShopApplication.kt::AppContainer.devicePresence:
+    - src/main/kotlin/root/RootScreen.kt
+  definitions:
+  - src/main/kotlin/app/ShopApplication.kt::AppContainer.devicePresence

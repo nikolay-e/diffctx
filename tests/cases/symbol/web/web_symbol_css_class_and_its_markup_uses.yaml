@@ -1,0 +1,41 @@
+name: web_symbol_css_class_and_its_markup_uses
+mode: symbol
+source: gh#631
+issue_state: open
+tags:
+- web
+- css
+- astro
+- classes
+- symbol
+repo:
+  initial_files:
+    src/layouts/Base.astro: |
+      <nav><a href="/" class="btn btn-outline">Home</a></nav>
+      <img src="/portrait.jpg" alt="me" />
+    src/layouts/Other.astro: |
+      <a class="btn-outlined">Other</a>
+      <img src="/portrait.png" alt="other" />
+    src/styles/global.css: |
+      .btn { display: inline-block; }
+      .btn-outline { border: 1px solid black; }
+    public/portrait.jpg: |
+      jpg-bytes
+    public/portrait.png: |
+      png-bytes
+  commit_message: Change web symbol css class and its markup uses
+query:
+  symbol: btn-outline
+expect:
+  relations:
+  - from: src/layouts/Base.astro
+    to: src/styles/global.css::btn-outline
+    kind: reads
+    resolution: resolved
+    site: 1
+  exact: true
+  decoys:
+    src/styles/global.css::btn-outline:
+    - src/layouts/Other.astro
+  definitions:
+  - src/styles/global.css::btn-outline

@@ -1,0 +1,64 @@
+name: java_unqualified_same_class_call_is_a_caller
+mode: impact
+source: gh#496
+issue_state: closed
+tags:
+- java
+- same-class
+- tests
+repo:
+  initial_files:
+    src/main/java/app/Mapper.java: |
+      package app;
+
+      public class Mapper {
+          static int map(int x) {
+              return x * 2;
+          }
+
+          public int toDto(int x) {
+              return map(x) + 1;
+          }
+      }
+    src/test/java/app/MapperTest.java: |
+      package app;
+
+      import org.junit.jupiter.api.Test;
+
+      class MapperTest {
+          @Test
+          void dto() {
+              new Mapper().toDto(1);
+          }
+      }
+  changed_files:
+    src/main/java/app/Mapper.java: |
+      package app;
+
+      public class Mapper {
+          static int map(int x) {
+              return x * 3;
+          }
+
+          public int toDto(int x) {
+              return map(x) + 1;
+          }
+      }
+  commit_message: Change java unqualified same class call is a caller
+expect:
+  changed:
+  - src/main/java/app/Mapper.java::Mapper.map
+  relations:
+  - from: src/main/java/app/Mapper.java::Mapper.toDto
+    to: src/main/java/app/Mapper.java::Mapper.map
+    kind: calls
+    resolution: resolved
+    site: 9
+  - from: src/test/java/app/MapperTest.java::MapperTest.dto
+    to: src/main/java/app/Mapper.java::Mapper.toDto
+    kind: tests_reach
+    resolution: resolved
+    site: 8
+  exact: true
+  not_untested:
+  - map

@@ -1,0 +1,84 @@
+name: rust_enum_move_does_not_link_same_named_variants
+mode: impact
+source: gh#601
+issue_state: closed
+tags:
+- rust
+- enum
+- move
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod facts;
+      pub mod kinds;
+      pub mod other;
+    src/facts/mod.rs: |
+      pub mod python;
+    src/facts/python.rs: |
+      use std::fmt;
+
+      #[derive(Clone, Copy, PartialEq, Eq)]
+      pub enum DeclKind {
+          Function,
+          Class,
+      }
+
+      pub fn is_fn(k: DeclKind) -> bool {
+          k == DeclKind::Function
+      }
+
+      pub fn show(f: &mut fmt::Formatter) -> fmt::Result {
+          write!(f, "x")
+      }
+    src/kinds.rs: |
+      #[derive(Clone, Copy, PartialEq, Eq)]
+      pub enum FragmentKind {
+          Function,
+          Class,
+          Chunk,
+      }
+    src/other.rs: |
+      use crate::kinds::FragmentKind;
+
+      pub fn label(k: FragmentKind) -> &'static str {
+          match k {
+              FragmentKind::Function => "fn",
+              FragmentKind::Class => "class",
+              FragmentKind::Chunk => "chunk",
+          }
+      }
+  changed_files:
+    src/facts/mod.rs: |
+      pub mod python;
+
+      #[derive(Clone, Copy, PartialEq, Eq)]
+      pub enum DeclKind {
+          Function,
+          Class,
+      }
+    src/facts/python.rs: |
+      use super::DeclKind;
+      use std::fmt;
+
+      pub fn is_fn(k: DeclKind) -> bool {
+          k == DeclKind::Function
+      }
+
+      pub fn show(f: &mut fmt::Formatter) -> fmt::Result {
+          write!(f, "x")
+      }
+  commit_message: Change rust enum move does not link same named variants
+expect:
+  decoys:
+    src/facts/mod.rs::DeclKind:
+    - src/kinds.rs
+    - src/other.rs
+  callers:
+    DeclKind:
+    - src/facts/python.rs::is_fn
+  removed: []

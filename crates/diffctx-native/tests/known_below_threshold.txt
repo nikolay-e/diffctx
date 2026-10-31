@@ -114,3 +114,72 @@ builders/openapi_external_ref
 # empty method and UserService; the real path (changed method -> its class ->
 # the class's users) needs the core lifted to its container.
 synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_repo
+
+# Impact and symbol corpus (W1-B): cases seeded from an open issue are expected red.
+# These entries are predictions made without running the harness; reconcile them on the first run.
+# Each lists its issue; T21 dispositions every line before the release.
+impact/python/py_extensionless_python_script_is_parsed_by_its_shebang  # gh#680 open
+impact/python/py_generated_file_is_not_a_separate_consumer_of_its_source  # fj#110 open
+impact/python/py_known_caller_inside_the_diff_is_not_unresolved  # fj#124 open
+impact/python/py_namedtuple_fields_are_not_changed_definitions  # fj#129 open
+impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666 open
+impact/python/py_stale_reference_needs_the_path_not_a_module_name  # gh#660 open
+impact/python/py_unresolved_binding_stays_inside_its_project_root  # gh#649 open
+impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts  # gh#602 open
+impact/typescript/ts_default_export_reached_by_a_relative_dynamic_import_has_a_caller  # fj#106 open
+impact/typescript/ts_destructured_export_keeps_the_names_exported  # fj#126 open
+impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # gh#614 open
+symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # gh#636 open
+symbol/python/py_module_qualified_call_inside_a_same_named_function  # gh#677 open
+symbol/typescript/ts_receiver_built_by_new_is_typed  # gh#611 open
+impact/python/py_new_script_module_level_names_are_one_change  # gh#647 open
+
+# Closed issues whose case is red with a right expectation: regressions to file (R2).
+impact/python/py_attribute_names_do_not_bind_across_packages  # gh#353 regression
+impact/python/py_removed_field_lists_its_readers_only  # gh#400 regression
+impact/python/py_comment_only_edit_does_not_claim_no_callers  # gh#498 regression
+impact/python/py_flask_route_helper_is_reached_by_the_test_that_posts_to_it  # fj#67 regression
+symbol/python/py_any_typed_and_factory_built_receivers_are_callers  # gh#425 regression
+impact/typescript/ts_call_inside_an_arrow_callback_argument_is_a_caller  # gh#480 regression
+impact/typescript/ts_class_property_arrow_method_is_the_changed_definition  # gh#592 regression
+
+# Other languages (W1-C), triaged at integration 1.
+impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
+impact/go/go_body_only_change_reaches_callers  # synthetic open
+impact/other/dart_changed_method_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
+impact/other/elixir_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
+impact/other/lua_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
+impact/kotlin/kotlin_method_and_its_caller_change_in_one_range  # gh#687 open
+symbol/kotlin/kotlin_symbol_property_read_through_an_extension_property_chain  # gh#561 open
+impact/java/java_enum_method_called_through_a_constant  # gh#424 open
+impact/other/csharp_record_method_has_a_caller  # gh#424 open
+impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
+symbol/other/erlang_symbol_type_alias_is_a_definition  # gh#616 open
+symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
+impact/swift/swift_executable_target_is_reached_by_tests_through_its_product  # gh#535 open
+impact/go/go_changed_package_constant_reaches_its_readers  # gh#605 open
+impact/go/go_new_with_an_expression_parses  # gh#690 open
+symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
+impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
+impact/config/config_bare_filename_resolves_to_the_file_beside_it  # gh#670 open
+impact/config/config_deleted_path_is_not_named_by_a_shared_module_name  # gh#660 open
+impact/config/config_glob_now_selects_an_added_path  # gh#522 open
+impact/config/config_helm_values_key_is_read_by_a_template  # fj#128 open
+impact/config/config_image_digest_pin_names_the_manifest  # fj#128 open
+impact/config/config_k8s_object_names_are_references  # gh#352 open
+impact/config/config_kustomize_inclusion_entry_for_a_content_edit  # gh#564 open
+impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
+impact/config/config_pure_rename_is_no_changed_contract  # gh#593 open
+impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
+impact/config/config_shell_script_naming_changed_files_by_path  # gh#609 open
+impact/config/config_yaml_key_with_a_files_basename_is_no_path_reference  # gh#658 open
+symbol/config/config_symbol_helm_named_template_and_its_includes  # gh#378 open
+impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
+symbol/web/web_symbol_astro_frontmatter_and_template_calls  # gh#597 open
+impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # gh#602 open
+impact/web/web_deleted_static_file_is_still_referenced_by_markup  # gh#631 open
+impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
+symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
+impact/web/web_test_that_evaluates_a_pages_script_reaches_its_functions  # gh#695 open
+symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
+impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open

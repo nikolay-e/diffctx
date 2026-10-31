@@ -1,0 +1,41 @@
+name: py_removed_builtin_call_is_not_a_changed_definition
+mode: impact
+source: fj#77
+issue_state: closed
+tags: [python, builtin, changed-definition, decoy]
+repo:
+  initial_files:
+    child_a/src/m.py: |
+      def apply(row, values):
+          setattr(row, "a", values[0])
+          setattr(row, "b", values[1])
+          return row
+    child_a/src/imp.py: |
+      from m import apply
+
+
+      def run_import(rows):
+          return [apply(r, (1, 2)) for r in rows]
+    child_b/tests/conftest.py: |
+      def make(obj):
+          setattr(obj, "x", 1)
+          return obj
+  changed_files:
+    child_a/src/m.py: |
+      def apply(row, values):
+          row.a = values[0]
+          row.b = values[1]
+          return row
+  commit_message: "m: plain attribute assignment"
+expect:
+  changed: [child_a/src/m.py::apply]
+  callers:
+    setattr: []
+  decoys:
+    setattr: [child_b/tests/conftest.py]
+  relations:
+    - from: "child_a/src/imp.py::run_import"
+      to: "child_a/src/m.py::apply"
+      kind: "calls"
+      resolution: "resolved"
+      site: 5

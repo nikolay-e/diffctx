@@ -4,6 +4,8 @@ configuration hash does, so rows from two runs compare only when it matches."""
 
 from __future__ import annotations
 
+from packaging.version import Version
+
 import diffctx
 from eval.harness.adapters.base import BenchmarkInstance
 from eval.harness.adapters.evaluator import UniversalEvaluator
@@ -39,7 +41,7 @@ def test_rows_carry_engine_version_and_config_hash_that_moves_with_overrides(tmp
     repo.commit("add sub")
 
     plain = _row(repo.path, monkeypatch)
-    assert plain.extra["engine_version"] == diffctx.__version__
+    assert Version(plain.extra["engine_version"]) == Version(diffctx.__version__)
     assert plain.extra["effective_config_hash"]
     assert plain.extra["budget_tokens"] == 8000
     assert plain.extra["tau"] is not None

@@ -1,0 +1,37 @@
+name: ts_classic_script_global_is_called_by_the_pages_later_scripts
+mode: impact
+source: gh#602
+issue_state: open
+tags: [javascript, classic-script, global-scope, html]
+repo:
+  initial_files:
+    lib.js: |
+      function greet(name) {
+        return "hi " + name;
+      }
+    app.js: |
+      function boot() {
+        document.title = greet("app");
+      }
+      boot();
+    index.html: |
+      <!doctype html>
+      <html>
+      <body>
+      <script src="lib.js"></script>
+      <script src="app.js"></script>
+      <script>
+        document.body.textContent = greet("page");
+      </script>
+      </body>
+      </html>
+  changed_files:
+    lib.js: |
+      function greet(name) {
+        return "hello " + name;
+      }
+  commit_message: "lib: a longer greeting"
+expect:
+  relations:
+    - {from: "app.js::boot", to: "lib.js::greet", kind: calls, resolution: resolved, site: 2}
+    - {from: "index.html", to: "lib.js::greet", kind: calls, resolution: resolved, site: 7}

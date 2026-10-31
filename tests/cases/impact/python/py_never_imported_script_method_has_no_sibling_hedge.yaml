@@ -1,0 +1,32 @@
+name: py_never_imported_script_method_has_no_sibling_hedge
+mode: impact
+source: gh#666
+issue_state: open
+tags: [python, untracked, script, hedge, decoy]
+repo:
+  initial_files:
+    tools/migrate.py: |
+      import json
+
+
+      def fixture(client, path):
+          data = client.call("GET", path)
+          return json.dumps(data)
+  worktree: true
+  untracked_files:
+    tools/device.py: |
+      import sys
+
+
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+
+
+      if __name__ == "__main__":
+          print(Device().call("GET", sys.argv[1]))
+expect:
+  callers:
+    call: []
+  decoys:
+    call: [tools/migrate.py]

@@ -1,0 +1,490 @@
+name: py_callers_of_a_name_imported_by_many_files_keep_their_edge
+mode: impact
+source: gh#317
+issue_state: closed
+tags: [python, import-confirmation, many-importers]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    callers/__init__.py: ""
+    svc/core.py: |
+      def core(v):
+          return v
+
+    callers/caller_001.py: |
+      from svc.core import core
+
+
+      def use_001(v):
+          return core(v)
+
+    callers/caller_002.py: |
+      from svc.core import core
+
+
+      def use_002(v):
+          return core(v)
+
+    callers/caller_003.py: |
+      from svc.core import core
+
+
+      def use_003(v):
+          return core(v)
+
+    callers/caller_004.py: |
+      from svc.core import core
+
+
+      def use_004(v):
+          return core(v)
+
+    callers/caller_005.py: |
+      from svc.core import core
+
+
+      def use_005(v):
+          return core(v)
+
+    callers/caller_006.py: |
+      from svc.core import core
+
+
+      def use_006(v):
+          return core(v)
+
+    callers/caller_007.py: |
+      from svc.core import core
+
+
+      def use_007(v):
+          return core(v)
+
+    callers/caller_008.py: |
+      from svc.core import core
+
+
+      def use_008(v):
+          return core(v)
+
+    callers/caller_009.py: |
+      from svc.core import core
+
+
+      def use_009(v):
+          return core(v)
+
+    callers/caller_010.py: |
+      from svc.core import core
+
+
+      def use_010(v):
+          return core(v)
+
+    callers/caller_011.py: |
+      from svc.core import core
+
+
+      def use_011(v):
+          return core(v)
+
+    callers/caller_012.py: |
+      from svc.core import core
+
+
+      def use_012(v):
+          return core(v)
+
+    callers/caller_013.py: |
+      from svc.core import core
+
+
+      def use_013(v):
+          return core(v)
+
+    callers/caller_014.py: |
+      from svc.core import core
+
+
+      def use_014(v):
+          return core(v)
+
+    callers/caller_015.py: |
+      from svc.core import core
+
+
+      def use_015(v):
+          return core(v)
+
+    callers/caller_016.py: |
+      from svc.core import core
+
+
+      def use_016(v):
+          return core(v)
+
+    callers/caller_017.py: |
+      from svc.core import core
+
+
+      def use_017(v):
+          return core(v)
+
+    callers/caller_018.py: |
+      from svc.core import core
+
+
+      def use_018(v):
+          return core(v)
+
+    callers/caller_019.py: |
+      from svc.core import core
+
+
+      def use_019(v):
+          return core(v)
+
+    callers/caller_020.py: |
+      from svc.core import core
+
+
+      def use_020(v):
+          return core(v)
+
+    callers/caller_021.py: |
+      from svc.core import core
+
+
+      def use_021(v):
+          return core(v)
+
+    callers/caller_022.py: |
+      from svc.core import core
+
+
+      def use_022(v):
+          return core(v)
+
+    callers/caller_023.py: |
+      from svc.core import core
+
+
+      def use_023(v):
+          return core(v)
+
+    callers/caller_024.py: |
+      from svc.core import core
+
+
+      def use_024(v):
+          return core(v)
+
+    callers/caller_025.py: |
+      from svc.core import core
+
+
+      def use_025(v):
+          return core(v)
+
+    callers/caller_026.py: |
+      from svc.core import core
+
+
+      def use_026(v):
+          return core(v)
+
+    callers/caller_027.py: |
+      from svc.core import core
+
+
+      def use_027(v):
+          return core(v)
+
+    callers/caller_028.py: |
+      from svc.core import core
+
+
+      def use_028(v):
+          return core(v)
+
+    callers/caller_029.py: |
+      from svc.core import core
+
+
+      def use_029(v):
+          return core(v)
+
+    callers/caller_030.py: |
+      from svc.core import core
+
+
+      def use_030(v):
+          return core(v)
+
+    callers/caller_031.py: |
+      from svc.core import core
+
+
+      def use_031(v):
+          return core(v)
+
+    callers/caller_032.py: |
+      from svc.core import core
+
+
+      def use_032(v):
+          return core(v)
+
+    callers/caller_033.py: |
+      from svc.core import core
+
+
+      def use_033(v):
+          return core(v)
+
+    callers/caller_034.py: |
+      from svc.core import core
+
+
+      def use_034(v):
+          return core(v)
+
+    callers/caller_035.py: |
+      from svc.core import core
+
+
+      def use_035(v):
+          return core(v)
+
+    callers/caller_036.py: |
+      from svc.core import core
+
+
+      def use_036(v):
+          return core(v)
+
+    callers/caller_037.py: |
+      from svc.core import core
+
+
+      def use_037(v):
+          return core(v)
+
+    callers/caller_038.py: |
+      from svc.core import core
+
+
+      def use_038(v):
+          return core(v)
+
+    callers/caller_039.py: |
+      from svc.core import core
+
+
+      def use_039(v):
+          return core(v)
+
+    callers/caller_040.py: |
+      from svc.core import core
+
+
+      def use_040(v):
+          return core(v)
+
+    callers/caller_041.py: |
+      from svc.core import core
+
+
+      def use_041(v):
+          return core(v)
+
+    callers/caller_042.py: |
+      from svc.core import core
+
+
+      def use_042(v):
+          return core(v)
+
+    callers/caller_043.py: |
+      from svc.core import core
+
+
+      def use_043(v):
+          return core(v)
+
+    callers/caller_044.py: |
+      from svc.core import core
+
+
+      def use_044(v):
+          return core(v)
+
+    callers/caller_045.py: |
+      from svc.core import core
+
+
+      def use_045(v):
+          return core(v)
+
+    callers/caller_046.py: |
+      from svc.core import core
+
+
+      def use_046(v):
+          return core(v)
+
+    callers/caller_047.py: |
+      from svc.core import core
+
+
+      def use_047(v):
+          return core(v)
+
+    callers/caller_048.py: |
+      from svc.core import core
+
+
+      def use_048(v):
+          return core(v)
+
+    callers/caller_049.py: |
+      from svc.core import core
+
+
+      def use_049(v):
+          return core(v)
+
+    callers/caller_050.py: |
+      from svc.core import core
+
+
+      def use_050(v):
+          return core(v)
+
+    callers/caller_051.py: |
+      from svc.core import core
+
+
+      def use_051(v):
+          return core(v)
+
+    callers/caller_052.py: |
+      from svc.core import core
+
+
+      def use_052(v):
+          return core(v)
+
+    callers/caller_053.py: |
+      from svc.core import core
+
+
+      def use_053(v):
+          return core(v)
+
+    callers/caller_054.py: |
+      from svc.core import core
+
+
+      def use_054(v):
+          return core(v)
+
+    callers/caller_055.py: |
+      from svc.core import core
+
+
+      def use_055(v):
+          return core(v)
+
+    callers/caller_056.py: |
+      from svc.core import core
+
+
+      def use_056(v):
+          return core(v)
+
+    callers/caller_057.py: |
+      from svc.core import core
+
+
+      def use_057(v):
+          return core(v)
+
+    callers/caller_058.py: |
+      from svc.core import core
+
+
+      def use_058(v):
+          return core(v)
+
+    callers/caller_059.py: |
+      from svc.core import core
+
+
+      def use_059(v):
+          return core(v)
+
+    callers/caller_060.py: |
+      from svc.core import core
+
+
+      def use_060(v):
+          return core(v)
+
+    callers/caller_061.py: |
+      from svc.core import core
+
+
+      def use_061(v):
+          return core(v)
+
+    callers/caller_062.py: |
+      from svc.core import core
+
+
+      def use_062(v):
+          return core(v)
+
+    callers/caller_063.py: |
+      from svc.core import core
+
+
+      def use_063(v):
+          return core(v)
+
+    callers/caller_064.py: |
+      from svc.core import core
+
+
+      def use_064(v):
+          return core(v)
+
+    callers/caller_065.py: |
+      from svc.core import core
+
+
+      def use_065(v):
+          return core(v)
+
+    callers/caller_066.py: |
+      from svc.core import core
+
+
+      def use_066(v):
+          return core(v)
+
+  changed_files:
+    svc/core.py: |
+      def core(v):
+          return v + 1
+
+  commit_message: "core: shift the value"
+query:
+  args: ["--budget", "40000"]
+expect:
+  exact: false
+  callers:
+    core:
+      - callers/caller_001.py::use_001
+      - callers/caller_033.py::use_033
+      - callers/caller_066.py::use_066

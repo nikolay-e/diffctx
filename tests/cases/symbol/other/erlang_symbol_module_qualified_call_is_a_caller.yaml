@@ -1,0 +1,40 @@
+name: erlang_symbol_module_qualified_call_is_a_caller
+mode: symbol
+source: gh#616
+issue_state: open
+tags:
+- tier3
+- erlang
+- calls
+repo:
+  initial_files:
+    shop.erl: |
+      -module(shop).
+      -export([total/1]).
+
+      -type price() :: non_neg_integer().
+
+      -spec total([price()]) -> price().
+      total(Items) ->
+          lists:sum(Items).
+    cart.erl: |
+      -module(cart).
+      -export([sum/1]).
+
+      -spec sum([shop:price()]) -> shop:price().
+      sum(Xs) ->
+          shop:total(Xs).
+  commit_message: Change erlang symbol module qualified call is a caller
+query:
+  symbol: total
+expect:
+  relations:
+  - from: cart.erl::sum
+    to: shop.erl::total
+    kind: calls
+    resolution: candidate
+    site: 6
+  exact: true
+  definitions:
+  - shop.erl::total
+  no_negative_claims: true

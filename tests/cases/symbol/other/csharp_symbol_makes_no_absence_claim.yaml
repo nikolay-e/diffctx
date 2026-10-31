@@ -1,0 +1,27 @@
+name: csharp_symbol_makes_no_absence_claim
+mode: symbol
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- csharp
+- symbol
+repo:
+  initial_files:
+    src/Greeter.cs: |
+      namespace App;
+
+      public class Greeter
+      {
+          public string Hello(string name) => "hi " + name;
+      }
+  commit_message: Change csharp symbol makes no absence claim
+query:
+  symbol: Hello
+expect:
+  unknowns:
+    Hello: not_modelled
+  definitions:
+  - src/Greeter.cs::Greeter.Hello
+  discloses: true
+  no_negative_claims: true

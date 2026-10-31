@@ -1,0 +1,28 @@
+name: ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one
+mode: impact
+source: gh#614
+issue_state: open
+tags: [javascript, multi-declarator, changed-definition, body-only]
+repo:
+  initial_files:
+    config.js: |
+      const NAME = "demo", LEVEL = 3, MODEL = "model-1";
+      export function describe() { return `${NAME}:${LEVEL}`; }
+      export const hooks = { MODEL };
+    use.js: |
+      import { hooks } from "./config.js";
+      export function modelOf() { return hooks.MODEL; }
+  worktree: true
+  changed_files:
+    config.js: |
+      const NAME = "demo", LEVEL = 3, MODEL = "model-2";
+      export function describe() { return `${NAME}:${LEVEL}`; }
+      export const hooks = { MODEL };
+expect:
+  changed: [config.js::MODEL]
+  relations:
+    - {from: "config.js::hooks", to: "config.js::MODEL", kind: reads, resolution: resolved, site: 3}
+  callers:
+    NAME: []
+  decoys:
+    NAME: [config.js::describe]

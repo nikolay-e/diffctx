@@ -1,0 +1,51 @@
+name: ts_exports_of_an_added_file_are_called_by_files_in_the_same_diff
+mode: impact
+source: gh#518
+issue_state: closed
+tags: [javascript, added-file, called-in-diff, absence-claim]
+repo:
+  initial_files:
+    scripts/run.mjs: |
+      export function main() {
+        return 1;
+      }
+    scripts/gripes.mjs: |
+      export function list() {
+        return [];
+      }
+    scripts/cli.mjs: |
+      import { main } from './run.mjs';
+      import { list } from './gripes.mjs';
+
+      export function cli() {
+        main();
+        return list();
+      }
+    tests/smoke.test.mjs: |
+      export function check() {
+        return true;
+      }
+  changed_files:
+    lib/record.mjs: |
+      export function gripeSlug(text) {
+        return text.toLowerCase().replace(/\s+/g, '-');
+      }
+
+      export function coinedClasses(text) {
+        return text.split(' ');
+      }
+    scripts/run.mjs: |
+      import { gripeSlug, coinedClasses } from "../lib/record.mjs";
+
+      export function main() {
+        return gripeSlug("a b") + coinedClasses("a b").length;
+      }
+    scripts/gripes.mjs: |
+      import { gripeSlug } from "../lib/record.mjs";
+
+      export function list() {
+        return [gripeSlug("a b")];
+      }
+  commit_message: "lib: record helpers shared by the scripts"
+expect:
+  no_negative_claims: true

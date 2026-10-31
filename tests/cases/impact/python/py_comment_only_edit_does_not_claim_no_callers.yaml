@@ -1,0 +1,24 @@
+name: py_comment_only_edit_does_not_claim_no_callers
+mode: impact
+source: gh#498
+issue_state: closed
+tags: [python, comment-only, absence-claim, smoke]
+repo:
+  initial_files:
+    src/api/a.py: |
+      def load_x(key):
+          return {"key": key}
+    src/api/b.py: |
+      from src.api.a import load_x
+
+
+      def view(key):
+          return load_x(key)
+  worktree: true
+  changed_files:
+    src/api/a.py: |
+      def load_x(key):
+          # keys are opaque strings, never parsed here
+          return {"key": key}
+expect:
+  no_negative_claims: true

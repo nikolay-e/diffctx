@@ -1,0 +1,26 @@
+name: ts_glob_imported_module_is_reached_by_its_importing_file
+mode: impact
+source: fj#51
+issue_state: closed
+tags: [typescript, import-meta-glob, dynamic-import]
+repo:
+  initial_files:
+    a/x.ts: |
+      export function f(): number {
+        return 1;
+      }
+    b/c.ts: |
+      const modules = import.meta.glob('../a/*.ts', { eager: true });
+
+      export function runAll(): number[] {
+        return Object.values(modules).map((mod: any) => mod.f());
+      }
+  changed_files:
+    a/x.ts: |
+      export function f(): number {
+        return 2;
+      }
+  commit_message: "x: change the value"
+expect:
+  relations:
+    - {from: "b/c.ts", to: "a/x.ts::f", kind: imports, resolution: candidate}

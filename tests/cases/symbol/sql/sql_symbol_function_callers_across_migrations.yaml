@@ -1,0 +1,88 @@
+name: sql_symbol_function_callers_across_migrations
+mode: symbol
+source: gh#459
+issue_state: open
+tags:
+- sql
+- plpgsql
+- migrations
+repo:
+  initial_files:
+    db/V1__fn.sql: |
+      CREATE SCHEMA lib;
+
+      CREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER
+      LANGUAGE plpgsql AS $$
+      DECLARE
+        n INTEGER;
+      BEGIN
+        UPDATE books SET refreshed = now() WHERE album = target_album;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        RETURN n;
+      END;
+      $$;
+    db/V2__use.sql: |
+      CREATE OR REPLACE FUNCTION lib.refresh_all() RETURNS void
+      LANGUAGE plpgsql AS $$
+      DECLARE
+        album UUID;
+      BEGIN
+        FOR album IN SELECT id FROM albums LOOP
+          PERFORM lib.refresh_book(album);
+        END LOOP;
+      END;
+      $$;
+
+      SELECT lib.refresh_book(b.album_id) FROM books b;
+    db/V4__decoys.sql: |
+      -- lib.refresh_book(x) in a comment
+      SELECT 'lib.refresh_book(y)' AS s, $tag$lib.refresh_book(z)$tag$ AS t;
+      SELECT other.refresh_book(1);
+      CREATE TABLE refresh_book (id int);
+      INSERT INTO refresh_book (id) VALUES (1);
+      DROP FUNCTION IF EXISTS lib.refresh_book(uuid);
+    db/V5__view.sql: |
+      CREATE OR REPLACE VIEW lib.book_view AS
+        SELECT b.id, lib.refresh_book(b.album) AS n FROM books b;
+    db/V6__report.sql: |
+      SELECT n FROM lib.book_view WHERE n > 0;
+    db/V7__proc.sql: |
+      CREATE PROCEDURE lib.rebuild()
+      LANGUAGE plpgsql AS $body$
+      BEGIN
+        IF true THEN
+          PERFORM refresh_book(NULL);
+        END IF;
+      END;
+      $body$;
+  commit_message: Change sql symbol function callers across migrations
+query:
+  symbol: lib.refresh_book
+expect:
+  relations:
+  - from: db/V2__use.sql::lib.refresh_all
+    to: db/V1__fn.sql::lib.refresh_book
+    kind: calls
+    resolution: resolved
+    site: 7
+  - from: db/V2__use.sql
+    to: db/V1__fn.sql::lib.refresh_book
+    kind: calls
+    resolution: resolved
+    site: 12
+  - from: db/V5__view.sql::lib.book_view
+    to: db/V1__fn.sql::lib.refresh_book
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: db/V7__proc.sql::lib.rebuild
+    to: db/V1__fn.sql::lib.refresh_book
+    kind: calls
+    resolution: candidate
+    site: 5
+  exact: true
+  decoys:
+    db/V1__fn.sql::lib.refresh_book:
+    - db/V4__decoys.sql
+  definitions:
+  - db/V1__fn.sql::lib.refresh_book

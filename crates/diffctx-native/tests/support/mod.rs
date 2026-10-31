@@ -5,6 +5,9 @@
 // Every suite compiles this module and uses a part of it.
 #![allow(dead_code)]
 
+pub mod answer;
+pub mod seeds;
+
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;

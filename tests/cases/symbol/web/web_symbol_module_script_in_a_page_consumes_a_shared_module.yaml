@@ -1,0 +1,45 @@
+name: web_symbol_module_script_in_a_page_consumes_a_shared_module
+mode: symbol
+source: gh#372
+issue_state: open
+tags:
+- web
+- html
+- module-script
+- imports
+repo:
+  initial_files:
+    shared/telemetry.js: |
+      export function installTelemetry(opts) {
+        return opts;
+      }
+    app/index.html: |
+      <!doctype html>
+      <html><body>
+      <script type="module">
+      import { installTelemetry } from "../shared/telemetry.js";
+      installTelemetry({});
+      </script>
+      </body></html>
+    app/notes.html: |
+      <!doctype html>
+      <html><body>
+      <!-- installTelemetry({}) -->
+      <p>installTelemetry</p>
+      </body></html>
+  commit_message: Change web symbol module script in a page consumes a shared module
+query:
+  symbol: installTelemetry
+expect:
+  relations:
+  - from: app/index.html
+    to: shared/telemetry.js::installTelemetry
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: true
+  decoys:
+    shared/telemetry.js::installTelemetry:
+    - app/notes.html
+  definitions:
+  - shared/telemetry.js::installTelemetry

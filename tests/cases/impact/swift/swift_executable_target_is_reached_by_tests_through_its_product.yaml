@@ -1,0 +1,57 @@
+name: swift_executable_target_is_reached_by_tests_through_its_product
+mode: impact
+source: gh#535
+issue_state: open
+tags:
+- swift
+- tests
+- binary
+- decoy
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "Fixture",
+          targets: [
+              .executableTarget(name: "tool"),
+              .executableTarget(name: "helper"),
+          ]
+      )
+    Sources/tool/HAL.swift: |
+      func readIDs() -> [Int] {
+          return [1, 2]
+      }
+    Sources/tool/main.swift: |
+      print(readIDs())
+    Sources/helper/main.swift: |
+      func hidden() -> Int {
+          return 7
+      }
+      print(hidden())
+    tests/test_cli.sh: |
+      #!/bin/sh
+      .build/release/tool start
+  changed_files:
+    Sources/tool/HAL.swift: |
+      func readIDs() -> [Int] {
+          return [1, 2, 3]
+      }
+    Sources/helper/main.swift: |
+      func hidden() -> Int {
+          return 8
+      }
+      print(hidden())
+  commit_message: Change swift executable target is reached by tests through its product
+expect:
+  changed:
+  - Sources/tool/HAL.swift::readIDs
+  - Sources/helper/main.swift::hidden
+  tested_by:
+    Sources/tool/HAL.swift: tests/test_cli.sh
+  untested:
+  - hidden
+  not_untested:
+  - readIDs

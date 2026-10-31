@@ -1,0 +1,154 @@
+# .github/workflows/oracle.yml
+name: oracle
+
+# Measures diffctx against the SCIP oracle in eval/oracle (T10, T23).
+#
+# Before 2.0.0 it runs on pull_request events that carry the label `oracle`
+# (fast subset: one repository per language, ten commits) or `oracle:full`
+# (the whole corpus). workflow_dispatch and schedule are declared for later:
+# GitHub fires both only for a workflow file on the default branch, and main
+# stays frozen until 2.0.0.
+#
+# Nothing here has a secret. Indexing runs third-party tooling, so the job
+# holds a read-only token that is not persisted into the checkout, and the
+# oracle hands its indexers a scrubbed environment.
+
+'on':
+  pull_request:
+    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'fast = one repository per language, ten commits | full = the whole corpus'
+        required: false
+        default: fast
+        type: choice
+        options: [fast, full]
+  schedule:
+    - cron: '23 3 * * 1'
+
+concurrency:
+  group: oracle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: Oracle (${{ contains(github.event.pull_request.labels.*.name, 'oracle:full') && 'full' || 'fast' }})
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'oracle')
+      || contains(github.event.pull_request.labels.*.name, 'oracle:full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      SCOPE: >-
+        ${{ (contains(github.event.pull_request.labels.*.name, 'oracle:full')
+        || github.event.inputs.scope == 'full'
+        || github.event_name == 'schedule') && 'full' || 'fast' }}
+      REPORT_DIR: ${{ github.workspace }}/oracle-out
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: eval/oracle/uv.lock
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Cache the oracle's indexes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: eval/oracle/cache
+          key: oracle-${{ hashFiles('eval/oracle/corpus.toml', 'eval/oracle/tools/package-lock.json') }}
+          restore-keys: oracle-
+
+      - name: Build the release binary from this head
+        run: cargo build --release --locked --bin diffctx
+
+      - name: Oracle self-test
+        run: |
+          uv run --frozen --directory eval/oracle python run.py selftest \
+            --bin "$GITHUB_WORKSPACE/target/release/diffctx"
+
+      - name: YAML corpus (impact and symbol strata)
+        if: ${{ !cancelled() }}
+        env:
+          DIFFCTX_BIN: ${{ github.workspace }}/target/release/diffctx
+          DIFFCTX_ORACLE_REPORT: ${{ github.workspace }}/oracle-out/harness.json
+        run: |
+          mkdir -p "$REPORT_DIR"
+          if [ "$SCOPE" = fast ]; then export DIFFCTX_YAML_CASES_LIMIT=48; fi
+          cargo test --release --test yaml_cases 2>&1 | tee "$REPORT_DIR/yaml_cases.log"
+
+      - name: Metamorphic suite
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$REPORT_DIR"
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            export DIFFCTX_METAMORPHIC_SEED="$GITHUB_RUN_ID" DIFFCTX_METAMORPHIC_CASES=1000
+          fi
+          cargo test --release --test metamorphic 2>&1 | tee "$REPORT_DIR/metamorphic.log"
+
+      - name: Fault sweep
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$REPORT_DIR"
+          cargo test --release --test git_faults 2>&1 | tee "$REPORT_DIR/faults.log"
+
+      - name: SCIP oracle, performance baseline and report
+        if: ${{ !cancelled() }}
+        env:
+          DIFFCTX_BIN: ${{ github.workspace }}/target/release/diffctx
+          ORACLE_METAMORPHIC_REPORT: ${{ github.workspace }}/oracle-out/metamorphic.log
+          ORACLE_FAULTS_REPORT: ${{ github.workspace }}/oracle-out/faults.log
+        run: |
+          if [ -f "$REPORT_DIR/harness.json" ]; then export DIFFCTX_ORACLE_REPORT="$REPORT_DIR/harness.json"; fi
+          flags=(--out "$REPORT_DIR/oracle")
+          if [ "$SCOPE" = fast ]; then flags+=(--fast); fi
+          eval/oracle/run.sh "${flags[@]}"
+          cat "$REPORT_DIR/oracle/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-report-${{ env.SCOPE }}
+          path: |
+            oracle-out/**/*.json
+            oracle-out/**/*.jsonl
+            oracle-out/**/*.md
+            oracle-out/*.log
+          retention-days: 30
+          if-no-files-found: warn

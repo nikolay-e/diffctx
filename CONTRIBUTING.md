@@ -33,6 +33,12 @@ Contributors submit a pull request against `main`. Maintainers work on `next`
 and deliver through `scripts/epoch-push.sh`, as described in `AGENTS.md`.
 Before delivery, run the tests below and `pre-commit run --all-files`.
 
+A pull request with a `fix:` commit that touches engine source (`src/`,
+`crates/*/src/`) carries a class test and states it in the `Class test:` field
+of the template. CI builds the pull request's base, and the test must fail
+there and pass on the head. The exception is a false "all clear", a leak or a
+broken delivery, written `Class test: none — truth|leak|delivery gh#N`.
+
 ## Testing
 
 The Python suite is integration-only — no mocking, real filesystems and

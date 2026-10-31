@@ -1,0 +1,41 @@
+name: py_class_passed_as_value_is_a_reference
+mode: impact
+source: gh#351
+issue_state: closed
+tags: [python, passes-as-value, class]
+repo:
+  initial_files:
+    models/wearables.py: |
+      class Steps:
+          total_distance = Column(Float, default=0)
+          total_steps = Column(Integer, default=0)
+    loaders/normalize.py: |
+      from models.wearables import Steps
+
+
+      def upsert_canonical_steps(db, steps_row, user_id):
+          return upsert_data(db, Steps, steps_row, "key", user_id)
+    analytics/health_score.py: |
+      from models.wearables import Steps
+
+
+      def build_health_contributors(rows):
+          return [Steps(total_steps=r) for r in rows]
+  changed_files:
+    models/wearables.py: |
+      class Steps:
+          total_distance = Column(Float)
+          total_steps = Column(Integer)
+  commit_message: "models: drop the Python-side column defaults"
+expect:
+  relations:
+    - from: "loaders/normalize.py::upsert_canonical_steps"
+      to: "models/wearables.py::Steps"
+      kind: "passes_as_value"
+      resolution: "resolved"
+      site: 5
+    - from: "analytics/health_score.py::build_health_contributors"
+      to: "models/wearables.py::Steps"
+      kind: "instantiates"
+      resolution: "resolved"
+      site: 5

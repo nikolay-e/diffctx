@@ -1,0 +1,41 @@
+name: java_anonymous_test_double_is_no_contract
+mode: impact
+source: gh#517
+issue_state: closed
+tags:
+- java
+- contracts
+- tests
+repo:
+  initial_files:
+    src/main/java/app/Service.java: |
+      package app;
+
+      public class Service {
+          public String fetch(int id) {
+              return "row" + id;
+          }
+
+          public void store(int id, String value) {}
+      }
+  untracked_files:
+    src/test/java/app/ServiceTest.java: |
+      package app;
+
+      import org.junit.jupiter.api.Test;
+
+      class ServiceTest {
+          @Test
+          void usesADouble() {
+              Service s = new Service() {
+                  @Override public String fetch(int id) { return "stub"; }
+                  @Override public void store(int id, String value) {}
+              };
+              s.fetch(1);
+          }
+      }
+  worktree: true
+  commit_message: Change java anonymous test double is no contract
+expect:
+  not_contracts:
+  - src/test/java/app/ServiceTest.java

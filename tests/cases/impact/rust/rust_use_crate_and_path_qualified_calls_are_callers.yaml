@@ -1,0 +1,114 @@
+name: rust_use_crate_and_path_qualified_calls_are_callers
+mode: impact
+source: gh#484
+issue_state: open
+tags:
+- rust
+- paths
+- imports
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod git;
+      pub mod impact;
+      pub mod kotlin_bindings;
+      pub mod locate;
+      pub mod parsers;
+      pub mod pipeline;
+      pub mod signatures;
+    src/signatures.rs: |
+      pub fn generate_signature_variants(s: &str) -> Vec<String> {
+          vec![s.to_string()]
+      }
+    src/parsers.rs: |
+      pub fn unanalysed_reason(path: &str) -> Option<&'static str> {
+          if path.is_empty() { Some("empty") } else { None }
+      }
+    src/git.rs: |
+      pub fn grep_lines_matching(pat: &str) -> Vec<String> {
+          vec![pat.to_string()]
+      }
+    src/pipeline.rs: |
+      use crate::signatures::generate_signature_variants;
+
+      pub fn variants_a(s: &str) -> usize {
+          generate_signature_variants(s).len()
+      }
+
+      pub fn variants_b(s: &str) -> usize {
+          generate_signature_variants(s).len() + 1
+      }
+
+      pub fn reason(p: &str) -> Option<&'static str> {
+          crate::parsers::unanalysed_reason(p)
+      }
+    src/impact.rs: |
+      pub fn why(p: &str) -> Option<&'static str> {
+          crate::parsers::unanalysed_reason(p)
+      }
+    src/locate.rs: |
+      use crate::parsers::unanalysed_reason;
+
+      pub fn build_coverage(p: &str) -> bool {
+          unanalysed_reason(p).is_some()
+      }
+    src/kotlin_bindings.rs: |
+      pub fn files_declaring(name: &str) -> Vec<String> {
+          crate::git::grep_lines_matching(name)
+      }
+  changed_files:
+    src/signatures.rs: |
+      pub fn generate_signature_variants(s: &str) -> Vec<String> {
+          vec![s.to_string(), s.to_lowercase()]
+      }
+    src/parsers.rs: |
+      pub fn unanalysed_reason(path: &str) -> Option<&'static str> {
+          if path.trim().is_empty() { Some("empty") } else { None }
+      }
+    src/git.rs: |
+      pub fn grep_lines_matching(pat: &str) -> Vec<String> {
+          vec![pat.trim().to_string()]
+      }
+  commit_message: Change rust use crate and path qualified calls are callers
+expect:
+  changed:
+  - src/signatures.rs::generate_signature_variants
+  - src/parsers.rs::unanalysed_reason
+  - src/git.rs::grep_lines_matching
+  relations:
+  - from: src/pipeline.rs::variants_a
+    to: src/signatures.rs::generate_signature_variants
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/pipeline.rs::variants_b
+    to: src/signatures.rs::generate_signature_variants
+    kind: calls
+    resolution: resolved
+    site: 8
+  - from: src/pipeline.rs::reason
+    to: src/parsers.rs::unanalysed_reason
+    kind: calls
+    resolution: resolved
+    site: 12
+  - from: src/impact.rs::why
+    to: src/parsers.rs::unanalysed_reason
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: src/locate.rs::build_coverage
+    to: src/parsers.rs::unanalysed_reason
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/kotlin_bindings.rs::files_declaring
+    to: src/git.rs::grep_lines_matching
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true

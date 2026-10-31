@@ -1,0 +1,36 @@
+name: py_sys_path_insert_import_beats_a_same_named_module
+mode: symbol
+source: gh#573
+issue_state: closed
+tags: [python, sys-path-insert, same-stem]
+repo:
+  initial_files:
+    child_a/transcribe/transcribe.py: |
+      def recognise_track(track):
+          return ("said", [track])
+    child_a/tests/test_languages.py: |
+      import sys
+      from pathlib import Path
+
+      sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "transcribe"))
+      import transcribe
+
+
+      def test_recognise():
+          said, records = transcribe.recognise_track("x")
+          assert said
+    child_b/src/pkg/__init__.py: ""
+    child_b/src/pkg/llm/__init__.py: ""
+    child_b/src/pkg/llm/transcribe.py: |
+      def run():
+          return 1
+query:
+  symbol: recognise_track
+expect:
+  definitions: [child_a/transcribe/transcribe.py::recognise_track]
+  relations:
+    - from: "child_a/tests/test_languages.py::test_recognise"
+      to: "child_a/transcribe/transcribe.py::recognise_track"
+      kind: "calls"
+      resolution: "resolved"
+      site: 9

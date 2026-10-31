@@ -1,0 +1,48 @@
+name: shell_call_inside_a_case_arm_is_a_caller
+mode: impact
+source: gh#541
+issue_state: closed
+tags:
+- shell
+- case
+- pipeline
+repo:
+  initial_files:
+    bin/call: |
+      #!/bin/bash
+      field() { python3 -c "import json,sys; print(json.load(sys.stdin)[sys.argv[1]])" "$1"; }
+      case "${1:-}" in
+        status) echo "{}" | field state ;;
+        restart) report ;;
+      esac
+      report() {
+        echo ok
+      }
+  changed_files:
+    bin/call: |
+      #!/bin/bash
+      field() { python3 -c "import json,sys; print( json.load(sys.stdin)[sys.argv[1]])" "$1"; }
+      case "${1:-}" in
+        status) echo "{}" | field state ;;
+        restart) report ;;
+      esac
+      report() {
+        echo fine
+      }
+  commit_message: Change shell call inside a case arm is a caller
+expect:
+  changed:
+  - bin/call::field
+  - bin/call::report
+  relations:
+  - from: bin/call
+    to: bin/call::field
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: bin/call
+    to: bin/call::report
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: true

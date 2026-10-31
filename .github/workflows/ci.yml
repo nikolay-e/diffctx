@@ -58,6 +58,95 @@ jobs:
         run: SKIP=cargo-test pre-commit run --all-files
 
   # ============================================================================
+  # A consumer pins the commit a release tag first named (#500, #513): a tag
+  # off main, or a release left as a draft, strands that pin. Both are checked
+  # on every run with the whole history. The publication check reads the
+  # releases, so it runs on pull requests only: a push to main lands a release
+  # commit and its tag a few minutes before the release is published.
+  # ============================================================================
+  release-tags:
+    name: Release tags are immutable
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Every release tag is an ancestor of main
+        run: |
+          off_main=$(bash .github/scripts/release-tags.sh origin/main)
+          if [[ -n "$off_main" ]]; then
+            echo "::error::release tags off main: ${off_main//$'\n'/ }"
+            exit 1
+          fi
+
+      - name: Every release tag has a published release
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          unpublished=$(bash .github/scripts/unpublished-release-tags.sh)
+          if [[ -n "$unpublished" ]]; then
+            echo "::error::release tags without a published release: ${unpublished//$'\n'/ }"
+            exit 1
+          fi
+
+  # ============================================================================
+  # A fix ships with the test that would have caught its class, red on the pull
+  # request's base and green on its head (T9). The base build is cached by the
+  # base commit, so a frozen main is built once. The epoch pull request carries
+  # work that was gated stream by stream and is not judged again.
+  # ============================================================================
+  class-test:
+    name: Class test
+    if: github.event_name == 'pull_request' && github.head_ref != 'next'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      BASE_TARGET_DIR: ${{ github.workspace }}/../class-test-base-target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the base
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Cache the base build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ env.BASE_TARGET_DIR }}
+          key: class-test-base-${{ github.event.pull_request.base.sha }}
+
+      - name: Run the class test on the base and on the head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash .github/scripts/class-test.sh
+
+  # ============================================================================
   # Rust dependency advisories. Separate job because the pre-commit hook can
   # only skip when cargo-audit is absent, and it is absent on GitHub runners —
   # so this is the only place the check actually runs.
@@ -191,7 +280,8 @@ jobs:
       # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
-          docker run --rm diffctx:ci --version | grep -qx "diffctx $(cut -d'"' -f2 src/diffctx/version.py)"
+          crate_version=$(grep -m1 '^version = ' crates/diffctx-native/Cargo.toml | cut -d'"' -f2)
+          docker run --rm diffctx:ci --version | grep -qx "diffctx ${crate_version}"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
