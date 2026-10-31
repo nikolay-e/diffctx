@@ -167,6 +167,14 @@ Everything is optional; an absent field asserts nothing.
   analyse", a count of `0 caller(s)` beside a note that callers were not
   traced).
 
+## Text form
+
+Every impact case also renders `-f md`, and the text must say what the JSON
+says: the header's "N caller(s) outside the diff" equals the number of
+resolved caller rows (word matches, `evidence: name`, are no callers; candidates
+are counted apart as "possible"), and a "called from" or "referenced from"
+line needs a resolved row behind it. A violation fails the case.
+
 ## Baseline
 
 `crates/diffctx-native/tests/known_below_threshold.txt` lists every red case

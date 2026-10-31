@@ -31,6 +31,7 @@ pub fn judge(
     check_unknowns(case, answer, &mut failures);
     check_coverage(case, answer, &mut failures);
     check_lists(case, answer, &mut failures);
+    check_text(answer, &mut failures);
 
     report.unknowns = answer
         .unknowns
@@ -413,6 +414,66 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
             failures.push(format!(
                 "the text answer claims an absence: {}",
                 claims.join("; ")
+            ));
+        }
+    }
+}
+
+/// The text form must say what the JSON says: the header's count of callers
+/// is the number of resolved caller rows (word matches are no callers), and a
+/// "called from" or "referenced from" line needs a resolved row behind it.
+fn check_text(answer: &Answer, failures: &mut Vec<String>) {
+    let Some(markdown) = answer.markdown.as_deref() else {
+        return;
+    };
+    let resolved = answer
+        .caller_rows
+        .iter()
+        .filter(|(_, evidence)| evidence == "resolved")
+        .count();
+    let header = markdown.lines().next().unwrap_or("");
+    if let Some(at) = header.find(" caller(s) outside the diff") {
+        let digits: String = header[..at]
+            .chars()
+            .rev()
+            .take_while(char::is_ascii_digit)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let counted = digits.parse::<usize>().ok();
+        if answer.truncated == 0 && counted.is_some_and(|n| n != resolved) {
+            failures.push(format!(
+                "the text header counts {digits} caller(s) outside the diff; \
+                 the JSON has {resolved} resolved caller row(s)"
+            ));
+        }
+    }
+    for line in markdown.lines() {
+        let line = line.trim_start();
+        let Some(rest) = line
+            .strip_prefix("- called from ")
+            .or_else(|| line.strip_prefix("- referenced from "))
+        else {
+            continue;
+        };
+        let target = rest.split_whitespace().next().unwrap_or("");
+        let path = target.split_once("::").map_or_else(
+            || {
+                target
+                    .rsplit_once(':')
+                    .filter(|(_, lines)| lines.chars().all(|c| c.is_ascii_digit() || c == '-'))
+                    .map_or(target, |(path, _)| path)
+            },
+            |(path, _)| path,
+        );
+        if !answer
+            .caller_rows
+            .iter()
+            .any(|(p, evidence)| p == path && evidence == "resolved")
+        {
+            failures.push(format!(
+                "the text lists `{target}` as a caller; the JSON has no resolved caller row for `{path}`"
             ));
         }
     }
