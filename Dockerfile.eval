@@ -72,11 +72,10 @@ RUN pip install --no-cache-dir --only-binary :all: "maturin==1.10.2"
 WORKDIR /build
 COPY pyproject.toml README.md LICENSE Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
-COPY crates/diffctx-native/src ./crates/diffctx-native/src
+# Every workspace crate (the layer crates are path dependencies of the facade).
 # Cargo.toml declares [[test]] targets; cargo refuses to parse the manifest
 # if their files are absent.
-COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
+COPY crates ./crates
 
 RUN set -eux; \
     TGT=$(cat /target_triple); \

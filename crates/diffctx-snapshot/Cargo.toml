@@ -3,9 +3,15 @@ name = "diffctx-snapshot"
 version = "2.0.0-dev.0"
 edition = "2024"
 rust-version = "1.85"
-description = "One repository state per question: snapshot readers with admission inside, resolved ranges, the analysis context"
+description = "Internal layer of diffctx (one repository state per question: snapshot readers, resolved ranges); no API stability guarantees, use the `diffctx` crate"
 license = "Apache-2.0"
-publish = false
+repository = "https://github.com/nikolay-e/diffctx"
+homepage = "https://diffctx.com/"
+documentation = "https://docs.rs/diffctx-snapshot"
+readme = "README.md"
+keywords = ["git", "diff", "snapshot"]
+categories = ["development-tools"]
+exclude = ["tests/**", "clippy.toml"]
 
 [dependencies]
 dunce = "1"

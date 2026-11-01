@@ -174,7 +174,7 @@ jobs:
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
           echo "Cargo.toml (version line):"
-          grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
+          grep -E '^version\s*=' crates/*/Cargo.toml
 
       # tests/test_version_consistency.py requires a `## [<version>] - <date>`
       # section; 1.16.0 needed a hand commit for it. Rolling [Unreleased] here
@@ -216,7 +216,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
+          git add src/diffctx/version.py pyproject.toml crates/*/Cargo.toml Cargo.lock uv.lock \
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/pyproject.toml \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
             plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
@@ -1573,7 +1573,7 @@ jobs:
           dev=$(python scripts/release/tree_version.py open-dev "$VERSION")
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock
+          git add src/diffctx/version.py pyproject.toml crates/*/Cargo.toml Cargo.lock uv.lock
           if git diff --staged --quiet; then
             echo "main is already at ${dev}."
             exit 0
@@ -1603,12 +1603,16 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.prepare-version.outputs.version }}
+      COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
     steps:
-      # The release commit carries the cases and the harness that reads them.
-      - name: Checkout release commit
+      # The workflow's own ref carries the cases and the harness: the release
+      # commit differs from it by the version bump alone, and a job that checks
+      # out another commit and runs it must neither write a cache nor hold more
+      # than read access (CodeQL actions/cache-poisoning, as eval-sweep's
+      # ext-build). Nothing is cached here: a saved cache would be restored by
+      # later runs.
+      - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ needs.prepare-version.outputs.commit_sha }}
 
       - name: Set up uv
         if: matrix.channel == 'plugin'
@@ -1624,16 +1628,6 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.99.1"
-
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
 
       # The binary under test is what a user of the channel runs, installed the
       # way the channel documents it, never one built from this checkout.
@@ -1654,9 +1648,10 @@ jobs:
               bin="${RUNNER_TEMP}/npm/node_modules/.bin/diffctx"
               ;;
             plugin)
-              # The pin the plugin launches on main, not the version this job
-              # was asked about: a release that forgot to move it fails here.
-              pin=$(jq -r '.mcpServers.diffctx.args[0]' plugin/.mcp.json)
+              # The pin the release commit launches, read as data: a release
+              # that forgot to move it fails here.
+              git fetch --quiet --depth=1 origin "$COMMIT_SHA"
+              pin=$(git show FETCH_HEAD:plugin/.mcp.json | jq -r '.mcpServers.diffctx.args[0]')
               [[ "$pin" == "diffctx[mcp]==${VERSION}" ]] || { echo "::error::plugin pin is ${pin}"; exit 1; }
               mkdir "${RUNNER_TEMP}/plugin"
               printf '#!/usr/bin/env bash\nexport UV_ISOLATED=1\nexec uvx -q "%s" "$@"\n' "$pin" \
@@ -1693,10 +1688,10 @@ jobs:
       contents: read
       issues: write
     steps:
-      - name: Checkout release commit
+      # The workflow's own ref, never the release commit: this job holds a
+      # token that writes issues.
+      - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ needs.prepare-version.outputs.commit_sha }}
 
       - name: Close the labelled issues
         env:

@@ -335,6 +335,69 @@ class TestDistributionPins:
         assert re.search(r"PUBLISHER_SHA256=[0-9a-f]{64}", job.group(0))
 
 
+class TestPublishedCrates:
+    """Every crate under crates/ is published (the layers are crates.io crates
+    the facade depends on), at one version, in dependency order."""
+
+    @staticmethod
+    def _manifests() -> dict[str, dict]:
+        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
+        found = {}
+        for path in sorted((PROJECT_ROOT / "crates").glob("*/Cargo.toml")):
+            manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+            found[manifest["package"]["name"]] = {"path": path, **manifest}
+        return found
+
+    def test_every_crate_can_be_published_and_says_what_it_is(self):
+        crates = self._manifests()
+        assert {"diffctx", "diffctx-snapshot"} <= set(crates)
+        for name, manifest in crates.items():
+            package = manifest["package"]
+            assert package.get("publish", True) is not False, name
+            for key in ("description", "license", "repository", "readme"):
+                assert package.get(key), (name, key)
+            assert (manifest["path"].parent / package["readme"]).is_file(), name
+            assert len(package["description"]) <= 300, name
+
+    def test_a_layer_crate_says_it_has_no_api_promise(self):
+        for name, manifest in self._manifests().items():
+            if name == "diffctx":
+                continue
+            readme = (manifest["path"].parent / manifest["package"]["readme"]).read_text(encoding="utf-8")
+            assert "no API stability guarantees" in readme, name
+            assert "no API stability guarantees" in manifest["package"]["description"], name
+            assert "`diffctx`" in manifest["package"]["description"], name
+
+    def test_a_path_dependency_on_a_sibling_carries_its_exact_version(self):
+        crates = self._manifests()
+        for name, manifest in crates.items():
+            for dep, spec in manifest.get("dependencies", {}).items():
+                if dep in crates:
+                    assert spec["path"], (name, dep)
+                    assert spec["version"] == "=" + manifest["package"]["version"], (name, dep, spec)
+
+    def test_the_publish_order_puts_every_crate_after_the_crates_it_depends_on(self):
+        crates = self._manifests()
+        workflow = yaml.safe_load((PROJECT_ROOT / ".github/workflows/publish-crate.yml").read_text(encoding="utf-8"))
+        [publish] = [s for s in workflow["jobs"]["publish"]["steps"] if s.get("name") == "Publish"]
+        order = publish["env"]["CRATES"].split()
+        assert sorted(order) == sorted(crates), "the publish list must name every crate under crates/"
+        for name, manifest in crates.items():
+            for dep in set(manifest.get("dependencies", {})) & set(crates):
+                assert order.index(dep) < order.index(name), (dep, name)
+
+    def test_ci_packages_the_whole_workspace_not_the_facade_alone(self):
+        ci = yaml.safe_load((PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        steps = ci["jobs"]["cargo-publish-dry-run"]["steps"]
+        [package] = [s for s in steps if s.get("name") == "Package and verify"]
+        assert "cargo package --workspace" in package["run"]
+
+    def test_the_images_copy_every_workspace_crate(self):
+        for dockerfile in ("Dockerfile", "Dockerfile.eval"):
+            text = (PROJECT_ROOT / dockerfile).read_text(encoding="utf-8")
+            assert re.search(r"^COPY crates \./crates$", text, re.MULTILINE), dockerfile
+
+
 class TestNativeModuleStub:
     def test_stub_names_match_the_runtime_module(self):
         """diffctx._diffctx ships a .pyi so editor type-checkers see the

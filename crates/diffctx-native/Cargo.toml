@@ -131,7 +131,7 @@ serde_yaml = "0.9"
 toml = "1.1"
 thiserror = "2"
 # The snapshot layer: readers, admission, resolved ranges, the analysis context.
-diffctx-snapshot = { path = "../diffctx-snapshot" }
+diffctx-snapshot = { version = "=2.0.0-dev.0", path = "../diffctx-snapshot" }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
