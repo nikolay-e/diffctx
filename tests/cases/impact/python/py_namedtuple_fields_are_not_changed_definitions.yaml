@@ -28,7 +28,9 @@ repo:
           value: float
           unit: str = "c"
   commit_message: "models: a unit for readings"
+# fj#129: a NamedTuple's fields are not changed definitions of their own; the
+# change is the class `Reading`. The construction site in app.py is not listed
+# as a caller: a defaulted field keeps every constructor working (#388), so the
+# answer counts it as signature-compatible.
 expect:
   changed: [server/models.py::Reading]
-  relations:
-    - {from: "server/app.py::read", to: "server/models.py::Reading", kind: instantiates, resolution: resolved, site: 5}

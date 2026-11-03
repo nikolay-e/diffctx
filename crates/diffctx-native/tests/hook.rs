@@ -386,13 +386,16 @@ fn a_subshell_add_before_a_commit_is_reviewed() {
     );
     let context = context_of(&h);
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(
+        !context.contains("did not analyse"),
+        "a directory inside the call's own repository names no other: {context}"
+    );
 }
 
-/// #405: a comment's apostrophe opens no quote; a `cd` inside a subshell
-/// names the repository its commit runs in; `cd -` goes where the line does
-/// not say; an odd `"` inside `-m "$(cat <<'EOF' … EOF)"` closes nothing.
+/// #405: a comment's apostrophe opens no quote, and an odd `"` inside
+/// `-m "$(cat <<'EOF' … EOF)"` closes nothing.
 #[test]
-fn comments_subshell_cds_cd_dash_and_heredoc_messages_keep_their_commit() {
+fn comments_and_heredoc_messages_keep_their_commit() {
     let answered = |command: &str| {
         let tmp = repo_with_pending_change();
         let cache = TempDir::new().unwrap();
@@ -407,38 +410,14 @@ fn comments_subshell_cds_cd_dash_and_heredoc_messages_keep_their_commit() {
     );
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
-    // Recorded, not read as git hidden in a substitution. Not run: bash 3.2,
-    // macOS's `sh`, cannot parse this line itself.
+    // Recorded before it runs. Not run: bash 3.2, macOS's `sh`, cannot parse
+    // this line itself.
     let cache = TempDir::new().unwrap();
     let message = "git commit -am \"$(cat <<'EOF'\nSupport 5\" screens (and more)\nEOF\n)\"";
     let h = hook(repo, cache.path(), &payload(repo, message));
     assert_eq!(h.stdout, "");
     let line = last_log_line(cache.path());
     assert!(line.contains(" recorded "), "{line}");
-
-    let cache = TempDir::new().unwrap();
-    let h = hook(
-        repo,
-        cache.path(),
-        &payload(repo, "cd - && git commit -am vat"),
-    );
-    assert!(
-        h.stdout.contains("did not analyse this command"),
-        "cd - names no directory, and says so: {}",
-        h.stdout
-    );
-
-    let other = repo_with_pending_change();
-    write(
-        other.path(),
-        "shop/inventory.py",
-        "def restock(item):\n    return item.count + 5\n",
-    );
-    let cache = TempDir::new().unwrap();
-    // Quoted as a shell carries it: a Windows path's backslashes are not escapes.
-    let command = format!("(cd '{}' && git commit -am x)", other.path().display());
-    let context = context_of(&run_line(repo, cache.path(), &command));
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
 }
 
 #[test]
@@ -798,11 +777,11 @@ fn a_commit_that_landed_nothing_is_not_answered_with_another_sessions_commit() {
     assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
 }
 
-/// #575: a recording verb word inside another command's argument (`--jq`,
-/// `-m`, a `grep` pattern) does not make a read-only git line record refs and
-/// claim a commit another session lands while it runs.
+/// Git's record cannot tell a commit a peer makes in the same checkout while
+/// a line ran from the line's own: a line that only reads is answered with
+/// it, and the answer says it covers what changed during the call (T19).
 #[test]
-fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
+fn a_peer_commit_during_a_read_only_line_is_read_as_changed_during_the_call() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
@@ -810,12 +789,9 @@ fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
     let h = hook_pair("b", repo, cache.path(), command, || {
         commit_all(repo, "vat");
     });
-    assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
-    assert!(
-        last_log_line(cache.path()).contains(" no-trigger "),
-        "{}",
-        last_log_line(cache.path())
-    );
+    let context = context_of(&h);
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("during this call"), "{context}");
 }
 
 /// An amend replaces `HEAD` on its parent: what it records is measured from
@@ -860,10 +836,6 @@ fn transcript(
         let mut lines = vec![
             serde_json::json!({"type": "user", "sessionId": "b", "message": {"role": "user", "content": "what changed?"}})
                 .to_string(),
-            serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
-                {"type": "tool_use", "id": "t0", "name": "Bash", "input": {"command": "git status"}}
-            ]}})
-            .to_string(),
         ];
         lines.extend(paths.iter().map(|p| {
             serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
@@ -1194,33 +1166,50 @@ fn everything_else_is_silence_with_exit_zero() {
     assert_eq!(h.stdout, "", "not a repository");
 }
 
+/// What a call did is git's record of the repository it started in and of
+/// that repository's linked work trees. A line that points git at another
+/// repository (`cd`, `-C`, a variable) says so: that repository was not read
+/// (fj#127). A git hidden in a quoted script names no place, and stays silent.
 #[test]
-fn the_git_dash_c_directory_wins_over_cwd() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!("git -C '{}' commit -am vat", repo.to_string_lossy());
-    let h = line_in("s1", elsewhere.path(), cache.path(), &[], &command);
-    assert_eq!(h.code, Some(0));
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
-}
-
-/// #422: landing from a worktree is usually `L=/abs; cd $L && git commit …`;
-/// the variable the line itself sets names the repository.
-#[test]
-fn a_directory_the_line_sets_in_a_variable_is_followed() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!(
-        "L='{}'; cd \"$L\" && git commit -qam vat",
-        tmp.path().to_string_lossy()
-    );
-    let h = line_in("s1", elsewhere.path(), cache.path(), &[], &command);
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+fn a_repository_the_call_does_not_start_in_is_reported_unreviewed() {
+    for template in [
+        "git -C '{dir}' commit -qam vat",
+        "L='{dir}'; cd \"$L\" && git commit -qam vat",
+        "cd ~/{name} && git commit -qam vat",
+        "for d in '{dir}'; do ( cd \"$d\" && git commit -qam vat ); done",
+        "sh -c \"cd '{dir}' && git commit -qam vat\"",
+    ] {
+        let tmp = repo_with_pending_change();
+        let repo = tmp.path();
+        let name = repo.file_name().unwrap().to_string_lossy();
+        let command = template
+            .replace("{dir}", &repo.to_string_lossy())
+            .replace("{name}", &name);
+        let elsewhere = TempDir::new().unwrap();
+        let cache = TempDir::new().unwrap();
+        let home = repo.parent().unwrap();
+        let h = line_in(
+            "s1",
+            elsewhere.path(),
+            cache.path(),
+            &[("HOME", home)],
+            &command,
+        );
+        assert_eq!(h.code, Some(0), "{command}");
+        if template.starts_with("sh -c") {
+            assert_eq!(h.stdout, "", "{command}");
+        } else {
+            let context = context_of(&h);
+            assert!(
+                context.contains("did not analyse this command"),
+                "{command}: {context}"
+            );
+            assert!(
+                !context.contains("diffctx reviewed"),
+                "{command}: {context}"
+            );
+        }
+    }
 }
 
 fn search_payload(repo: &Path, tool: &str, query: &str) -> String {
@@ -1897,27 +1886,6 @@ fn a_commit_is_reviewed_whatever_verb_or_shell_records_it() {
     }
 }
 
-/// A git only the shell runs, that recorded nothing where the hook could
-/// look, is said to be unread once it ran: never a guess before it runs.
-#[test]
-fn a_hidden_git_that_moved_nothing_here_says_it_was_not_analysed() {
-    let tmp = repo_with_pending_change();
-    let elsewhere = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let command = format!(
-        "sh -c \"cd '{}' && git commit -qam vat\"",
-        elsewhere.path().display()
-    );
-    let h = run_line(tmp.path(), cache.path(), &command);
-    assert!(
-        h.stdout.contains("did not analyse this command"),
-        "{}",
-        h.stdout
-    );
-    let line = last_log_line(cache.path());
-    assert!(line.contains(" unsupported-syntax "), "{line}");
-}
-
 /// What landed is every entry git wrote while the line ran, not its last
 /// one: a reset, switch, stash or rebase after the commit on the same line
 /// hid it (#508, a commit then `fetch && rebase` in the field).
@@ -1962,9 +1930,10 @@ fn a_push_from_a_work_tree_the_line_removes_is_reviewed() {
     assert!(context.contains("shop/invoice.py::bill"), "{context}");
 }
 
-/// #608: a line that records in two repositories gets both reviewed.
+/// A line that commits in two repositories is read in the one the call
+/// started in; the other is no place its text can send the hook to (fj#127).
 #[test]
-fn every_repository_a_line_records_in_is_reviewed() {
+fn a_line_in_two_repositories_is_reviewed_in_the_one_the_call_started_in() {
     let a = repo_with_pending_change();
     let b = repo_with_pending_change();
     git(b.path(), &["checkout", "-q", "--", "shop/pricing.py"]);
@@ -1976,7 +1945,11 @@ fn every_repository_a_line_records_in_is_reviewed() {
     );
     let context = context_of(&run_line(a.path(), cache.path(), &command));
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(!context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
 }
 
 /// #608: one commit pushed to two remotes moved one range: one review, and
@@ -2078,10 +2051,11 @@ fn another_checkouts_push_during_a_commit_is_not_this_lines() {
     assert!(!context.contains("shop/checkout.py::charge"), "{context}");
 }
 
-/// #556: a line that commits in another repository is answered with that
-/// commit, never with what moved in the cwd's repository meanwhile.
+/// #556: a commit made in another repository is not read from the line; what
+/// moved in the cwd's repository during the call is, and the answer says it
+/// covers the call, not the line's own commit.
 #[test]
-fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
+fn a_commit_in_another_repository_is_not_reviewed_but_the_cwds_changes_are() {
     let cwd = repo_with_pending_change();
     let there = repo_with_pending_change();
     git(there.path(), &["checkout", "-q", "--", "shop/pricing.py"]);
@@ -2093,8 +2067,13 @@ fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
         commit_all(cwd.path(), "another session's vat");
     });
     let context = context_of(&h);
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
-    assert!(!context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("during this call"), "{context}");
+    assert!(!context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
 }
 
 /// R1: a word match is listed as text and never asks for a check; a resolved
@@ -2267,30 +2246,6 @@ fn a_commit_of_paths_from_a_file_reviews_only_those_paths() {
     ));
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
     assert!(!context.contains("shop/shelf.py"), "{context}");
-}
-
-#[test]
-fn a_home_relative_cd_reaches_the_repository() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    let home = repo.parent().unwrap();
-    let name = repo.file_name().unwrap().to_string_lossy();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!(
-        "cd ~/{name} && FP=$(cat README.md) && git add shop/pricing.py && git commit -q -m x -- shop/pricing.py"
-    );
-    let h = line_in(
-        "s1",
-        elsewhere.path(),
-        cache.path(),
-        &[("HOME", home)],
-        &command,
-    );
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
-    let line = last_log_line(cache.path());
-    assert!(!line.contains("unsupported-syntax"), "{line}");
 }
 
 #[test]
@@ -2777,9 +2732,9 @@ fn a_push_through_a_stale_alias_reviews_what_git_printed() {
     );
 }
 
-/// Forgejo #97: a background line that may merge claims what its own reflog
-/// entries show, not a commit another session lands in the checkout while it
-/// waits, whether or not that session's hook has already taken it.
+/// Forgejo #97: a commit another session's hook has already taken is not a
+/// background line's; one no hook saw is read as changed since the call
+/// began, because git cannot say whose it was.
 #[test]
 fn a_commit_a_peer_lands_is_not_a_background_lines() {
     for (background, peer_has_hook) in [
@@ -2821,12 +2776,19 @@ fn a_commit_a_peer_lands_is_not_a_background_lines() {
         }
         let next = payload_in_session("a", repo, "git log --oneline -1");
         let h = hook(repo, cache.path(), &next);
-        assert_eq!(
-            h.stdout,
-            "",
-            "{background}: {}",
-            last_log_line(cache.path())
-        );
+        if peer_has_hook {
+            assert_eq!(
+                h.stdout,
+                "",
+                "{background}: {}",
+                last_log_line(cache.path())
+            );
+        } else {
+            // No hook saw the commit made: git cannot say whose it was, and
+            // the review says it covers what changed since the call began.
+            let context = context_of(&h);
+            assert!(context.contains("since that call began"), "{context}");
+        }
     }
 }
 
@@ -2994,9 +2956,9 @@ fn the_marker_sweep_runs_daily_without_a_rotation() {
     assert!(later.exists(), "one sweep a day, not one per run");
 }
 
-/// #534: the body of a quoted here-document is data — Markdown code spans,
-/// a `$(…)` quoted in an issue body — and so is a single-quoted argument or
-/// a comment: none of them is git the shell hides.
+/// #534: every line is recorded before it runs, whatever its text says —
+/// Markdown code spans in a here-document, a `$(…)` quoted in an issue body,
+/// a `-c` script — and git's record answers once it ran.
 #[test]
 fn quoted_text_naming_git_hides_no_git() {
     let tmp = repo_with_pending_change();
@@ -3013,14 +2975,9 @@ fn quoted_text_naming_git_hides_no_git() {
         let cache = TempDir::new().unwrap();
         let h = hook(repo, cache.path(), &payload(repo, command));
         assert_eq!((h.code, h.stdout.as_str()), (Some(0), ""), "{command}");
-        assert!(
-            !last_log_line(cache.path()).contains("unsupported-syntax"),
-            "{command}"
-        );
     }
-    // What the shell does run still hides git: an unquoted here-document
-    // expands its body, and a `-c` or `eval` script is code. The cwd's
-    // refs are recorded for git's record to answer once the line ran.
+    // The same for what the shell does run: an unquoted here-document
+    // expands its body, and a `-c` or `eval` script is code.
     for command in [
         "cat > notes.md <<X\n$(git commit -qam change)\nX",
         "cat <<X\n`git push`\nX",
@@ -3057,55 +3014,6 @@ fn quoted_text_naming_git_hides_no_git() {
         context_of(&h).starts_with("diffctx reviewed what this commit recorded."),
         "{}",
         h.stdout
-    );
-}
-
-/// #575: a word the line hands to another program — a jq path, an API
-/// route, a pattern — is no git verb, so a line that only reads does not
-/// take a commit another session made while it ran as its own.
-#[test]
-fn a_commit_named_in_another_programs_argument_is_not_this_lines() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    for (i, command) in [
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq .commit.author.date",
-        "git log -1 --format=%s | grep -c commit",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let pre = hook(repo, cache.path(), &payload(repo, command));
-        assert_eq!(pre.stdout, "", "{command}");
-        write(
-            repo,
-            "shop/pricing.py",
-            &format!("def total(items):\n    return sum(i.price for i in items) + {i}\n"),
-        );
-        git(repo, &["commit", "-qam", "another session"]);
-        let post = hook_with(
-            repo,
-            cache.path(),
-            "posttooluse",
-            &[],
-            &payload_for("PostToolUse", repo, command),
-        );
-        assert_eq!(
-            post.stdout, "",
-            "{command}: another session's commit is not this line's"
-        );
-    }
-    write(repo, "shop/pricing.py", "def total(items):\n    return 0\n");
-    let h = run_line(
-        repo,
-        cache.path(),
-        "git commit -qam vat; echo '{\"commit\": 1}' | grep -c commit",
-    );
-    let context = context_of(&h);
-    assert!(
-        context.starts_with("diffctx reviewed what this commit recorded."),
-        "{context}"
     );
 }
 
@@ -3191,65 +3099,66 @@ fn bash_call(id: &str, from: std::time::SystemTime, to: Option<std::time::System
     lines.join("\n") + "\n"
 }
 
-/// #453: a file the session's own shell rewrote (`sed -i`, a heredoc
-/// script, `git rm`) is its edit, as one its edit tools wrote is; another
-/// session's edit, made while none of its Bash calls ran, still is not
-/// (#404).
+/// #453, #404: what a Bash call the hook never bracketed may have written is
+/// not guessed from a transcript's times. With no edit tool's write to tell
+/// the session's files from a peer's, an inspection says it did not review
+/// them; with one, the other changed files are read as committed and the
+/// answer counts the calls it could not bracket.
 #[test]
-fn a_file_the_sessions_shell_wrote_is_its_own() {
+fn a_file_only_an_unbracketed_call_could_have_written_is_named_not_reviewed() {
     use std::time::{Duration, SystemTime};
-    // `pricing.total` is another session's edit, made before any shell call
-    // of this one returned or ran.
+    // `pricing.total` is another session's edit; `inventory.restock` and the
+    // deleted README are changes of the session's shell, which nothing
+    // bracketed.
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
-    let theirs = SystemTime::now();
-    while SystemTime::now() < theirs + Duration::from_millis(1500) {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    let from = SystemTime::now();
     add_unrelated_edit(repo);
     std::fs::remove_file(repo.join("README.md")).unwrap();
-    let to = SystemTime::now() + Duration::from_millis(1);
-
+    let now = SystemTime::now();
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("b.jsonl");
-    std::fs::write(
-        &main,
-        [
-            // Returned before their edit; still running, so no span yet.
-            bash_call(
-                "t1",
-                theirs - Duration::from_secs(20),
-                Some(theirs - Duration::from_secs(10)),
-            ),
-            bash_call("t2", theirs - Duration::from_secs(5), None),
-            // The `git rm` of README.md.
-            bash_call("t3", from, Some(to)),
-        ]
-        .concat(),
-    )
-    .unwrap();
-    let subagents = dir.path().join("b").join("subagents");
-    std::fs::create_dir_all(&subagents).unwrap();
-    // A subagent's heredoc rewrite of `inventory.restock`.
-    std::fs::write(
-        subagents.join("agent-1.jsonl"),
-        bash_call("t4", from, Some(to)),
-    )
-    .unwrap();
-
+    let shell = [
+        bash_call(
+            "t1",
+            now - Duration::from_secs(20),
+            Some(now - Duration::from_secs(10)),
+        ),
+        bash_call("t2", now - Duration::from_secs(5), None),
+    ]
+    .concat();
+    std::fs::write(&main, &shell).unwrap();
     let h = inspect_with_transcript(repo, "git diff", Some(&main));
-    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
-    assert!(h.stdout.contains("(1 deleted)"), "{}", h.stdout);
     assert!(
-        !h.stdout.contains("shop/checkout.py::charge"),
+        h.stdout
+            .contains("did not review the pending change you just inspected"),
+        "{}",
+        h.stdout
+    );
+    assert!(h.stdout.contains("could not be bracketed"), "{}", h.stdout);
+    assert!(
+        !h.stdout.contains("shop/shelf.py::refill") && !h.stdout.contains("shop/checkout.py"),
+        "{}",
+        h.stdout
+    );
+
+    // An edit tool wrote the README's neighbour; the shell's files are read as
+    // committed, and two calls are named as unbracketed.
+    let edited = transcript(dir.path(), &[repo.join("shop/inventory.py")], &[]);
+    let mut text = std::fs::read_to_string(&edited).unwrap();
+    text.push_str(&shell);
+    std::fs::write(&edited, text).unwrap();
+    let h = inspect_with_transcript(repo, "git diff", Some(&edited));
+    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+    assert!(
+        h.stdout.contains(
+            "2 other changed file(s) show no write by this session or its subagents and are read as committed: README.md, shop/pricing.py."
+        ),
         "{}",
         h.stdout
     );
     assert!(
-        h.stdout.contains(
-            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
-        ),
+        h.stdout
+            .contains("2 Bash call(s) of this session could not be bracketed"),
         "{}",
         h.stdout
     );
@@ -3592,28 +3501,31 @@ fn an_empty_commit_is_said_to_change_no_file() {
     assert!(context.contains("changes no file"), "{context}");
 }
 
-/// #508: a repository the line names only by `--git-dir` and `--work-tree`,
-/// from a directory that is not it, is watched and reviewed.
+/// #508: a repository named by `--git-dir` and `--work-tree`, or by `GIT_DIR`
+/// and `GIT_WORK_TREE`, is the call's own when the call starts in it; from
+/// another directory the line names no place the hook looks.
 #[test]
-fn a_commit_through_git_dir_from_elsewhere_is_reviewed() {
+fn a_commit_through_git_dir_is_the_calls_own_only_from_its_repository() {
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
     let elsewhere = TempDir::new().unwrap();
     let cache = TempDir::new().unwrap();
     let dir = repo.display();
     let command = format!("git --git-dir='{dir}/.git' --work-tree='{dir}' commit -qam vat");
-    let context = context_of(&line_in(
-        "s1",
-        elsewhere.path(),
-        cache.path(),
-        &[],
-        &command,
-    ));
+    let context = context_of(&line_in("s1", repo, cache.path(), &[], &command));
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
     let env =
         format!("GIT_DIR='{dir}/.git' GIT_WORK_TREE='{dir}' git commit -q --allow-empty -m e");
-    let context = context_of(&line_in("s2", elsewhere.path(), cache.path(), &[], &env));
+    let context = context_of(&line_in("s2", repo, cache.path(), &[], &env));
     assert!(context.contains("changes no file"), "{context}");
+    let from_elsewhere =
+        format!("git --git-dir='{dir}/.git' --work-tree='{dir}' commit -q --allow-empty -m n");
+    let h = line_in("s3", elsewhere.path(), cache.path(), &[], &from_elsewhere);
+    assert!(
+        h.stdout.contains("did not analyse this command"),
+        "{from_elsewhere}: {}",
+        h.stdout
+    );
 }
 
 /// fj#127: a script that commits shows no git on its line; the repository the
@@ -3653,6 +3565,27 @@ fn a_force_push_reviews_the_delta_between_the_tips() {
         !context.contains("shop/checkout.py::charge"),
         "the pricing change was on both tips: {context}"
     );
+}
+
+/// A branch that shares no commit with the remote starts from a root: the
+/// push is reviewed from the empty tree, as a range with nothing to descend
+/// from, never refused.
+#[test]
+fn a_push_of_an_unrelated_branch_is_reviewed_from_the_empty_tree() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--orphan", "fresh"]);
+    git(repo, &["rm", "-rfq", "."]);
+    write(repo, "lone/solo.py", "def solo():\n    return 1\n");
+    commit_all(repo, "fresh");
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git push -q origin HEAD");
+    let context = context_of(&h);
+    assert!(
+        context.contains("reaches nothing outside the diff"),
+        "{context}"
+    );
+    assert!(!context.contains("did not review"), "{context}");
 }
 
 /// gh#669: a push that publishes a commit no call of this session made says so.

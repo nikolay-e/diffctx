@@ -108,6 +108,18 @@ pub(crate) fn in_scope(root: &Path, path: &Path, scope: &[String]) -> bool {
         })
 }
 
+/// The staged index is a tree like any other once captured: the range runs
+/// from `base` to that tree and nothing reads the index again.
+fn index_as_tree(repo: &snap::RepoRoot, range: snap::RangeSpec) -> git::Result<snap::RangeSpec> {
+    match range {
+        snap::RangeSpec::Staged { base } => Ok(snap::RangeSpec::Review {
+            base,
+            head: snap::index_tree(repo).map_err(lift)?,
+        }),
+        other => Ok(other),
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum End {
     Head,
@@ -145,14 +157,26 @@ impl Analysis {
     ) -> git::Result<Arc<Self>> {
         let repo = snap::open(root_dir).map_err(lift)?;
         let spec = spec.map(str::trim);
-        let range = match snap::resolve(&repo, spec.unwrap_or("HEAD")).map_err(lift)? {
-            snap::RangeSpec::Staged { base } => snap::RangeSpec::Review {
-                base,
-                head: snap::index_tree(&repo).map_err(lift)?,
-            },
-            other => other,
-        };
+        let range = snap::resolve(&repo, spec.unwrap_or("HEAD")).map_err(lift)?;
+        let range = index_as_tree(&repo, range)?;
         Self::build(root_dir, repo, range, spec, run)
+    }
+
+    /// The analysis of a range its caller already holds as a value: a push
+    /// or a force-push the hook read off git's record reaches the engine
+    /// as the two ids it measured, never as text to be read again.
+    pub fn open_range(
+        root_dir: &Path,
+        range: snap::RangeSpec,
+        run: &crate::resource::RunContext,
+    ) -> git::Result<Arc<Self>> {
+        let repo = snap::open(root_dir).map_err(lift)?;
+        let base_text = match &range {
+            snap::RangeSpec::WorkingTree { base } => Some(base.to_string()),
+            _ => None,
+        };
+        let range = index_as_tree(&repo, range)?;
+        Self::build(root_dir, repo, range, base_text.as_deref(), run)
     }
 
     /// The analysis of one snapshot, not of a change: `--symbol`, the project
@@ -174,12 +198,32 @@ impl Analysis {
         run: &crate::resource::RunContext,
     ) -> git::Result<Arc<Self>> {
         let (range_text, staged, working_tree_diff, head_revision) = match &range {
+            snap::RangeSpec::Rewritten { old, new } => {
+                // A force-push changed the remote by the delta between two
+                // tips that share no history: the new tip stands as its
+                // tree, and a range name would read `merge-base..new`
+                // (gh#596).
+                let tree = git::run_git(
+                    root_dir,
+                    &["rev-parse", "--verify", &format!("{new}^{{tree}}")],
+                )?
+                .trim()
+                .to_string();
+                let base = old.to_string();
+                let staged = git::StagedSnapshot {
+                    head: git::rev_oid(root_dir, &base),
+                    tree: tree.clone(),
+                    base: base.clone(),
+                };
+                (
+                    Some(format!("{base}..{tree}")),
+                    Some(staged),
+                    false,
+                    Some(tree),
+                )
+            }
             snap::RangeSpec::Review { base, head }
             | snap::RangeSpec::Pushed {
-                old: base,
-                new: head,
-            }
-            | snap::RangeSpec::Rewritten {
                 old: base,
                 new: head,
             } => {
@@ -606,5 +650,99 @@ mod tests {
             );
             assert!(analysis.head().fallback().is_none());
         }
+    }
+
+    fn oid_of(root: &Path, rev: &str) -> snap::Oid {
+        let out = git::run_git(root, &["rev-parse", rev]).expect("rev-parse");
+        snap::Oid::parse(out.trim()).expect("object id")
+    }
+
+    fn commit(root: &Path, text: &str, message: &str) {
+        std::fs::write(root.join("a.py"), text).expect("write");
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-q", "-m", message]);
+    }
+
+    /// A push the caller measured reaches the engine as its two ids and is
+    /// read exactly as the same range written as text is.
+    #[test]
+    fn a_pushed_range_opens_as_a_value() {
+        let tmp = repo_with_dirty_file();
+        let root = dunce::canonicalize(tmp.path()).expect("canonical");
+        commit(&root, "x = 2\n", "two");
+        let (old, new) = (oid_of(&root, "HEAD~1"), oid_of(&root, "HEAD"));
+        let run = crate::resource::RunContext::unbounded();
+        let text = format!("{old}..{new}");
+        let by_text = Analysis::open(&root, Some(&text), &run).expect("open");
+        let by_value = Analysis::open_range(
+            &root,
+            snap::RangeSpec::Pushed {
+                old: old.clone(),
+                new: new.clone(),
+            },
+            &run,
+        )
+        .expect("open_range");
+
+        assert_eq!(by_value.range(), Some(text.as_str()));
+        assert_eq!(by_value.range(), by_text.range());
+        assert!(by_value.staged().is_none());
+        assert!(!by_value.is_working_tree_diff());
+        let file = root.join("a.py");
+        assert_eq!(
+            by_value.head().read_to_string(&file).as_deref(),
+            Some("x = 2\n")
+        );
+        assert_eq!(
+            by_value.head().base().read_to_string(&file).as_deref(),
+            Some("x = 1\n")
+        );
+    }
+
+    /// A force-push is the tree delta between two tips with no history in
+    /// common: the new tip stands as its tree, whatever its commit's
+    /// ancestry, and a push value that does not descend is refused.
+    #[test]
+    fn a_rewritten_range_opens_as_the_tree_delta_between_the_tips() {
+        let tmp = repo_with_dirty_file();
+        let root = dunce::canonicalize(tmp.path()).expect("canonical");
+        commit(&root, "x = 2\n", "two");
+        let old = oid_of(&root, "HEAD");
+        git(&root, &["checkout", "-q", "-b", "rewritten", "HEAD~1"]);
+        commit(&root, "x = 3\n", "three");
+        let new = oid_of(&root, "HEAD");
+        let tree = oid_of(&root, "HEAD^{tree}");
+        let run = crate::resource::RunContext::unbounded();
+
+        let analysis = Analysis::open_range(
+            &root,
+            snap::RangeSpec::Rewritten {
+                old: old.clone(),
+                new: new.clone(),
+            },
+            &run,
+        )
+        .expect("open_range");
+        let named = format!("{old}..{tree}");
+        assert_eq!(analysis.range(), Some(named.as_str()));
+        let staged = analysis.staged().expect("a tree-ended range");
+        assert_eq!(staged.tree, tree.to_string());
+        assert_eq!(staged.base, old.to_string());
+        assert_eq!(staged.head.as_deref(), Some(old.to_string().as_str()));
+        let file = root.join("a.py");
+        assert_eq!(
+            analysis.head().read_to_string(&file).as_deref(),
+            Some("x = 3\n")
+        );
+        assert_eq!(
+            analysis.head().base().read_to_string(&file).as_deref(),
+            Some("x = 2\n")
+        );
+
+        let refused = Analysis::open_range(&root, snap::RangeSpec::Pushed { old, new }, &run);
+        assert!(
+            refused.is_err(),
+            "the tips do not descend one from the other"
+        );
     }
 }

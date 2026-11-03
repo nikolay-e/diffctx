@@ -162,8 +162,9 @@ fn a_read_through_an_untyped_receiver_is_counted_not_dropped() {
     assert!(!md.contains("called from app.py"), "{md}");
 }
 
-/// A read and a call through the same untyped receiver (`if engine.switch:
-/// engine.switch()`) is a possible caller: the call says more than the read.
+/// A read and a call through the same untyped receiver (`if w.switch:
+/// w.switch()`) is a possible caller of a module that imports the class's: the
+/// call says more than the read.
 #[test]
 fn a_call_beside_a_read_through_one_receiver_stays_a_possible_caller() {
     let engine = |n: u32| format!("class Engine:\n    def switch(self):\n        return {n}\n");
@@ -172,7 +173,7 @@ fn a_call_beside_a_read_through_one_receiver_stays_a_possible_caller() {
             ("engine.py", &engine(1)),
             (
                 "client.py",
-                "def run(engine):\n    if engine.switch:\n        return engine.switch()\n",
+                "import engine\n\n\ndef run(w):\n    if w.switch:\n        return w.switch()\n",
             ),
         ],
         &[("engine.py", &engine(2))],

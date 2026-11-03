@@ -156,6 +156,10 @@ pub struct Project {
     pub declared: BTreeSet<ProjectId>,
     /// The workspace members among them.
     pub members: BTreeSet<ProjectId>,
+    /// Projects a requirement names with nothing saying where the package comes
+    /// from (no `[tool.uv.sources]` entry): the name may be a project of the
+    /// workspace or a package of an index. A name is no declared link.
+    pub weak: BTreeSet<ProjectId>,
     /// False when a manifest of the project could not be read as written.
     pub dependencies_known: bool,
 }
@@ -217,6 +221,11 @@ impl Pending {
         }
     }
 
+    /// A requirement by name that no source resolves.
+    pub(crate) fn link_weak_name(&mut self, ecosystem: Ecosystem, name: String) {
+        self.links.push(Link::Weak(ecosystem, name));
+    }
+
     pub(crate) fn link_dir(&mut self, dir: String) {
         self.links.push(Link::Dir(dir));
     }
@@ -240,6 +249,9 @@ pub(crate) enum Link {
     /// A member of the workspace rooted here. The root sees its members; a
     /// dependant of the root does not thereby see them.
     Member(String),
+    /// A package name in an ecosystem that no source places: it links to
+    /// nothing, and names the projects that could be meant.
+    Weak(Ecosystem, String),
 }
 
 /// What can only be attached to a project once every manifest is read.
@@ -580,6 +592,16 @@ impl WorkspaceModel {
         roots
     }
 
+    /// The roots of the projects `project` names as requirements without saying
+    /// where they come from: imports found only there are possible, not declared.
+    pub fn weak_import_roots(&self, project: ProjectId) -> Vec<&ImportRoot> {
+        self.project(project)
+            .weak
+            .iter()
+            .flat_map(|weak| self.import_roots(*weak))
+            .collect()
+    }
+
     /// Whether code in `user` can name code in `used` through a declared
     /// dependency, direct or through others. True when either side's
     /// dependencies are unknown.
@@ -791,8 +813,14 @@ impl Draft {
             let id = by_root[root];
             let mut declared = BTreeSet::new();
             let mut members = BTreeSet::new();
+            let mut weak = BTreeSet::new();
             for link in &pending.links {
                 match link {
+                    Link::Weak(ecosystem, name) => {
+                        if let Some(targets) = by_name.get(&(*ecosystem, name.clone())) {
+                            weak.extend(targets);
+                        }
+                    }
                     Link::Member(dir) => {
                         if let Some(target) = owner(&roots, dir).and_then(|o| by_root.get(&o)) {
                             declared.insert(*target);
@@ -813,6 +841,8 @@ impl Draft {
             }
             declared.remove(&id);
             members.remove(&id);
+            weak.remove(&id);
+            weak.retain(|w| !declared.contains(w));
             projects.push(Project {
                 id,
                 root: root.clone(),
@@ -828,6 +858,7 @@ impl Draft {
                 go_module: pending.go_module,
                 declared,
                 members,
+                weak,
                 dependencies_known: !pending.unknown,
             });
         }

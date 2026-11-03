@@ -1,5 +1,5 @@
 //! What a Python file's syntax states: its declarations, with the class and
-//! function they sit in, and the lines each identifier is spelled on. A
+//! function they sit in, and the paths it puts on `sys.path`. A
 //! name a module or a class body assigns (`TABLE: dict = {…}`, `valued_at:
 //! Mapped[str] = …`) is declared there like a `def`, and read elsewhere.
 
@@ -26,17 +26,6 @@ pub struct PythonFacts {
     /// evaluate.
     pub sys_path: Vec<Option<Vec<Step>>>,
     pub declarations: Vec<Declaration>,
-    /// The lines of every import statement, which bind names and use none.
-    pub imports: Vec<(u32, u32)>,
-    /// Every identifier the code spells (never a string or a comment), by
-    /// name, with the lines it is spelled on in order.
-    names: FxHashMap<String, Vec<u32>>,
-}
-
-impl PythonFacts {
-    pub fn lines_naming(&self, name: &str) -> &[u32] {
-        self.names.get(name).map_or(&[], Vec::as_slice)
-    }
 }
 
 const CACHE_LIMIT: usize = 8192;
@@ -151,16 +140,6 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
                     added.push(arg);
                 }
             }
-            "import_statement" | "import_from_statement" | "future_import_statement" => {
-                facts.imports.push(lines_of(node));
-            }
-            "identifier" => {
-                facts
-                    .names
-                    .entry(text(node, bytes).to_string())
-                    .or_default()
-                    .push(line_of(node));
-            }
             _ => {}
         }
         let mut cursor = node.walk();
@@ -187,10 +166,6 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
         .into_iter()
         .map(|arg| steps(arg, bytes, &bound, 0))
         .collect();
-    for lines in facts.names.values_mut() {
-        lines.sort_unstable();
-        lines.dedup();
-    }
     facts
 }
 

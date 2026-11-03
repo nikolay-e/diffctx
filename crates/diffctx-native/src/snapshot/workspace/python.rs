@@ -1,6 +1,8 @@
 //! Python: `pyproject.toml` (PEP 621, uv, Poetry, setuptools, hatch), the
 //! `src` layout, literal `sys.path` edits, and what an `__init__.py` binds.
 
+use std::collections::BTreeMap;
+
 use super::{
     Draft, Ecosystem, Files, Late, Reexport, Result, RootOrigin, dir_of, expand_members,
     has_extension, join, name_of, toml_at, toml_strings,
@@ -11,6 +13,7 @@ const MAX_SCANNED_FILE: usize = 256 * 1024;
 const MAX_SCANNED_TOTAL: usize = 64 * 1024 * 1024;
 
 pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
+    let mut manifests: Vec<(String, toml::Table)> = Vec::new();
     for manifest in files.named("pyproject.toml") {
         let root = dir_of(manifest);
         let Some(text) = files.read(manifest)? else {
@@ -18,7 +21,7 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         };
         draft.project(root, Ecosystem::Python);
         match toml::from_str::<toml::Table>(&text) {
-            Ok(table) => read_pyproject(files, root, &table, draft),
+            Ok(table) => manifests.push((root.to_string(), table)),
             Err(error) => draft.unknown(
                 root,
                 Ecosystem::Python,
@@ -27,7 +30,110 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
             ),
         }
     }
+    let members = uv_members(files, &manifests);
+    for (root, table) in &manifests {
+        read_pyproject(files, root, table, members.get(root), draft);
+    }
+    pytest_configurations(files, draft)?;
     scan_sources(files, draft)
+}
+
+/// The members of every `[tool.uv.workspace]`, each with the `[tool.uv.sources]`
+/// its workspace root states for all of them.
+fn uv_members(
+    files: &Files,
+    manifests: &[(String, toml::Table)],
+) -> BTreeMap<String, Vec<(String, toml::Value)>> {
+    let mut found: BTreeMap<String, Vec<(String, toml::Value)>> = BTreeMap::new();
+    for (root, table) in manifests {
+        if toml_at(table, &["tool", "uv", "workspace"]).is_none() {
+            continue;
+        }
+        let globs = toml_strings(toml_at(table, &["tool", "uv", "workspace", "members"]));
+        let excluded = toml_strings(toml_at(table, &["tool", "uv", "workspace", "exclude"]));
+        // A root without `[tool.uv.sources]` states no source for its members.
+        let shared: Vec<(String, toml::Value)> =
+            match toml_at(table, &["tool", "uv", "sources"]).and_then(|v| v.as_table()) {
+                Some(sources) => sources
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                None => Vec::new(),
+            };
+        for dir in expand_members(files, root, &globs) {
+            let skipped = excluded
+                .iter()
+                .any(|e| join(root, e).as_deref() == Some(dir.as_str()));
+            if !skipped && files.has(&format!("{dir}/pyproject.toml")) {
+                found.entry(dir).or_default().extend(shared.iter().cloned());
+            }
+        }
+    }
+    found
+}
+
+/// `pythonpath` of `[tool:pytest]` in `setup.cfg`, of `[pytest]` in `pytest.ini`,
+/// `.pytest.ini` and `tox.ini`: the directory holding the file is a Python
+/// project whose import roots they name.
+fn pytest_configurations(files: &Files, draft: &mut Draft) -> Result<()> {
+    for (name, section) in [
+        ("setup.cfg", "tool:pytest"),
+        ("pytest.ini", "pytest"),
+        (".pytest.ini", "pytest"),
+        ("tox.ini", "pytest"),
+    ] {
+        for path in files.named(name) {
+            let dir = dir_of(path);
+            let Some(text) = files.read(path)? else {
+                continue;
+            };
+            let Some(value) = ini_value(&text, section, "pythonpath") else {
+                continue;
+            };
+            let roots: Vec<String> = value
+                .split_whitespace()
+                .filter_map(|entry| join(dir, entry))
+                .collect();
+            if roots.is_empty() {
+                continue;
+            }
+            let project = draft.project(dir, Ecosystem::Python);
+            project.root(dir.to_string(), RootOrigin::Manifest);
+            for root in roots {
+                project.root(root, RootOrigin::Configured);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `key` of `[section]` in an ini file, continuation lines joined; `None` when
+/// the section is absent.
+fn ini_value(text: &str, section: &str, key: &str) -> Option<String> {
+    let (mut inside, mut found, mut continues) = (false, false, false);
+    let mut value = String::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            inside = t.trim_matches(['[', ']']).trim() == section;
+            found |= inside;
+            continues = false;
+        } else if !inside || t.is_empty() || t.starts_with(['#', ';']) {
+            continues = continues && t.is_empty();
+        } else if continues && line.starts_with([' ', '\t']) {
+            value.push(' ');
+            value.push_str(t);
+        } else {
+            continues = false;
+            if let Some((k, v)) = t.split_once(['=', ':']) {
+                if k.trim() == key {
+                    value = v.trim().to_string();
+                    continues = true;
+                }
+            }
+        }
+    }
+    found.then_some(value)
 }
 
 /// PEP 503 name: case-folded, runs of `-_.` one `-`.
@@ -66,7 +172,16 @@ fn direct_reference(requirement: &str) -> Option<&str> {
     (target.starts_with("./") || target.starts_with("../")).then_some(target)
 }
 
-fn read_pyproject(files: &Files, root: &str, table: &toml::Table, draft: &mut Draft) {
+fn read_pyproject(
+    files: &Files,
+    root: &str,
+    table: &toml::Table,
+    workspace_sources: Option<&Vec<(String, toml::Value)>>,
+    draft: &mut Draft,
+) {
+    // A uv project names its dependencies' sources; a requirement without one is
+    // a package of an index, whatever a project of the workspace is called.
+    let uv = workspace_sources.is_some() || toml_at(table, &["tool", "uv"]).is_some();
     let mut requirements: Vec<String> = Vec::new();
     requirements.extend(toml_strings(toml_at(table, &["project", "dependencies"])));
     if let Some(optional) =
@@ -192,7 +307,11 @@ fn read_pyproject(files: &Files, root: &str, table: &toml::Table, draft: &mut Dr
     }
     for requirement in &requirements {
         if let Some(name) = requirement_name(requirement) {
-            project.link_name(Ecosystem::Python, name);
+            if uv {
+                project.link_weak_name(Ecosystem::Python, name);
+            } else {
+                project.link_name(Ecosystem::Python, name);
+            }
         }
         if let Some(dir) = direct_reference(requirement).and_then(|t| join(root, t)) {
             project.link_dir(dir);
@@ -204,18 +323,26 @@ fn read_pyproject(files: &Files, root: &str, table: &toml::Table, draft: &mut Dr
             project.link_dir(dir);
         }
     }
-    if let Some(sources) = sources {
-        for (name, source) in sources {
-            if let Some(dir) = source
-                .get("path")
-                .and_then(|p| p.as_str())
-                .and_then(|p| join(root, p))
-            {
-                project.link_dir(dir);
-            }
-            if source.get("workspace").and_then(|w| w.as_bool()) == Some(true) {
-                project.link_name(Ecosystem::Python, normalize(name));
-            }
+    // A project without `[tool.uv.sources]` names no source of its own.
+    let own: Vec<(&String, &toml::Value)> = match sources {
+        Some(table) => table.iter().collect(),
+        None => Vec::new(),
+    };
+    let inherited = workspace_sources
+        .into_iter()
+        .flatten()
+        .filter(|(name, _)| !own.iter().any(|(mine, _)| mine == &name))
+        .map(|(name, source)| (name, source));
+    for (name, source) in own.iter().copied().chain(inherited) {
+        if let Some(dir) = source
+            .get("path")
+            .and_then(|p| p.as_str())
+            .and_then(|p| join(root, p))
+        {
+            project.link_dir(dir);
+        }
+        if source.get("workspace").and_then(|w| w.as_bool()) == Some(true) {
+            project.link_name(Ecosystem::Python, normalize(name));
         }
     }
     for member in member_dirs {

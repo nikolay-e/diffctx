@@ -242,20 +242,56 @@ pub fn build_diff_context_impact(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::impact::ImpactOutput> {
-    let _run = crate::profile::run("impact");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
-    let state = compute_scored_state_with(
+    impact_of(
         root_dir,
+        Anchor::Diff(diff_range),
         diff_range,
         paths,
         alpha,
         scoring_mode,
         timeout,
-        true,
-    )?;
+    )
+}
+
+/// `--mode impact` over a range the caller holds as a value (a push, a
+/// force-push): the same run, with no range text to read again.
+pub fn build_range_impact(
+    root_dir: &Path,
+    range: crate::snapshot::RangeSpec,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::impact::ImpactOutput> {
+    impact_of(
+        root_dir,
+        Anchor::Range(range),
+        None,
+        paths,
+        alpha,
+        scoring_mode,
+        timeout,
+    )
+}
+
+fn impact_of(
+    root_dir: &Path,
+    anchor: Anchor<'_>,
+    label: Option<&str>,
+    paths: &[String],
+    alpha: f64,
+    scoring_mode: ScoringMode,
+    timeout: u64,
+) -> Result<crate::impact::ImpactOutput> {
+    let _run = crate::profile::run("impact");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let state =
+        compute_scored_state_anchored(root_dir, anchor, paths, alpha, scoring_mode, timeout, true)?;
+    // A range handed in as a value names itself by what the run resolved.
+    let label = label.or(state.analysed_range.as_deref());
     Ok(crate::impact::build_impact(
         &state,
-        diff_range,
+        label,
         None,
         Some(deadline),
     ))
@@ -724,6 +760,8 @@ fn resolve_change_set(
 /// reach each caller.
 pub enum Anchor<'a> {
     Diff(Option<&'a str>),
+    /// A range already resolved to ids by its caller.
+    Range(crate::snapshot::RangeSpec),
     Symbol(&'a str),
 }
 
@@ -1156,55 +1194,55 @@ fn resolve_anchor(
     run: &crate::resource::RunContext,
     t_entry: Instant,
 ) -> Result<(Option<String>, Option<git::StagedSnapshot>, ChangeSet)> {
-    match anchor {
-        Anchor::Diff(diff_range) => {
-            let analysis = match crate::source::Analysis::open(root_dir, diff_range, run) {
-                Ok(analysis) => analysis,
-                // The deadline or a cancellation cut the snapshot's listing
-                // short: nothing was read, so the answer is the partial one
-                // that names the limit, never a clean tree.
-                Err(e) if e.is_interruption() => {
-                    run.note(crate::resource::reason_for(&e));
-                    return Ok((
-                        None,
-                        None,
-                        ChangeSet::Empty {
-                            changed_files: Vec::new(),
-                            untracked_files: Vec::new(),
-                            lockfile_changes: Vec::new(),
-                            ignored_changes: Vec::new(),
-                            policy_excluded_count: 0,
-                        },
-                    ));
-                }
-                Err(e) => return Err(e.into()),
-            };
-            run.set_source(analysis.head());
-            let range = analysis.range();
-            let change_set = resolve_change_set(
-                root_dir,
-                range,
-                analysis.staged(),
-                scope,
-                analysis.is_working_tree_diff(),
-                run,
-                t_entry,
-            )?;
-            Ok((
-                range.map(str::to_string),
-                analysis.staged().cloned(),
-                change_set,
-            ))
-        }
+    let opened = match anchor {
+        Anchor::Diff(diff_range) => crate::source::Analysis::open(root_dir, diff_range, run),
+        Anchor::Range(range) => crate::source::Analysis::open_range(root_dir, range, run),
         Anchor::Symbol(query) => {
             run.set_source(crate::source::Analysis::at_working_tree(root_dir, run)?.head());
-            Ok((
+            return Ok((
                 None,
                 None,
                 resolve_symbol_change_set(root_dir, scope, query, run, t_entry)?,
-            ))
+            ));
         }
-    }
+    };
+    let analysis = match opened {
+        Ok(analysis) => analysis,
+        // The deadline or a cancellation cut the snapshot's listing
+        // short: nothing was read, so the answer is the partial one
+        // that names the limit, never a clean tree.
+        Err(e) if e.is_interruption() => {
+            run.note(crate::resource::reason_for(&e));
+            return Ok((
+                None,
+                None,
+                ChangeSet::Empty {
+                    changed_files: Vec::new(),
+                    untracked_files: Vec::new(),
+                    lockfile_changes: Vec::new(),
+                    ignored_changes: Vec::new(),
+                    policy_excluded_count: 0,
+                },
+            ));
+        }
+        Err(e) => return Err(e.into()),
+    };
+    run.set_source(analysis.head());
+    let range = analysis.range();
+    let change_set = resolve_change_set(
+        root_dir,
+        range,
+        analysis.staged(),
+        scope,
+        analysis.is_working_tree_diff(),
+        run,
+        t_entry,
+    )?;
+    Ok((
+        range.map(str::to_string),
+        analysis.staged().cloned(),
+        change_set,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
