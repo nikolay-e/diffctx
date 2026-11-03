@@ -75,6 +75,11 @@ pub enum Loss {
     ExtractorFailed {
         path: RepoPath,
     },
+    /// A definition changed in the range has more than one possible
+    /// counterpart on the other side, so no pairing is claimed.
+    AmbiguousMatch {
+        path: RepoPath,
+    },
 }
 
 impl Loss {
@@ -91,6 +96,7 @@ impl Loss {
             Self::Unsupported { .. } => "unsupported",
             Self::Deadline { .. } => "deadline",
             Self::ExtractorFailed { .. } => "extractor_failed",
+            Self::AmbiguousMatch { .. } => "ambiguous_match",
         }
     }
 
@@ -104,8 +110,28 @@ impl Loss {
             | Self::ManifestUnread { path, .. }
             | Self::ParseError { path, .. }
             | Self::Unsupported { path }
-            | Self::ExtractorFailed { path } => Some(path),
+            | Self::ExtractorFailed { path }
+            | Self::AmbiguousMatch { path } => Some(path),
             Self::Withheld { .. } | Self::Deadline { .. } => None,
+        }
+    }
+
+    /// The same loss about `at`: how a layer that read a path-free blob names
+    /// the file it was read for. A loss that names no path is returned as it is.
+    #[must_use]
+    pub fn at(self, at: &RepoPath) -> Self {
+        let path = at.clone();
+        match self {
+            Self::ReadFailed { side, .. } => Self::ReadFailed { path, side },
+            Self::SnapshotChanged { .. } => Self::SnapshotChanged { path },
+            Self::TooLarge { size, .. } => Self::TooLarge { path, size },
+            Self::NotAnalysed { reason, .. } => Self::NotAnalysed { path, reason },
+            Self::ManifestUnread { reason, .. } => Self::ManifestUnread { path, reason },
+            Self::ParseError { lines, .. } => Self::ParseError { path, lines },
+            Self::Unsupported { .. } => Self::Unsupported { path },
+            Self::ExtractorFailed { .. } => Self::ExtractorFailed { path },
+            Self::AmbiguousMatch { .. } => Self::AmbiguousMatch { path },
+            other @ (Self::Withheld { .. } | Self::Deadline { .. }) => other,
         }
     }
 }
@@ -143,6 +169,12 @@ impl fmt::Display for Loss {
             Self::Unsupported { path } => write!(f, "{path}: no extractor for its language"),
             Self::Deadline { stage } => write!(f, "the run stopped in the {stage:?} stage"),
             Self::ExtractorFailed { path } => write!(f, "{path}: the extractor failed"),
+            Self::AmbiguousMatch { path } => {
+                write!(
+                    f,
+                    "{path}: a changed definition has more than one counterpart"
+                )
+            }
         }
     }
 }
