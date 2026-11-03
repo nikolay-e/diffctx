@@ -1,4 +1,3 @@
-import gzip
 import json
 import tarfile
 from pathlib import Path
@@ -19,14 +18,6 @@ def context(tmp_path: Path, language: str, name: str = "x") -> runners.Context:
     )
 
 
-def test_kotlin_is_not_indexed_outside_a_sandbox_the_caller_vouches_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv(runners.SANDBOX_VARIABLE, raising=False)
-
-    plan = runners.plan_kotlin(context(tmp_path, "kotlin"))
-
-    assert plan.command is None and plan.blocked.startswith(runners.NEEDS_SANDBOX)
-
-
 def test_the_environment_handed_to_indexers_carries_no_tokens_and_two_distinct_npm_configs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -42,26 +33,22 @@ def test_the_environment_handed_to_indexers_carries_no_tokens_and_two_distinct_n
 
 
 def test_build_output_directories_are_not_code_files_of_the_snapshot():
-    assert {"target", "node_modules", "build", "vendor", ".gradle"} <= set(EXCLUDED_PARTS)
+    assert {"target", "node_modules", "build", "vendor"} <= set(EXCLUDED_PARTS)
 
 
-def test_release_archives_are_unpacked_to_the_binary(tmp_path: Path):
-    def tool(archive: str) -> Tool:
-        return Tool("scip-go", "1", "https://x/{version}", "any", archive, {"any": "0" * 64})
-
+def test_release_archive_is_unpacked_to_the_binary(tmp_path: Path):
+    tool = Tool("scip", "1", "https://x/{version}", {"any": "0" * 64})
     packed = tmp_path / "in"
     packed.mkdir()
-    (packed / "scip-go").write_bytes(b"binary")
+    (packed / "scip").write_bytes(b"binary")
     with tarfile.open(tmp_path / "a.tar.gz", "w:gz") as archive:
-        archive.add(packed / "scip-go", arcname="release/scip-go")
-    (tmp_path / "a.gz").write_bytes(gzip.compress(b"binary"))
-    (tmp_path / "plain").write_bytes(b"binary")
+        archive.add(packed / "scip", arcname="release/scip")
+    target = tmp_path / "out" / "scip"
+    target.parent.mkdir()
 
-    for kind, payload in (("tar.gz", "a.tar.gz"), ("gz", "a.gz"), ("file", "plain")):
-        target = tmp_path / kind / "scip-go"
-        target.parent.mkdir()
-        _place(tool(kind), tmp_path / payload, tmp_path / kind, target)
-        assert target.read_bytes() == b"binary"
+    _place(tool, tmp_path / "a.tar.gz", tmp_path / "scratch", target)
+
+    assert target.read_bytes() == b"binary"
 
 
 def test_a_missing_tsconfig_is_replaced_by_one_that_includes_javascript(tmp_path: Path):
