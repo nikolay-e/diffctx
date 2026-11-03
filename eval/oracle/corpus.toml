@@ -17,53 +17,18 @@ min_file_ratio = 0.9  # an index covering fewer present code files than this is 
 index_seconds = 1800
 diffctx_seconds = 300
 
-# Release binaries, each pinned by version and a SHA-256 per build (the digest GitHub reports for the asset).
-# Read 2026-10-31 from the GitHub releases API: scip v0.10.0, rust-analyzer 2026-10-26 (weekly stable), scip-go v0.2.9,
-# scip-java v0.13.2.
+# The SCIP CLI (`scip lint`), pinned by version and a SHA-256 per build (the digest GitHub reports for the asset).
+# Read 2026-10-31 from the GitHub releases API: scip v0.10.0. Rust, Go and Kotlin return with their cells (wave 5).
 
 [tools.scip]
 version = "0.10.0"
 url = "https://github.com/sourcegraph/scip/releases/download/v{version}/scip-{platform}.tar.gz"
-platforms = "os-arch"
-archive = "tar.gz"
 
 [tools.scip.sha256]
 darwin-amd64 = "e1d5eb355e5fcfc1c6d6479dd94cb9334c24262a34e38ff514dd5a2231b779ec"  # pragma: allowlist secret
 darwin-arm64 = "7ea200390e0790b3da8999b7b1cd4e3597700dcb3d354911872523bfe0090779"  # pragma: allowlist secret
 linux-amd64 = "eeb28ebbff443c01609fb1691809958f3f0c7a8651af689a5bc8560061cd8ab0"  # pragma: allowlist secret
 linux-arm64 = "6ab677dc2c4bf2955975d0530766152e45daaa988f9404068d8adecacd0bb24c"  # pragma: allowlist secret
-
-[tools.rust-analyzer]
-version = "2026-10-26"
-url = "https://github.com/rust-lang/rust-analyzer/releases/download/{version}/rust-analyzer-{platform}.gz"
-platforms = "triple"
-archive = "gz"
-
-[tools.rust-analyzer.sha256]
-aarch64-apple-darwin = "8fb90cb58f5910d8d8b24ac1a93cca49f053365cbf0eb3c682144ad0a0027dcf"  # pragma: allowlist secret
-aarch64-unknown-linux-gnu = "1b225c4c9ae329ca96e8a75a5bbcb5562a7f1d25c57c8b55d3e02299a3dbe836"  # pragma: allowlist secret
-x86_64-apple-darwin = "b3e4904877bcf7013a4a342c449cff1bf0ea0b91d5a1a30ac8df3d32142519c0"  # pragma: allowlist secret
-x86_64-unknown-linux-gnu = "4c83773525f93b636ed79761389568b4d2a89c05fa7ecc440245032d49ad80ce"  # pragma: allowlist secret
-
-[tools.scip-go]
-version = "0.2.9"
-url = "https://github.com/sourcegraph/scip-go/releases/download/v{version}/scip-go-{platform}.tar.gz"
-platforms = "os-arch"
-archive = "tar.gz"
-
-[tools.scip-go.sha256]
-darwin-arm64 = "3d8a0c14d0617debcf0c38debe4532d201c89c38a85eaac641da2200bb36d68f"  # pragma: allowlist secret
-linux-amd64 = "4ec4e45ecdbe6f43055ed555254e049f46f28389ade438db3d59679651fa1292"  # pragma: allowlist secret
-linux-arm64 = "81a196420b1ee64a8820a59287f4bb9cab1849bc3d4e13c97a3130f75d8540fd"  # pragma: allowlist secret
-
-[tools.scip-java]
-version = "0.13.2"
-url = "https://github.com/sourcegraph/scip-java/releases/download/v{version}/scip-java-v{version}"
-platforms = "any"
-archive = "file"
-
-[tools.scip-java.sha256]
-any = "5248136592d19ea2c468f64ebd18587d32de7c961536ff19346f8a025af1d13c"  # pragma: allowlist secret
 
 [[repo]]
 name = "click"
@@ -109,64 +74,3 @@ language = "typescript"
 flavor = "javascript"
 license = "MIT"
 sha = "1c6f1b0fe4000977b9a7b4f34097e4d527dd9824"  # pragma: allowlist secret gitleaks:allow
-
-[[repo]]
-name = "fd"
-url = "https://github.com/sharkdp/fd.git"
-language = "rust"
-license = "Apache-2.0 OR MIT"
-sha = "8b14e8dc5f1bd8c2656d735e80f1e6335b335bbf"  # pragma: allowlist secret gitleaks:allow
-fast = true
-
-[[repo]]
-name = "ripgrep"
-url = "https://github.com/BurntSushi/ripgrep.git"
-language = "rust"
-license = "Unlicense OR MIT"
-sha = "91f5d22ef48bde459d90a8c7dbeab416e97d0f2b"  # pragma: allowlist secret gitleaks:allow
-
-[[repo]]
-name = "hyperfine"
-url = "https://github.com/sharkdp/hyperfine.git"
-language = "rust"
-license = "Apache-2.0 OR MIT"
-sha = "c5161524980522320c7d3425e714cc0965a869a5"  # pragma: allowlist secret gitleaks:allow
-
-[[repo]]
-name = "chi"
-url = "https://github.com/go-chi/chi.git"
-language = "go"
-license = "MIT"
-sha = "9f8adb1aabaa8a91180a821111d3f8e668d1c0bf"  # pragma: allowlist secret gitleaks:allow
-fast = true
-
-[[repo]]
-name = "cobra"
-url = "https://github.com/spf13/cobra.git"
-language = "go"
-license = "Apache-2.0"
-sha = "adbc8813901bba65827259daa8e22ff94ec1f30e"  # pragma: allowlist secret gitleaks:allow
-
-[[repo]]
-name = "testify"
-url = "https://github.com/stretchr/testify.git"
-language = "go"
-license = "MIT"
-sha = "87a7b9d57689f6579db2da795ab8deeab29cb724"  # pragma: allowlist secret gitleaks:allow
-
-# Kotlin is indexed by running the repository's Gradle build (scip-java has no other way), so these two
-# only run inside a sandbox the caller vouches for: see indexing.py and README.md.
-[[repo]]
-name = "kotlinpoet"
-url = "https://github.com/square/kotlinpoet.git"
-language = "kotlin"
-license = "Apache-2.0"
-sha = "d67e333d682de65620bf82c46c5b41038e1e450f"  # pragma: allowlist secret gitleaks:allow
-fast = true
-
-[[repo]]
-name = "mockito-kotlin"
-url = "https://github.com/mockito/mockito-kotlin.git"
-language = "kotlin"
-license = "MIT"
-sha = "5969d27280ea670520003c75776057b20f7f3dfb"  # pragma: allowlist secret gitleaks:allow

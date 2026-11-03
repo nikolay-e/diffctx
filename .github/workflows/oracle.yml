@@ -1,7 +1,10 @@
 # .github/workflows/oracle.yml
 name: oracle
 
-# Measures diffctx against the SCIP oracle in eval/oracle (T10, T23).
+# Measures diffctx against the SCIP oracle in eval/oracle (T10, T23), on the
+# cells that migrate next: Python and TypeScript/JavaScript. Rust, Go and
+# Kotlin return with their cells (wave 5). The run fails only when no Python
+# or no TypeScript commit was measured.
 #
 # Before 2.0.0 it runs on pull_request events that carry the label `oracle`
 # (fast subset: one repository per language, ten commits) or `oracle:full`
@@ -87,18 +90,6 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
-        with:
-          go-version: stable
-          cache: false
-
-      - name: Set up the JDK
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad  # v6.1.0
-        with:
-          distribution: temurin
-          java-version: '21'
-
       - name: Cache the oracle's indexes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -143,10 +134,6 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           DIFFCTX_BIN: ${{ github.workspace }}/target/release/diffctx
-          # Kotlin is indexed through the repository's Gradle build, which runs its build scripts. This runner is
-          # a throwaway VM with no secrets and a read-only token that is not persisted, which is what the
-          # variable asserts; run.sh never sets it, so a laptop skips Kotlin.
-          ORACLE_SANDBOX: '1'
           ORACLE_METAMORPHIC_REPORT: ${{ github.workspace }}/oracle-out/metamorphic.log
           ORACLE_FAULTS_REPORT: ${{ github.workspace }}/oracle-out/faults.log
         run: |
