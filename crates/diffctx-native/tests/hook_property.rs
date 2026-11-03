@@ -13,9 +13,9 @@
 //! The red baseline is below, checked both ways: a red family whose lines
 //! the hook now reviews fails the suite until it moves to green, and a green
 //! one that fails is a regression. A red family is built so that every line
-//! in it shows the miss, so the baseline does not depend on the seed.
-//! Wave 3 rebuilds the hook on the shared snapshot reader (T19) and empties
-//! this list (T21).
+//! in it shows the miss, so the baseline does not depend on the seed. The
+//! hook decides from git's record (T19); what is left red is a repository no
+//! line, cwd or earlier call of the session names (T21).
 //!
 //! `DIFFCTX_HOOK_PROPERTY_CASES` (default 6 lines per family and bash),
 //! `DIFFCTX_HOOK_PROPERTY_SEED` (a number; `random` for the nightly run),
@@ -29,7 +29,7 @@ mod hook;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestError, TestRunner};
 
-use hook::line::Line;
+use hook::line::{Cwd, Join, Line, Op, Part, Reach, Repo, Wrapper};
 
 const DEFAULT_SEED: u64 = 0x0508_0001;
 
@@ -270,7 +270,6 @@ fn hook_under(
 /// silence.
 #[test]
 fn an_unfinished_review_reaches_the_output_with_its_reason() {
-    use hook::line::Repo;
     let config = Config {
         cases: cases(),
         max_shrink_iters: 24,
@@ -338,103 +337,113 @@ fn an_unfinished_review_reaches_the_output_with_its_reason() {
     }
 }
 
-// Red baseline. One entry per family; the issue owns the miss.
+// What the hook rebuilt on git's record answers for (wave 3).
 
-/// `--git-dir` and `GIT_DIR` name a repository the hook does not look at: the
-/// record is taken in the cwd's, the line commits in another, nothing is said.
 #[test]
-fn red_a_commit_through_git_dir_from_elsewhere() {
+fn a_commit_through_git_dir_from_elsewhere_is_reviewed() {
     family(
         "git_dir_elsewhere",
-        Expect::Red {
-            tag: "[landed]",
-            issue: "gh#508",
-        },
+        Expect::Green,
         &hook::strategies::git_dir_elsewhere(),
     );
 }
 
-/// A rebase, like `git pull --rebase`, records new commits that `LANDS_NOTHING`
-/// sends past the hook: PLAN track H item 2 names it, no issue is open for it.
 #[test]
-fn red_a_rebase_is_not_reviewed() {
-    family(
-        "rebases",
-        Expect::Red {
-            tag: "[landed]",
-            issue: "gh#508",
-        },
-        &hook::strategies::rebases(),
-    );
+fn a_rebase_is_reviewed() {
+    family("rebases", Expect::Green, &hook::strategies::rebases());
 }
 
-/// A script that commits shows no git on the line: no record is taken, and
-/// the plugin's own pre-filter does not even start the binary for it.
+/// A script that commits in the repository the call starts in is seen by
+/// git's record of that repository, whatever the line shows.
 #[test]
-fn red_a_commit_inside_a_script_is_not_reviewed() {
-    family(
-        "scripts",
-        Expect::Red {
-            tag: "[landed]",
-            issue: "fj#127",
-        },
-        &hook::strategies::scripts(),
-    );
+fn a_commit_inside_a_script_in_the_watched_repository_is_reviewed() {
+    family("scripts_here", Expect::Green, &scripts_here());
 }
 
-/// An empty commit has no range to review: `result_identity` is `None`, the
-/// run is logged `clean` and prints nothing. Unverified against a build: the
-/// disposition may be the "reaches nothing" line (PLAN item 8).
 #[test]
-fn red_an_empty_commit_is_silent() {
+fn an_empty_commit_is_said_to_change_no_file() {
     family(
         "empty_commits",
-        Expect::Red {
-            tag: "[landed]",
-            issue: "gh#508",
-        },
+        Expect::Green,
         &hook::strategies::empty_commits(),
     );
 }
 
-/// A force-push is reviewed as `old..new`, which the engine reads as
-/// `merge-base..new`: the whole rewritten commit, not the tips' delta.
 #[test]
-fn red_a_force_push_reviews_the_whole_rewritten_commit() {
+fn a_force_push_reviews_what_the_push_changed() {
     family(
         "force_pushes",
-        Expect::Red {
-            tag: "[force-delta]",
-            issue: "gh#596",
-        },
+        Expect::Green,
         &hook::strategies::force_pushes(),
     );
 }
 
-/// A push publishes a commit another session made in the checkout and says
-/// nothing of it.
 #[test]
-fn red_a_push_publishes_a_peer_commit_unannounced() {
+fn a_push_over_a_peer_commit_says_it_publishes_it() {
     family(
         "pushes_over_a_peer_commit",
-        Expect::Red {
-            tag: "[own]",
-            issue: "gh#669",
-        },
+        Expect::Green,
         &hook::strategies::pushes_over_a_peer_commit(),
     );
 }
 
-/// A commit another session lands in the checkout while the line is ending is
-/// reviewed as the line's: the reflog says what moved `HEAD`, not who.
 #[test]
-fn red_a_peer_commit_in_the_window_is_reviewed_as_the_lines() {
+fn a_peer_commit_in_the_window_is_read_as_changed_during_the_call() {
     family(
         "peer_commits_in_the_window",
-        Expect::Red {
-            tag: "[own]",
-            issue: "fj#97",
-        },
+        Expect::Green,
         &hook::strategies::peer_commits_in_the_window(),
     );
+}
+
+/// A script the call starts from another directory commits in a repository
+/// that no cwd, no `cd`, no `-C` and no `--git-dir` names, and that no earlier
+/// call of the session saw: git has no record of it that the hook can open,
+/// and nothing says so. The one baseline entry left.
+#[test]
+fn red_a_script_commits_in_a_repository_the_call_does_not_name() {
+    family(
+        "scripts_elsewhere",
+        Expect::Red {
+            tag: "[landed]",
+            issue: "fj#127",
+        },
+        &scripts_elsewhere(),
+    );
+}
+
+fn wrappers() -> BoxedStrategy<Wrapper> {
+    prop_oneof![Just(Wrapper::Bash), Just(Wrapper::Exec)].boxed()
+}
+
+fn repos() -> BoxedStrategy<Repo> {
+    prop_oneof![Just(Repo::A), Just(Repo::B)].boxed()
+}
+
+fn script_line(cwd: Cwd, repo: Repo, wrapper: Wrapper) -> Line {
+    Line::new(
+        cwd,
+        vec![Part::new(repo, Reach::Here, Op::Script(wrapper))],
+        vec![Join::And],
+    )
+}
+
+fn scripts_here() -> BoxedStrategy<Line> {
+    (repos(), wrappers())
+        .prop_map(|(repo, wrapper)| script_line(Cwd::In(repo), repo, wrapper))
+        .boxed()
+}
+
+fn scripts_elsewhere() -> BoxedStrategy<Line> {
+    (repos(), wrappers(), any::<bool>())
+        .prop_map(|(repo, wrapper, neutral)| {
+            let other = if repo == Repo::A { Repo::B } else { Repo::A };
+            let cwd = if neutral {
+                Cwd::Neutral
+            } else {
+                Cwd::In(other)
+            };
+            script_line(cwd, repo, wrapper)
+        })
+        .boxed()
 }

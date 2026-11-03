@@ -25,7 +25,7 @@ pub(crate) mod testfiles;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
-pub(crate) mod facts;
+pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod provenance;
 
@@ -67,6 +67,7 @@ pub mod profile;
 pub mod resource;
 pub mod run_provenance;
 pub mod sanitize;
+pub mod shadow;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
