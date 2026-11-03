@@ -16,6 +16,7 @@ pub(crate) mod canon;
 pub mod change_class;
 pub(crate) mod changed_lines;
 pub(crate) mod container;
+pub(crate) mod decide;
 pub(crate) mod excerpt;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
@@ -28,6 +29,7 @@ pub(crate) mod edges;
 pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod provenance;
+pub mod resolve;
 
 // Ranking: relevance of each candidate to the change.
 pub(crate) mod core;

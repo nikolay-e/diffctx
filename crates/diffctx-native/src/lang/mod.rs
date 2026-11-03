@@ -7,7 +7,6 @@
 mod bound;
 mod go;
 mod kotlin;
-mod python;
 pub(crate) mod rust;
 mod shell;
 mod sql;
@@ -28,11 +27,26 @@ type Declarations = fn(&str, &str) -> Vec<(Option<String>, (u32, u32), FragmentK
 
 fn declarations_of(path: &str) -> Option<Declarations> {
     match bindings::lang_of(path) {
-        Some(Lang::Python) => Some(|_, text| python::assignments(text)),
+        Some(Lang::Python) => Some(|_, text| python_assignments(text)),
         Some(Lang::Js) => Some(bound::declarations),
         None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
         None => None,
     }
+}
+
+/// Module- and class-level assignments of a Python file, which impact and
+/// `--symbol` lay over the fragments as definitions (#420, #488): the facts
+/// layer reports them as definitions, and the fragments they are anchored on
+/// have to exist.
+fn python_assignments(text: &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
+    crate::facts::python::facts(text).map_or_else(Vec::new, |facts| {
+        facts
+            .declarations
+            .iter()
+            .filter(|d| d.kind == crate::facts::DeclKind::Assignment)
+            .map(|d| (Some(d.name.clone()), d.lines, FragmentKind::Property))
+            .collect()
+    })
 }
 
 /// Definitions a model reads that the fragmenter does not cut: Python
@@ -331,6 +345,19 @@ fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
     }
 }
 
+/// The relations the facts layer's resolver answers (`decide.rs`), which no
+/// model of this registry reads: Python's.
+fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
+    use RelationKind::{
+        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, Writes,
+    };
+    language == "python"
+        && matches!(
+            relation,
+            Calls | Reads | Writes | Instantiates | PassesAsValue | Overrides | Imports | Reexports
+        )
+}
+
 /// A definition one model resolved, as that model's own handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DefId(u32);
@@ -433,11 +460,6 @@ impl<'a> Registry<'a> {
         models.push(Box::new(shell::ShellModel::new(root, source, &files)));
         models.push(Box::new(kotlin::KotlinModel::swift(root, source, &files)));
         models.push(Box::new(kotlin::KotlinModel::java(root, source)));
-        models.push(Box::new(python::PythonModel::new(
-            root,
-            source,
-            files.clone(),
-        )));
         models.push(Box::new(sql::SqlModel::new(root, source)));
         models.push(Box::new(kotlin::KotlinModel::kotlin(root, source)));
         models.push(Box::new(go::GoModel::new(root, source)));
@@ -520,6 +542,7 @@ impl<'a> Registry<'a> {
             return CellState::Precise;
         }
         let answered = relation == RelationKind::ReferencesPath
+            || answered_by_facts(language, relation)
             || self.for_path(sample).is_some_and(|model| {
                 relation == RelationKind::TestsReach
                     || model
