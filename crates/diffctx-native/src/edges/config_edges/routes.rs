@@ -9,7 +9,7 @@
 //! read.
 
 use once_cell::sync::Lazy;
-use regex::{Captures, Regex};
+use regex::Regex;
 use rustc_hash::FxHashMap;
 
 use super::keys_extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, pattern};
@@ -71,7 +71,7 @@ fn balanced(text: &str, open: usize) -> Option<&str> {
     while i < end {
         let c = bytes[i];
         match quote {
-            Some(q) if c == b'\\' => i += 1,
+            Some(_) if c == b'\\' => i += 1,
             Some(q) if c == q => quote = None,
             Some(_) => {}
             None => match c {

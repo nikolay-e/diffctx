@@ -238,6 +238,11 @@ pub struct ImpactOutput {
     #[serde(skip)]
     #[schemars(skip)]
     pub untraced_omitted: usize,
+    /// Changed definitions shed whole from `changed` while their callers were
+    /// still not determined (the run stopped first); the header counts them.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub unfinished_omitted: usize,
     /// The token cap the answer was fitted to.
     #[serde(skip)]
     #[schemars(skip)]
@@ -256,6 +261,12 @@ pub struct SymbolNamed {
     /// (#454); empty when every file naming the symbol was analysed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub caveat: String,
+    /// What limited the run that found no definition: a read that failed or
+    /// a deadline means the definition may exist, and the answer's `limits`
+    /// say so.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub limits: Vec<crate::resource::LimitReason>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -326,6 +337,12 @@ pub enum Unknown {
     /// Code in a language no binding model reads: its callers are only the
     /// files the ranking graph links, so finding none proves nothing (#505).
     NotModelled { language: &'static str },
+    /// The run stopped (`stops`: the deadline, a cancellation, a failed read)
+    /// before this definition's search finished: what it found is a lower
+    /// bound, and finding none does not mean there are none.
+    Unfinished {
+        stops: Vec<crate::resource::LimitReason>,
+    },
 }
 
 impl std::fmt::Display for Unknown {
@@ -359,7 +376,12 @@ impl std::fmt::Display for Unknown {
             }
             Self::NotModelled { language } => write!(
                 f,
-                "no binding model reads {language}: calls in its own file and through its types are not traced, so none found is no zero"
+                "no binding model reads {language}: calls in its own file and through its types are not traced, so finding none does not mean there are none"
+            ),
+            Self::Unfinished { stops } => write!(
+                f,
+                "callers not determined: the run stopped ({}) before the search for this definition finished, so the callers listed are a lower bound and finding none does not mean there are none",
+                reason_names(stops)
             ),
         }
     }
@@ -418,6 +440,55 @@ pub struct Caller {
 
 fn is_call(relation: &&'static str) -> bool {
     *relation == "call"
+}
+
+/// The limits among `limits` that leave a count of callers a lower bound.
+pub(crate) fn stops_of(
+    limits: &[crate::resource::LimitReason],
+) -> Vec<crate::resource::LimitReason> {
+    limits
+        .iter()
+        .copied()
+        .filter(|r| r.stops_a_search())
+        .collect()
+}
+
+pub(crate) fn reason_names(reasons: &[crate::resource::LimitReason]) -> String {
+    reasons
+        .iter()
+        .filter_map(|r| serde_json::to_value(r).ok()?.as_str().map(str::to_string))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A definition (or, with no symbol, a changed code file) whose callers the
+/// run stopped before determining.
+pub(crate) fn is_unfinished(s: &ChangedSymbol) -> bool {
+    matches!(s.unresolved, Some(Unknown::Unfinished { .. }))
+}
+
+fn unfinished_symbol(
+    path: String,
+    symbol: Option<String>,
+    lines: String,
+    kind: String,
+    stops: &[crate::resource::LimitReason],
+) -> ChangedSymbol {
+    ChangedSymbol {
+        path,
+        symbol,
+        lines,
+        kind,
+        commits: 0,
+        callers: Vec::new(),
+        entry: None,
+        unresolved: Some(Unknown::Unfinished {
+            stops: stops.to_vec(),
+        }),
+        untested: false,
+        compatible_callers: 0,
+        missed_in: Vec::new(),
+    }
 }
 
 #[derive(Serialize, JsonSchema, Clone)]
@@ -2960,12 +3031,17 @@ pub fn build_impact(
         UntracedNamers::default()
     };
     drop(setup);
+    let stopped_early = !state.run.stops().is_empty();
+    let mut unreached: Vec<&Fragment> = Vec::new();
     let callers = crate::profile::phase("impact.callers");
     for (i, core) in cores.iter().enumerate() {
         // Past the deadline the symbols already answered are the answer:
         // `limits` then says it is partial, and a mass reformat returns what
-        // it found instead of nothing (#382).
+        // it found instead of nothing (#382). The definitions it did not
+        // reach are named below, never left out of the count as if nothing
+        // called them.
         if !state.run.check() {
+            unreached.extend(cores[i..].iter().copied());
             break;
         }
         let core_hunks = hunks_in(core);
@@ -3653,6 +3729,14 @@ pub fn build_impact(
                         | Unknown::Dispatched { .. }
                 )
         });
+        // Read after the search: a stop noted while it ran, or before it
+        // began, leaves its callers a lower bound.
+        let stops = state.run.stops();
+        let unresolved = if stops.is_empty() {
+            unresolved
+        } else {
+            Some(Unknown::Unfinished { stops })
+        };
         // A method only dispatch reaches is reached through its class: a test
         // handing the class to the runtime (a server, a test runner, a
         // visitor) reaches the method (#578). A caller a test calls is the
@@ -3744,6 +3828,47 @@ pub fn build_impact(
         });
     }
     drop(callers);
+    {
+        let stops = state.run.stops();
+        for core in unreached {
+            let hunks = hunks_in(core);
+            let skipped = query.is_none()
+                && (bordering.contains(&core.id)
+                    || (!hunks.is_empty()
+                        && hunks
+                            .iter()
+                            .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))));
+            if !skipped {
+                changed.push(unfinished_symbol(
+                    rel(state, core.path()),
+                    core.symbol_name.clone(),
+                    lines_of(&core.id),
+                    format!("{:?}", core.kind).to_lowercase(),
+                    &stops,
+                ));
+            }
+        }
+        // A run already stopped when the callers phase began may have lost
+        // fragments before it: a changed code file with no definition in
+        // view is not known to have none.
+        if stopped_early && query.is_none() {
+            let covered: FxHashSet<String> = cores.iter().map(|c| rel(state, c.path())).collect();
+            for path in state
+                .changed_files
+                .iter()
+                .map(|p| rel(state, &p.to_string_lossy()))
+                .filter(|p| is_code_file(p) && !covered.contains(p))
+            {
+                changed.push(unfinished_symbol(
+                    path,
+                    None,
+                    String::new(),
+                    "file".to_string(),
+                    &stops,
+                ));
+            }
+        }
+    }
     let removed = crate::profile::phase("impact.removed");
     if query.is_none() && state.run.check() {
         let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
@@ -3963,6 +4088,7 @@ pub fn build_impact(
         unanalysed_files: unanalysed,
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,
+        unfinished_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
     };
     output.empty = proves_empty(&output);
@@ -5693,6 +5819,16 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.symbols_omitted += 1;
         return true;
     }
+    // A definition the run never searched goes into a count the header keeps.
+    if let Some(i) = output
+        .changed
+        .iter()
+        .rposition(|c| c.callers.is_empty() && c.compatible_callers == 0 && is_unfinished(c))
+    {
+        output.changed.remove(i);
+        output.unfinished_omitted += 1;
+        return true;
+    }
     if shed_weakest_caller(output) {
         return true;
     }
@@ -5874,12 +6010,24 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
         .filter(|members| members.len() >= 2)
         .map(|members| members[0])
         .collect();
+    // A definition the run stopped before it searched has nothing of its own
+    // to list: one line names them, and the count is whole.
+    let stalled = |s: &ChangedSymbol| quiet(s) && is_unfinished(s);
     let folded = |s: &ChangedSymbol| {
-        (fold && too_common(s)) || dispatched(s).is_some_and(|t| shared.contains(&t))
+        (fold && too_common(s)) || dispatched(s).is_some_and(|t| shared.contains(&t)) || stalled(s)
     };
     for sym in output.changed.iter().filter(|s| !folded(s)) {
         write_symbol(&mut out, sym, output.tests_known, compact);
     }
+    write_unfinished(
+        &mut out,
+        output,
+        &output
+            .changed
+            .iter()
+            .filter(|s| stalled(s))
+            .collect::<Vec<_>>(),
+    );
     if fold {
         write_too_common(&mut out, output.changed.iter().filter(|s| too_common(s)));
     }
@@ -5902,6 +6050,37 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
 
 /// Names shown on the folded line before the rest is counted.
 const TOO_COMMON_NAMED: usize = 8;
+
+fn write_unfinished(out: &mut String, output: &ImpactOutput, stalled: &[&ChangedSymbol]) {
+    let total = stalled.len() + output.unfinished_omitted;
+    if total == 0 {
+        return;
+    }
+    let names: Vec<String> = stalled
+        .iter()
+        .take(TOO_COMMON_NAMED)
+        .map(|s| match &s.symbol {
+            Some(name) => format!("{}::{name}", s.path),
+            None => s.path.clone(),
+        })
+        .collect();
+    let more = total - names.len();
+    let _ = writeln!(
+        out,
+        "- callers not determined for {total} changed definition(s): the run stopped ({}) before they were searched{}{}",
+        reason_names(&stops_of(&output.limits)),
+        if names.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", names.join(", "))
+        },
+        if more > 0 && !names.is_empty() {
+            format!(", and {more} more")
+        } else {
+            String::new()
+        },
+    );
+}
 
 fn write_too_common<'a>(out: &mut String, symbols: impl Iterator<Item = &'a ChangedSymbol>) {
     let symbols: Vec<&ChangedSymbol> = symbols.collect();
@@ -5963,6 +6142,7 @@ pub(crate) fn symbol_named(
     source: &crate::source::Source,
     lines: Vec<(String, u32, String)>,
     caveat: &str,
+    limits: Vec<crate::resource::LimitReason>,
 ) -> Option<SymbolNamed> {
     let mut rows: Vec<NamedFile> = lines
         .into_iter()
@@ -5986,6 +6166,7 @@ pub(crate) fn symbol_named(
         files,
         rows,
         caveat: caveat.to_string(),
+        limits,
     })
 }
 
@@ -6006,6 +6187,7 @@ pub(crate) fn symbol_named_output(
         index_tree: None,
         range_name: None,
         symbol: Some(query.to_string()),
+        limits: named.limits.clone(),
         symbol_named: Some(named),
         changed_files: Vec::new(),
         untracked_files: Vec::new(),
@@ -6030,7 +6212,6 @@ pub(crate) fn symbol_named_output(
         changed_files_omitted: 0,
         untracked_files_omitted: 0,
         contracts_omitted: 0,
-        limits: Vec::new(),
         tests_known: false,
         untested_definitions: 0,
         untested_unlisted: Vec::new(),
@@ -6044,6 +6225,7 @@ pub(crate) fn symbol_named_output(
         unanalysed_files: Vec::new(),
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,
+        unfinished_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
     }
 }
@@ -6087,10 +6269,13 @@ fn textual_rows(output: &ImpactOutput) -> Vec<String> {
 /// The caller count as far as it is known: symbols whose callers could not
 /// be resolved, or a run that stopped early, make a zero no finding (#387).
 fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String {
+    let stops = stops_of(&output.limits);
+    let undetermined =
+        output.changed.iter().filter(|c| is_unfinished(c)).count() + output.unfinished_omitted;
     let unresolved: Vec<&str> = output
         .changed
         .iter()
-        .filter(|c| c.unresolved.is_some())
+        .filter(|c| c.unresolved.is_some() && !is_unfinished(c))
         .map(|c| c.symbol.as_deref().unwrap_or(&c.path))
         .collect();
     let unresolved_names = {
@@ -6104,23 +6289,46 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
             more => format!("{} and {more} more", shown.join(", ")),
         }
     };
-    let mut phrase =
-        if callers == 0 && !unresolved.is_empty() && unresolved.len() == output.changed.len() {
-            format!("callers unresolved for {unresolved_names}")
-        } else {
-            let mut p = format!("{callers} caller(s){scope}");
-            if !unresolved.is_empty() {
-                p.push_str(&format!(", callers unresolved for {unresolved_names}"));
-            }
-            p
+    let mut phrase = if !stops.is_empty() {
+        // A run that stopped has counted what it reached, not what there is:
+        // the count is a lower bound and the definitions it never finished
+        // are named as such, never counted as callers-free.
+        let mut p = match callers {
+            0 => format!(
+                "no caller found before the run stopped ({})",
+                reason_names(&stops)
+            ),
+            n => format!(
+                "{n} caller(s){scope} found before the run stopped ({})",
+                reason_names(&stops)
+            ),
         };
+        if undetermined > 0 {
+            let _ = write!(
+                p,
+                ", callers not determined for {undetermined} changed definition(s)"
+            );
+        }
+        if !unresolved.is_empty() {
+            let _ = write!(p, ", callers unresolved for {unresolved_names}");
+        }
+        p
+    } else if callers == 0 && !unresolved.is_empty() && unresolved.len() == output.changed.len() {
+        format!("callers unresolved for {unresolved_names}")
+    } else {
+        let mut p = format!("{callers} caller(s){scope}");
+        if !unresolved.is_empty() {
+            let _ = write!(p, ", callers unresolved for {unresolved_names}");
+        }
+        p
+    };
     // Word matches are no callers, and no zero either: they are counted
     // where the reader looks first (R1).
     let textual = textual_rows(output).len() + output.truncated_textual;
     if textual > 0 {
         phrase.push_str(&format!(", {textual} named only textually (not resolved)"));
     }
-    if !output.limits.is_empty() {
+    if stops.is_empty() && !output.limits.is_empty() {
         phrase.push_str(" found in a partial run");
     }
     phrase
@@ -6337,20 +6545,10 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         );
     }
     if !output.limits.is_empty() {
-        let reasons: Vec<String> = output
-            .limits
-            .iter()
-            .map(|r| {
-                serde_json::to_value(r)
-                    .ok()
-                    .and_then(|v| v.as_str().map(str::to_string))
-                    .unwrap_or_default()
-            })
-            .collect();
         let _ = writeln!(
             out,
             "(partial: {}; callers may be missing)",
-            reasons.join(", ")
+            reason_names(&output.limits)
         );
     }
 }

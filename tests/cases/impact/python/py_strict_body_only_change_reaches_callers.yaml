@@ -1,0 +1,51 @@
+name: py_strict_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, body-only, smoke]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(items):
+          subtotal = 0
+          for item in items:
+              subtotal += item.price
+          return subtotal
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(cart):
+          return total(cart.items) + 1
+    shop/report.py: |
+      from shop import pricing
+
+
+      def build(cart):
+          return "total=" + str(pricing.total(cart.items))
+    legacy/__init__.py: ""
+    legacy/pricing.py: |
+      def total(items):
+          return len(items)
+
+
+      def legacy_sum(items):
+          return total(items)
+    docs/notes.md: |
+      `shop.pricing.total(items)` is documented here.
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          subtotal = 0
+          for item in items:
+              subtotal += item.price * item.quantity
+          return round(subtotal, 2)
+  commit_message: "pricing: count quantities and round the total"
+expect:
+  changed: [shop/pricing.py::total]
+  relations:
+    - {from: "shop/checkout.py::charge", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+    - {from: "shop/report.py::build", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+  decoys:
+    shop/pricing.py::total: [legacy/pricing.py, docs/notes.md]

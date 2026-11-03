@@ -1909,9 +1909,10 @@ fn a_language_without_a_model_never_claims_an_absence() {
         let named = doc["changed"].as_array().cloned().unwrap_or_default();
         assert!(
             named.iter().any(|c| c["symbol"] == *symbol
-                && c["unresolved"].as_str().is_some_and(
-                    |u| u.contains("no binding model") && u.contains("none found is no zero")
-                )),
+                && c["unresolved"]
+                    .as_str()
+                    .is_some_and(|u| u.contains("no binding model")
+                        && u.contains("finding none does not mean there are none"))),
             "{path}: {doc:#}"
         );
         for (door, md) in [
@@ -2556,4 +2557,156 @@ fn a_data_files_prose_is_no_consumer_and_code_ranks_first() {
     assert!(!md.contains("dump.json"), "{md}");
     assert!(!md.contains("ci/job.yaml:2"), "{md}");
     assert_eq!(md.matches("docs-site/").count(), 1, "{md}");
+}
+
+/// What `--diff HEAD~1..HEAD --mode impact` (or `--symbol`) printed with the
+/// run's deadline cut at its `polls`-th poll, whatever the clock says.
+fn stopped_at(repo: &Path, args: &[&str], polls: u64) -> std::process::Output {
+    diffctx()
+        .current_dir(repo)
+        .env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", polls.to_string())
+        .args(args)
+        .args(["-q", "-f", "md"])
+        .output()
+        .expect("run diffctx")
+}
+
+/// A run the deadline cut printed "0 caller(s) outside the diff found in a
+/// partial run" for definitions it had not looked at: the count of a search
+/// that never finished, as if it had (root A). Whatever poll the stop falls
+/// on, every changed definition is either listed with its callers or named as
+/// not determined, and the header never counts without saying the run stopped.
+#[test]
+fn a_stopped_run_names_the_definitions_it_did_not_finish_never_a_count_of_nothing() {
+    const WIDTH: usize = 6;
+    let source = |k: u32| -> Vec<(String, String)> {
+        (0..WIDTH)
+            .map(|i| {
+                (
+                    format!("pkg/m{i}.py"),
+                    format!("def f{i}(x):\n    return x + {k}\n"),
+                )
+            })
+            .collect()
+    };
+    let mut base = source(1);
+    for i in 0..WIDTH {
+        base.push((
+            format!("app/use{i}.py"),
+            format!("from pkg.m{i} import f{i}\n\n\ndef run{i}(x):\n    return f{i}(x)\n"),
+        ));
+    }
+    let base: Vec<(&str, &str)> = base.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let change = source(2);
+    let change: Vec<(&str, &str)> = change
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo(&base, &change);
+    let args = ["--diff", "HEAD~1..HEAD", "--mode", "impact"];
+    let whole = impact_markdown(tmp.path());
+    for i in 0..WIDTH {
+        assert!(
+            whole.contains(&format!("called from app/use{i}.py::run{i}")),
+            "{whole}"
+        );
+    }
+    let finished =
+        |out: &std::process::Output| !String::from_utf8_lossy(&out.stdout).contains("(partial:");
+    let sweep = support::sweep_polls(|n| stopped_at(tmp.path(), &args, n), finished);
+    assert!(sweep.len() > 1, "no poll stopped the run");
+    for (n, out) in &sweep {
+        assert!(
+            out.status.success(),
+            "poll {n}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let md = String::from_utf8_lossy(&out.stdout);
+        if finished(out) {
+            assert_eq!(md, whole, "poll {n}: a run that finished answers whole");
+            continue;
+        }
+        let header = md.lines().next().unwrap_or_default();
+        assert!(
+            !header.contains("caller(s)") || header.contains("before the run stopped"),
+            "poll {n}: a count of what a stopped run reached, as if it were all:\n{md}"
+        );
+        for i in 0..WIDTH {
+            assert!(
+                md.contains(&format!("pkg/m{i}.py")),
+                "poll {n}: pkg/m{i}.py is neither listed with its callers nor named as not determined:\n{md}"
+            );
+        }
+    }
+
+    let symbol = ["--symbol", "f0"];
+    let sweep = support::sweep_polls(
+        |n| stopped_at(tmp.path(), &symbol, n),
+        |out| out.status.success() && finished(out),
+    );
+    for (n, out) in &sweep {
+        let (md, err) = (
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        if out.status.success() && finished(out) {
+            assert!(
+                md.contains("called from app/use0.py::run0"),
+                "poll {n}: {md}"
+            );
+        } else if out.status.success() {
+            assert!(
+                md.contains("before the run stopped") || md.contains("callers not determined"),
+                "poll {n}: a stopped lookup says nothing of it:\n{md}"
+            );
+        } else {
+            assert!(
+                err.contains("the run stopped") || err.contains("deadline"),
+                "poll {n}: a lookup that ended in an error names why:\n{err}"
+            );
+        }
+    }
+}
+
+/// A nested `Builder` whose qualified supertypes all end in `.Builder<Builder>`
+/// resolves, by its last segment, to the class itself: nine of them made the
+/// supertype walks `9^7` steps long and a Kotlin run never finished. The walks
+/// remember the types they entered, so the work is bounded by the distinct
+/// types reachable, and the lookup answers whole. The answer is asserted, never
+/// the time: a run that did not finish would be partial.
+#[test]
+fn a_nested_builder_naming_itself_in_nine_supertypes_is_answered_whole() {
+    const SUPERTYPES: usize = 9;
+    let mut files: Vec<(String, String)> = (1..=SUPERTYPES)
+        .map(|i| {
+            (
+                format!("P{i}.kt"),
+                format!(
+                    "package p\n\ninterface P{i} {{\n  interface Builder<T> {{\n    fun mark{i}(): T\n  }}\n}}\n"
+                ),
+            )
+        })
+        .collect();
+    files.push((
+        "Other.kt".into(),
+        "package p\n\nclass Other {\n  fun addX(): Int = 1\n}\n".into(),
+    ));
+    let supertypes = (1..=SUPERTYPES)
+        .map(|i| format!("P{i}.Builder<Builder>"))
+        .collect::<Vec<_>>()
+        .join(",\n      ");
+    files.push((
+        "F.kt".into(),
+        format!(
+            "package p\n\nclass F {{\n  class Builder :\n      {supertypes} {{\n    fun use(): Int {{\n      return addX()\n    }}\n  }}\n}}\n"
+        ),
+    ));
+    let base: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo(&base, &[("README.md", "# demo\n")]);
+    let md = symbol_markdown(tmp.path(), "addX");
+    assert!(!md.contains("(partial:"), "{md}");
+    assert!(md.contains("Other.kt::addX"), "{md}");
 }

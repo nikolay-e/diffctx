@@ -45,20 +45,48 @@ def test_every_rust_suite_runs_in_the_pre_commit_hook():
     assert not _missing(hooks[0]["entry"]), sorted(_missing(hooks[0]["entry"]))
 
 
-@pytest.mark.skipif(
+# Every call is logged; FAIL_ON makes the calls that contain it exit non-zero.
+FAKE_CARGO = """#!{python}
+import os, sys
+
+with open(os.environ["CARGO_LOG"], "a") as log:
+    log.write(" ".join(sys.argv[1:]) + "\\n")
+sys.exit(1 if os.environ.get("FAIL_ON") and os.environ["FAIL_ON"] in " ".join(sys.argv[1:]) else 0)
+"""
+
+
+def _run_script(tmp_path: Path, **extra: str) -> tuple[subprocess.CompletedProcess, list[str]]:
+    fake = tmp_path / "cargo"
+    fake.write_text(FAKE_CARGO.format(python=sys.executable), encoding="utf-8")
+    fake.chmod(0o755)
+    log = tmp_path / "log"
+    env = {
+        "PATH": f"{tmp_path}:{Path(sys.executable).parent}:/usr/bin:/bin",
+        "CARGO_LOG": str(log),
+        **extra,
+    }
+    result = subprocess.run(["bash", str(PROJECT_ROOT / SUITES_SCRIPT)], env=env, capture_output=True, text=True, check=False)
+    return result, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+
+POSIX_ONLY = pytest.mark.skipif(
     sys.platform == "win32",
     reason="the stand-in cargo is a POSIX script on a POSIX PATH; the Windows Rust job runs the script itself",
 )
+
+
+@POSIX_ONLY
 def test_the_suites_script_reads_every_suite_off_the_tree(tmp_path):
     """The script's own enumeration, run against a stand-in cargo."""
-    fake = tmp_path / "cargo"
-    fake.write_text('#!/usr/bin/env bash\necho "$@" >> "$CARGO_LOG"\n', encoding="utf-8")
-    fake.chmod(0o755)
-    log = tmp_path / "log"
-    subprocess.run(
-        ["bash", str(PROJECT_ROOT / SUITES_SCRIPT)],
-        check=True,
-        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "CARGO_LOG": str(log)},
-    )
-    ran = set(re.findall(r"--test (\w+)", log.read_text(encoding="utf-8")))
-    assert ran == _suites()
+    result, calls = _run_script(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert set(re.findall(r"--test (\w+)", "\n".join(calls))) == _suites()
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize("failing", ["--lib", "--test unknowns"])
+def test_one_failing_run_does_not_hide_the_others_but_fails_the_script(tmp_path, failing):
+    result, calls = _run_script(tmp_path, FAIL_ON=failing)
+    assert result.returncode != 0
+    assert any(failing in call for call in calls)
+    assert any("--test yaml_cases" in call for call in calls), "the corpus must still run after a failure"

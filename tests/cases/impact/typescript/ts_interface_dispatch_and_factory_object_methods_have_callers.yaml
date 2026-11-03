@@ -1,0 +1,73 @@
+name: ts_interface_dispatch_and_factory_object_methods_have_callers
+mode: impact
+source: gh#698
+issue_state: open
+tags: [typescript, interface-dispatch, factory-return, tests-reach]
+repo:
+  initial_files:
+    src/engine.ts: |
+      export interface Engine {
+        setQueue(items: string[]): Promise<number>;
+      }
+
+      export class NativeEngine implements Engine {
+        async setQueue(items: string[]): Promise<number> {
+          return items.length;
+        }
+      }
+    src/factory.ts: |
+      export function makeSys() {
+        return {
+          async open(): Promise<string> {
+            return 'opened';
+          },
+        };
+      }
+    src/use.ts: |
+      import type { Engine } from './engine';
+      import { makeSys } from './factory';
+
+      export async function play(engine: Engine): Promise<number> {
+        return engine.setQueue(['a', 'b']);
+      }
+
+      export async function start(): Promise<string> {
+        const sys = makeSys();
+        return sys.open();
+      }
+    test/use.test.ts: |
+      import { NativeEngine } from '../src/engine';
+      import { play, start } from '../src/use';
+
+      test('plays', async () => {
+        expect(await play(new NativeEngine())).toBe(2);
+        expect(await start()).toBe('opened');
+      });
+  changed_files:
+    src/engine.ts: |
+      export interface Engine {
+        setQueue(items: string[]): Promise<number>;
+      }
+
+      export class NativeEngine implements Engine {
+        async setQueue(items: string[]): Promise<number> {
+          return items.filter(Boolean).length;
+        }
+      }
+    src/factory.ts: |
+      export function makeSys() {
+        return {
+          async open(): Promise<string> {
+            return 'opened'.trim();
+          },
+        };
+      }
+  commit_message: "engine, factory: filter empty items and trim the label"
+expect:
+  changed: [src/engine.ts::setQueue, src/factory.ts::open]
+  relations:
+    - {from: "src/use.ts::play", to: "src/engine.ts::setQueue", kind: calls, resolution: candidate, site: 5}
+    - {from: "src/use.ts::start", to: "src/factory.ts::open", kind: calls, resolution: candidate, site: 10}
+    - {from: "test/use.test.ts", to: "src/use.ts::play", kind: tests_reach, resolution: resolved}
+    - {from: "test/use.test.ts", to: "src/use.ts::start", kind: tests_reach, resolution: resolved}
+  not_untested: [setQueue, open]

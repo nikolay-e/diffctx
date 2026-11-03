@@ -9,6 +9,7 @@ pub mod case;
 pub mod engine;
 pub mod judge;
 pub mod model;
+pub mod negative;
 pub mod report;
 
 use case::Mode;

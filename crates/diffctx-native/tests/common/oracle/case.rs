@@ -79,6 +79,10 @@ pub struct Query {
     pub symbol: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Test switches handed to the binary (`DIFFCTX_TEST_*` only), such as the
+    /// expired deadline that makes a run partial.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -315,6 +319,16 @@ pub fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
         {
             return Err(format!("query.args may not carry `{flag}`"));
         }
+    }
+    if let Some(name) = case
+        .query
+        .env
+        .keys()
+        .find(|name| !name.starts_with("DIFFCTX_TEST_"))
+    {
+        return Err(format!(
+            "query.env may carry DIFFCTX_TEST_* only, not `{name}`"
+        ));
     }
     Ok(case)
 }

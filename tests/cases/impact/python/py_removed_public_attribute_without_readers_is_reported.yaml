@@ -1,0 +1,23 @@
+name: py_removed_public_attribute_without_readers_is_reported
+mode: impact
+source: gh#699
+issue_state: open
+tags: [python, project-root, removed-api, contract]
+repo:
+  initial_files:
+    a/pyproject.toml: |
+      [project]
+      name = "a"
+      version = "0.1.0"
+    a/src/__init__.py: ""
+    a/src/models/__init__.py: |
+      class Row:
+          impact = 0
+          name = ""
+  changed_files:
+    a/src/models/__init__.py: |
+      class Row:
+          name = ""
+  commit_message: "models: drop the impact attribute"
+expect:
+  removed: [impact]

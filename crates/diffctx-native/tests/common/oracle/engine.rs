@@ -62,6 +62,7 @@ const NOT_TRACED: &[&str] = &[
     "not analysed",
     "only in part",
     "not followed",
+    "not determined",
     "(partial",
 ];
 
@@ -277,6 +278,7 @@ fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>,
         .current_dir(repo.dir.path())
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .envs(&case.query.env)
         .args(&args)
         .output()
         .map_err(|e| format!("run diffctx: {e}"))?;

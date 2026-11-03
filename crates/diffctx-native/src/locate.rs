@@ -681,9 +681,9 @@ mod tests {
     /// locate carried its own test-file rule until it was delegated to
     /// `crate::testfiles`. It lowercased the path first, so every CamelCase
     /// convention was invisible and `summary.tests` in the blast-radius view
-    /// (#135) undercounted. The bitcheck fixture is this repo, whose tests are
-    /// all `test_*.py` under `tests/` — a shape both rules agree on — so the
-    /// divergence only shows up on cases like these.
+    /// (#135) undercounted. This repository's own tests are all `test_*.py`
+    /// under `tests/` — a shape both rules agree on — so the divergence only
+    /// shows up on cases like these.
     #[test]
     fn the_grouping_uses_the_shared_test_classifier() {
         for path in [

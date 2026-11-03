@@ -2,7 +2,7 @@
 
 The set holds references, never code: repository, commit, path, line and the observed disagreement. Two
 blind passes fill `label_a`/`evidence_a` and `label_b`/`evidence_b` and a final decision fills `final`
-among evidenced options only; that labelling happens in wave 2 with the trace tooling in `trace/`.
+among evidenced options only.
 """
 
 from __future__ import annotations

@@ -238,10 +238,9 @@ jobs:
           key: cargo-publish-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-publish-${{ runner.os }}-
 
-      # Every workspace crate, in dependency order: the facade is verified
-      # against the layer crates packaged beside it, not against crates.io.
       - name: Package and verify
-        run: cargo package --workspace --locked
+        working-directory: crates/diffctx-native
+        run: cargo publish --dry-run --locked
 
   # ============================================================================
   # Docker image build. Gated here rather than only at release time: cd.yml's
