@@ -30,6 +30,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use crate::mode::ScoringMode;
+use crate::snapshot as snap;
 
 /// A reviewed content hash stays reviewed this long. Long enough for a
 /// review, a fix and the push that follows; short enough that the same
@@ -96,6 +97,8 @@ pub enum Trigger {
         verb: &'static str,
         also: usize,
         late: bool,
+        /// Commits a push published that this session's calls did not make.
+        unmade: Vec<String>,
     },
     /// `gh pr create`: `head` (the current branch unless `--head` names
     /// one) against `base` (the remote's default unless `--base` names one).
@@ -463,6 +466,44 @@ struct Statement {
     /// Runs in a directory only the shell could name (`cd $R`): kept so the
     /// log can say why the line got no answer, never reviewed.
     lost: bool,
+    /// The repository the statement names without a directory: `--git-dir`
+    /// and `--work-tree`, or `GIT_DIR` and `GIT_WORK_TREE` set for it. Where
+    /// to look, never what it did.
+    git_dir: Option<String>,
+    work_tree: Option<String>,
+}
+
+/// The value `name=…` words give the statement at `at`, in the run of
+/// assignments just before it (`GIT_DIR=x GIT_WORK_TREE=y git commit`), else
+/// a variable the line set earlier. `None` when the shell alone could say.
+fn env_of(
+    name: &str,
+    at: usize,
+    ws: &[String],
+    vars: &FxHashMap<String, String>,
+) -> Option<String> {
+    let mut k = at;
+    while k > 0 {
+        let Some((var, value)) = ws[k - 1].split_once('=') else {
+            break;
+        };
+        if var.is_empty() || !var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            break;
+        }
+        if var == name {
+            let value = expand_home(&substitute(value, vars));
+            return (!is_unresolvable(&value)).then_some(value);
+        }
+        k -= 1;
+    }
+    vars.get(name).cloned()
+}
+
+/// A repository path a statement names, joined to the directory the
+/// statement runs in; nothing when only the shell could say where it is.
+fn place_of(path: Option<String>, dir: Option<&str>) -> Option<String> {
+    let path = expand_home(&path?);
+    (!is_unresolvable(&path)).then(|| join_dir(dir, &path))
 }
 
 /// Every git or gh statement of the command line: verb, directory (`-C`, or
@@ -565,6 +606,8 @@ fn statements(command: &str) -> Vec<Statement> {
                         .collect(),
                     piped_out: ws.get(j).is_some_and(|w| is_pipe(w)),
                     lost: false,
+                    git_dir: None,
+                    work_tree: None,
                 });
             }
             i = j;
@@ -575,8 +618,34 @@ fn statements(command: &str) -> Vec<Statement> {
             let mut dir = cwd.clone();
             let mut dir_lost = lost;
             let mut verb = None;
+            let mut git_dir = env_of("GIT_DIR", i, &ws, &vars);
+            let mut work_tree = env_of("GIT_WORK_TREE", i, &ws, &vars);
             while j < ws.len() && !is_operator(&ws[j]) {
                 let w = &ws[j];
+                if prog == "git" {
+                    let flag = |name: &str| {
+                        w.strip_prefix(name)
+                            .and_then(|rest| rest.strip_prefix('='))
+                            .map(str::to_string)
+                    };
+                    let (dir_flag, tree_flag) = (flag("--git-dir"), flag("--work-tree"));
+                    if dir_flag.is_some() || tree_flag.is_some() {
+                        git_dir = dir_flag.or(git_dir);
+                        work_tree = tree_flag.or(work_tree);
+                        j += 1;
+                        continue;
+                    }
+                    if matches!(w.as_str(), "--git-dir" | "--work-tree") {
+                        let value = ws.get(j + 1).cloned();
+                        if w == "--git-dir" {
+                            git_dir = value.or(git_dir);
+                        } else {
+                            work_tree = value.or(work_tree);
+                        }
+                        j += 2;
+                        continue;
+                    }
+                }
                 if prog == "git" && w == "-C" {
                     if let Some(d) = ws.get(j + 1).map(|d| expand_home(&substitute(d, &vars))) {
                         let d = &d;
@@ -592,12 +661,7 @@ fn statements(command: &str) -> Vec<Statement> {
                     j += 2;
                     continue;
                 }
-                if prog == "git"
-                    && matches!(
-                        w.as_str(),
-                        "-c" | "--git-dir" | "--work-tree" | "--namespace" | "--config-env"
-                    )
-                {
+                if prog == "git" && matches!(w.as_str(), "-c" | "--namespace" | "--config-env") {
                     j += 2;
                     continue;
                 }
@@ -629,6 +693,8 @@ fn statements(command: &str) -> Vec<Statement> {
                     } else {
                         verb
                     },
+                    git_dir: place_of(git_dir, dir.as_deref()),
+                    work_tree: place_of(work_tree, dir.as_deref()),
                     dir,
                     args,
                     piped_out: to_file || ws.get(j).is_some_and(|w| is_pipe(w)),
@@ -1123,16 +1189,32 @@ pub fn range_for(root: &Path, trigger: &Trigger) -> Option<String> {
 struct Before {
     root: PathBuf,
     head: String,
-    remotes: Vec<(String, String)>,
+    /// Every remote-tracking ref, as the snapshot layer splits it.
+    #[serde(default)]
+    tracking: Vec<Tracked>,
     #[serde(default)]
     moves: Moves,
-    /// `HEAD`'s reflog and how far it ran: every entry past it is this line's.
+    /// How far `HEAD`'s reflog had run: every entry past it happened during
+    /// the call (a cursor of the snapshot layer).
     #[serde(default)]
-    head_log: Option<(PathBuf, u64)>,
+    head_cursor: u64,
     /// The repository's git directory, which outlives a work tree the line
     /// removes after pushing from it (#642).
     #[serde(default)]
     common: Option<PathBuf>,
+}
+
+/// A remote-tracking ref when the call started or ended: a push is an
+/// "update by push" entry in its reflog past `log` (T20).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Tracked {
+    /// `refs/remotes/<remote>/<branch>`.
+    name: String,
+    remote: String,
+    branch: String,
+    oid: String,
+    /// How far the ref's reflog had run.
+    log: u64,
 }
 
 impl Before {
@@ -1169,6 +1251,7 @@ const MERGE: u8 = 2;
 const CHERRY_PICK: u8 = 4;
 const REVERT: u8 = 8;
 const AM: u8 = 16;
+const REBASE: u8 = 32;
 
 impl Moves {
     const ANY: Moves = Moves {
@@ -1200,13 +1283,13 @@ impl Moves {
 }
 
 /// Git verbs that record nothing a review is for: they read, stage, fetch,
-/// or move `HEAD` over commits this line did not write (a pull, rebase,
-/// reset or checkout, which `landed` would not review anyway).
+/// or move `HEAD` over commits this line did not write (a reset or
+/// checkout, which `landed` would not review anyway).
 const LANDS_NOTHING: &str = "add apply archive bisect blame branch bundle cat-file check-attr check-ignore checkout \
      cherry clean clone config count-objects describe diff diff-files diff-index diff-tree \
      difftool fetch for-each-ref format-patch fsck gc hash-object help init lfs log \
      ls-files ls-remote ls-tree maintenance merge-base mergetool mv name-rev notes prune \
-     pull range-diff rebase reflog remote rerere reset restore rev-list rev-parse rm \
+     range-diff reflog remote rerere reset restore rev-list rev-parse rm \
      shortlog show show-branch show-ref sparse-checkout stage stash status submodule switch \
      symbolic-ref tag update-index var verify-commit verify-tag version whatchanged \
      worktree write-tree";
@@ -1217,6 +1300,14 @@ fn moves_of(st: &Statement) -> Moves {
             head: false,
             pushed: true,
             kinds: 0,
+        },
+        // A rebase, like `pull --rebase`, replays commits onto HEAD; a pull
+        // that merges records nothing of this call's (its reflog action is
+        // `pull`).
+        "rebase" | "pull" => Moves {
+            head: true,
+            pushed: false,
+            kinds: REBASE,
         },
         "commit" | "merge" | "cherry-pick" | "revert" | "am" => Moves {
             head: true,
@@ -1247,160 +1338,223 @@ struct Record {
     at: u64,
 }
 
-fn refs_now(root: &Path) -> Option<Before> {
-    let head = match crate::git::run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"]) {
-        Ok(head) => head.trim().to_string(),
-        Err(crate::git::GitError::CommandFailed(_)) => String::new(),
-        Err(_) => return None,
-    };
-    let remotes = git_out(
-        root,
+/// Where a repository stands: its refs, and how far the reflogs that tell a
+/// commit from a checkout from a push had run. Read through the snapshot
+/// layer, so a failed git call is a named failure and never an empty ref list.
+fn refs_of(repo: &snap::RepoRoot) -> Result<Before, Silence> {
+    let refs = snap::refs(repo).map_err(|_| "error:git")?;
+    let log_len = |path: &Path| std::fs::metadata(path).map_or(0, |m| m.len());
+    let tracking = refs
+        .tracking
+        .iter()
+        .map(|(remote, branch, oid)| {
+            let name = format!("refs/remotes/{}/{branch}", remote.0);
+            Tracked {
+                log: log_len(&repo.common_dir.join("logs").join(&name)),
+                remote: remote.0.clone(),
+                branch: branch.clone(),
+                oid: oid.to_string(),
+                name,
+            }
+        })
+        .collect();
+    // The work tree's own `HEAD` reflog, the record of every move it made.
+    let log = git_out(
+        &repo.work_tree,
         &[
-            "for-each-ref",
-            // `origin/HEAD` names another ref: not a ref a push moves.
-            "--format=%(if)%(symref)%(then)%(else)%(refname) %(objectname)%(end)",
-            "refs/remotes",
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "logs/HEAD",
         ],
     )
-    .unwrap_or_default()
-    .lines()
-    .filter_map(|l| l.split_once(' '))
-    .map(|(r, o)| (r.to_string(), o.to_string()))
-    .collect();
-    // The work tree's own `HEAD` reflog, the record of every move it made.
-    // Relative to the work tree before git 2.31's `--path-format`.
-    let dirs = git_out(
-        root,
-        &["rev-parse", "--git-common-dir", "--git-path", "logs/HEAD"],
-    )
-    .unwrap_or_default();
-    let mut dirs = dirs.lines().map(|d| root.join(d));
-    let common = dirs.next();
-    let head_log = dirs.next().map(|log| {
-        let len = std::fs::metadata(&log).map_or(0, |m| m.len());
-        (log, len)
-    });
-    Some(Before {
-        root: root.to_path_buf(),
-        head,
-        remotes,
+    .ok_or("error:git")?;
+    Ok(Before {
+        root: repo.work_tree.clone(),
+        head: refs.head.map(|oid| oid.to_string()).unwrap_or_default(),
+        tracking,
         moves: Moves::default(),
-        head_log,
-        common,
+        head_cursor: log_len(Path::new(&log)),
+        common: Some(repo.common_dir.clone()),
     })
 }
 
-/// `HEAD`'s reflog entries since `before`, oldest first, as (old, new,
-/// subject); the last entry alone when the record holds no position.
-fn head_moves(before: &Before) -> Option<Vec<(String, String, String)>> {
-    let Some((log, from)) = &before.head_log else {
-        let root = before.root.as_path();
-        let subject = git_out(root, &["reflog", "-1", "--format=%gs", "HEAD"])?;
-        let new = crate::git::rev_oid(root, "HEAD")?;
-        return Some(vec![(before.head.clone(), new, subject)]);
-    };
-    let bytes = std::fs::read(log).ok()?;
-    let since = bytes.get(usize::try_from(*from).ok()?..)?;
-    Some(
-        String::from_utf8_lossy(since)
-            .lines()
-            .filter_map(|line| {
-                let (who, subject) = line.split_once('\t')?;
-                let mut ids = who.split(' ');
-                Some((
-                    ids.next()?.to_string(),
-                    ids.next()?.to_string(),
-                    subject.to_string(),
-                ))
-            })
-            .collect(),
+/// `HEAD`'s reflog entries since `before`, oldest first.
+fn head_moves(before: &Before, repo: &snap::RepoRoot) -> Result<Vec<snap::ReflogEntry>, Silence> {
+    snap::reflog_since(
+        repo,
+        &snap::RefName("HEAD".to_string()),
+        &snap::Cursor(before.head_cursor),
     )
+    .map(|(entries, _)| entries)
+    .map_err(|_| "error:git")
 }
 
-/// The record one line leaves for its own `PostToolUse`: per session and
-/// command, so another session's commit is never this line's.
-fn before_key(command: &str, session: Option<&str>) -> String {
+/// The record one line leaves for its own `PostToolUse`: per tool call, so
+/// another session's commit is never this line's; a payload without a call
+/// id (an older harness) is keyed by its command.
+fn before_key(payload: &serde_json::Value, command: &str, session: Option<&str>) -> String {
+    let call = file_safe(payload["tool_use_id"].as_str());
+    if !call.is_empty() {
+        return session_key(&format!("before-call-{call}"), session);
+    }
     let line = Fnv::new().feed(command.as_bytes()).0;
     session_key(&format!("before-{line:016x}"), session)
+}
+
+/// What one line landed in one repository.
+struct Landing {
+    root: PathBuf,
+    range: String,
+    verb: &'static str,
+    /// Other ranges the same push moved: counted, not reviewed.
+    also: usize,
+    /// Commits a push published that no call of this session was seen to
+    /// make, `<abbreviated id> '<subject>'` each (gh#669).
+    unmade: Vec<String>,
+}
+
+/// The kind of move a `HEAD` reflog action records: the verb a review is
+/// labelled with and the statement kind that can write it. `None` for the
+/// moves that record no change of this call's (checkout, reset, a plain
+/// pull, stash; a rebase is read from its own entries).
+fn commit_move(action: &str) -> Option<(&'static str, u8)> {
+    Some(match action {
+        "commit" | "commit (initial)" | "commit (amend)" | "commit (merge)" => ("commit", COMMIT),
+        "am" => ("commit", AM),
+        "cherry-pick" => ("cherry-pick", CHERRY_PICK),
+        "revert" => ("revert", REVERT),
+        a if a.starts_with("merge ") => ("merge", MERGE),
+        _ => return None,
+    })
+}
+
+/// `rebase (start)`, `(pick)`, `(finish)`, and the same under `pull --rebase`.
+fn is_rebase_step(action: &str) -> bool {
+    action.starts_with("rebase") || action.starts_with("pull --rebase")
+}
+
+fn ancestor_of(repo: &snap::RepoRoot, older: &str, newer: &str) -> Result<bool, Silence> {
+    let (Ok(older), Ok(newer)) = (snap::Oid::parse(older), snap::Oid::parse(newer)) else {
+        return Err("error:git");
+    };
+    snap::is_ancestor(repo, older, newer).map_err(|_| "error:git")
 }
 
 /// What the line recorded in `before.root`, by git's own reflog: a push
 /// (the `old..new` git printed for it, else what a remote-tracking ref moved
 /// over by a push since the line started), else a commit, merge,
-/// cherry-pick, revert or `am` on `HEAD`. A checkout, reset, pull or rebase
-/// moved `HEAD` without recording this session's change, and is not
-/// reviewed. The count is of the other ranges the same push moved: refs
+/// cherry-pick, revert, `am` or rebase on `HEAD`. A checkout, reset or a
+/// plain pull moved `HEAD` without recording this session's change, and is
+/// not reviewed. The count is of the other ranges the same push moved: refs
 /// moved over one range (a mirror's two remotes) are one (#608).
 fn landed(
     before: &Before,
     output: &Output,
     session: Option<&str>,
-) -> Option<(PathBuf, String, &'static str, usize)> {
-    let live = before.live_root()?;
+) -> Result<Option<Landing>, Silence> {
+    let Some(live) = before.live_root() else {
+        return Ok(None);
+    };
     let root = live.as_path();
-    let now = refs_now(root)?;
-    let mut pushed: Vec<String> = Vec::new();
+    let repo = snap::open(root).map_err(|_| "error:git")?;
+    // A work tree the line removed leaves its `HEAD` log behind with it.
+    let entries = if live == before.root {
+        head_moves(before, &repo)
+    } else {
+        Ok(Vec::new())
+    };
+    let mut pushed: Vec<(String, bool)> = Vec::new();
     if before.moves.pushed {
-        for range in pushed_ranges(root, before, &now, output) {
+        let now = refs_of(&repo)?;
+        for range in pushed_ranges(&repo, before, &now, output)? {
             if !pushed.contains(&range) {
                 pushed.push(range);
             }
         }
     }
-    if let Some(range) = pushed.first() {
-        return Some((live.clone(), range.clone(), "push", pushed.len() - 1));
+    if let Some((range, rewritten)) = pushed.first() {
+        // A push that cannot tell what this call committed says nothing of
+        // who made what it published.
+        let unmade = match &entries {
+            Ok(entries) if !rewritten => unmade_commits(root, range, entries, session),
+            _ => Vec::new(),
+        };
+        return Ok(Some(Landing {
+            root: live.clone(),
+            range: range.clone(),
+            verb: if *rewritten { "force-push" } else { "push" },
+            also: pushed.len() - 1,
+            unmade,
+        }));
     }
     if !before.moves.head {
-        return None;
+        return Ok(None);
     }
-    // Every move the line made, not its last: a reset, switch, stash or
-    // rebase after the commit on the same line hid it (#508). A commit is
-    // the line's when it grows from where the line started, or amends a
-    // commit the line started on or made: another session's commit after a
-    // reset of the same checkout does neither (#406).
+    // Every move the line made, not its last: a reset, switch or stash after
+    // the commit on the same line hid it (#508). A commit is the line's when
+    // it grows from where the line started (or from where its rebase ended),
+    // or amends a commit the line started on or made: another session's
+    // commit after a reset of the same checkout does neither (#406).
     let empty = || crate::git::empty_tree_oid(root);
-    let descends = |new: &str| {
-        before.head.is_empty()
-            || crate::git::run_git(root, &["merge-base", "--is-ancestor", &before.head, new])
-                .is_ok()
-    };
+    let mut anchor = before.head.clone();
     let mut ours: Vec<String> = vec![before.head.clone()];
     let mut start: Option<String> = None;
     let mut last: Option<(String, &'static str)> = None;
-    for (old, new, subject) in head_moves(before).unwrap_or_default() {
-        let action = subject.split(':').next().unwrap_or_default();
-        let verb = match action {
-            "commit" | "commit (initial)" | "commit (amend)" | "commit (merge)" | "am" => "commit",
-            "cherry-pick" => "cherry-pick",
-            "revert" => "revert",
-            // Catching up with the branch's own upstream brings in commits
-            // that already landed there: nothing for this session to review.
-            a if a.starts_with("merge ") => {
-                if subject.contains("Fast-forward")
-                    && crate::git::rev_oid(root, "@{upstream}").as_deref() == Some(new.as_str())
+    // A rebase replays onto the commit its `(start)` entry checks out, one
+    // `(pick)` per commit, and `(finish)` moves the branch to the last.
+    let mut onto: Option<String> = None;
+    let mut tip: Option<String> = None;
+    for entry in &entries? {
+        let (old, new) = (entry.old.to_string(), entry.new.to_string());
+        let action = entry.action.as_str();
+        if is_rebase_step(action) {
+            if action.ends_with("(start)") {
+                onto = Some(new);
+                tip = None;
+            } else if action.ends_with("(abort)") {
+                onto = None;
+                tip = None;
+            } else if action.ends_with("(finish)") {
+                let (Some(base), Some(end)) = (onto.take(), tip.take()) else {
+                    continue;
+                };
+                if base == end
+                    || !before.moves.can_write(REBASE)
+                    || claimed_by_another(&end, session)
                 {
                     continue;
                 }
-                "merge"
+                start = Some(base);
+                anchor.clone_from(&end);
+                last = Some((end, "rebase"));
+            } else {
+                ours.push(new.clone());
+                tip = Some(new);
             }
-            _ => continue,
+            continue;
+        }
+        let Some((verb, kind)) = commit_move(action) else {
+            continue;
         };
-        let kind = match (action, verb) {
-            ("am", _) => AM,
-            (_, "commit") => COMMIT,
-            (_, "cherry-pick") => CHERRY_PICK,
-            (_, "revert") => REVERT,
-            _ => MERGE,
-        };
+        // Catching up with the branch's own upstream brings in commits that
+        // already landed there: nothing for this session to review.
+        if verb == "merge"
+            && entry.subject.contains("Fast-forward")
+            && crate::git::rev_oid(root, "@{upstream}").as_deref() == Some(new.as_str())
+        {
+            continue;
+        }
         if !before.moves.can_write(kind) || claimed_by_another(&new, session) {
             continue;
         }
         let amend = action == "commit (amend)";
-        if !(if amend {
+        let grows = if amend {
             ours.contains(&old)
         } else {
-            descends(&new)
-        }) {
+            anchor.is_empty() || ancestor_of(&repo, &anchor, &new)?
+        };
+        if !grows {
             continue;
         }
         start.get_or_insert_with(|| {
@@ -1419,11 +1573,19 @@ fn landed(
         ours.push(new.clone());
         last = Some((new, verb));
     }
-    let (end, verb) = last?;
+    let (Some((end, verb)), Some(start)) = (last, start) else {
+        return Ok(None);
+    };
     for oid in &ours[1..] {
         claim(oid, session);
     }
-    Some((live, format!("{}..{end}", start?), verb, 0))
+    Ok(Some(Landing {
+        root: live,
+        range: format!("{start}..{end}"),
+        verb,
+        also: 0,
+        unmade: Vec::new(),
+    }))
 }
 
 /// A commit a session's hook took as its line's is no other session's: the
@@ -1441,6 +1603,53 @@ fn claimed_by_another(oid: &str, session: Option<&str>) -> bool {
     !session.is_empty()
         && seen_headline(&format!("claim-{oid}"), SEEN_TTL)
             .is_some_and(|by| !by.is_empty() && by != session)
+}
+
+fn claimed_by(oid: &str, session: &str) -> bool {
+    seen_headline(&format!("claim-{oid}"), SEEN_TTL).is_some_and(|by| by == session)
+}
+
+/// The commits of `range` that this call did not commit (its reflog entries
+/// say which it did) and that no earlier call of this session's hook took as
+/// its own: what a push over another session's held-back commit publishes
+/// unannounced (gh#669). The commits this call made are claimed here, so the
+/// next push does not read them as foreign. Nothing when the session is
+/// unknown or git cannot list the range: a warning needs its evidence.
+fn unmade_commits(
+    root: &Path,
+    range: &str,
+    entries: &[snap::ReflogEntry],
+    session: Option<&str>,
+) -> Vec<String> {
+    let session = file_safe(session);
+    if session.is_empty() {
+        return Vec::new();
+    }
+    let made: rustc_hash::FxHashSet<String> = entries
+        .iter()
+        .filter(|e| commit_move(&e.action).is_some() || is_rebase_step(&e.action))
+        .map(|e| e.new.to_string())
+        .collect();
+    for oid in &made {
+        claim(oid, Some(session.as_str()));
+    }
+    let Some(listing) = git_out(
+        root,
+        &["log", "-n", "500", "--format=%H %h %s", range, "--"],
+    ) else {
+        return Vec::new();
+    };
+    listing
+        .lines()
+        .filter_map(|line| {
+            let (oid, rest) = line.split_once(' ')?;
+            (!made.contains(oid) && !claimed_by(oid, &session)).then(|| {
+                let (short, subject) = rest.split_once(' ').unwrap_or((rest, ""));
+                let subject: String = subject.chars().take(60).collect();
+                format!("{short} '{subject}'")
+            })
+        })
+        .collect()
 }
 
 /// What a line printed, as its `PostToolUse` carries it: git's report of
@@ -1508,6 +1717,27 @@ fn update_of(line: &str) -> Option<Update> {
     Some(Update { range, to })
 }
 
+/// The range a push moved a ref over, and whether the ref was rewritten:
+/// `old` is not an ancestor of `new`, so what the push changed on the remote
+/// is the tree delta between the two tips, which a range name would read as
+/// `merge-base..new` (gh#596). The new tip then stands as its tree.
+fn push_range(repo: &snap::RepoRoot, old: &str, new: &str) -> Result<(String, bool), Silence> {
+    if ancestor_of(repo, old, new)? {
+        return Ok((format!("{old}..{new}"), false));
+    }
+    let tree = git_out(
+        &repo.work_tree,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{new}^{{tree}}"),
+        ],
+    )
+    .ok_or("error:git")?;
+    Ok((format!("{old}..{tree}"), true))
+}
+
 /// The ranges this line pushed. What git printed for it is exact: no ref
 /// that moved meanwhile, no stale tracking ref of a second alias, no peer's
 /// push says otherwise. A push line is told from a fetch's by its target
@@ -1517,33 +1747,35 @@ fn update_of(line: &str) -> Option<Update> {
 /// asked for none, the first push the remote-tracking refs record since the
 /// line started; a line that printed no push line pushed nothing, whatever a
 /// peer moved (Forgejo #121).
-fn pushed_ranges(root: &Path, before: &Before, now: &Before, output: &Output) -> Vec<String> {
-    let branch_of = |name: &str| {
-        name.strip_prefix("refs/remotes/")
-            .and_then(|rest| rest.split_once('/'))
-            .map(|(_, branch)| branch.to_string())
-    };
-    let started = |name: &str| before.remotes.iter().find(|(r, _)| r == name);
+fn pushed_ranges(
+    repo: &snap::RepoRoot,
+    before: &Before,
+    now: &Before,
+    output: &Output,
+) -> Result<Vec<(String, bool)>, Silence> {
+    let root = repo.work_tree.as_path();
+    let started = |name: &str| before.tracking.iter().find(|t| t.name == name);
     let Some(updates) = output
         .updates
         .as_ref()
         .filter(|u| !u.is_empty() || !output.quiet)
     else {
-        return now
-            .remotes
+        let mut ranges = Vec::new();
+        for moved in now
+            .tracking
             .iter()
-            .filter(|(name, new)| started(name).map(|(_, o)| o) != Some(new))
-            .filter_map(|(name, _)| first_push_since(root, before, name))
-            .collect();
+            .filter(|t| started(&t.name).map(|s| &s.oid) != Some(&t.oid))
+        {
+            if let Some(range) = first_push_since(repo, before, now, moved)? {
+                ranges.push(range);
+            }
+        }
+        return Ok(ranges);
     };
     let pushed_to = |branch: &str| {
-        updates.iter().any(|u| {
-            u.to == branch
-                && now
-                    .remotes
-                    .iter()
-                    .any(|(r, _)| branch_of(r).as_deref() == Some(branch))
-        })
+        updates
+            .iter()
+            .any(|u| u.to == branch && now.tracking.iter().any(|t| t.branch == branch))
     };
     let mut ranges = Vec::new();
     for (old, new) in updates
@@ -1554,59 +1786,77 @@ fn pushed_ranges(root: &Path, before: &Before, now: &Before, output: &Output) ->
             crate::git::rev_oid(root, old),
             crate::git::rev_oid(root, new),
         ) {
-            ranges.push(format!("{old}..{new}"));
+            ranges.push(push_range(repo, &old, &new)?);
         }
     }
     // Created by this line: not a ref the line started with.
-    for (name, _) in now
-        .remotes
+    for created in now
+        .tracking
         .iter()
-        .filter(|(name, _)| started(name).is_none())
+        .filter(|t| started(&t.name).is_none() && pushed_to(&t.branch))
     {
-        if branch_of(name).is_some_and(|branch| pushed_to(&branch)) {
-            ranges.extend(first_push_since(root, before, name));
+        if let Some(range) = first_push_since(repo, before, now, created)? {
+            ranges.push(range);
         }
     }
-    ranges
+    Ok(ranges)
 }
 
-/// The first push `name`'s reflog records after the value the line started
-/// from, as the range it moved the ref over; a new branch is measured from
-/// where it left the remote's default.
-fn first_push_since(root: &Path, before: &Before, name: &str) -> Option<String> {
-    let started = before
-        .remotes
+/// The first push `moved`'s reflog records after the value the line started
+/// from, as the range it moved the ref over. A branch the push created is
+/// measured from what the remote's other refs already hold (fj#127): the
+/// commits the new tip has that none of them has.
+fn first_push_since(
+    repo: &snap::RepoRoot,
+    before: &Before,
+    now: &Before,
+    moved: &Tracked,
+) -> Result<Option<(String, bool)>, Silence> {
+    let from = before
+        .tracking
         .iter()
-        .find(|(r, _)| r == name)
-        .map(|(_, o)| o.as_str());
-    let log = git_out(root, &["reflog", "show", "--format=%H\t%gs", name])?;
-    // Newest first: each entry's ref value, and what moved it there.
-    let mut entries: Vec<(&str, &str)> = Vec::new();
-    for line in log.lines() {
-        let (oid, subject) = line.split_once('\t')?;
-        if Some(oid) == started {
-            break;
-        }
-        entries.push((oid, subject));
-    }
-    let followed_by = |i: usize| entries.get(i + 1).map(|(oid, _)| *oid).or(started);
-    let (i, (pushed, _)) = entries
+        .find(|t| t.name == moved.name)
+        .map_or(0, |t| t.log);
+    let (entries, _) = snap::reflog_since(
+        repo,
+        &snap::RefName(moved.name.clone()),
+        &snap::Cursor(from),
+    )
+    .map_err(|_| "error:git")?;
+    let Some(push) = entries
         .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, (_, subject))| subject.starts_with("update by push"))?;
-    match followed_by(i) {
-        Some(old) => Some(format!("{old}..{pushed}")),
-        None => {
-            let remote = name.strip_prefix("refs/remotes/")?.split('/').next()?;
-            let default = ["HEAD", "main", "master"]
-                .iter()
-                .map(|b| format!("refs/remotes/{remote}/{b}"))
-                .find(|r| r != name && crate::git::rev_oid(root, r).is_some())?;
-            let base = git_out(root, &["merge-base", &default, pushed])?;
-            Some(format!("{base}..{pushed}"))
-        }
+        .find(|e| e.action.starts_with("update by push"))
+    else {
+        return Ok(None);
+    };
+    let pushed = push.new.to_string();
+    if !push.old.is_zero() {
+        return push_range(repo, &push.old.to_string(), &pushed).map(Some);
     }
+    let root = repo.work_tree.as_path();
+    let others: Vec<&str> = now
+        .tracking
+        .iter()
+        .filter(|t| t.remote == moved.remote && t.name != moved.name)
+        .map(|t| t.oid.as_str())
+        .take(500)
+        .collect();
+    if others.is_empty() {
+        return Ok(None);
+    }
+    let mut args = vec!["rev-list", "--reverse", pushed.as_str(), "--not"];
+    args.extend(others);
+    // The oldest commit the remote did not have: its parent is the base.
+    let Some(oldest) = git_out(root, &args).and_then(|l| l.lines().next().map(str::to_string))
+    else {
+        return Ok(None);
+    };
+    let base = git_out(
+        root,
+        &["rev-parse", "--verify", "--quiet", &format!("{oldest}^")],
+    )
+    .unwrap_or_else(|| crate::git::empty_tree_oid(root));
+    Ok(Some((format!("{base}..{pushed}"), false)))
 }
 
 /// FNV-1a, 64-bit: no dependency, and no collision that matters at the
@@ -2026,7 +2276,7 @@ fn prepare_landed(
     trace: &mut Trace,
 ) -> Result<Vec<Prepared>, Silence> {
     let _phase = crate::profile::phase("hook.prepare");
-    let key = before_key(command, trace.session.as_deref());
+    let key = before_key(payload, command, trace.session.as_deref());
     let record: Record = seen_headline(&key, SEEN_TTL)
         .and_then(|s| serde_json::from_str(&s).ok())
         .ok_or("no-record")?;
@@ -2059,16 +2309,32 @@ fn landed_in(
     let mut ranges = Vec::new();
     let mut unreadable = None;
     for before in &record.repos {
-        let Some((root, range, verb, also)) = landed(before, output, trace.session.as_deref())
-        else {
-            continue;
+        let landing = match landed(before, output, trace.session.as_deref()) {
+            Ok(Some(landing)) => landing,
+            Ok(None) => continue,
+            Err(why) => {
+                unreadable = unreadable.or(Some(why));
+                continue;
+            }
         };
+        let Landing {
+            root,
+            range,
+            verb,
+            also,
+            unmade,
+        } = landing;
         if found.is_empty() {
             trace.verb = Some(verb);
             trace.root = Some(root.clone());
         }
         ranges.push(range.clone());
-        let trigger = Trigger::Landed { verb, also, late };
+        let trigger = Trigger::Landed {
+            verb,
+            also,
+            late,
+            unmade,
+        };
         match prepared(root, range, trigger, trace) {
             Ok(p) => found.push(p),
             Err(why) => unreadable = unreadable.or(Some(why)),
@@ -2215,6 +2481,85 @@ fn prepared(
     })
 }
 
+/// Where the repository a statement acts on lives: the work tree or git
+/// directory it names, else the directory it runs in.
+fn statement_place(cwd: &Path, st: &Statement) -> PathBuf {
+    if let Some(tree) = &st.work_tree {
+        return resolve_dir(cwd, Some(tree));
+    }
+    if let Some(git_dir) = &st.git_dir {
+        let git_dir = resolve_dir(cwd, Some(git_dir));
+        if git_dir.file_name().is_some_and(|n| n == ".git") {
+            if let Some(parent) = git_dir.parent() {
+                return parent.to_path_buf();
+            }
+        }
+        return git_dir;
+    }
+    resolve_dir(cwd, st.dir.as_deref())
+}
+
+fn note_root(roots: &mut Vec<(snap::RepoRoot, Moves)>, repo: snap::RepoRoot, moves: Moves) {
+    match roots
+        .iter_mut()
+        .find(|(known, _)| known.work_tree == repo.work_tree)
+    {
+        Some((_, known)) => *known = known.or(moves),
+        None => roots.push((repo, moves)),
+    }
+}
+
+/// Programs that cannot commit on their own account. A line made of these
+/// and git (which its statements name) is watched only where it names git.
+const INERT_PROGRAMS: &str = "[ [[ basename cat chmod cp cut date df diff dirname du echo exit export \
+     false file for head jq ls mkdir mv printf ps pwd read realpath rm sed sleep sort stat tail tee \
+     test touch tr true uniq unset wc which case select function in done fi esac cd pushd popd git gh";
+
+/// Words after which the next word is a program again.
+const PROGRAM_PREFIXES: &[&str] = &[
+    "do", "then", "else", "elif", "{", "!", "time", "if", "while", "until",
+];
+
+/// The line runs a program other than git and plain utilities: a script, an
+/// interpreter, a build tool. What it did to a repository is for git's record
+/// to say, so the repository it starts in is watched; the text only proposes
+/// where to look.
+fn runs_other_programs(command: &str) -> bool {
+    let mut expecting = true;
+    for word in words(command) {
+        if is_operator(&word) || PROGRAM_PREFIXES.contains(&word.as_str()) {
+            expecting = true;
+            continue;
+        }
+        if !expecting || word == STDOUT_TO_FILE {
+            continue;
+        }
+        let assigns = word.split_once('=').is_some_and(|(name, _)| {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        });
+        if assigns {
+            continue;
+        }
+        expecting = false;
+        let program = Path::new(&word)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let known = INERT_PROGRAMS.split_whitespace().any(|p| p == program)
+            || SEARCH_TOOLS.contains(&program.as_str());
+        if !known {
+            return true;
+        }
+    }
+    false
+}
+
+/// The line may have moved a repository: it records by its git text, or a
+/// program it runs may.
+fn watches(command: &str) -> bool {
+    records(command) || runs_other_programs(command)
+}
+
 /// Before a line that may record or publish commits runs: the refs of every
 /// repository a statement of it may record in (a `cd` or `-C` target, else
 /// the cwd's), with what each statement there can move, for its own
@@ -2230,8 +2575,11 @@ fn record_before(
     let _phase = crate::profile::phase("hook.record");
     let cwd = payload_cwd(payload).ok_or("not-git")?;
     let hidden = hides_git(command);
+    // A program the line runs may commit wherever it likes: the repository
+    // the call starts in is watched, with its linked work trees.
+    let opaque = runs_other_programs(command);
     let mut places: Vec<(PathBuf, Moves)> = Vec::new();
-    if hidden {
+    if hidden || opaque {
         places.push((cwd.clone(), Moves::ANY));
     }
     for st in statements(command) {
@@ -2242,19 +2590,31 @@ fn record_before(
         if st.lost {
             return Err("unresolved-dir");
         }
-        places.push((resolve_dir(&cwd, st.dir.as_deref()), moves));
+        places.push((statement_place(&cwd, &st), moves));
+    }
+    let mut roots: Vec<(snap::RepoRoot, Moves)> = Vec::new();
+    for (dir, moves) in places {
+        if !dir.is_dir() {
+            continue;
+        }
+        match snap::open(&dir) {
+            Ok(repo) => note_root(&mut roots, repo, moves),
+            Err(snap::SnapshotError::NotARepo(_)) => {}
+            Err(_) => return Err("error:git"),
+        }
+    }
+    if hidden || opaque {
+        if let Ok(home) = snap::open(&cwd) {
+            for tree in snap::worktrees(&home).map_err(|_| "error:git")? {
+                note_root(&mut roots, tree, Moves::ANY);
+            }
+        }
     }
     let mut repos: Vec<Before> = Vec::new();
-    for (dir, moves) in places {
-        let Some(top) = git_out(&dir, &["rev-parse", "--show-toplevel"]).map(PathBuf::from) else {
-            continue;
-        };
-        if let Some(known) = repos.iter_mut().find(|b| b.root == top) {
-            known.moves = known.moves.or(moves);
-        } else if let Some(mut before) = refs_now(&top) {
-            before.moves = moves;
-            repos.push(before);
-        }
+    for (repo, moves) in &roots {
+        let mut before = refs_of(repo)?;
+        before.moves = *moves;
+        repos.push(before);
     }
     if repos.is_empty() {
         return Err(if hidden {
@@ -2270,7 +2630,10 @@ fn record_before(
         at: now_secs(),
     };
     let json = serde_json::to_string(&record).map_err(|_| "error:record")?;
-    mark_seen_with(&before_key(command, trace.session.as_deref()), &json);
+    mark_seen_with(
+        &before_key(payload, command, trace.session.as_deref()),
+        &json,
+    );
     Ok(())
 }
 
@@ -2282,9 +2645,18 @@ fn record_before(
 fn hides_git(command: &str) -> bool {
     let mut code = ShellCode::default();
     code.read(&mut command.chars().peekable(), None);
-    code.hidden
-        .iter()
-        .any(|&(from, to)| code.text.get(from..to).is_some_and(names_a_recording_verb))
+    code.hidden.iter().any(|&(from, to)| {
+        // The span is code: a git statement in it, not the words `git` and
+        // `commit` in a quoted argument of another program (#683). What
+        // `eval` is given in quotes is code too.
+        code.text.get(from..to).is_some_and(|span| {
+            let span = span.trim_start();
+            let body = span.strip_prefix("eval ").map_or(span, |rest| {
+                rest.trim().trim_matches(|c| c == '"' || c == '\'')
+            });
+            statements(body).iter().any(|st| moves_of(st).any())
+        })
+    })
 }
 
 /// The line runs a git verb that may record or publish: a statement the
@@ -2666,7 +3038,11 @@ struct BracketedCall {
 const MAX_BRACKETED_PATHS: usize = 20_000;
 
 /// Every path the index or working tree holds differently from `HEAD`, with
-/// the stat identity of what the working tree holds there (0: nothing).
+/// the identity of what the working tree holds there (0: nothing): the blob
+/// id `git add` would store for a regular file, so a rewrite with the same
+/// bytes, a `touch` or a copy that restores the time changes nothing, and
+/// another process's write to other bytes does (gh#674, fj#117). What has no
+/// blob (a link, a nested repository) keeps its stat identity.
 fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
     let status = crate::git::run_git_z(
         root,
@@ -2683,15 +3059,26 @@ fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
     if status.len() > MAX_BRACKETED_PATHS {
         return None;
     }
-    Some(
-        status
-            .iter()
-            .filter_map(|entry| {
-                let path = entry.get(3..)?;
-                Some((path.to_string(), stat_identity(&root.join(path))))
-            })
-            .collect(),
-    )
+    let repo = snap::open(root).ok()?;
+    let mut stats: FxHashMap<String, u64> = FxHashMap::default();
+    let mut blobs: Vec<(String, snap::RepoPath)> = Vec::new();
+    for entry in &status {
+        let Some(path) = entry.get(3..) else { continue };
+        let at = root.join(path);
+        let regular = std::fs::symlink_metadata(&at).is_ok_and(|m| m.is_file());
+        match snap::RepoPath::new(path) {
+            Ok(repo_path) if regular => blobs.push((path.to_string(), repo_path)),
+            _ => {
+                stats.insert(path.to_string(), stat_identity(&at));
+            }
+        }
+    }
+    let names: Vec<snap::RepoPath> = blobs.iter().map(|(_, p)| p.clone()).collect();
+    let oids = snap::hash_working_paths(&repo, &names).ok()?;
+    for ((path, _), oid) in blobs.into_iter().zip(oids) {
+        stats.insert(path, Fnv::new().feed(oid.as_str().as_bytes()).0 | 1);
+    }
+    Some(stats)
 }
 
 fn stat_identity(path: &Path) -> u64 {
@@ -2964,22 +3351,49 @@ struct Answer {
 /// request keeps the engine's own cap.
 const AUTOMATIC_TOKEN_CAP: u32 = 600;
 
-fn lead_of(event: Event, trigger: &Trigger) -> String {
+fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
     let lead = match (event, trigger) {
         (_, Trigger::Commit { .. }) => "diffctx reviewed the index this commit will record.",
-        (_, Trigger::Landed { verb, also, late }) => {
+        (
+            _,
+            Trigger::Landed {
+                verb,
+                also,
+                late,
+                unmade,
+            },
+        ) => {
             let which = if *late {
                 "an earlier background"
             } else {
                 "this"
             };
-            return if *also == 0 {
+            let mut lead = if *verb == "force-push" {
+                format!(
+                    "diffctx reviewed what this push changed on the remote ({range}): the ref was rewritten, so this is the tree delta from the old tip to the new one, not the whole rewritten commit."
+                )
+            } else if *also == 0 {
                 format!("diffctx reviewed what {which} {verb} recorded.")
             } else {
                 format!(
                     "diffctx reviewed the first ref {which} {verb} moved; {also} other pushed ref(s) are not analysed."
                 )
             };
+            // Git alone cannot tell a commit another session makes in the
+            // same checkout meanwhile from this call's own (T19).
+            lead.push_str(if *late {
+                " It covers what changed in this repository since that call began."
+            } else {
+                " It covers what changed in this repository during this call."
+            });
+            if !unmade.is_empty() {
+                lead.push_str(&format!(
+                    " This push also publishes {} commit(s) this session did not make (none was seen committed by one of its calls): {}. Confirm they are meant to leave.",
+                    unmade.len(),
+                    some_of(unmade)
+                ));
+            }
+            return lead;
         }
         (Event::PreToolUse, _) => "diffctx reviewed the commits this pull request proposes.",
         (Event::PostToolUse { .. }, Trigger::Inspect { own: None, .. }) => {
@@ -3143,7 +3557,7 @@ fn impact_context(
     Ok(Answer {
         context: format!(
             "{} What it reaches outside the diff:\n{text}\n{stopped}{}{}",
-            lead_of(event, trigger),
+            lead_of(event, trigger, range),
             hedge.map(|h| format!("{h}\n")).unwrap_or_default(),
             check
                 .map(|c| format!(
@@ -3293,6 +3707,22 @@ fn files_named_in(output: &str, at: &Path) -> Option<Vec<String>> {
 struct Scope(Vec<String>);
 
 impl Scope {
+    /// Every place the search looked is a file of prose (`.md`, `.txt`): decided
+    /// from the names alone, before any symbol is built.
+    fn reads_only_prose(&self, root: &Path) -> bool {
+        !self.0.is_empty()
+            && self.0.iter().all(|p| {
+                let path = root.join(p);
+                let ext = path
+                    .extension()
+                    .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+                    .unwrap_or_default();
+                !p.is_empty()
+                    && path.is_file()
+                    && crate::config::extensions::DOC_EXTENSIONS.contains(ext.as_str())
+            })
+    }
+
     fn holds(&self, path: &str) -> bool {
         self.0.iter().any(|p| {
             p.is_empty()
@@ -3493,7 +3923,11 @@ fn search_answer(
             Err(why) => silence = why,
         }
     }
-    if !others.is_empty() {
+    if !others.is_empty() && scope.reads_only_prose(&root) {
+        // Prose holds no definition and no resolved caller: nothing to
+        // build an answer from (gh#667).
+        silence = "out-of-scope";
+    } else if !others.is_empty() {
         let lookup = is_lookup_pattern(&search.pattern);
         match symbol_answer(&root, &others, &scope, lookup, started, trace) {
             Ok(text) => answers.push(text),
@@ -3781,7 +4215,7 @@ fn decide(
     let command = payload["tool_input"]["command"]
         .as_str()
         .unwrap_or_default();
-    let recording = records(command);
+    let recording = watches(command);
     let search = if matches!(event, Event::PostToolUse { .. }) {
         searched(&payload)
     } else {
@@ -3831,7 +4265,12 @@ fn decide(
                 None => prepare(event, &payload, trace).map(|p| vec![p]),
             },
             // A git only the shell ran moved nothing where the hook looked.
-            Err(why @ "unsupported-syntax") => return Ok(not_analysed(event, why, trace)),
+            Err(why @ ("unsupported-syntax" | "error:git")) => {
+                return Ok(not_analysed(event, why, trace));
+            }
+            // What landed changes no file (an empty commit): said, so that
+            // silence does not read as a clean review.
+            Err("clean") => return Ok(nothing_changed(event, trace)),
             landed => landed,
         }
     } else {
@@ -3879,7 +4318,7 @@ fn answer(
                 mark_seen(&prepared.record_key);
             }
             if landed {
-                return Ok(nothing_reached(event, trace));
+                return Ok(nothing_reached(event, landed, trace));
             }
             return Err("empty");
         }
@@ -3940,7 +4379,9 @@ fn answer(
         mark_seen(&record_key);
     }
     match answer {
-        Err("empty") if event == Event::PreToolUse || landed => Ok(nothing_reached(event, trace)),
+        Err("empty") if event == Event::PreToolUse || landed => {
+            Ok(nothing_reached(event, landed, trace))
+        }
         answer => answer.map(|a| {
             let deny = gate && !a.partial;
             if deny {
@@ -3954,12 +4395,32 @@ fn answer(
 /// A line that records or publishes commits: the events whose silence would
 /// otherwise read as a clean review.
 /// One line, so that no block means the hook did not run (#464).
-fn nothing_reached(event: Event, trace: &mut Trace) -> String {
+fn nothing_reached(event: Event, landed: bool, trace: &mut Trace) -> String {
+    trace.noted = Some("empty");
+    let range = trace.range.as_deref().unwrap_or("this change");
+    // What a call landed is what changed in the repository during it: git
+    // cannot tell a commit another session made meanwhile from its own.
+    let scope = if landed {
+        ", covering what changed in this repository during this call"
+    } else {
+        ""
+    };
+    hook_json(
+        event,
+        &format!("diffctx: {range} reaches nothing outside the diff{scope}."),
+        false,
+    )
+}
+
+/// What the call recorded touches no file: one line, as `nothing_reached` is.
+fn nothing_changed(event: Event, trace: &mut Trace) -> String {
     trace.noted = Some("empty");
     let range = trace.range.as_deref().unwrap_or("this change");
     hook_json(
         event,
-        &format!("diffctx: {range} reaches nothing outside the diff."),
+        &format!(
+            "diffctx: {range} changes no file, so nothing reaches outside it (it covers what changed in this repository during this call)."
+        ),
         false,
     )
 }
@@ -4000,10 +4461,10 @@ fn not_reviewed(
 
 fn not_analysed(event: Event, why: Silence, trace: &mut Trace) -> String {
     trace.noted = Some(why);
-    let how = if why == "unresolved-dir" {
-        "it changes into a directory the hook cannot resolve"
-    } else {
-        "its git runs inside a subshell, eval or command substitution"
+    let how = match why {
+        "unresolved-dir" => "it changes into a directory the hook cannot resolve",
+        "error:git" => "git's record of it could not be read",
+        _ => "its git runs inside a subshell, eval or command substitution",
     };
     hook_json(
         event,
@@ -4018,12 +4479,6 @@ fn opens_pr(command: &str) -> bool {
     statements(command)
         .iter()
         .any(|st| st.verb == "gh pr" && st.args.first().is_some_and(|a| a == "create"))
-}
-
-fn names_a_recording_verb(command: &str) -> bool {
-    let words = || command.split(|c: char| !(c.is_alphanumeric() || c == '-'));
-    words().any(|w| w == "git")
-        && words().any(|w| matches!(w, "commit" | "push" | "merge" | "cherry-pick" | "revert"))
 }
 
 /// The log is cut over to `<log>.1` past this size: tens of thousands of
@@ -4504,6 +4959,11 @@ mod tests {
         assert!(hides_git("eval git push"));
         assert!(!hides_git("FP=$(cat f) && git commit -m x"));
         assert!(!hides_git("git commit -m 'a `b`' && echo $(date)"));
+        // A recording phrase in a quoted argument of another program inside a
+        // substitution is data (#683).
+        assert!(!hides_git(
+            "for f in a.jsonl b.jsonl; do c=$(jq -r '.input.command // \"\"' \"$f\" | grep -c \"git commit\"); echo \"$c\"; done"
+        ));
         // A recording word in another program's argument records nothing (#575).
         for command in [
             "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
@@ -4513,6 +4973,50 @@ mod tests {
         ] {
             assert!(!records(command), "{command}");
         }
+    }
+
+    #[test]
+    fn a_program_that_may_commit_is_watched_without_a_word_of_git() {
+        for command in [
+            "./deploy.sh",
+            "bash scripts/release.sh --tag v1",
+            "FOO=1 make release",
+            "cd sub && python3 tools/bump.py",
+            "for d in a b; do ./run.sh \"$d\"; done",
+            "if ./check.sh; then echo ok; fi",
+        ] {
+            assert!(runs_other_programs(command), "{command}");
+        }
+        for command in [
+            "git status && ls | grep x",
+            "cd /r && git commit -m x",
+            "echo done; cat notes.md | head -3",
+            "export A=1; git log --oneline",
+        ] {
+            assert!(!runs_other_programs(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn a_statement_names_the_repository_its_flags_and_environment_give() {
+        let place = |command: &str| {
+            let st = statements(command).into_iter().next().unwrap();
+            (st.git_dir, st.work_tree)
+        };
+        assert_eq!(
+            place("git --git-dir=/r/.git --work-tree=/r commit -m x"),
+            (Some("/r/.git".to_string()), Some("/r".to_string()))
+        );
+        assert_eq!(
+            place("git --work-tree /r --git-dir /r/.git commit -m x"),
+            (Some("/r/.git".to_string()), Some("/r".to_string()))
+        );
+        assert_eq!(
+            place("GIT_DIR=/r/.git GIT_WORK_TREE=/r git commit -m x"),
+            (Some("/r/.git".to_string()), Some("/r".to_string()))
+        );
+        assert_eq!(place("git commit -m x"), (None, None));
+        assert_eq!(place("GIT_DIR=$X git commit -m x"), (None, None));
     }
 
     #[test]

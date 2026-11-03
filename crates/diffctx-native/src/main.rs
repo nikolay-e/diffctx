@@ -121,6 +121,11 @@ struct Cli {
     /// Suppress the token summary on stderr
     #[arg(short = 'q', long)]
     quiet: bool,
+
+    /// Migration measurement: per changed file, the changed definitions the
+    /// impact path reports beside the facts layer's, as JSON
+    #[arg(long, hide = true, requires = "diff_ref", conflicts_with_all = ["symbol", "mode"])]
+    shadow: bool,
 }
 
 #[derive(Subcommand)]
@@ -597,6 +602,12 @@ fn real_main() -> Result<()> {
             )
         })?;
         return emit_impact(&cli, output);
+    }
+    if cli.shadow {
+        let report = run_with_deadline(timeout, move || {
+            _diffctx::shadow::report(&path, diff_ref.as_deref(), alpha, scoring_mode, timeout)
+        })?;
+        return write_stdout(&format!("{report}\n"));
     }
     if mode == "impact" {
         return run_impact(&cli, path, diff_ref, alpha, scoring_mode, timeout);

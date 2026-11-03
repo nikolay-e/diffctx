@@ -3558,3 +3558,132 @@ fn an_older_pins_log_rotation_keeps_this_binarys_history() {
         "the run's line is gone"
     );
 }
+
+/// #508: a rebase replays commits onto another base; it is read off the
+/// reflog as one review of what was replayed, from the commit it replays onto.
+#[test]
+fn a_rebase_is_reviewed_from_where_it_replays_onto() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
+    git(repo, &["branch", "-M", "main"]);
+    git(repo, &["checkout", "-q", "-b", "topic"]);
+    add_unrelated_edit(repo);
+    commit_all(repo, "restock");
+    git(repo, &["checkout", "-q", "main"]);
+    write(repo, "README.md", "# shop\n\nmore\n");
+    commit_all(repo, "docs");
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git rebase -q main topic");
+    let context = context_of(&h);
+    assert!(context.contains("what this rebase recorded"), "{context}");
+    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+}
+
+/// An empty commit changes no file: one line says so, never silence.
+#[test]
+fn an_empty_commit_is_said_to_change_no_file() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git commit -q --allow-empty -m empty");
+    let context = context_of(&h);
+    assert!(context.contains("changes no file"), "{context}");
+}
+
+/// #508: a repository the line names only by `--git-dir` and `--work-tree`,
+/// from a directory that is not it, is watched and reviewed.
+#[test]
+fn a_commit_through_git_dir_from_elsewhere_is_reviewed() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let elsewhere = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let dir = repo.display();
+    let command = format!("git --git-dir='{dir}/.git' --work-tree='{dir}' commit -qam vat");
+    let context = context_of(&line_in(
+        "s1",
+        elsewhere.path(),
+        cache.path(),
+        &[],
+        &command,
+    ));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    let env =
+        format!("GIT_DIR='{dir}/.git' GIT_WORK_TREE='{dir}' git commit -q --allow-empty -m e");
+    let context = context_of(&line_in("s2", elsewhere.path(), cache.path(), &[], &env));
+    assert!(context.contains("changes no file"), "{context}");
+}
+
+/// fj#127: a script that commits shows no git on its line; the repository the
+/// call starts in is watched, and git's record of it is reviewed.
+#[test]
+fn a_commit_inside_a_script_is_reviewed() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let scripts = TempDir::new().unwrap();
+    let script = scripts.path().join("release.sh");
+    std::fs::write(&script, "#!/bin/sh\ncd \"$1\" && git commit -qam vat\n").unwrap();
+    let command = format!("sh '{}' '{}'", script.display(), repo.display());
+    let cache = TempDir::new().unwrap();
+    let context = context_of(&run_line(repo, cache.path(), &command));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+}
+
+/// gh#596: a force-push that replaces a tip reviews what changed between the
+/// two tips, and says the ref was rewritten; not the whole rewritten commit.
+#[test]
+fn a_force_push_reviews_the_delta_between_the_tips() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    git(repo, &["push", "-q", "origin", "HEAD:main"]);
+    add_unrelated_edit(repo);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qa --amend --no-edit && git push -qf origin HEAD:main",
+    );
+    let context = context_of(&h);
+    assert!(context.contains("was rewritten"), "{context}");
+    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        !context.contains("shop/checkout.py::charge"),
+        "the pricing change was on both tips: {context}"
+    );
+}
+
+/// gh#669: a push that publishes a commit no call of this session made says so.
+#[test]
+fn a_push_names_the_commits_this_session_did_not_make() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    commit_all(repo, "held back by a peer");
+    add_unrelated_edit(repo);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qam restock && git push -q origin HEAD:main",
+    );
+    let context = context_of(&h);
+    assert!(context.contains("did not make"), "{context}");
+    assert!(context.contains("held back by a peer"), "{context}");
+    assert!(!context.contains("'restock'"), "{context}");
+}
+
+/// The next push does not read the commits an earlier call of the session
+/// made as foreign.
+#[test]
+fn a_push_of_this_sessions_earlier_commit_names_nothing() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let committed = run_line(repo, cache.path(), "git commit -qam vat");
+    assert!(context_of(&committed).contains("what this commit recorded"));
+    let pushed = run_line(repo, cache.path(), "git push -q origin HEAD:main");
+    let context = pushed.stdout;
+    assert!(!context.contains("did not make"), "{context}");
+}
