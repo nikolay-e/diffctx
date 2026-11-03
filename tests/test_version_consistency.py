@@ -51,33 +51,15 @@ class TestWhatThisTreeIs:
         assert match, "no __version__ assignment found in src/diffctx/version.py"
         assert match.group(1) == __version__
 
-    def test_every_workspace_crate_carries_the_one_version(self):
-        crates = tree_version.workspace_crates(PROJECT_ROOT)
-        assert {"diffctx", "diffctx-snapshot"} <= set(crates)
-        lock = _load_text("Cargo.lock")
-        for name, manifest in crates.items():
-            text = manifest.read_text(encoding="utf-8")
-            match = re.search(r'(?m)^version = "([^"]+)"', text)
-            assert match, f"no [package] version key found in {manifest}"
-            assert match.group(1) == tree_version.cargo_spelling(__version__), name
-            entry = re.search(rf'name = "{re.escape(name)}"\nversion = "([^"]+)"', lock)
-            assert entry, f"no {name} package entry found in Cargo.lock"
-            assert entry.group(1) == tree_version.cargo_spelling(__version__), name
+    def test_native_crate_cargo_toml_version(self):
+        match = re.search(r'^version = "([^"]+)"', _load_text("crates/diffctx-native/Cargo.toml"), re.MULTILINE)
+        assert match, "no [package] version key found in crates/diffctx-native/Cargo.toml"
+        assert match.group(1) == tree_version.cargo_spelling(__version__)
 
-    def test_each_crate_requires_exactly_the_version_of_the_siblings_it_depends_on(self):
-        """A published crate needs a version requirement on a path dependency, and
-        `=` keeps the layers from drifting apart: they are released together."""
-        crates = tree_version.workspace_crates(PROJECT_ROOT)
-        pinned = 0
-        for name, manifest in crates.items():
-            for sibling in set(crates) - {name}:
-                found = re.findall(
-                    rf'(?m)^{re.escape(sibling)}\s*=\s*\{{[^}}\n]*version\s*=\s*"=([^"]+)"',
-                    manifest.read_text(encoding="utf-8"),
-                )
-                assert all(v == tree_version.cargo_spelling(__version__) for v in found), (name, sibling, found)
-                pinned += len(found)
-        assert pinned >= 1, "the facade names no layer crate with an exact version"
+    def test_cargo_lock_diffctx_entry_version(self):
+        match = re.search(r'name = "diffctx"\nversion = "([^"]+)"', _load_text("Cargo.lock"))
+        assert match, "no diffctx package entry found in Cargo.lock"
+        assert match.group(1) == tree_version.cargo_spelling(__version__)
 
     def test_uv_lock_editable_entry_version(self):
         """`uv sync --locked` refuses a lock whose editable entry lags pyproject."""
@@ -155,7 +137,7 @@ class TestTheReleaseWritesTheTreeSurfaces:
         surfaces = [
             "src/diffctx/version.py",
             "pyproject.toml",
-            *(str(m.relative_to(PROJECT_ROOT)) for m in tree_version.workspace_crates(PROJECT_ROOT).values()),
+            "crates/diffctx-native/Cargo.toml",
             "Cargo.lock",
             "uv.lock",
         ]
@@ -172,7 +154,7 @@ class TestTheReleaseWritesTheTreeSurfaces:
             before, after = lines(PROJECT_ROOT, surface), lines(tmp_path, surface)
             assert len(before) == len(after), surface
             changed = [new for old, new in zip(before, after, strict=True) if old != new]
-            assert len(changed) <= 2, (surface, changed)
+            assert len(changed) <= 1, (surface, changed)
         assert 'version = "7.8.9.dev3"' in lines(tmp_path, "pyproject.toml")
         assert 'version = "7.8.9-dev.3"' in lines(tmp_path, "crates/diffctx-native/Cargo.toml")
         assert '__version__ = "7.8.9.dev3"' in lines(tmp_path, "src/diffctx/version.py")
@@ -198,7 +180,7 @@ class TestTheReleaseWritesTheTreeSurfaces:
         assert set(add.group(1).split()) == {
             "src/diffctx/version.py",
             "pyproject.toml",
-            "crates/*/Cargo.toml",
+            "crates/diffctx-native/Cargo.toml",
             "Cargo.lock",
             "uv.lock",
         }, "the dev version is for the tree only: a user pin must stay on the release"

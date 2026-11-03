@@ -1,0 +1,40 @@
+name: py_model_fields_are_data_not_unresolved_callees
+mode: impact
+source: gh#696
+issue_state: open
+tags: [python, pydantic, model-fields, unknowns]
+repo:
+  initial_files:
+    app.py: |
+      from pydantic import BaseModel
+
+
+      class Order(BaseModel):
+          url: str
+          title: str
+
+
+      def handle(order: Order) -> str:
+          return order.title
+  changed_files:
+    app.py: |
+      from pydantic import BaseModel
+
+
+      class Order(BaseModel):
+          url: str
+          title: str
+          channel: str = ""
+
+
+      class Reply(BaseModel):
+          url: str
+          title: str
+          verdict: str
+
+
+      def handle(order: Order) -> Reply:
+          return Reply(url=order.url, title=order.title, verdict="kept")
+  worktree: true
+expect:
+  unknowns: {}

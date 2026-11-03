@@ -125,14 +125,12 @@ export), a local or parameter that shadows the name, and a wrapper told from
 the function it calls by the files the caller reaches. The counts are in
 `commits.jsonl` and the report.
 
-## Traces
+## Adjudication
 
 `adjudicate.py` samples about 200 hard relations (dynamic dispatch, framework
 registration, re-export, disagreements) into `adjudicated/<language>.jsonl` as
 references: repository, commit, path, line, observed outcome and empty label
-fields. `trace/python_profile.py` (`sys.setprofile` over the repository's own
-tests) and `trace/ts_coverage.py` (V8 function coverage) produce the runtime
-evidence a label needs. Run them in the same isolation as indexing.
+fields.
 
 ## Limits
 

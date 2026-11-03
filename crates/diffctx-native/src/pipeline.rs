@@ -970,7 +970,20 @@ fn resolve_symbol_change_set(
         } else {
             String::new()
         };
-        let unread = unanalysed_namers(root_dir, &files, &fragments, run);
+        // A run that stopped looking has not found there is none.
+        let stops = run.stops();
+        let unread = format!(
+            "{}{}",
+            unanalysed_namers(root_dir, &files, &fragments, run),
+            if stops.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " (the run stopped ({}) before it finished looking: a definition may exist)",
+                    crate::impact::reason_names(&stops)
+                )
+            }
+        );
         // `Cart.total` names an owner's definition: the word `total` spelled
         // elsewhere is no answer to it.
         let named = (segments.len() == 1 && !files.is_empty())
@@ -982,7 +995,13 @@ fn resolve_symbol_change_set(
                     .into_iter()
                     .filter(|(p, _, _)| !is_lockfile_path(Path::new(p)))
                     .collect();
-                crate::impact::symbol_named(root_dir, &run.source(), lines, &unread)
+                crate::impact::symbol_named(
+                    root_dir,
+                    &run.source(),
+                    lines,
+                    &unread,
+                    crate::resource::classify_limits(run, &[], &|_| false).0,
+                )
             });
         return Err(SymbolQueryError {
             message: format!(

@@ -1,6 +1,6 @@
-"""The label-driven close job and the release manifest (T7, #595).
+"""The label-driven close job (T7, #595).
 
-Both scripts speak to a tracker's REST API, which is outside our control: a
+The script speaks to a tracker's REST API, which is outside our control: a
 local HTTP server stands in for GitHub and Forgejo, keeps real state, and
 answers the way the two platforms do (page sizes, `type=issues`, pull requests
 listed among GitHub's issues).
@@ -212,62 +212,3 @@ class TestCloseReleased:
         assert result.returncode != 0
         assert _states(trackers, "github") == {1: "open"}
         assert trackers.requests == []
-
-
-class TestManifest:
-    def _fixed(self, sha="0123abc", gate="tests/cases/impact/python/body_only.yaml"):
-        return f"Fixed on relay/arch in {sha}; gate: {gate}"
-
-    def test_it_writes_issue_tracker_root_gate_and_sha_for_both_trackers(self, trackers, tmp_path):
-        trackers.add("github", _issue(10, labels=(LABEL, "root:python-callers")), comments=["thanks", self._fixed()])
-        trackers.add(
-            "forgejo", _issue(3, labels=(LABEL,)), comments=[self._fixed("abcdef0123", "metamorphic::rename_keeps_callers")]
-        )
-        trackers.add("github", _issue(11, labels=("bug",)))
-        out = tmp_path / "release-manifest.json"
-        result = _run("manifest.py", trackers, "--tracker", "github", "--tracker", "forgejo", "--output", str(out))
-        assert result.returncode == 0, result.stderr
-        assert json.loads(out.read_text(encoding="utf-8")) == {
-            "issues": [
-                {
-                    "issue": 3,
-                    "tracker": "forgejo",
-                    "root": None,
-                    "gate": "metamorphic::rename_keeps_callers",
-                    "fixing_sha": "abcdef0123",
-                },
-                {
-                    "issue": 10,
-                    "tracker": "github",
-                    "root": "python-callers",
-                    "gate": "tests/cases/impact/python/body_only.yaml",
-                    "fixing_sha": "0123abc",
-                },
-            ]
-        }
-
-    def test_the_latest_fixing_comment_wins(self, trackers, tmp_path):
-        trackers.add("github", _issue(1), comments=[self._fixed("1111111", "old gate"), self._fixed("2222222", "new gate")])
-        out = tmp_path / "m.json"
-        assert _run("manifest.py", trackers, "--tracker", "github", "--output", str(out)).returncode == 0
-        [row] = json.loads(out.read_text(encoding="utf-8"))["issues"]
-        assert (row["fixing_sha"], row["gate"]) == ("2222222", "new gate")
-
-    @pytest.mark.parametrize(
-        "comment",
-        [
-            "Fixed on relay/arch in 0123abc; gate: ",
-            "Fixed on relay/arch in 0123abc",
-            "Fixed in 0123abc; gate: tests/x.yaml",
-            "fixed on relay/arch in 0123abc; gate: tests/x.yaml",
-        ],
-    )
-    def test_a_labelled_issue_without_a_gate_fails_the_run_and_writes_nothing(self, trackers, tmp_path, comment):
-        trackers.add("github", _issue(1), comments=[self._fixed()])
-        trackers.add("github", _issue(2), comments=[comment])
-        out = tmp_path / "m.json"
-        result = _run("manifest.py", trackers, "--tracker", "github", "--output", str(out))
-        assert result.returncode == 1
-        assert "github#2" in result.stderr
-        assert "github#1" not in result.stderr
-        assert not out.exists()

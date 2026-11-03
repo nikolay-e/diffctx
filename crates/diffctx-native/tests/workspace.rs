@@ -3,8 +3,8 @@
 // the one predicate the engine asks of it. Expected answers come from reading
 // the fixtures, never from running diffctx.
 
-use diffctx_snapshot::workspace::{RootOrigin, WorkspaceModel};
-use diffctx_snapshot::{AnalysisContext, RunBudget, open, resolve};
+use _diffctx::snapshot::workspace::{RootOrigin, WorkspaceModel};
+use _diffctx::snapshot::{AnalysisContext, RunBudget, open, resolve};
 use tempfile::TempDir;
 
 mod support;
@@ -360,7 +360,7 @@ fn a_manifest_the_model_cannot_read_leaves_dependencies_open() {
         !m.may_reference("b/y.py", "a/x.py"),
         "a readable project still cannot reach into a project it does not declare"
     );
-    assert_eq!(m.notes().len(), 4, "each unreadable manifest is named");
+    assert_eq!(m.losses().len(), 4, "each unreadable manifest is named");
 }
 
 #[cfg(unix)]
