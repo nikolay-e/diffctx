@@ -79,30 +79,14 @@ a body-only edit, a deletion and a move.
 - Git trees are exported with `git archive`: no hooks, no filters.
 - The workflow has `contents: read` and no secrets.
 
-### Rust, Go and Kotlin
+### Languages
 
-Indexers are release binaries pinned in `corpus.toml` with a SHA-256 per
-build: rust-analyzer (`rust-analyzer scip`), scip-go and scip-java. Each plan
-(`runners.py`) fetches dependencies in a step that runs none of the
-repository's code, then runs the indexer with as little of it as the indexer
-allows.
-
-- **Rust.** `cargo fetch --locked`, then rust-analyzer offline with its
-  build-script command replaced by `true` and proc macros off, so no
-  `build.rs` or proc macro runs. The repository's `.cargo/` and
-  `rust-toolchain*` are removed. Code that build scripts or macros generate is
-  missing from the index; the completeness record shows it.
-- **Go.** `go mod download` (checked against `go.sum`), then scip-go with the
-  proxy off, cgo off and the local toolchain.
-- **Kotlin.** scip-java indexes Kotlin only by running the repository's Gradle
-  build, which executes its build scripts, plugins and downloaded code. No
-  option avoids that. Kotlin therefore runs only when `ORACLE_SANDBOX=1`
-  vouches that the process is a throwaway, secret-free runner (the workflow
-  sets it; `run.sh` does not). Elsewhere the repository is skipped with reason
-  `needs_sandbox`, counted and never scored as empty. The two repositories are
-  pinned at commits, so the build scripts that run are the ones reviewed at
-  those commits. A laptop run needs a container with no network after the
-  dependency step.
+Python and TypeScript/JavaScript only: the oracle gates the cells that migrate
+next. Rust, Go and Kotlin were indexed with rust-analyzer, scip-go and
+scip-java until 2.0.0's wave 2.5; their repositories, pinned tools and plans
+return with their cells (wave 5). A repository that cannot be fetched or
+indexed is counted in `commits.jsonl` and does not fail the round; `measure`
+exits non-zero only when no commit of a selected language was measured.
 
 The cache (`cache/`, ignored) is keyed by repository, commit, indexer and
 indexer version.
@@ -134,10 +118,7 @@ fields.
 
 ## Limits
 
-- Ranges in an unspecified position encoding are read as UTF-16; rust-analyzer
-  states UTF-8.
-- Rust methods and Kotlin top-level functions are matched to the index by the
-  position of their name, not by the symbol's container chain.
+- Ranges in an unspecified position encoding are read as UTF-16.
 - A constructor also takes the instantiations of its class.
 - Only direct relations are truth; `tests_reach` is not derived.
 - Dynamic dispatch, reflection and framework registration are outside what

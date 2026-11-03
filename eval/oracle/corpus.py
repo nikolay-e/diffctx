@@ -9,23 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-LANGUAGES = ("python", "typescript", "rust", "kotlin", "go")
+LANGUAGES = ("python", "typescript")
 EXTENSIONS = {
     "python": (".py",),
     "typescript": (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"),
-    "rust": (".rs",),
-    "kotlin": (".kt",),  # `.kts` are build scripts: present, never indexed as sources
-    "go": (".go",),
 }
 INDEXERS = {"python": "@sourcegraph/scip-python", "typescript": "@sourcegraph/scip-typescript"}  # npm packages
-INDEXER_TOOLS = {"rust": "rust-analyzer", "kotlin": "scip-java", "go": "scip-go"}  # release binaries, see [tools]
-TRIPLES = {
-    ("Darwin", "arm64"): "aarch64-apple-darwin",
-    ("Darwin", "x86_64"): "x86_64-apple-darwin",
-    ("Linux", "aarch64"): "aarch64-unknown-linux-gnu",
-    ("Linux", "arm64"): "aarch64-unknown-linux-gnu",
-    ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
-}
 
 
 @dataclass(frozen=True)
@@ -51,24 +40,15 @@ class Sampling:
 
 @dataclass(frozen=True)
 class Tool:
-    """A release binary pinned by version and a SHA-256 per platform."""
+    """A release archive pinned by version and a SHA-256 per platform."""
 
     name: str
     version: str
     url: str
-    platforms: str  # os-arch | triple | any: how the release names its builds
-    archive: str  # tar.gz | gz | file
     sha256: dict[str, str]
 
     def build_name(self) -> str:
-        """How this release names the build for this machine; the key into `sha256`."""
-        if self.platforms == "any":
-            return "any"
-        if self.platforms == "triple":
-            triple = TRIPLES.get((platform.system(), platform.machine()))
-            if triple is None:
-                raise RuntimeError(f"no {self.name} build for {platform.system()} {platform.machine()}")
-            return triple
+        """How the release names the build for this machine; the key into `sha256`."""
         return scip_platform()
 
     def download_url(self) -> str:
@@ -102,9 +82,8 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
             raise ValueError(f"{repo.name}: sha must be a full 40-character commit id")
     s = raw["sampling"]
     tools = {name: Tool(name=name, **entry) for name, entry in raw["tools"].items()}
-    missing = [tool for tool in INDEXER_TOOLS.values() if tool not in tools]
-    if missing:
-        raise ValueError(f"corpus.toml pins no release for {missing}")
+    if "scip" not in tools:
+        raise ValueError("corpus.toml pins no release for scip")
     return Corpus(
         repos=repos,
         sampling=Sampling(
@@ -131,13 +110,10 @@ def indexer_versions(package_json: Path = ROOT / "tools" / "package.json") -> di
     return deps
 
 
-def indexer_pin(corpus: Corpus, language: str) -> tuple[str, str]:
+def indexer_pin(language: str) -> tuple[str, str]:
     """(name, exact version) of the indexer for a language: what the index cache keys on."""
-    if language in INDEXERS:
-        package = INDEXERS[language]
-        return package.rsplit("/", 1)[-1], indexer_versions()[package]
-    tool = corpus.tools[INDEXER_TOOLS[language]]
-    return tool.name, tool.version
+    package = INDEXERS[language]
+    return package.rsplit("/", 1)[-1], indexer_versions()[package]
 
 
 def scip_platform() -> str:

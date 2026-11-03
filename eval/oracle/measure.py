@@ -13,6 +13,7 @@ import json
 import os
 import random
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, replace
@@ -48,7 +49,7 @@ def diffctx_binary() -> Path:
 
 
 def run_diffctx(binary: Path, cwd: Path, args: list[str], timeout: int) -> Run:
-    with tempfile.TemporaryDirectory(prefix="oracle-home-") as home:
+    with tempfile.TemporaryDirectory(prefix="oracle-home-", ignore_cleanup_errors=True) as home:
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "LC_ALL": "C", "GIT_CONFIG_GLOBAL": "/dev/null"}
         started = time.perf_counter()
         try:
@@ -216,18 +217,24 @@ def _write_scored(sink: Sink, context: dict, target: Definition, relations: list
 
 
 def measure_repo(run: RepoRun, count: int) -> int:
+    """Measure the sampled commits of one repository; returns how many ended `measured`."""
     commits = sample_commits(run.corpus, run.repo, run.git_dir, count)
     rng = random.Random(f"{run.corpus.sampling.seed}:{run.repo.name}:symbols")
-    failures = 0
+    measured = 0
     for number, sha in enumerate(commits, 1):
         try:
             record = measure_commit(run, sha, rng)
         except Exception as error:  # one broken commit is counted and reported; the round goes on
             record = {"repo": run.repo.name, "commit": sha, "status": "error", "reason": f"{type(error).__name__}: {error}"}
-            failures += 1
+        measured += record["status"] == "measured"
         run.sink.write("commits.jsonl", [record])
         print(f"[{run.repo.name} {number}/{len(commits)}] {sha[:10]} {record['status']} {record.get('reason', '')}", flush=True)
-    return failures
+    return measured
+
+
+def unmeasured_languages(measured: dict[str, int]) -> list[str]:
+    """Languages of the selected repositories none of whose commits was measured: the only reason the round fails."""
+    return sorted(language for language, count in measured.items() if count == 0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -245,15 +252,25 @@ def main(argv: list[str] | None = None) -> int:
     corpus = load_corpus()
     binary = diffctx_binary()
     sink = Sink(options.out, fresh=not options.append)
-    failures = 0
+    measured: dict[str, int] = {}
     for repo in corpus.select(options.repo, options.fast):
-        git_dir = gitrepo.mirror(repo.url, CACHE / "mirrors" / f"{repo.name}.git", repo.sha)
         count = options.commits or (corpus.sampling.fast_commits if options.fast else corpus.sampling.commits)
-        run = RepoRun(
-            corpus, repo, git_dir, sink, binary, options.install, options.retry_failed, corpus.sampling.definitions_per_repo
-        )
-        failures += measure_repo(run, count)
-    return 1 if failures else 0
+        measured.setdefault(repo.language, 0)
+        try:  # one repository that cannot be fetched or indexed is counted in the output files; the round goes on
+            git_dir = gitrepo.mirror(repo.url, CACHE / "mirrors" / f"{repo.name}.git", repo.sha)
+            run = RepoRun(
+                corpus, repo, git_dir, sink, binary, options.install, options.retry_failed, corpus.sampling.definitions_per_repo
+            )
+            measured[repo.language] += measure_repo(run, count)
+        except Exception as error:
+            reason = f"{type(error).__name__}: {error}"
+            sink.write("commits.jsonl", [{"repo": repo.name, "language": repo.language, "status": "error", "reason": reason}])
+            print(f"[{repo.name}] failed: {reason}", flush=True)
+    print("measured commits per language: " + ", ".join(f"{lang} {n}" for lang, n in sorted(measured.items())), flush=True)
+    missing = unmeasured_languages(measured)
+    if missing:
+        print(f"FAILED: no {' and no '.join(missing)} commit was measured", file=sys.stderr)
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":
