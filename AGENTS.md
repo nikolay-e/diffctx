@@ -35,9 +35,7 @@ listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 - Commits reference issues as `gh#N` or `fj#N`, never a bare `#N` and never a
   closing keyword; nothing closes an issue but a release.
 - A release closes every issue carrying the label, after the published artifacts
-  pass the smoke (`scripts/release/close-released.py`);
-  `scripts/release/manifest.py` writes the audit manifest from the labels and
-  comments, never by hand.
+  pass the smoke (`scripts/release/close-released.py`).
 - The tree carries the next development version; every user pin (plugin, Action,
   docs, `server.json`, npm, Scoop, `CITATION.cff`) stays on the last release
   until a release moves it.

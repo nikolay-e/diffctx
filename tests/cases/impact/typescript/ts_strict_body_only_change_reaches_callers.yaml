@@ -1,0 +1,54 @@
+name: ts_strict_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, body-only, smoke]
+repo:
+  initial_files:
+    src/pricing.ts: |
+      export function total(items: number[]): number {
+        let sum = 0;
+        for (const item of items) {
+          sum += item;
+        }
+        return sum;
+      }
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export function charge(items: number[]): number {
+        return total(items) + 1;
+      }
+    src/report.ts: |
+      import * as pricing from './pricing';
+
+      export function build(items: number[]): string {
+        return `total=${pricing.total(items)}`;
+      }
+    src/legacy/pricing.ts: |
+      export function total(items: number[]): number {
+        return items.length;
+      }
+
+      export function legacySum(items: number[]): number {
+        return total(items);
+      }
+    docs/notes.md: |
+      `pricing.total(items)` is documented here.
+  changed_files:
+    src/pricing.ts: |
+      export function total(items: number[]): number {
+        let sum = 0;
+        for (const item of items) {
+          sum += Math.round(item);
+        }
+        return Math.max(sum, 0);
+      }
+  commit_message: "pricing: round each item and never go negative"
+expect:
+  changed: [src/pricing.ts::total]
+  relations:
+    - {from: "src/checkout.ts::charge", to: "src/pricing.ts::total", kind: calls, resolution: resolved, site: 4}
+    - {from: "src/report.ts::build", to: "src/pricing.ts::total", kind: calls, resolution: resolved, site: 4}
+  decoys:
+    src/pricing.ts::total: [src/legacy/pricing.ts, docs/notes.md]

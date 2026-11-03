@@ -122,6 +122,33 @@ struct TypeRef {
     owners: Vec<String>,
 }
 
+/// The types a walk up the supertypes has entered, each with the shallowest
+/// depth it was reached at. A qualified supertype resolves by its last
+/// segment (`Taggable.Builder<Builder>` is `Builder`), so a nested type can
+/// name itself, and a walk with no memory takes `k^depth` steps over `k`
+/// supertypes. Entered again at the same depth or deeper, a type has nothing
+/// new to give: the first visit looked at everything the depth bound allows
+/// below it. Reached shallower, it is walked again, so the bound still means
+/// what it did.
+#[derive(Default)]
+struct Walk(FxHashMap<TypeRef, usize>);
+
+impl Walk {
+    fn enter(&mut self, t: &TypeRef, depth: usize) -> bool {
+        match self.0.get_mut(t) {
+            Some(seen) if *seen <= depth => false,
+            Some(seen) => {
+                *seen = depth;
+                true
+            }
+            None => {
+                self.0.insert(t.clone(), depth);
+                true
+            }
+        }
+    }
+}
+
 pub struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
@@ -614,8 +641,23 @@ impl<'a> KotlinResolver<'a> {
     /// Whether `class` and every type it inherits from are declared in the
     /// repository and none of them declares `name`.
     fn closed_without(&self, class: &TypeRef, name: &str, depth: usize) -> bool {
+        self.closed_without_in(class, name, depth, &mut Walk::default())
+    }
+
+    fn closed_without_in(
+        &self,
+        class: &TypeRef,
+        name: &str,
+        depth: usize,
+        walk: &mut Walk,
+    ) -> bool {
         if depth > MAX_INHERITANCE_DEPTH || class.path.is_empty() {
             return false;
+        }
+        // Looked at already, and had it not been closed the walk would have
+        // ended there.
+        if !walk.enter(class, depth) {
+            return true;
         }
         let Some(facts) = self.facts(&class.path) else {
             return false;
@@ -628,7 +670,7 @@ impl<'a> KotlinResolver<'a> {
             .any(|d| d.name == name && d.owners == owners)
             && facts.supertypes_of(&class.name).iter().all(|s| {
                 match self.resolve_type(&class.path, &facts, s) {
-                    Some(t) => self.closed_without(&t, name, depth + 1),
+                    Some(t) => self.closed_without_in(&t, name, depth + 1, walk),
                     None => false,
                 }
             })
@@ -981,7 +1023,17 @@ impl<'a> KotlinResolver<'a> {
         name: &str,
         depth: usize,
     ) -> Option<(String, Declaration)> {
-        if depth > MAX_INHERITANCE_DEPTH || class.path.is_empty() {
+        self.member_of_in(class, name, depth, &mut Walk::default())
+    }
+
+    fn member_of_in(
+        &self,
+        class: &TypeRef,
+        name: &str,
+        depth: usize,
+        walk: &mut Walk,
+    ) -> Option<(String, Declaration)> {
+        if depth > MAX_INHERITANCE_DEPTH || class.path.is_empty() || !walk.enter(class, depth) {
             return None;
         }
         let facts = self.facts(&class.path)?;
@@ -996,7 +1048,7 @@ impl<'a> KotlinResolver<'a> {
         }
         for sup in facts.supertypes_of(&class.name).to_vec() {
             if let Some(t) = self.resolve_type(&class.path, &facts, &sup) {
-                if let Some(found) = self.member_of(&t, name, depth + 1) {
+                if let Some(found) = self.member_of_in(&t, name, depth + 1, walk) {
                     return Some(found);
                 }
             }
@@ -1006,7 +1058,11 @@ impl<'a> KotlinResolver<'a> {
 
     /// Whether `sub` names `sup` among its supertypes, transitively.
     fn is_subtype(&self, sub: &TypeRef, sup: &TypeRef, depth: usize) -> bool {
-        if depth > MAX_INHERITANCE_DEPTH || sub.path.is_empty() {
+        self.is_subtype_in(sub, sup, depth, &mut Walk::default())
+    }
+
+    fn is_subtype_in(&self, sub: &TypeRef, sup: &TypeRef, depth: usize, walk: &mut Walk) -> bool {
+        if depth > MAX_INHERITANCE_DEPTH || sub.path.is_empty() || !walk.enter(sub, depth) {
             return false;
         }
         let Some(facts) = self.facts(&sub.path) else {
@@ -1017,7 +1073,7 @@ impl<'a> KotlinResolver<'a> {
             .to_vec()
             .into_iter()
             .any(|s| match self.resolve_type(&sub.path, &facts, &s) {
-                Some(t) => t == *sup || self.is_subtype(&t, sup, depth + 1),
+                Some(t) => t == *sup || self.is_subtype_in(&t, sup, depth + 1, walk),
                 None => sup.path.is_empty() && s == sup.name,
             })
     }

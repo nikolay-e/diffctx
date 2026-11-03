@@ -373,10 +373,9 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
             .join("tests")
             .join("known_below_threshold.txt");
         let raw = fs::read_to_string(&path).unwrap_or_default();
-        // A name may carry a trailing `# gh#N open` or a reason.
         raw.lines()
-            .map(|l| l.split('#').next().unwrap_or("").trim())
-            .filter(|l| !l.is_empty())
+            .map(|line| line.split_once('#').map_or(line, |(name, _)| name).trim())
+            .filter(|name| !name.is_empty())
             .map(str::to_string)
             .collect()
     })
@@ -861,6 +860,7 @@ fn main() {
         trials.push(
             Trial::test("modes_shipped_have_cases", modes_shipped_have_cases).with_kind("oracle"),
         );
+        trials.extend(oracle::negative::trials());
     }
 
     // Every oracle case above runs Ego. `--scoring ppr`, `bm25` and `rrf` are

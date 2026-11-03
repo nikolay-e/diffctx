@@ -8,6 +8,7 @@
 pub mod git;
 pub mod in_memory_harness;
 mod paths;
+pub mod snapshot;
 
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;

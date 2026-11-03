@@ -3,9 +3,7 @@
 A release patches the tree surfaces and the user pins together; once it has
 shipped, the tree moves on to `X.Y.(Z+1).dev0` and the pins stay on the release.
 Only the tree surfaces are written here: the version module, pyproject, the
-manifest of every workspace crate (they all carry one version, and the
-`=` requirement of each on its siblings), and the diffctx entries of Cargo.lock
-and uv.lock.
+crate manifest and the diffctx entries of Cargo.lock and uv.lock.
 """
 
 from __future__ import annotations
@@ -41,48 +39,20 @@ def next_dev(released: str) -> str:
     return f"{major}.{minor}.{int(patch) + 1}.dev0"
 
 
-def _rewrite(path: Path, pattern: str, replacement: str, what: str, expected: int = 1) -> None:
+def _rewrite(path: Path, pattern: str, replacement: str, what: str) -> None:
     text = path.read_text(encoding="utf-8")
-    text, count = re.subn(pattern, lambda m: m.group(1) + replacement + m.group(2), text, count=expected)
-    if count != expected:
+    text, count = re.subn(pattern, lambda m: m.group(1) + replacement + m.group(2), text, count=1)
+    if count != 1:
         raise SystemExit(f"{path.name}: {what} not found")
     path.write_text(text, encoding="utf-8")
-
-
-def workspace_crates(root: Path = ROOT) -> dict[str, Path]:
-    """Package name to manifest of every crate under crates/."""
-    crates = {}
-    for manifest in sorted((root / "crates").glob("*/Cargo.toml")):
-        name = re.search(r'(?m)^name\s*=\s*"([^"]+)"', manifest.read_text(encoding="utf-8"))
-        if name is None:
-            raise SystemExit(f"{manifest}: no package name")
-        crates[name.group(1)] = manifest
-    return crates
 
 
 def set_tree_version(version: str, root: Path = ROOT) -> None:
     cargo = cargo_spelling(version)
     _rewrite(root / "src/diffctx/version.py", r'(__version__\s*=\s*")[^"]*(")', version, "__version__ assignment")
     _rewrite(root / "pyproject.toml", r'(?m)(^version\s*=\s*")[^"]+(")', version, "[project].version")
-    crates = workspace_crates(root)
-    for name, manifest in crates.items():
-        _rewrite(manifest, r'(?m)(^version\s*=\s*")[^"]+(")', cargo, "[package].version")
-        siblings = "|".join(re.escape(other) for other in crates if other != name)
-        text = manifest.read_text(encoding="utf-8")
-        if siblings and re.search(rf"(?m)^(?:{siblings})\s*=", text):
-            _rewrite(
-                manifest,
-                rf'(?m)(^(?:{siblings})\s*=\s*\{{[^}}\n]*version\s*=\s*"=)[^"]+(")',
-                cargo,
-                "sibling requirement",
-                expected=len(re.findall(rf"(?m)^(?:{siblings})\s*=", text)),
-            )
-        _rewrite(
-            root / "Cargo.lock",
-            rf'(\[\[package\]\]\nname = "{re.escape(name)}"\nversion = ")[^"]+(")',
-            cargo,
-            f"{name} package entry",
-        )
+    _rewrite(root / "crates/diffctx-native/Cargo.toml", r'(?m)(^version\s*=\s*")[^"]+(")', cargo, "[package].version")
+    _rewrite(root / "Cargo.lock", r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+(")', cargo, "diffctx package entry")
     _rewrite(
         root / "uv.lock",
         r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+("\nsource = \{ editable = "\." \})',

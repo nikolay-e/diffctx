@@ -177,6 +177,167 @@ fn a_new_branch_on_a_pushed_one_reviews_only_its_own_commits() {
     );
 }
 
+/// How the engine is stopped under a review: the compute deadline spent
+/// before the first poll, cut at the n-th poll, or the n-th blob read failing.
+#[derive(Clone, Debug)]
+enum Stop {
+    Expired,
+    AfterPolls(u32),
+    ReadFault(u32),
+}
+
+fn stops() -> BoxedStrategy<Stop> {
+    prop_oneof![
+        Just(Stop::Expired),
+        (0u32..160).prop_map(Stop::AfterPolls),
+        (0u32..60).prop_map(Stop::ReadFault),
+    ]
+    .boxed()
+}
+
+/// The words a review that did not finish uses for it.
+const NAMED_REASONS: [&str; 5] = [
+    "partial",
+    "not determined",
+    "did not review",
+    "could not read",
+    "stopped",
+];
+
+fn commit_payload(world: &hook::world::World, kind: &str, cwd: &std::path::Path) -> String {
+    let mut payload = serde_json::json!({
+        "session_id": "prop-session",
+        "transcript_path": world.root().join("transcript.jsonl"),
+        "cwd": cwd,
+        "permission_mode": "default",
+        "hook_event_name": kind,
+        "tool_name": "Bash",
+        "tool_input": { "command": "git commit -qm wide", "description": "property case" },
+        "tool_use_id": "toolu_1",
+    });
+    if kind == "PostToolUse" {
+        payload["tool_response"] = serde_json::json!({ "stdout": "", "stderr": "", "interrupted": false, "isImage": false });
+    }
+    payload.to_string()
+}
+
+/// What one hook event printed for the agent, and what the engine said on
+/// stderr while it ran.
+fn hook_under(
+    world: &hook::world::World,
+    event: &str,
+    cwd: &std::path::Path,
+    stdin: &str,
+    stop: &Stop,
+) -> (String, String) {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let mut command = world.command(hook::drive::hook_bin());
+    command
+        .args(["hook", event])
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    match stop {
+        Stop::Expired => command.env("DIFFCTX_TEST_DEADLINE_EXPIRED", "1"),
+        Stop::AfterPolls(n) => command.env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string()),
+        Stop::ReadFault(n) => command.env("DIFFCTX_TEST_READ_FAULT", n.to_string()),
+    };
+    let mut child = command.spawn().expect("HARNESS: spawn the hook");
+    child
+        .stdin
+        .take()
+        .expect("HARNESS: hook stdin")
+        .write_all(stdin.as_bytes())
+        .expect("HARNESS: feed the hook");
+    let out = child
+        .wait_with_output()
+        .expect("HARNESS: wait for the hook");
+    let doc: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or(serde_json::Value::Null);
+    let printed = ["additionalContext", "permissionDecisionReason"]
+        .iter()
+        .filter_map(|key| doc["hookSpecificOutput"][*key].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (printed, String::from_utf8_lossy(&out.stderr).into_owned())
+}
+
+/// A commit the engine could not review to the end is said to be unfinished,
+/// with the reason: a deadline, a failed read, a failed engine each reach the
+/// hook's output by name, and none of them reads as "reaches nothing" or as
+/// silence.
+#[test]
+fn an_unfinished_review_reaches_the_output_with_its_reason() {
+    use hook::line::Repo;
+    let config = Config {
+        cases: cases(),
+        max_shrink_iters: 24,
+        failure_persistence: None,
+        rng_seed: seed(),
+        ..Config::default()
+    };
+    let outcome = TestRunner::new(config).run(&stops(), |stop| {
+        let world = hook::world::World::new();
+        let work = world.path(Repo::A);
+        std::fs::write(
+            work.join("tracked.py"),
+            "def total(items):\n    return sum(items) * 2\n",
+        )
+        .expect("HARNESS: write");
+        world.git(&work, &["add", "tracked.py"]);
+        let (pre, pre_err) = hook_under(
+            &world,
+            "pretooluse",
+            &work,
+            &commit_payload(&world, "PreToolUse", &work),
+            &stop,
+        );
+        world.git(&work, &["commit", "-q", "-m", "wide"]);
+        let (post, post_err) = hook_under(
+            &world,
+            "posttooluse",
+            &work,
+            &commit_payload(&world, "PostToolUse", &work),
+            &stop,
+        );
+        let printed = format!("{pre}\n{post}");
+        let struck = pre_err.contains("injected read fault") || post_err.contains("injected read fault");
+        let finished = printed.contains("charge") && !NAMED_REASONS.iter().any(|w| printed.contains(w));
+        let named = NAMED_REASONS.iter().any(|w| printed.contains(w));
+        let expired = matches!(stop, Stop::Expired);
+        if printed.trim().is_empty() {
+            return Err(TestCaseError::fail(format!(
+                "[silent] {stop:?}: a commit whose review did not finish printed nothing"
+            )));
+        }
+        if (expired || struck) && !named {
+            return Err(TestCaseError::fail(format!(
+                "[unnamed] {stop:?}: the engine was stopped and the output names no reason:\n{printed}"
+            )));
+        }
+        if (expired || struck) && printed.contains("reaches nothing outside the diff") {
+            return Err(TestCaseError::fail(format!(
+                "[clean] {stop:?}: a stopped review claims the change reaches nothing:\n{printed}"
+            )));
+        }
+        if !named && !finished {
+            return Err(TestCaseError::fail(format!(
+                "[unfinished] {stop:?}: neither the review's callers nor a reason were printed:\n{printed}"
+            )));
+        }
+        Ok(())
+    });
+    match outcome {
+        Ok(()) => {}
+        Err(TestError::Fail(reason, stop)) => {
+            panic!("an unfinished review is not named\n{reason}\nminimal stop: {stop:?}")
+        }
+        Err(TestError::Abort(reason)) => panic!("proptest aborted: {reason}"),
+    }
+}
+
 // Red baseline. One entry per family; the issue owns the miss.
 
 /// `--git-dir` and `GIT_DIR` name a repository the hook does not look at: the

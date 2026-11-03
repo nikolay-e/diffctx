@@ -54,6 +54,16 @@ pub enum LimitReason {
     SanitizationRedaction,
 }
 
+/// Test hook: the n-th blob read of every analysis fails on purpose, base and
+/// head sides counted together. Semantic — it changes the artifact.
+pub const TEST_READ_FAULT_ENV: &str = "DIFFCTX_TEST_READ_FAULT";
+
+pub(crate) fn test_read_fault() -> Option<usize> {
+    std::env::var(TEST_READ_FAULT_ENV)
+        .ok()
+        .and_then(|n| n.parse().ok())
+}
+
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest
 /// bound memory, which the wall clock alone never did — 38M edge
 /// contributions took 11 GB before a single one was deduplicated (#196).
@@ -178,6 +188,12 @@ impl LimitReason {
                 | Self::SelectionBudgetExceeded
                 | Self::SanitizationRedaction
         )
+    }
+
+    /// A run that noted it did not finish looking: what it printed as a
+    /// count of what it found is a lower bound.
+    pub fn stops_a_search(self) -> bool {
+        matches!(self, Self::Deadline | Self::Cancelled | Self::ReadFailed)
     }
 
     /// Loses context only in the file it names.
@@ -472,6 +488,7 @@ impl RunContext {
             self.inner.tripped.store(true, Ordering::Relaxed);
             return false;
         }
+        #[allow(deprecated, reason = "try_update needs Rust 1.95; MSRV is 1.85")]
         let logical = self.inner.polls_left.as_ref().is_some_and(|left| {
             left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
                 .is_err()
@@ -541,8 +558,24 @@ impl RunContext {
         self.inner.withheld.lock().unwrap().len()
     }
 
+    /// What limited the run: the reasons noted on it, and a failed read the
+    /// snapshot layer recorded even if its caller dropped the error.
     pub fn reasons(&self) -> Vec<LimitReason> {
-        self.inner.reasons.lock().unwrap().iter().copied().collect()
+        let mut all: BTreeSet<LimitReason> = self.inner.reasons.lock().unwrap().clone();
+        if self.source().lost_a_read() {
+            all.insert(LimitReason::ReadFailed);
+        }
+        all.into_iter().collect()
+    }
+
+    /// The reasons that make a count of what the run searched for unfinished:
+    /// the deadline, a cancellation, a read that failed. Empty while nothing
+    /// of the kind has been noted; once it is not, a caller count the run
+    /// prints is what it reached, not what there is.
+    pub fn stops(&self) -> Vec<LimitReason> {
+        let mut stops = self.reasons();
+        stops.retain(|r| r.stops_a_search());
+        stops
     }
 
     /// Records `n` more edge emissions. `false` once the run is over its
@@ -663,6 +696,12 @@ impl RunNotes {
             inner.reasons.lock().unwrap().insert(reason);
         }
     }
+}
+
+/// `true` while the current run may go on; always `true` on a thread that
+/// serves no run. The first expiry is noted as the deadline, as `check` does.
+pub fn current_check() -> bool {
+    with_current(RunContext::check).unwrap_or(true)
 }
 
 /// The current run's note, when this thread runs one.

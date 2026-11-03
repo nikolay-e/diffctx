@@ -28,6 +28,7 @@ repo:
 query:
   symbol: total     # symbol mode: a bare name, PATH:NAME, or SQL schema.name
   args: ["--budget", "4000"]  # never --diff, --mode, -f/--format, --symbol, -q
+  env: {DIFFCTX_TEST_DEADLINE_EXPIRED: "1"}  # DIFFCTX_TEST_* only: a partial run
 expect: {}          # below
 dispute: "one line" # the harness skips the case until the orchestrator decides
 ```
@@ -199,6 +200,15 @@ named, `empty`, `disclosed`, absence claims, kind mismatches and failures.
 case runs the text form) and `.repo.txt` (`git log --stat` and
 `git status --short` of the materialised repository).
 
+## The judge's lenient rules
+
+Each lenient rule of the judge (a test file stands for its function, a removed
+public API is a removal, a word match is no caller, kind is not compared while
+no cell is precise, a collection read reaches only its collection) has
+negative tests, `harness/negative/*`, in `tests/common/oracle/negative.rs`:
+a synthetic engine answer carrying the defect the rule must still catch fails
+the evaluation, and a control shows the leniency itself holds.
+
 ## Running
 
 ```sh
@@ -212,7 +222,10 @@ until it has cases of its own.
 
 ## Examples
 
-A body-only change (the definition is listed although no signature moved):
+A body-only change (the definition is listed although no signature moved). The
+tag `body-only` is strict: the changed lines sit inside the body and the
+declaration line is untouched; an edit to an expression body, which rewrites the
+declaration line, is tagged `expression-body`:
 
 ```yaml
 name: py_body_only_change_reaches_callers

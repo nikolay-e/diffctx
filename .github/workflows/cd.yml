@@ -174,7 +174,7 @@ jobs:
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
           echo "Cargo.toml (version line):"
-          grep -E '^version\s*=' crates/*/Cargo.toml
+          grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
 
       # tests/test_version_consistency.py requires a `## [<version>] - <date>`
       # section; 1.16.0 needed a hand commit for it. Rolling [Unreleased] here
@@ -216,7 +216,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/*/Cargo.toml Cargo.lock uv.lock \
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/pyproject.toml \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
             plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
@@ -1573,7 +1573,7 @@ jobs:
           dev=$(python scripts/release/tree_version.py open-dev "$VERSION")
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/*/Cargo.toml Cargo.lock uv.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock
           if git diff --staged --quiet; then
             echo "main is already at ${dev}."
             exit 0

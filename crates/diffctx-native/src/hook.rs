@@ -2937,7 +2937,19 @@ fn run_impact(root: &Path, range: &str, secs: u64) -> Result<crate::impact::Impa
         scoring,
         secs,
     )
-    .map_err(|_| "error:pipeline")
+    .map_err(|e| failure_reason(&e))
+}
+
+/// The engine's own failure, named by what kind it was: the hook says which
+/// instead of "failed". The command line ends the same failures with exit
+/// code 3 (git), 2 (a range that cannot be resolved) or 1.
+fn failure_reason(error: &anyhow::Error) -> Silence {
+    match error.downcast_ref::<crate::git::GitError>() {
+        Some(e) if e.is_interruption() => "error:deadline",
+        Some(e) if e.is_usage() => "error:range",
+        Some(_) => "error:git",
+        None => "error:pipeline",
+    }
 }
 
 struct Answer {
@@ -3062,10 +3074,28 @@ fn stopped_note(output: &crate::impact::ImpactOutput, range: &str, paths: &[Stri
         .limits
         .contains(&crate::resource::LimitReason::Deadline)
     {
-        return String::new();
+        // A read the engine needed and did not get leaves the callers it
+        // lists a lower bound: the answer above says "not determined" for
+        // what it never searched, and this says why in a line of its own.
+        return if output
+            .limits
+            .contains(&crate::resource::LimitReason::ReadFailed)
+        {
+            format!(
+                "diffctx could not read part of {range} (read_failed): the callers listed above are a lower bound. `diffctx <repo> --diff {range} --mode impact` repeats the review.\n"
+            )
+        } else {
+            String::new()
+        };
     }
-    let listed: rustc_hash::FxHashSet<&str> =
-        output.changed.iter().map(|c| c.path.as_str()).collect();
+    // A file whose definitions the run never finished is listed above only as
+    // "not determined": it still lists no caller.
+    let listed: rustc_hash::FxHashSet<&str> = output
+        .changed
+        .iter()
+        .filter(|c| !crate::impact::is_unfinished(c))
+        .map(|c| c.path.as_str())
+        .collect();
     let unlisted: Vec<String> = paths
         .iter()
         .filter(|p| !listed.contains(p.as_str()))
@@ -3945,6 +3975,9 @@ fn not_reviewed(
     let how = match why {
         "timeout" => "the review ran past the hook's deadline",
         "retry-exhausted" => "earlier attempts at this change stopped at a limit",
+        "error:deadline" => "the engine's deadline passed before it had an answer to give",
+        "error:git" => "git refused a read the review needs (exit 3 on the command line)",
+        "error:range" => "the range could not be resolved (exit 2 on the command line)",
         _ => "the review failed",
     };
     let unread = if paths.is_empty() {

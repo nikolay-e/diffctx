@@ -25,7 +25,7 @@ thread_local! {
 
 pub fn set_git_timeout(secs: u64) {
     GIT_TIMEOUT_SECS.with(|c| c.set(secs));
-    diffctx_snapshot::set_git_timeout(secs);
+    crate::snapshot::set_git_timeout(secs);
 }
 
 // PID alone is not unique within a process: the MCP server runs each tool
@@ -416,36 +416,10 @@ pub fn duration_base(repo_root: &Path, spec: &str) -> Result<Option<String>> {
     }))
 }
 
-/// Always targets the repo via `-C`.
-///
-/// Repo-locating variables inherited from a parent process (e.g. a git
-/// hook exporting `GIT_DIR` / `GIT_INDEX_FILE`) must be scrubbed or they
-/// silently redirect every command to the wrong repository.
+/// Always targets the repo via `-C`, scrubbed of the repo-locating variables a
+/// parent git hook exports. The snapshot module builds it; there is one.
 pub fn git_command(repo_root: &Path) -> Command {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo_root)
-        // A spawned child inherits stdin, and under the MCP server stdin is the
-        // JSON-RPC pipe the client holds open: on Windows a git holding it
-        // never exited and every tool call that reached git hung. Callers that
-        // feed git (`check-ignore`, `cat-file --batch`) set their own.
-        .stdin(Stdio::null())
-        // A partial clone lazily fetches blobs, and a fetch that wants a
-        // credential would block on the terminal for the whole `--timeout`.
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        // git documents `GIT_DIFF_OPTS` as overriding `--unified`; a `-u3`
-        // in a user's shell widened every hunk and changed which fragment
-        // counted as the core (#263).
-        .env_remove("GIT_DIFF_OPTS");
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
-    cmd
+    crate::snapshot::git_command(repo_root)
 }
 
 /// `true` when the repository is a shallow clone: the one situation in which
@@ -1426,15 +1400,38 @@ pub fn grep_lines(
     needles: &[String],
     rev: Option<&str>,
 ) -> Result<Grepped<(String, u32, String)>> {
-    if needles.is_empty() {
-        return Ok(Grepped::default());
+    let mut found = Grepped::default();
+    // One `-F` search over a thousand needles costs more than twenty over
+    // fifty: git's matcher is superlinear in the needle count (540 CPU
+    // seconds for 1150 needles on a 387-file range). Chunked, a line that
+    // holds needles of two chunks comes back twice and is kept once, and the
+    // rows are in git's own order: by path, then line.
+    for chunk in needles.chunks(GREP_NEEDLES_PER_CALL) {
+        if chunk.iter().all(String::is_empty) {
+            continue;
+        }
+        // Past the deadline the rows found are the answer, and the run says
+        // it is partial.
+        if !crate::resource::current_check() {
+            break;
+        }
+        let patterns = Patterns::new(chunk);
+        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
+        args.extend(patterns.args.iter().map(String::as_str));
+        args.extend(rev);
+        let part = grep_rows(repo_root, source, &args, rev)?;
+        found.rows.extend(part.rows);
+        found.withheld.extend(part.withheld);
     }
-    let patterns = Patterns::new(needles);
-    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
-    args.extend(patterns.args.iter().map(String::as_str));
-    args.extend(rev);
-    grep_rows(repo_root, source, &args, rev)
+    found.rows.sort_unstable();
+    found.rows.dedup();
+    found.withheld.sort_unstable();
+    found.withheld.dedup();
+    Ok(found)
 }
+
+/// Needles sent to one `git grep` by `grep_lines`.
+const GREP_NEEDLES_PER_CALL: usize = 50;
 
 /// `-f FILE` naming the patterns one per line, or `-e` per pattern when the
 /// file cannot be written: tens of thousands of `-e` arguments overflow

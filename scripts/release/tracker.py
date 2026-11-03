@@ -92,7 +92,3 @@ class Tracker:
         if self.kind == "github":
             body["state_reason"] = "completed"
         self._call("PATCH", f"issues/{number}", body=body)
-
-
-def label_names(issue: dict[str, Any]) -> list[str]:
-    return [label["name"] if isinstance(label, dict) else str(label) for label in issue.get("labels", [])]

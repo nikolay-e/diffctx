@@ -175,8 +175,8 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     // The snapshot layer lists and reads the repository for every run: its
     // loops are over a listing already in memory, and each git call and
     // object read beneath them carries the run's deadline and cancellation.
-    ("../diffctx-snapshot/src/reader.rs", None),
-    ("../diffctx-snapshot/src/changes.rs", None),
+    ("src/snapshot/reader.rs", None),
+    ("src/snapshot/changes.rs", None),
 ];
 
 /// Loops in those regions over something smaller than the repository, each
@@ -284,92 +284,92 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
         "halves one stride of the answer",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for path in paths",
         "the paths a surface asked about, each answered from the table in memory",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for row in &table.rows",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for (entry, oid) in listing.entries",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for _ in 0..8",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for record in &records",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for row in &rows",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for row in &mut *rows",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for part in text.split('/')",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for chunk in plain.chunks(5000)",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for i in chunk",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for (i, line) in chunk.iter().zip(lines)",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for i in odd",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for (i, name) in names.iter().enumerate()",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for (i, oid) in regular",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/reader.rs",
+        "src/snapshot/reader.rs",
         "for (name, mark) in names",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/changes.rs",
+        "src/snapshot/changes.rs",
         "for entry in parse_raw",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/changes.rs",
+        "src/snapshot/changes.rs",
         "for row in &head.table()?.rows",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
     (
-        "../diffctx-snapshot/src/changes.rs",
+        "src/snapshot/changes.rs",
         "while at < tokens.len()",
         "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),

@@ -7,10 +7,9 @@ FROM dhi.io/rust:1.99.1-debian13-dev@sha256:be6c6ec91c61ae15b80521052df1c7f60fef
 WORKDIR /build
 COPY README.md ./
 COPY Cargo.toml Cargo.lock ./
-# Every workspace crate: Cargo reads each member's manifest, and a layer crate
-# the facade depends on is a path dependency. Cargo.toml declares [[test]]
-# targets, so tests/ comes too or the manifest does not parse.
-COPY crates ./crates
+COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
+COPY crates/diffctx-native/src ./crates/diffctx-native/src
+COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
 
 # Read by option_env! at compile time, so `provenance.engine.build` names the
 # commit. A build arg reaches RUN as an env var only when it was passed; an ENV

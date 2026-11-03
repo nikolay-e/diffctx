@@ -6,13 +6,13 @@
 //! [`Source::empty`] and finds no file, so a read can never answer for a state
 //! nobody asked about (#354, #511).
 //!
-//! This is the only module that names `diffctx_snapshot`: the engine speaks
-//! repo-relative strings and absolute paths, and the crate's types stop here.
+//! This is the only module that names `crate::snapshot`: the engine speaks
+//! repo-relative strings and absolute paths, and the snapshot module's types stop here.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use diffctx_snapshot as snap;
+use crate::snapshot as snap;
 
 use crate::git::{self, GitError};
 use crate::resource::{LimitReason, RunNotes};
@@ -70,6 +70,11 @@ pub struct ListedBlob {
 
 /// What a side holds: the admitted blobs, the files it holds but did not
 /// analyse for being over the size cap, and how many it withheld.
+///
+/// The snapshot crate's `Listing` seen the way the engine addresses files, by
+/// absolute path, with the over-size and symlink entries split out; it holds
+/// nothing the reader's does not. It goes when the engine addresses files by
+/// `RepoPath` (the facts layer, waves 3-5).
 pub struct Listing {
     pub blobs: Vec<ListedBlob>,
     pub too_large: Vec<PathBuf>,
@@ -206,6 +211,7 @@ impl Analysis {
         let budget = snap::RunBudget {
             deadline,
             cancel: Some(cancel),
+            read_fault: crate::resource::test_read_fault().map(snap::ReadFault::at),
         };
         let ctx = snap::AnalysisContext::new(repo, range, budget).map_err(lift)?;
         Ok(Arc::new(Self {
@@ -315,6 +321,14 @@ impl Source {
         Self {
             view: Some((analysis.clone(), end)),
         }
+    }
+
+    /// Whether a read of either side failed, however the reader's caller took
+    /// the error: a failure swallowed on the way is still a loss of the run.
+    pub fn lost_a_read(&self) -> bool {
+        self.view.as_ref().is_some_and(|(analysis, _)| {
+            analysis.ctx.head.has_losses() || analysis.ctx.base.has_losses()
+        })
     }
 
     /// The side the change started from.

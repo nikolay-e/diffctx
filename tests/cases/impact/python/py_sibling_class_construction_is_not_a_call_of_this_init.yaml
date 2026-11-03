@@ -1,0 +1,51 @@
+name: py_sibling_class_construction_is_not_a_call_of_this_init
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-attribution, decoy]
+repo:
+  initial_files:
+    net/__init__.py: ""
+    net/models.py: |
+      class Request:
+          def __init__(self, method, url):
+              self.method = method
+              self.url = url
+
+
+      class Response:
+          def __init__(self, status):
+              self.status = status
+    net/client.py: |
+      from net.models import Request, Response
+
+
+      def send(url):
+          return Request("GET", url)
+
+
+      def receive():
+          return Response(200)
+    tests/test_responses.py: |
+      from net.models import Response
+
+
+      def test_status():
+          assert Response(200).status == 200
+  changed_files:
+    net/models.py: |
+      class Request:
+          def __init__(self, method, url):
+              self.method = method.upper()
+              self.url = url
+
+
+      class Response:
+          def __init__(self, status):
+              self.status = status
+  commit_message: "models: normalise the request method"
+expect:
+  relations:
+    - {from: "net/client.py::send", to: "net/models.py::Request", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    net/models.py::Request: [net/client.py::receive, tests/test_responses.py]

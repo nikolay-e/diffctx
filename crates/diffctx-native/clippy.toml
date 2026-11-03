@@ -1,0 +1,9 @@
+# The snapshot module's ban (it denies the lint in its own mod.rs; the rest of the
+# crate allows it in Cargo.toml). A reader's failure is an `Err`, never an empty
+# value: these three turn one into the other. A justified use carries
+# `#[allow(clippy::disallowed_methods, reason = "...")]`.
+disallowed-methods = [
+    { path = "std::result::Result::ok", reason = "drops the error: a failed git or disk read would read as an absent value (m3, relay arch-migration)" },
+    { path = "std::result::Result::unwrap_or_default", reason = "turns a failed read into an empty value" },
+    { path = "std::option::Option::unwrap_or_default", reason = "turns an unanswered question into an empty value" },
+]

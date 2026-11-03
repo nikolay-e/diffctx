@@ -123,7 +123,6 @@ impact/python/py_generated_file_is_not_a_separate_consumer_of_its_source  # fj#1
 impact/python/py_known_caller_inside_the_diff_is_not_unresolved  # fj#124 open
 impact/python/py_namedtuple_fields_are_not_changed_definitions  # fj#129 open
 impact/python/py_stale_reference_needs_the_path_not_a_module_name  # gh#660 open
-impact/python/py_unresolved_binding_stays_inside_its_project_root  # gh#649 open
 impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts  # gh#602 open
 impact/typescript/ts_default_export_reached_by_a_relative_dynamic_import_has_a_caller  # fj#106 open
 impact/typescript/ts_destructured_export_keeps_the_names_exported  # fj#126 open
@@ -181,3 +180,9 @@ symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
 impact/web/web_test_that_evaluates_a_pages_script_reaches_its_functions  # gh#695 open
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
 impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open
+
+# Wave 2.5 corpus additions (W2.5-C). Red for the issue's reason; the orchestrator removes a line when its fix lands.
+impact/python/py_method_reached_through_a_self_attribute_has_a_test_link  # gh#694 open
+impact/python/py_model_fields_are_data_not_unresolved_callees  # gh#696 open
+impact/typescript/ts_interface_dispatch_and_factory_object_methods_have_callers  # gh#698 open
+impact/python/py_removed_public_attribute_without_readers_is_reported  # gh#699 open

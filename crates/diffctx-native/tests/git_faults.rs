@@ -62,7 +62,9 @@ if [ -n "$FAKE_GIT_SLOTS" ]; then
   fi
 fi
 for a in "$@"; do
-  if [ "$a" = "$FAKE_GIT_TARGET" ]; then hit=1; fi
+  for t in $FAKE_GIT_TARGET; do
+    if [ "$a" = "$t" ]; then hit=1; fi
+  done
 done
 if [ -z "$hit" ]; then exec "$REAL_GIT" "$@"; fi
 echo $$ >> "$FAKE_GIT_PIDS"
@@ -328,32 +330,32 @@ fn a_cat_file_stalled_while_draining_an_oversized_blob_is_bounded() {
     assert_stall_is_bounded_and_disclosed("stall_in_oversized");
 }
 
-/// A broken stream is discarded and the file asked through argv: the answer
-/// is the one the real git gives, not a guess and not a hang.
-fn assert_recovers_the_true_answer(mode: &str) {
+/// A batch that breaks on the same object twice leaves no bytes to answer
+/// from: the run ends in an error or names the loss, never a smaller answer
+/// that looks complete, and git is not asked another way.
+fn assert_error_or_named_loss(mode: &str) {
     let fx = fixture();
-    let out = fx.impact_within("cat-file", mode, ANSWER_TIMEOUT_SECS);
-    assert!(
-        out.status.success(),
-        "{mode}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert_eq!(
-        callers_of_total(&json(&out)),
-        vec!["charge".to_string()],
-        "{mode}"
-    );
+    let clean = fx.impact_within("none", "none", ANSWER_TIMEOUT_SECS);
+    let truth = Query::Impact.claims(&json(&clean));
+    assert!(!truth.is_empty(), "the clean run claimed nothing");
+    let out = fx.impact("cat-file", mode);
+    verdict(Query::Impact, &truth, &out).unwrap_or_else(|why| panic!("{mode}: {why}"));
     fx.assert_no_survivors();
 }
 
 #[test]
-fn a_malformed_header_discards_the_stream_and_recovers() {
-    assert_recovers_the_true_answer("malformed");
+fn a_malformed_header_is_an_error_or_a_named_loss() {
+    assert_error_or_named_loss("malformed");
 }
 
 #[test]
-fn a_cat_file_that_exits_at_once_is_recovered_from() {
-    assert_recovers_the_true_answer("early_eof");
+fn a_cat_file_that_exits_at_once_is_an_error_or_a_named_loss() {
+    assert_error_or_named_loss("early_eof");
+}
+
+#[test]
+fn a_cat_file_that_fails_is_an_error_or_a_named_loss() {
+    assert_error_or_named_loss("fail");
 }
 
 #[test]
@@ -864,6 +866,118 @@ macro_rules! sweeps {
 }
 
 sweeps! {
+    python_impact: Python, Impact;
+    python_symbol: Python, Symbol;
+    python_pack: Python, Pack;
+    python_locate: Python, Locate;
+    typescript_impact: TypeScript, Impact;
+    typescript_symbol: TypeScript, Symbol;
+    typescript_pack: TypeScript, Pack;
+    typescript_locate: TypeScript, Locate;
+    rust_impact: Rust, Impact;
+    rust_symbol: Rust, Symbol;
+    rust_pack: Rust, Pack;
+    rust_locate: Rust, Locate;
+    kotlin_impact: Kotlin, Impact;
+    kotlin_symbol: Kotlin, Symbol;
+    kotlin_pack: Kotlin, Pack;
+    kotlin_locate: Kotlin, Locate;
+}
+
+// ---- every blob read of a run, failed in turn (arch migration, wave 2.5) ----
+
+// Read sweeps that fail today, test name -> the issue that tracks it. Checked
+// both ways, as `KNOWN_RED`.
+const READ_KNOWN_RED: &[(&str, &str)] = &[];
+
+/// Every blob the snapshot layer reads for one language's seed and one kind
+/// of query, failed in turn on either side of the range
+/// (`DIFFCTX_TEST_READ_FAULT=n` fails the n-th read): the answer is an error,
+/// a named loss or the whole truth, never a smaller answer that looks
+/// complete. The git sweep fails calls; this one fails the reads a caller can
+/// swallow (m3).
+fn read_sweep(id: &str, lang: Lang, query: Query) {
+    let knobs = Knobs {
+        stale: true,
+        extra_callers: 2,
+        ..Knobs::default()
+    };
+    let planted = seed(lang, Edit::Signature, &knobs);
+    let tmp = scratch();
+    planted.commit_into(&tmp.path().join("repo"));
+    let fx = Fixture {
+        tmp,
+        range: RANGE.to_string(),
+    };
+    let symbol = format!("{}:{}", planted.target_path, planted.target);
+    let args = query.args(&fx.range, &symbol);
+    let run = |fail: Option<usize>| {
+        let at = fail.map(|n| n.to_string());
+        let env: Vec<(&str, &str)> = at
+            .as_deref()
+            .map(|n| ("DIFFCTX_TEST_READ_FAULT", n))
+            .into_iter()
+            .collect();
+        fx.run_with("no-such-verb", "none", &args, &env)
+    };
+    let clean = run(None);
+    assert!(
+        clean.status.success(),
+        "{lang:?} {query:?}: the clean run failed: {}",
+        String::from_utf8_lossy(&clean.stderr)
+    );
+    let truth = query.claims(&json(&clean));
+    assert!(
+        !truth.is_empty(),
+        "{lang:?} {query:?}: the clean run claimed nothing, so the sweep measures nothing"
+    );
+    let mut broken: Vec<String> = Vec::new();
+    let mut struck = 0;
+    loop {
+        let out = run(Some(struck));
+        if !String::from_utf8_lossy(&out.stderr).contains("injected read fault") {
+            break;
+        }
+        if let Err(why) = verdict(query, &truth, &out) {
+            broken.push(format!("blob read {struck}: {why}"));
+        }
+        struck += 1;
+        assert!(struck < 5_000, "{lang:?} {query:?}: the sweep never ended");
+    }
+    assert!(
+        struck > 0,
+        "{lang:?} {query:?}: no read was struck, so the sweep measures nothing"
+    );
+    match READ_KNOWN_RED.iter().find(|(name, _)| *name == id) {
+        None => assert!(
+            broken.is_empty(),
+            "{lang:?} {query:?}: {} of {struck} failed reads left an answer that is neither an error nor a named loss\n{}",
+            broken.len(),
+            broken.join("\n")
+        ),
+        Some((_, issue)) => assert!(
+            !broken.is_empty(),
+            "{id} is listed as known red ({issue}) but passes: remove it from READ_KNOWN_RED"
+        ),
+    }
+}
+
+macro_rules! read_sweeps {
+    ($($name:ident: $lang:ident, $query:ident;)+) => {
+        mod every_blob_read_failed_in_turn {
+            use super::{Lang, Query, read_sweep};
+
+            $(
+                #[test]
+                fn $name() {
+                    read_sweep(stringify!($name), Lang::$lang, Query::$query);
+                }
+            )+
+        }
+    };
+}
+
+read_sweeps! {
     python_impact: Python, Impact;
     python_symbol: Python, Symbol;
     python_pack: Python, Pack;
