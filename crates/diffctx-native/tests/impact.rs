@@ -1216,6 +1216,107 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
     assert!(inside.contains("  - app/rates.py::_scale ("), "{md}");
 }
 
+/// A Python caller the same range changes is the diff's own line: it is named
+/// under the definition it calls as changed with it, never as a caller outside
+/// the diff, and the callers outside it are counted without it.
+#[test]
+fn a_python_caller_changed_in_the_range_is_named_apart_from_the_callers_outside_it() {
+    let rates = |k: u32| {
+        format!(
+            "def _scale(x):\n    return x * {k}\n\n\ndef quote(x):\n    return _scale(x) + {k}\n"
+        )
+    };
+    let tmp = repo(
+        &[
+            ("app/__init__.py", ""),
+            ("app/rates.py", &rates(2)),
+            (
+                "app/api.py",
+                "from app.rates import quote\n\n\ndef handler(x):\n    return quote(x)\n",
+            ),
+        ],
+        &[("app/rates.py", &rates(3))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let changed = doc["changed"].as_array().expect("changed");
+    let find = |name: &str| {
+        changed
+            .iter()
+            .find(|c| c["symbol"] == name)
+            .unwrap_or_else(|| panic!("{name} missing from {doc:#}"))
+    };
+    let quote = find("quote");
+    assert_eq!(quote["callers"][0]["path"], "app/api.py", "{doc:#}");
+    assert_eq!(quote["callers"][0]["evidence"], "resolved", "{doc:#}");
+    let scale = find("_scale");
+    assert_eq!(scale["callers"], serde_json::json!([]), "{doc:#}");
+    assert!(
+        scale["also_changed"][0]
+            .as_str()
+            .is_some_and(|s| s.starts_with("app/rates.py::quote (")),
+        "{doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.lines()
+            .next()
+            .is_some_and(|h| h.contains("1 caller(s) outside the diff")),
+        "{md}"
+    );
+    assert!(
+        md.contains("  - also changed in this diff: app/rates.py::quote ("),
+        "{md}"
+    );
+    assert!(!md.contains("called from app/rates.py"), "{md}");
+}
+
+/// A Python definition nothing calls is "nothing calls them" only while no use
+/// of its name was left unplaced: a read through a receiver nothing types may
+/// be one, and the answer says so instead of claiming an absence.
+#[test]
+fn a_python_absence_is_claimed_only_where_no_use_of_the_name_is_unplaced() {
+    let tmp = repo(
+        &[
+            (
+                "lib.py",
+                "def helper():\n    return 1\n\n\ndef lone():\n    return 1\n",
+            ),
+            ("app.py", "def run(box):\n    return box.helper\n"),
+            (
+                "tests/test_other.py",
+                "def test_nothing():\n    assert True\n",
+            ),
+        ],
+        &[(
+            "lib.py",
+            "def helper():\n    return 2\n\n\ndef lone():\n    return 2\n",
+        )],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("callers not resolved: 1 read(s) of `.helper`"),
+        "{md}"
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let names = |key: &str| -> Vec<String> {
+        doc[key]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| s.split(" (").next().unwrap_or(s).to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(names("untested_unlisted"), ["lib.py::lone"], "{doc:#}");
+    let helper = doc["changed"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["symbol"] == "helper"))
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    assert!(helper.get("untested").is_none(), "{doc:#}");
+}
+
 /// The withhold policy holds at the read, so no output surface can name a
 /// withheld file: a canary under `.diffctx/ignore` and a secret-named one
 /// call every changed and removed name and name the deleted path. Before
@@ -3916,7 +4017,7 @@ fn shedding_drops_guesses_before_contracts_and_the_header_counts_all() {
         write(
             repo,
             &format!("jobs/job_{i}.py"),
-            &format!("def nightly_{i}(ledger):\n    return ledger.reconcile_all()\n"),
+            &format!("import ledger\n\n\ndef nightly_{i}(w):\n    return w.reconcile_all()\n"),
         );
     }
     write(

@@ -826,8 +826,7 @@ fn a_deleted_function_is_not_called_by_a_parameter_or_a_docstring() {
 /// and a read through the instance its module builds (`from svc.config
 /// import settings`, `settings = AppSettings()`) is a caller of it. A read
 /// of a field the class keeps, the same field name on another class's
-/// instance, and the name in a string and a comment are not. Control: the
-/// class keeps its constructor callers.
+/// instance, and the name in a string and a comment are not.
 #[test]
 fn a_removed_field_is_read_through_the_instance_its_module_builds() {
     let config = |field: &str| {
@@ -863,14 +862,12 @@ fn a_removed_field_is_read_through_the_instance_its_module_builds() {
         &[("svc/config.py", &config(""))],
     );
     let doc = impact(tmp.path());
+    // The reader of the lost field is listed under the class that lost it
+    // (gh#400 of the corpus), and the class's constructor callers are not
+    // claimed: removing a field changes no construction site.
     assert_eq!(
-        evidenced(&doc, "svc/config.py", "bravo"),
+        evidenced(&doc, "svc/config.py", "AppSettings"),
         set(&["svc/job.py::run resolved -"]),
-        "{doc}"
-    );
-    assert_eq!(
-        callers(&doc, "svc/config.py", "AppSettings"),
-        set(&["svc/config.py::settings", "svc/factory.py::build"]),
         "{doc}"
     );
 }

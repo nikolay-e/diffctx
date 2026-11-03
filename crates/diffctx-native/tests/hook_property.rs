@@ -14,8 +14,10 @@
 //! the hook now reviews fails the suite until it moves to green, and a green
 //! one that fails is a regression. A red family is built so that every line
 //! in it shows the miss, so the baseline does not depend on the seed. The
-//! hook decides from git's record (T19); what is left red is a repository no
-//! line, cwd or earlier call of the session names (T21).
+//! hook decides from git's record (T19) and watches the repository the call
+//! starts in with its linked work trees: the green families are lines run
+//! from their own repository, however they spell the way to it, and what is
+//! red is a repository the call does not start in (T21, fj#127).
 //!
 //! `DIFFCTX_HOOK_PROPERTY_CASES` (default 6 lines per family and bash),
 //! `DIFFCTX_HOOK_PROPERTY_SEED` (a number; `random` for the nightly run),
@@ -30,6 +32,29 @@ use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestError, TestRunner};
 
 use hook::line::{Cwd, Join, Line, Op, Part, Reach, Repo, Wrapper};
+
+/// The line as an agent runs it in the repository its first part works in:
+/// the call starts there, whatever way the line spells to reach it.
+fn at_home(line: Line) -> Line {
+    let cwd = Cwd::In(line.parts[0].repo);
+    Line { cwd, ..line }
+}
+
+/// The line run from somewhere that is not the repository its first part
+/// works in.
+fn away(line: Line) -> Line {
+    let repo = line.parts[0].repo;
+    let cwd = if line.cwd == Cwd::In(repo) {
+        Cwd::Neutral
+    } else {
+        line.cwd
+    };
+    Line { cwd, ..line }
+}
+
+fn home(lines: BoxedStrategy<Line>) -> BoxedStrategy<Line> {
+    lines.prop_map(at_home).boxed()
+}
 
 const DEFAULT_SEED: u64 = 0x0508_0001;
 
@@ -118,22 +143,17 @@ fn commits_in_every_spelling_are_reviewed() {
     family(
         "commit_forms",
         Expect::Green,
-        &hook::strategies::commit_forms(),
-    );
-}
-
-#[test]
-fn a_line_in_two_repositories_answers_for_both() {
-    family(
-        "two_repositories",
-        Expect::Green,
-        &hook::strategies::two_repositories(),
+        &home(hook::strategies::commit_forms()),
     );
 }
 
 #[test]
 fn pushes_are_reviewed_as_git_printed_them() {
-    family("push_forms", Expect::Green, &hook::strategies::push_forms());
+    family(
+        "push_forms",
+        Expect::Green,
+        &home(hook::strategies::push_forms()),
+    );
 }
 
 #[test]
@@ -141,7 +161,7 @@ fn merges_picks_reverts_and_am_are_reviewed() {
     family(
         "integration_verbs",
         Expect::Green,
-        &hook::strategies::integration_verbs(),
+        &home(hook::strategies::integration_verbs()),
     );
 }
 
@@ -150,7 +170,7 @@ fn a_background_line_is_reviewed_at_the_next_event() {
     family(
         "background_lines",
         Expect::Green,
-        &hook::strategies::background_lines(),
+        &home(hook::strategies::background_lines()),
     );
 }
 
@@ -159,13 +179,17 @@ fn a_line_that_exits_non_zero_is_still_reviewed() {
     family(
         "failing_lines",
         Expect::Green,
-        &hook::strategies::failing_lines(),
+        &home(hook::strategies::failing_lines()),
     );
 }
 
 #[test]
 fn a_git_only_the_shell_runs_is_reviewed_or_reported() {
-    family("hidden_git", Expect::Green, &hook::strategies::hidden_git());
+    family(
+        "hidden_git",
+        Expect::Green,
+        &home(hook::strategies::hidden_git()),
+    );
 }
 
 #[test]
@@ -173,7 +197,7 @@ fn a_new_branch_on_a_pushed_one_reviews_only_its_own_commits() {
     family(
         "new_branches",
         Expect::Green,
-        &hook::strategies::new_branches(),
+        &home(hook::strategies::new_branches()),
     );
 }
 
@@ -340,17 +364,8 @@ fn an_unfinished_review_reaches_the_output_with_its_reason() {
 // What the hook rebuilt on git's record answers for (wave 3).
 
 #[test]
-fn a_commit_through_git_dir_from_elsewhere_is_reviewed() {
-    family(
-        "git_dir_elsewhere",
-        Expect::Green,
-        &hook::strategies::git_dir_elsewhere(),
-    );
-}
-
-#[test]
 fn a_rebase_is_reviewed() {
-    family("rebases", Expect::Green, &hook::strategies::rebases());
+    family("rebases", Expect::Green, &home(hook::strategies::rebases()));
 }
 
 /// A script that commits in the repository the call starts in is seen by
@@ -365,7 +380,7 @@ fn an_empty_commit_is_said_to_change_no_file() {
     family(
         "empty_commits",
         Expect::Green,
-        &hook::strategies::empty_commits(),
+        &home(hook::strategies::empty_commits()),
     );
 }
 
@@ -374,7 +389,7 @@ fn a_force_push_reviews_what_the_push_changed() {
     family(
         "force_pushes",
         Expect::Green,
-        &hook::strategies::force_pushes(),
+        &home(hook::strategies::force_pushes()),
     );
 }
 
@@ -383,7 +398,7 @@ fn a_push_over_a_peer_commit_says_it_publishes_it() {
     family(
         "pushes_over_a_peer_commit",
         Expect::Green,
-        &hook::strategies::pushes_over_a_peer_commit(),
+        &home(hook::strategies::pushes_over_a_peer_commit()),
     );
 }
 
@@ -392,7 +407,7 @@ fn a_peer_commit_in_the_window_is_read_as_changed_during_the_call() {
     family(
         "peer_commits_in_the_window",
         Expect::Green,
-        &hook::strategies::peer_commits_in_the_window(),
+        &home(hook::strategies::peer_commits_in_the_window()),
     );
 }
 
@@ -410,6 +425,29 @@ fn red_a_script_commits_in_a_repository_the_call_does_not_name() {
         },
         &scripts_elsewhere(),
     );
+}
+
+/// A commit in a repository the call does not start in, however the line
+/// names it (`cd`, `-C`, a subshell, a variable, `--git-dir`, `GIT_DIR`, a
+/// loop). git's record of the repository the call starts in holds nothing
+/// of it, so the line is not reviewed: the hook says it did not analyse it
+/// (fj#127).
+#[test]
+fn a_commit_in_a_repository_the_call_does_not_start_in_is_reported_unreviewed() {
+    let elsewhere = prop_oneof![
+        hook::strategies::commit_forms().prop_map(|mut line| {
+            line.parts.truncate(1);
+            away(line)
+        }),
+        hook::strategies::git_dir_elsewhere(),
+        Just(Line::new(
+            Cwd::Neutral,
+            vec![Part::new(Repo::A, Reach::Here, Op::LoopBoth)],
+            vec![Join::And],
+        )),
+    ]
+    .boxed();
+    family("elsewhere", Expect::Green, &elsewhere);
 }
 
 fn wrappers() -> BoxedStrategy<Wrapper> {

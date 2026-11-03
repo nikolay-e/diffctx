@@ -530,7 +530,7 @@ fn an_unresolved_receiver_is_a_possible_caller_and_counted_as_one() {
             ),
             (
                 "jobs.py",
-                "def nightly(ledger):\n    return ledger.reconcile_all()\n",
+                "import ledger\n\n\ndef nightly(w):\n    return w.reconcile_all()\n",
             ),
         ],
         &[(
@@ -694,6 +694,10 @@ fn a_spread_call_of_an_imported_function_is_a_caller() {
 fn a_context_manager_binds_its_target_and_no_binding_spans_lines() {
     let tmp = repo(
         &[
+            (
+                "server/pyproject.toml",
+                "[project]\nname = \"server\"\nversion = \"0.1.0\"\n",
+            ),
             ("server/src/srv/__init__.py", ""),
             (
                 "server/src/srv/app.py",
