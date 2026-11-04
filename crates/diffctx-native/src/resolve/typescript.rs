@@ -896,6 +896,8 @@ enum Entity {
     Def(usize),
     /// Annotated `any`: any class.
     Dynamic,
+    /// `this.constructor`: the class of the instance, or a class that extends it.
+    Meta(usize),
     /// What a module nothing places may offer under the name: every definition of
     /// it, or every default export.
     Maybe(Vec<usize>),
@@ -1348,7 +1350,18 @@ impl<'a> Engine<'a> {
                     .rev()
                     .find(|i| matches!(i.scope, Scope::Module) && i.local == *name)
                 {
-                    return Some(Named::Hit(self.import_hit(f, rec)));
+                    let hit = self.import_hit(f, rec);
+                    // `var path = require('path')` binds a variable of the file
+                    // too: where the module is no file of the repository, the
+                    // name is that variable.
+                    let declared = file.children.get(prefix).is_some_and(|ids| {
+                        ids.iter()
+                            .any(|id| self.ix.defs[*id].def.local.name == *name)
+                    });
+                    let outside = matches!(hit.entity, Entity::External | Entity::Unknown);
+                    if !(outside && declared) {
+                        return Some(Named::Hit(hit));
+                    }
                 }
             }
             if let Some(ids) = file.children.get(prefix) {
@@ -1985,7 +1998,35 @@ impl<'a> Engine<'a> {
                 }
             }
             Entity::Class(c) => self.class_member(*c, name, false, false),
-            Entity::Instance(c) => self.class_member(*c, name, false, true),
+            Entity::Instance(c) => {
+                if name.as_str() == "constructor" {
+                    return Lookup::Found {
+                        entity: Entity::Meta(*c),
+                        through: Vec::new(),
+                        inherited: false,
+                    };
+                }
+                self.class_member(*c, name, false, true)
+            }
+            Entity::Meta(c) => {
+                let own = self.class_member(*c, name, false, false);
+                let Lookup::Found {
+                    entity: Entity::Class(found) | Entity::Def(found),
+                    ..
+                } = own
+                else {
+                    return own;
+                };
+                let mut ids = vec![found];
+                for sub in self.subtypes_of(*c) {
+                    ids.extend(self.own_members(sub, name));
+                }
+                if ids.len() > 1 {
+                    Lookup::Dispatch(ids)
+                } else {
+                    own
+                }
+            }
             Entity::Super(c) => self.class_member(*c, name, true, false),
             Entity::Def(id) => match self.ix.defs[*id].def.kind {
                 DefKind::Variable | DefKind::Constant | DefKind::Field | DefKind::Property => {
@@ -2470,7 +2511,12 @@ impl<'a> Engine<'a> {
         };
         let reads = matches!(
             self.ix.defs[id].def.kind,
-            DefKind::Class | DefKind::Enum | DefKind::Variable | DefKind::Constant | DefKind::Field
+            DefKind::Class
+                | DefKind::Enum
+                | DefKind::Function
+                | DefKind::Variable
+                | DefKind::Constant
+                | DefKind::Field
         );
         if !reads || !self.reachable(f, id) {
             return None;
@@ -2695,7 +2741,7 @@ impl<'a> Engine<'a> {
                         reason: CandidateReason::ImportUnresolved,
                     },
                 ),
-                Entity::Instance(_) | Entity::Super(_) | Entity::Dynamic => {
+                Entity::Instance(_) | Entity::Super(_) | Entity::Dynamic | Entity::Meta(_) => {
                     unresolved(plain, UnresolvedReason::Opaque)
                 }
             },
@@ -2917,6 +2963,33 @@ impl<'a> Engine<'a> {
                     alias.clone().unwrap_or_else(|| name.clone()),
                     resolution,
                 ));
+            }
+            Export::Named {
+                site,
+                name,
+                from: None,
+                ..
+            } => {
+                let mut through = Vec::new();
+                let entity = self.module_name(f, name, 0, &mut through, &mut Seen::new());
+                if let Some(Entity::Class(id) | Entity::Def(id)) = entity {
+                    if self.ix.defs[id].file == f || self.reachable(f, id) {
+                        // The list names what it offers: a read of it.
+                        let mut read = make(
+                            site,
+                            name.clone(),
+                            Resolution::Resolved {
+                                target: self.ix.defs[id].key.clone(),
+                                evidence: Evidence::through(
+                                    EvidenceKind::SameScope,
+                                    self.paths(&through),
+                                ),
+                            },
+                        );
+                        read.relation = Relation::Reads;
+                        out.push(read);
+                    }
+                }
             }
             Export::Star { site, from, alias } => {
                 let resolution = match self.module(f, from.as_str()) {

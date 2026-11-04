@@ -1655,3 +1655,56 @@ fn object_literal_methods_are_called_and_an_interface_declaration_is_not_a_secon
         "candidate(UntypedReceiver) src/store.ts::useStore.save"
     );
 }
+
+/// `var path = require('path')` binds a variable of the file when the module is
+/// no file of the repository: the name is that variable, and a chain from it is
+/// a read of it.
+#[test]
+fn a_required_package_is_the_variable_that_holds_it() {
+    let fx = snapshot(&[(
+        "init.js",
+        "var setProto = require('setprototypeof')\nvar path = require('path')\nexports.init = function (app) {\n  return function expressInit(req) {\n    setProto(req, app)\n    return path.join('a')\n  }\n}\n",
+    )]);
+    let call = fx.at("init.js", "setProto", 5);
+    assert_eq!(call.relation, Relation::Calls);
+    assert_eq!(fx.lands(call), "init.js::setProto");
+    let read = fx.at("init.js", "path", 6);
+    assert_eq!(read.relation, Relation::Reads);
+    assert_eq!(fx.lands(read), "init.js::path");
+}
+
+/// `this.constructor.m()` is the class's own static or a subclass's.
+#[test]
+fn this_constructor_reaches_the_class_and_the_classes_that_extend_it() {
+    let fx = snapshot(&[(
+        "base.ts",
+        "export class Req {\n  constructor() {\n    this.constructor.norm(1);\n  }\n  static norm(a: number) {\n    return a;\n  }\n}\nexport class Sub extends Req {\n  static norm(a: number) {\n    return a + 1;\n  }\n}\n",
+    )]);
+    assert_eq!(
+        fx.lands_at("base.ts", "norm", 3),
+        "candidate(UntypedReceiver) base.ts::Req.norm, base.ts::Sub.norm"
+    );
+}
+
+/// An export list reads the names it offers; a function assigned to a member
+/// is a definition its callers find by name.
+#[test]
+fn export_lists_read_their_names_and_assigned_methods_are_called() {
+    let fx = snapshot(&[
+        (
+            "m.ts",
+            "const fire = () => 1;\nconst handle = () => 2;\nexport { fire, handle };\n",
+        ),
+        (
+            "router.js",
+            "var proto = module.exports = {};\nproto.handle = function handle(req) {\n  return req;\n};\nproto.run = function (req) {\n  return this.handle(req);\n};\n",
+        ),
+    ]);
+    let fire = fx.at("m.ts", "fire", 3);
+    assert_eq!(fire.relation, Relation::Reads);
+    assert_eq!(fx.lands(fire), "m.ts::fire");
+    assert_eq!(
+        fx.lands_at("router.js", "handle", 6),
+        "candidate(UntypedReceiver) router.js::proto.handle"
+    );
+}

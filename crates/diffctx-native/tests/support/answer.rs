@@ -15,7 +15,7 @@ fn text(value: &Value) -> &str {
 
 // Every caller of every changed definition, the test that reaches it, the
 // callers an answer says it could not resolve, and the stale references:
-// the claims an impact answer makes. Line numbers and weights are left out,
+// the claims an impact answer makes (the stubs of the answer cap apart). Line numbers and weights are left out,
 // so a transformation that moves code does not read as a changed answer.
 pub fn relations(doc: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
@@ -30,8 +30,11 @@ pub fn relations(doc: &Value) -> BTreeSet<String> {
                 out.insert(format!("{who} is tested by {test}"));
             }
         }
+        // A stub the answer cap left is a claim about the budget, not about
+        // the code: a larger budget lists the callers instead, and that
+        // replaces it.
         let unresolved = &changed["unresolved"];
-        if !unresolved.is_null() {
+        if !unresolved.is_null() && !text(unresolved).contains("omitted: the answer cap") {
             out.insert(format!("{target} has unresolved callers: {unresolved}"));
         }
     }

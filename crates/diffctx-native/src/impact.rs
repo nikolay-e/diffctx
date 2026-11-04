@@ -154,9 +154,14 @@ pub struct ImpactOutput {
     /// found, shown or shed, and keeps the possible ones apart (#413).
     #[serde(skip)]
     pub truncated_possible: usize,
-    /// Symbols shed whole; the header's definition count still holds them.
+    /// Symbols shed whole beyond the first, which the one entry for the shed
+    /// definitions stands for: `changed.len() + symbols_omitted` counts them all.
     #[serde(skip)]
     pub symbols_omitted: usize,
+    /// The tokens the answer took before shedding: the budget that shows a
+    /// shed symbol, which its stub names.
+    #[serde(skip)]
+    pub needs: u32,
     /// Of `truncated`, the callers no test reaches: a header that counts
     /// every caller found counts their test links the same way.
     #[serde(skip)]
@@ -318,6 +323,23 @@ pub struct ChangedSymbol {
     /// it, and the definition they call is live, not one nothing calls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also_changed: Vec<String>,
+    /// Callers the answer cap dropped, weakest first: of a listed symbol, the
+    /// ones missing from `callers`, which is then a lower bound; of an omitted
+    /// stub, its whole caller set. The same definition asked for alone may name
+    /// more.
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub callers_omitted: usize,
+    /// Only on the one entry that stands for the definitions the cap shed:
+    /// each of them, `path::name`, with the callers it had.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omitted: Vec<OmittedDefinition>,
+}
+
+/// A changed definition the answer cap shed, and the callers it was shed with.
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct OmittedDefinition {
+    pub definition: String,
+    pub callers_omitted: usize,
 }
 
 /// What the analysis cannot say about a definition's callers, and why
@@ -352,6 +374,10 @@ pub enum Unknown {
     /// The range pairs the definition's base and head sides in more than one
     /// way, so what changed in it, and who it reaches, is not determined.
     Unpaired { name: String },
+    /// The answer cap shed these definitions: they are changed and their
+    /// callers were found, but do not fit. `needs` is the budget, in the
+    /// answer's own tokens, that shows them; `count` is how many.
+    Omitted { needs: u32, count: usize },
 }
 
 impl std::fmt::Display for Unknown {
@@ -395,6 +421,10 @@ impl std::fmt::Display for Unknown {
             Self::Unpaired { name } => write!(
                 f,
                 "`{name}` has more than one counterpart on the other side of the range, so what changed in it is not determined and finding no callers does not mean there are none"
+            ),
+            Self::Omitted { needs, count } => write!(
+                f,
+                "{count} changed definition(s) omitted: the answer cap; --budget {needs} shows them"
             ),
         }
     }
@@ -480,6 +510,11 @@ pub(crate) fn is_unfinished(s: &ChangedSymbol) -> bool {
     matches!(s.unresolved, Some(Unknown::Unfinished { .. }))
 }
 
+/// The one entry that stands for the definitions the answer cap shed.
+pub(crate) fn is_omitted(s: &ChangedSymbol) -> bool {
+    matches!(s.unresolved, Some(Unknown::Omitted { .. }))
+}
+
 fn unfinished_symbol(
     path: String,
     symbol: Option<String>,
@@ -502,6 +537,8 @@ fn unfinished_symbol(
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed: Vec::new(),
+        callers_omitted: 0,
+        omitted: Vec::new(),
     }
 }
 
@@ -1216,6 +1253,13 @@ fn names_module(path: &str, own: &str, spells: impl Fn(&str) -> bool) -> bool {
             .into_iter()
             .flatten()
             .any(|w| spells(&w.to_string_lossy()))
+}
+
+/// A file the fragments set aside for its size, which the facts layer read
+/// whole: a use of the name in it was seen, or is reported as unresolved. A
+/// tree that broke is read in part, and its hedge stays.
+fn read_whole_by_a_cell(cells: &Cells, f: &UnanalysedFile) -> bool {
+    f.reason == "too_large" && cells.of(&f.path).is_some_and(|cell| cell.read(&f.path))
 }
 
 fn missed_namers(
@@ -2732,10 +2776,15 @@ fn cell_unknown(gap: &decide::Gap, name: &str) -> Unknown {
     }
 }
 
+/// The evidence of a row for a module that re-exports the definition: where
+/// it reaches the package's users, not a caller of it.
+const REEXPORT: &str = "reexport";
+
 /// A caller row as the resolver gave it, for a line no fragment owns: a
 /// script the fragmenter did not cut, or a file past its fragment cap.
 fn cell_row(u: &decide::Use) -> Caller {
     let finding = cell_finding(u);
+    let reexport = u.relation == crate::resolve::Relation::Reexports;
     let caller = match &u.scope {
         crate::facts::Scope::Def(local) => Some(local.name.as_str().to_string()),
         _ => None,
@@ -2751,14 +2800,16 @@ fn cell_row(u: &decide::Use) -> Caller {
         registered_by: None,
         unread_test: None,
         evidence: match finding.evidence {
+            _ if reexport => REEXPORT,
             Evidence::Resolved => "resolved",
             _ => "candidate",
         },
         reason: match finding.evidence {
-            Evidence::Candidate(r) => Some(r),
+            Evidence::Candidate(r) if !reexport => Some(r),
             _ => None,
         },
         relation: match finding.relation {
+            _ if reexport => "reexports",
             Relation::Reference => "reference",
             Relation::Implementation => "implementation",
             Relation::Call => "call",
@@ -2792,6 +2843,8 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed,
+        callers_omitted: 0,
+        omitted: Vec::new(),
     }
 }
 
@@ -3516,6 +3569,10 @@ pub fn build_impact(
         // Uses on lines no fragment owns keep the resolver's own row.
         let mut loose: Vec<Caller> = Vec::new();
         for u in verdict.iter().flat_map(|v| v.uses.iter()) {
+            if u.relation == crate::resolve::Relation::Reexports && !u.also_changed {
+                loose.push(cell_row(u));
+                continue;
+            }
             let Some(frag) = files
                 .fragments
                 .get(crate::paths::join_native(&state.root_dir, &u.file).as_str())
@@ -4025,7 +4082,10 @@ pub fn build_impact(
                 .is_some_and(|class| tests.tested_by(class, state, &by_id, &link).is_some());
         untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
-            let n = callers.iter().filter(|c| c.evidence != "candidate").count();
+            let n = callers
+                .iter()
+                .filter(|c| !matches!(c.evidence, "candidate" | REEXPORT))
+                .count();
             callers.clear();
             n
         } else {
@@ -4042,6 +4102,7 @@ pub fn build_impact(
             .unwrap_or_default()
             .into_iter()
             .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
+            .filter(|f| !read_whole_by_a_cell(&cells, f))
             .collect();
         if callers.is_empty()
             && compatible_callers == 0
@@ -4052,6 +4113,7 @@ pub fn build_impact(
                 .of(core)
                 .into_iter()
                 .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
+                .filter(|f| !read_whole_by_a_cell(&cells, f))
                 .collect();
         }
         // A function defined inside another is named only there (#546).
@@ -4123,6 +4185,8 @@ pub fn build_impact(
             compatible_callers,
             missed_in,
             also_changed,
+            callers_omitted: 0,
+            omitted: Vec::new(),
         });
     }
     drop(callers);
@@ -4430,6 +4494,7 @@ pub fn build_impact(
         truncated: 0,
         truncated_possible: 0,
         symbols_omitted: 0,
+        needs: 0,
         truncated_untested: 0,
         truncated_textual: 0,
         changed_files_omitted: 0,
@@ -4712,6 +4777,8 @@ fn removed_by_models(
                 compatible_callers: 0,
                 missed_in: Vec::new(),
                 also_changed: Vec::new(),
+                callers_omitted: 0,
+                omitted: Vec::new(),
             },
             contract,
         ));
@@ -5004,6 +5071,8 @@ fn removed_definitions(
                 compatible_callers: 0,
                 missed_in: Vec::new(),
                 also_changed: Vec::new(),
+                callers_omitted: 0,
+                omitted: Vec::new(),
             },
             contract,
         ));
@@ -6046,6 +6115,8 @@ fn serialized_tokens(output: &ImpactOutput) -> u32 {
 fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput) -> u32) {
     output.cap = cap;
     let fits = |o: &ImpactOutput| measure(o) <= cap;
+    // What showing everything would take, to the next hundred tokens.
+    output.needs = measure(output).div_ceil(100) * 100;
     let mut stride = 1;
     while !fits(output) {
         let mut ahead = output.clone();
@@ -6160,6 +6231,7 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     {
         if let Some(i) = sym.callers.iter().rposition(is_textual) {
             sym.callers.remove(i);
+            sym.callers_omitted += 1;
             output.truncated += 1;
             output.truncated_textual += 1;
             return true;
@@ -6173,6 +6245,7 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     {
         if let Some(i) = sym.callers.iter().rposition(|x| x.evidence == "candidate") {
             sym.callers.remove(i);
+            sym.callers_omitted += 1;
             output.truncated += 1;
             output.truncated_possible += 1;
             return true;
@@ -6189,8 +6262,7 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         .iter()
         .rposition(|c| c.callers.is_empty() && c.unresolved.is_none() && c.compatible_callers == 0)
     {
-        output.changed.remove(i);
-        output.symbols_omitted += 1;
+        omit(output, i);
         return true;
     }
     // A definition the run never searched goes into a count the header keeps.
@@ -6206,6 +6278,9 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     if shed_weakest_caller(output) {
         return true;
     }
+    if trim_omitted(output) {
+        return true;
+    }
     // A file still naming a deleted or renamed path is a defect, not a
     // caller to check: it outlives every caller row, first entries kept
     // (#600).
@@ -6216,11 +6291,79 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     false
 }
 
+/// A shed symbol is not dropped: it joins the one entry that names the
+/// definitions the cap left out, with the callers it had, and what shows them.
+/// Dropped silently it would read as a definition nothing calls.
+fn omit(output: &mut ImpactOutput, i: usize) {
+    let needs = output.needs;
+    let sym = output.changed.remove(i);
+    let gone = OmittedDefinition {
+        definition: match &sym.symbol {
+            Some(name) => format!("{}::{name}", sym.path),
+            None => sym.path.clone(),
+        },
+        callers_omitted: sym.callers.len() + sym.callers_omitted,
+    };
+    match output.changed.iter_mut().find(|c| is_omitted(c)) {
+        Some(entry) => {
+            if let Some(Unknown::Omitted { count, .. }) = &mut entry.unresolved {
+                *count += 1;
+            }
+            entry.callers_omitted += gone.callers_omitted;
+            entry.omitted.push(gone);
+            entry.omitted.sort_by(|a, b| {
+                b.callers_omitted
+                    .cmp(&a.callers_omitted)
+                    .then_with(|| a.definition.cmp(&b.definition))
+            });
+            output.symbols_omitted += 1;
+        }
+        None => output.changed.push(ChangedSymbol {
+            path: "(changed definitions)".to_string(),
+            symbol: None,
+            lines: String::new(),
+            kind: "omitted".to_string(),
+            commits: 0,
+            callers: Vec::new(),
+            entry: None,
+            unresolved: Some(Unknown::Omitted { needs, count: 1 }),
+            untested: false,
+            compatible_callers: 0,
+            missed_in: Vec::new(),
+            also_changed: Vec::new(),
+            callers_omitted: gone.callers_omitted,
+            omitted: vec![gone],
+        }),
+    }
+}
+
+/// When even the entry outgrows the cap, its list gives up the names with the
+/// fewest callers; the count and the callers stay whole, and the first name, the
+/// definition with the most callers, stays: which definition the answer is
+/// silent about outweighs a placeholder for a contract.
+fn trim_omitted(output: &mut ImpactOutput) -> bool {
+    output
+        .changed
+        .iter_mut()
+        .find(|c| is_omitted(c))
+        .is_some_and(|entry| entry.omitted.len() > 1 && entry.omitted.pop().is_some())
+}
+
 fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
     // A symbol's only caller goes last: while another symbol still has a
     // tail to shed, dropping a whole symbol would make the selection look
     // arbitrary, one function listed with all its callers and another
     // with none (#386).
+    // Equal weights shed from the symbol with the most callers, so a commit
+    // that changes forty definitions keeps all of them to the last; then the
+    // path and the first line decide, never "the first in the file".
+    let first_line = |c: &ChangedSymbol| {
+        c.lines
+            .split('-')
+            .next()
+            .and_then(|n| n.parse::<u32>().ok())
+            .unwrap_or(0)
+    };
     let weakest_among = |min_callers: usize| {
         output
             .changed
@@ -6231,6 +6374,9 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
                 let wa = a.callers.last().map(|c| c.weight).unwrap_or(0.0);
                 let wb = b.callers.last().map(|c| c.weight).unwrap_or(0.0);
                 wa.total_cmp(&wb)
+                    .then_with(|| b.callers.len().cmp(&a.callers.len()))
+                    .then_with(|| a.path.cmp(&b.path))
+                    .then_with(|| first_line(a).cmp(&first_line(b)))
             })
             .map(|(i, _)| i)
     };
@@ -6240,19 +6386,29 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
         // whole once that is all it has left, never one caller at a time.
         Some(i) if output.changed[i].callers.len() > 1 => {
             let shed = output.changed[i].callers.pop();
+            output.changed[i].callers_omitted += 1;
             output.truncated_untested += usize::from(shed.as_ref().is_some_and(without_test_link));
             output.truncated += 1;
             true
         }
         Some(i) if output.changed[i].unresolved.is_none() => {
             output.truncated += output.changed[i].callers.len();
+            output.truncated_possible += output.changed[i]
+                .callers
+                .iter()
+                .filter(|c| c.evidence == "candidate")
+                .count();
+            output.truncated_textual += output.changed[i]
+                .callers
+                .iter()
+                .filter(|c| is_textual(c))
+                .count();
             output.truncated_untested += output.changed[i]
                 .callers
                 .iter()
                 .filter(|c| without_test_link(c))
                 .count();
-            output.changed.remove(i);
-            output.symbols_omitted += 1;
+            omit(output, i);
             true
         }
         _ => false,
@@ -6388,7 +6544,10 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
     // to list: one line names them, and the count is whole.
     let stalled = |s: &ChangedSymbol| quiet(s) && is_unfinished(s);
     let folded = |s: &ChangedSymbol| {
-        (fold && too_common(s)) || dispatched(s).is_some_and(|t| shared.contains(&t)) || stalled(s)
+        (fold && too_common(s))
+            || dispatched(s).is_some_and(|t| shared.contains(&t))
+            || stalled(s)
+            || is_omitted(s)
     };
     for sym in output.changed.iter().filter(|s| !folded(s)) {
         write_symbol(&mut out, sym, output.tests_known, compact);
@@ -6402,6 +6561,7 @@ fn render(output: &ImpactOutput, compact: bool) -> String {
             .filter(|s| stalled(s))
             .collect::<Vec<_>>(),
     );
+    write_omitted(&mut out, output);
     if fold {
         write_too_common(&mut out, output.changed.iter().filter(|s| too_common(s)));
     }
@@ -6453,6 +6613,48 @@ fn write_unfinished(out: &mut String, output: &ImpactOutput, stalled: &[&Changed
         } else {
             String::new()
         },
+    );
+}
+
+/// The definitions the cap shed: one line, the count whole, the budget that
+/// shows them, and each with the callers it had.
+fn write_omitted(out: &mut String, output: &ImpactOutput) {
+    let Some(entry) = output.changed.iter().find(|s| is_omitted(s)) else {
+        return;
+    };
+    let Some(Unknown::Omitted { needs, count }) = &entry.unresolved else {
+        return;
+    };
+    let named: Vec<String> = entry
+        .omitted
+        .iter()
+        .map(|d| format!("{} ({})", d.definition, d.callers_omitted))
+        .collect();
+    // The sentence is whole whatever the list kept; the names follow it, and a
+    // trimmed list ends in how many it left out.
+    let _ = writeln!(
+        out,
+        "- {count} changed definition(s) omitted: the answer cap; `--budget {needs}` shows them{}. Finding no callers here does not mean there are none.{}",
+        if entry.callers_omitted > 0 {
+            format!(
+                " (their {} caller(s) are not listed)",
+                entry.callers_omitted
+            )
+        } else {
+            String::new()
+        },
+        if named.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " Omitted: {}{}",
+                named.join(", "),
+                match count.saturating_sub(named.len()) {
+                    0 => String::new(),
+                    more => format!(", and {more} more"),
+                }
+            )
+        }
     );
 }
 
@@ -6581,6 +6783,7 @@ pub(crate) fn symbol_named_output(
         truncated: 0,
         truncated_possible: 0,
         symbols_omitted: 0,
+        needs: 0,
         truncated_untested: 0,
         truncated_textual: 0,
         changed_files_omitted: 0,
@@ -6657,7 +6860,7 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
     let unresolved: Vec<&str> = output
         .changed
         .iter()
-        .filter(|c| c.unresolved.is_some() && !is_unfinished(c))
+        .filter(|c| c.unresolved.is_some() && !is_unfinished(c) && !is_omitted(c))
         .map(|c| c.symbol.as_deref().unwrap_or(&c.path))
         .collect();
     let unresolved_names = {
@@ -7012,7 +7215,15 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     }
     write_resolved_callers(out, sym, tests_known);
     write_candidate_callers(out, sym, compact);
+    write_reexports(out, sym);
     write_also_changed(out, sym);
+    if sym.callers_omitted > 0 {
+        let _ = writeln!(
+            out,
+            "  - {} more caller(s) omitted to fit the cap",
+            sym.callers_omitted
+        );
+    }
 }
 
 /// Callers that are changed in the range too: the diff's own lines, so they
@@ -7079,6 +7290,16 @@ fn write_resolved_callers(out: &mut String, sym: &ChangedSymbol, tests_known: bo
             } else {
                 String::new()
             }
+        );
+    }
+}
+
+fn write_reexports(out: &mut String, sym: &ChangedSymbol) {
+    for c in sym.callers.iter().filter(|c| c.evidence == REEXPORT) {
+        let _ = writeln!(
+            out,
+            "  - re-exported from {}",
+            label(&c.path, None, &c.lines)
         );
     }
 }

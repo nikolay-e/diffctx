@@ -108,3 +108,45 @@ def test_resolver_picks_by_name_and_overlap_and_falls_back():
     assert resolve("m.py", "run", "11-13") == "m.py::run"
     assert resolve("m.py", None, None) == "m.py::<module>"
     assert resolve("n.py", "ghost", "1-2") == "n.py::ghost"
+
+
+def test_a_symbol_the_cap_cut_or_shed_is_partial_and_an_uncapped_one_with_a_miss_is_not():
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build")]
+    listed = [caller("shop/checkout.py", "charge", "1-3")]
+
+    cut = answer(listed, callers_omitted=1)
+    cells, _ = compare(TARGET, truth, cut)
+    assert (cells[0]["tp"], cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, 1, False, True)
+
+    cut_to_nothing = answer([], callers_omitted=2)
+    cells, _ = compare(TARGET, truth, cut_to_nothing)
+    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (2, False, True)
+
+    stub = answer([], unresolved="omitted to fit the cap: callers not listed")
+    cells, _ = compare(TARGET, truth, stub)
+    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (2, False, True)
+
+    uncapped = answer(listed)
+    cells, _ = compare(TARGET, truth, uncapped)
+    assert (cells[0]["tp"], cells[0]["fn"], cells[0]["abstained"]) == (1, 1, False)
+
+    silent = answer([])
+    cells, _ = compare(TARGET, truth, silent)
+    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (2, True, False)
+
+
+def test_definitions_shed_into_the_one_omitted_entry_are_partial_answers():
+    data = {
+        "changed": [
+            {
+                "path": "(changed definitions)",
+                "kind": "omitted",
+                "unresolved": "1 changed definition(s) omitted: the answer cap; --budget 300 shows them",
+                "callers_omitted": 2,
+                "omitted": [{"definition": "shop/checkout.py::charge", "callers_omitted": 2}],
+            }
+        ]
+    }
+    parsed = parse_answer(data, make_resolver(lambda _path: []))
+    shed = parsed.targets["shop/checkout.py::charge"]
+    assert (shed.callers_omitted, bool(shed.unresolved)) == (2, True)

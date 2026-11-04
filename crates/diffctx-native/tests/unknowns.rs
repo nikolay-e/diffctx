@@ -1930,7 +1930,10 @@ fn a_language_without_a_model_never_claims_an_absence() {
 
 /// #505, #591: a hedge needs reach. A file over the size cap that spells a
 /// changed name but never names its module calls another of that name, so
-/// it is no "callers may be missing"; one that imports the module keeps it.
+/// it is no "callers may be missing". One that imports the module is read whole
+/// by the facts layer: its calls are listed as callers, and no hedge is due
+/// for what was read. A hedge stays for a file the facts layer read only in
+/// part (`a_broken_parse_hedges_only_callers_of_its_own_runtime`).
 #[test]
 fn a_hedge_needs_reach() {
     let pad = |n: usize| -> String {
@@ -1948,26 +1951,34 @@ fn a_hedge_needs_reach() {
         ("reports/__init__.py", ""),
     ];
     let change: &[(&str, &str)] = &[("billing/years.py", "def summary(x):\n    return x + 1\n")];
-    let missed = |extra: (&str, String)| {
+    let answer = |extra: (&str, String)| {
         let mut files: Vec<(&str, &str)> = base.to_vec();
         files.push((extra.0, extra.1.as_str()));
         let tmp = repo(&files, change);
         let len = std::fs::metadata(tmp.path().join(extra.0)).unwrap().len();
         assert!(len > 100_000, "{} is {len} bytes, under the cap", extra.0);
-        let doc = impact_json(tmp.path());
-        doc["changed"][0]["missed_in"].clone()
+        impact_json(tmp.path())["changed"][0].clone()
+    };
+    let in_file = |changed: &serde_json::Value, path: &str| {
+        changed["callers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|c| c["path"] == path)
     };
     let unrelated = format!("def summary(x):\n    return x\n{}", pad(4000));
+    let changed = answer(("reports/engine.py", unrelated));
     assert!(
-        missed(("reports/engine.py", unrelated)).is_null(),
-        "a file that never names billing cannot call billing.years.summary"
+        changed["missed_in"].is_null() && !in_file(&changed, "reports/engine.py"),
+        "a file that never names billing cannot call billing.years.summary: {changed}"
     );
     let importer = format!("from billing.years import summary\n{}", pad(4000));
-    assert_eq!(
-        missed(("reports/engine.py", importer))[0]["path"],
-        "reports/engine.py",
-        "a file that imports the module keeps its hedge"
+    let changed = answer(("reports/engine.py", importer));
+    assert!(
+        in_file(&changed, "reports/engine.py"),
+        "a file that imports the module is read whole and its calls are callers: {changed}"
     );
+    assert!(changed["missed_in"].is_null(), "{changed}");
 }
 
 /// #644: a bare file name names any file of that name. With a root and a

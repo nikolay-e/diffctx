@@ -454,6 +454,19 @@
           "items": {
             "type": "string"
           }
+        },
+        "callers_omitted": {
+          "description": "Callers the answer cap dropped, weakest first: of a listed symbol, the\nones missing from `callers`, which is then a lower bound; of an omitted\nstub, its whole caller set. The same definition asked for alone may name\nmore.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "omitted": {
+          "description": "Only on the one entry that stands for the definitions the cap shed:\neach of them, `path::name`, with the callers it had.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OmittedDefinition"
+          }
         }
       },
       "required": [
@@ -575,6 +588,24 @@
       "required": [
         "path",
         "reason"
+      ]
+    },
+    "OmittedDefinition": {
+      "description": "A changed definition the answer cap shed, and the callers it was shed with.",
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "string"
+        },
+        "callers_omitted": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "definition",
+        "callers_omitted"
       ]
     },
     "Contract": {

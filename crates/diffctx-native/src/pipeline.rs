@@ -105,6 +105,10 @@ pub struct ScoredState {
     pub hunk_texts: Vec<crate::change_class::HunkText>,
     /// See `ScoredFragments::changed_lines`.
     pub changed_lines: FxHashMap<FragmentId, f64>,
+    /// The pathspecs that narrow the run (`paths`, or the subtree it was asked
+    /// about); empty for the whole repository. What answers from a snapshot
+    /// reads the files inside it alone.
+    pub scope: Vec<String>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -1579,6 +1583,7 @@ pub fn compute_scored_state_anchored(
         analysed_range: resolved_range.clone(),
         hunk_texts,
         changed_lines,
+        scope,
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
@@ -2834,6 +2839,7 @@ fn empty_scored_state(
         analysed_range: None,
         hunk_texts: Vec::new(),
         changed_lines: FxHashMap::default(),
+        scope: Vec::new(),
     }
 }
 

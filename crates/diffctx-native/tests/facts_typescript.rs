@@ -1218,3 +1218,56 @@ fn the_methods_of_an_object_literal_a_constant_holds_are_its_definitions() {
         vec!["cart Constant", "cart.total Method", "cart.tax Method"]
     );
 }
+
+#[test]
+fn the_members_of_an_interface_or_object_type_are_part_of_the_type() {
+    let body = |source: &str, name: &str| def_named(&ts(source), name).body_hash;
+    let iface = |ty: &str| format!("export interface Opts {{\n  a: {ty};\n  b: number;\n}}\n");
+    assert_ne!(
+        body(&iface("string"), "Opts@type"),
+        body(&iface("number"), "Opts@type"),
+        "a member's type is the interface's"
+    );
+    let facts = ts(&iface("string"));
+    let member = def_named(&facts, "Opts.a");
+    assert_eq!(member.body_hash, 0, "a member has no body to pair by");
+    assert_ne!(member.text_hash, 0, "and is a definition of its own");
+    let alias = |ty: &str| format!("export type Opts = {{ a: {ty}; b: number }};\n");
+    assert_ne!(
+        body(&alias("string"), "Opts@type"),
+        body(&alias("number"), "Opts@type")
+    );
+}
+
+#[test]
+fn a_function_assigned_to_a_member_defines_a_method_and_holds_its_own_functions() {
+    let facts = js(r#"var proto = module.exports = function () {};
+proto.handle = function handle(req) {
+  function next(err) { return trim(err); }
+  function trim(x) { return x; }
+  return next();
+};
+Foo.prototype.bar = function () { return 1; };
+res.send = (x) => x;
+exports.keep = function () {};
+"#);
+    let named = defs(&facts);
+    for expected in [
+        "proto.handle Method",
+        "proto.handle.next Function",
+        "proto.handle.trim Function",
+        "Foo.bar Method",
+        "res.send Method",
+    ] {
+        assert!(
+            named.contains(&expected.to_string()),
+            "{expected} not in {named:?}"
+        );
+    }
+    assert_eq!(
+        ref_named(&facts, "handle").len(),
+        1,
+        "the write stays: it reads `proto`"
+    );
+    assert!(refs(&facts).contains(&"Call trim in def proto.handle.next".to_string()));
+}

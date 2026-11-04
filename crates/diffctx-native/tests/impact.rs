@@ -4040,9 +4040,157 @@ fn shedding_drops_guesses_before_contracts_and_the_header_counts_all() {
         "ALTER TABLE a ADD c int;\n",
     );
     commit_all(repo, "change");
-    let md = impact_budget_md(repo, "100");
-    assert!(md.contains("migrations/0002_add.sql"), "{md}");
-    assert!(md.contains("12 possible"), "{md}");
+    // At every budget the header counts all twelve guesses, no budget
+    // changes it to "unresolved", and while a guess is still listed the
+    // contract is too: the guesses are shed first. Tighter, the symbol is
+    // named in the one omitted entry.
+    let (mut with_guess, mut without) = (0, 0);
+    for budget in (100..=200).step_by(10) {
+        let md = impact_budget_md(repo, &budget.to_string());
+        let header = md.lines().next().unwrap_or("");
+        assert!(
+            header.contains("0 caller(s) outside the diff, 12 possible"),
+            "{budget}: {md}"
+        );
+        if md.contains("possibly called from") {
+            with_guess += 1;
+            assert!(md.contains("migrations/0002_add.sql"), "{budget}: {md}");
+        } else {
+            without += 1;
+            assert!(md.contains("ledger.py::reconcile_all"), "{budget}: {md}");
+        }
+        assert!(!md.contains("there are none, and"), "{budget}: {md}");
+    }
+    assert!(with_guess > 0 && without > 0, "{with_guess} {without}");
+}
+
+/// The cap sheds callers, then definitions; a definition it sheds stays as a stub
+/// that says so, in the JSON and in the text, because an answer that leaves a
+/// changed class out without a word reads as "nothing calls it". Forty changed
+/// classes with three callers each do not fit 2000 tokens.
+#[test]
+fn every_changed_class_appears_with_callers_or_as_an_omitted_stub() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for i in 0..40 {
+        write(
+            repo,
+            &format!("pkg/m{i:02}.py"),
+            &format!("class C{i:02}:\n    pass\n"),
+        );
+        for k in 0..3 {
+            write(
+                repo,
+                &format!("use/u{i:02}_{k}.py"),
+                &format!(
+                    "from pkg.m{i:02} import C{i:02}\n\n\ndef make_{i:02}_{k}():\n    return C{i:02}()\n"
+                ),
+            );
+        }
+    }
+    commit_all(repo, "base");
+    for i in 0..40 {
+        write(
+            repo,
+            &format!("pkg/m{i:02}.py"),
+            &format!("class C{i:02}(object):\n    pass\n"),
+        );
+    }
+    commit_all(repo, "change");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let changed = doc["changed"].as_array().expect("changed");
+    let (mut listed, mut named, mut entries) = (0, Vec::new(), 0);
+    for entry in changed {
+        if entry["symbol"].is_null() {
+            // The one entry that stands for every definition the cap shed.
+            entries += 1;
+            let note = entry["unresolved"].as_str().unwrap_or("");
+            assert!(
+                note.contains("changed definition(s) omitted: the answer cap; --budget "),
+                "{entry}"
+            );
+            let shed = entry["omitted"].as_array().expect("the shed definitions");
+            assert_eq!(
+                note.split_whitespace().next().and_then(|n| n.parse().ok()),
+                Some(shed.len()),
+                "the count is whole: {entry}"
+            );
+            for definition in shed {
+                assert_eq!(definition["callers_omitted"], 3, "{definition}");
+                named.push(definition["definition"].as_str().expect("name").to_string());
+            }
+            assert_eq!(entry["callers_omitted"], 3 * shed.len(), "{entry}");
+        } else {
+            assert!(
+                entry["callers"].as_array().is_some_and(|c| !c.is_empty()),
+                "a listed definition keeps its strongest caller: {entry}"
+            );
+            listed += 1;
+        }
+    }
+    assert_eq!(entries, 1, "{doc}");
+    assert_eq!(listed + named.len(), 40, "{doc}");
+    assert!(
+        !named.is_empty(),
+        "the shape must overflow the cap to mean anything: {doc}"
+    );
+    assert!(
+        listed >= 1,
+        "individual stubs must not eat the budget: {doc}"
+    );
+    named.sort();
+    named.dedup();
+    assert_eq!(
+        listed + named.len(),
+        40,
+        "a definition is named twice: {doc}"
+    );
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        md.contains("changed definition(s) omitted: the answer cap"),
+        "{md}"
+    );
+    assert!(md.contains("--budget"), "{md}");
+    assert!(md.contains("  - called from "), "{md}");
+    assert!(md.contains(".py::C") && md.contains(" (3)"), "{md}");
+}
+
+/// A removed definition whose pairing with the head is ambiguous (two new classes
+/// each gained a body equal to the one that left) is reported, as not
+/// determined, and not dropped: its absence would read as "nothing was removed".
+#[test]
+fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def __init__(self, request):\n        self.request = request\n\n    def decode(self, data):\n        return data\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def decode(self, data):\n        return data\n\n\nclass One:\n    def __init__(self, request):\n        self.request = request\n\n\nclass Two:\n    def __init__(self, request):\n        self.request = request\n",
+    );
+    commit_all(repo, "change");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let gone: Vec<&serde_json::Value> = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .filter(|c| c["symbol"] == "request" && c["kind"] == "removed")
+        .collect();
+    assert_eq!(gone.len(), 1, "{doc}");
+    assert_eq!(gone[0]["lines"], "3-3", "{doc}");
+    assert!(
+        gone[0]["unresolved"]
+            .as_str()
+            .is_some_and(|u| u.contains("more than one counterpart")),
+        "{doc}"
+    );
 }
 
 /// #456: prose and comments the same change wrote about a deletion are its
@@ -4757,4 +4905,108 @@ fn a_key_search_stopped_at_any_poll_answers_a_subset_or_the_whole() {
             assert_eq!(got, truth, "poll {n}: a smaller answer that looks complete");
         }
     }
+}
+
+/// `path::symbol (lines)` of every caller listed under the definition of
+/// `name` in `path`, with its evidence.
+fn listed_callers(
+    doc: &serde_json::Value,
+    path: &str,
+    name: &str,
+) -> std::collections::BTreeSet<String> {
+    let def = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|c| c["path"] == path && c["symbol"] == name)
+        .unwrap_or_else(|| panic!("{name} missing from {doc:#}"));
+    def["callers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| {
+            format!(
+                "{}::{} {} {}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or(""),
+                c["lines"].as_str().unwrap_or(""),
+                c["evidence"].as_str().unwrap_or("")
+            )
+        })
+        .collect()
+}
+
+/// Impact and `--symbol` read one resolver: the callers of a definition are
+/// the same set in both, here a method called through `this` from another
+/// method of its class and from a derived class's.
+#[test]
+fn impact_and_symbol_name_the_same_callers_of_a_definition() {
+    let base = |body: &str| {
+        format!(
+            "export class Base {{\n  protected normalize(x: number): number {{\n    return {body};\n  }}\n\n  run(x: number): number {{\n    return this.normalize(x);\n  }}\n}}\n"
+        )
+    };
+    let tmp = repo(
+        &[
+            ("src/base.ts", &base("x")),
+            (
+                "src/derived.ts",
+                "import { Base } from './base';\n\nexport class Derived extends Base {\n  go(x: number): number {\n    return this.normalize(x) + 1;\n  }\n}\n",
+            ),
+        ],
+        &[("src/base.ts", &base("x + 0"))],
+    );
+    let from_impact = impact(tmp.path(), "HEAD~1..HEAD");
+    let out = diffctx()
+        .current_dir(tmp.path())
+        .args(["--symbol", "normalize", "-q"])
+        .output()
+        .expect("run diffctx");
+    assert!(out.status.success());
+    let from_symbol: serde_json::Value = serde_json::from_slice(&out.stdout).expect("symbol JSON");
+    let named = listed_callers(&from_impact, "src/base.ts", "normalize");
+    assert_eq!(named.len(), 2, "{from_impact:#}");
+    assert_eq!(
+        named,
+        listed_callers(&from_symbol, "src/base.ts", "normalize"),
+        "{from_impact:#}\n{from_symbol:#}"
+    );
+}
+
+/// A cap that drops callers says so on the definition it dropped them from,
+/// so a shorter list is never read as the whole one.
+#[test]
+fn a_definition_whose_callers_the_cap_dropped_counts_them() {
+    let shared = |body: &str| {
+        format!("export function shared(x: number): number {{\n  return {body};\n}}\n")
+    };
+    let callers: Vec<(String, String)> = (0..150)
+        .map(|i| {
+            (
+                format!("src/callers/caller_{i}.ts"),
+                format!(
+                    "import {{ shared }} from '../shared';\n\nexport function caller_{i}(): number {{\n  return shared({i});\n}}\n"
+                ),
+            )
+        })
+        .collect();
+    let mut base: Vec<(&str, &str)> = vec![];
+    let first = shared("x");
+    base.push(("src/shared.ts", first.as_str()));
+    for (path, text) in &callers {
+        base.push((path.as_str(), text.as_str()));
+    }
+    let changed = shared("x + 0");
+    let tmp = repo(&base, &[("src/shared.ts", changed.as_str())]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let def = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|c| c["symbol"] == "shared")
+        .unwrap_or_else(|| panic!("shared missing from {doc:#}"));
+    let listed = def["callers"].as_array().map_or(0, Vec::len);
+    let omitted = def["callers_omitted"].as_u64().unwrap_or(0) as usize;
+    assert!(omitted > 0, "the cap kept all {listed} callers: {doc:#}");
+    assert_eq!(listed + omitted, 150, "{doc:#}");
 }
