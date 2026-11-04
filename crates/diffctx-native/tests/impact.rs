@@ -2923,10 +2923,13 @@ fn removed_methods_of_split_classes_and_singleton_methods_are_named() {
         )],
     );
     let md = impact_markdown(ts.path(), "HEAD~1..HEAD");
-    // The file imports the class, so a binding model checked the row: the
-    // receiver is unknown, which reads "possible", not a word match.
+    // The receiver is typed `Store`, so at the base the call resolved to the
+    // method: a use the head still spells is a caller that broke, not a
+    // possible one, and never a word match.
     assert!(
-        md.contains("possibly called from use.ts::persist") && !md.contains("use.ts:4 names save"),
+        md.contains("called from use.ts::persist")
+            && !md.contains("possibly called from use.ts::persist")
+            && !md.contains("use.ts:4 names save"),
         "{md}"
     );
     let rb = repo(

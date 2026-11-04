@@ -1,4 +1,5 @@
-//! What an impact answer may claim about the uses of a Python definition.
+//! What an impact answer may claim about the uses of a definition of a language
+//! the resolvers read: Python, and TypeScript with JavaScript.
 //!
 //! The resolver says what each reference lands on; this module turns that into
 //! the statements the answer prints. Every statement about a definition's
@@ -21,11 +22,12 @@ use anyhow::Result;
 
 use crate::facts::{
     DefChange, DefKey, DefKind, FactsCache, Language, ModulePath, Name, Origin, ProjectId, Scope,
-    facts_of, semantic_changes,
+    Visibility, facts_of, semantic_changes,
 };
 use crate::pipeline::ScoredState;
 use crate::resolve::{
-    Binding, CandidateReason, PythonResolver, Relation, Resolution, UnresolvedReason,
+    Binding, CandidateReason, Definition, EvidenceKind, PythonResolver, Relation, Resolution,
+    TypeScriptResolver, UnresolvedReason,
 };
 use crate::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
@@ -39,6 +41,90 @@ const MAX_UNPLACED_LISTED: usize = 500;
 /// The reasons a candidate row carries in the answer.
 const UNTYPED_RECEIVER: &str = "receiver_unresolved";
 const AMBIGUOUS_MODULE: &str = "ambiguous_module";
+const IMPORT_UNRESOLVED: &str = "import_unresolved";
+const IMPORT_GLOB: &str = "import_glob";
+const GLOBAL: &str = "global";
+
+/// The languages one resolver reads: a cell answers for one family.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Family {
+    Python,
+    TypeScript,
+}
+
+impl Family {
+    const ALL: [Self; 2] = [Self::Python, Self::TypeScript];
+
+    fn has(self, language: Language) -> bool {
+        match self {
+            Self::Python => language == Language::Python,
+            Self::TypeScript => matches!(language, Language::JavaScript | Language::TypeScript),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Python => "Python",
+            Self::TypeScript => "TypeScript/JavaScript",
+        }
+    }
+
+    /// Whether a file of this extension is read by the family's resolver.
+    fn has_path(self, path: &str) -> bool {
+        RepoPath::new(path)
+            .ok()
+            .and_then(|p| Language::from_path(&p))
+            .is_some_and(|language| self.has(language))
+    }
+}
+
+/// The resolver of a family, behind the one set of questions a cell asks.
+enum Resolver {
+    Python(PythonResolver),
+    TypeScript(TypeScriptResolver),
+}
+
+impl Resolver {
+    fn open(
+        family: Family,
+        ctx: &AnalysisContext,
+        side: SideTag,
+        cache: &FactsCache,
+    ) -> Result<Self> {
+        Ok(match family {
+            Family::Python => Self::Python(PythonResolver::open(ctx, side, cache)?),
+            Family::TypeScript => Self::TypeScript(TypeScriptResolver::open(ctx, side, cache)?),
+        })
+    }
+
+    fn bindings(&self) -> &[Binding] {
+        match self {
+            Self::Python(r) => r.bindings(),
+            Self::TypeScript(r) => r.bindings(),
+        }
+    }
+
+    fn definitions(&self) -> &[Definition] {
+        match self {
+            Self::Python(r) => r.definitions(),
+            Self::TypeScript(r) => r.definitions(),
+        }
+    }
+
+    fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
+        match self {
+            Self::Python(r) => r.references_to(key),
+            Self::TypeScript(r) => r.references_to(key),
+        }
+    }
+
+    fn losses(&self) -> &[Loss] {
+        match self {
+            Self::Python(r) => r.losses(),
+            Self::TypeScript(r) => r.losses(),
+        }
+    }
+}
 
 /// What a statement about a definition's uses may be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -179,28 +265,32 @@ pub struct Changed {
     /// Defined inside a function: named only there, so a file elsewhere that
     /// spells the name is no hedge on it (#546).
     pub local: bool,
+    /// Part of the module's public surface: a removed one is a contract that
+    /// moved.
+    pub public: bool,
 }
 
 type Hunks = HashMap<String, Vec<(u32, u32)>>;
 
-pub struct PythonCell {
+pub struct Cell {
+    family: Family,
     ctx: AnalysisContext,
     cache: FactsCache,
-    head: PythonResolver,
-    base: OnceCell<Option<PythonResolver>>,
+    head: Resolver,
+    base: OnceCell<Option<Resolver>>,
     changed: Vec<Changed>,
     /// Every key the range changed outside layout, by its head key.
     changed_keys: HashSet<DefKey>,
     hunks: Hunks,
-    /// The project and module of each file that holds a definition.
-    homes: HashMap<String, (ProjectId, ModulePath)>,
+    /// The project, module and language of each file that holds a definition.
+    homes: HashMap<String, (ProjectId, ModulePath, Language)>,
     /// Definitions by file: indices into the head's definitions.
     defs_by_file: HashMap<String, Vec<usize>>,
     /// Definitions by key: indices into the head's definitions.
     defs_by_key: HashMap<DefKey, usize>,
     /// Head bindings by file.
     bindings_by_file: HashMap<String, Vec<usize>>,
-    /// Files the resolver read as Python.
+    /// Files the resolver read.
     files: HashSet<String>,
     /// Names with uses that landed on nothing, by name: the files.
     unlanded: HashMap<String, Vec<(String, u32, Scope)>>,
@@ -246,6 +336,14 @@ fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Ana
     )?)
 }
 
+/// An import that happens when the code runs, `lazy(() => import('./Card'))`:
+/// the module is loaded for what it offers, so the line is a use of that.
+fn loads_lazily(b: &Binding) -> bool {
+    b.relation == Relation::Imports
+        && matches!(&b.resolution, Resolution::Resolved { evidence, .. }
+            if evidence.kind == EvidenceKind::DynamicImport)
+}
+
 fn within(line: u32, (start, end): (u32, u32)) -> bool {
     start <= line && line <= end
 }
@@ -263,28 +361,31 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
         Resolution::Candidate { reason, .. } => Some(Standing::Candidate(match reason {
             CandidateReason::UntypedReceiver | CandidateReason::AnyReceiver => UNTYPED_RECEIVER,
             CandidateReason::AmbiguousModule => AMBIGUOUS_MODULE,
+            CandidateReason::ImportUnresolved => IMPORT_UNRESOLVED,
+            CandidateReason::ImportGlob => IMPORT_GLOB,
+            CandidateReason::Global => GLOBAL,
         })),
         Resolution::Module { .. } | Resolution::Unresolved { .. } => None,
     }
 }
 
-impl PythonCell {
-    /// Whether any file the answer is about is Python: a changed file with a
-    /// Python extension, or none and a Python shebang, or a queried name in one.
-    pub fn concerns(state: &ScoredState, symbol: bool) -> bool {
+impl Cell {
+    /// Whether any file the answer is about is of the family: a changed file
+    /// with its extension, or none and its shebang, or a queried name in one.
+    fn concerns(family: Family, state: &ScoredState, symbol: bool) -> bool {
         let source = state.run.source();
         let python = |path: &str| {
             let Ok(p) = RepoPath::new(path) else {
                 return false;
             };
             match Language::from_path(&p) {
-                Some(language) => language == Language::Python,
+                Some(language) => family.has(language),
                 None => {
                     Language::needs_shebang(&p)
                         && source
                             .read_bytes(&state.root_dir.join(path))
                             .is_some_and(|bytes| {
-                                Language::from_shebang(&bytes) == Some(Language::Python)
+                                Language::from_shebang(&bytes).is_some_and(|l| family.has(l))
                             })
                 }
             }
@@ -305,13 +406,19 @@ impl PythonCell {
             .any(|p| python(&p))
     }
 
-    /// Resolves the Python of the snapshot the run reads and, for a range, reads
-    /// what it changed.
-    pub fn open(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Self> {
+    /// Resolves the family's files of the snapshot the run reads and, for a
+    /// range, reads what it changed.
+    fn open(
+        family: Family,
+        state: &ScoredState,
+        range: Option<&str>,
+        symbol: bool,
+    ) -> Result<Self> {
         let ctx = context(state, range, symbol)?;
         let cache = FactsCache::user();
-        let head = PythonResolver::open(&ctx, SideTag::Head, &cache)?;
+        let head = Resolver::open(family, &ctx, SideTag::Head, &cache)?;
         let mut cell = Self {
+            family,
             ctx,
             cache,
             head,
@@ -346,15 +453,21 @@ impl PythonCell {
         let mut file_of: HashMap<&DefKey, &str> = HashMap::new();
         // Uses that landed on nothing: (name, file, owner, an untyped read).
         let mut unlanded: Vec<(String, String, u32, Scope, bool)> = Vec::new();
-        // The names a scope calls or reads and the resolver did place: a read
-        // of `w.switch` beside the call `w.switch()` is the call's question.
+        // The names a scope calls or reads through an untyped receiver and the
+        // resolver placed as candidates: a read of `w.switch` beside the call
+        // `w.switch()` is the call's question. A use a typed receiver resolved
+        // says nothing of another receiver's read (`c.get()` beside `x.get`).
         let mut placed: HashSet<(String, Scope, String)> = HashSet::new();
         for (at, def) in self.head.definitions().iter().enumerate() {
             let file = def.file.as_str();
             self.files.insert(file.to_string());
-            self.homes
-                .entry(file.to_string())
-                .or_insert_with(|| (def.key.project.clone(), def.key.module.clone()));
+            self.homes.entry(file.to_string()).or_insert_with(|| {
+                (
+                    def.key.project.clone(),
+                    def.key.module.clone(),
+                    def.key.language,
+                )
+            });
             self.defs_by_file
                 .entry(file.to_string())
                 .or_default()
@@ -399,12 +512,7 @@ impl PythonCell {
                     }
                 }
             }
-            if b.relation.uses()
-                && matches!(
-                    b.resolution,
-                    Resolution::Resolved { .. } | Resolution::Candidate { .. }
-                )
-            {
+            if b.relation.uses() && matches!(b.resolution, Resolution::Candidate { .. }) {
                 placed.insert((
                     file.to_string(),
                     b.from.clone(),
@@ -424,14 +532,14 @@ impl PythonCell {
         self.losses = self.head.losses().to_vec();
     }
 
-    /// What the range did to the Python definitions: the cell's changed list.
+    /// What the range did to the family's definitions: the cell's changed list.
     fn read_changes(&mut self) -> Result<()> {
         let set = semantic_changes(&self.ctx, &self.cache)?;
         self.losses.extend(set.losses.iter().cloned());
         let python: Vec<_> = set
             .defs
             .iter()
-            .filter(|d| d.key.language == Language::Python)
+            .filter(|d| self.family.has(d.key.language))
             .collect();
         let layout_only = |change: &DefChange| {
             matches!(change, DefChange::Changed { origin: Origin::Same, delta }
@@ -450,7 +558,7 @@ impl PythonCell {
                     let Some(file) = d.base.as_ref() else {
                         continue;
                     };
-                    let Some((kind, lines)) = self.base_definition(file, &d.key)? else {
+                    let Some((kind, lines, public)) = self.base_definition(file, &d.key)? else {
                         continue;
                     };
                     let gone = Changed {
@@ -463,6 +571,7 @@ impl PythonCell {
                         stale: vec![d.key.clone()],
                         unpaired: false,
                         local: false,
+                        public,
                     };
                     // What reads a field the class lost is the class's to
                     // report: the readers are listed under it, not under a
@@ -486,6 +595,7 @@ impl PythonCell {
                                 stale: vec![d.key.clone()],
                                 unpaired: false,
                                 local: false,
+                                public: false,
                             };
                             held.subjects.truncate(1);
                             merge(&mut by_key, held);
@@ -601,6 +711,7 @@ impl PythonCell {
             stale: stale.clone(),
             unpaired,
             local: self.inside_function(def),
+            public: false,
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
@@ -617,7 +728,7 @@ impl PythonCell {
             },
             DefKind::Variable | DefKind::Constant | DefKind::Field => {
                 out.push(own(def, Reach::Every));
-                if edited && holder {
+                if edited && holder && self.family == Family::Python {
                     if let Some(class) = self.owner(def) {
                         let mut changed = own(class, Reach::Construction);
                         changed.stale = Vec::new();
@@ -636,22 +747,38 @@ impl PythonCell {
         &self,
         file: &RepoPath,
         key: &DefKey,
-    ) -> Result<Option<(DefKind, (u32, u32))>> {
+    ) -> Result<Option<(DefKind, (u32, u32), bool)>> {
         let Some(facts) = facts_of(&self.ctx, SideTag::Base, &self.cache, file)? else {
             return Ok(None);
         };
-        Ok(facts
-            .defs()
-            .find(|d| d.local == key.local)
-            .map(|d| (d.kind, d.span.lines)))
+        let Some(def) = facts.defs().find(|d| d.local == key.local) else {
+            return Ok(None);
+        };
+        // A member is public when the definition holding it is too.
+        let held = key
+            .local
+            .container
+            .split_last()
+            .is_none_or(|(name, outer)| {
+                facts.defs().any(|c| {
+                    c.local.name == *name
+                        && c.local.container.as_slice() == outer
+                        && c.visibility == Visibility::Public
+                })
+            });
+        Ok(Some((
+            def.kind,
+            def.span.lines,
+            held && def.visibility == Visibility::Public,
+        )))
     }
 
     /// The resolver of the base side, built when a removed or moved definition
     /// asks who still names it.
-    fn base(&self) -> Option<&PythonResolver> {
+    fn base(&self) -> Option<&Resolver> {
         self.base
             .get_or_init(|| {
-                PythonResolver::open(&self.ctx, SideTag::Base, &self.cache)
+                Resolver::open(self.family, &self.ctx, SideTag::Base, &self.cache)
                     .map_err(|e| tracing::warn!("decide: the base side was not resolved ({e})"))
                     .ok()
             })
@@ -680,10 +807,9 @@ impl PythonCell {
         out
     }
 
-    /// Whether the cell answers for `rel`: a Python file of the snapshot.
+    /// Whether the cell answers for `rel`: a file of its family in the snapshot.
     pub fn owns(&self, rel: &str) -> bool {
-        self.files.contains(rel)
-            || RepoPath::new(rel).is_ok_and(|p| Language::from_path(&p) == Some(Language::Python))
+        self.files.contains(rel) || self.family.has_path(rel)
     }
 
     /// The definition of a queried name or a fragment at these lines, as the
@@ -725,10 +851,10 @@ impl PythonCell {
         let Scope::Def(local) = root_scope(scope) else {
             return None;
         };
-        let (project, module) = self.homes.get(file)?;
+        let (project, module, language) = self.homes.get(file)?;
         Some(DefKey {
             project: project.clone(),
-            language: Language::Python,
+            language: *language,
             module: module.clone(),
             local: local.clone(),
         })
@@ -780,6 +906,12 @@ impl PythonCell {
             })
     }
 
+    /// A TypeScript annotation: a changed type is read by every signature and
+    /// declaration that states it.
+    fn names_type(&self, b: &Binding) -> bool {
+        self.family == Family::TypeScript && b.relation == Relation::TypeUses
+    }
+
     /// A class named by the class that extends it: a base is the first thing a
     /// change to the class reaches.
     fn extends(&self, b: &Binding) -> bool {
@@ -799,7 +931,8 @@ impl PythonCell {
                 .is_some_and(|d| d.kind == DefKind::Class);
             for b in self.head.references_to(&subject.key) {
                 let reaches = subject.reach.admits(b.relation)
-                    || (class && subject.reach == Reach::Every && self.extends(b));
+                    || (subject.reach == Reach::Every
+                        && ((class && self.extends(b)) || loads_lazily(b) || self.names_type(b)));
                 // The guard of a script runs it; a use in its own body is not a
                 // caller of it.
                 if !reaches
@@ -860,16 +993,30 @@ impl PythonCell {
         let Some(base) = self.base() else {
             return Vec::new();
         };
-        let mut named: HashSet<(String, Name)> = HashSet::new();
+        // How sure the base was of each: a call through an interface-typed
+        // receiver reached the definition as a candidate, and the line that
+        // still spells it is one.
+        let mut named: HashMap<(String, Name), Standing> = HashMap::new();
         for key in &changed.stale {
             for b in base.references_to(key) {
                 if b.relation.uses() && !b.entry_guard {
-                    named.insert((b.file.as_str().to_string(), b.name.clone()));
+                    let standing = match (self.family, standing_of(&b.resolution)) {
+                        (Family::TypeScript, Some(standing)) => standing,
+                        _ => Standing::Resolved,
+                    };
+                    named
+                        .entry((b.file.as_str().to_string(), b.name.clone()))
+                        .and_modify(|known| {
+                            if standing == Standing::Resolved {
+                                *known = standing;
+                            }
+                        })
+                        .or_insert(standing);
                 }
             }
         }
         let mut out = Vec::new();
-        for (file, name) in named {
+        for ((file, name), standing) in named {
             for at in self.bindings_by_file.get(&file).into_iter().flatten() {
                 let h = &self.head.bindings()[*at];
                 if h.name != name
@@ -884,7 +1031,7 @@ impl PythonCell {
                     file: file.clone(),
                     line,
                     relation: h.relation,
-                    standing: Standing::Resolved,
+                    standing,
                     scope: h.from.clone(),
                 });
             }
@@ -935,6 +1082,57 @@ impl PythonCell {
     pub fn reaches(&self, user_file: &str, used_file: &str) -> bool {
         self.reaches
             .contains(&(user_file.to_string(), used_file.to_string()))
+    }
+}
+
+/// The cells of one run: one per family of languages the answer is about.
+pub struct Cells {
+    cells: Vec<Cell>,
+    /// Families whose files could not be resolved: their definitions are
+    /// undetermined, never answered by the paths the cells replaced.
+    lost: Vec<Family>,
+}
+
+impl Cells {
+    pub fn open(state: &ScoredState, range: Option<&str>, symbol: bool) -> Self {
+        let mut cells = Vec::new();
+        let mut lost = Vec::new();
+        for family in Family::ALL
+            .into_iter()
+            .filter(|f| Cell::concerns(*f, state, symbol))
+        {
+            match Cell::open(family, state, range, symbol) {
+                Ok(cell) => {
+                    for stop in cell.stops() {
+                        state.run.note(stop);
+                    }
+                    cells.push(cell);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "impact: the {} cell was not resolved ({e}); its definitions are undetermined",
+                        family.name()
+                    );
+                    state.run.note(crate::resource::LimitReason::ReadFailed);
+                    lost.push(family);
+                }
+            }
+        }
+        Self { cells, lost }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Cell> {
+        self.cells.iter()
+    }
+
+    /// The cell that answers for `rel`.
+    pub fn of(&self, rel: &str) -> Option<&Cell> {
+        self.cells.iter().find(|cell| cell.owns(rel))
+    }
+
+    /// Whether `rel` is a file of a family that could not be resolved.
+    pub fn lost(&self, rel: &str) -> bool {
+        self.lost.iter().any(|family| family.has_path(rel))
     }
 }
 

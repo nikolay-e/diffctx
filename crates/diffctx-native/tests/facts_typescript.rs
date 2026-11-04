@@ -614,7 +614,10 @@ fn locals_and_parameters_are_bindings_never_definitions() {
 }
 "#,
     );
-    assert_eq!(defs(&facts), vec!["outer Function"]);
+    assert_eq!(
+        defs(&facts),
+        vec!["outer Function", "outer.helper Function"]
+    );
     assert_eq!(
         locals(&facts),
         vec![
@@ -623,11 +626,96 @@ fn locals_and_parameters_are_bindings_never_definitions() {
             "Parameter rest in def outer",
             "Closure inner in def outer",
             "Parameter x in def outer",
-            "Closure helper in def outer",
-            "Parameter y in def outer",
+            "Parameter y in def outer.helper",
             "Variable item in def outer",
             "Variable err in def outer",
         ]
+    );
+}
+
+#[test]
+fn a_named_nested_function_is_a_definition_of_its_enclosing_function() {
+    let facts = ts(r#"export function outer() {
+  function inner(x: number) { return helper(x); }
+  const run = () => {
+    function deep() { return inner(1); }
+    return deep();
+  };
+  return inner(1) + run();
+}
+export const useStore = create()((set) => {
+  function alpha() { return 1; }
+  function beta() { return alpha(); }
+  return { play: async () => { await beta(); } };
+});
+"#);
+    assert!(facts.losses.is_empty(), "{:?}", facts.losses);
+    assert_eq!(
+        defs(&facts),
+        vec![
+            "outer Function",
+            "outer.inner Function",
+            "outer.deep Function",
+            "useStore Constant",
+            "useStore.alpha Function",
+            "useStore.beta Function",
+            "useStore.play Method",
+        ]
+    );
+    let seen = refs(&facts);
+    for expected in [
+        "Call helper in def outer.inner",
+        "Call inner in def outer.deep",
+        "Call deep in def outer",
+        "Call inner in def outer",
+        "Call alpha in def useStore.beta",
+    ] {
+        assert!(
+            seen.contains(&expected.to_string()),
+            "{expected} not in {seen:#?}"
+        );
+    }
+    let locals = locals(&facts);
+    assert!(locals.contains(&"Closure run in def outer".to_string()));
+    assert!(
+        locals.iter().all(|l| !l.contains("Closure inner")
+            && !l.contains("Closure deep")
+            && !l.contains("Closure alpha")),
+        "{locals:?}"
+    );
+    assert!(locals.contains(&"Parameter x in def outer.inner".to_string()));
+}
+
+#[test]
+fn the_methods_of_an_object_literal_a_function_returns_are_its_definitions() {
+    let facts = ts(r#"export function makeSys() {
+  return {
+    async open(): Promise<string> { return helper(); },
+    close: () => 1,
+    flag: true,
+  };
+}
+export const make = () => ({ run() { return 1; } });
+export function configure() {
+  return use({ onDone() {}, queryFn: () => fetch("/x") });
+}
+"#);
+    assert_eq!(
+        defs(&facts),
+        vec![
+            "makeSys Function",
+            "makeSys.open Method",
+            "makeSys.close Method",
+            "make Function",
+            "make.run Method",
+            "configure Function",
+        ]
+    );
+    assert!(refs(&facts).contains(&"Call helper in def makeSys.open".to_string()));
+    assert!(
+        refs(&facts).contains(&"Call fetch in callback use in def configure".to_string()),
+        "an object literal passed to a call is configuration, not definitions (#706): {:?}",
+        refs(&facts)
     );
 }
 
@@ -972,4 +1060,161 @@ fn the_file_serves_both_languages() {
         .map(|extractor| extractor.language().to_string())
         .collect();
     assert_eq!(languages, ["typescript", "javascript"]);
+}
+
+#[test]
+fn a_change_inside_a_member_changes_the_member_alone() {
+    let hashes = |source: &str, name: &str| {
+        let facts = ts(source);
+        let def = def_named(&facts, name);
+        (def.body_hash, def.text_hash)
+    };
+    // An object literal a function returns: the function does not change.
+    let make = |body: &str| {
+        format!(
+            "export function makeSys() {{\n  return {{\n    open() {{ return {body}; }},\n    flag: true,\n  }};\n}}\n"
+        )
+    };
+    let (before, after) = (make("'a'"), make("'b'"));
+    assert_eq!(hashes(&before, "makeSys"), hashes(&after, "makeSys"));
+    assert_ne!(
+        hashes(&before, "makeSys.open").0,
+        hashes(&after, "makeSys.open").0
+    );
+    // A function declared inside another.
+    let outer = |body: &str| {
+        format!(
+            "export function outer() {{\n  function inner() {{ return {body}; }}\n  return inner();\n}}\n"
+        )
+    };
+    assert_eq!(hashes(&outer("1"), "outer"), hashes(&outer("2"), "outer"));
+    assert_ne!(
+        hashes(&outer("1"), "outer.inner").0,
+        hashes(&outer("2"), "outer.inner").0
+    );
+    // A class gains a property arrow: the class, whose members are definitions
+    // of their own, keeps its hashes, separators included.
+    let manager = |extra: &str| {
+        format!(
+            "export class Manager {{\n  private level = 0;\n{extra}  submit = (n: number): number => {{\n    return n + this.level;\n  }};\n}}\n"
+        )
+    };
+    assert_eq!(
+        hashes(&manager(""), "Manager"),
+        hashes(
+            &manager("  private readonly passes = (): boolean => this.level < 4;\n"),
+            "Manager"
+        )
+    );
+    // The container's own signature is still its change.
+    let signed = |params: &str| {
+        format!("export function f({params}) {{ return {{ g() {{ return 1; }} }}; }}\n")
+    };
+    assert_ne!(hashes(&signed("a: number"), "f").0, 0);
+    assert_ne!(
+        ts(&signed("a: number")).facts.iter().find_map(|f| match f {
+            Fact::Definition(d) if d.local.name.as_str() == "f" => d.signature.clone(),
+            _ => None,
+        }),
+        ts(&signed("a: string")).facts.iter().find_map(|f| match f {
+            Fact::Definition(d) if d.local.name.as_str() == "f" => d.signature.clone(),
+            _ => None,
+        })
+    );
+}
+
+#[test]
+fn the_members_of_an_object_type_and_of_a_callbacks_object_are_definitions() {
+    let facts = ts(
+        r#"export type Prefs = { softPrefs: string[]; save(): void };
+export const usePlayer = create()((set) => ({
+  updateLyrics: (lyrics: string) => { set({ lyrics }); },
+  count: 0,
+}));
+"#,
+    );
+    assert_eq!(
+        defs(&facts),
+        vec![
+            "Prefs@type TypeAlias",
+            "Prefs.softPrefs Property",
+            "Prefs.save Method",
+            "usePlayer Constant",
+            "usePlayer.updateLyrics Method",
+        ]
+    );
+}
+
+#[test]
+fn a_global_object_assignment_is_a_definition_and_a_script_load_is_an_import() {
+    let facts = js(r#"importScripts('/kit/sw-kit.js', "../x.js");
+self.serveShell = ({ name }) => name;
+globalThis.version = 1;
+function local() { self.inside = 2; }
+"#);
+    assert_eq!(
+        defs(&facts),
+        vec!["serveShell Function", "version Variable", "local Function"]
+    );
+    assert_eq!(
+        imports(&facts),
+        vec![
+            "SideEffect /kit/sw-kit.js rel=0 names=[] star=- default=- in module",
+            "SideEffect ../x.js rel=2 names=[] star=- default=- in module",
+        ]
+    );
+    assert!(ref_named(&facts, "serveShell").is_empty());
+    assert_eq!(ref_named(&facts, "inside").len(), 1);
+}
+
+#[test]
+fn a_glob_and_a_require_context_state_the_paths_they_load() {
+    let facts = ts(
+        r#"const a = import.meta.glob(['../lib/**/*.ts', '!../lib/skip/**']);
+const b = import.meta.glob('./pages/*.ts', { eager: true });
+const c = require.context('../lib/live', false, /\.ts$/);
+const d = require.context('./all', true);
+"#,
+    );
+    let mentions: Vec<String> = facts
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::PathMention(m) => Some(m.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        mentions,
+        vec![
+            "../lib/**/*.ts",
+            "!../lib/skip/**",
+            "./pages/*.ts",
+            "../lib/live/*",
+            "./all/**/*"
+        ]
+    );
+}
+
+#[test]
+fn a_bare_ampersand_in_jsx_text_is_text() {
+    let facts = ts(
+        "import { apps } from './api';\nexport function Panel() {\n  return (\n    <h2>Devices & apps &amp; more</h2>\n  );\n}\n",
+    );
+    assert!(facts.losses.is_empty(), "{:?}", facts.losses);
+    assert!(ref_named(&facts, "apps").is_empty(), "{:?}", refs(&facts));
+}
+
+#[test]
+fn the_methods_of_an_object_literal_a_constant_holds_are_its_definitions() {
+    let facts = ts(r#"export const cart = {
+  total() { return 1; },
+  tax: (x: number) => x,
+  label: "cart",
+};
+"#);
+    assert_eq!(
+        defs(&facts),
+        vec!["cart Constant", "cart.total Method", "cart.tax Method"]
+    );
 }

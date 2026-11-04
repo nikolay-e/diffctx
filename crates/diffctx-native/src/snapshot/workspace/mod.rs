@@ -144,6 +144,12 @@ pub struct Project {
     pub import_roots: Vec<ImportRoot>,
     pub source_sets: Vec<SourceSet>,
     pub aliases: Vec<Alias>,
+    /// The `baseUrl`s of its tsconfigs: bare specifiers resolve against them.
+    pub base_urls: Vec<String>,
+    /// A config the aliases come from could not be read whole: a `tsconfig`
+    /// extending a package, a bundler alias that is a pattern or computed. A bare
+    /// specifier no alias places may be one.
+    pub paths_incomplete: bool,
     pub exports: Vec<Export>,
     pub reexports: Vec<Reexport>,
     /// Directories holding an `__init__.py`.
@@ -182,6 +188,8 @@ pub(crate) struct Pending {
     pub(crate) roots: Vec<ImportRoot>,
     pub(crate) source_sets: Vec<SourceSet>,
     pub(crate) aliases: Vec<Alias>,
+    pub(crate) base_urls: Vec<String>,
+    pub(crate) paths_incomplete: bool,
     pub(crate) exports: Vec<Export>,
     pub(crate) crates: Vec<RustCrate>,
     pub(crate) go_module: Option<String>,
@@ -197,6 +205,8 @@ impl Pending {
             roots: Vec::new(),
             source_sets: Vec::new(),
             aliases: Vec::new(),
+            base_urls: Vec::new(),
+            paths_incomplete: false,
             exports: Vec::new(),
             crates: Vec::new(),
             go_module: None,
@@ -270,8 +280,16 @@ pub(crate) enum Late {
     TsConfig {
         dir: String,
         aliases: Vec<Alias>,
+        base_url: Option<String>,
         roots: Vec<String>,
         references: Vec<String>,
+        incomplete: bool,
+    },
+    /// The `resolve.alias` of a `vite.config.*`, read as text, never run.
+    Vite {
+        dir: String,
+        aliases: Vec<Alias>,
+        incomplete: bool,
     },
 }
 
@@ -687,13 +705,40 @@ fn owner(roots: &BTreeSet<String>, dir: &str) -> Option<String> {
     }
 }
 
+/// The project a config of `dir` belongs to: the manifest above it, else one it
+/// roots itself, with dependencies unknown, so that what it configures has a
+/// project to belong to.
+fn implicit_home(
+    projects: &mut BTreeMap<String, Pending>,
+    roots: &mut BTreeSet<String>,
+    dir: &str,
+) -> String {
+    if let Some(home) = owner(roots, dir) {
+        return home;
+    }
+    let pending = projects.entry(dir.to_string()).or_insert_with(Pending::new);
+    pending.ecosystems.insert(Ecosystem::Node);
+    pending.unknown = true;
+    pending.root(dir.to_string(), RootOrigin::Manifest);
+    roots.insert(dir.to_string());
+    dir.to_string()
+}
+
+/// The directory a `paths` or alias target names: the part before its wildcard.
+fn target_dir_of(target: &str) -> String {
+    match target.find('*') {
+        Some(star) => target[..star].trim_end_matches('/').to_string(),
+        None => dir_of(target).to_string(),
+    }
+}
+
 impl Draft {
     #[allow(
         clippy::disallowed_methods,
         reason = "a key absent from these maps is a project with no entries, not a failed read"
     )]
     fn finish(mut self, files: &Files, symlinks: &[(String, String)]) -> WorkspaceModel {
-        let roots: BTreeSet<String> = self.projects.keys().cloned().collect();
+        let mut roots: BTreeSet<String> = self.projects.keys().cloned().collect();
         let mut packages: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut reexports: BTreeMap<String, Vec<Reexport>> = BTreeMap::new();
         for late in std::mem::take(&mut self.late) {
@@ -731,12 +776,12 @@ impl Draft {
                 Late::TsConfig {
                     dir,
                     aliases,
+                    base_url,
                     roots: configured,
                     references,
+                    incomplete,
                 } => {
-                    let Some(home) = owner(&roots, &dir) else {
-                        continue;
-                    };
+                    let home = implicit_home(&mut self.projects, &mut roots, &dir);
                     // A target that holds the project (`baseUrl: ".."`) is the
                     // project's surroundings, not another project's code.
                     let holds_home =
@@ -756,6 +801,42 @@ impl Draft {
                                 project.aliases.push(alias);
                             }
                         }
+                        if let Some(base) = base_url {
+                            if !project.base_urls.contains(&base) {
+                                project.base_urls.push(base);
+                            }
+                        }
+                        project.paths_incomplete |= incomplete;
+                        for target in crossing {
+                            project.link_dir(target);
+                        }
+                    }
+                }
+                Late::Vite {
+                    dir,
+                    aliases,
+                    incomplete,
+                } => {
+                    let home = implicit_home(&mut self.projects, &mut roots, &dir);
+                    let holds_home =
+                        |d: &str| d.is_empty() || home == d || home.starts_with(&format!("{d}/"));
+                    let crossing: Vec<String> = aliases
+                        .iter()
+                        .flat_map(|a| {
+                            a.targets
+                                .iter()
+                                .filter(|t| t.contains('*'))
+                                .map(|t| target_dir_of(t))
+                        })
+                        .filter(|d| !holds_home(d) && owner(&roots, d).is_some_and(|o| o != home))
+                        .collect();
+                    if let Some(project) = self.projects.get_mut(&home) {
+                        for alias in aliases {
+                            if !project.aliases.contains(&alias) {
+                                project.aliases.push(alias);
+                            }
+                        }
+                        project.paths_incomplete |= incomplete;
                         for target in crossing {
                             project.link_dir(target);
                         }
@@ -851,6 +932,8 @@ impl Draft {
                 import_roots: pending.roots,
                 source_sets: pending.source_sets,
                 aliases: pending.aliases,
+                base_urls: pending.base_urls,
+                paths_incomplete: pending.paths_incomplete,
                 exports: pending.exports,
                 reexports: reexports.remove(root).unwrap_or_default(),
                 python_packages: packages.remove(root).unwrap_or_default(),
