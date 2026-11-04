@@ -984,10 +984,11 @@ fn workspace_packages_land_by_name_through_a_declared_dependency() {
     );
 }
 
-/// A name nothing resolved never crosses a project root, and neither does a
-/// relative import.
+/// A bare package name never crosses a project root without a declared
+/// dependency; a relative file specifier names its file, whatever project
+/// either belongs to (gh#711).
 #[test]
-fn nothing_crosses_a_project_root_without_a_declared_dependency() {
+fn only_a_bare_package_name_needs_a_declared_dependency() {
     let fx = snapshot(&[
         ("shop/package.json", "{\"name\": \"shop\"}\n"),
         (
@@ -1000,22 +1001,65 @@ fn nothing_crosses_a_project_root_without_a_declared_dependency() {
             "import { Store } from '../../shop/src/store';\n\nexport function find(s: any) { return s.loadItem(); }\nexport const made = new Store();\n",
         ),
         (
+            "legacy/src/bare.ts",
+            "import { Store } from 'shop';\nexport const made = new Store();\n",
+        ),
+        (
             "shop/src/loose.ts",
             "export function find(s: any) { return s.loadItem(); }\n",
         ),
     ]);
     assert_eq!(
-        fx.lands_at("legacy/src/loose.ts", "loadItem", 3),
-        "unresolved(NoCandidates)"
+        fx.lands_at("legacy/src/loose.ts", "Store", 4),
+        "shop/src/store.ts::Store"
     );
     assert_eq!(
-        fx.lands_at("legacy/src/loose.ts", "Store", 4),
+        fx.lands_at("legacy/src/loose.ts", "loadItem", 3),
+        "candidate(AnyReceiver) shop/src/store.ts::Store.loadItem",
+        "an untyped receiver is among the files the file imports, by path too"
+    );
+    assert_eq!(
+        fx.lands_at("legacy/src/bare.ts", "Store", 2),
         "unresolved(OutsideProject)"
     );
     assert_eq!(
         fx.lands_at("shop/src/loose.ts", "loadItem", 1),
         "candidate(AnyReceiver) shop/src/store.ts::Store.loadItem"
     );
+}
+
+/// gh#711: a relative import names its file whatever the manifests and
+/// tsconfigs around either side say: an `extends` the resolver cannot read, an
+/// `include` that leaves the target out, `paths` that remap bare names.
+#[test]
+fn a_relative_import_resolves_across_project_roots_and_configs() {
+    let fx = snapshot(&[
+        ("A/package.json", "{\"name\":\"a\",\"private\":true}\n"),
+        (
+            "A/web/src/learn/panels.ts",
+            "export function watchPanels(): number {\n  return 3;\n}\n",
+        ),
+        ("B/package.json", "{\"name\":\"b\",\"private\":true}\n"),
+        (
+            "B/tsconfig.json",
+            "// Astro\n{\n  \"extends\": \"astro/tsconfigs/strict\",\n  \"compilerOptions\": {\"paths\": {\"react\": [\"./node_modules/react\"],},},\n  \"include\": [\"src\"],\n}\n",
+        ),
+        (
+            "B/src/scripts/panels.ts",
+            "import { watchPanels } from \"../../../A/web/src/learn/panels\";\nwatchPanels();\n",
+        ),
+        (
+            "B/src/scripts/rooted.ts",
+            "import { watchPanels } from \"/A/web/src/learn/panels\";\nwatchPanels();\n",
+        ),
+    ]);
+    for file in ["B/src/scripts/panels.ts", "B/src/scripts/rooted.ts"] {
+        assert_eq!(
+            fx.lands_at(file, "watchPanels", 2),
+            "A/web/src/learn/panels.ts::watchPanels",
+            "{file}"
+        );
+    }
 }
 
 /// gh#611: a receiver is typed by `new`, by an annotation, by a promoted
