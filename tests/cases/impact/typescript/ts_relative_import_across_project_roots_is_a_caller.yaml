@@ -1,0 +1,60 @@
+name: ts_relative_import_across_project_roots_is_a_caller
+mode: impact
+source: gh#711
+issue_state: open
+tags: [typescript, relative-import, cross-project, tsconfig-extends, include]
+repo:
+  initial_files:
+    A/package.json: |
+      { "name": "a", "private": true }
+    A/web/tsconfig.json: |
+      { "compilerOptions": { "strict": true } }
+    A/web/src/learn/panels.ts: |
+      export function watchPanels(): number {
+        return 3;
+      }
+
+      export function other(): number {
+        return 1;
+      }
+    B/package.json: |
+      { "name": "b", "private": true }
+    B/tsconfig.json: |
+      // Astro project: a preset the resolver cannot read, remapped bare names,
+      // and an include that holds the importer but not the file it imports.
+      {
+        "extends": "astro/tsconfigs/strict",
+        "compilerOptions": {
+          "paths": {
+            "react": ["./node_modules/react"],
+          },
+        },
+        "include": ["src"],
+      }
+    B/src/pages/index.astro: |
+      ---
+      ---
+      <script>
+        import "../scripts/panels";
+      </script>
+    B/src/scripts/panels.ts: |
+      import { watchPanels } from "../../../A/web/src/learn/panels";
+      watchPanels();
+  changed_files:
+    A/web/src/learn/panels.ts: |
+      export function watchPanels(): number {
+        return 4;
+      }
+
+      export function other(): number {
+        return 1;
+      }
+  commit_message: "panels: change the count"
+expect:
+  changed: [A/web/src/learn/panels.ts::watchPanels]
+  relations:
+    - from: "B/src/scripts/panels.ts"
+      to: "A/web/src/learn/panels.ts::watchPanels"
+      kind: "calls"
+      resolution: "resolved"
+      site: 2
