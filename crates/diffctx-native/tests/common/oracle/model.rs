@@ -185,7 +185,11 @@ impl Node {
                 found.symbol.as_ref().is_some_and(|have| {
                     // The engine names a member by its bare name; a case may
                     // write `Container.name` or `Container::name`.
-                    have == wanted || (!have.contains(['.', ':']) && last_segment(wanted) == have)
+                    // A field is `Class.field` in the answer: the bare name a
+                    // case writes names it, and two qualified names must agree.
+                    have == wanted
+                        || ((!have.contains(['.', ':']) || !wanted.contains(['.', ':']))
+                            && last_segment(wanted) == last_segment(have))
                 })
             })
     }

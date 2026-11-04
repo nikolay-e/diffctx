@@ -826,12 +826,29 @@ fn a_deleted_function_is_not_called_by_a_parameter_or_a_docstring() {
             )
         })
         .collect();
-    assert_eq!(listed, set(&["pkg/eval.py::load"]), "{doc}");
+    // Every removed definition is listed; only `load` has a reader, and
+    // `utterances` and `regions` are named by a parameter and a docstring word
+    // alone.
+    assert_eq!(
+        listed,
+        set(&[
+            "pkg/eval.py::load",
+            "pkg/eval.py::utterances",
+            "pkg/eval.py::regions"
+        ]),
+        "{doc}"
+    );
     assert_eq!(
         evidenced(&doc, "pkg/eval.py", "load"),
         set(&["pkg/report.py::report resolved -"]),
         "{doc}"
     );
+    for gone in ["utterances", "regions"] {
+        assert!(
+            evidenced(&doc, "pkg/eval.py", gone).is_empty(),
+            "{gone}: {doc}"
+        );
+    }
 }
 
 /// #400: a field removed from a class is read off the syntax at the base,
@@ -1029,4 +1046,83 @@ fn a_removed_module_constant_names_the_readers_it_breaks() {
         set(&["pkg/client.py::retry", "pkg/worker.py::work"]),
         "{doc}"
     );
+}
+
+/// gh#712: every removed definition is reported, a private one too; the
+/// fields of a class that left go with its line, a field that moved between a
+/// base and its subclass is neither removed nor changed, and a surviving
+/// field of the same name as a removed one is not removed.
+#[test]
+fn every_removed_definition_is_reported_and_a_moved_field_is_not() {
+    let tmp = repo(
+        &[(
+            "api.py",
+            "class _Facts:\n    note: str\n    amount: int\n\n\nclass ThingCreate(_Facts):\n    kind: str\n\n\nclass ThingUpdate(_Facts):\n    kind: str | None\n\n\ndef create_thing(body: ThingCreate):\n    return body\n\n\ndef update_thing(body: ThingUpdate):\n    return body\n",
+        )],
+        &[(
+            "api.py",
+            "class ThingUpdate:\n    note: str\n    amount: int\n    kind: str | None\n\n\ndef update_thing(body: ThingUpdate):\n    return body\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    let listed: BTreeSet<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| {
+            format!(
+                "{}::{} {}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or(""),
+                c["kind"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        set(&[
+            "api.py::ThingUpdate class",
+            "api.py::_Facts removed",
+            "api.py::ThingCreate removed",
+            "api.py::create_thing removed",
+        ]),
+        "{doc}"
+    );
+    assert_eq!(
+        changed(&doc, "api.py", "_Facts")["callers"],
+        serde_json::json!([]),
+        "{doc}"
+    );
+}
+
+/// A field is named by its class: two classes' fields of one name are two
+/// definitions, and the one that stays is not the one that left.
+#[test]
+fn a_removed_field_is_named_by_its_class() {
+    let tmp = repo(
+        &[(
+            "api.py",
+            "class Create:\n    kind: str = \"\"\n    size: int = 0\n\n\nclass Update:\n    kind: str = \"\"\n",
+        )],
+        &[(
+            "api.py",
+            "class Create:\n    size: int = 0\n\n\nclass Update:\n    kind: str = \"\"\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    let removed: BTreeSet<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == "removed")
+        .filter_map(|c| c["symbol"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(removed, set(&["Create.kind"]), "{doc}");
+    let contracts: BTreeSet<String> = doc["contracts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["symbol"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(contracts, set(&["Create.kind"]), "{doc}");
 }

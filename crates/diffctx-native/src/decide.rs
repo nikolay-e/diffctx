@@ -21,8 +21,8 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::facts::{
-    DefChange, DefKey, DefKind, FactsCache, Language, ModulePath, Name, Origin, ProjectId, Scope,
-    Visibility, facts_of, semantic_changes,
+    Def, DefChange, DefKey, DefKind, FactsCache, Language, ModulePath, Name, Origin, ProjectId,
+    Scope, SemanticDef, Visibility, facts_of, semantic_changes,
 };
 use crate::pipeline::ScoredState;
 use crate::resolve::{
@@ -268,6 +268,51 @@ pub struct Changed {
     /// Part of the module's public surface: a removed one is a contract that
     /// moved.
     pub public: bool,
+}
+
+/// The simple names in the parentheses of a class signature: `class A(B, m.C[int],
+/// metaclass=M)` lists `B` and `C`.
+fn bases_in(signature: Option<&str>) -> Vec<String> {
+    let Some(text) = signature else {
+        return Vec::new();
+    };
+    let (Some(open), Some(close)) = (text.find('('), text.rfind(')')) else {
+        return Vec::new();
+    };
+    if close <= open {
+        return Vec::new();
+    }
+    text[open + 1..close]
+        .split(',')
+        .map(str::trim)
+        .filter(|base| !base.contains('='))
+        .filter_map(|base| {
+            let last = base.rsplit('.').next()?;
+            let word: String = last
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            (!word.is_empty()).then_some(word)
+        })
+        .collect()
+}
+
+impl Changed {
+    /// The name the answer gives it: a member field is `Class.field`, so two
+    /// classes' fields of one name are two definitions.
+    pub fn display_name(&self) -> String {
+        let key = self
+            .subjects
+            .first()
+            .map(|s| &s.key)
+            .or_else(|| self.stale.first());
+        match (self.kind, key.and_then(|k| k.local.container.last())) {
+            (DefKind::Field | DefKind::Variable | DefKind::Constant, Some(class)) => {
+                format!("{}.{}", class.as_str(), self.name)
+            }
+            _ => self.name.clone(),
+        }
+    }
 }
 
 type Hunks = HashMap<String, Vec<(u32, u32)>>;
@@ -568,6 +613,29 @@ impl Cell {
                     .any(|file| within_scope(&self.scope, file.as_str()))
             })
             .collect();
+        // A field that changed class and nothing else (into the subclass that
+        // inherited it, out to a new base) is the same field: the classes it
+        // moved between are what changed.
+        let moved_as_it_was = |d: &SemanticDef| {
+            self.family == Family::Python
+                && matches!(&d.change, DefChange::Changed { origin: Origin::Moved { .. }, delta }
+                    if !(delta.signature || delta.body || delta.visibility || delta.decorators))
+                && self.definition(&d.key).is_some_and(|def| {
+                    matches!(
+                        def.kind,
+                        DefKind::Field | DefKind::Variable | DefKind::Constant
+                    ) && !def.key.local.container.is_empty()
+                })
+        };
+        let python: Vec<_> = python
+            .into_iter()
+            .filter(|&d| !moved_as_it_was(d))
+            .collect();
+        let moved = self.moved_declarations(&python)?;
+        let python: Vec<_> = python
+            .into_iter()
+            .filter(|d| !moved.contains(&d.key))
+            .collect();
         let layout_only = |change: &DefChange| {
             matches!(change, DefChange::Changed { origin: Origin::Same, delta }
                 if !(delta.signature || delta.body || delta.visibility || delta.decorators))
@@ -577,6 +645,20 @@ impl Cell {
                 self.changed_keys.insert(d.key.clone());
             }
         }
+        let class_removed = |key: &DefKey| {
+            let Some((name, outer)) = key.local.container.split_last() else {
+                return false;
+            };
+            python.iter().any(|c| {
+                c.head.is_none()
+                    && matches!(c.change, DefChange::Removed)
+                    && c.key.project == key.project
+                    && c.key.module == key.module
+                    && c.key.language == key.language
+                    && c.key.local.name == *name
+                    && c.key.local.container.as_slice() == outer
+            })
+        };
         let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
         let mut removed: Vec<Changed> = Vec::new();
         for d in &python {
@@ -592,6 +674,12 @@ impl Cell {
                     let Some((kind, lines, public)) = self.base_definition(file, &d.key)? else {
                         continue;
                     };
+                    // The members of a class that left go with its line.
+                    if matches!(kind, DefKind::Field | DefKind::Variable | DefKind::Constant)
+                        && class_removed(&d.key)
+                    {
+                        continue;
+                    }
                     let gone = Changed {
                         name: d.key.local.name.as_str().to_string(),
                         kind,
@@ -653,6 +741,9 @@ impl Cell {
                     };
                     let unpaired = matches!(change, DefChange::Unknown { .. });
                     for changed in self.report_as(def, how, stale, unpaired, true) {
+                        if self.folds_into_its_class(&changed, def) {
+                            continue;
+                        }
                         merge(&mut by_key, changed);
                     }
                 }
@@ -667,6 +758,123 @@ impl Cell {
             ))
         });
         Ok(())
+    }
+
+    /// A field declaration only one side has, with an equal one on the other
+    /// side in a class of the same lineage: it moved between a base and its
+    /// subclass (merged into the subclass, lifted into a new base), and the
+    /// field is the same. Annotation-only fields have no body to pair them by.
+    fn moved_declarations(&self, entries: &[&SemanticDef]) -> Result<HashSet<DefKey>> {
+        if self.family != Family::Python {
+            return Ok(HashSet::new());
+        }
+        struct Field<'a> {
+            entry: &'a SemanticDef,
+            file: &'a RepoPath,
+            class: Name,
+            declaration: Def,
+        }
+        let mut gone: Vec<Field<'_>> = Vec::new();
+        let mut added: Vec<Field<'_>> = Vec::new();
+        for &entry in entries {
+            let Some(class) = entry.key.local.container.last().cloned() else {
+                continue;
+            };
+            let (side, file, into) = match (&entry.change, &entry.base, &entry.head) {
+                (DefChange::Removed, Some(file), None) => (SideTag::Base, file, &mut gone),
+                (DefChange::Added, None, Some(file)) => (SideTag::Head, file, &mut added),
+                _ => continue,
+            };
+            let Some(declaration) = self.declared(side, file, &entry.key)? else {
+                continue;
+            };
+            if matches!(
+                declaration.kind,
+                DefKind::Field | DefKind::Variable | DefKind::Constant
+            ) {
+                into.push(Field {
+                    entry,
+                    file,
+                    class,
+                    declaration,
+                });
+            }
+        }
+        let mut moved = HashSet::new();
+        for from in &gone {
+            for to in added.iter().filter(|to| {
+                to.file == from.file
+                    && to.entry.key.local.name == from.entry.key.local.name
+                    && to.declaration.signature == from.declaration.signature
+                    && to.declaration.body_hash == from.declaration.body_hash
+                    && to.declaration.visibility == from.declaration.visibility
+                    && to.declaration.decorators == from.declaration.decorators
+            }) {
+                let mut related = false;
+                for side in [SideTag::Base, SideTag::Head] {
+                    related = related
+                        || self
+                            .lineage(side, to.file, &to.class)?
+                            .iter()
+                            .any(|n| n == from.class.as_str())
+                        || self
+                            .lineage(side, from.file, &from.class)?
+                            .iter()
+                            .any(|n| n == to.class.as_str());
+                }
+                if related {
+                    moved.insert(from.entry.key.clone());
+                    moved.insert(to.entry.key.clone());
+                }
+            }
+        }
+        Ok(moved)
+    }
+
+    fn declared(&self, side: SideTag, file: &RepoPath, key: &DefKey) -> Result<Option<Def>> {
+        Ok(facts_of(&self.ctx, side, &self.cache, file)?
+            .and_then(|facts| facts.defs().find(|d| d.local == key.local).cloned()))
+    }
+
+    /// The names a class lists as bases on one side, and theirs in turn, within
+    /// its file.
+    fn lineage(&self, side: SideTag, file: &RepoPath, class: &Name) -> Result<Vec<String>> {
+        let Some(facts) = facts_of(&self.ctx, side, &self.cache, file)? else {
+            return Ok(Vec::new());
+        };
+        let mut seen: Vec<String> = Vec::new();
+        let mut queue = vec![class.as_str().to_string()];
+        while let Some(name) = queue.pop() {
+            for def in facts
+                .defs()
+                .filter(|d| d.kind == DefKind::Class && d.local.name.as_str() == name)
+            {
+                for base in bases_in(def.signature.as_deref()) {
+                    if !seen.contains(&base) {
+                        seen.push(base.clone());
+                        queue.push(base);
+                    }
+                }
+            }
+        }
+        Ok(seen)
+    }
+
+    /// A field of a class is the class's line, edited, unless something outside
+    /// the diff reads it: a new or edited class prints no line per field.
+    fn folds_into_its_class(&self, changed: &Changed, def: &crate::resolve::Definition) -> bool {
+        self.family == Family::Python
+            && matches!(
+                changed.kind,
+                DefKind::Field | DefKind::Variable | DefKind::Constant
+            )
+            && !def.key.local.container.is_empty()
+            && !matches!(changed.how, How::Edited { layout_only: true })
+            && self.owner(def).is_some()
+            && {
+                let verdict = self.verdict(changed);
+                verdict.complete() && verdict.uses.iter().all(|u| u.also_changed)
+            }
     }
 
     fn definition(&self, key: &DefKey) -> Option<&crate::resolve::Definition> {
