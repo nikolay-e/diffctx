@@ -98,11 +98,12 @@ jobs:
   # A fix ships with the test that would have caught its class, red on the pull
   # request's base and green on its head (T9). The base build is cached by the
   # base commit, so a frozen main is built once. The epoch pull request carries
-  # work that was gated stream by stream and is not judged again.
+  # work that was gated stream by stream and is not judged again, and neither
+  # does a `relay/*` integration branch, which is that work before it is folded.
   # ============================================================================
   class-test:
     name: Class test
-    if: github.event_name == 'pull_request' && github.head_ref != 'next'
+    if: github.event_name == 'pull_request' && github.head_ref != 'next' && !startsWith(github.head_ref, 'relay/')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
