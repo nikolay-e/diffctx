@@ -971,6 +971,7 @@ struct Engine<'a> {
     instances: RefCell<HashMap<usize, Entity>>,
     bases: RefCell<HashMap<usize, Rc<Vec<(Entity, bool)>>>>,
     imported: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
+    linked: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
     subtype_map: OnceCell<HashMap<usize, Vec<usize>>>,
     globs: RefCell<HashMap<usize, Rc<Vec<GlobSet>>>>,
     wrapped: RefCell<HashMap<usize, Option<Entity>>>,
@@ -1003,6 +1004,7 @@ impl<'a> Engine<'a> {
             instances: RefCell::default(),
             bases: RefCell::default(),
             imported: RefCell::default(),
+            linked: RefCell::default(),
             subtype_map: OnceCell::new(),
             globs: RefCell::default(),
             wrapped: RefCell::default(),
@@ -1047,13 +1049,65 @@ impl<'a> Engine<'a> {
         files.iter().map(|f| self.path_of(*f).clone()).collect()
     }
 
-    /// Whether a name used in file `f` may refer to something in file `g`: one
-    /// project, a declared dependency, or no project at all.
-    fn reaches(&self, f: usize, g: usize) -> bool {
+    /// Whether the projects allow a name used in file `f` to refer to something
+    /// in file `g`: one project, a declared dependency, or no project at all.
+    fn allowed(&self, f: usize, g: usize) -> bool {
         f == g
             || self
                 .workspace
                 .may_reference(self.path_of(f).as_str(), self.path_of(g).as_str())
+    }
+
+    /// Whether a name used in file `f` may refer to something in file `g`: the
+    /// projects allow it, or a chain of the modules `f` imports leads there. A
+    /// relative path names its file whatever project either belongs to; only a
+    /// bare package name is held to the dependencies the manifests declare.
+    fn reaches(&self, f: usize, g: usize) -> bool {
+        self.allowed(f, g) || self.linked(f).contains(&g)
+    }
+
+    /// The files a chain of resolved imports from `f` lands on.
+    fn linked(&self, f: usize) -> Rc<HashSet<usize>> {
+        if let Some(known) = self.linked.borrow().get(&f) {
+            return Rc::clone(known);
+        }
+        let mut seen: HashSet<usize> = HashSet::from([f]);
+        let mut queue = vec![f];
+        while let Some(at) = queue.pop() {
+            let file = &self.ix.files[at];
+            let mut modules: Vec<&str> = Vec::new();
+            for fact in &file.facts.blob.facts {
+                if let Fact::Import(import) = fact {
+                    modules.push(import.module.as_str());
+                }
+            }
+            for rec in &file.imports {
+                match &rec.spec {
+                    Spec::Module { module }
+                    | Spec::Member { module, .. }
+                    | Spec::Default { module } => modules.push(module),
+                }
+            }
+            for offer in file.exports.values() {
+                match offer {
+                    Offer::From { module, .. } | Offer::Namespace { module } => {
+                        modules.push(module)
+                    }
+                    Offer::Local(_) => {}
+                }
+            }
+            modules.extend(file.stars.iter().map(String::as_str));
+            for module in modules {
+                if let ModRes::File(g) = self.module(at, module) {
+                    if seen.insert(g) {
+                        queue.push(g);
+                    }
+                }
+            }
+        }
+        let seen = Rc::new(seen);
+        self.linked.borrow_mut().insert(f, Rc::clone(&seen));
+        seen
     }
 
     fn reachable(&self, f: usize, def: usize) -> bool {
@@ -1092,7 +1146,7 @@ impl<'a> Engine<'a> {
     }
 
     fn landed(&self, f: usize, g: usize) -> ModRes {
-        if self.reaches(f, g) {
+        if self.allowed(f, g) {
             ModRes::File(g)
         } else {
             ModRes::Outside
@@ -1113,14 +1167,14 @@ impl<'a> Engine<'a> {
                 return ModRes::Missing;
             };
             return match self.probe(&base) {
-                Some(g) => self.landed(f, g),
+                Some(g) => ModRes::File(g),
                 None if is_asset(specifier) => ModRes::External,
                 None => ModRes::Missing,
             };
         }
         if let Some(from_root) = specifier.strip_prefix('/') {
             return match normalize(from_root).and_then(|base| self.probe(&base)) {
-                Some(g) => self.landed(f, g),
+                Some(g) => ModRes::File(g),
                 None => ModRes::Unplaced,
             };
         }
@@ -1145,7 +1199,7 @@ impl<'a> Engine<'a> {
                     continue;
                 };
                 if let Some(g) = self.probe(&base) {
-                    if self.reaches(f, g) {
+                    if self.allowed(f, g) {
                         return ModRes::File(g);
                     }
                     outside = true;
@@ -2273,7 +2327,7 @@ impl<'a> Engine<'a> {
             Some(root) => normalize(root)?,
             None => normalize(&join(&self.ix.files[f].dir, written))?,
         };
-        self.probe(&base).filter(|g| self.reaches(f, *g))
+        self.probe(&base)
     }
 
     /// What a classic script or a worker names without defining it: a worker
