@@ -1,5 +1,8 @@
-//! JavaScript/TypeScript: imports resolved by `bindings::Resolver`, and the
-//! owner of a definition read off the fragments around it.
+//! JavaScript and the inline scripts of HTML pages: imports resolved by
+//! `bindings::Resolver`, and the owner of a definition read off the fragments
+//! around it. The definitions of JavaScript and TypeScript files are the facts
+//! layer's (`decide.rs`); this model answers for pages, and contributes the
+//! uses a page makes of those definitions until the facts read HTML (wave 7).
 
 use std::path::Path;
 use std::rc::Rc;
@@ -53,6 +56,13 @@ pub(super) fn models<'a>(
             }) as Box<dyn LanguageFacts + 'a>
         })
         .collect()
+}
+
+pub(crate) fn is_page(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm"))
 }
 
 struct BoundDef {

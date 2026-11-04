@@ -5,6 +5,7 @@
 //! `LanguageFacts` and registering in `Registry::for_analysis`.
 
 mod bound;
+pub(crate) use bound::is_page;
 mod go;
 mod kotlin;
 pub(crate) mod rust;
@@ -345,16 +346,25 @@ fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
     }
 }
 
-/// The relations the facts layer's resolver answers (`decide.rs`), which no
-/// model of this registry reads: Python's.
+/// The relations the facts layer's resolvers answer (`decide.rs`), which no
+/// model of this registry reads: Python's, and TypeScript's with JavaScript's.
 fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
     use RelationKind::{
-        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, Writes,
+        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, TestsReach,
+        Writes,
     };
-    language == "python"
+    matches!(language, "python" | "typescript")
         && matches!(
             relation,
-            Calls | Reads | Writes | Instantiates | PassesAsValue | Overrides | Imports | Reexports
+            Calls
+                | Reads
+                | Writes
+                | Instantiates
+                | PassesAsValue
+                | Overrides
+                | Imports
+                | Reexports
+                | TestsReach
         )
 }
 

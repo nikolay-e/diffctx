@@ -162,7 +162,8 @@ export default memo(Badge);
 ";
 
 /// #504: `<Ui.Panel />` through `export * as Ui from './Card'`, and a
-/// default export wrapped in `memo`, rendered as `<Badge />`.
+/// default export wrapped in `memo`, rendered as `<Badge />`. A rendered
+/// element instantiates the component, which the answer calls a call.
 #[test]
 fn jsx_reaches_namespaced_and_wrapped_components() {
     let changed = CARD
@@ -201,14 +202,11 @@ fn jsx_reaches_namespaced_and_wrapped_components() {
     let out = impact(tmp.path());
     assert_eq!(
         callers(&out, "src/ui/Card.tsx", "Panel"),
-        set(&["reference src/Page.tsx::Page"])
+        set(&["call src/Page.tsx::Page"])
     );
     assert_eq!(
         callers(&out, "src/ui/Card.tsx", "Badge"),
-        set(&[
-            "reference src/Page.tsx::Page",
-            "reference src/ui/Card.tsx:11-11"
-        ])
+        set(&["call src/Page.tsx::Page", "reference src/ui/Card.tsx:11-11"])
     );
 }
 
@@ -1157,10 +1155,11 @@ fn html_inline_scripts_attribute_top_level_and_named_call_sites() {
     );
 }
 
-/// Forgejo #106: `const Card = lazy(() => import('./Card'))` binds the
-/// module's default export, so the component it renders is referenced there.
-/// A same-named default export of another module, and a lazy import of a
-/// module whose default export is another component, are not callers.
+/// Forgejo #106: `const Card = lazy(() => import('./Card'))` loads the
+/// module's default export, so that line is where the component is used; the
+/// element rendered from the constant is the constant's own. A same-named
+/// default export of another module, and a lazy import of a module whose
+/// default export is another component, are not callers.
 #[test]
 fn a_lazy_import_binds_the_default_export_of_a_relative_module() {
     let card = "export default function Card() {\n  return <div>Old</div>;\n}\n";
@@ -1189,8 +1188,8 @@ fn a_lazy_import_binds_the_default_export_of_a_relative_module() {
     assert_eq!(
         callers(&impact(tmp.path()), "src/Card.tsx", "Card"),
         set(&[
-            "reference src/App.tsx::App",
-            "reference src/Async.tsx::Async"
+            "reference src/App.tsx::Card",
+            "reference src/Async.tsx::Card"
         ])
     );
 }

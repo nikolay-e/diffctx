@@ -17,12 +17,12 @@ use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, T
 
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind, Language,
-    Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref, Scope, Span, TypeName,
-    UseKind, Visibility, expired, hash_text, hash_tokens,
+    Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref, Scope,
+    Span, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
-const VERSION: u32 = 1;
+const VERSION: u32 = 4;
 /// A blob names no path: the path of a loss is bound by whoever holds the file.
 const UNBOUND_PATH: &str = "<blob>";
 const POLL_EVERY: u32 = 256;
@@ -146,6 +146,57 @@ fn parse_dialect(dialect: Dialect, source: &str, budget: &RunBudget) -> Parsed {
     }
 }
 
+/// JSX text may hold a bare `&`, which the grammar reads as a broken character
+/// reference, and its recovery can misread the element around it (#531). `|`
+/// stands where `&` does in text, in code and in a type, so a parse with it in
+/// place reads what the language does, at the same bytes; it is kept when it
+/// reads the whole file.
+fn spelled_without_bare_ampersands(
+    dialect: Dialect,
+    source: &str,
+    budget: &RunBudget,
+    tree: Tree,
+) -> Tree {
+    if !tree.root_node().has_error() {
+        return tree;
+    }
+    let Some(spelled) = without_bare_ampersands(source) else {
+        return tree;
+    };
+    match parse_dialect(dialect, &spelled, budget) {
+        Parsed::Tree(clean) if !clean.root_node().has_error() => clean,
+        _ => tree,
+    }
+}
+
+/// `source` with each `&` that is neither `&&`, `&=` nor a character reference
+/// (`&amp;`, `&#38;`) spelled `|`, at the same byte; `None` when there is none.
+fn without_bare_ampersands(source: &str) -> Option<String> {
+    let bytes = source.as_bytes();
+    let reference = |rest: &[u8]| {
+        let body = rest.strip_prefix(b"#").unwrap_or(rest);
+        let len = body
+            .iter()
+            .take(32)
+            .position(|b| !b.is_ascii_alphanumeric())
+            .unwrap_or(body.len());
+        len > 0 && body.get(len) == Some(&b';')
+    };
+    let mut out = bytes.to_vec();
+    let mut changed = false;
+    for (at, &b) in bytes.iter().enumerate() {
+        let bare = b == b'&'
+            && at.checked_sub(1).is_none_or(|p| bytes[p] != b'&')
+            && !matches!(bytes.get(at + 1), Some(b'&' | b'='))
+            && !reference(&bytes[at + 1..]);
+        if bare {
+            out[at] = b'|';
+            changed = true;
+        }
+    }
+    changed.then(|| String::from_utf8(out).ok()).flatten()
+}
+
 fn unbound() -> RepoPath {
     RepoPath::new(UNBOUND_PATH).expect("a valid placeholder path")
 }
@@ -201,7 +252,7 @@ fn extract(dialect: Dialect, text: &[u8], budget: &RunBudget) -> BlobFacts {
     };
     let source = String::from_utf8_lossy(text);
     let tree = match parse_dialect(dialect, &source, budget) {
-        Parsed::Tree(tree) => tree,
+        Parsed::Tree(tree) => spelled_without_bare_ampersands(dialect, &source, budget, tree),
         Parsed::Missing => {
             let mut blob = BlobFacts::new(language);
             blob.losses.push(Loss::Unsupported { path: unbound() });
@@ -316,6 +367,17 @@ fn unwrapped(node: Node<'_>) -> Node<'_> {
 fn function_value(node: Node<'_>) -> Option<Node<'_>> {
     let inner = unwrapped(node);
     is_function_kind(inner.kind()).then_some(inner)
+}
+
+/// The object literal an expression is, through parentheses and assertions.
+fn returned_object(node: Node<'_>) -> Option<Node<'_>> {
+    let inner = unwrapped(node);
+    (inner.kind() == "object").then_some(inner)
+}
+
+/// The names the global object of a page, a worker or Node goes by.
+fn is_global_object(name: &str) -> bool {
+    matches!(name, "self" | "window" | "globalThis" | "global")
 }
 
 fn is_const_declaration(node: Option<Node<'_>>) -> bool {
@@ -509,7 +571,7 @@ fn leaves<'a>(src: &'a str, node: Node<'_>, out: &mut Vec<&'a str>) {
 
 /// A syntax tree as a token stream: node kinds, nesting and leaf text, with
 /// whitespace and comments left out (#442).
-fn tokens<'a>(src: &'a str, node: Node<'_>, out: &mut Vec<&'a str>) {
+fn tokens<'a>(src: &'a str, node: Node<'_>, skip: &FxHashSet<usize>, out: &mut Vec<&'a str>) {
     enum Step<'t> {
         Enter(Node<'t>),
         Exit,
@@ -520,7 +582,7 @@ fn tokens<'a>(src: &'a str, node: Node<'_>, out: &mut Vec<&'a str>) {
             out.push(CLOSE);
             continue;
         };
-        if current.kind() == "comment" {
+        if current.kind() == "comment" || skip.contains(&current.id()) {
             continue;
         }
         if current.child_count() == 0 {
@@ -777,8 +839,22 @@ struct Stmt<'t> {
     exported: bool,
 }
 
+/// The body of a definition, searched for the definitions it holds: functions
+/// declared inside it, and the members of an object literal it returns.
+struct Scan<'t> {
+    body: Node<'t>,
+    /// The definition's own path: the container of what is found.
+    container: Vec<Name>,
+    /// Whether the definition is a function, whose `return` hands back a value.
+    returns: bool,
+}
+
 struct Declarer<'t> {
     src: &'t str,
+    scans: Vec<Scan<'t>>,
+    /// Members of a returned object literal that became definitions: their own
+    /// scans search them, so the returning function's does not.
+    claimed: FxHashSet<usize>,
     pending: Vec<Pending<'t>>,
     facts: Vec<Fact>,
     exported: FxHashSet<String>,
@@ -798,6 +874,8 @@ impl<'t> Declarer<'t> {
     fn run(src: &'t str, root: Node<'t>, budget: &RunBudget, ticker: &mut Ticker) -> Declared {
         let mut declarer = Self {
             src,
+            scans: Vec::new(),
+            claimed: FxHashSet::default(),
             pending: Vec::new(),
             facts: Vec::new(),
             exported: FxHashSet::default(),
@@ -816,6 +894,12 @@ impl<'t> Declarer<'t> {
                 break;
             }
             declarer.statement(node, container, exported, &mut stack);
+        }
+        while let Some(scan) = declarer.scans.pop() {
+            if ticker.over(budget) {
+                break;
+            }
+            declarer.scan(scan, budget, ticker);
         }
         declarer.finish()
     }
@@ -838,6 +922,24 @@ impl<'t> Declarer<'t> {
     }
 
     fn add(&mut self, spec: Spec<'t>) {
+        if let (true, Body::Whole(body)) = (spec.owner, spec.body) {
+            let returns = match spec.kind {
+                DefKind::Function | DefKind::Method | DefKind::Constructor | DefKind::Property => {
+                    Some(true)
+                }
+                DefKind::Constant | DefKind::Variable | DefKind::Field => Some(false),
+                _ => None,
+            };
+            if let Some(returns) = returns {
+                let mut container = spec.container.clone();
+                container.push(Name::from(spec.name.as_str()));
+                self.scans.push(Scan {
+                    body,
+                    container,
+                    returns,
+                });
+            }
+        }
         let lead = leading(self.src, spec.outer, spec.node);
         self.pending.push(Pending {
             spec,
@@ -846,6 +948,111 @@ impl<'t> Declarer<'t> {
             decorators: lead.decorators,
             doc: lead.doc,
         });
+    }
+
+    /// Walks a definition's body for what it holds: a function declared inside it,
+    /// at any depth and inside any callback, is a definition of its own with this
+    /// one as container, and the methods and function-valued properties of an
+    /// object literal a function in it returns are too, a callback included. An
+    /// object literal passed to a call is configuration, not a definition (#706).
+    fn scan(&mut self, scan: Scan<'t>, budget: &RunBudget, ticker: &mut Ticker) {
+        let Scan {
+            body,
+            container,
+            returns,
+        } = scan;
+        // The object literal a function hands back as its expression body, or a
+        // constant, variable or field is initialised with: its methods are the
+        // definition's members.
+        let _ = returns;
+        if body.kind() != "statement_block" {
+            if let Some(object) = returned_object(body) {
+                self.object_members(object, &container);
+            }
+        }
+        let mut stack: Vec<Node<'t>> = vec![body];
+        while let Some(node) = stack.pop() {
+            if ticker.over(budget) {
+                return;
+            }
+            if self.claimed.contains(&node.id()) {
+                continue;
+            }
+            match node.kind() {
+                "function_declaration" | "generator_function_declaration" => {
+                    self.function(node, container.clone(), false);
+                    continue;
+                }
+                "class" | "class_declaration" | "abstract_class_declaration" => continue,
+                // A callback hands its object back as a function does: the
+                // actions a store builds are its members.
+                "arrow_function" | "function_expression" | "generator_function" => {
+                    if let Some(object) = field(node, "body")
+                        .filter(|b| b.kind() != "statement_block")
+                        .and_then(returned_object)
+                    {
+                        self.object_members(object, &container);
+                    }
+                }
+                "return_statement" => {
+                    if let Some(object) = first_named(node).and_then(returned_object) {
+                        self.object_members(object, &container);
+                    }
+                }
+                _ => {}
+            }
+            for child in kids(node).into_iter().rev() {
+                if child.is_named() && child.kind() != "comment" {
+                    stack.push(child);
+                }
+            }
+        }
+    }
+
+    /// The methods and function-valued properties of an object literal.
+    fn object_members(&mut self, object: Node<'t>, container: &[Name]) {
+        for member in kids(object) {
+            match member.kind() {
+                "method_definition" => {
+                    if member_name(self.src, member).is_some_and(|(node, name)| {
+                        node.kind() != "computed_property_name" && name != "constructor"
+                    }) {
+                        self.claimed.insert(member.id());
+                        self.method(member, container, true);
+                    }
+                }
+                "pair" => {
+                    let (Some(key), Some(function)) = (
+                        field(member, "key"),
+                        field(member, "value").and_then(function_value),
+                    ) else {
+                        continue;
+                    };
+                    if key.kind() == "computed_property_name" {
+                        continue;
+                    }
+                    self.claimed.insert(member.id());
+                    let name = match key.kind() {
+                        "string" => strip_quotes(text(self.src, key)).to_string(),
+                        _ => text(self.src, key).trim().to_string(),
+                    };
+                    self.add(Spec {
+                        node: member,
+                        outer: member,
+                        name_node: key,
+                        name,
+                        container: container.to_vec(),
+                        kind: DefKind::Method,
+                        type_namespace: false,
+                        visibility: Visibility::Public,
+                        signature: signature(self.src, &[function]),
+                        body: body_of(function),
+                        owner: true,
+                    });
+                }
+                _ => {}
+            }
+        }
     }
 
     fn statement(
@@ -1102,7 +1309,14 @@ impl<'t> Declarer<'t> {
             body: body.map_or(Body::Absent, Body::Members),
             owner: true,
         });
-        for member in body.map(kids).unwrap_or_default() {
+        if let Some(body) = body {
+            self.type_members(body, &inner);
+        }
+    }
+
+    /// The members an interface or an object type declares.
+    fn type_members(&mut self, body: Node<'t>, inner: &[Name]) {
+        for member in kids(body) {
             let kind = match member.kind() {
                 "method_signature" => DefKind::Method,
                 "property_signature" => DefKind::Property,
@@ -1116,7 +1330,7 @@ impl<'t> Declarer<'t> {
                 outer: member,
                 name_node,
                 name,
-                container: inner.clone(),
+                container: inner.to_vec(),
                 kind,
                 type_namespace: false,
                 visibility: Visibility::Public,
@@ -1131,19 +1345,28 @@ impl<'t> Declarer<'t> {
         let Some(name_node) = field(node, "name") else {
             return;
         };
+        let name = text(self.src, name_node).to_string();
+        let value = field(node, "value");
+        let mut inner = container.clone();
+        inner.push(Name::from(name.as_str()));
         self.add(Spec {
             node,
             outer: outer_of(node),
             name_node,
-            name: text(self.src, name_node).to_string(),
+            name,
             container,
             kind: DefKind::TypeAlias,
             type_namespace: true,
             visibility: visibility_for(exported),
             signature: signature(self.src, &[node]),
-            body: field(node, "value").map_or(Body::Absent, Body::Whole),
+            body: value.map_or(Body::Absent, Body::Whole),
             owner: true,
         });
+        // `type Prefs = { softPrefs: string[] }` declares its members as an
+        // interface does.
+        if let Some(object) = value.filter(|v| v.kind() == "object_type") {
+            self.type_members(object, &inner);
+        }
     }
 
     fn enumeration(&mut self, node: Node<'t>, container: Vec<Name>, exported: bool) {
@@ -1620,6 +1843,25 @@ impl<'t> Declarer<'t> {
         }
         let path = path_of(self.src, left);
         let names: Vec<&str> = path.iter().map(Name::as_str).collect();
+        // `self.serveShell = …` defines a property of the global object (#426).
+        if let [object, global] = names.as_slice() {
+            if is_global_object(object) {
+                let right = unwrapped(right);
+                let name_node = field(left, "property").unwrap_or(left);
+                self.value_def(
+                    right,
+                    statement,
+                    name_node,
+                    (*global).to_string(),
+                    Some(right),
+                    None,
+                    DefKind::Variable,
+                    container,
+                    Visibility::Public,
+                );
+                return;
+            }
+        }
         let exported_name = match names.as_slice() {
             ["module", "exports"] => None,
             ["module", "exports", name] | ["exports", name] => Some(Name::from(*name)),
@@ -1713,6 +1955,8 @@ impl<'t> Declarer<'t> {
             exported,
             module_types,
             declarators,
+            scans: _,
+            claimed: _,
         } = self;
         let group = |spec: &Spec<'_>| {
             (
@@ -1826,6 +2070,64 @@ fn declares(
             .any(|child| declarators.contains(&child.id()))
 }
 
+/// The definitions nested under `root` that the extractor emits on its own, with
+/// the separator that follows each, and the byte ranges they take: a change
+/// inside one is that definition's change alone, never its container's.
+fn nested_definitions(
+    root: Node<'_>,
+    owners: &FxHashMap<usize, LocalKey>,
+    declarators: &FxHashSet<usize>,
+) -> (FxHashSet<usize>, Vec<(usize, usize)>) {
+    let mut skip = FxHashSet::default();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        let children = kids(node);
+        let mut declared = Vec::new();
+        for (at, child) in children.iter().enumerate() {
+            if child.id() != root.id() && declares(*child, owners, declarators) {
+                declared.push(at);
+            }
+        }
+        for (at, child) in children.iter().enumerate().rev() {
+            if declared.contains(&at) {
+                continue;
+            }
+            stack.push(*child);
+        }
+        for at in declared {
+            let child = children[at];
+            skip.insert(child.id());
+            let mut end = child.end_byte();
+            if let Some(next) = children.get(at + 1) {
+                if !next.is_named() && matches!(next.kind(), ";" | ",") {
+                    skip.insert(next.id());
+                    end = next.end_byte();
+                }
+            }
+            ranges.push((child.start_byte(), end));
+        }
+    }
+    ranges.sort_unstable();
+    (skip, ranges)
+}
+
+/// The text of `node` without the byte ranges.
+fn text_without(src: &str, node: Node<'_>, ranges: &[(usize, usize)]) -> String {
+    let (start, end) = (node.start_byte(), node.end_byte());
+    let mut out = String::new();
+    let mut at = start;
+    for (from, to) in ranges {
+        if *to <= at || *from >= end {
+            continue;
+        }
+        out.push_str(src.get(at..*from.max(&at)).unwrap_or(""));
+        at = (*to).max(at);
+    }
+    out.push_str(src.get(at..end).unwrap_or(""));
+    out
+}
+
 fn hashes(
     src: &str,
     spec: &Spec<'_>,
@@ -1835,11 +2137,12 @@ fn hashes(
     match spec.body {
         Body::Absent => (0, hash_text(text(src, spec.node).as_bytes())),
         Body::Whole(body) => {
+            let (skip, ranges) = nested_definitions(body, owners, declarators);
             let mut stream = Vec::new();
-            tokens(src, body, &mut stream);
+            tokens(src, body, &skip, &mut stream);
             (
                 hash_tokens(stream.iter().map(|t| t.as_bytes())).unwrap_or(0),
-                hash_text(text(src, spec.node).as_bytes()),
+                hash_text(text_without(src, spec.node, &ranges).as_bytes()),
             )
         }
         Body::Members(body) => {
@@ -1848,13 +2151,25 @@ fn hashes(
                 .get(spec.node.start_byte()..body.start_byte())
                 .unwrap_or("")
                 .to_string();
-            for child in kids(body) {
-                if declares(child, owners, declarators) {
+            let nothing = FxHashSet::default();
+            let children = kids(body);
+            let mut at = 0;
+            while let Some(child) = children.get(at) {
+                at += 1;
+                if declares(*child, owners, declarators) {
+                    // A member's separator is the member's, not the container's:
+                    // adding one would otherwise change the class.
+                    if children
+                        .get(at)
+                        .is_some_and(|next| !next.is_named() && matches!(next.kind(), ";" | ","))
+                    {
+                        at += 1;
+                    }
                     continue;
                 }
-                tokens(src, child, &mut stream);
+                tokens(src, *child, &nothing, &mut stream);
                 if child.kind() != "comment" {
-                    layout.push_str(text(src, child));
+                    layout.push_str(text(src, *child));
                     layout.push('\u{1}');
                 }
             }
@@ -2320,11 +2635,18 @@ impl<'t> Walker<'t> {
             "identifier" if self.t(function) == "require" && arguments.kind() == "arguments" => {
                 arguments_done = self.import_call(node, arguments, false);
             }
+            "identifier"
+                if self.t(function) == "importScripts" && arguments.kind() == "arguments" =>
+            {
+                self.script_imports(node, arguments);
+                arguments_done = true;
+            }
             "identifier" => {
                 let name = self.t(function);
                 self.reference(function, name, Vec::new(), Receiver::None, UseKind::Call);
             }
             "member_expression" => {
+                self.module_globs(node, function, arguments);
                 if let (Some(object), Some(property)) =
                     (field(function, "object"), field(function, "property"))
                 {
@@ -2351,6 +2673,79 @@ impl<'t> Walker<'t> {
         }
         children.extend(field(node, "type_arguments").map(|t| (t, Ctx::default())));
         self.push_children(children);
+    }
+
+    /// `importScripts('/kit/sw-kit.js')` loads classic scripts into a worker:
+    /// each literal is a script the file sees the globals of.
+    fn script_imports(&mut self, call: Node<'t>, arguments: Node<'t>) {
+        for argument in kids(arguments) {
+            let Some(module) = string_value(self.src, argument) else {
+                continue;
+            };
+            self.facts.push(Fact::Import(Import {
+                site: span(call),
+                enclosing: self.written_scope(call),
+                relative: relative_of(&module),
+                module: ModulePath::from(module),
+                kind: ImportKind::SideEffect,
+                names: Vec::new(),
+                star: None,
+                default: None,
+            }));
+        }
+    }
+
+    /// `import.meta.glob(patterns)` and `require.context(dir, recursive)` load
+    /// the modules a pattern matches: each pattern is a path mention, a negated
+    /// one with its `!`; a context is the glob of its directory.
+    fn module_globs(&mut self, call: Node<'t>, function: Node<'t>, arguments: Node<'t>) {
+        let raw = self.t(function);
+        if !(raw.starts_with("import") || raw.starts_with("require")) {
+            return;
+        }
+        let callee = squeeze(raw);
+        let context = callee == "require.context";
+        if !(context
+            || matches!(
+                callee.as_str(),
+                "import.meta.glob" | "import.meta.globEager"
+            ))
+        {
+            return;
+        }
+        let mut written = kids(arguments)
+            .into_iter()
+            .filter(|c| c.is_named() && c.kind() != "comment");
+        let Some(first) = written.next() else {
+            return;
+        };
+        let patterns: Vec<String> = if context {
+            let recursive = written.next().is_none_or(|flag| self.t(flag) != "false");
+            string_value(self.src, first)
+                .map(|dir| {
+                    let dir = dir.trim_end_matches('/');
+                    vec![if recursive {
+                        format!("{dir}/**/*")
+                    } else {
+                        format!("{dir}/*")
+                    }]
+                })
+                .unwrap_or_default()
+        } else if first.kind() == "array" {
+            kids(first)
+                .into_iter()
+                .filter_map(|item| string_value(self.src, item))
+                .collect()
+        } else {
+            string_value(self.src, first).into_iter().collect()
+        };
+        for text in patterns {
+            self.facts.push(Fact::PathMention(PathMention {
+                site: span(call),
+                enclosing: self.current(),
+                text,
+            }));
+        }
     }
 
     /// A `require('m')` or `import('m')` call with a literal specifier; false
@@ -2574,7 +2969,15 @@ impl<'t> Walker<'t> {
             return self.generic(node);
         };
         let mut children = Vec::new();
-        self.target(left, &mut children);
+        // A definition of the global object is the assignment itself, not a
+        // write of a name.
+        let defines = left.kind() == "member_expression"
+            && matches!(path_of(self.src, left).as_slice(),
+                [object, _] if is_global_object(object.as_str()))
+            && self.owners.contains_key(&unwrapped(right).id());
+        if !defines {
+            self.target(left, &mut children);
+        }
         children.push((right, Ctx::default()));
         self.push_children(children);
     }
