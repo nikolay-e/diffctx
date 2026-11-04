@@ -11,10 +11,11 @@ use crate::config::tokenization::TOKENIZATION;
 use crate::discovery::DiscoveryContext;
 use crate::git;
 
-// Bump whenever identifier extraction changes (regex, lowercasing, length
-// filtering): the epoch is part of the on-disk cache key, so stale entries
-// are invalidated instead of silently poisoning results.
-pub const TOKENIZER_EPOCH: u32 = 1;
+// The digest of the sources that make tokens (`build.rs`: identifier extraction,
+// its configuration, the stopword lists): it is part of the on-disk cache key,
+// so a build that tokenizes differently reads no entry of another instead of
+// silently poisoning results.
+pub const TOKENIZER_FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
 
 // Size cap for the on-disk token cache, overridable with
 // DIFFCTX_TOKEN_CACHE_MAX_BYTES (0 = unlimited). The cache is a pure speedup,
@@ -173,7 +174,7 @@ impl TokenCacheStore {
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .or_else(default_cache_root)?;
-        let dir = root.join(format!("v{TOKENIZER_EPOCH}-l{min_token_length}"));
+        let dir = root.join(format!("{TOKENIZER_FINGERPRINT:016x}-l{min_token_length}"));
         std::fs::create_dir_all(&dir).ok()?;
         Some(Self { dir })
     }

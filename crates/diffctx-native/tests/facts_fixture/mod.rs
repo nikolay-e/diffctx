@@ -32,7 +32,8 @@ use crate::snapshot_fixture::Repo;
 pub struct Toy {
     pub language: Language,
     pub calls: Arc<AtomicUsize>,
-    pub version: u32,
+    /// The build fingerprint this toy's cache stands for.
+    pub build: u64,
     pub grammar: u64,
 }
 
@@ -41,7 +42,7 @@ impl Toy {
         Self {
             language: Language::Python,
             calls: Arc::new(AtomicUsize::new(0)),
-            version: 1,
+            build: 1,
             grammar: 7,
         }
     }
@@ -108,10 +109,6 @@ fn span(from: usize, to: usize, lines: (u32, u32)) -> Span {
 impl Extractor for Toy {
     fn language(&self) -> Language {
         self.language
-    }
-
-    fn version(&self) -> u32 {
-        self.version
     }
 
     fn grammar(&self) -> u64 {
@@ -322,7 +319,9 @@ pub fn context(repo: &Repo, range: RangeSpec) -> AnalysisContext {
 }
 
 pub fn cache_in(dir: &Path, toy: &Toy) -> FactsCache {
-    FactsCache::new(dir.to_path_buf()).with_registry(toy.registry())
+    FactsCache::new(dir.to_path_buf())
+        .with_registry(toy.registry())
+        .with_fingerprint(toy.build)
 }
 
 /// The entries a cache directory holds.

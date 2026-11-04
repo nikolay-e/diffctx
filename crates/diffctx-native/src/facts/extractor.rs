@@ -9,12 +9,11 @@ use crate::facts::model::BlobFacts;
 use crate::snapshot::RunBudget;
 
 /// One language's reader of a blob. Pure: the same bytes give the same facts,
-/// which is what lets the cache key on the blob, the extractor's `version` and
-/// the grammar alone; a change to what an extractor emits bumps `version`.
+/// which is what lets the cache key on the blob, the build's fingerprint and the
+/// grammar alone; a change to what an extractor emits is a change to the code the
+/// fingerprint digests.
 pub trait Extractor: Send + Sync {
     fn language(&self) -> Language;
-
-    fn version(&self) -> u32;
 
     /// The digest of the grammar the extractor parses with, so a grammar update
     /// is a cache miss. The default reads it off the language's tree-sitter
