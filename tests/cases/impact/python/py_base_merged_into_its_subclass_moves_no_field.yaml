@@ -1,0 +1,41 @@
+name: py_base_merged_into_its_subclass_moves_no_field
+mode: impact
+source: gh#712
+issue_state: open
+tags: [python, removed, fields, inheritance]
+repo:
+  initial_files:
+    models.py: |
+      from pydantic import BaseModel
+
+
+      class _Mixin(BaseModel):
+          note: str
+          amount: int
+
+
+      class Item(_Mixin):
+          kind: str
+    service.py: |
+      from models import Item
+
+
+      def show(item: Item):
+          return item
+  changed_files:
+    models.py: |
+      from pydantic import BaseModel
+
+
+      class Item(BaseModel):
+          note: str
+          amount: int
+          kind: str
+  commit_message: "models: merge the mixin into Item"
+# gh#712: the base class left and its fields went into the subclass with their
+# declarations unchanged. The base is reported as removed; `note` and `amount`
+# are neither removed nor changed.
+expect:
+  removed: [_Mixin]
+  changed: [models.py::Item, models.py::_Mixin]
+  never_empty: true
