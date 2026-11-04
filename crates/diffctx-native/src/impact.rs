@@ -1255,6 +1255,13 @@ fn names_module(path: &str, own: &str, spells: impl Fn(&str) -> bool) -> bool {
             .any(|w| spells(&w.to_string_lossy()))
 }
 
+fn is_python_path(path: &str) -> bool {
+    matches!(
+        Path::new(path).extension().and_then(|e| e.to_str()),
+        Some("py" | "pyi")
+    )
+}
+
 /// A file the fragments set aside for its size, which the facts layer read
 /// whole: a use of the name in it was seen, or is reported as unresolved. A
 /// tree that broke is read in part, and its hedge stays.
@@ -2832,7 +2839,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         .collect();
     ChangedSymbol {
         path: def.file.clone(),
-        symbol: Some(def.name.clone()),
+        symbol: Some(def.display_name()),
         lines: format!("{}-{}", def.lines.0, def.lines.1),
         kind,
         commits: 0,
@@ -4297,12 +4304,14 @@ pub fn build_impact(
                         | crate::facts::DefKind::Constant
                 )
                 && !entry.name.starts_with('_');
-            if attribute {
-                listed_alone.insert((sym.path.clone(), entry.name.clone()));
+            // Every removed Python definition is reported, private ones too: with
+            // the readers the head still has, or as one nothing references.
+            if attribute || is_python_path(&entry.file) {
+                listed_alone.insert((sym.path.clone(), entry.display_name()));
             }
             let contract = entry.public.then(|| Contract {
                 path: sym.path.clone(),
-                symbol: Some(entry.name.clone()),
+                symbol: Some(entry.display_name()),
                 kind: "removed_api",
             });
             Some((sym, contract))
@@ -6178,7 +6187,7 @@ fn proves_empty(output: &ImpactOutput) -> bool {
 /// A symbol listed for its changed callers alone: nothing outside the diff
 /// depends on it, which is what `empty` says.
 fn only_in_the_diff(c: &ChangedSymbol) -> bool {
-    !c.also_changed.is_empty()
+    (!c.also_changed.is_empty() || c.kind == "removed")
         && c.callers.is_empty()
         && c.unresolved.is_none()
         && c.compatible_callers == 0
@@ -6291,6 +6300,9 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     false
 }
 
+/// The shed definitions the omitted entry names; the rest are counted.
+const MAX_OMITTED_NAMED: usize = 40;
+
 /// A shed symbol is not dropped: it joins the one entry that names the
 /// definitions the cap left out, with the callers it had, and what shows them.
 /// Dropped silently it would read as a definition nothing calls.
@@ -6316,6 +6328,10 @@ fn omit(output: &mut ImpactOutput, i: usize) {
                     .cmp(&a.callers_omitted)
                     .then_with(|| a.definition.cmp(&b.definition))
             });
+            // The count stays whole; the names that fit are the ones with the
+            // most callers, so a module of thirty thousand removals does not
+            // outgrow the cap with its own list.
+            entry.omitted.truncate(MAX_OMITTED_NAMED);
             output.symbols_omitted += 1;
         }
         None => output.changed.push(ChangedSymbol {
@@ -7205,6 +7221,14 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     );
     if let Some(note) = &sym.unresolved {
         let _ = writeln!(out, "  - callers not resolved: {note}");
+    }
+    if sym.kind == "removed"
+        && sym.callers.is_empty()
+        && sym.unresolved.is_none()
+        && sym.missed_in.is_empty()
+        && sym.also_changed.is_empty()
+    {
+        let _ = writeln!(out, "  - nothing references it");
     }
     if sym.compatible_callers > 0 {
         let _ = writeln!(

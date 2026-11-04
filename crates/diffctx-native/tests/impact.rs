@@ -3836,7 +3836,9 @@ fn a_removed_definition_is_called_only_from_code_that_can_reach_it() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["kind"] == "removed")
+        // Every removed definition is listed; the readers are the claim: one that
+        // nothing reads has none.
+        .filter(|c| c["kind"] == "removed" && !c["callers"].as_array().unwrap().is_empty())
         .map(|c| {
             (
                 c["symbol"].as_str().unwrap().to_string(),
@@ -4181,7 +4183,12 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
         .as_array()
         .expect("changed")
         .iter()
-        .filter(|c| c["symbol"] == "request" && c["kind"] == "removed")
+        .filter(|c| {
+            c["kind"] == "removed"
+                && c["symbol"]
+                    .as_str()
+                    .is_some_and(|s| s.rsplit('.').next() == Some("request"))
+        })
         .collect();
     assert_eq!(gone.len(), 1, "{doc}");
     assert_eq!(gone[0]["lines"], "3-3", "{doc}");
@@ -4596,7 +4603,8 @@ fn deleted_python_function_ignores_parameter_local_and_docstring_words() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|entry| entry["kind"] == "removed")
+        // Every removed definition is listed; only one with live readers has callers.
+        .filter(|entry| entry["kind"] == "removed" && !entry["callers"].as_array().unwrap().is_empty())
         .map(|entry| {
             let sym = entry["symbol"].as_str().unwrap().to_string();
             let refs = entry["callers"]
