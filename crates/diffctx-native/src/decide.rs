@@ -499,7 +499,9 @@ impl Cell {
             losses: Vec::new(),
             scope: state.scope.clone(),
         };
-        for h in &state.hunk_texts {
+        // A queried name has no diff: the lines a symbol run anchors its
+        // definitions on are no hunks, and a use inside one is a caller.
+        for h in state.hunk_texts.iter().filter(|_| !symbol) {
             cell.hunks
                 .entry(h.path.clone())
                 .or_default()
@@ -514,7 +516,8 @@ impl Cell {
 
     fn index(&mut self) {
         let mut file_of: HashMap<&DefKey, &str> = HashMap::new();
-        // Uses that landed on nothing: (name, file, owner, an untyped read).
+        // Uses that landed on nothing: (name, file, owner, a use through a receiver
+        // nothing types: a property read, and in TypeScript a method call).
         let mut unlanded: Vec<(String, String, u32, Scope, bool)> = Vec::new();
         // The names a scope calls or reads through an untyped receiver and the
         // resolver placed as candidates: a read of `w.switch` beside the call
@@ -573,7 +576,13 @@ impl Cell {
                             file.to_string(),
                             line,
                             b.from.clone(),
-                            *reason == UnresolvedReason::UntypedRead,
+                            *reason == UnresolvedReason::UntypedRead
+                                || (self.family == Family::TypeScript
+                                    && matches!(
+                                        reason,
+                                        UnresolvedReason::NoCandidates
+                                            | UnresolvedReason::TooManyCandidates
+                                    )),
                         ));
                     }
                 }
