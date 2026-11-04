@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::bindings::{self, Evidence, Finding, Relation};
 use crate::container::{innermost, named_container_of, within};
-use crate::decide::{self, PythonCell};
+use crate::decide::{self, Cells};
 use crate::graph::EdgeCategory;
 use crate::lang::{self, At, LanguageFacts, Registry, UseSite};
 use crate::pipeline::ScoredState;
@@ -806,54 +806,6 @@ fn references_module(
     }
     file_words.contains(stem.as_str())
         || symbol.is_some_and(|s| imported_from_package(changed, files, caller.path(), s))
-}
-
-/// Whether a JS/TS file names `used` by a relative path of its own import
-/// (`from "../core/store"`, `require("./store.js")`): the specifier states the
-/// target outright, so a project root between them does not break the link.
-/// Only the file's import lines count; a word that happens to be the module's
-/// name does not.
-fn imports_by_relative_path(frags: &[&Fragment], user: &str, used: &str) -> bool {
-    if !matches!(
-        crate::languages::get_language_for_file(user),
-        Some("javascript" | "typescript" | "tsx")
-    ) {
-        return false;
-    }
-    let target = used.rsplit_once('.').map_or(used, |(stem, _)| stem);
-    let target = target.strip_suffix("/index").unwrap_or(target);
-    let dir = user.rsplit_once('/').map_or("", |(dir, _)| dir);
-    frags
-        .iter()
-        .flat_map(|f| f.content.lines())
-        .filter(|line| {
-            let head = line.trim_start();
-            head.starts_with("import")
-                || head.starts_with("export")
-                || head.contains("require(")
-                || head.contains("import(")
-        })
-        .flat_map(|line| line.split(['"', '\'', '`']).skip(1).step_by(2))
-        .filter(|spec| spec.starts_with("./") || spec.starts_with("../"))
-        .any(|spec| {
-            let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
-            for part in spec.split('/') {
-                match part {
-                    "" | "." => {}
-                    ".." => {
-                        parts.pop();
-                    }
-                    name => parts.push(name),
-                }
-            }
-            let joined = parts.join("/");
-            let joined = joined
-                .rsplit_once('.')
-                .filter(|(_, e)| ["js", "mjs", "cjs", "ts", "tsx", "mts", "cts", "jsx"].contains(e))
-                .map_or(joined.as_str(), |(stem, _)| stem);
-            let joined = joined.strip_suffix("/index").unwrap_or(joined);
-            joined == target
-        })
 }
 
 /// `from models import Steps` reaches `models/wearables.py::Steps` through
@@ -2713,9 +2665,9 @@ fn compatible_extension(core: &Fragment, hunks: &[&crate::change_class::HunkText
         })
 }
 
-/// The fragment that spans a changed Python definition: the one of its name
+/// The fragment that spans a changed definition: the one of its name
 /// whose lines overlap the definition's and lie nearest them.
-fn python_anchor<'a>(frags: &[&'a Fragment], def: &decide::Changed) -> Option<&'a Fragment> {
+fn cell_anchor<'a>(frags: &[&'a Fragment], def: &decide::Changed) -> Option<&'a Fragment> {
     frags
         .iter()
         .copied()
@@ -2732,7 +2684,7 @@ fn python_anchor<'a>(frags: &[&'a Fragment], def: &decide::Changed) -> Option<&'
 }
 
 /// The fragment that owns a line of use: the smallest named one around it.
-fn python_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
+fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
     frags
         .iter()
         .copied()
@@ -2745,7 +2697,7 @@ fn python_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> 
         .min_by_key(|f| (f.symbol_name.is_none(), f.line_count()))
 }
 
-fn python_finding(u: &decide::Use) -> Finding {
+fn cell_finding(u: &decide::Use) -> Finding {
     use crate::resolve::Relation as Uses;
     Finding {
         evidence: match u.standing {
@@ -2764,7 +2716,7 @@ fn python_finding(u: &decide::Use) -> Finding {
 /// What the answer says of a gap in the resolver's reach: a name on more lines
 /// than can be told apart is too common to trace (#413), any other count is
 /// reads through a receiver nothing types (#399).
-fn python_unknown(gap: &decide::Gap, name: &str) -> Unknown {
+fn cell_unknown(gap: &decide::Gap, name: &str) -> Unknown {
     match gap {
         decide::Gap::Unlanded { uses } if *uses > MAX_REMOVED_NAME_HITS => Unknown::CommonWord {
             name: name.to_string(),
@@ -2782,8 +2734,8 @@ fn python_unknown(gap: &decide::Gap, name: &str) -> Unknown {
 
 /// A caller row as the resolver gave it, for a line no fragment owns: a
 /// script the fragmenter did not cut, or a file past its fragment cap.
-fn python_row(u: &decide::Use) -> Caller {
-    let finding = python_finding(u);
+fn cell_row(u: &decide::Use) -> Caller {
+    let finding = cell_finding(u);
     let caller = match &u.scope {
         crate::facts::Scope::Def(local) => Some(local.name.as_str().to_string()),
         _ => None,
@@ -2815,13 +2767,13 @@ fn python_row(u: &decide::Use) -> Caller {
     }
 }
 
-/// A Python definition the answer reports without a fragment to hang the roles
+/// A definition the answer reports without a fragment to hang the roles
 /// and test links on: its callers are the resolver's rows as they stand.
-fn python_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -> ChangedSymbol {
+fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -> ChangedSymbol {
     let callers: Vec<Caller> = verdict
         .resolved()
         .chain(verdict.candidates())
-        .map(python_row)
+        .map(cell_row)
         .collect();
     let also_changed: Vec<String> = verdict
         .also_changed()
@@ -2835,10 +2787,7 @@ fn python_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String)
         commits: 0,
         callers: merge_by_symbol(callers),
         entry: None,
-        unresolved: verdict
-            .gap
-            .as_ref()
-            .map(|gap| python_unknown(gap, &def.name)),
+        unresolved: verdict.gap.as_ref().map(|gap| cell_unknown(gap, &def.name)),
         untested: false,
         compatible_callers: 0,
         missed_in: Vec::new(),
@@ -2876,33 +2825,14 @@ pub fn build_impact(
         .filter_map(|p| p.to_str())
         .collect();
     let tests = TestIndex::build(state, state.analysed_range.as_deref().or(diff_range));
-    // The Python cell: changed definitions from the facts layer's semantic
-    // changes, callers from the resolver (decide.rs). The ranking graph and the
-    // text filters take no part in what it answers.
-    let python_wanted = PythonCell::concerns(state, query.is_some());
-    let python: Option<PythonCell> = if python_wanted {
-        match PythonCell::open(
-            state,
-            state.analysed_range.as_deref().or(diff_range),
-            query.is_some(),
-        ) {
-            Ok(cell) => {
-                for stop in cell.stops() {
-                    state.run.note(stop);
-                }
-                Some(cell)
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "impact: the Python cell was not resolved ({e}); its definitions are undetermined"
-                );
-                state.run.note(crate::resource::LimitReason::ReadFailed);
-                None
-            }
-        }
-    } else {
-        None
-    };
+    // The cells: changed definitions from the facts layer's semantic changes,
+    // callers from the resolver of their language (decide.rs). The ranking
+    // graph and the text filters take no part in what they answer.
+    let cells = Cells::open(
+        state,
+        state.analysed_range.as_deref().or(diff_range),
+        query.is_some(),
+    );
     // A caller in a changed file is outside the diff unless its lines are
     // in a hunk: the reader holds the hunks, not the rest of the file (#362).
     let mut hunk_lines: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
@@ -3007,17 +2937,9 @@ pub fn build_impact(
     // reference the other: a Python test naming `config` is not a test of
     // another project's `config.ts`. It crosses through a declared
     // dependency — a Maven `it/` module importing `com.acme.core.Pricing`, a
-    // workspace crate writing `core_crate::pricing`. A path-explicit relative
-    // JS/TS import names its target outright and is exempt.
+    // workspace crate writing `core_crate::pricing`.
     let one_tree =
         |user: &str, used: &str| source.may_reference(&rel(state, user), &rel(state, used));
-    let explicit_import = |user: &Fragment, used: &Fragment| {
-        let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
-        files
-            .fragments
-            .get(user.path())
-            .is_some_and(|frags| imports_by_relative_path(frags, &user_rel, &used_rel))
-    };
     let one_project = |user: &Fragment, used: &Fragment| one_tree(user.path(), used.path());
     // Files the range deleted or renamed away are files an import may still
     // name: resolved, a remaining import of one is a broken caller, not an
@@ -3056,7 +2978,7 @@ pub fn build_impact(
                 def,
             )
             .filter(|f| {
-                (one_tree(user.path(), used.path()) || explicit_import(user, used))
+                one_tree(user.path(), used.path())
                     && (!untyped_guess(f)
                         || source.same_package(&path, &rel(state, used.path()))
                         || references_module(
@@ -3085,17 +3007,15 @@ pub fn build_impact(
         if !same_runtime(user.path(), used.path()) {
             return false;
         }
-        if let Some(cell) = &python {
-            let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
-            if cell.owns(&user_rel) && cell.owns(&used_rel) {
-                return cell.links(
-                    &user_rel,
-                    (user.start_line(), user.end_line()),
-                    &used_rel,
-                    name,
-                    (used.start_line(), used.end_line()),
-                );
-            }
+        let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
+        if let Some(cell) = cells.of(&user_rel).filter(|c| c.owns(&used_rel)) {
+            return cell.links(
+                &user_rel,
+                (user.start_line(), user.end_line()),
+                &used_rel,
+                name,
+                (used.start_line(), used.end_line()),
+            );
         }
         if modelled(user, used) {
             finding(user, used).is_some_and(|f| f.evidence == Evidence::Resolved)
@@ -3109,11 +3029,9 @@ pub fn build_impact(
         if !same_runtime(test.path(), caller.path()) {
             return false;
         }
-        if let Some(cell) = &python {
-            let (test_rel, caller_rel) = (rel(state, test.path()), rel(state, caller.path()));
-            if cell.owns(&test_rel) && cell.owns(&caller_rel) {
-                return cell.reaches(&test_rel, &caller_rel);
-            }
+        let (test_rel, caller_rel) = (rel(state, test.path()), rel(state, caller.path()));
+        if let Some(cell) = cells.of(&test_rel).filter(|c| c.owns(&caller_rel)) {
+            return cell.reaches(&test_rel, &caller_rel);
         }
         match registry.for_pair(test.path(), caller.path()) {
             Some(model) => model.reaches_file(&rel(state, test.path()), &rel(state, caller.path())),
@@ -3211,15 +3129,14 @@ pub fn build_impact(
             .filter(|c| seen.insert(&c.id))
             .collect()
     };
-    // Python definitions are the facts layer's: one entry per changed
-    // definition, anchored on the fragment that spans it, so the roles, test
-    // links and contracts built on fragments still reach it.
+    // The definitions of the cells' languages are the facts layer's: one entry
+    // per changed definition, anchored on the fragment that spans it, so the
+    // roles, test links and contracts built on fragments still reach it.
     let mut cores = cores;
-    let mut python_defs: FxHashMap<&FragmentId, decide::Changed> = FxHashMap::default();
-    let mut python_apart: Vec<decide::Changed> = Vec::new();
-    let mut python_removed: Vec<decide::Changed> = Vec::new();
-    let mut python_lost: Vec<&Fragment> = Vec::new();
-    if let Some(cell) = &python {
+    let mut cell_defs: FxHashMap<&FragmentId, decide::Changed> = FxHashMap::default();
+    let mut cell_apart: Vec<decide::Changed> = Vec::new();
+    let mut cell_removed: Vec<decide::Changed> = Vec::new();
+    for cell in cells.iter() {
         let mut entries: Vec<decide::Changed> = Vec::new();
         if query.is_some() {
             for core in cores.iter().filter(|c| cell.owns(&rel(state, c.path()))) {
@@ -3232,7 +3149,7 @@ pub fn build_impact(
         } else {
             entries.extend(cell.changed().iter().cloned());
         }
-        let (python_cores, rest): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
+        let (owned, rest): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
             .into_iter()
             .partition(|c| cell.owns(&rel(state, c.path())));
         cores = rest;
@@ -3242,26 +3159,26 @@ pub fn build_impact(
                 continue;
             }
             if entry.how == decide::How::Removed {
-                python_removed.push(entry);
+                cell_removed.push(entry);
                 continue;
             }
             let anchor = files
                 .fragments
                 .get(crate::paths::join_native(&state.root_dir, &entry.file).as_str())
-                .and_then(|frags| python_anchor(frags, &entry));
+                .and_then(|frags| cell_anchor(frags, &entry));
             match anchor {
-                Some(f) if !python_defs.contains_key(&f.id) => {
+                Some(f) if !cell_defs.contains_key(&f.id) => {
                     cores.push(f);
-                    python_defs.insert(&f.id, entry);
+                    cell_defs.insert(&f.id, entry);
                 }
-                _ => python_apart.push(entry),
+                _ => cell_apart.push(entry),
             }
         }
         // A definition the facts layer reports no change in, whose hunks are
         // only what a formatter makes (a trailing space, a comma), is layout.
         if query.is_none() {
-            for core in python_cores {
-                if python_defs.contains_key(&core.id) {
+            for core in owned {
+                if cell_defs.contains_key(&core.id) {
                     continue;
                 }
                 let hunks = hunks_in(core);
@@ -3281,15 +3198,13 @@ pub fn build_impact(
                 }
             }
         }
-    } else if python_wanted {
-        // The cell was not resolved: its definitions are named as not
-        // determined, never answered by the paths the cell replaced.
-        let (lost, kept): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
-            .into_iter()
-            .partition(|c| c.path().ends_with(".py"));
-        python_lost = lost;
-        cores = kept;
     }
+    // A family the run could not resolve: its definitions are named as not
+    // determined, never answered by the paths the cells replaced.
+    let (cell_lost, kept): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
+        .into_iter()
+        .partition(|c| cells.lost(&rel(state, c.path())));
+    cores = kept;
     // A queried name has no diff: a call from elsewhere in its own file is a
     // caller like any other.
     let inside_the_diff = |id: &FragmentId| {
@@ -3303,7 +3218,7 @@ pub fn build_impact(
     };
     drop(setup);
     let stopped_early = !state.run.stops().is_empty();
-    let mut unreached: Vec<&Fragment> = python_lost;
+    let mut unreached: Vec<&Fragment> = cell_lost;
     let callers = crate::profile::phase("impact.callers");
     for (i, core) in cores.iter().enumerate() {
         // Past the deadline the symbols already answered are the answer:
@@ -3316,19 +3231,19 @@ pub fn build_impact(
             break;
         }
         let core_hunks = hunks_in(core);
-        let py = python_defs.get(&core.id);
-        let verdict = py.zip(python.as_ref()).map(|(def, cell)| cell.verdict(def));
+        let py = cell_defs.get(&core.id);
+        let verdict = py.and_then(|def| Some(cells.of(&def.file)?.verdict(def)));
         if let Some(v) = &verdict {
             tracing::debug!(
-                "impact {}: the Python cell claims {:?}",
+                "impact {}: the cell claims {:?}",
                 core.symbol_name.as_deref().unwrap_or("?"),
                 v.claim()
             );
         }
         // A formatter run or a comment changes nothing a caller sees (#370),
         // and neither does a definition moved verbatim within its file. The
-        // facts layer says it for Python: the hashes of the definition did not
-        // move.
+        // facts layer says it for its languages: the hashes of the definition
+        // did not move.
         // The run's own formatter test (`settle_layout`) still decides what the
         // hashes cannot see through: a trailing comma, a quote style.
         let hunk_layout = !core_hunks.is_empty()
@@ -3427,7 +3342,7 @@ pub fn build_impact(
                     }
                     found => found.map(Some).ok_or("binding_rejected"),
                 }
-            } else if !one_tree(frag.path(), core.path()) && !explicit_import(frag, core) {
+            } else if !one_tree(frag.path(), core.path()) {
                 Err("other_project")
             } else if !{
                 let aliases = if member {
@@ -3456,8 +3371,8 @@ pub fn build_impact(
                 Ok(None)
             }
         };
-        // The ranking graph proposes callers of every definition but a Python
-        // one, whose callers the resolver names.
+        // The ranking graph proposes callers of every definition but one of a
+        // cell's languages, whose callers the resolver names.
         if py.is_none() {
             graph.for_each_reverse_neighbor(&core.id, |src, weight| {
                 linked.insert(src.clone());
@@ -3604,13 +3519,13 @@ pub fn build_impact(
             let Some(frag) = files
                 .fragments
                 .get(crate::paths::join_native(&state.root_dir, &u.file).as_str())
-                .and_then(|frags| python_caller(frags, u.line))
+                .and_then(|frags| cell_caller(frags, u.line))
             else {
                 if u.also_changed {
                     called_in_diff = true;
                     also_changed.push(label(&u.file, None, &u.line.to_string()));
                 } else {
-                    loose.push(python_row(u));
+                    loose.push(cell_row(u));
                 }
                 continue;
             };
@@ -3626,7 +3541,7 @@ pub fn build_impact(
                 ));
                 continue;
             }
-            sources.push((frag, 1.0, Some(python_finding(u))));
+            sources.push((frag, 1.0, Some(cell_finding(u))));
         }
         also_changed.sort();
         also_changed.dedup();
@@ -3676,9 +3591,13 @@ pub fn build_impact(
             .for_path(core.path())
             .filter(|m| m.modelled().contains(&lang::Relation::Uses))
             .and_then(|m| Some((m, definition(m, core)?)));
+        // Temporary, until the facts read HTML (wave 7): a cell-owned
+        // definition takes from this model only the uses a page makes of it.
         let use_lines = |path: &str| -> Vec<u32> {
             match core_def {
-                Some((model, def)) if model.covers(path) => {
+                Some((model, def))
+                    if model.covers(path) && (py.is_none() || lang::is_page(path)) =>
+                {
                     model.use_lines(&rel(state, path), def).unwrap_or_default()
                 }
                 _ => Vec::new(),
@@ -3837,8 +3756,8 @@ pub fn build_impact(
             });
         }
         let kept = sources.len();
-        // The facts layer already told a Python caller changed in the range
-        // from one that is not: a fragment overlapping a hunk is not that.
+        // The facts layer already told a caller changed in the range from one
+        // that is not: a fragment overlapping a hunk is not that.
         sources.retain(|(f, _, _)| py.is_some() || !inside_the_diff(&f.id));
         called_in_diff = called_in_diff || sources.len() < kept;
         if !dropped.is_empty() {
@@ -4075,7 +3994,7 @@ pub fn build_impact(
         let unresolved = verdict
             .as_ref()
             .and_then(|v| v.gap.as_ref())
-            .map(|gap| python_unknown(gap, &shown))
+            .map(|gap| cell_unknown(gap, &shown))
             .or(unresolved);
         // Read after the search: a stop noted while it ran, or before it
         // began, leaves its callers a lower bound.
@@ -4089,15 +4008,17 @@ pub fn build_impact(
         // handing the class to the runtime (a server, a test runner, a
         // visitor) reaches the method (#578). A caller a test calls is the
         // second hop of a test link: a caller read off the syntax has no
-        // graph edge for the walk to take (#503).
+        // graph edge for the walk to take (#503). A candidate caller counts: a
+        // test that reaches it may reach the definition, and an absence is
+        // claimed only where nothing could.
         let untested = query.is_none()
             && tests.any()
             && !tests.is_test(core)
             && (entry.is_none() || linkless_role)
             && verdict.as_ref().is_none_or(decide::Verdict::complete)
-            && !callers.iter().any(|c| {
-                c.evidence != "candidate" && c.tested_by.is_some() && c.tested_via.is_none()
-            })
+            && !callers
+                .iter()
+                .any(|c| c.tested_by.is_some() && c.tested_via.is_none())
             && tests.tested_by(core, state, &by_id, &link).is_none()
             && !route
                 .and_then(|_| enclosing_class(core, file_of(core)))
@@ -4205,30 +4126,31 @@ pub fn build_impact(
         });
     }
     drop(callers);
-    if let Some(cell) = &python {
-        for entry in &python_apart {
-            if query.is_none() && matches!(entry.how, decide::How::Edited { layout_only: true }) {
-                layout_only.push(label(
-                    &entry.file,
-                    Some(entry.name.as_str()),
-                    &format!("{}-{}", entry.lines.0, entry.lines.1),
-                ));
-                continue;
-            }
-            // A test's own definitions are run by the runner, not called.
-            if crate::testfiles::is_test_path(Path::new(&entry.file)) {
-                continue;
-            }
-            let verdict = cell.verdict(entry);
-            if verdict.uses.is_empty() && verdict.complete() {
-                continue;
-            }
-            changed.push(python_symbol(
-                entry,
-                &verdict,
-                format!("{:?}", entry.kind).to_lowercase(),
+    for entry in &cell_apart {
+        let Some(cell) = cells.of(&entry.file) else {
+            continue;
+        };
+        if query.is_none() && matches!(entry.how, decide::How::Edited { layout_only: true }) {
+            layout_only.push(label(
+                &entry.file,
+                Some(entry.name.as_str()),
+                &format!("{}-{}", entry.lines.0, entry.lines.1),
             ));
+            continue;
         }
+        // A test's own definitions are run by the runner, not called.
+        if crate::testfiles::is_test_path(Path::new(&entry.file)) {
+            continue;
+        }
+        let verdict = cell.verdict(entry);
+        if verdict.uses.is_empty() && verdict.complete() {
+            continue;
+        }
+        changed.push(cell_symbol(
+            entry,
+            &verdict,
+            format!("{:?}", entry.kind).to_lowercase(),
+        ));
     }
     {
         let stops = state.run.stops();
@@ -4286,32 +4208,41 @@ pub fn build_impact(
                 .and_then(|m| m.binds(file, text, name, old))
                 .unwrap_or(false)
         };
-        // The facts layer answers for the Python files (`python_removed`).
+        // The facts layer answers for the files of the cells' languages
+        // (`cell_removed`).
         let read_off_facts = |path: &str| {
-            registry.answers(path, lang::Relation::Removals)
-                || python.as_ref().is_some_and(|cell| cell.owns(path))
+            registry.answers(path, lang::Relation::Removals) || cells.of(path).is_some()
         };
         let mut listed_alone: FxHashSet<(String, String)> = FxHashSet::default();
         let mut from_facts =
             removed_by_models(state, &registry, &base, head_rev.as_deref(), &one_tree);
-        if let Some(cell) = &python {
-            // A removed name is listed with its readers, or with what could not be
-            // told; a public class attribute that left is listed alone (#699).
-            from_facts.extend(python_removed.iter().filter_map(|entry| {
-                let sym = python_symbol(entry, &cell.verdict(entry), "removed".to_string());
-                let attribute = matches!(
+        // A removed name is listed with its readers, or with what could not be
+        // told; a public class attribute that left is listed alone (#699). A
+        // removed public definition is a contract that moved, listed or not.
+        from_facts.extend(cell_removed.iter().filter_map(|entry| {
+            let sym = cell_symbol(
+                entry,
+                &cells.of(&entry.file)?.verdict(entry),
+                "removed".to_string(),
+            );
+            let attribute = entry.public
+                && matches!(
                     entry.kind,
                     crate::facts::DefKind::Field
                         | crate::facts::DefKind::Variable
                         | crate::facts::DefKind::Constant
-                ) && !entry.name.starts_with('_');
-                if attribute {
-                    listed_alone.insert((sym.path.clone(), entry.name.clone()));
-                }
-                (!sym.callers.is_empty() || sym.unresolved.is_some() || attribute)
-                    .then_some((sym, None))
-            }));
-        }
+                )
+                && !entry.name.starts_with('_');
+            if attribute {
+                listed_alone.insert((sym.path.clone(), entry.name.clone()));
+            }
+            let contract = entry.public.then(|| Contract {
+                path: sym.path.clone(),
+                symbol: Some(entry.name.clone()),
+                kind: "removed_api",
+            });
+            Some((sym, contract))
+        }));
         for (sym, contract) in removed_definitions(
             state,
             &defined,

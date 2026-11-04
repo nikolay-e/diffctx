@@ -21,8 +21,10 @@
 mod index;
 mod modules;
 mod python;
+mod typescript;
 
 pub use python::PythonResolver;
+pub use typescript::TypeScriptResolver;
 
 use crate::facts::{DefKey, DefKind, Name, Scope, Span};
 use crate::snapshot::RepoPath;
@@ -137,6 +139,17 @@ pub enum CandidateReason {
     /// The module is found only under a project the caller's project names as a
     /// requirement without a source: the name may be that project or an index's.
     AmbiguousModule,
+    /// The specifier is an alias or subpath import no configuration places, or
+    /// the project's configuration could not be read whole: the name may be a
+    /// definition of that name in any module.
+    ImportUnresolved,
+    /// A module a glob (`import.meta.glob`, `require.context`) loads: the
+    /// member asked of it is any definition of that name in the modules the
+    /// pattern matches.
+    ImportGlob,
+    /// A global of a classic script or a worker that loads no script naming it:
+    /// any script of the repository that sets it.
+    Global,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

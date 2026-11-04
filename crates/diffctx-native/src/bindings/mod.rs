@@ -18,7 +18,6 @@ use crate::source::Source;
 mod js;
 mod python;
 
-use js::TsConfigs;
 pub use js::js_bindings;
 pub(crate) use js::js_facts;
 pub use python::python_bindings;
@@ -124,13 +123,10 @@ pub struct Resolver<'a> {
     root: &'a Path,
     source: &'a Source,
     files: FxHashSet<String>,
-    ts_configs: TsConfigs,
     cache: RefCell<FxHashMap<String, Rc<FileBindings>>>,
     /// Python resolution scans every file of the snapshot; the same
     /// importer asks about the same specifier once per caller it checks.
     resolved: RefCell<FxHashMap<(String, String), Resolution>>,
-    /// The repository's own npm packages, by name: (directory, entries).
-    workspace: std::cell::OnceCell<FxHashMap<String, (String, Vec<String>)>>,
     /// Whole files, for the module-level bindings a function reads.
     texts: RefCell<FxHashMap<String, Option<Rc<str>>>>,
     /// The directories a Python file puts on `sys.path`, by importer.
@@ -141,15 +137,12 @@ pub struct Resolver<'a> {
 
 impl<'a> Resolver<'a> {
     pub fn new(root: &'a Path, source: &'a Source, files: FxHashSet<String>) -> Self {
-        let ts_configs = TsConfigs::read(source, root, &files);
         Self {
             root,
             source,
             files,
-            ts_configs,
             cache: RefCell::default(),
             resolved: RefCell::default(),
-            workspace: std::cell::OnceCell::new(),
             texts: RefCell::default(),
             python_roots: RefCell::default(),
             python_env: python::PythonEnv::default(),

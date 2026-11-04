@@ -174,6 +174,80 @@ fn node_workspaces_tsconfig_paths_and_exports() {
 }
 
 #[test]
+fn a_tsconfig_with_no_manifest_roots_a_project_that_allows_every_link() {
+    let (_repo, m) = model(&[
+        (
+            "app-b/tsconfig.json",
+            r#"{"compilerOptions": {"baseUrl": ".", "paths": {"@pkg/*": ["../shared/pkg/*"]}}}"#,
+        ),
+        ("app-b/src/main.ts", "export {};\n"),
+        ("shared/pkg/a.js", "export {};\n"),
+    ]);
+    let app = m
+        .project_of("app-b/src/main.ts")
+        .expect("the tsconfig's project");
+    assert!(
+        m.project(app)
+            .aliases
+            .iter()
+            .any(|a| a.pattern == "@pkg/*" && a.targets == ["shared/pkg/*"])
+    );
+    assert!(!m.project(app).dependencies_known);
+    assert!(m.may_reference("app-b/src/main.ts", "shared/pkg/a.js"));
+}
+
+#[test]
+fn a_bundler_alias_is_read_as_text_and_what_it_cannot_read_is_said() {
+    let (_repo, m) = model(&[
+        ("apps/a/package.json", r#"{"name": "a"}"#),
+        (
+            "apps/a/vite.config.ts",
+            "export default defineConfig({ resolve: { alias: { '@pkg': path.resolve(__dirname, '../../shared/pkg'), '@o': fileURLToPath(new URL('../../shared/o', import.meta.url)) } } });\n",
+        ),
+        ("apps/a/src/main.ts", "export {};\n"),
+        (
+            "apps/d/vite.config.js",
+            "export default { resolve: { alias: [{ find: /^@pkg\\//, replacement: '/shared/pkg/' }, { find: '@ok', replacement: './src' }] } };\n",
+        ),
+        ("apps/d/src/main.ts", "export {};\n"),
+    ]);
+    let a = m.project_of("apps/a/src/main.ts").expect("a");
+    let patterns: Vec<(&str, &[String])> = m
+        .project(a)
+        .aliases
+        .iter()
+        .map(|x| (x.pattern.as_str(), x.targets.as_slice()))
+        .collect();
+    assert!(patterns.contains(&("@pkg", &["shared/pkg".to_string()][..])));
+    assert!(patterns.contains(&("@pkg/*", &["shared/pkg/*".to_string()][..])));
+    assert!(patterns.contains(&("@o/*", &["shared/o/*".to_string()][..])));
+    assert!(!m.project(a).paths_incomplete);
+    let d = m.project_of("apps/d/src/main.ts").expect("d");
+    assert!(m.project(d).paths_incomplete, "a regex find is not read");
+    assert!(
+        m.project(d)
+            .aliases
+            .iter()
+            .any(|x| x.pattern == "@ok/*" && x.targets == ["apps/d/src/*"])
+    );
+}
+
+#[test]
+fn a_base_url_and_an_unread_extends_are_stated() {
+    let (_repo, m) = model(&[
+        ("package.json", r#"{"name": "root"}"#),
+        (
+            "tsconfig.json",
+            r#"{"extends": "@tsconfig/strictest/tsconfig.json", "compilerOptions": {"baseUrl": "."}}"#,
+        ),
+        ("src/a.ts", "export {};\n"),
+    ]);
+    let p = m.project_of("src/a.ts").expect("root");
+    assert_eq!(m.project(p).base_urls, [""]);
+    assert!(m.project(p).paths_incomplete);
+}
+
+#[test]
 fn cargo_path_dependencies_and_the_mod_tree() {
     let (_repo, m) = model(&[
         (
