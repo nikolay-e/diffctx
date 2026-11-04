@@ -36,7 +36,9 @@ mod model;
 mod module;
 
 pub use blob::blob_oid;
-pub use cache::{CacheKey, CacheStats, DEFAULT_CAP_BYTES, FactsCache, SCHEMA, default_dir};
+pub use cache::{
+    CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir,
+};
 pub use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes};
 pub use extractor::{Extractor, Registry, expired};
 pub use file::facts_of;
