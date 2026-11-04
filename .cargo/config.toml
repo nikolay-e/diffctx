@@ -1,0 +1,7 @@
+# Every process cargo runs (tests, `cargo run`) keeps its on-disk caches under
+# target/, not in the user's ~/.cache: no test reads what another build left
+# there or leaves anything for another build to read. An environment that sets
+# the variables itself wins (cargo does not override them).
+[env]
+DIFFCTX_CACHE_DIR = { value = "target/test-caches", relative = true }
+DIFFCTX_TOKEN_CACHE_DIR = { value = "target/test-caches/tokens", relative = true }

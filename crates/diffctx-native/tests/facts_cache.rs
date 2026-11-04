@@ -7,7 +7,7 @@ mod snapshot_fixture;
 use std::sync::Arc;
 
 use _diffctx::facts::{
-    CacheKey, FactsCache, Language, SCHEMA, blob_oid, facts_of, hash_tokens, lang,
+    CacheKey, FINGERPRINT, FactsCache, Language, SCHEMA, blob_oid, facts_of, hash_tokens, lang,
 };
 use _diffctx::snapshot::{Loss, RangeSpec, RepoPath, SideTag};
 use facts_fixture::{Toy, cache_in, context, entries, leftovers, review};
@@ -62,7 +62,7 @@ fn an_entry_written_by_one_cache_is_read_by_the_next_without_extracting() {
 }
 
 #[test]
-fn a_changed_extractor_version_or_grammar_is_a_miss() {
+fn an_entry_of_another_build_fingerprint_or_grammar_is_a_miss() {
     let dir = tempfile::tempdir().expect("dir");
     let (repo, head) = one_commit(&[("m.py", SOURCE)]);
     let ctx = review(&repo, &head, &head);
@@ -76,9 +76,13 @@ fn a_changed_extractor_version_or_grammar_is_a_miss() {
     assert_eq!(toy.calls(), 1);
 
     let mut newer = toy.clone();
-    newer.version += 1;
+    newer.build += 1;
     look(&newer);
-    assert_eq!(toy.calls(), 2, "a new extractor version re-extracts");
+    assert_eq!(
+        toy.calls(),
+        2,
+        "an entry of another build fingerprint is a miss"
+    );
 
     let mut regrown = toy.clone();
     regrown.grammar += 1;
@@ -106,7 +110,7 @@ fn the_key_names_its_five_parts() {
     let key = CacheKey {
         blob: repo.rev("HEAD:m.py"),
         language: Language::Python,
-        extractor: 1,
+        build: 1,
         grammar: 7,
         schema: SCHEMA,
     };
@@ -117,7 +121,7 @@ fn the_key_names_its_five_parts() {
         .to_string_lossy()
         .into_owned();
     assert!(
-        name.starts_with(&format!("{}-python-1-", key.blob)),
+        name.starts_with(&format!("{}-python-0000000000000001-", key.blob)),
         "{name}"
     );
     assert!(
@@ -487,4 +491,11 @@ fn the_shipped_grammars_have_a_digest() {
         lang::grammar_digest(Language::Python),
         lang::grammar_digest(Language::Rust)
     );
+}
+
+#[test]
+fn a_cache_is_keyed_on_the_fingerprint_of_the_build_unless_told_otherwise() {
+    assert_eq!(FactsCache::disabled().fingerprint(), FINGERPRINT);
+    assert_ne!(FINGERPRINT, 0);
+    assert_eq!(FactsCache::disabled().with_fingerprint(9).fingerprint(), 9);
 }

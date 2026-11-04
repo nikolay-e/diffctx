@@ -79,7 +79,7 @@ pub fn facts_of(
     let key = CacheKey {
         blob,
         language,
-        extractor: extractor.version(),
+        build: cache.fingerprint(),
         grammar: extractor.grammar(),
         schema: SCHEMA,
     };

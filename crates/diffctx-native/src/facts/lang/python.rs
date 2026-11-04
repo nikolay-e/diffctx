@@ -42,10 +42,6 @@ impl Extractor for PythonExtractor {
         Language::Python
     }
 
-    fn version(&self) -> u32 {
-        1
-    }
-
     fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {
         extract(text, budget)
     }

@@ -22,7 +22,6 @@ use crate::facts::{
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
-const VERSION: u32 = 4;
 /// A blob names no path: the path of a loss is bound by whoever holds the file.
 const UNBOUND_PATH: &str = "<blob>";
 const POLL_EVERY: u32 = 256;
@@ -51,10 +50,6 @@ impl Extractor for TypeScript {
         Language::TypeScript
     }
 
-    fn version(&self) -> u32 {
-        VERSION
-    }
-
     fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {
         extract(Dialect::TypeScript, text, budget)
     }
@@ -63,10 +58,6 @@ impl Extractor for TypeScript {
 impl Extractor for JavaScript {
     fn language(&self) -> Language {
         Language::JavaScript
-    }
-
-    fn version(&self) -> u32 {
-        VERSION
     }
 
     fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {

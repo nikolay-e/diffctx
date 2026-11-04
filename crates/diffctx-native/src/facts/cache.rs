@@ -23,8 +23,13 @@ use crate::facts::language::Language;
 use crate::facts::model::{BlobFacts, Fact};
 use crate::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader};
 
-/// Bumped when the stored layout or the meaning of a fact changes.
+/// Bumped when the stored layout changes.
 pub const SCHEMA: u32 = 1;
+
+/// The digest of the sources under `src/facts/` and of the lock file the crate was
+/// built with (`build.rs`): what an extractor emits is a function of them, so an
+/// entry written by another build is a miss and nobody has to remember to say so.
+pub const FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/facts_fingerprint.in"));
 pub const DEFAULT_CAP_BYTES: u64 = 256 * 1024 * 1024;
 const ENTRY_SUFFIX: &str = ".json";
 const TEMP_PREFIX: &str = ".tmp-";
@@ -32,13 +37,13 @@ const LISTINGS_KEPT: usize = 4;
 
 static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// What an entry was produced by: the blob, the language, the extractor's version,
+/// What an entry was produced by: the blob, the language, the build's fingerprint,
 /// the digest of the grammar and the stored layout. Any of them changing is a miss.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct CacheKey {
     pub blob: Oid,
     pub language: Language,
-    pub extractor: u32,
+    pub build: u64,
     pub grammar: u64,
     pub schema: u32,
 }
@@ -46,8 +51,8 @@ pub struct CacheKey {
 impl CacheKey {
     fn file_name(&self) -> String {
         format!(
-            "{}-{}-{}-{:016x}-{}{ENTRY_SUFFIX}",
-            self.blob, self.language, self.extractor, self.grammar, self.schema
+            "{}-{}-{:016x}-{:016x}-{}{ENTRY_SUFFIX}",
+            self.blob, self.language, self.build, self.grammar, self.schema
         )
     }
 }
@@ -175,6 +180,8 @@ impl Store {
 /// path and snapshot holding the blob.
 pub struct FactsCache {
     registry: Registry,
+    /// What its entries are keyed by: the build's, unless a test says otherwise.
+    fingerprint: u64,
     store: Option<Store>,
     /// Off for a cache that must not remember anything (`disabled`).
     remember: bool,
@@ -215,6 +222,7 @@ impl FactsCache {
     pub fn disabled() -> Self {
         Self {
             registry: lang::builtin(),
+            fingerprint: FINGERPRINT,
             store: None,
             remember: false,
             memory: Mutex::default(),
@@ -237,6 +245,18 @@ impl FactsCache {
     pub fn with_registry(mut self, registry: Registry) -> Self {
         self.registry = registry;
         self
+    }
+
+    /// Keys its entries on this fingerprint instead of the build's: what a test
+    /// uses to stand for another build.
+    #[must_use]
+    pub fn with_fingerprint(mut self, fingerprint: u64) -> Self {
+        self.fingerprint = fingerprint;
+        self
+    }
+
+    pub fn fingerprint(&self) -> u64 {
+        self.fingerprint
     }
 
     pub fn registry(&self) -> &Registry {
