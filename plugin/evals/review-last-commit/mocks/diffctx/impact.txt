@@ -1,5 +1,5 @@
 diffctx impact for HEAD~1..HEAD: 1 changed file(s), 2 caller(s) outside the diff, 1 caller(s) without a static test link
 - src/shop/timing.py::elapsed (4-5)
-  - called from src/shop/checkout.py::is_slow (6-7) — reachable from tests: tests/test_checkout.py
   - called from src/reports/latency.py::render (4-5) — no static test link found
+  - called from src/shop/checkout.py::is_slow (6-7) — reachable from tests: tests/test_checkout.py
 Test links are static references within 2 call hops, not execution coverage.
