@@ -339,6 +339,8 @@ pub struct ChangedSymbol {
 #[derive(Serialize, JsonSchema, Clone)]
 pub struct OmittedDefinition {
     pub definition: String,
+    /// Where it is, so two methods of one name are two definitions.
+    pub lines: String,
     pub callers_omitted: usize,
 }
 
@@ -378,6 +380,10 @@ pub enum Unknown {
     /// callers were found, but do not fit. `needs` is the budget, in the
     /// answer's own tokens, that shows them; `count` is how many.
     Omitted { needs: u32, count: usize },
+    /// The name is a binding no tracked definition stands for (a `const` in a
+    /// module-level block): its uses are not resolved, and finding none says
+    /// nothing.
+    Untracked { name: String },
 }
 
 impl std::fmt::Display for Unknown {
@@ -421,6 +427,10 @@ impl std::fmt::Display for Unknown {
             Self::Unpaired { name } => write!(
                 f,
                 "`{name}` has more than one counterpart on the other side of the range, so what changed in it is not determined and finding no callers does not mean there are none"
+            ),
+            Self::Untracked { name } => write!(
+                f,
+                "`{name}` is not a tracked definition here (a block-scoped binding); its uses are not resolved"
             ),
             Self::Omitted { needs, count } => write!(
                 f,
@@ -2734,6 +2744,21 @@ fn cell_anchor<'a>(frags: &[&'a Fragment], def: &decide::Changed) -> Option<&'a 
         .min_by_key(|f| f.start_line().abs_diff(def.lines.0) + f.end_line().abs_diff(def.lines.1))
 }
 
+/// A `const`/`let` of a module-level block (a `for` body): a fragment the
+/// facts hold no definition for, and no function around it makes it a local.
+fn is_module_block_binding(core: &Fragment, file: &[&Fragment]) -> bool {
+    core.kind == FragmentKind::Variable
+        && !file.iter().any(|f| {
+            f.symbol_name.is_some()
+                && f.kind != FragmentKind::Chunk
+                && f.kind != FragmentKind::Excerpt
+                && !f.kind.is_signature()
+                && f.line_count() > core.line_count()
+                && f.start_line() <= core.start_line()
+                && core.end_line() <= f.end_line()
+        })
+}
+
 /// The fragment that owns a line of use: the smallest named one around it.
 fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
     frags
@@ -2746,6 +2771,16 @@ fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
                 && !f.kind.is_signature()
         })
         .min_by_key(|f| (f.symbol_name.is_none(), f.line_count()))
+}
+
+/// A call, an instantiation or an override is a caller; a name written where a
+/// type or a value is expected is a reference, weaker: when the cap sheds, the
+/// references go first.
+fn finding_weight(finding: &Finding) -> f64 {
+    match finding.relation {
+        Relation::Reference => 0.9,
+        Relation::Call | Relation::Implementation => 1.0,
+    }
 }
 
 fn cell_finding(u: &decide::Use) -> Finding {
@@ -2800,7 +2835,7 @@ fn cell_row(u: &decide::Use) -> Caller {
         path: u.file.clone(),
         symbol: caller,
         lines: format!("{0}-{0}", u.line),
-        weight: 1.0,
+        weight: finding_weight(&finding),
         tested_by: None,
         tested_via: None,
         file_tested: false,
@@ -2843,7 +2878,11 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         lines: format!("{}-{}", def.lines.0, def.lines.1),
         kind,
         commits: 0,
-        callers: merge_by_symbol(callers),
+        callers: {
+            let mut merged = merge_by_symbol(callers);
+            merged.sort_by(|a, b| b.weight.total_cmp(&a.weight));
+            merged
+        },
         entry: None,
         unresolved: verdict.gap.as_ref().map(|gap| cell_unknown(gap, &def.name)),
         untested: false,
@@ -3196,15 +3235,22 @@ pub fn build_impact(
     let mut cell_defs: FxHashMap<&FragmentId, decide::Changed> = FxHashMap::default();
     let mut cell_apart: Vec<decide::Changed> = Vec::new();
     let mut cell_removed: Vec<decide::Changed> = Vec::new();
+    let mut cell_untracked: Vec<&Fragment> = Vec::new();
     for cell in cells.iter() {
         let mut entries: Vec<decide::Changed> = Vec::new();
         if query.is_some() {
             for core in cores.iter().filter(|c| cell.owns(&rel(state, c.path()))) {
-                entries.extend(cell.define(
+                let defined = cell.define(
                     &rel(state, core.path()),
                     core.symbol_name.as_deref().map_or("", base_symbol),
                     (core.start_line(), core.end_line()),
-                ));
+                );
+                // A name asked for that no definition stands for is said, not
+                // left out: an empty answer would read as "no callers".
+                if defined.is_empty() && is_module_block_binding(core, file_of(core)) {
+                    cell_untracked.push(core);
+                }
+                entries.extend(defined);
             }
         } else {
             entries.extend(cell.changed().iter().cloned());
@@ -3605,7 +3651,8 @@ pub fn build_impact(
                 ));
                 continue;
             }
-            sources.push((frag, 1.0, Some(cell_finding(u))));
+            let finding = cell_finding(u);
+            sources.push((frag, finding_weight(&finding), Some(finding)));
         }
         also_changed.sort();
         also_changed.dedup();
@@ -4197,6 +4244,29 @@ pub fn build_impact(
         });
     }
     drop(callers);
+    cell_untracked.sort_by(|a, b| (a.path(), a.start_line()).cmp(&(b.path(), b.start_line())));
+    cell_untracked.dedup_by(|a, b| a.path() == b.path() && a.start_line() == b.start_line());
+    for core in cell_untracked {
+        let name = core.symbol_name.as_deref().map_or("", base_symbol);
+        changed.push(ChangedSymbol {
+            path: rel(state, core.path()),
+            symbol: Some(name.to_string()),
+            lines: lines_of(&core.id),
+            kind: "variable".to_string(),
+            commits: 0,
+            callers: Vec::new(),
+            entry: None,
+            unresolved: Some(Unknown::Untracked {
+                name: name.to_string(),
+            }),
+            untested: false,
+            compatible_callers: 0,
+            missed_in: Vec::new(),
+            also_changed: Vec::new(),
+            callers_omitted: 0,
+            omitted: Vec::new(),
+        });
+    }
     for entry in &cell_apart {
         let Some(cell) = cells.of(&entry.file) else {
             continue;
@@ -6314,6 +6384,7 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             Some(name) => format!("{}::{name}", sym.path),
             None => sym.path.clone(),
         },
+        lines: sym.lines.clone(),
         callers_omitted: sym.callers.len() + sym.callers_omitted,
     };
     match output.changed.iter_mut().find(|c| is_omitted(c)) {
@@ -6644,7 +6715,7 @@ fn write_omitted(out: &mut String, output: &ImpactOutput) {
     let named: Vec<String> = entry
         .omitted
         .iter()
-        .map(|d| format!("{} ({})", d.definition, d.callers_omitted))
+        .map(|d| format!("{}:{} ({})", d.definition, d.lines, d.callers_omitted))
         .collect();
     // The sentence is whole whatever the list kept; the names follow it, and a
     // trimmed list ends in how many it left out.

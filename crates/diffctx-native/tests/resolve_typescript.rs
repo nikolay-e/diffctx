@@ -1717,6 +1717,19 @@ fn a_required_package_is_the_variable_that_holds_it() {
     assert_eq!(fx.lands(read), "init.js::path");
 }
 
+/// The same, read from the callbacks of a test file: the variable of the module
+/// holds the name there too (express `assert`, `path`, `url`).
+#[test]
+fn a_required_package_is_the_variable_inside_nested_callbacks() {
+    let fx = snapshot(&[(
+        "t.js",
+        "var url = require('url')\n\ndescribe('r', function () {\n  it('x', function (done) {\n    url.parse(1)\n  })\n})\n",
+    )]);
+    let read = fx.at("t.js", "url", 5);
+    assert_eq!(read.relation, Relation::Reads);
+    assert_eq!(fx.lands(read), "t.js::url");
+}
+
 /// `this.constructor.m()` is the class's own static or a subclass's.
 #[test]
 fn this_constructor_reaches_the_class_and_the_classes_that_extend_it() {

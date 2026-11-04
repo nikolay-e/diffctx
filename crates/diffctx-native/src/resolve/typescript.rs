@@ -1381,7 +1381,10 @@ impl<'a> Engine<'a> {
                 .rev()
                 .find(|i| i.scope == *level && i.local == *name)
             {
-                return Some(Named::Hit(self.import_hit(f, rec)));
+                let hit = self.import_hit(f, rec);
+                if !(matches!(level, Scope::Module) && self.yields_to_declaration(f, name, &hit)) {
+                    return Some(Named::Hit(hit));
+                }
             }
             let local = file
                 .locals
@@ -1405,15 +1408,7 @@ impl<'a> Engine<'a> {
                     .find(|i| matches!(i.scope, Scope::Module) && i.local == *name)
                 {
                     let hit = self.import_hit(f, rec);
-                    // `var path = require('path')` binds a variable of the file
-                    // too: where the module is no file of the repository, the
-                    // name is that variable.
-                    let declared = file.children.get(prefix).is_some_and(|ids| {
-                        ids.iter()
-                            .any(|id| self.ix.defs[*id].def.local.name == *name)
-                    });
-                    let outside = matches!(hit.entity, Entity::External | Entity::Unknown);
-                    if !(outside && declared) {
+                    if !self.yields_to_declaration(f, name, &hit) {
                         return Some(Named::Hit(hit));
                     }
                 }
@@ -1434,6 +1429,19 @@ impl<'a> Engine<'a> {
             }
         }
         None
+    }
+
+    /// `var path = require('path')` binds a variable of the file too: where the
+    /// module is no file of the repository, the name is that variable.
+    fn yields_to_declaration(&self, f: usize, name: &Name, hit: &Hit) -> bool {
+        matches!(hit.entity, Entity::External | Entity::Unknown)
+            && self.ix.files[f]
+                .children
+                .get(&Vec::new())
+                .is_some_and(|ids| {
+                    ids.iter()
+                        .any(|id| self.ix.defs[*id].def.local.name == *name)
+                })
     }
 
     fn import_hit(&self, f: usize, rec: &ImportRec) -> Hit {
@@ -1600,7 +1608,7 @@ impl<'a> Engine<'a> {
                 return Some(entity);
             }
         }
-        let ids = file.children.get(&Vec::new())?;
+        let ids = file.children.get(&Vec::<Name>::new())?;
         let named: Vec<usize> = ids
             .iter()
             .copied()

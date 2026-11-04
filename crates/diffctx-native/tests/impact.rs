@@ -5019,3 +5019,87 @@ fn a_definition_whose_callers_the_cap_dropped_counts_them() {
     assert!(omitted > 0, "the cap kept all {listed} callers: {doc:#}");
     assert_eq!(listed + omitted, 150, "{doc:#}");
 }
+
+fn symbol_doc(repo: &Path, name: &str) -> serde_json::Value {
+    let out = diffctx()
+        .current_dir(repo)
+        .args(["--symbol", name, "-q"])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("symbol JSON")
+}
+
+/// A queried name has no diff: `exports.f = f` is another definition named `f`
+/// whose lines the run anchors on, and the use of `f` there is a caller of the
+/// function, never "changed in this diff".
+#[test]
+fn a_use_inside_a_second_definition_of_the_queried_name_is_a_caller() {
+    for (assigned, expected) in [("f", 1), ("g", 1)] {
+        let tmp = repo(
+            &[(
+                "a.js",
+                &format!("function f(x) {{\n  return 1;\n}}\nexports.{assigned} = f;\n"),
+            )],
+            &[],
+        );
+        let doc = symbol_doc(tmp.path(), "f");
+        let function = doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|c| c["lines"] == "1-3")
+            .unwrap_or_else(|| panic!("the function is missing from {doc:#}"));
+        assert_eq!(
+            function["callers"].as_array().map_or(0, Vec::len),
+            expected,
+            "exports.{assigned}: {doc:#}"
+        );
+        assert!(function.get("also_changed").is_none(), "{doc:#}");
+    }
+}
+
+/// A name no tracked definition stands for is said, in the JSON as in the
+/// Markdown, never answered with an empty list that reads as "no callers": a
+/// `const` in a module-level `for` body is a block binding the facts hold no
+/// definition for.
+#[test]
+fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
+    let tmp = repo(
+        &[
+            (
+                "src/settings.ts",
+                "export const options = { retries: 1 };\n",
+            ),
+            (
+                "test/each.ts",
+                "const modes = ['a', 'b'];\n\nfor (const mode of modes) {\n  const options = { mode };\n  run(() => use({ ...options }));\n}\n\nfunction run(f: () => void) {\n  f();\n}\n\nfunction use(x: object) {\n  return x;\n}\n",
+            ),
+        ],
+        &[],
+    );
+    let sentence = "`options` is not a tracked definition here (a block-scoped binding); its uses are not resolved";
+    let doc = symbol_doc(tmp.path(), "options");
+    let untracked = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|c| c["path"] == "test/each.ts")
+        .unwrap_or_else(|| panic!("the block binding is missing from {doc:#}"));
+    assert_eq!(untracked["unresolved"], sentence, "{doc:#}");
+    assert_eq!(untracked["callers"], serde_json::json!([]), "{doc:#}");
+    let out = diffctx()
+        .current_dir(tmp.path())
+        .args(["--symbol", "options", "-q", "-f", "md"])
+        .output()
+        .expect("run diffctx");
+    let md = String::from_utf8(out.stdout).expect("utf8");
+    assert!(
+        md.contains(&format!("callers not resolved: {sentence}")),
+        "{md}"
+    );
+}
