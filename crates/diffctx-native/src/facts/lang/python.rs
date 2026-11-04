@@ -1707,7 +1707,74 @@ impl<'t> Walker<'t> {
                 let name = self.plain_string(inner)?;
                 is_dotted_name(&name).then(|| TypeName::new(name.as_str()))
             }
+            "union_type" | "binary_operator" | "subscript" | "generic_type" => {
+                let mut alternatives = Vec::new();
+                self.alternatives(inner, &mut alternatives)?;
+                let mut named = alternatives
+                    .into_iter()
+                    .filter(|a| self.text(*a).trim() != "None");
+                let only = named.next()?;
+                if named.next().is_some() {
+                    return None;
+                }
+                self.type_name_of(only)
+            }
             _ => None,
+        }
+    }
+
+    /// The members of `X | Y`, `Optional[X]` and `Union[X, Y]` written as the
+    /// annotation; `None` for any other shape (`list[X]` is no choice among
+    /// types). A member that is itself such a choice is flattened.
+    fn alternatives(&self, node: Node<'t>, out: &mut Vec<Node<'t>>) -> Option<()> {
+        match node.kind() {
+            "type" => self.alternatives(node.named_child(0)?, out),
+            "union_type" => {
+                let mut cursor = node.walk();
+                for member in node.named_children(&mut cursor) {
+                    self.alternatives(member, out)?;
+                }
+                Some(())
+            }
+            "binary_operator" => {
+                (self.text(node.child_by_field_name("operator")?) == "|").then_some(())?;
+                self.alternatives(node.child_by_field_name("left")?, out)?;
+                self.alternatives(node.child_by_field_name("right")?, out)
+            }
+            // `Optional[X]` in an annotation is a generic type: a name and its
+            // parameters.
+            "generic_type" => {
+                let head = self.text(node.named_child(0)?);
+                let head = head.rsplit('.').next().unwrap_or(head);
+                if !matches!(head, "Optional" | "Union") {
+                    return None;
+                }
+                let mut cursor = node.walk();
+                let parameters = node
+                    .named_children(&mut cursor)
+                    .find(|c| c.kind() == "type_parameter")?;
+                let mut inner = parameters.walk();
+                for member in parameters.named_children(&mut inner) {
+                    self.alternatives(member, out)?;
+                }
+                Some(())
+            }
+            "subscript" => {
+                let head = self.text(node.child_by_field_name("value")?);
+                let head = head.rsplit('.').next().unwrap_or(head);
+                if !matches!(head, "Optional" | "Union") {
+                    return None;
+                }
+                let mut cursor = node.walk();
+                for member in node.children_by_field_name("subscript", &mut cursor) {
+                    self.alternatives(member, out)?;
+                }
+                Some(())
+            }
+            _ => {
+                out.push(node);
+                Some(())
+            }
         }
     }
 

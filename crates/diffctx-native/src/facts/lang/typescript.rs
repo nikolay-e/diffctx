@@ -1853,6 +1853,36 @@ impl<'t> Declarer<'t> {
                 return;
             }
         }
+        // `proto.handle = function handle(…) {…}` and `Foo.prototype.bar = …`
+        // define a method of the object they are set on; the functions declared
+        // inside it are its own.
+        let owner = match names.as_slice() {
+            [object, member] if !matches!(*object, "module" | "exports" | "this") => {
+                Some((*object, *member))
+            }
+            [object, "prototype", member] => Some((*object, *member)),
+            _ => None,
+        };
+        if let Some((object, member)) = owner {
+            let function = unwrapped(right);
+            if is_function_kind(function.kind()) {
+                let name_node = field(left, "property").unwrap_or(left);
+                self.add(Spec {
+                    node: function,
+                    outer: statement,
+                    name_node,
+                    name: member.to_string(),
+                    container: vec![Name::from(object)],
+                    kind: DefKind::Method,
+                    type_namespace: false,
+                    visibility: Visibility::Private,
+                    signature: signature(self.src, &[function]),
+                    body: body_of(function),
+                    owner: true,
+                });
+            }
+            return;
+        }
         let exported_name = match names.as_slice() {
             ["module", "exports"] => None,
             ["module", "exports", name] | ["exports", name] => Some(Name::from(*name)),
@@ -2128,7 +2158,13 @@ fn hashes(
     match spec.body {
         Body::Absent => (0, hash_text(text(src, spec.node).as_bytes())),
         Body::Whole(body) => {
-            let (skip, ranges) = nested_definitions(body, owners, declarators);
+            // The members of an object type are the type: a change to one is a
+            // change every user of the type sees.
+            let (skip, ranges) = if spec.kind == DefKind::TypeAlias {
+                (FxHashSet::default(), Vec::new())
+            } else {
+                nested_definitions(body, owners, declarators)
+            };
             let mut stream = Vec::new();
             tokens(src, body, &skip, &mut stream);
             (
@@ -2147,7 +2183,7 @@ fn hashes(
             let mut at = 0;
             while let Some(child) = children.get(at) {
                 at += 1;
-                if declares(*child, owners, declarators) {
+                if spec.kind != DefKind::Interface && declares(*child, owners, declarators) {
                     // A member's separator is the member's, not the container's:
                     // adding one would otherwise change the class.
                     if children
@@ -2961,7 +2997,8 @@ impl<'t> Walker<'t> {
         };
         let mut children = Vec::new();
         // A definition of the global object is the assignment itself, not a
-        // write of a name.
+        // write of a name. A method assigned to an object keeps its write: it
+        // is a read of the object (`res.status = …` reads `res`).
         let defines = left.kind() == "member_expression"
             && matches!(path_of(self.src, left).as_slice(),
                 [object, _] if is_global_object(object.as_str()))

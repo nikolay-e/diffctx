@@ -109,7 +109,16 @@ impl Index {
                 .into_iter()
                 .map(|root| root.dir.clone())
                 .collect(),
-            None => vec![String::new()],
+            // Under no manifest the repository is the project, and its `src`
+            // layout is an import root as it is under a manifest.
+            None => {
+                let layout = "src".to_string();
+                let mut roots = vec![String::new()];
+                if self.dirs.contains(&layout) && !self.has_init(&layout) {
+                    roots.push(layout);
+                }
+                roots
+            }
         }
     }
 

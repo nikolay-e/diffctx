@@ -1350,6 +1350,95 @@ fn a_uv_requirement_without_a_source_is_an_ambiguous_module() {
     assert_eq!(fx.lands_at("legacy/src/legacy/log.py", "client_ip", 5), ip);
 }
 
+/// `X | None`, `Optional[X]` and `Union[X, None]` state the type of the receiver;
+/// a choice between two classes states none.
+#[test]
+fn an_optional_annotation_types_the_receiver() {
+    let fx = snapshot(&[(
+        "cap.py",
+        "from typing import Optional, Union\n\n\nclass Capture:\n    def start(self):\n        return 1\n\n\ndef piped(stream: Capture | None):\n    stream.start()\n\n\ndef old_style(stream: Optional[Capture]):\n    stream.start()\n\n\ndef union(stream: Union[Capture, None]):\n    stream.start()\n\n\ndef assigned():\n    held: Capture | None = None\n    held.start()\n\n\ndef either(stream: Capture | int):\n    stream.start()\n",
+    )]);
+    let start = "cap.py::Capture.start";
+    for line in [10, 14, 18, 23] {
+        assert_eq!(fx.lands_at("cap.py", "start", line), start, "line {line}");
+    }
+    assert_eq!(
+        fx.lands_at("cap.py", "start", 27),
+        format!("candidate(UntypedReceiver) {start}")
+    );
+}
+
+/// A snapshot with no manifest is one project rooted at the repository, and a
+/// `src/` directory without an `__init__.py` is its layout: `shop.timing` is
+/// `src/shop/timing.py`, from a module beside it and from a test below `tests/`.
+#[test]
+fn a_src_layout_without_a_manifest_is_an_import_root() {
+    let fx = snapshot(&[
+        (
+            "src/shop/timing.py",
+            "def elapsed(start):\n    return start\n",
+        ),
+        (
+            "src/shop/report.py",
+            "from shop.timing import elapsed\n\n\ndef is_slow(start):\n    return elapsed(start) > 3\n",
+        ),
+        (
+            "tests/test_timing.py",
+            "from shop import timing\n\n\ndef test_elapsed():\n    assert timing.elapsed(1)\n",
+        ),
+    ]);
+    let elapsed = "src/shop/timing.py::elapsed";
+    assert_eq!(fx.lands_at("src/shop/report.py", "elapsed", 5), elapsed);
+    assert_eq!(fx.lands_at("tests/test_timing.py", "elapsed", 5), elapsed);
+}
+
+/// A parameter annotated with an alias that is then rebound to a construction
+/// is read under the constructed class, also after `x = x.method()`.
+#[test]
+fn a_rebound_parameter_is_read_under_the_class_it_is_rebound_to() {
+    let fx = snapshot(&[(
+        "alias.py",
+        "URLTypes = str\n\n\nclass URL:\n    def __init__(self, text):\n        self.text = text\n\n    def copy_with(self, path) -> \"URL\":\n        return URL(path)\n\n    @property\n    def username(self):\n        return \"\"\n\n\ndef proxy(url: URLTypes):\n    url = URL(url)\n    if url.username:\n        url = url.copy_with(path=\"x\")\n    return url.username\n",
+    )]);
+    assert_eq!(
+        fx.lands_at("alias.py", "username", 18),
+        "alias.py::URL.username"
+    );
+    assert_eq!(
+        fx.lands_at("alias.py", "copy_with", 19),
+        "alias.py::URL.copy_with"
+    );
+    assert_eq!(
+        fx.lands_at("alias.py", "username", 20),
+        "alias.py::URL.username"
+    );
+}
+
+/// The members a chain passes through are read: `self.decoder` in
+/// `self.decoder.decode()`; a function whose attribute is used (`cli.command`)
+/// is read as well.
+#[test]
+fn the_members_in_the_middle_of_a_chain_and_a_function_head_are_read() {
+    let fx = snapshot(&[
+        (
+            "chain.py",
+            "class Decoder:\n    def decode(self, chunk):\n        return chunk\n\n\nclass Response:\n    @property\n    def decoder(self) -> Decoder:\n        return Decoder()\n\n    def iter_bytes(self, chunk):\n        yield self.decoder.decode(chunk)\n",
+        ),
+        (
+            "fn.py",
+            "def cli(f):\n    return f\n\n\n@cli.command(\"strip\")\ndef make_strip():\n    return 1\n",
+        ),
+    ]);
+    let decode = fx.at("chain.py", "decode", 12);
+    assert_eq!(fx.lands(decode), "chain.py::Decoder.decode");
+    let property = fx.at("chain.py", "decoder", 12);
+    assert_eq!(property.relation, Relation::Reads);
+    assert_eq!(fx.lands(property), "chain.py::Response.decoder");
+    let head = fx.at("fn.py", "cli", 5);
+    assert_eq!(head.relation, Relation::Reads);
+    assert_eq!(fx.lands(head), "fn.py::cli");
+}
+
 #[test]
 fn candidate_reasons_and_unresolved_reasons_are_told_apart() {
     assert!(UnresolvedReason::UntypedRead.is_unknown());

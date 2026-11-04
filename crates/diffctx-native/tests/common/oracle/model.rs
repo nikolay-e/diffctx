@@ -244,8 +244,15 @@ impl Relation {
     }
 }
 
-/// Whether the registry declares the cell `precise`: for those `kind` is
-/// compared strictly.
+/// The cells a decision has made `precise` (`PRECISE` in `src/lang/mod.rs`,
+/// which a unit test there holds empty until one is): for those `kind` is
+/// compared strictly. The harness keeps its own copy because the class-test gate
+/// compiles it against the pull request's base, which may not export the
+/// engine's `is_precise`; the change that makes a cell precise edits both.
+const PRECISE: &[(&str, &str)] = &[];
+
 pub fn precise(language: &str, kind: Kind) -> bool {
-    _diffctx::is_precise(language, kind.name())
+    PRECISE
+        .iter()
+        .any(|(l, k)| *l == language && *k == kind.name())
 }

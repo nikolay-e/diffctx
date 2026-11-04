@@ -729,8 +729,8 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
 
 /// #546: a function defined inside another is named only there, so a file
 /// over the size cap that spells its name is no possible caller of it. A
-/// module-level function of the same commit, which such a file could call,
-/// keeps the hedge.
+/// module-level function of the same commit, which such a file imports and
+/// calls, lists that call.
 #[test]
 fn a_nested_function_has_no_callers_outside_its_function() {
     let mut big: String = (0..4000)
@@ -764,12 +764,24 @@ fn a_nested_function_has_no_callers_outside_its_function() {
             )
         })
         .collect();
-    assert_eq!(listed, set(&["lib/policy.py::cache_control"]), "{doc}");
+    // The enclosing function runs the nested one and is a caller of it; the
+    // file over the size cap is read whole by the facts layer, so it is a
+    // caller of the module-level function it imports and calls, and a hedge
+    // on neither.
     assert_eq!(
-        changed(&doc, "lib/policy.py", "cache_control")["missed_in"],
-        serde_json::json!([{"path": "child/src/pkg/domain.py", "language": "python", "reason": "too_large"}]),
+        listed,
+        set(&["lib/policy.py::cache_control", "lib/policy.py::value"]),
         "{doc}"
     );
+    let value = changed(&doc, "lib/policy.py", "value");
+    assert_eq!(value["callers"][0]["symbol"], "value_of", "{doc}");
+    assert!(value["missed_in"].is_null(), "{doc}");
+    let control = changed(&doc, "lib/policy.py", "cache_control");
+    assert_eq!(
+        control["callers"][0]["path"], "child/src/pkg/domain.py",
+        "{doc}"
+    );
+    assert!(control["missed_in"].is_null(), "{doc}");
 }
 
 /// #536: a deleted function is read off the syntax at the base, and only a
