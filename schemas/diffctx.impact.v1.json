@@ -597,6 +597,10 @@
         "definition": {
           "type": "string"
         },
+        "lines": {
+          "description": "Where it is, so two methods of one name are two definitions.",
+          "type": "string"
+        },
         "callers_omitted": {
           "type": "integer",
           "format": "uint",
@@ -605,6 +609,7 @@
       },
       "required": [
         "definition",
+        "lines",
         "callers_omitted"
       ]
     },

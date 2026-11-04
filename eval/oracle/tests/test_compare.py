@@ -1,5 +1,5 @@
 from compare import compare, make_resolver, parse_answer
-from model import Definition, Relation
+from model import MODULE, Definition, Relation
 
 TARGET = Definition("shop/pricing.py", "function", "total", (), 1, 3, 0, 4, "()", "h", "s")
 
@@ -93,6 +93,16 @@ def test_kind_mismatch_is_counted_not_failed():
     assert (cells[0]["tp"], cells[0]["kind_mismatches"]) == (1, 1)
 
 
+def test_a_reexport_row_is_a_sure_answer_for_a_reexports_relation():
+    row = {"path": "pkg/index.ts", "lines": "1-1", "weight": 1.0, "evidence": "reexport", "relation": "reexports"}
+    found = answer([row])
+    truth = [relation("pkg/index.ts::" + MODULE, "reexports")]
+
+    cells, _ = compare(TARGET, truth, found)
+
+    assert (cells[0]["kind"], cells[0]["tp"], cells[0]["tp_weak"], cells[0]["kind_mismatches"]) == ("reexports", 1, 0, 0)
+
+
 def test_one_pair_with_several_kinds_is_scored_once_under_the_strongest():
     truth = [relation("shop/checkout.py::charge", "reads"), relation("shop/checkout.py::charge", "calls")]
 
@@ -150,3 +160,39 @@ def test_definitions_shed_into_the_one_omitted_entry_are_partial_answers():
     parsed = parse_answer(data, make_resolver(lambda _path: []))
     shed = parsed.targets["shop/checkout.py::charge"]
     assert (shed.callers_omitted, bool(shed.unresolved)) == (2, True)
+
+
+def test_a_shed_definition_is_found_by_its_lines_and_unnamed_ones_make_a_missing_target_partial():
+    twins = [caller_def("shop/pricing.py", "send", 1, 3), caller_def("shop/pricing.py", "send", 10, 14)]
+    resolve = make_resolver(lambda path: twins if path == "shop/pricing.py" else [])
+    data = {
+        "changed": [
+            {
+                "path": "(changed definitions)",
+                "kind": "omitted",
+                "unresolved": "3 changed definition(s) omitted: the answer cap; --budget 300 shows them",
+                "callers_omitted": 4,
+                "omitted": [{"definition": "shop/pricing.py::send", "lines": "10-14", "callers_omitted": 4}],
+            }
+        ]
+    }
+    parsed = parse_answer(data, resolve)
+    assert "shop/pricing.py::send" in parsed.targets
+    assert parsed.unnamed_omitted == 2
+    missing = Definition("shop/other.py", "function", "other", (), 1, 3, 0, 4, "()", "h", "s")
+    cells, _ = compare(missing, [Relation("shop/checkout.py::charge", missing.key, "calls", 2)], parsed)
+    assert (cells[0]["fcn"], cells[0]["abstained"]) == (False, True)
+
+
+def test_a_role_or_layout_only_listing_is_no_absence_claim_and_a_constructor_is_judged_by_its_class():
+    data = {
+        "changed": [{"path": "shop/pricing.py", "symbol": "Cart", "lines": "1-3", "kind": "class", "callers": []}],
+        "entry_unlisted": ['shop/checkout.py::charge (1-3) — run as a script (if __name__ == "__main__")'],
+        "layout_only": ["shop/checkout.py::refund (5-8)"],
+    }
+    parsed = parse_answer(data, RESOLVE)
+    for name in ("charge", "refund"):
+        assert parsed.targets[f"shop/checkout.py::{name}"].unresolved
+    init = Definition("shop/pricing.py", "function", "__init__", ("Cart",), 2, 3, 1, 4, "()", "h", "s")
+    cells, _ = compare(init, [Relation("shop/report.py::build", init.key, "instantiates", 2)], parsed)
+    assert (cells[0]["fn"], cells[0]["fcn"]) == (1, True)
