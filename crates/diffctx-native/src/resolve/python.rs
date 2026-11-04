@@ -201,6 +201,8 @@ struct Engine<'a> {
     modules: RefCell<HashMap<(usize, u32, String), ModuleRes>>,
     instances: RefCell<HashMap<usize, Entity>>,
     returns: RefCell<HashMap<usize, Entity>>,
+    /// The type a local is read under while its next assignment is.
+    assumed: RefCell<HashMap<(usize, Path, Name), Entity>>,
     bases: RefCell<HashMap<usize, Rc<Vec<Entity>>>>,
     imported: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
     losses: RefCell<Vec<Loss>>,
@@ -222,6 +224,7 @@ impl<'a> Engine<'a> {
             modules: RefCell::default(),
             instances: RefCell::default(),
             returns: RefCell::default(),
+            assumed: RefCell::default(),
             bases: RefCell::default(),
             imported: RefCell::default(),
             losses: RefCell::default(),
@@ -328,6 +331,54 @@ impl<'a> Engine<'a> {
         if let Some((head, resolution)) = self.head_read(f, r) {
             out.push(binding(&head, Relation::Reads, resolution));
         }
+        // The same for the members in the middle of the chain: `self.decoder`
+        // in `self.decoder.decode()` is read.
+        for (member, resolution) in self.chain_reads(f, r) {
+            out.push(binding(&member, Relation::Reads, resolution));
+        }
+    }
+
+    /// The fields, properties and variables a chain passes through between its
+    /// head and its last name, as far as the receiver's type is known.
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+        let mut reads = Vec::new();
+        if r.qualifier.len() < 2 {
+            return reads;
+        }
+        let scope = scope_path(&r.enclosing);
+        let (mut entity, kind) = self.head_entity(f, &scope, &r.qualifier[0], 0);
+        for member in &r.qualifier[1..] {
+            let Lookup::Found {
+                entity: next,
+                through,
+                inherited,
+            } = self.member(f, &entity, member)
+            else {
+                break;
+            };
+            if let Entity::Def(id) = next {
+                let held = matches!(
+                    self.ix.defs[id].def.kind,
+                    DefKind::Field | DefKind::Variable | DefKind::Constant | DefKind::Property
+                );
+                if held && self.reachable(f, id) {
+                    let how = if inherited {
+                        EvidenceKind::Inherited
+                    } else {
+                        kind
+                    };
+                    reads.push((
+                        member.clone(),
+                        Resolution::Resolved {
+                            target: self.ix.defs[id].key.clone(),
+                            evidence: Evidence::through(how, self.paths(&through)),
+                        },
+                    ));
+                }
+            }
+            entity = next;
+        }
+        reads
     }
 
     /// The variable, constant, field or class a chain starts from, when it is one
@@ -352,7 +403,11 @@ impl<'a> Engine<'a> {
         let kind = self.ix.defs[id].def.kind;
         let reads = matches!(
             kind,
-            DefKind::Class | DefKind::Variable | DefKind::Constant | DefKind::Field
+            DefKind::Class
+                | DefKind::Variable
+                | DefKind::Constant
+                | DefKind::Field
+                | DefKind::Function
         );
         if !reads || !self.reachable(f, id) {
             return None;
@@ -837,10 +892,12 @@ impl<'a> Engine<'a> {
         match &r.receiver {
             Receiver::SelfType => return (self.self_entity(f, scope), EvidenceKind::SelfReceiver),
             Receiver::Typed(t) if r.qualifier.len() == 1 => {
-                return (
-                    self.type_entity(f, scope, t.as_str()),
-                    EvidenceKind::TypedReceiver,
-                );
+                // An annotation that names no class (an alias, `URLTypes`) says
+                // nothing of the object the name holds after `x = Cls(x)`.
+                let typed = self.type_entity(f, scope, t.as_str());
+                if typed != Entity::Unknown {
+                    return (typed, EvidenceKind::TypedReceiver);
+                }
             }
             _ => {}
         }
@@ -919,9 +976,22 @@ impl<'a> Engine<'a> {
             let Some(assignments) = file.variables.get(&key) else {
                 continue;
             };
+            let slot = (f, key.0.clone(), name.clone());
+            if let Some(known) = self.assumed.borrow().get(&slot) {
+                return (known.clone(), EvidenceKind::Constructed);
+            }
             let mut found: Option<(Entity, EvidenceKind)> = None;
             for at in assignments {
-                let Some(next) = self.assigned_call(f, *at, depth) else {
+                // `x = x.copy_with(...)`: what the name held before is the type
+                // its next assignment is read under.
+                if let Some((entity, _)) = &found {
+                    self.assumed
+                        .borrow_mut()
+                        .insert(slot.clone(), entity.clone());
+                }
+                let next = self.assigned_call(f, *at, depth);
+                self.assumed.borrow_mut().remove(&slot);
+                let Some(next) = next else {
                     return (Entity::Unknown, EvidenceKind::Constructed);
                 };
                 match &found {

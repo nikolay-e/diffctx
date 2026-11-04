@@ -28,6 +28,7 @@ class TargetAnswer:
     callers: list[AnswerCaller] = field(default_factory=list)
     unresolved: str | None = None
     missed_in: list[str] = field(default_factory=list)
+    callers_omitted: int = 0  # callers the answer cap dropped from this symbol: its list is a lower bound
 
 
 @dataclass
@@ -74,6 +75,14 @@ def parse_answer(data: dict, resolve: Resolver) -> Answer:
         target = targets.setdefault(key, TargetAnswer(key))
         target.unresolved = entry.get("unresolved") or target.unresolved
         target.missed_in += [m.get("path", "") for m in entry.get("missed_in", [])]
+        target.callers_omitted += int(entry.get("callers_omitted", 0) or 0)
+        # The definitions the cap shed are named on one entry, `path::name` each.
+        for shed in entry.get("omitted", []):
+            path, _, name = str(shed.get("definition", "")).partition("::")
+            shed_key = resolve(path, name or None, None)
+            gone = targets.setdefault(shed_key, TargetAnswer(shed_key))
+            gone.unresolved = entry.get("unresolved") or gone.unresolved
+            gone.callers_omitted += int(shed.get("callers_omitted", 0) or 0)
         for caller in entry.get("callers", []):
             from_key = resolve(caller["path"], caller.get("symbol"), caller.get("lines"))
             relation = "reference" if caller.get("relation") == "reference" else "call"
@@ -128,8 +137,12 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     scored = {k: [r for r in rels if not r.in_diff] for k, rels in grouped.items() if k not in ignored}
     reported = answer.targets.get(target.key)
     callers = _strongest(reported.callers) if reported else {}
+    # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
+    # is a partial answer: the listed callers count, the missing truth is abstention.
     abstained = (
-        bool(answer.limits) or target.path in answer.unanalysed or bool(reported and (reported.unresolved or reported.missed_in))
+        bool(answer.limits)
+        or target.path in answer.unanalysed
+        or bool(reported and (reported.unresolved or reported.missed_in or reported.callers_omitted))
     )
     cells: dict[str, dict] = {}
     details: list[dict] = []

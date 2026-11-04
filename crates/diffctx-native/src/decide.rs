@@ -293,12 +293,17 @@ pub struct Cell {
     /// Files the resolver read.
     files: HashSet<String>,
     /// Names with uses that landed on nothing, by name: the files.
-    unlanded: HashMap<String, Vec<(String, u32, Scope)>>,
+    /// The file, line, owner and whether it reads a property through a receiver
+    /// nothing types.
+    unlanded: HashMap<String, Vec<(String, u32, Scope, bool)>>,
     /// Resolved uses by target: the file and line of each.
     landed: HashMap<DefKey, Vec<(String, u32)>>,
     /// (user file, used file) pairs a binding links.
     reaches: HashSet<(String, String)>,
     losses: Vec<Loss>,
+    /// The run's pathspecs: the cell reads the files inside them alone, as the
+    /// fragments do. Empty for the whole repository.
+    scope: Vec<String>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -342,6 +347,18 @@ fn loads_lazily(b: &Binding) -> bool {
     b.relation == Relation::Imports
         && matches!(&b.resolution, Resolution::Resolved { evidence, .. }
             if evidence.kind == EvidenceKind::DynamicImport)
+}
+
+/// Whether `file` is inside the run's pathspecs (all of the repository when
+/// there are none).
+fn within_scope(scope: &[String], file: &str) -> bool {
+    scope.is_empty()
+        || scope.iter().any(|p| {
+            file == p
+                || file
+                    .strip_prefix(p.as_str())
+                    .is_some_and(|r| r.starts_with('/'))
+        })
 }
 
 fn within(line: u32, (start, end): (u32, u32)) -> bool {
@@ -435,6 +452,7 @@ impl Cell {
             landed: HashMap::new(),
             reaches: HashSet::new(),
             losses: Vec::new(),
+            scope: state.scope.clone(),
         };
         for h in &state.hunk_texts {
             cell.hunks
@@ -477,6 +495,9 @@ impl Cell {
         }
         for (at, b) in self.head.bindings().iter().enumerate() {
             let file = b.file.as_str();
+            if !within_scope(&self.scope, file) {
+                continue;
+            }
             self.files.insert(file.to_string());
             self.bindings_by_file
                 .entry(file.to_string())
@@ -527,7 +548,7 @@ impl Cell {
             self.unlanded
                 .entry(name)
                 .or_default()
-                .push((file, line, from));
+                .push((file, line, from, read));
         }
         self.losses = self.head.losses().to_vec();
     }
@@ -540,6 +561,12 @@ impl Cell {
             .defs
             .iter()
             .filter(|d| self.family.has(d.key.language))
+            .filter(|d| {
+                [&d.head, &d.base]
+                    .into_iter()
+                    .flatten()
+                    .any(|file| within_scope(&self.scope, file.as_str()))
+            })
             .collect();
         let layout_only = |change: &DefChange| {
             matches!(change, DefChange::Changed { origin: Origin::Same, delta }
@@ -554,7 +581,11 @@ impl Cell {
         let mut removed: Vec<Changed> = Vec::new();
         for d in &python {
             match &d.change {
-                DefChange::Removed => {
+                // A definition the range removed, or one whose pairing is ambiguous and
+                // that only the base has: reported either way, the second as not
+                // determined (`Gap::Unpaired`), never dropped.
+                DefChange::Removed | DefChange::Unknown { .. } if d.head.is_none() => {
+                    let unpaired = matches!(d.change, DefChange::Unknown { .. });
                     let Some(file) = d.base.as_ref() else {
                         continue;
                     };
@@ -569,7 +600,7 @@ impl Cell {
                         how: How::Removed,
                         subjects: Vec::new(),
                         stale: vec![d.key.clone()],
-                        unpaired: false,
+                        unpaired,
                         local: false,
                         public,
                     };
@@ -593,7 +624,7 @@ impl Cell {
                                     reach: Reach::Stale,
                                 }],
                                 stale: vec![d.key.clone()],
-                                unpaired: false,
+                                unpaired,
                                 local: false,
                                 public: false,
                             };
@@ -812,6 +843,18 @@ impl Cell {
         self.files.contains(rel) || self.family.has_path(rel)
     }
 
+    /// Whether the resolver read the file whole: its definitions and uses are
+    /// the cell's, whatever the fragments made of it. A file the grammar read
+    /// only in part has uses the cell never saw, so it stays a name's unread
+    /// namer.
+    pub fn read(&self, rel: &str) -> bool {
+        self.files.contains(rel)
+            && !self
+                .losses
+                .iter()
+                .any(|loss| matches!(loss, Loss::ParseError { path, .. } if path.as_str() == rel))
+    }
+
     /// The definition of a queried name or a fragment at these lines, as the
     /// cell would report it.
     pub fn define(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<Changed> {
@@ -886,59 +929,47 @@ impl Cell {
         })
     }
 
-    /// Whether a use is the enclosing function's own context: a function
-    /// defined inside another is named only there (#546).
-    fn encloses(&self, changed: &Changed, subject: &Subject, b: &Binding) -> bool {
-        if b.file.as_str() != changed.file {
-            return false;
-        }
-        let Scope::Def(local) = root_scope(&b.from) else {
-            return false;
-        };
-        let mut path = local.container.clone();
-        path.push(local.name.clone());
-        let nested = &subject.key.local.container;
-        path.len() <= nested.len()
-            && nested[..path.len()] == path[..]
-            && self.key_in(&changed.file, &b.from).is_some_and(|key| {
-                self.definition(&key)
-                    .is_some_and(|d| matches!(d.kind, DefKind::Function | DefKind::Method))
-            })
-    }
-
-    /// A TypeScript annotation: a changed type is read by every signature and
-    /// declaration that states it.
-    fn names_type(&self, b: &Binding) -> bool {
-        self.family == Family::TypeScript && b.relation == Relation::TypeUses
-    }
-
-    /// A class named by the class that extends it: a base is the first thing a
-    /// change to the class reaches.
-    fn extends(&self, b: &Binding) -> bool {
-        b.relation == Relation::TypeUses
+    /// Whether a use under the `__main__` guard of the definition's own file is
+    /// the script running its entry function: the definition is a function of the
+    /// module itself, called by name.
+    fn runs_as_entry(&self, changed: &Changed, subject: &Subject, b: &Binding) -> bool {
+        b.file.as_str() == changed.file
             && self
-                .key_in(b.file.as_str(), &b.from)
-                .and_then(|key| self.definition(&key))
-                .is_some_and(|d| d.kind == DefKind::Class && d.name_span.lines.0 == b.site.lines.0)
+                .definition(&subject.key)
+                .is_some_and(|d| d.key.local.container.is_empty() && d.kind == DefKind::Function)
+    }
+
+    /// `export { a } from './m'` offers a changed definition on: a module that
+    /// re-exports it is where it reaches the package's users.
+    fn reexports(&self, b: &Binding) -> bool {
+        self.family == Family::TypeScript && b.relation == Relation::Reexports
+    }
+
+    /// An annotation or a base class: a changed type is read by every signature,
+    /// declaration and subclass that states it, which is how the language's own
+    /// indexers count it (`reads`).
+    fn names_type(&self, b: &Binding) -> bool {
+        b.relation == Relation::TypeUses
     }
 
     /// Who uses the definition, and what the answer cannot say about it.
     pub fn verdict(&self, changed: &Changed) -> Verdict {
         let mut uses: Vec<Use> = Vec::new();
         for subject in &changed.subjects {
-            let class = self
-                .definition(&subject.key)
-                .is_some_and(|d| d.kind == DefKind::Class);
             for b in self.head.references_to(&subject.key) {
+                if !within_scope(&self.scope, b.file.as_str()) {
+                    continue;
+                }
                 let reaches = subject.reach.admits(b.relation)
                     || (subject.reach == Reach::Every
-                        && ((class && self.extends(b)) || loads_lazily(b) || self.names_type(b)));
-                // The guard of a script runs it; a use in its own body is not a
-                // caller of it.
+                        && (loads_lazily(b) || self.names_type(b) || self.reexports(b)));
+                // The guard of a script runs its entry function; a use in its own
+                // body is not a caller of it. The rest of the file's definitions
+                // are used there like anywhere else, and so is anything the guard
+                // of another file runs.
                 if !reaches
-                    || b.entry_guard
+                    || (b.entry_guard && self.runs_as_entry(changed, subject, b))
                     || (b.file.as_str() == changed.file && within(b.site.lines.0, changed.lines))
-                    || self.encloses(changed, subject, b)
                 {
                     continue;
                 }
@@ -999,7 +1030,8 @@ impl Cell {
         let mut named: HashMap<(String, Name), Standing> = HashMap::new();
         for key in &changed.stale {
             for b in base.references_to(key) {
-                if b.relation.uses() && !b.entry_guard {
+                if b.relation.uses() && !b.entry_guard && within_scope(&self.scope, b.file.as_str())
+                {
                     let standing = match (self.family, standing_of(&b.resolution)) {
                         (Family::TypeScript, Some(standing)) => standing,
                         _ => Standing::Resolved,
@@ -1046,15 +1078,25 @@ impl Cell {
         changed: &Changed,
         covered: &HashSet<(String, u32)>,
     ) -> Vec<(String, u32, Scope)> {
+        // A property read through an object nothing types cannot be a use of a
+        // top-level function or constant of a module: `c.env` is no use of the
+        // exported `env`, which a use reaches through its import. Only a member
+        // is read that way.
+        let member = changed
+            .subjects
+            .first()
+            .is_some_and(|s| !s.key.local.container.is_empty());
+        let top_level_only = self.family == Family::TypeScript && !member;
         self.unlanded
             .get(&changed.name)
             .into_iter()
             .flatten()
-            .filter(|(file, line, _)| {
-                self.ctx.workspace.may_reference(file, &changed.file)
+            .filter(|(file, line, _, read)| {
+                !(top_level_only && *read)
+                    && self.ctx.workspace.may_reference(file, &changed.file)
                     && !covered.contains(&(file.clone(), *line))
             })
-            .cloned()
+            .map(|(file, line, scope, _)| (file.clone(), *line, scope.clone()))
             .collect()
     }
 
