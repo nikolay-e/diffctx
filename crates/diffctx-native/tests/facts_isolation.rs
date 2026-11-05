@@ -11,10 +11,15 @@ use std::path::Path;
 use regex::Regex;
 use walkdir::WalkDir;
 
+mod isolation_source;
+use isolation_source::without_comments;
+
 const FIRST_LAYER: [&str; 5] = ["java.rs", "kotlin.rs", "python.rs", "scala.rs", "swift.rs"];
 
 /// What reaches out of `facts`; a file may climb `reach` modules with `super`.
 fn violations(source: &str, reach: usize) -> Vec<String> {
+    let source = without_comments(source);
+    let source = source.as_str();
     let paths = Regex::new(r"\b(?:crate|_diffctx|diffctx)\s*::\s*(\w*)").expect("a pattern");
     let mut found: Vec<String> = paths
         .captures_iter(source)
@@ -86,4 +91,19 @@ fn a_path_into_a_sibling_module_is_a_violation() {
     assert!(violations("use crate::snapshot::Oid; use crate::facts::Def;", 1).is_empty());
     assert!(violations("use super::model::Def;", 1).is_empty());
     assert_eq!(violations("use super::Def;", 0).len(), 1);
+    // A comment that names a path outside the module reaches nothing; the code
+    // around it, and a string that holds `//`, still count.
+    assert!(violations("// use crate::parsers::x; super::super::y\n/// crate::a\n//! super::super\n/* crate::b /* super::super */ crate::c */ fn f() {}", 1).is_empty());
+    assert_eq!(
+        violations("fn f() {} /* a note */ use crate::parsers::Z;", 1).len(),
+        1
+    );
+    assert_eq!(
+        violations("let url = \"http://x\"; use crate::parsers::Z;", 1).len(),
+        1
+    );
+    assert_eq!(
+        violations("let raw = r#\"//\"#; use crate::parsers::Z;", 1).len(),
+        1
+    );
 }

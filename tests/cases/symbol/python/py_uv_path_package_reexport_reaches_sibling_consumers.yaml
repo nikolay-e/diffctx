@@ -59,3 +59,8 @@ expect:
       kind: "calls"
       resolution: "resolved"
       site: 5
+    - from: "shared/kit/src/kit/__init__.py"
+      to: "shared/kit/src/kit/auth.py::auth_settings"
+      kind: "reexports"
+      resolution: "resolved"
+      site: 1

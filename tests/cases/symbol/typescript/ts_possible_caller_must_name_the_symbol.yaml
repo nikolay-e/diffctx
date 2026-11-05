@@ -33,7 +33,7 @@ expect:
   relations:
     - from: "app_a/frontend/alerts.ts::describe"
       to: "app_a/frontend/types/api.ts::ClinicalAlertEvent"
-      kind: "reads"
+      kind: "type_use" # R9: the parameter annotation on line 3 names the type; it reads nothing
       resolution: "resolved"
       site: 3
   decoys:

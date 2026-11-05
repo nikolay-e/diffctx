@@ -1,0 +1,58 @@
+name: ts_destructured_static_method_is_called_through_its_alias
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, oracle, alias, static-method, decoy]
+repo:
+  initial_files:
+    src/request.ts: |
+      export default class Request {
+        static normalizeArguments(url: string, options?: object): object {
+          return {url, options};
+        }
+
+        constructor() {
+          Request.normalizeArguments('a');
+        }
+      }
+    src/create.ts: |
+      import Request from './request';
+
+      const {normalizeArguments} = Request;
+
+      export const mergeOptions = (source: object) => {
+        return normalizeArguments('x', source);
+      };
+    src/legacy.ts: |
+      export function normalizeArguments(url: string) {
+        return url;
+      }
+
+      export const run = () => normalizeArguments('d');
+  changed_files:
+    src/request.ts: |
+      export default class Request {
+        static normalizeArguments(url: string, options?: object): object {
+          return {url, options, extra: 1};
+        }
+
+        constructor() {
+          Request.normalizeArguments('a');
+        }
+      }
+  commit_message: "request: keep the extra option"
+expect:
+  changed: [src/request.ts::normalizeArguments]
+  relations:
+    - from: "src/request.ts::constructor"
+      to: "src/request.ts::normalizeArguments"
+      kind: calls
+      resolution: resolved
+      site: 7
+    - from: "src/create.ts::mergeOptions"
+      to: "src/request.ts::normalizeArguments"
+      kind: calls
+      resolution: resolved
+      site: 6
+  decoys:
+    src/request.ts::normalizeArguments: [src/legacy.ts::run]

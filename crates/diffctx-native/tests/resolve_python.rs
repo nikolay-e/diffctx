@@ -187,6 +187,8 @@ struct Case {
     mode: String,
     #[serde(default)]
     dispute: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     repo: Files,
     #[serde(default)]
     query: Query,
@@ -593,6 +595,53 @@ fn build(case: &Case) -> Fixture {
     open(repo, RangeSpec::Review { base, head })
 }
 
+/// Revision 12.3: a case tagged `local-of-definition` names a local of a
+/// definition (a nested function that never leaves it). The resolver holds no
+/// definition of the name, and each use the case lists answers
+/// `unresolved(Local)`: the engine's `--symbol` lists those uses from the
+/// facts, and the judge asserts what the resolver itself says of a local.
+fn judge_local_of(fixture: &Fixture, case: &Case, failures: &mut Vec<String>) {
+    for spec in &case.expect.relations {
+        let (file, name, Some(line)) = (
+            Node::parse(&spec.from).path,
+            Node::parse(&spec.to).symbol.unwrap_or_default(),
+            spec.site,
+        ) else {
+            continue;
+        };
+        let uses: Vec<String> = fixture
+            .head
+            .bindings()
+            .iter()
+            .filter(|b| {
+                b.file.as_str() == file
+                    && b.name.as_str() == name
+                    && b.site.lines.0 == line
+                    && !matches!(b.relation, Relation::Imports | Relation::Reexports)
+            })
+            .map(|b| fixture.lands(b))
+            .collect();
+        if uses != ["unresolved(Local)"] {
+            failures.push(format!(
+                "{file}:{line} `{name}`: expected a use of a local, found {uses:?}"
+            ));
+        }
+    }
+    if let Some(symbol) = &case.query.symbol {
+        let defined = fixture
+            .head
+            .definitions()
+            .iter()
+            .filter(|d| d.key.local.name.as_str() == symbol)
+            .count();
+        if defined != 0 {
+            failures.push(format!(
+                "`{symbol}` is a local, but the resolver holds {defined} definition(s) of it"
+            ));
+        }
+    }
+}
+
 enum Verdict {
     /// The case asserts nothing the resolver answers.
     NotApplicable,
@@ -601,6 +650,15 @@ enum Verdict {
 }
 
 fn run_case(case: &Case) -> Verdict {
+    if case.tags.iter().any(|t| t == "local-of-definition") {
+        let mut failures = Vec::new();
+        judge_local_of(&build(case), case, &mut failures);
+        return if failures.is_empty() {
+            Verdict::Green
+        } else {
+            Verdict::Red(failures)
+        };
+    }
     let wants = compile(&case.expect);
     let mut targets: BTreeSet<Node> = wants.keys().cloned().collect();
     targets.extend(case.expect.decoys.keys().map(|k| Node::target(k)));
@@ -1450,4 +1508,91 @@ fn candidate_reasons_and_unresolved_reasons_are_told_apart() {
         CandidateReason::AnyReceiver,
         CandidateReason::UntypedReceiver
     );
+}
+
+/// W5-R1 (R3): a variable assigned an attribute chain holds what the chain
+/// holds, so a read through it is a read of the member of that type, resolved
+/// as aliased; the alias of an untyped name stays an untyped read, and a module
+/// variable assigned a chain is an alias too.
+#[test]
+fn a_variable_assigned_an_attribute_chain_reads_through_the_type_of_that_chain() {
+    let fx = snapshot(&[
+        (
+            "pkg/opts.py",
+            "class Internals:\n    dns_lookup = None\n\n\nclass Options:\n    internals: Internals = Internals()\n",
+        ),
+        (
+            "pkg/native.py",
+            "from pkg.opts import Options\n\n\ndef create(options: Options):\n    internals = options.internals\n    return internals.dns_lookup\n\n\ndef loose(other):\n    internals = other.internals\n    return internals.dns_lookup\n",
+        ),
+        (
+            "pkg/shared.py",
+            "from pkg.opts import Options\n\nopts = Options()\nshared = opts.internals\n\n\ndef read():\n    return shared.dns_lookup\n",
+        ),
+    ]);
+    let typed = fx.at("pkg/native.py", "dns_lookup", 6);
+    assert_eq!(fx.lands(typed), "pkg/opts.py::Internals.dns_lookup");
+    assert_eq!(typed.relation, Relation::Reads);
+    assert_eq!(evidence(typed).0, EvidenceKind::Aliased);
+    assert_eq!(
+        fx.lands_at("pkg/native.py", "dns_lookup", 11),
+        "unresolved(UntypedRead)"
+    );
+    assert_eq!(
+        fx.lands_at("pkg/shared.py", "dns_lookup", 8),
+        "pkg/opts.py::Internals.dns_lookup"
+    );
+}
+
+/// W5-R1 (R4): a function handed to `functools.partial` is passed as a value,
+/// resolved, from the function that builds the partial; the same name of
+/// another module is not it.
+#[test]
+fn a_function_handed_to_functools_partial_is_passed_as_a_value() {
+    let fx = snapshot(&[
+        (
+            "pkg/hooks.py",
+            "def print_headers(request, http2=False):\n    return request\n",
+        ),
+        (
+            "pkg/main.py",
+            "import functools\n\nfrom pkg.hooks import print_headers\n\n\ndef main(http2):\n    hooks = {}\n    hooks[\"request\"] = [functools.partial(print_headers, http2=http2)]\n    return hooks\n",
+        ),
+        (
+            "pkg/cli.py",
+            "import functools\n\n\ndef print_local(request):\n    return request\n\n\ndef run(items):\n    return list(map(functools.partial(print_local), items))\n",
+        ),
+    ]);
+    let imported = fx.at("pkg/main.py", "print_headers", 8);
+    assert_eq!(imported.relation, Relation::PassesAsValue);
+    assert_eq!(fx.lands(imported), "pkg/hooks.py::print_headers");
+    let local = fx.at("pkg/cli.py", "print_local", 9);
+    assert_eq!(local.relation, Relation::PassesAsValue);
+    assert_eq!(fx.lands(local), "pkg/cli.py::print_local");
+}
+
+/// W5-R1 (R6): `from .decorators import command as command` in a package's
+/// `__init__` is a re-export of the definition, resolved through the overloads
+/// to the one name; it is no import and no caller.
+#[test]
+fn a_package_init_reexports_an_overloaded_function() {
+    let fx = snapshot(&[
+        (
+            "pkg/__init__.py",
+            "from .decorators import command as command\n",
+        ),
+        (
+            "pkg/decorators.py",
+            "from typing import overload\n\n\n@overload\ndef command(name: None) -> int: ...\n\n\n@overload\ndef command(name: str) -> str: ...\n\n\ndef command(name=None):\n    return name\n",
+        ),
+    ]);
+    let offered: Vec<&Binding> = fx
+        .head
+        .bindings()
+        .iter()
+        .filter(|b| b.file.as_str() == "pkg/__init__.py" && b.relation == Relation::Reexports)
+        .collect();
+    assert_eq!(offered.len(), 1, "{offered:#?}");
+    assert_eq!(fx.lands(offered[0]), "pkg/decorators.py::command");
+    assert!(!offered[0].relation.uses());
 }

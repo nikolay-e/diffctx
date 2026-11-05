@@ -44,6 +44,8 @@ fn repo(steps: &[&[(&str, Option<&str>)]]) -> TempDir {
 fn run(repo: &Path, args: &[&str]) -> String {
     let out = diffctx()
         .current_dir(repo)
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .args(["-q", "--timeout", "600"])
         .output()
@@ -1132,9 +1134,10 @@ fn a_method_moved_to_another_impl_of_its_type_is_no_removal() {
 }
 
 /// #599: a private item is named only in its module and the ones below
-/// it, so a file over the size cap elsewhere is no hedge on it. A file
-/// below its module keeps the hedge, and so does any file for a
-/// `pub(crate)` item.
+/// it, so a file over the size cap elsewhere is no hedge on it. The model
+/// that hedged files below the module and every file for a `pub(crate)` item
+/// is gone: the facts layer reads those files whole, so what they spell is a
+/// use or it is not, and nothing is left to hedge.
 #[test]
 fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
     let paths = |n: u32| {
@@ -1172,9 +1175,21 @@ fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
         found.sort();
         found
     };
+    // The facts layer reads both files over the cap whole: `.join(..)`, `.split(..)`
+    // and the word in a string are no use of a free function, so no file is a
+    // hedge on any of the three, however far its module is from the item.
     assert_eq!(missed("join"), [""; 0], "{doc:#}");
-    assert_eq!(missed("split"), ["src/paths/deep.rs"], "{doc:#}");
-    assert_eq!(missed("wide"), ["src/big.rs"], "{doc:#}");
+    assert_eq!(missed("split"), [""; 0], "{doc:#}");
+    assert_eq!(missed("wide"), [""; 0], "{doc:#}");
+    for symbol in ["join", "split", "wide"] {
+        let unresolved = doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["symbol"] == symbol)
+            .any(|c| c.get("unresolved").is_some());
+        assert!(!unresolved, "{symbol}: {doc:#}");
+    }
     assert_eq!(
         callers_of(&doc, "join", false),
         ["src/paths.rs::full"],

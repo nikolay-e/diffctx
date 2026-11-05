@@ -1,0 +1,50 @@
+name: ts_key_of_a_typed_object_literal_writes_the_member
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, oracle, object-literal, writes, decoy]
+repo:
+  initial_files:
+    src/options.ts: |
+      export interface RetryOptions {
+        enforceRetryRules?: boolean;
+      }
+
+      export const defaults: RetryOptions = {
+        enforceRetryRules: false,
+      };
+    src/client.ts: |
+      import {RetryOptions} from './options';
+
+      export const aggressive: RetryOptions = {
+        enforceRetryRules: true,
+      };
+    src/loose.ts: |
+      export const loose = {
+        enforceRetryRules: true,
+      };
+  changed_files:
+    src/options.ts: |
+      export interface RetryOptions {
+        enforceRetryRules?: number;
+      }
+
+      export const defaults: RetryOptions = {
+        enforceRetryRules: false,
+      };
+  commit_message: "options: enforceRetryRules is a number"
+expect:
+  exact: false
+  relations:
+    - from: "src/options.ts::defaults"
+      to: "src/options.ts::enforceRetryRules"
+      kind: writes
+      resolution: resolved
+      site: 6
+    - from: "src/client.ts::aggressive"
+      to: "src/options.ts::enforceRetryRules"
+      kind: writes
+      resolution: resolved
+      site: 4
+  decoys:
+    src/options.ts::enforceRetryRules: [src/loose.ts::loose]

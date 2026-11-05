@@ -476,6 +476,13 @@
           "items": {
             "$ref": "#/$defs/OmittedDefinition"
           }
+        },
+        "folded": {
+          "description": "Rows the change cannot have affected, counted one line per (relation\nkind, rule) instead of listed (the folding table of the plan); every row\nis listed, marked `folded_by`, when the answer is asked to unfold.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Folded"
+          }
         }
       },
       "required": [
@@ -558,6 +565,13 @@
             "null"
           ]
         },
+        "folded_by": {
+          "description": "The rule of the folding table that would fold this row: only an answer\nasked to list every row carries it (`--unfold`); otherwise the row is\ncounted in `folded`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "sites": {
           "description": "The lines that reference the definition, when known.",
           "type": "array",
@@ -627,6 +641,55 @@
         "definition",
         "lines",
         "callers_omitted"
+      ]
+    },
+    "Folded": {
+      "description": "Rows of one changed definition folded under one rule of the folding table.",
+      "type": "object",
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "The relation kind the rows are: `calls`, `type_use`, `overrides`, ...",
+          "type": "string"
+        },
+        "count": {
+          "description": "How many rows. Exact only when `exact`; otherwise at least.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "examples": {
+          "description": "The first three by path and line, so the same change names the same ones.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "description": "For `check-the-default`: the parameters the change added.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sharing": {
+          "description": "For `untyped-receiver`: the most definitions that share the name a row\nmay be.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "rule",
+        "kind",
+        "count",
+        "exact",
+        "examples"
       ]
     },
     "Contract": {

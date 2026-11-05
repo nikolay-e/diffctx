@@ -34,7 +34,7 @@ pub enum Class {
 }
 
 impl Kind {
-    const ALL: [Self; 13] = [
+    pub const ALL: [Self; 13] = [
         Self::Calls,
         Self::Reads,
         Self::Writes,

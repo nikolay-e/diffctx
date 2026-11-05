@@ -197,6 +197,7 @@ async def _impact_response(
     budget_tokens: int,
     scoping: _Scoping,
     symbol: str | None = None,
+    unfold: bool = False,
 ) -> str:
     try:
         payload = await _run_with_deadline(
@@ -210,6 +211,7 @@ async def _impact_response(
                 markdown=True,
                 symbol=symbol,
                 budget=budget_tokens,
+                unfold=unfold,
             ),
             scoping.deadline_hint,
         )
@@ -377,6 +379,7 @@ async def diffctx_context(
     include_raw_diff: bool = False,
     symbol: str | None = None,
     paths: list[str] | None = None,
+    unfold: bool = False,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     scope = validate_scope(repo_path)
@@ -387,11 +390,10 @@ async def diffctx_context(
     if symbol is not None:
         if diff_ref or fragment_ids or mode != "impact":
             raise ValueError(
-                'symbol looks the name up in the working tree: call again with mode="impact" '
-                "and drop diff_ref and fragment_ids"
+                'symbol looks the name up in the working tree: call again with mode="impact" and drop diff_ref and fragment_ids'
             )
         scoping = _scoping(paths, engine_paths, f"--symbol {shlex.quote(symbol)}")
-        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, scoping, symbol=symbol)
+        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, scoping, symbol=symbol, unfold=unfold)
         return _with_note(note, reply, max_tokens)
     ref = diff_ref if diff_ref else await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
@@ -410,7 +412,7 @@ async def diffctx_context(
         raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
     scoping = _scoping(paths, engine_paths, f"--diff {shlex.quote(ref)} --mode {mode}")
     if mode == "impact":
-        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens, scoping)
+        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens, scoping, unfold=unfold)
         return _with_note(note, reply, max_tokens)
     if mode == "locate":
         return await _locate_response(scope, ref, budget_tokens, clipboard, max_tokens, scoping)

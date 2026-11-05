@@ -360,11 +360,42 @@ pub struct ChangedSymbol {
     /// each of them, `path::name`, with the callers it had.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub omitted: Vec<OmittedDefinition>,
-    /// What the search for its callers covered. An absence is printed only from
-    /// a complete one; `unresolved` says in words what the gaps were.
+    /// What the search for its calls and for its reads covered, each on its own.
+    /// An absence is printed only from a complete one; `unresolved` says in words
+    /// what the gaps were.
     #[serde(skip)]
     #[schemars(skip)]
-    pub(crate) coverage: decide::Coverage,
+    pub(crate) coverage: decide::Coverages,
+    /// Rows the change cannot have affected, counted one line per (relation
+    /// kind, rule) instead of listed (the folding table of the plan); every row
+    /// is listed, marked `folded_by`, when the answer is asked to unfold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folded: Vec<Folded>,
+    /// The parameters a compatible signature change added: the folded calls
+    /// are named by them.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub(crate) new_parameters: Vec<String>,
+}
+
+/// Rows of one changed definition folded under one rule of the folding table.
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct Folded {
+    pub rule: &'static str,
+    /// The relation kind the rows are: `calls`, `type_use`, `overrides`, ...
+    pub kind: &'static str,
+    /// How many rows. Exact only when `exact`; otherwise at least.
+    pub count: usize,
+    pub exact: bool,
+    /// The first three by path and line, so the same change names the same ones.
+    pub examples: Vec<String>,
+    /// For `check-the-default`: the parameters the change added.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<String>,
+    /// For `untyped-receiver`: the most definitions that share the name a row
+    /// may be.
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub sharing: usize,
 }
 
 /// A changed definition the answer cap shed, and the callers it was shed with.
@@ -416,6 +447,10 @@ pub enum Unknown {
     /// module-level block): its uses are not resolved, and finding none says
     /// nothing.
     Untracked { name: String },
+    /// The name is a local of one definition (a nested function, class or
+    /// closure that never leaves it): not a definition of its own, its uses
+    /// are the ones inside the enclosing one.
+    LocalOf { name: String, enclosing: String },
     /// A gap in the search, in words (`decide::Gap`): what was not read, so that
     /// finding no callers does not mean there are none.
     Uncovered { why: String },
@@ -466,6 +501,10 @@ impl std::fmt::Display for Unknown {
             Self::Untracked { name } => write!(
                 f,
                 "`{name}` is not a tracked definition here (a block-scoped binding); its uses are not resolved"
+            ),
+            Self::LocalOf { name, enclosing } => write!(
+                f,
+                "`{name}` is a local of `{enclosing}`, not a definition of its own: its uses are the ones inside it"
             ),
             Self::Uncovered { why } => write!(
                 f,
@@ -531,6 +570,19 @@ pub struct Caller {
     /// says `relation` alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<&'static str>,
+    /// The rule of the folding table that would fold this row: only an answer
+    /// asked to list every row carries it (`--unfold`); otherwise the row is
+    /// counted in `folded`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folded_by: Option<&'static str>,
+    /// The relation kind the row is folded under.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub fold_kind: Option<&'static str>,
+    /// For a folded candidate: how many definitions share the name.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub fold_share: usize,
     /// The lines that reference the definition, when known.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sites: Vec<u32>,
@@ -578,13 +630,16 @@ fn search_coverage(
     verdict: Option<&decide::Verdict>,
     unresolved: Option<&Unknown>,
     missed_in: &[UnanalysedFile],
-) -> decide::Coverage {
+) -> decide::Coverages {
+    // What the cell's own gaps said is already in its coverage: only a reason it
+    // did not give is a route nothing traces.
+    let explained = verdict.is_some_and(|v| v.gap().is_some());
     let (stopped, not_traced) = match unresolved {
         Some(Unknown::Unfinished { stops }) => (Some(stops.as_slice()), false),
-        Some(_) => (None, true),
+        Some(_) => (None, !explained),
         None => (None, false),
     };
-    decide::Coverage::searched(verdict, stopped, not_traced, missed_in.len())
+    decide::Coverages::searched(verdict, stopped, not_traced, missed_in.len())
 }
 
 /// What the run as a whole did not cover: a stop or limit that can have lost a
@@ -628,7 +683,9 @@ fn unfinished_symbol(
         also_changed: Vec::new(),
         callers_omitted: 0,
         omitted: Vec::new(),
-        coverage: decide::Coverage::partial(decide::Gap::Stopped {
+        folded: Vec::new(),
+        new_parameters: Vec::new(),
+        coverage: decide::Coverages::partial(decide::Gap::Stopped {
             reasons: stops.to_vec(),
         }),
     }
@@ -2197,6 +2254,9 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
             m.path == c.path
                 && m.evidence == c.evidence
                 && m.kind == c.kind
+                && m.folded_by == c.folded_by
+                && m.fold_kind == c.fold_kind
+                && m.fold_share == c.fold_share
                 && m.symbol.as_deref().map(base_symbol) == c.symbol.as_deref().map(base_symbol)
         };
         match merged.iter_mut().find(|m| same(m)) {
@@ -2900,8 +2960,22 @@ fn cell_finding(u: &decide::Use) -> Finding {
             Uses::Overrides => Relation::Implementation,
             _ => Relation::Reference,
         },
+        kind: Some(lang::kind_of_use(u.relation)),
+        fold: u
+            .folded
+            .map(|rule| (rule.name(), u.relation.name(), u.sharing)),
         lines: vec![u.line],
     }
+}
+
+/// The kind a row built from `finding` states for a caller in `path`: the
+/// use's own, for a precise (language, relation) cell only. A use resolves
+/// within one language, so the caller's file names the cell of the definition
+/// it reaches.
+fn stated_kind(path: &str, finding: &Finding) -> Option<&'static str> {
+    finding
+        .kind
+        .and_then(|kind| lang::stated_kind_of(path, kind))
 }
 
 /// What the answer says of a gap in the resolver's reach: a name on more lines
@@ -2922,6 +2996,9 @@ fn cell_unknown(gap: &decide::Gap, name: &str) -> Unknown {
         },
         decide::Gap::Stopped { reasons } => Unknown::Unfinished {
             stops: reasons.clone(),
+        },
+        decide::Gap::Dispatched { via } => Unknown::Dispatched {
+            trait_name: via.clone(),
         },
         other => Unknown::Uncovered {
             why: other.to_string(),
@@ -2967,9 +3044,10 @@ fn cell_row(u: &decide::Use) -> Caller {
             Relation::Implementation => "implementation",
             Relation::Call => "call",
         },
-        // A use resolves within one language, so the caller's file names the
-        // cell of the definition it reaches.
-        kind: lang::stated_kind(&u.file, u.relation),
+        kind: stated_kind(&u.file, &finding),
+        folded_by: finding.fold.map(|(rule, _, _)| rule),
+        fold_kind: finding.fold.map(|(_, kind, _)| kind),
+        fold_share: finding.fold.map_or(0, |(_, _, share)| share),
         sites: finding.lines,
     }
 }
@@ -2998,14 +3076,16 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
             merged
         },
         entry: None,
-        unresolved: verdict.gap().map(|gap| cell_unknown(gap, &def.name)),
+        unresolved: verdict.gap().map(|gap| cell_unknown(&gap, &def.name)),
         untested: false,
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed,
         callers_omitted: 0,
         omitted: Vec::new(),
-        coverage: verdict.coverage().clone(),
+        folded: Vec::new(),
+        new_parameters: def.new_parameters(),
+        coverage: decide::Coverages::of_verdict(verdict),
     }
 }
 
@@ -3458,7 +3538,7 @@ pub fn build_impact(
             tracing::debug!(
                 "impact {}: the cell claims {:?}",
                 core.symbol_name.as_deref().unwrap_or("?"),
-                v.claim()
+                v.claim(crate::resolve::Relation::Calls)
             );
         }
         // A formatter run or a comment changes nothing a caller sees (#370),
@@ -3471,9 +3551,12 @@ pub fn build_impact(
             && core_hunks
                 .iter()
                 .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts));
+        // A decorated definition is never set aside as layout or doc: a decorator
+        // may read what the edit touched.
         let layout = match py {
             Some(def) => {
-                matches!(def.how, decide::How::Edited { layout_only: true }) || hunk_layout
+                (matches!(def.how, decide::How::Edited { layout_only: true }) || hunk_layout)
+                    && !def.decorated
             }
             None => hunk_layout,
         };
@@ -3489,7 +3572,12 @@ pub fn build_impact(
             continue;
         }
         traced_definitions += 1;
-        let compatible = query.is_none() && compatible_extension(core, &core_hunks);
+        // A function whose signature the cell found compatible is folded by its
+        // rule (`check-the-default`); the text rule below stays for what the cell
+        // has no signature of: the fields a class gained.
+        let compatible = query.is_none()
+            && py.is_none_or(|def| def.new_parameters().is_empty())
+            && compatible_extension(core, &core_hunks);
         let symbol = core.symbol_name.as_deref();
         let member = is_member(core, file_of(core));
         let stem = Path::new(core.path())
@@ -3804,6 +3892,8 @@ pub fn build_impact(
                     Some(Finding {
                         evidence: Evidence::Resolved,
                         relation: Relation::Reference,
+                        kind: None,
+                        fold: None,
                         lines: vec![line],
                     }),
                 ));
@@ -3902,6 +3992,8 @@ pub fn build_impact(
                     Finding {
                         evidence: Evidence::Resolved,
                         relation: Relation::Implementation,
+                        kind: None,
+                        fold: None,
                         lines: vec![imp.start_line],
                     },
                 ));
@@ -3956,6 +4048,11 @@ pub fn build_impact(
                             if f.evidence == Evidence::Resolved {
                                 k.evidence = Evidence::Resolved;
                             }
+                            // Two rows of different fold stay as listed as the
+                            // one the table does not fold.
+                            if k.fold != f.fold {
+                                k.fold = None;
+                            }
                             k.lines.extend(f.lines);
                             k.lines.sort_unstable();
                             k.lines.dedup();
@@ -4001,6 +4098,23 @@ pub fn build_impact(
             .iter()
             .filter_map(|(f, _, finding)| finding.clone().map(|x| (&f.id, x)))
             .collect();
+        // A fragment that reads the definition one way and calls it another
+        // has a row for each kind the cell states; with no kind stated it is
+        // one row, as the finding above says.
+        let mut other_kinds: FxHashMap<&FragmentId, Vec<(&'static str, Finding)>> =
+            FxHashMap::default();
+        for (frag, _, finding) in &sources {
+            let Some((finding, kind)) = finding.as_ref().and_then(|finding| {
+                Some((finding, stated_kind(&rel(state, frag.path()), finding)?))
+            }) else {
+                continue;
+            };
+            let rows = other_kinds.entry(&frag.id).or_default();
+            match rows.iter_mut().find(|(stated, _)| *stated == kind) {
+                Some(row) => row.1 = finding.clone(),
+                None => rows.push((kind, finding.clone())),
+            }
+        }
         // A name match links an import line too, at the import weight; the
         // function that makes the call is the caller, the import is how it got
         // the name. A binding finding skips import lines, so the module-level
@@ -4015,11 +4129,11 @@ pub fn build_impact(
         });
         let callers: Vec<Caller> = innermost(sources.iter().map(|(f, _, _)| *f).collect())
             .into_iter()
-            .map(|frag| {
+            .flat_map(|frag| {
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 let found = findings.get(&frag.id);
                 let registered_by = tested.is_none().then(|| registration(frag)).flatten();
-                Caller {
+                let row = Caller {
                     path: rel(state, frag.path()),
                     symbol: frag.symbol_name.clone(),
                     lines: lines_of(&frag.id),
@@ -4048,7 +4162,10 @@ pub fn build_impact(
                         Some(Relation::Implementation) => "implementation",
                         _ => "call",
                     },
-                    kind: None,
+                    kind: found.and_then(|f| stated_kind(&rel(state, frag.path()), f)),
+                    folded_by: found.and_then(|f| f.fold).map(|(rule, _, _)| rule),
+                    fold_kind: found.and_then(|f| f.fold).map(|(_, kind, _)| kind),
+                    fold_share: found.and_then(|f| f.fold).map_or(0, |(_, _, share)| share),
                     // A word match cites the line that spells the name, not
                     // the start of the function around it.
                     sites: match found {
@@ -4058,7 +4175,35 @@ pub fn build_impact(
                             .into_iter()
                             .collect(),
                     },
-                }
+                };
+                let rest: Vec<Caller> = other_kinds
+                    .get(&frag.id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|(kind, _)| Some(*kind) != row.kind)
+                    .map(|(kind, finding)| Caller {
+                        evidence: match finding.evidence {
+                            Evidence::Resolved => "resolved",
+                            _ => "candidate",
+                        },
+                        reason: match finding.evidence {
+                            Evidence::Candidate(r) => Some(r),
+                            _ => None,
+                        },
+                        relation: match finding.relation {
+                            Relation::Reference => "reference",
+                            Relation::Implementation => "implementation",
+                            Relation::Call => "call",
+                        },
+                        kind: Some(*kind),
+                        folded_by: finding.fold.map(|(rule, _, _)| rule),
+                        fold_kind: finding.fold.map(|(_, kind, _)| kind),
+                        fold_share: finding.fold.map_or(0, |(_, _, share)| share),
+                        sites: finding.lines.clone(),
+                        ..row.clone()
+                    })
+                    .collect();
+                std::iter::once(row).chain(rest)
             })
             .collect();
         let mut callers = callers;
@@ -4221,7 +4366,7 @@ pub fn build_impact(
         let unresolved = verdict
             .as_ref()
             .and_then(decide::Verdict::gap)
-            .map(|gap| cell_unknown(gap, &shown))
+            .map(|gap| cell_unknown(&gap, &shown))
             .or(unresolved);
         // Read after the search: a stop noted while it ran, or before it
         // began, leaves its callers a lower bound.
@@ -4297,7 +4442,8 @@ pub fn build_impact(
             also_changed.clear();
         }
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), &missed_in);
-        if let Some(complete) = coverage.witness().filter(|_| {
+        // Nothing said of a definition needs every relation of it known.
+        if let Some(complete) = coverage.all().witness().filter(|_| {
             callers.is_empty()
                 && compatible_callers == 0
                 && commits < 2
@@ -4332,7 +4478,7 @@ pub fn build_impact(
         let only_in_diff = callers.is_empty()
             && compatible_callers == 0
             && commits < 2
-            && coverage.witness().is_some()
+            && coverage.all().witness().is_some()
             && !also_changed.is_empty();
         if only_in_diff && untested {
             untested_called_in_diff.push(label(
@@ -4356,6 +4502,8 @@ pub fn build_impact(
             also_changed,
             callers_omitted: 0,
             omitted: Vec::new(),
+            folded: Vec::new(),
+            new_parameters: py.map(decide::Changed::new_parameters).unwrap_or_default(),
             coverage,
         });
     }
@@ -4381,7 +4529,9 @@ pub fn build_impact(
             also_changed: Vec::new(),
             callers_omitted: 0,
             omitted: Vec::new(),
-            coverage: decide::Coverage::partial(decide::Gap::NotTraced),
+            folded: Vec::new(),
+            new_parameters: Vec::new(),
+            coverage: decide::Coverages::partial(decide::Gap::NotTraced),
         });
     }
     for entry in &cell_apart {
@@ -4919,6 +5069,9 @@ fn removed_by_models(
                         Relation::Call => "call",
                     },
                     kind: None,
+                    folded_by: None,
+                    fold_kind: None,
+                    fold_share: 0,
                     sites: vec![line],
                 });
             }
@@ -4985,7 +5138,9 @@ fn removed_by_models(
                 also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
-                coverage: decide::Coverage::partial(decide::Gap::NotTraced),
+                folded: Vec::new(),
+                new_parameters: Vec::new(),
+                coverage: decide::Coverages::partial(decide::Gap::NotTraced),
             },
             contract,
         ));
@@ -5256,6 +5411,9 @@ fn removed_definitions(
                     "reference"
                 },
                 kind: None,
+                folded_by: None,
+                fold_kind: None,
+                fold_share: 0,
                 sites: vec![line],
             });
         }
@@ -5281,7 +5439,9 @@ fn removed_definitions(
                 also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
-                coverage: decide::Coverage::partial(decide::Gap::NotTraced),
+                folded: Vec::new(),
+                new_parameters: Vec::new(),
+                coverage: decide::Coverages::partial(decide::Gap::NotTraced),
             },
             contract,
         ));
@@ -6405,7 +6565,8 @@ fn unread_scope(output: &ImpactOutput) -> decide::Coverage {
 fn only_in_the_diff(c: &ChangedSymbol) -> bool {
     (!c.also_changed.is_empty() || c.kind == "removed")
         && c.callers.is_empty()
-        && c.coverage.witness().is_some()
+        && c.coverage.all().witness().is_some()
+        && c.folded.is_empty()
         && c.compatible_callers == 0
         && c.commits < 2
 }
@@ -6560,8 +6721,11 @@ fn omit(output: &mut ImpactOutput, i: usize) {
         lines: sym.lines.clone(),
         callers_omitted: sym.callers.len() + sym.callers_omitted,
     };
+    // The rows it folded are counted with it: the header still names them.
+    let folded = sym.folded;
     match output.changed.iter_mut().find(|c| is_omitted(c)) {
         Some(entry) => {
+            entry.folded.extend(folded);
             if let Some(Unknown::Omitted { count, .. }) = &mut entry.unresolved {
                 *count += 1;
             }
@@ -6592,7 +6756,9 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             also_changed: Vec::new(),
             callers_omitted: gone.callers_omitted,
             omitted: vec![gone],
-            coverage: decide::Coverage::partial(decide::Gap::Capped),
+            folded,
+            new_parameters: Vec::new(),
+            coverage: decide::Coverages::partial(decide::Gap::Capped),
         }),
     }
 }
@@ -6703,8 +6869,16 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
 /// answer cited a 2000-token cap and lost its contracts (#451); `--budget`
 /// and `budget_tokens` set the cap, which stayed 2000 whatever was asked
 /// (#466). `None` keeps the default.
-pub fn deliver(output: &mut ImpactOutput, markdown: bool, cap: Option<u32>) -> String {
+pub fn deliver(
+    output: &mut ImpactOutput,
+    markdown: bool,
+    cap: Option<u32>,
+    unfold: bool,
+) -> String {
     let _render = crate::profile::phase("render");
+    if !unfold {
+        fold_rows(output);
+    }
     let cap = cap.unwrap_or(IMPACT_TOKEN_CAP);
     let markdown_tokens = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, false));
     let measure: &dyn Fn(&ImpactOutput) -> u32 = if markdown {
@@ -6719,6 +6893,73 @@ pub fn deliver(output: &mut ImpactOutput, markdown: bool, cap: Option<u32>) -> S
     } else {
         serde_json::to_string(output).unwrap_or_default()
     }
+}
+
+/// Counts the rows the folding table says the change cannot have affected in a
+/// line each, by (relation kind, rule), and takes them out of the listed
+/// callers. The count is exact under the definition's `Complete` witness of the
+/// relation, otherwise "at least"; the examples are the first three by path and
+/// line.
+fn fold_rows(output: &mut ImpactOutput) {
+    for sym in &mut output.changed {
+        if !sym.callers.iter().any(|c| c.folded_by.is_some()) {
+            continue;
+        }
+        let (mut rows, kept): (Vec<Caller>, Vec<Caller>) = std::mem::take(&mut sym.callers)
+            .into_iter()
+            .partition(|c| c.folded_by.is_some());
+        sym.callers = kept;
+        rows.sort_by(|a, b| {
+            (a.path.as_str(), a.sites.first(), a.lines.as_str()).cmp(&(
+                b.path.as_str(),
+                b.sites.first(),
+                b.lines.as_str(),
+            ))
+        });
+        let mut groups: Vec<(&'static str, &'static str, Vec<Caller>)> = Vec::new();
+        for row in rows {
+            let (Some(rule), Some(kind)) = (row.folded_by, row.fold_kind) else {
+                sym.callers.push(row);
+                continue;
+            };
+            match groups.iter_mut().find(|(r, k, _)| *r == rule && *k == kind) {
+                Some((_, _, group)) => group.push(row),
+                None => groups.push((rule, kind, vec![row])),
+            }
+        }
+        groups.sort_by_key(|(rule, kind, _)| (*rule, *kind));
+        for (rule, kind, group) in groups {
+            let coverage = match kind {
+                "calls" | "instantiates" | "overrides" => sym.coverage.calls().clone(),
+                "reads" | "writes" | "passes_as_value" => sym.coverage.reads().clone(),
+                _ => sym.coverage.all(),
+            };
+            sym.folded.push(Folded {
+                rule,
+                kind,
+                count: group.len(),
+                exact: coverage.witness().is_some(),
+                examples: group
+                    .iter()
+                    .take(3)
+                    .map(|c| {
+                        let line = c
+                            .sites
+                            .first()
+                            .map_or_else(|| c.lines.clone(), |site| format!("{site}-{site}"));
+                        label(&c.path, c.symbol.as_deref(), &line)
+                    })
+                    .collect(),
+                parameters: if rule == "check-the-default" {
+                    sym.new_parameters.clone()
+                } else {
+                    Vec::new()
+                },
+                sharing: group.iter().map(|c| c.fold_share).max().unwrap_or(0),
+            });
+        }
+    }
+    output.empty = output.empty && proves_empty(output);
 }
 
 /// When the least the answer can say (the header, the omitted entry with its
@@ -6739,6 +6980,7 @@ fn declare_budget_too_small(
 /// The automatic (hook) answer: candidates counted, not listed, and the
 /// whole text, limits and metadata included, within `cap` tokens.
 pub fn render_automatic(output: &mut ImpactOutput, cap: u32) -> String {
+    fold_rows(output);
     let measure = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, true));
     fit_with(output, cap, &measure);
     render(output, true)
@@ -6836,7 +7078,11 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
     // same thing on every row: one line holds them, and the cap goes to the
     // callers that could be resolved (#430).
     fn quiet(s: &ChangedSymbol) -> bool {
-        s.callers.is_empty() && s.compatible_callers == 0 && s.missed_in.is_empty() && s.commits < 2
+        s.callers.is_empty()
+            && s.folded.is_empty()
+            && s.compatible_callers == 0
+            && s.missed_in.is_empty()
+            && s.commits < 2
     }
     let too_common =
         |s: &ChangedSymbol| quiet(s) && matches!(s.unresolved, Some(Unknown::Ambiguous { .. }));
@@ -7123,6 +7369,94 @@ pub(crate) fn symbol_named_output(
     }
 }
 
+/// One use of a local, inside the definition it is a local of.
+#[derive(Debug)]
+pub(crate) struct LocalUse {
+    /// The inner local or definition the use sits in.
+    pub inside: Option<String>,
+    pub line: u32,
+    pub call: bool,
+}
+
+/// A `--symbol` name that is a local of a definition, and its uses there.
+#[derive(Debug)]
+pub(crate) struct LocalOf {
+    pub path: String,
+    pub name: String,
+    /// `path::Definition`, or the file for module-level code.
+    pub enclosing: String,
+    pub line: u32,
+    pub uses: Vec<LocalUse>,
+}
+
+/// A `--symbol` query that names only locals: one block each, never "no
+/// definition found".
+pub(crate) fn symbol_local_output(
+    root_dir: &Path,
+    query: &str,
+    locals: Vec<LocalOf>,
+) -> ImpactOutput {
+    let mut output = symbol_named_output(
+        root_dir,
+        query,
+        SymbolNamed {
+            files: 0,
+            rows: Vec::new(),
+            caveat: String::new(),
+            limits: Vec::new(),
+        },
+    );
+    output.symbol_named = None;
+    output.changed = locals
+        .into_iter()
+        .map(|local| ChangedSymbol {
+            callers: local
+                .uses
+                .iter()
+                .map(|u| Caller {
+                    path: local.path.clone(),
+                    symbol: u.inside.clone(),
+                    lines: format!("{0}-{0}", u.line),
+                    weight: 1.0,
+                    tested_by: None,
+                    tested_via: None,
+                    file_tested: false,
+                    registered_by: None,
+                    unread_test: None,
+                    evidence: "resolved",
+                    reason: None,
+                    relation: if u.call { "call" } else { "reference" },
+                    kind: None,
+                    sites: vec![u.line],
+                    folded_by: None,
+                    fold_kind: None,
+                    fold_share: 0,
+                })
+                .collect(),
+            path: local.path,
+            symbol: Some(local.name.clone()),
+            lines: format!("{0}-{0}", local.line),
+            kind: "local".to_string(),
+            commits: 0,
+            entry: None,
+            unresolved: Some(Unknown::LocalOf {
+                name: local.name,
+                enclosing: local.enclosing,
+            }),
+            untested: false,
+            compatible_callers: 0,
+            missed_in: Vec::new(),
+            also_changed: Vec::new(),
+            callers_omitted: 0,
+            omitted: Vec::new(),
+            folded: Vec::new(),
+            new_parameters: Vec::new(),
+            coverage: decide::Coverages::partial(decide::Gap::NotTraced),
+        })
+        .collect();
+    output
+}
+
 fn write_symbol_named(out: &mut String, symbol: &str, named: &SymbolNamed) {
     let _ = writeln!(
         out,
@@ -7163,6 +7497,14 @@ fn textual_rows(output: &ImpactOutput) -> Vec<String> {
 /// be resolved, or a run that stopped early, make a zero no finding (#387).
 fn callers_phrase(output: &ImpactOutput, count: decide::Count, scope: &str) -> String {
     let callers = count.found();
+    // A folded call is still a caller: the count names the share the change
+    // cannot have affected.
+    let folded_callers = folded_callers(output);
+    let folded_note = if folded_callers > 0 {
+        format!(" ({folded_callers} folded as not affected)")
+    } else {
+        String::new()
+    };
     // Nothing was traced: a count of zero would count what no one looked for.
     if output.traced_definitions == 0
         && !output.layout_only.is_empty()
@@ -7201,7 +7543,7 @@ fn callers_phrase(output: &ImpactOutput, count: decide::Count, scope: &str) -> S
                 reason_names(&stops)
             ),
             n => format!(
-                "{n} caller(s){scope} found before the run stopped ({})",
+                "{n} caller(s){scope}{folded_note} found before the run stopped ({})",
                 reason_names(&stops)
             ),
         };
@@ -7221,7 +7563,7 @@ fn callers_phrase(output: &ImpactOutput, count: decide::Count, scope: &str) -> S
         // A count of nothing is an absence: said as one only with the scope whole.
         let mut p = match count {
             decide::Count::AtLeast(0) => format!("no caller found{scope} in the analysed scope"),
-            _ => format!("{callers} caller(s){scope}"),
+            _ => format!("{callers} caller(s){scope}{folded_note}"),
         };
         if !unresolved.is_empty() {
             let _ = write!(p, ", callers unresolved for {unresolved_names}");
@@ -7364,11 +7706,31 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         .clone()
         .unwrap_or_else(|| range_label(output.range.as_deref(), output.index_tree.as_deref()));
     let all = || output.changed.iter().flat_map(|c| &c.callers);
-    let callers = all().filter(|c| c.evidence == "resolved").count() + output.truncated
+    let callers = all().filter(|c| c.evidence == "resolved").count()
+        + folded_callers(output)
+        + output.truncated
         - output.truncated_possible
         - output.truncated_textual;
-    let counted = scope_coverage(output).count(callers);
-    let possible = all().filter(|c| c.evidence == "candidate").count() + output.truncated_possible;
+    // Exact only when the run's scope and every definition's search of its calls
+    // were complete.
+    let counted = output
+        .changed
+        .iter()
+        .fold(scope_coverage(output), |all, c| {
+            all.both(c.coverage.calls().clone())
+        })
+        .count(callers);
+    // Candidates stay counted where candidates are counted, folded or listed.
+    let folded_candidates: usize = output
+        .changed
+        .iter()
+        .flat_map(|c| &c.folded)
+        .filter(|f| f.rule == "untyped-receiver")
+        .map(|f| f.count)
+        .sum();
+    let possible = all().filter(|c| c.evidence == "candidate").count()
+        + output.truncated_possible
+        + folded_candidates;
     let untested = all().filter(|c| without_test_link(c)).count() + output.truncated_untested;
     // Labelled, and only beside a caller: "0 without a static test link"
     // next to the definitions' count read as both 0 and N untested (#493).
@@ -7526,6 +7888,30 @@ fn reason_text(reason: Option<&str>) -> &'static str {
     }
 }
 
+/// A name that is a local of a definition: where it is declared, whose local
+/// it is, and each use inside that definition, with the inner local or
+/// definition the use sits in.
+fn write_local(out: &mut String, sym: &ChangedSymbol) {
+    let _ = writeln!(
+        out,
+        "- {}",
+        label(&sym.path, sym.symbol.as_deref(), &sym.lines)
+    );
+    if let Some(note) = &sym.unresolved {
+        let _ = writeln!(out, "  - {note}");
+    }
+    for c in &sym.callers {
+        let _ = writeln!(
+            out,
+            "  - used in {}",
+            label(&c.path, c.symbol.as_deref(), &c.lines)
+        );
+    }
+    if sym.callers.is_empty() {
+        let _ = writeln!(out, "  - no use of it was found inside it");
+    }
+}
+
 fn write_symbol(
     out: &mut String,
     sym: &ChangedSymbol,
@@ -7533,6 +7919,9 @@ fn write_symbol(
     compact: bool,
     scope: Option<decide::Complete>,
 ) {
+    if sym.kind == "local" {
+        return write_local(out, sym);
+    }
     let commits = if sym.commits >= 2 {
         format!(" [touched by {} commits]", sym.commits)
     } else {
@@ -7561,6 +7950,17 @@ fn write_symbol(
         }
     );
     if let Some(note) = &sym.unresolved {
+        // A read nothing types leaves the reads undetermined and the calls known:
+        // said apart, so the second does not read as the first.
+        if sym.coverage.calls().witness().is_some()
+            && sym.coverage.reads().witness().is_none()
+            && !sym
+                .callers
+                .iter()
+                .any(|c| matches!(c.relation, "call" | "implementation"))
+        {
+            let _ = writeln!(out, "  - no call found in the analysed scope");
+        }
         let _ = writeln!(out, "  - callers not resolved: {note}");
     }
     if sym.kind == "removed"
@@ -7570,7 +7970,7 @@ fn write_symbol(
     {
         // An absence needs the definition's search complete; said as a fact of
         // the repository only when the run's scope was whole too.
-        match (sym.coverage.witness(), scope) {
+        match (sym.coverage.all().witness(), scope) {
             (Some(_), Some(_)) => {
                 let _ = writeln!(out, "  - nothing references it");
             }
@@ -7590,6 +7990,7 @@ fn write_symbol(
     write_resolved_callers(out, sym, tests_known);
     write_candidate_callers(out, sym, compact);
     write_reexports(out, sym);
+    write_folded(out, sym);
     write_also_changed(out, sym);
     if sym.callers_omitted > 0 {
         let _ = writeln!(
@@ -7597,6 +7998,49 @@ fn write_symbol(
             "  - {} more caller(s) omitted to fit the cap",
             sym.callers_omitted
         );
+    }
+}
+
+/// The callers folded as not affected: every folded row but a candidate.
+fn folded_callers(output: &ImpactOutput) -> usize {
+    output
+        .changed
+        .iter()
+        .flat_map(|c| &c.folded)
+        .filter(|f| f.rule != "untyped-receiver")
+        .map(|f| f.count)
+        .sum()
+}
+
+/// The rows the change cannot have affected, counted: one line per relation
+/// kind and rule, with the way to list them.
+fn write_folded(out: &mut String, sym: &ChangedSymbol) {
+    for f in &sym.folded {
+        let count = if f.exact {
+            f.count.to_string()
+        } else {
+            format!("at least {}", f.count)
+        };
+        let examples = f.examples.join(", ");
+        if f.rule == "check-the-default" {
+            let _ = writeln!(
+                out,
+                "  - {count} call(s) compatible with the new optional parameter(s) {}: check that the default keeps the old behaviour — e.g. {examples}; --unfold lists them",
+                f.parameters.join(", ")
+            );
+        } else if f.sharing > 0 {
+            let _ = writeln!(
+                out,
+                "  - {} not affected ({}): {count} — e.g. {examples}; up to {} definition(s) share the name; --unfold lists them",
+                f.kind, f.rule, f.sharing
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "  - {} not affected ({}): {count} — e.g. {examples}; --unfold lists them",
+                f.kind, f.rule
+            );
+        }
     }
 }
 

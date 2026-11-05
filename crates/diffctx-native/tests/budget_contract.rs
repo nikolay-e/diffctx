@@ -36,6 +36,8 @@ fn run(repo: &Path, shape: &Shape, format: Format, budget: Option<u32>) -> Strin
         "--mode".to_string(),
         "impact".to_string(),
         "-q".to_string(),
+        // The contract counts rows, listed or shed: nothing is folded.
+        "--unfold".to_string(),
         "-f".to_string(),
         match format {
             Format::Markdown => "md",
