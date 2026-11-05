@@ -998,9 +998,14 @@ read_sweeps! {
 
 // ---- a read of the base side that failed under a removed definition (m3) ----
 
-/// A method the range removes, and a file that still calls it through a variable
-/// typed by an assignment: the base side reads the file's text to know that
-/// `gadget.run()` was a call of `Gadget.run`.
+/// Files that still call the removed method.
+const CALLERS: usize = 6;
+
+/// A method the range removes, and `CALLERS` files that still call it through a
+/// variable typed by an assignment: the base side reads each file's text, one
+/// blob read each, to know that `gadget.run()` was a call of `Gadget.run`. Those
+/// reads are the base reads the cell makes beyond the run's own, which is what a
+/// fault aimed at base reads alone has to reach.
 fn removed_method() -> Fixture {
     let tmp = scratch();
     let repo = tmp.path().join("repo");
@@ -1012,11 +1017,15 @@ fn removed_method() -> Fixture {
         "class Gadget:\n    def run(self):\n        return 1\n\n    def stop(self):\n        return 0\n",
     )
     .unwrap();
-    std::fs::write(
-        repo.join("caller.py"),
-        "from gadget import Gadget\n\n\ndef drive():\n    gadget = Gadget()\n    return gadget.run()\n",
-    )
-    .unwrap();
+    for k in 1..=CALLERS {
+        std::fs::write(
+            repo.join(format!("caller{k}.py")),
+            format!(
+                "from gadget import Gadget\n\n\ndef drive{k}():\n    gadget = Gadget()\n    return gadget.run()\n"
+            ),
+        )
+        .unwrap();
+    }
     git(&repo, &["add", "-A"]);
     git(&repo, &["commit", "-q", "-m", "initial"]);
     std::fs::write(
@@ -1039,18 +1048,27 @@ fn removed_run(doc: &serde_json::Value) -> Option<&serde_json::Value> {
         .find(|c| c["kind"] == "removed" && c["symbol"] == "run")
 }
 
-/// Whether the row names the file that still calls the method.
-fn names_the_caller(row: &serde_json::Value) -> bool {
-    row["callers"]
-        .as_array()
-        .is_some_and(|callers| callers.iter().any(|c| c["path"] == "caller.py"))
+/// How many files the row names as still calling the method.
+fn callers_named(row: &serde_json::Value) -> usize {
+    row["callers"].as_array().map_or(0, |callers| {
+        callers
+            .iter()
+            .filter(|c| c["path"].as_str().is_some_and(|p| p.starts_with("caller")))
+            .count()
+    })
 }
 
-/// A blob read of the base side that fails is no reason to say that nothing
-/// references a method its caller still spells: the answer names the caller, or
-/// says why it could not tell, or is an error or a disclosed partial run. The
-/// fault reaches the reader of the cell too, so the sweep strikes the reads that
-/// side makes (`DIFFCTX_TEST_READ_FAULT`).
+/// A blob read of the base side that fails is no reason to say less of who still
+/// calls a removed method without saying why: every base read after the run's
+/// own is struck in turn (`DIFFCTX_TEST_READ_FAULT=base:N` counts base reads
+/// alone), and the answer names all the callers, or says why it could not, or is
+/// an error or a disclosed partial run.
+///
+/// The reads beyond the run's own are the base resolver's text reads of the
+/// caller files. A struck one is a `Loss::ReadFailed` of the base resolver: the
+/// head's `stale_uses` turns it into a gap that names the stop, and a build that
+/// drops it (`(Vec::new(), None)`, the swallow) answers with the callers whose
+/// text was read, no gap and no limit, which this fails.
 #[test]
 fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() {
     let fx = removed_method();
@@ -1070,10 +1088,10 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
         "-q",
     ];
     let run = |args: &[&str], fail: Option<usize>| {
-        let at = fail.map(|n| n.to_string());
+        let at = fail.map(|n| format!("base:{n}"));
         let mut env: Vec<(&str, &str)> = vec![("DIFFCTX_CACHE_DIR", no_cache.as_str())];
-        if let Some(n) = at.as_deref() {
-            env.push(("DIFFCTX_TEST_READ_FAULT", n));
+        if let Some(spec) = at.as_deref() {
+            env.push(("DIFFCTX_TEST_READ_FAULT", spec));
         }
         fx.run_with("no-such-verb", "none", args, &env)
     };
@@ -1085,13 +1103,15 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
         String::from_utf8_lossy(&clean.stderr)
     );
     let clean = json(&clean);
-    assert!(
-        removed_run(&clean).is_some_and(names_the_caller),
-        "the clean run must name the file that still calls `run`: {clean:#}"
+    assert_eq!(
+        removed_run(&clean).map(callers_named),
+        Some(CALLERS),
+        "the clean run must name every file that still calls `run`: {clean:#}"
     );
 
     let mut broken: Vec<String> = Vec::new();
-    let mut reached_the_cell = false;
+    // A run the base resolver's own stop was named in, with the run itself clean.
+    let mut named_by_the_cell = false;
     let mut struck = 0;
     loop {
         let out = run(&json_args, Some(struck));
@@ -1101,20 +1121,25 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
         if strikes == 0 {
             break;
         }
-        // One strike for the run's own reader, one for the cell's.
-        reached_the_cell |= strikes > 1;
         if out.status.success() {
             let doc = json(&out);
-            let told = impact_disclosed(&doc)
-                || removed_run(&doc)
-                    .is_some_and(|row| names_the_caller(row) || row["unresolved"].is_string());
+            let disclosed = impact_disclosed(&doc);
+            let row = removed_run(&doc);
+            let says_why = row.is_some_and(|r| r["unresolved"].is_string());
+            let told = disclosed || says_why || row.is_some_and(|r| callers_named(r) == CALLERS);
             if !told {
-                broken.push(format!("blob read {struck}: {doc}"));
+                broken.push(format!("base read {struck}: {doc}"));
             }
+            named_by_the_cell |= !disclosed
+                && row.is_some_and(|r| {
+                    r["unresolved"]
+                        .as_str()
+                        .is_some_and(|u| u.contains("read_failed"))
+                });
             let md = run(&md_args, Some(struck));
             let md = String::from_utf8_lossy(&md.stdout);
             if md.contains("nothing references it") {
-                broken.push(format!("blob read {struck}: {md}"));
+                broken.push(format!("base read {struck}: {md}"));
             }
         }
         struck += 1;
@@ -1122,15 +1147,15 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
     }
     assert!(
         struck > 0,
-        "no read was struck, so the sweep measures nothing"
+        "no base read was struck, so the sweep measures nothing"
     );
     assert!(
-        reached_the_cell,
-        "the fault never struck the cell's own reader: the sweep says nothing about the base side"
+        named_by_the_cell,
+        "no struck base read left the run itself clean and the row naming the stop: the sweep never reached the base resolver's own reads"
     );
     assert!(
         broken.is_empty(),
-        "{} of {struck} failed reads left an answer that says nothing references `run`, or says nothing\n{}",
+        "{} of {struck} failed base reads left an answer that names fewer callers of `run` and says nothing\n{}",
         broken.len(),
         broken.join("\n")
     );
