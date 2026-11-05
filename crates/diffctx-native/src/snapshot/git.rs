@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use wait_timeout::ChildExt;
 
 use crate::snapshot::error::{Result, SnapshotError};
+use crate::snapshot::loss::SideTag;
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 const CATFILE_TERMINATION_SECONDS: u64 = 2;
@@ -44,24 +45,49 @@ pub struct RunBudget {
 
 /// Fails the `at`-th blob read of a run, on purpose.
 ///
-/// Counted from 0 over every reader of the run, base and head alike, and
-/// failed with an error that says so. Test only: it lets a sweep fail each
-/// read of a run in turn, the way the git sweeps fail each call.
+/// Counted from 0 over every reader of the run, base and head alike, or over the
+/// reads of one side when `side` says which (`base:3`), and failed with an error
+/// that says so. Test only: it lets a sweep fail each read of a run in turn, the
+/// way the git sweeps fail each call, and strike the base side alone.
 #[derive(Debug)]
 pub struct ReadFault {
     at: usize,
+    side: Option<SideTag>,
     seen: std::sync::atomic::AtomicUsize,
 }
 
 impl ReadFault {
     pub fn at(at: usize) -> Arc<Self> {
+        Self::scoped(None, at)
+    }
+
+    pub fn scoped(side: Option<SideTag>, at: usize) -> Arc<Self> {
         Arc::new(Self {
             at,
+            side,
             seen: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
-    fn strikes(&self) -> bool {
+    /// `N`, `base:N` or `head:N`.
+    pub fn parse(spec: &str) -> Option<Arc<Self>> {
+        let (side, at) = match spec.split_once(':') {
+            Some(("base", n)) => (Some(SideTag::Base), n),
+            Some(("head", n)) => (Some(SideTag::Head), n),
+            Some(_) => return None,
+            None => (None, spec),
+        };
+        // A malformed knob names no read: there is no fault.
+        match at.parse() {
+            Ok(at) => Some(Self::scoped(side, at)),
+            Err(_) => None,
+        }
+    }
+
+    fn strikes(&self, reading: SideTag) -> bool {
+        if self.side.is_some_and(|only| only != reading) {
+            return false;
+        }
         let n = self.seen.fetch_add(1, Ordering::Relaxed);
         if n == self.at {
             eprintln!("diffctx: injected read fault: blob read {n} failed on purpose");
@@ -134,9 +160,9 @@ impl Exec {
     }
 
     /// The injected fault of a test run, when this read is the one it names.
-    pub(crate) fn inject_read_fault(&self) -> Result<()> {
+    pub(crate) fn inject_read_fault(&self, reading: SideTag) -> Result<()> {
         match &self.budget.read_fault {
-            Some(fault) if fault.strikes() => Err(SnapshotError::Git(
+            Some(fault) if fault.strikes(reading) => Err(SnapshotError::Git(
                 "injected read fault (DIFFCTX_TEST_READ_FAULT)".into(),
             )),
             _ => Ok(()),
