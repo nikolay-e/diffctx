@@ -472,7 +472,7 @@ impl SnapshotReader {
     }
 
     fn read_object(&self, path: &RepoPath, oid: &Oid) -> Result<Bytes> {
-        self.inner.exec.inject_read_fault()?;
+        self.inner.exec.inject_read_fault(self.role())?;
         // A stream that went wrong twice on this object is an error: it is
         // never answered another way, so no read is quietly a different one.
         match lock(&self.inner.batch)?.get(oid.as_str())? {
@@ -511,7 +511,7 @@ impl SnapshotReader {
         if known.is_some() {
             return Ok(known);
         }
-        self.inner.exec.inject_read_fault()?;
+        self.inner.exec.inject_read_fault(self.role())?;
         let changed = || SnapshotError::Changed {
             path: path.to_string(),
         };

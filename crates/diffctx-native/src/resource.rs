@@ -55,13 +55,12 @@ pub enum LimitReason {
 }
 
 /// Test hook: the n-th blob read of every analysis fails on purpose, base and
-/// head sides counted together. Semantic — it changes the artifact.
+/// head sides counted together, or one side's alone with `base:N` / `head:N`.
+/// Semantic — it changes the artifact.
 pub const TEST_READ_FAULT_ENV: &str = "DIFFCTX_TEST_READ_FAULT";
 
-pub(crate) fn test_read_fault() -> Option<usize> {
-    std::env::var(TEST_READ_FAULT_ENV)
-        .ok()
-        .and_then(|n| n.parse().ok())
+pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFault>> {
+    crate::snapshot::ReadFault::parse(&std::env::var(TEST_READ_FAULT_ENV).ok()?)
 }
 
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest

@@ -623,7 +623,7 @@ fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Ana
     let budget = RunBudget {
         deadline,
         cancel: Some(cancel),
-        read_fault: crate::resource::test_read_fault().map(snapshot::ReadFault::at),
+        read_fault: crate::resource::test_read_fault(),
     };
     // The cap the engine reads a changed file under: a file past it is listed,
     // not read, here as in the fragments.

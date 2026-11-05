@@ -1108,7 +1108,13 @@ class TestPathsScopeAMonorepo:
     @pytest.mark.asyncio
     async def test_a_file_scope_analyses_that_file_alone_as_the_cli_does(self, server, monorepo):
         text = await self._ask(server, monorepo.path, paths=["svc_a/calc.py"])
-        assert "1 changed file(s), 0 caller(s)" in text
+        assert "1 changed file(s)" in text
+        # The scope holds one file; the files outside it that may call it were left
+        # out, so the answer claims no absence and says why (Revision 11 item 2:
+        # an absence needs a complete search).
+        assert "0 caller(s)" not in text
+        assert "nothing calls them" not in text
+        assert "file(s) outside the run's pathspecs were left out" in text
         assert "svc_a/main.py" not in text
 
     @pytest.mark.asyncio

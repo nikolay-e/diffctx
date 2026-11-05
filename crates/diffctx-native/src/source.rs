@@ -255,7 +255,7 @@ impl Analysis {
         let budget = snap::RunBudget {
             deadline,
             cancel: Some(cancel),
-            read_fault: crate::resource::test_read_fault().map(snap::ReadFault::at),
+            read_fault: crate::resource::test_read_fault(),
         };
         let ctx = snap::AnalysisContext::new(repo, range, budget).map_err(lift)?;
         Ok(Arc::new(Self {
