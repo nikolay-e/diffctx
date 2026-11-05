@@ -4200,6 +4200,49 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
     );
 }
 
+/// A class that lost its constructor is changed like one whose constructor was
+/// edited: its subclasses and the signatures naming it are listed, and the
+/// removed `__init__` row alone says nothing about them.
+#[test]
+fn a_class_that_lost_its_constructor_lists_what_extends_and_names_it() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def __init__(self, request):\n        self.request = request\n\n    def decode(self, data):\n        return data\n",
+    );
+    write(
+        repo,
+        "gzip_dec.py",
+        "from dec import Decoder\n\n\nclass Gzip(Decoder):\n    def flush(self):\n        return b\"\"\n",
+    );
+    write(
+        repo,
+        "pick.py",
+        "from dec import Decoder\n\n\ndef pick(items: list[Decoder]):\n    return items[0]\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def decode(self, data):\n        return data\n",
+    );
+    commit_all(repo, "drop the constructor");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let mut paths: Vec<&str> = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .filter(|c| c["symbol"] == "Decoder" && c["kind"] == "class")
+        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .map(|c| c["path"].as_str().unwrap())
+        .collect();
+    paths.sort_unstable();
+    assert_eq!(paths, ["gzip_dec.py", "pick.py"], "{doc}");
+}
+
 /// #456: prose and comments the same change wrote about a deletion are its
 /// record of it; a mention outside the change, or a code line it wrote, is
 /// still a stale reference.
@@ -4413,6 +4456,69 @@ fn the_header_counts_the_same_at_any_budget() {
         "{whole}"
     );
     assert_eq!(header("90"), whole);
+}
+
+/// The cap sheds the weakest row first and a reference weighs less than a
+/// call, so a symbol read by many and called by few lost every read before
+/// one call. Each relation kind a symbol has keeps its strongest row (weight,
+/// then path) until nothing else in the answer can go, and the counts stay
+/// whole.
+#[test]
+fn a_cap_keeps_the_strongest_row_of_each_relation_a_symbol_has() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "core.py", "def rate(x):\n    return x * 2\n");
+    for i in 1..=10 {
+        write(
+            repo,
+            &format!("ref_{i}.py"),
+            &format!(
+                "from core import rate\n\n\ndef order_{i}(xs):\n    return sorted(xs, key=rate)\n"
+            ),
+        );
+    }
+    for i in 1..=3 {
+        write(
+            repo,
+            &format!("call_{i}.py"),
+            &format!("from core import rate\n\n\ndef price_{i}(x):\n    return rate(x) + {i}\n"),
+        );
+    }
+    commit_all(repo, "base");
+    write(repo, "core.py", "def rate(x):\n    return x * 3\n");
+    commit_all(repo, "change");
+    for budget in ["200", "300", "400"] {
+        let out = diffctx()
+            .current_dir(repo)
+            .args([
+                "--diff",
+                "HEAD~1..HEAD",
+                "--mode",
+                "impact",
+                "-q",
+                "--budget",
+                budget,
+            ])
+            .output()
+            .expect("run diffctx");
+        assert!(out.status.success());
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
+        let rate = doc["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["symbol"] == "rate")
+            .unwrap_or_else(|| panic!("{budget}: {doc:#}"));
+        let rows = rate["callers"].as_array().unwrap();
+        let paths: Vec<&str> = rows.iter().map(|c| c["path"].as_str().unwrap()).collect();
+        let shed = rate["callers_omitted"].as_u64().unwrap() as usize;
+        assert!(shed > 0, "the cap must bite at {budget}: {doc:#}");
+        assert_eq!(rows.len() + shed, 13, "{budget}: {doc:#}");
+        assert_eq!(doc["truncated"].as_u64(), Some(shed as u64), "{budget}");
+        assert!(paths.contains(&"call_1.py"), "{budget}: {paths:?}");
+        assert!(paths.contains(&"ref_1.py"), "{budget}: {paths:?}");
+    }
 }
 
 /// #496: a Java method calling a sibling of its own class with no

@@ -701,6 +701,31 @@ impl Cell {
                         local: false,
                         public,
                     };
+                    // A class that lost its constructor is changed like one whose
+                    // constructor was edited: what builds, extends or names it is
+                    // affected, and nothing says so under the removed `__init__`.
+                    if kind == DefKind::Constructor && self.family == Family::Python {
+                        if let Some(class) = self.class_holding(&gone.file, &d.key) {
+                            merge(
+                                &mut by_key,
+                                Changed {
+                                    name: class.key.local.name.as_str().to_string(),
+                                    kind: class.kind,
+                                    file: class.file.as_str().to_string(),
+                                    lines: class.span.lines,
+                                    how: How::Edited { layout_only: false },
+                                    subjects: vec![Subject {
+                                        key: class.key.clone(),
+                                        reach: Reach::Every,
+                                    }],
+                                    stale: Vec::new(),
+                                    unpaired: false,
+                                    local: false,
+                                    public: false,
+                                },
+                            );
+                        }
+                    }
                     // What reads a field the class lost is the class's to
                     // report: the readers are listed under it, not under a
                     // name that no longer exists.
