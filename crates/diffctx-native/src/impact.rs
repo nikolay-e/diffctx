@@ -387,7 +387,7 @@ pub struct Folded {
     /// How many rows. Exact only when `exact`; otherwise at least.
     pub count: usize,
     pub exact: bool,
-    /// The first three by path and line, so the same change names the same ones.
+    /// The first three, tests first, then by path and line, so the same change names the same ones.
     pub examples: Vec<String>,
     /// For `check-the-default`: the parameters the change added.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -6909,12 +6909,22 @@ fn fold_rows(output: &mut ImpactOutput) {
             .into_iter()
             .partition(|c| c.folded_by.is_some());
         sym.callers = kept;
+        // A test is what the reviewer runs, so it is named first; then by path
+        // and line, the same for the same change.
+        let is_test = |c: &Caller| crate::testfiles::is_test_path(Path::new(&c.path));
         rows.sort_by(|a, b| {
-            (a.path.as_str(), a.sites.first(), a.lines.as_str()).cmp(&(
-                b.path.as_str(),
-                b.sites.first(),
-                b.lines.as_str(),
-            ))
+            (
+                !is_test(a),
+                a.path.as_str(),
+                a.sites.first(),
+                a.lines.as_str(),
+            )
+                .cmp(&(
+                    !is_test(b),
+                    b.path.as_str(),
+                    b.sites.first(),
+                    b.lines.as_str(),
+                ))
         });
         let mut groups: Vec<(&'static str, &'static str, Vec<Caller>)> = Vec::new();
         for row in rows {
@@ -8028,11 +8038,17 @@ fn write_folded(out: &mut String, sym: &ChangedSymbol) {
                 "  - {count} call(s) compatible with the new optional parameter(s) {}: check that the default keeps the old behaviour — e.g. {examples}; --unfold lists them",
                 f.parameters.join(", ")
             );
-        } else if f.sharing > 0 {
+        } else if f.rule == "untyped-receiver" {
+            // A candidate may be affected: said as what it is, never as unaffected.
+            let shared = if f.sharing > 0 {
+                format!("; up to {} definition(s) share the name", f.sharing)
+            } else {
+                String::new()
+            };
             let _ = writeln!(
                 out,
-                "  - {} not affected ({}): {count} — e.g. {examples}; up to {} definition(s) share the name; --unfold lists them",
-                f.kind, f.rule, f.sharing
+                "  - possible {} through an untyped receiver (not resolved): {count} — e.g. {examples}{shared}; --unfold lists them",
+                f.kind
             );
         } else {
             let _ = writeln!(

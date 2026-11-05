@@ -5591,6 +5591,47 @@ fn a_new_parameter_with_a_default_folds_the_calls_that_still_work() {
     nothing_folds(&unfolded);
 }
 
+/// A test is what the reviewer runs: among folded calls it is named first, whatever
+/// its path sorts to, and the others follow by path and line.
+#[test]
+fn a_test_is_the_first_example_of_a_folded_line() {
+    let tmp = repo(
+        &[
+            ("shop.py", "def price(item):\n    return item.cost\n"),
+            (
+                "a.py",
+                "from shop import price\n\n\ndef one(i):\n    return price(i)\n",
+            ),
+            (
+                "b.py",
+                "from shop import price\n\n\ndef two(i):\n    return price(i)\n",
+            ),
+            (
+                "tests/test_price.py",
+                "from shop import price\n\n\ndef test_price():\n    assert price(1)\n",
+            ),
+        ],
+        &[(
+            "shop.py",
+            "def price(item, tax=0):\n    return item.cost + tax\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let examples: Vec<&str> = row(&doc, "price")["folded"][0]["examples"]
+        .as_array()
+        .expect("examples")
+        .iter()
+        .filter_map(|e| e.as_str())
+        .collect();
+    assert_eq!(examples.len(), 3, "{doc:#}");
+    assert!(
+        examples[0].starts_with("tests/test_price.py"),
+        "{examples:?}"
+    );
+    assert!(examples[1].starts_with("a.py"), "{examples:?}");
+    assert!(examples[2].starts_with("b.py"), "{examples:?}");
+}
+
 /// A parameter without a default, or one inserted before the others, breaks the
 /// calls: they stay listed.
 #[test]
@@ -5697,7 +5738,12 @@ fn a_candidate_folds_under_the_untyped_receiver_and_stays_counted() {
     assert_eq!(folded["count"], 1, "{doc:#}");
     assert!(callers_of(&doc, "start").is_empty(), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    assert!(md.contains("not affected (untyped-receiver): 1"), "{md}");
+    // A candidate may be affected: the line says what it is, never "not affected".
+    assert!(
+        md.contains("possible calls through an untyped receiver (not resolved): 1"),
+        "{md}"
+    );
+    assert!(!md.contains("not affected (untyped-receiver)"), "{md}");
     assert!(header(&md).contains("1 possible"), "{md}");
 }
 
