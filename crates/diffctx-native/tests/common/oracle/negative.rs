@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use super::case::{self, Mode};
 use super::engine::{absence_claims, extract};
 use super::judge::judge;
+use super::model::Kind;
 
 enum Verdict {
     /// The evaluation fails, and a failure mentions this text.
@@ -325,6 +326,93 @@ fn a_kind_no_schema_names_cannot_be_evaluated() -> Result<(), Failed> {
     }
 }
 
+/// One vocabulary: the engine's relation kinds (`lang::RelationKind`, which the
+/// resolver's relations map onto), the harness's and the case schema's are the
+/// same names, each spelled once.
+fn the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary() -> Result<(), Failed> {
+    let schema =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cases/impact/SCHEMA.md");
+    let text = std::fs::read_to_string(&schema)
+        .map_err(|e| Failed::from(format!("read {}: {e}", schema.display())))?;
+    let bullet = text
+        .split("- `kind`:")
+        .nth(1)
+        .and_then(|rest| rest.split("- `resolution`").next())
+        .ok_or_else(|| Failed::from("SCHEMA.md no longer lists the `kind` values"))?;
+    let mut wrong = Vec::new();
+    for engine in _diffctx::RelationKind::ALL {
+        let name = engine.name();
+        if Kind::parse(name).is_none_or(|k| k.name() != name) {
+            wrong.push(format!("the harness does not know the engine's `{name}`"));
+        }
+        if !bullet.contains(&format!("`{name}`")) {
+            wrong.push(format!("SCHEMA.md does not list the engine's `{name}`"));
+        }
+    }
+    for harness in Kind::ALL {
+        let name = harness.name();
+        if _diffctx::RelationKind::parse(name).is_none_or(|k| k.name() != name) {
+            wrong.push(format!("the engine does not know the harness's `{name}`"));
+        }
+    }
+    if wrong.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(wrong.join("\n")))
+    }
+}
+
+const PACKAGE_REEXPORTS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/__init__.py', to: 'shop/pricing.py::total', kind: reexports, resolution: resolved, site: 1}
+";
+
+const SOMEONE_CALLS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  callers: {total: ['shop/__init__.py']}
+";
+
+/// A6b: a static re-export is a `reexports` relation, `resolved`; it satisfies
+/// no caller expectation, and a caller row does not satisfy it.
+fn a_static_reexport_is_a_resolved_reexports_relation() -> Result<(), Failed> {
+    let reexport = json!({
+        "path": "shop/__init__.py", "lines": "1-1", "evidence": "reexport",
+        "relation": "reexports", "sites": [1],
+    });
+    run(vec![
+        Probe {
+            what: "the re-export row is a resolved `reexports` relation",
+            case: PACKAGE_REEXPORTS_TOTAL,
+            answer: answer(&json!([reexport.clone()])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "a call row is no re-export",
+            case: PACKAGE_REEXPORTS_TOTAL,
+            answer: answer(&json!([{
+                "path": "shop/__init__.py", "lines": "1-1", "evidence": "resolved",
+                "relation": "call", "sites": [1],
+            }])),
+            verdict: Verdict::Fails("missing shop/__init__.py -reexports->"),
+        },
+        Probe {
+            what: "a re-export row is no caller",
+            case: SOMEONE_CALLS_TOTAL,
+            answer: answer(&json!([reexport])),
+            verdict: Verdict::Fails("missing shop/__init__.py -calls->"),
+        },
+    ])
+}
+
 /// A5: `collection_reads` yield `reads` from the reading file to the changed
 /// files under `content/<collection>/`.
 fn a5_a_collection_read_reaches_only_its_collection() -> Result<(), Failed> {
@@ -364,7 +452,7 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
 }
 
 pub fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 8] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 10] = [
         (
             "a1_test_file_stands_for_its_function",
             a1_test_file_stands_for_its_function,
@@ -386,6 +474,14 @@ pub fn trials() -> Vec<Trial> {
         (
             "a_kind_no_schema_names_cannot_be_evaluated",
             a_kind_no_schema_names_cannot_be_evaluated,
+        ),
+        (
+            "the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary",
+            the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary,
+        ),
+        (
+            "a_static_reexport_is_a_resolved_reexports_relation",
+            a_static_reexport_is_a_resolved_reexports_relation,
         ),
         (
             "a_zero_beside_not_determined_is_a_claim",

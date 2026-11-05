@@ -1,0 +1,43 @@
+name: ts_member_read_through_a_local_alias_of_a_typed_member_is_resolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, oracle, alias, typed-receiver, decoy]
+repo:
+  initial_files:
+    src/options.ts: |
+      export interface Internals {
+        dnsLookup?: string;
+      }
+
+      export default class Options {
+        _internals: Internals = {};
+      }
+    src/native.ts: |
+      import Options from './options';
+
+      export function createNative(options: Options) {
+        const internals = options._internals;
+        return internals.dnsLookup;
+      }
+    src/loose.ts: |
+      export function lookup(other: any) {
+        const internals = other._internals;
+        return internals.dnsLookup;
+      }
+  changed_files:
+    src/options.ts: |
+      export interface Internals {
+        dnsLookup?: number;
+      }
+
+      export default class Options {
+        _internals: Internals = {};
+      }
+  commit_message: "options: dnsLookup is a number"
+expect:
+  exact: false
+  relations:
+    - {from: "src/native.ts::createNative", to: "src/options.ts::dnsLookup", kind: reads, resolution: resolved, site: 5}
+  decoys:
+    src/options.ts::dnsLookup: [src/loose.ts::lookup]

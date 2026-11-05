@@ -593,6 +593,7 @@ def _run_impact_mode(args: ParsedArgs, prog: str) -> None:
                 markdown=args.output_format == "md",
                 symbol=args.symbol,
                 budget=args.budget,
+                unfold=args.unfold,
             ),
             args.timeout,
             prog,

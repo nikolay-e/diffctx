@@ -206,6 +206,8 @@ struct Case {
     mode: String,
     #[serde(default)]
     dispute: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     repo: Files,
     #[serde(default)]
     query: Query,
@@ -288,6 +290,7 @@ fn relation_of(kind: &str) -> Option<Relation> {
         "instantiates" => Relation::Instantiates,
         "passes_as_value" => Relation::PassesAsValue,
         "overrides" => Relation::Overrides,
+        "type_use" => Relation::TypeUses,
         "imports" => Relation::Imports,
         "reexports" => Relation::Reexports,
         _ => return None,
@@ -423,12 +426,14 @@ fn groups(fixture: &Fixture, node: &Node, changed: &Changed) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for named in definitions_of(fixture, node) {
         for binding in named.resolver.references_to(&named.key) {
-            // A type use reads the type it names.
-            let relation = match binding.relation {
-                Relation::TypeUses => Relation::Reads,
-                other => other,
-            };
-            if !relation.uses() && !matches!(relation, Relation::Imports | Relation::Reexports) {
+            // A type use is its own relation (R9), never a read of the type it names.
+            let relation = binding.relation;
+            if !relation.uses()
+                && !matches!(
+                    relation,
+                    Relation::Imports | Relation::Reexports | Relation::TypeUses
+                )
+            {
                 continue;
             }
             let resolution = match binding.resolution {
@@ -517,7 +522,8 @@ fn judge_target(
     for (i, group) in groups.iter().enumerate() {
         // A caller that is itself changed may be listed or left out; an import
         // is listed only when a case asks for it.
-        if !taken[i] && exact && !group.in_diff && !group.by_glob && group.kind.uses() {
+        let listed_kind = group.kind.uses() || group.kind == Relation::TypeUses;
+        if !taken[i] && exact && !group.in_diff && !group.by_glob && listed_kind {
             lines.push(format!(
                 "  + extra   {} -{}-> {} [{}, line {:?}]",
                 group.from.show(),
@@ -649,6 +655,53 @@ fn build(case: &Case) -> Fixture {
     open(repo, RangeSpec::Review { base, head })
 }
 
+/// Revision 12.3: a case tagged `local-of-definition` names a local of a
+/// definition (a nested function that never leaves it). The resolver holds no
+/// definition of the name, and each use the case lists answers
+/// `unresolved(Local)`: the engine's `--symbol` lists those uses from the
+/// facts, and the judge asserts what the resolver itself says of a local.
+fn judge_local_of(fixture: &Fixture, case: &Case, failures: &mut Vec<String>) {
+    for spec in &case.expect.relations {
+        let (file, name, Some(line)) = (
+            Node::parse(&spec.from).path,
+            Node::parse(&spec.to).symbol.unwrap_or_default(),
+            spec.site,
+        ) else {
+            continue;
+        };
+        let uses: Vec<String> = fixture
+            .head
+            .bindings()
+            .iter()
+            .filter(|b| {
+                b.file.as_str() == file
+                    && b.name.as_str() == name
+                    && b.site.lines.0 == line
+                    && !matches!(b.relation, Relation::Imports | Relation::Reexports)
+            })
+            .map(|b| fixture.lands(b))
+            .collect();
+        if uses != ["unresolved(Local)"] {
+            failures.push(format!(
+                "{file}:{line} `{name}`: expected a use of a local, found {uses:?}"
+            ));
+        }
+    }
+    if let Some(symbol) = &case.query.symbol {
+        let defined = fixture
+            .head
+            .definitions()
+            .iter()
+            .filter(|d| d.key.local.name.as_str() == symbol)
+            .count();
+        if defined != 0 {
+            failures.push(format!(
+                "`{symbol}` is a local, but the resolver holds {defined} definition(s) of it"
+            ));
+        }
+    }
+}
+
 enum Verdict {
     /// The case asserts nothing the resolver answers.
     NotApplicable,
@@ -657,6 +710,15 @@ enum Verdict {
 }
 
 fn run_case(case: &Case) -> Verdict {
+    if case.tags.iter().any(|t| t == "local-of-definition") {
+        let mut failures = Vec::new();
+        judge_local_of(&build(case), case, &mut failures);
+        return if failures.is_empty() {
+            Verdict::Green
+        } else {
+            Verdict::Red(failures)
+        };
+    }
     let wants = compile(&case.expect);
     let mut targets: BTreeSet<Node> = wants.keys().cloned().collect();
     targets.extend(case.expect.decoys.keys().map(|k| Node::target(k)));
@@ -1634,25 +1696,25 @@ fn chains_read_their_members_and_object_types_have_members() {
     );
 }
 
-/// gh#554: a function declared inside another is a definition, found by the
-/// functions beside it.
+/// gh#554, as ruled in Revision 12.3: a function declared inside another that
+/// never leaves it is a local of the enclosing definition. A call of it from
+/// its siblings is a use of that local, not of a definition, and the
+/// module-level function of the same name is not what it lands on.
 #[test]
-fn functions_declared_inside_a_function_call_each_other() {
+fn functions_declared_inside_a_function_are_locals_of_it() {
     let fx = snapshot(&[(
         "src/store.ts",
         "export const useStore = create()((set) => {\n  function alpha() { return 1; }\n  function beta() { return alpha(); }\n  return { play: async () => { await beta(); } };\n});\nfunction alpha() { return 2; }\nexport function top() { return alpha(); }\n",
     )]);
-    let inner = fx.at("src/store.ts", "alpha", 3);
-    assert_eq!(fx.lands(inner), "src/store.ts::useStore.alpha");
-    assert_eq!(evidence(inner).0, EvidenceKind::SameScope);
-    assert!(matches!(&inner.from, Scope::Def(key) if key.name.as_str() == "beta"));
     assert_eq!(
-        fx.lands_at("src/store.ts", "beta", 4),
-        "src/store.ts::useStore.beta"
+        fx.lands_at("src/store.ts", "alpha", 3),
+        "unresolved(Local)",
+        "a sibling's call is a use of the local"
     );
     assert_eq!(
         fx.lands_at("src/store.ts", "alpha", 7),
-        "src/store.ts::alpha"
+        "src/store.ts::alpha",
+        "the module-level function is what a module-level call lands on"
     );
 }
 
@@ -1763,5 +1825,110 @@ fn export_lists_read_their_names_and_assigned_methods_are_called() {
     assert_eq!(
         fx.lands_at("router.js", "handle", 6),
         "candidate(UntypedReceiver) router.js::proto.handle"
+    );
+}
+
+/// W5-R1 (R1): `const {f} = Class` and `const {f: g} = Class` bind the name to
+/// the member `f` of the class: a call through it is a call of that member,
+/// resolved as aliased. A name destructured from something that is no class of
+/// the repository stays the variable it is.
+#[test]
+fn a_destructured_static_is_called_as_the_member_it_names() {
+    let fx = snapshot(&[
+        (
+            "src/request.ts",
+            "export default class Request {\n  static normalizeArguments(url: string): string {\n    return url;\n  }\n}\n",
+        ),
+        (
+            "src/create.ts",
+            "import Request from './request';\nimport {pick} from 'lodash';\n\nconst {normalizeArguments} = Request;\nconst {normalizeArguments: renamed} = Request;\nconst {pick: choose} = {pick};\n\nexport const merge = () => {\n  return normalizeArguments('x');\n};\n\nexport const other = () => {\n  return renamed('y');\n};\n\nexport const picked = () => {\n  return choose('z');\n};\n",
+        ),
+    ]);
+    let called = fx.at("src/create.ts", "normalizeArguments", 9);
+    assert_eq!(called.relation, Relation::Calls);
+    assert_eq!(
+        fx.lands(called),
+        "src/request.ts::Request.normalizeArguments"
+    );
+    assert_eq!(evidence(called).0, EvidenceKind::Aliased);
+    assert_eq!(
+        fx.lands_at("src/create.ts", "renamed", 13),
+        "src/request.ts::Request.normalizeArguments"
+    );
+    assert_eq!(
+        fx.lands_at("src/create.ts", "choose", 17),
+        "src/create.ts::choose"
+    );
+}
+
+/// W5-R1 (R3): `const x = a.b` holds what the chain holds (a typed member, `this`
+/// and `#private` ones too), `const x = a.b as T` the asserted type; the alias
+/// of an `any` stays an untyped read.
+#[test]
+fn a_local_assigned_a_member_chain_reads_through_the_type_of_that_chain() {
+    let fx = snapshot(&[
+        (
+            "src/options.ts",
+            "export interface Internals {\n  dnsLookup?: string;\n  retries: number;\n}\n\nexport default class Options {\n  _internals: Internals = {retries: 1};\n  #hidden: Internals = {retries: 2};\n\n  get(): string | undefined {\n    const internals = this._internals;\n    return internals.dnsLookup;\n  }\n\n  hidden(): number {\n    const hidden = this.#hidden;\n    return hidden.retries;\n  }\n}\n",
+        ),
+        (
+            "src/native.ts",
+            "import Options from './options';\n\nexport function create(options: Options) {\n  const internals = options._internals;\n  return internals.dnsLookup;\n}\n\nexport function asserted(options: any) {\n  const internals = options._internals as Options;\n  return internals._internals;\n}\n\nexport function loose(other: any) {\n  const internals = other._internals;\n  return internals.dnsLookup;\n}\n",
+        ),
+    ]);
+    let own = fx.at("src/options.ts", "dnsLookup", 12);
+    assert_eq!(fx.lands(own), "src/options.ts::Internals.dnsLookup");
+    assert_eq!(evidence(own).0, EvidenceKind::Aliased);
+    assert_eq!(
+        fx.lands_at("src/options.ts", "retries", 17),
+        "src/options.ts::Internals.retries"
+    );
+    assert_eq!(
+        fx.lands_at("src/native.ts", "dnsLookup", 5),
+        "src/options.ts::Internals.dnsLookup"
+    );
+    assert_eq!(
+        fx.lands_at("src/native.ts", "_internals", 10),
+        "src/options.ts::Options._internals"
+    );
+    assert_eq!(
+        fx.lands_at("src/native.ts", "dnsLookup", 15),
+        "unresolved(UntypedRead)"
+    );
+}
+
+/// W5-R1 (R5): the keys of an object literal the code types write the members
+/// of that type: `const o: T = {…}` and `{…} as T`. An untyped literal, a key of
+/// a type the repository does not hold and a computed key name nothing.
+#[test]
+fn the_keys_of_a_typed_object_literal_write_the_members_of_its_type() {
+    let fx = snapshot(&[(
+        "src/options.ts",
+        "export interface RetryOptions {\n  limit: number;\n  enforceRetryRules?: boolean;\n}\n\nexport const defaults: RetryOptions = {\n  limit: 2,\n  enforceRetryRules: false,\n};\n\nexport const loose = {\n  enforceRetryRules: true,\n};\n\nexport const plain = {\n  limit: 1,\n} as RetryOptions;\n\nexport const foreign: Partial<Missing> = {\n  limit: 3,\n};\n",
+    )]);
+    let written = fx.at("src/options.ts", "enforceRetryRules", 8);
+    assert_eq!(written.relation, Relation::Writes);
+    assert_eq!(
+        fx.lands(written),
+        "src/options.ts::RetryOptions.enforceRetryRules"
+    );
+    assert_eq!(
+        fx.lands_at("src/options.ts", "limit", 7),
+        "src/options.ts::RetryOptions.limit"
+    );
+    assert_eq!(
+        fx.lands_at("src/options.ts", "limit", 16),
+        "src/options.ts::RetryOptions.limit"
+    );
+    assert!(
+        fx.head
+            .bindings()
+            .iter()
+            .all(|b| !(b.site.lines.0 == 12 && b.name.as_str() == "enforceRetryRules")),
+        "an untyped literal's key is no reference"
+    );
+    assert_eq!(
+        fx.lands_at("src/options.ts", "limit", 20),
+        "unresolved(Builtin)"
     );
 }

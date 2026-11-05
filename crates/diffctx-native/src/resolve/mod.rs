@@ -25,11 +25,15 @@
 #![allow(clippy::cognitive_complexity, clippy::significant_drop_tightening)]
 
 mod index;
+mod kotlin;
 mod modules;
 mod python;
+mod rust;
 mod typescript;
 
+pub use kotlin::KotlinResolver;
 pub use python::PythonResolver;
+pub use rust::RustResolver;
 pub use typescript::TypeScriptResolver;
 
 use crate::facts::{DefKey, DefKind, Name, Scope, Span};
@@ -52,6 +56,20 @@ pub enum Relation {
 }
 
 impl Relation {
+    pub const ALL: [Self; 9] = [
+        Self::Calls,
+        Self::Reads,
+        Self::Writes,
+        Self::Instantiates,
+        Self::PassesAsValue,
+        Self::TypeUses,
+        Self::Imports,
+        Self::Reexports,
+        Self::Overrides,
+    ];
+
+    /// The one spelling of a relation: `lang::RelationKind` and the case schema
+    /// carry the same names (`lang::kind_of_use` maps one to the other).
     pub const fn name(self) -> &'static str {
         match self {
             Self::Calls => "calls",
@@ -59,7 +77,7 @@ impl Relation {
             Self::Writes => "writes",
             Self::Instantiates => "instantiates",
             Self::PassesAsValue => "passes_as_value",
-            Self::TypeUses => "type_uses",
+            Self::TypeUses => "type_use",
             Self::Imports => "imports",
             Self::Reexports => "reexports",
             Self::Overrides => "overrides",
@@ -106,6 +124,9 @@ pub enum EvidenceKind {
     SuperCall,
     /// A method that replaces the base class's.
     Overridden,
+    /// A name bound to another definition's value or member by a static
+    /// chain: `internals = options.internals`, `const {f} = Class`.
+    Aliased,
     /// `importlib.import_module("m")` with a literal.
     DynamicImport,
     /// A module found only under a project the importer names as a requirement
@@ -156,6 +177,12 @@ pub enum CandidateReason {
     /// A global of a classic script or a worker that loads no script naming it:
     /// any script of the repository that sets it.
     Global,
+    /// Several declarations of the name in view (overloads): which one a call
+    /// reaches is for the compiler to say.
+    Overloaded,
+    /// A call through a supertype of a type that overrides the member: it may
+    /// run in the override.
+    Dispatch,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

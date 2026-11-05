@@ -314,6 +314,7 @@ class ParsedArgs:
     diff_range: str | None = None
     symbol: str | None = None
     budget: int | None = None
+    unfold: bool = False
     alpha: float = _DEFAULT_ALPHA
     tau: float | None = None
     scoring: str = _DEFAULT_SCORING
@@ -624,6 +625,16 @@ def _build_main_parser(prog: str = "diffctx", version: str = _BUILD_LABEL) -> ar
         ),
     )
     diff_group.add_argument(
+        "--unfold",
+        action="store_true",
+        default=False,
+        help=(
+            "Impact mode: list every row of a changed definition, each marked with the rule of the "
+            "folding table that would fold it, instead of counting the rows the change cannot have "
+            "affected in one line each"
+        ),
+    )
+    diff_group.add_argument(
         "--alpha",
         type=float,
         default=_UNSET,
@@ -930,6 +941,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         diff_range=diff_range,
         symbol=args.symbol,
         budget=budget,
+        unfold=args.unfold,
         alpha=alpha,
         tau=tau,
         scoring=scoring,

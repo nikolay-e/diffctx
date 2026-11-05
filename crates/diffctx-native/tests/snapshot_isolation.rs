@@ -9,7 +9,12 @@ use std::path::Path;
 use regex::Regex;
 use walkdir::WalkDir;
 
+mod isolation_source;
+use isolation_source::without_comments;
+
 fn violations(source: &str) -> Vec<String> {
+    let source = without_comments(source);
+    let source = source.as_str();
     let reaches_out = Regex::new(r"\b(?:crate|_diffctx|diffctx)\s*::\s*(\w*)|super\s*::\s*super\b")
         .expect("a pattern");
     reaches_out
@@ -49,4 +54,19 @@ fn a_path_into_a_sibling_module_is_a_violation() {
     assert_eq!(violations("let x = super::super::Thing;"), ["super::super"]);
     assert!(violations("use crate::snapshot::types::Oid;").is_empty());
     assert!(violations("use super::BoxError;").is_empty());
+    // A comment that names a path outside the module reaches nothing; the code
+    // around it, and a string that holds `//`, still count.
+    assert!(violations("// use crate::parsers::x; super::super::y\n/// crate::a\n//! super::super\n/* crate::b /* super::super */ crate::c */ fn f() {}").is_empty());
+    assert_eq!(
+        violations("fn f() {} /* a note */ use crate::parsers::Z;").len(),
+        1
+    );
+    assert_eq!(
+        violations("let url = \"http://x\"; use crate::parsers::Z;").len(),
+        1
+    );
+    assert_eq!(
+        violations("let raw = r#\"//\"#; use crate::parsers::Z;").len(),
+        1
+    );
 }

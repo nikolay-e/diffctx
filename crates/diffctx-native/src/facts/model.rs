@@ -182,6 +182,35 @@ pub enum ImportKind {
     SideEffect,
 }
 
+/// What an import takes of a whole module, each state a variant of its own: a
+/// nested `Option` writes `Some(None)` as `null` in JSON, which reads back as
+/// `None`, so a glob import came out of the facts cache as no import at all.
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Star {
+    /// No star: the names, if any, are listed.
+    #[default]
+    None,
+    /// `import *`, `use m::*`, `import a.b.*`.
+    Glob,
+    /// `import * as alias`: the module as one local name.
+    Alias(Name),
+}
+
+impl Star {
+    /// Whether the import takes the whole module, with a name or without.
+    pub const fn is_star(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    /// The local name the module is bound to, for `import * as alias`.
+    pub const fn alias(&self) -> Option<&Name> {
+        match self {
+            Self::Alias(name) => Some(name),
+            Self::None | Self::Glob => None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Import {
     pub site: Span,
@@ -192,8 +221,7 @@ pub struct Import {
     pub kind: ImportKind,
     /// `(name, alias)` of each imported name.
     pub names: Vec<(Name, Option<Name>)>,
-    /// `Some(None)`: `import *`; `Some(Some(alias))`: `import * as alias`.
-    pub star: Option<Option<Name>>,
+    pub star: Star,
     /// The default import's local name.
     pub default: Option<Name>,
 }

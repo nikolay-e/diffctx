@@ -18,7 +18,7 @@ use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, T
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind, Language,
     Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref, Scope,
-    Span, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
+    Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -783,6 +783,431 @@ fn pattern_bounds(root: Node<'_>) -> Vec<Bound<'_>> {
     out
 }
 
+// ---- what leaves a function --------------------------------------------
+
+/// Callees that run their callback to the end inside the call: a function
+/// handed to one goes nowhere.
+const RUNS_CALLBACK: [&str; 15] = [
+    "map",
+    "filter",
+    "forEach",
+    "reduce",
+    "reduceRight",
+    "some",
+    "every",
+    "find",
+    "findIndex",
+    "findLast",
+    "findLastIndex",
+    "flatMap",
+    "sort",
+    "toSorted",
+    "replace",
+];
+/// Where a test file registers its callbacks, and the framework models read
+/// them as callbacks (`Scope::Callback`), not as something that leaves.
+const TEST_ROOTS: [&str; 12] = [
+    "describe",
+    "it",
+    "test",
+    "suite",
+    "context",
+    "specify",
+    "before",
+    "after",
+    "beforeEach",
+    "afterEach",
+    "beforeAll",
+    "afterAll",
+];
+const ROUTE_ROOTS: [&str; 8] = [
+    "app", "router", "server", "api", "route", "routes", "fastify", "express",
+];
+const ROUTE_VERBS: [&str; 10] = [
+    "get", "post", "put", "delete", "patch", "head", "options", "all", "use", "route",
+];
+/// Calls that store their argument in the object they are called on.
+const STORES_ARGUMENT: [&str; 4] = ["push", "unshift", "add", "set"];
+
+enum Flow<'t> {
+    /// A value a function hands back: out of the definition when that function
+    /// is the definition's own or has no name, else to whoever the named one
+    /// is handed to.
+    Returned {
+        value: Node<'t>,
+        from: Option<String>,
+    },
+    Assigned {
+        target: Node<'t>,
+        value: Node<'t>,
+    },
+    Bound {
+        name: String,
+        value: Node<'t>,
+    },
+    Called(Node<'t>),
+}
+
+/// The names a value carries out of an expression: an identifier, the members
+/// of an object or array literal, the branches of a conditional, the class an
+/// instance is made from. A call's result carries nothing here: the call is a
+/// flow of its own.
+fn carried<'a>(src: &'a str, node: Node<'_>, out: &mut Vec<&'a str>) {
+    match node.kind() {
+        "identifier" | "shorthand_property_identifier" => out.push(text(src, node)),
+        "object" => {
+            for member in kids(node) {
+                match member.kind() {
+                    "shorthand_property_identifier" => out.push(text(src, member)),
+                    "pair" => {
+                        if let Some(value) = field(member, "value") {
+                            carried(src, value, out);
+                        }
+                    }
+                    "spread_element" => {
+                        if let Some(inner) = first_named(member) {
+                            carried(src, inner, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        "array" => {
+            for element in kids(node).into_iter().filter(|k| k.is_named()) {
+                carried(src, element, out);
+            }
+        }
+        "ternary_expression" => {
+            for name in ["consequence", "alternative"] {
+                if let Some(branch) = field(node, name) {
+                    carried(src, branch, out);
+                }
+            }
+        }
+        "binary_expression"
+            if matches!(
+                field(node, "operator").map(|o| text(src, o)),
+                Some("||" | "&&" | "??")
+            ) =>
+        {
+            for name in ["left", "right"] {
+                if let Some(side) = field(node, name) {
+                    carried(src, side, out);
+                }
+            }
+        }
+        "new_expression" => {
+            if let Some(class) = field(node, "constructor") {
+                carried(src, class, out);
+            }
+        }
+        "spread_element"
+        | "parenthesized_expression"
+        | "as_expression"
+        | "satisfies_expression"
+        | "non_null_expression"
+        | "await_expression" => {
+            if let Some(inner) = first_named(node) {
+                carried(src, inner, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The name an assignment's target is rooted in: `a` for `a.b[c]`, `this`.
+fn target_root<'a>(src: &'a str, node: Node<'_>) -> Option<&'a str> {
+    let mut current = node;
+    loop {
+        match current.kind() {
+            "identifier" => return Some(text(src, current)),
+            "this" => return Some("this"),
+            "member_expression" | "subscript_expression" => current = field(current, "object")?,
+            "parenthesized_expression" | "non_null_expression" | "as_expression" => {
+                current = first_named(current)?;
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// The function a `return`, `yield` or expression body hands its value back
+/// from, when it is nested in the definition whose body is `body`: its name
+/// if it has one (a declaration, or a function a constant is initialised with).
+fn returning_function(src: &str, node: Node<'_>, body: Node<'_>) -> Option<String> {
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if parent.id() == body.id() {
+            return None;
+        }
+        match parent.kind() {
+            "function_declaration" | "generator_function_declaration" => {
+                return field(parent, "name").map(|n| text(src, n).to_string());
+            }
+            kind if is_function_kind(kind) => {
+                return parent
+                    .parent()
+                    .filter(|d| d.kind() == "variable_declarator")
+                    .and_then(|d| field(d, "name"))
+                    .filter(|n| n.kind() == "identifier")
+                    .map(|n| text(src, n).to_string());
+            }
+            "method_definition" => return None,
+            _ => current = parent.parent(),
+        }
+    }
+    None
+}
+
+/// The parameters of a function-like node, declared in its body.
+fn bind_parameters<'a>(
+    src: &'a str,
+    node: Node<'_>,
+    declared: &mut FxHashSet<&'a str>,
+    params: &mut FxHashSet<&'a str>,
+) {
+    let mut patterns: Vec<Node<'_>> = Vec::new();
+    if let Some(list) = field(node, "parameters") {
+        for parameter in kids(list).into_iter().filter(|k| k.is_named()) {
+            patterns.push(
+                if matches!(
+                    parameter.kind(),
+                    "required_parameter" | "optional_parameter"
+                ) {
+                    field(parameter, "pattern")
+                        .or_else(|| field(parameter, "name"))
+                        .unwrap_or(parameter)
+                } else {
+                    parameter
+                },
+            );
+        }
+    }
+    patterns.extend(field(node, "parameter"));
+    for pattern in patterns {
+        for bound in pattern_bounds(pattern) {
+            if let Bound::Ident(ident) = bound {
+                declared.insert(text(src, ident));
+                params.insert(text(src, ident));
+            }
+        }
+    }
+}
+
+/// Whether `name` read at `node` is a parameter of a function between `node`
+/// and the definition's body: it names that parameter, not a nested function of
+/// the same name beside it.
+fn is_parameter_there(src: &str, node: Node<'_>, body: Node<'_>, name: &str) -> bool {
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if parent.id() == body.id() {
+            return false;
+        }
+        if is_function_kind(parent.kind())
+            || matches!(
+                parent.kind(),
+                "function_declaration" | "generator_function_declaration" | "method_definition"
+            )
+        {
+            let mut declared: FxHashSet<&str> = FxHashSet::default();
+            let mut params: FxHashSet<&str> = FxHashSet::default();
+            bind_parameters(src, parent, &mut declared, &mut params);
+            if params.contains(name) {
+                return true;
+            }
+        }
+        current = parent.parent();
+    }
+    false
+}
+
+/// The names declared in a definition's body that leave the function: one it
+/// returns (itself, in a returned object or array, or as the class of a
+/// returned instance), assigns to something it did not declare (a module or
+/// global binding, `exports`, `this`, a parameter's member), or hands to a call
+/// outside it, a test or route registration and a callee that runs the callback
+/// to the end excepted. A name stored in a local variable leaves when that
+/// variable does.
+fn escaping_names(src: &str, body: Node<'_>) -> FxHashSet<String> {
+    let mut declared: FxHashSet<&str> = FxHashSet::default();
+    let mut params: FxHashSet<&str> = FxHashSet::default();
+    let mut flows: Vec<Flow<'_>> = Vec::new();
+    if let Some(owner) = body.parent() {
+        bind_parameters(src, owner, &mut declared, &mut params);
+    }
+    let mut stack = vec![body];
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            "function_declaration"
+            | "generator_function_declaration"
+            | "class_declaration"
+            | "abstract_class_declaration" => {
+                declared.extend(field(node, "name").map(|n| text(src, n)));
+            }
+            "variable_declarator" => {
+                if let Some(name) = field(node, "name") {
+                    for bound in pattern_bounds(name) {
+                        if let Bound::Ident(ident) = bound {
+                            declared.insert(text(src, ident));
+                        }
+                    }
+                    if let (true, Some(value)) = (name.kind() == "identifier", field(node, "value"))
+                    {
+                        flows.push(Flow::Bound {
+                            name: text(src, name).to_string(),
+                            value,
+                        });
+                    }
+                }
+            }
+            "catch_clause" | "for_in_statement" => {
+                let pattern = field(node, "parameter").or_else(|| field(node, "left"));
+                for bound in pattern.into_iter().flat_map(pattern_bounds) {
+                    if let Bound::Ident(ident) = bound {
+                        declared.insert(text(src, ident));
+                    }
+                }
+            }
+            "return_statement" | "yield_expression" => {
+                flows.extend(first_named(node).map(|value| Flow::Returned {
+                    value,
+                    from: returning_function(src, node, body),
+                }));
+            }
+            "assignment_expression" => {
+                if let (Some(target), Some(value)) = (field(node, "left"), field(node, "right")) {
+                    flows.push(Flow::Assigned { target, value });
+                }
+            }
+            "call_expression" | "new_expression" => flows.push(Flow::Called(node)),
+            _ => {}
+        }
+        if is_function_kind(node.kind())
+            || matches!(
+                node.kind(),
+                "function_declaration" | "generator_function_declaration" | "method_definition"
+            )
+        {
+            bind_parameters(src, node, &mut declared, &mut params);
+            if let Some(expression) = field(node, "body").filter(|b| b.kind() != "statement_block")
+            {
+                flows.push(Flow::Returned {
+                    value: expression,
+                    from: returning_function(src, expression, body),
+                });
+            }
+        }
+        stack.extend(
+            kids(node)
+                .into_iter()
+                .filter(|k| k.is_named() && k.kind() != "comment"),
+        );
+    }
+    let local = |root: &str| declared.contains(root) && !params.contains(root);
+    let mut leaving: FxHashSet<String> = FxHashSet::default();
+    let mut stored: Vec<(String, String)> = Vec::new();
+    let mut names: Vec<&str> = Vec::new();
+    for flow in &flows {
+        names.clear();
+        match flow {
+            Flow::Returned { value, from } => {
+                carried(src, *value, &mut names);
+                names.retain(|n| !is_parameter_there(src, *value, body, n));
+                match from {
+                    Some(function) => {
+                        stored.extend(names.iter().map(|n| (n.to_string(), function.clone())));
+                    }
+                    None => leaving.extend(names.iter().map(|n| n.to_string())),
+                }
+            }
+            Flow::Bound { name, value } => {
+                carried(src, *value, &mut names);
+                names.retain(|n| !is_parameter_there(src, *value, body, n));
+                stored.extend(names.iter().map(|n| (n.to_string(), name.clone())));
+            }
+            Flow::Assigned { target, value } => {
+                carried(src, *value, &mut names);
+                names.retain(|n| !is_parameter_there(src, *value, body, n));
+                for bound in pattern_bounds(*target) {
+                    let into = match bound {
+                        Bound::Ident(ident) => {
+                            Some(text(src, ident)).filter(|n| declared.contains(n))
+                        }
+                        Bound::Member(member) => {
+                            target_root(src, member).filter(|root| local(*root))
+                        }
+                        Bound::Expr(_) => continue,
+                    };
+                    match into {
+                        Some(root) => {
+                            stored.extend(names.iter().map(|n| (n.to_string(), root.to_string())));
+                        }
+                        None => leaving.extend(names.iter().map(|n| n.to_string())),
+                    }
+                }
+            }
+            Flow::Called(call) => {
+                let (Some(callee), Some(arguments)) = (
+                    field(*call, "function").or_else(|| field(*call, "constructor")),
+                    field(*call, "arguments").filter(|a| a.kind() == "arguments"),
+                ) else {
+                    continue;
+                };
+                for argument in kids(arguments).into_iter().filter(|a| a.is_named()) {
+                    carried(src, argument, &mut names);
+                }
+                names.retain(|n| !is_parameter_there(src, *call, body, n));
+                if names.is_empty() {
+                    continue;
+                }
+                // `it.each(rows)(name, fn)` registers like `it(name, fn)`.
+                let mut callee = callee;
+                while callee.kind() == "call_expression" {
+                    match field(callee, "function") {
+                        Some(inner) => callee = inner,
+                        None => break,
+                    }
+                }
+                let member = callee.kind() == "member_expression";
+                let last = if member {
+                    field(callee, "property").map_or("", |p| text(src, p))
+                } else {
+                    ""
+                };
+                let root = target_root(src, callee);
+                if (member && RUNS_CALLBACK.contains(&last))
+                    || root.is_some_and(|root| {
+                        TEST_ROOTS.contains(&root)
+                            || (ROUTE_ROOTS.contains(&root) && ROUTE_VERBS.contains(&last))
+                    })
+                {
+                    continue;
+                }
+                match root.filter(|root| local(*root)) {
+                    Some(root) => {
+                        if member && STORES_ARGUMENT.contains(&last) {
+                            stored.extend(names.iter().map(|n| (n.to_string(), root.to_string())));
+                        }
+                    }
+                    None => leaving.extend(names.iter().map(|n| n.to_string())),
+                }
+            }
+        }
+    }
+    loop {
+        let known = leaving.len();
+        for (name, into) in &stored {
+            if leaving.contains(into) {
+                leaving.insert(name.clone());
+            }
+        }
+        if leaving.len() == known {
+            return leaving;
+        }
+    }
+}
+
 // ---- the declaring pass ------------------------------------------------
 
 #[derive(Clone, Copy)]
@@ -949,17 +1374,30 @@ impl<'t> Declarer<'t> {
         });
     }
 
-    /// Walks a definition's body for what it holds: a function declared inside it,
-    /// at any depth and inside any callback, is a definition of its own with this
-    /// one as container, and the methods and function-valued properties of an
-    /// object literal a function in it returns are too, a callback included. An
-    /// object literal passed to a call is configuration, not a definition (#706).
+    /// Walks a definition's body for what it holds. A function or class declared
+    /// inside it, at any depth and inside any callback, is a definition of its
+    /// own with this one as container only when it escapes: the body returns it,
+    /// hands it to something outside, or stores it where something outside
+    /// reads it. Any other is a local name, its lines this definition's and its
+    /// uses uses inside this one. The methods and function-valued properties of
+    /// an object literal a function in it returns are definitions too, a
+    /// callback included. An object literal passed to a call is configuration,
+    /// not a definition (#706).
     fn scan(&mut self, scan: Scan<'t>, budget: &RunBudget, ticker: &mut Ticker) {
         let Scan {
             body,
             container,
             returns,
         } = scan;
+        let src = self.src;
+        let mut escapes: Option<FxHashSet<String>> = None;
+        let mut leaves = |name: Option<Node<'t>>| {
+            name.is_some_and(|name| {
+                escapes
+                    .get_or_insert_with(|| escaping_names(src, body))
+                    .contains(text(src, name))
+            })
+        };
         // The object literal a function hands back as its expression body, or a
         // constant, variable or field is initialised with: its methods are the
         // definition's members.
@@ -969,23 +1407,35 @@ impl<'t> Declarer<'t> {
                 self.object_members(object, &container);
             }
         }
-        let mut stack: Vec<Node<'t>> = vec![body];
-        while let Some(node) = stack.pop() {
+        // Whether a node sits in a local function, whose `return` hands its
+        // value to the definition and not out of it.
+        let mut stack: Vec<(Node<'t>, bool)> = vec![(body, false)];
+        while let Some((node, local)) = stack.pop() {
             if ticker.over(budget) {
                 return;
             }
             if self.claimed.contains(&node.id()) {
                 continue;
             }
+            let mut inside = local;
             match node.kind() {
                 "function_declaration" | "generator_function_declaration" => {
-                    self.function(node, container.clone(), false);
+                    if leaves(field(node, "name")) {
+                        self.function(node, container.clone(), false);
+                        continue;
+                    }
+                    inside = true;
+                }
+                "class_declaration" | "abstract_class_declaration" => {
+                    if leaves(field(node, "name")) {
+                        self.class(node, container.clone(), false);
+                    }
                     continue;
                 }
-                "class" | "class_declaration" | "abstract_class_declaration" => continue,
+                "class" => continue,
                 // A callback hands its object back as a function does: the
                 // actions a store builds are its members.
-                "arrow_function" | "function_expression" | "generator_function" => {
+                "arrow_function" | "function_expression" | "generator_function" if !local => {
                     if let Some(object) = field(node, "body")
                         .filter(|b| b.kind() != "statement_block")
                         .and_then(returned_object)
@@ -993,7 +1443,7 @@ impl<'t> Declarer<'t> {
                         self.object_members(object, &container);
                     }
                 }
-                "return_statement" => {
+                "return_statement" if !local => {
                     if let Some(object) = first_named(node).and_then(returned_object) {
                         self.object_members(object, &container);
                     }
@@ -1002,7 +1452,7 @@ impl<'t> Declarer<'t> {
             }
             for child in kids(node).into_iter().rev() {
                 if child.is_named() && child.kind() != "comment" {
-                    stack.push(child);
+                    stack.push((child, inside));
                 }
             }
         }
@@ -1614,7 +2064,7 @@ impl<'t> Declarer<'t> {
                 module,
                 ImportKind::Require,
                 Vec::new(),
-                Some(alias),
+                alias.map_or(Star::Glob, Star::Alias),
                 None,
             );
             return;
@@ -1623,18 +2073,16 @@ impl<'t> Declarer<'t> {
             return;
         };
         let mut names = Vec::new();
-        let mut star = None;
+        let mut star = Star::None;
         let mut default = None;
         if let Some(clause) = clause {
             for child in kids(clause) {
                 match child.kind() {
                     "identifier" => default = Some(Name::from(text(self.src, child))),
                     "namespace_import" => {
-                        star = Some(
-                            first_named(child)
-                                .filter(|n| n.kind() == "identifier")
-                                .map(|n| Name::from(text(self.src, n))),
-                        );
+                        star = first_named(child)
+                            .filter(|n| n.kind() == "identifier")
+                            .map_or(Star::Glob, |n| Star::Alias(Name::from(text(self.src, n))));
                     }
                     "named_imports" => {
                         for specifier in kids(child) {
@@ -1673,7 +2121,7 @@ impl<'t> Declarer<'t> {
         module: String,
         kind: ImportKind,
         names: Vec<(Name, Option<Name>)>,
-        star: Option<Option<Name>>,
+        star: Star,
         default: Option<Name>,
     ) {
         self.facts.push(Fact::Import(Import {
@@ -2253,7 +2701,7 @@ struct Chain<'t> {
 #[derive(Default)]
 struct Bindings {
     names: Vec<(Name, Option<Name>)>,
-    star: Option<Option<Name>>,
+    star: Star,
     default: Option<Name>,
 }
 
@@ -2729,7 +3177,7 @@ impl<'t> Walker<'t> {
                 module: ModulePath::from(module),
                 kind: ImportKind::SideEffect,
                 names: Vec::new(),
-                star: None,
+                star: Star::None,
                 default: None,
             }));
         }
@@ -2902,7 +3350,7 @@ impl<'t> Walker<'t> {
                     bindings.names.push((Name::from(member), alias));
                 }
             }
-            ("identifier", None) => bindings.star = Some(Some(Name::from(self.t(name)))),
+            ("identifier", None) => bindings.star = Star::Alias(Name::from(self.t(name))),
             ("object_pattern", None) => {
                 for entry in kids(name) {
                     match entry.kind() {
@@ -3272,9 +3720,45 @@ impl<'t> Walker<'t> {
                 }
             }
         }
+        if let Some(typed) = declared_type(
+            self.src,
+            annotation,
+            value,
+            is_const_declaration(node.parent()),
+        ) {
+            if let Some(object) = value.and_then(returned_object) {
+                self.literal_keys(object, &typed);
+            }
+        }
         children.extend(annotation.map(|a| (a, Ctx::default())));
         children.extend(value.map(|v| (v, Ctx::default())));
         self.push_children(children);
+    }
+
+    /// The keys of an object literal the code types (`const o: Options = {…}`,
+    /// `{…} as Options`) write the members of that type of the same name; a
+    /// computed key and a spread name none.
+    fn literal_keys(&mut self, object: Node<'t>, typed: &TypeName) {
+        for entry in kids(object) {
+            if entry.kind() != "pair" {
+                continue;
+            }
+            let Some(key) = field(entry, "key") else {
+                continue;
+            };
+            let name = match key.kind() {
+                "property_identifier" => self.t(key).to_string(),
+                "string" => strip_quotes(self.t(key)).to_string(),
+                _ => continue,
+            };
+            self.reference(
+                key,
+                &name,
+                Vec::new(),
+                Receiver::Typed(typed.clone()),
+                UseKind::Write,
+            );
+        }
     }
 
     fn decorator(&mut self, node: Node<'t>) {
