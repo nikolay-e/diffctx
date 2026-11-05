@@ -2775,7 +2775,7 @@ fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
 
 /// A call, an instantiation or an override is a caller; a name written where a
 /// type or a value is expected is a reference, weaker: when the cap sheds, the
-/// references go first.
+/// references go first, each symbol keeping its strongest row of every relation.
 fn finding_weight(finding: &Finding) -> f64 {
     match finding.relation {
         Relation::Reference => 0.9,
@@ -6183,8 +6183,9 @@ fn serialized_tokens(output: &ImpactOutput) -> u32 {
         .unwrap_or(0)
 }
 
-/// Drops possible callers first, then the globally weakest caller, until
-/// `measure` fits `cap`, then symbols that have nothing left to say. The cap
+/// Drops possible callers first, then the weakest caller that is not its
+/// relation's strongest row for the symbol, then those, until `measure` fits
+/// `cap`, then symbols that have nothing left to say. The cap
 /// is on what the reader receives, so it is measured on the delivered text.
 ///
 /// Every step drops an entry, so the measure falls as steps add up, and the
@@ -6436,14 +6437,22 @@ fn trim_omitted(output: &mut ImpactOutput) -> bool {
         .is_some_and(|entry| entry.omitted.len() > 1 && entry.omitted.pop().is_some())
 }
 
-fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
-    // A symbol's only caller goes last: while another symbol still has a
-    // tail to shed, dropping a whole symbol would make the selection look
-    // arbitrary, one function listed with all its callers and another
-    // with none (#386).
-    // Equal weights shed from the symbol with the most callers, so a commit
-    // that changes forty definitions keeps all of them to the last; then the
-    // path and the first line decide, never "the first in the file".
+/// The row of `c` the diversity floor lets go: the last one that is not the
+/// strongest of its relation kind. Rows of a symbol are ordered by weight,
+/// then path, then lines, so the first of a kind is its strongest.
+fn spare_caller(c: &ChangedSymbol) -> Option<usize> {
+    (1..c.callers.len()).rev().find(|&i| {
+        c.callers[..i]
+            .iter()
+            .any(|earlier| earlier.relation == c.callers[i].relation)
+    })
+}
+
+/// The weakest of the (symbol, row) pairs offered. Equal weights shed from the
+/// symbol with the most callers, so a commit that changes forty definitions
+/// keeps all of them to the last; then the path and the first line decide,
+/// never "the first in the file".
+fn weakest_row(changed: &[ChangedSymbol], rows: Vec<(usize, usize)>) -> Option<(usize, usize)> {
     let first_line = |c: &ChangedSymbol| {
         c.lines
             .split('-')
@@ -6451,34 +6460,54 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
             .and_then(|n| n.parse::<u32>().ok())
             .unwrap_or(0)
     };
-    let weakest_among = |min_callers: usize| {
+    rows.into_iter().min_by(|&(i, ri), &(j, rj)| {
+        let (a, b) = (&changed[i], &changed[j]);
+        a.callers[ri]
+            .weight
+            .total_cmp(&b.callers[rj].weight)
+            .then_with(|| b.callers.len().cmp(&a.callers.len()))
+            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| first_line(a).cmp(&first_line(b)))
+    })
+}
+
+fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
+    // A symbol keeps its strongest row of each relation kind (call,
+    // reference, implementation, re-export) until nothing else in the answer
+    // can go: weights alone shed every reference before any call, so a
+    // symbol read by many and called by few lost the reads altogether.
+    // A symbol's only caller goes last: while another symbol still has a
+    // tail to shed, dropping a whole symbol would make the selection look
+    // arbitrary, one function listed with all its callers and another
+    // with none (#386).
+    let spare: Vec<(usize, usize)> = output
+        .changed
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| spare_caller(c).map(|r| (i, r)))
+        .collect();
+    let tail = |min_callers: usize| -> Vec<(usize, usize)> {
         output
             .changed
             .iter()
             .enumerate()
             .filter(|(_, c)| c.callers.len() >= min_callers)
-            .min_by(|(_, a), (_, b)| {
-                let wa = a.callers.last().map(|c| c.weight).unwrap_or(0.0);
-                let wb = b.callers.last().map(|c| c.weight).unwrap_or(0.0);
-                wa.total_cmp(&wb)
-                    .then_with(|| b.callers.len().cmp(&a.callers.len()))
-                    .then_with(|| a.path.cmp(&b.path))
-                    .then_with(|| first_line(a).cmp(&first_line(b)))
-            })
-            .map(|(i, _)| i)
+            .map(|(i, c)| (i, c.callers.len() - 1))
+            .collect()
     };
-    let weakest = weakest_among(2).or_else(|| weakest_among(1));
-    match weakest {
+    let weakest =
+        weakest_row(&output.changed, spare).or_else(|| weakest_row(&output.changed, tail(2)));
+    if let Some((i, r)) = weakest {
+        let shed = output.changed[i].callers.remove(r);
+        output.changed[i].callers_omitted += 1;
+        output.truncated_untested += usize::from(without_test_link(&shed));
+        output.truncated += 1;
+        return true;
+    }
+    match weakest_row(&output.changed, tail(1)) {
         // The strongest caller of a symbol is the fact; the symbol goes
         // whole once that is all it has left, never one caller at a time.
-        Some(i) if output.changed[i].callers.len() > 1 => {
-            let shed = output.changed[i].callers.pop();
-            output.changed[i].callers_omitted += 1;
-            output.truncated_untested += usize::from(shed.as_ref().is_some_and(without_test_link));
-            output.truncated += 1;
-            true
-        }
-        Some(i) if output.changed[i].unresolved.is_none() => {
+        Some((i, _)) if output.changed[i].unresolved.is_none() => {
             output.truncated += output.changed[i].callers.len();
             output.truncated_possible += output.changed[i]
                 .callers
