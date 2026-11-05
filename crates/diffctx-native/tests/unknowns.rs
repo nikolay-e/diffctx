@@ -31,6 +31,8 @@ fn impact_markdown_within(repo: &Path, budget: &str) -> String {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "md",
             "--budget",
@@ -55,6 +57,8 @@ fn impact_markdown(repo: &Path) -> String {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "md",
         ])
@@ -160,6 +164,8 @@ fn a_read_through_an_untyped_receiver_is_counted_not_dropped() {
     );
     assert!(!md.contains("nothing calls them"), "{md}");
     assert!(!md.contains("called from app.py"), "{md}");
+    // Its reads are undetermined; its calls were searched whole.
+    assert!(md.contains("no call found in the analysed scope"), "{md}");
 }
 
 /// A read and a call through the same untyped receiver (`if w.switch:
@@ -758,6 +764,8 @@ fn impact_json(repo: &Path) -> serde_json::Value {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "json",
         ])
@@ -2799,4 +2807,104 @@ fn a_change_only_a_withheld_file_could_read_is_not_empty() {
     let open = repo(&base, &[conf]);
     let json = impact_json(open.path());
     assert_eq!(json["empty"], true, "{json}");
+}
+
+/// An untyped read of a member leaves the member's reads undetermined and says
+/// nothing against its calls: the answer states both, and the second is a finding
+/// the first does not cancel. One shape per language the facts' resolvers read.
+fn assert_reads_undetermined_calls_found(md: &str, json: &serde_json::Value, name: &str) {
+    let read = format!("1 read(s) of `.{name}`");
+    assert!(
+        md.contains(&format!("callers not resolved: {read}")),
+        "{md}"
+    );
+    assert!(md.contains("no call found in the analysed scope"), "{md}");
+    assert!(!md.contains("nothing calls them"), "{md}");
+    let row = json["changed"]
+        .as_array()
+        .and_then(|rows| {
+            // A field is named by its class (`Cart.total`).
+            rows.iter().find(|c| {
+                c["symbol"]
+                    .as_str()
+                    .is_some_and(|s| s.rsplit('.').next() == Some(name))
+            })
+        })
+        .unwrap_or_else(|| panic!("{name} is not listed: {json:#}"));
+    assert!(
+        row["unresolved"]
+            .as_str()
+            .is_some_and(|u| u.contains(&read)),
+        "{json:#}"
+    );
+    assert_eq!(row["callers"].as_array().map(Vec::len), Some(0), "{json:#}");
+}
+
+#[test]
+fn a_typescript_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found()
+{
+    let tmp = repo(
+        &[
+            ("src/cart.ts", "export class Cart {\n  total = 1;\n}\n"),
+            (
+                "src/checkout.ts",
+                "export function checkout(cart) {\n  return cart.total;\n}\n",
+            ),
+        ],
+        &[("src/cart.ts", "export class Cart {\n  total = 2;\n}\n")],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+    );
+}
+
+#[test]
+fn a_rust_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found() {
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/lib.rs", "pub mod cart;\npub mod checkout;\n"),
+            ("src/cart.rs", "pub struct Cart {\n    pub total: u32,\n}\n"),
+            (
+                "src/checkout.rs",
+                "use crate::cart::Cart;\n\npub fn totals(carts: Vec<Cart>) -> Vec<u32> {\n    carts.iter().map(|c| c.total).collect()\n}\n",
+            ),
+        ],
+        &[("src/cart.rs", "pub struct Cart {\n    pub total: u64,\n}\n")],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+    );
+}
+
+#[test]
+fn a_kotlin_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found() {
+    let tmp = repo(
+        &[
+            (
+                "src/main/kotlin/Cart.kt",
+                "class Cart {\n    val total: Int = 1\n}\n",
+            ),
+            (
+                "src/main/kotlin/Checkout.kt",
+                "fun checkout(carts: List<Cart>): List<Int> = carts.map { it.total }\n",
+            ),
+        ],
+        &[(
+            "src/main/kotlin/Cart.kt",
+            "class Cart {\n    val total: Int = 2\n}\n",
+        )],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+    );
 }

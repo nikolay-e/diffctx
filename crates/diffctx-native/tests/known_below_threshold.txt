@@ -129,12 +129,12 @@ impact/python/py_flask_route_helper_is_reached_by_the_test_that_posts_to_it  # f
 
 # Other languages (W1-C), triaged at integration 1.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
+impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open
 impact/go/go_body_only_change_reaches_callers  # synthetic open
 impact/other/dart_changed_method_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/elixir_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/lua_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/kotlin/kotlin_method_and_its_caller_change_in_one_range  # gh#687 open
-symbol/kotlin/kotlin_symbol_property_read_through_an_extension_property_chain  # gh#561 open
 impact/java/java_enum_method_called_through_a_constant  # gh#424 open
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
@@ -166,4 +166,3 @@ impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
 impact/web/web_test_that_evaluates_a_pages_script_reaches_its_functions  # gh#695 open
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
-impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open

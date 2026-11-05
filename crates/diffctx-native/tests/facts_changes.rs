@@ -487,10 +487,10 @@ fn a_cancelled_run_stops_with_a_named_loss_and_no_claims() {
 #[test]
 fn a_language_without_an_extractor_is_named_and_a_text_file_is_not() {
     let repo = Repo::init();
-    repo.write("lib.rs", "fn f() {}\n");
+    repo.write("main.go", "package main\n\nfunc f() {}\n");
     repo.write("notes.txt", "one\n");
     let base = repo.commit("base");
-    repo.write("lib.rs", "fn f() { 1 }\n");
+    repo.write("main.go", "package main\n\nfunc f() { _ = 1 }\n");
     repo.write("notes.txt", "two\n");
     let head = repo.commit("head");
     let set = run(&repo, &base, &head);
@@ -498,7 +498,7 @@ fn a_language_without_an_extractor_is_named_and_a_text_file_is_not() {
     assert_eq!(
         set.losses,
         vec![Loss::Unsupported {
-            path: path("lib.rs")
+            path: path("main.go")
         }]
     );
 }

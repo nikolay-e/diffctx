@@ -3918,6 +3918,7 @@ fn impact_budget_md(repo: &Path, budget: &str) -> String {
             "--mode",
             "impact",
             "-q",
+            "--unfold",
             "-f",
             "md",
             "--budget",
@@ -4566,16 +4567,15 @@ fn a_removed_private_duplicate_has_no_callers_once_the_shared_one_is_imported() 
             .filter(|c| c["symbol"] == symbol)
             .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
             .map(|c| {
-                format!(
-                    "{}:{}",
-                    c["path"].as_str().unwrap(),
-                    c["lines"].as_str().unwrap()
-                )
+                // The row of a removed definition names the line that still
+                // spells it; the caller's own span is a fragment's, and a removed
+                // definition's rows are the resolver's.
+                format!("{}:{}", c["path"].as_str().unwrap(), c["sites"])
             })
             .collect()
     };
     assert_eq!(callers_of("absorb"), Vec::<String>::new(), "{doc}");
-    assert_eq!(callers_of("gone"), vec!["src/user.rs:3-5"], "{doc}");
+    assert_eq!(callers_of("gone"), vec!["src/user.rs:[4]"], "{doc}");
 }
 
 /// Shedding to fit a budget changes what is listed, never the counts the
@@ -4714,11 +4714,12 @@ fn an_unqualified_same_class_java_call_is_a_caller() {
     assert_eq!(callers, vec!["toDto"], "{doc}");
 }
 
-/// #484: a file over the size cap is never read, so its calls are not seen;
-/// when it names the changed definition, the answer says so instead of
-/// reading as complete.
+/// #484: a file over the fragment cap is not cut into fragments, so its calls
+/// were not seen, and the answer said it names the changed definition instead of
+/// reading as complete. A language whose facts read it whole (Python, TS/JS,
+/// Rust, Kotlin) has nothing unread: the file's call is a caller like any other.
 #[test]
-fn a_namer_over_the_size_cap_is_named_as_a_possible_caller() {
+fn a_namer_over_the_size_cap_is_a_caller_where_the_facts_read_it_whole() {
     let tmp = TempDir::new().expect("tempdir");
     let repo = tmp.path();
     init_repo(repo);
@@ -4763,10 +4764,8 @@ fn a_namer_over_the_size_cap_is_named_as_a_possible_caller() {
     );
     commit_all(repo, "change");
     let md = impact_markdown(repo, "HEAD~1..HEAD");
-    assert!(
-        md.contains("src/big.rs names is_test_path (over the size cap)"),
-        "{md}"
-    );
+    assert!(md.contains("called from src/big.rs::uses_it"), "{md}");
+    assert!(!md.contains("over the size cap"), "{md}");
     assert!(md.contains("called from src/small.rs::small_use"), "{md}");
 }
 
@@ -5472,4 +5471,410 @@ fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
         md.contains(&format!("callers not resolved: {sentence}")),
         "{md}"
     );
+}
+
+// ---- the folding table (Revision 12.1): what a change cannot affect is counted
+
+fn impact_unfolded(repo: &Path) -> serde_json::Value {
+    let out = diffctx()
+        .current_dir(repo)
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "--unfold",
+        ])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "impact --unfold failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("impact JSON")
+}
+
+fn row<'a>(doc: &'a serde_json::Value, symbol: &str) -> &'a serde_json::Value {
+    doc["changed"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|c| c["symbol"] == symbol))
+        .unwrap_or_else(|| panic!("{symbol} is not listed: {doc:#}"))
+}
+
+fn nothing_folds(doc: &serde_json::Value) {
+    assert!(
+        doc["changed"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().all(|c| c.get("folded").is_none())),
+        "nothing folds here: {doc:#}"
+    );
+}
+
+fn callers_of<'a>(doc: &'a serde_json::Value, symbol: &str) -> Vec<&'a str> {
+    row(doc, symbol)["callers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["path"].as_str())
+        .collect()
+}
+
+/// Four files call `price`; the change adds `tax=0`: every call still works, so
+/// they are one line, counted, with three examples by path, and the line says to
+/// check the default. `--unfold` lists the four, each marked with the rule.
+#[test]
+fn a_new_parameter_with_a_default_folds_the_calls_that_still_work() {
+    let user = |name: &str, f: &str| {
+        (
+            format!("{name}.py"),
+            format!("from shop import price\n\n\ndef {f}(i):\n    return price(i)\n"),
+        )
+    };
+    let files: Vec<(String, String)> = [("a", "one"), ("b", "two"), ("c", "three"), ("d", "four")]
+        .iter()
+        .map(|(n, f)| user(n, f))
+        .collect();
+    let mut base: Vec<(&str, &str)> = vec![("shop.py", "def price(item):\n    return item.cost\n")];
+    base.extend(files.iter().map(|(p, c)| (p.as_str(), c.as_str())));
+    let tmp = repo(
+        &base,
+        &[(
+            "shop.py",
+            "def price(item, tax=0):\n    return item.cost + tax\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let price = row(&doc, "price");
+    assert!(callers_of(&doc, "price").is_empty(), "{doc:#}");
+    let folded = &price["folded"][0];
+    assert_eq!(folded["rule"], "check-the-default", "{doc:#}");
+    assert_eq!(folded["kind"], "calls", "{doc:#}");
+    assert_eq!(folded["count"], 4, "{doc:#}");
+    assert_eq!(folded["exact"], true, "{doc:#}");
+    assert_eq!(folded["parameters"], serde_json::json!(["tax"]), "{doc:#}");
+    let examples: Vec<&str> = folded["examples"]
+        .as_array()
+        .expect("examples")
+        .iter()
+        .filter_map(|e| e.as_str())
+        .collect();
+    assert_eq!(examples.len(), 3, "{doc:#}");
+    for (example, file) in examples.iter().zip(["a.py", "b.py", "c.py"]) {
+        assert!(example.starts_with(file), "{examples:?}");
+    }
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "4 call(s) compatible with the new optional parameter(s) tax: check that the default keeps the old behaviour"
+        ),
+        "{md}"
+    );
+    assert!(md.contains("--unfold"), "{md}");
+    // A folded call is still a caller: the header counts it and names the share.
+    assert!(
+        header(&md).contains("4 caller(s) outside the diff (4 folded as not affected)"),
+        "{md}"
+    );
+
+    let unfolded = impact_unfolded(tmp.path());
+    assert_eq!(callers_of(&unfolded, "price").len(), 4, "{unfolded:#}");
+    assert!(
+        row(&unfolded, "price")["callers"]
+            .as_array()
+            .expect("callers")
+            .iter()
+            .all(|c| c["folded_by"] == "check-the-default"),
+        "{unfolded:#}"
+    );
+    nothing_folds(&unfolded);
+}
+
+/// A parameter without a default, or one inserted before the others, breaks the
+/// calls: they stay listed.
+#[test]
+fn a_new_required_parameter_folds_nothing() {
+    for after in [
+        "def price(item, tax):\n    return item.cost + tax\n",
+        "def price(tax, item=0):\n    return item.cost + tax\n",
+    ] {
+        let tmp = repo(
+            &[
+                ("shop.py", "def price(item):\n    return item.cost\n"),
+                (
+                    "use.py",
+                    "from shop import price\n\n\ndef go(i):\n    return price(i)\n",
+                ),
+            ],
+            &[("shop.py", after)],
+        );
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        nothing_folds(&doc);
+        assert_eq!(callers_of(&doc, "price"), ["use.py"], "{after}: {doc:#}");
+    }
+}
+
+/// An override replaces a body, it does not run it: a body-only change folds the
+/// override into one line.
+#[test]
+fn a_body_only_change_folds_the_overrides_of_the_method() {
+    let tmp = repo(
+        &[
+            (
+                "base.py",
+                "class Base:\n    def run(self):\n        return 1\n",
+            ),
+            (
+                "child.py",
+                "from base import Base\n\n\nclass Child(Base):\n    def run(self):\n        return 2\n",
+            ),
+        ],
+        &[(
+            "base.py",
+            "class Base:\n    def run(self):\n        return 3\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "run")["folded"][0];
+    assert_eq!(folded["rule"], "override-not-run", "{doc:#}");
+    assert_eq!(folded["kind"], "overrides", "{doc:#}");
+    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert!(callers_of(&doc, "run").is_empty(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("overrides not affected (override-not-run): 1"),
+        "{md}"
+    );
+}
+
+/// A body change leaves an import or a re-export of the definition as it was.
+#[test]
+fn a_body_only_change_folds_the_reexports_of_the_function() {
+    let tmp = repo(
+        &[
+            (
+                "src/f.ts",
+                "export function f(a: number): number {\n  return a;\n}\n",
+            ),
+            ("src/index.ts", "export { f } from \"./f\";\n"),
+        ],
+        &[(
+            "src/f.ts",
+            "export function f(a: number): number {\n  return a + 1;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "f")["folded"][0];
+    assert_eq!(folded["rule"], "imports-a-body", "{doc:#}");
+    assert_eq!(folded["kind"], "reexports", "{doc:#}");
+    assert_eq!(folded["count"], 1, "{doc:#}");
+}
+
+/// A candidate row — a call through a receiver nothing types — folds under the
+/// receiver, and the header still counts it as possible.
+#[test]
+fn a_candidate_folds_under_the_untyped_receiver_and_stays_counted() {
+    let tmp = repo(
+        &[
+            (
+                "engine.py",
+                "class Engine:\n    def start(self):\n        return 1\n",
+            ),
+            (
+                "use.py",
+                "import engine\n\n\ndef go(thing):\n    return thing.start()\n",
+            ),
+        ],
+        &[(
+            "engine.py",
+            "class Engine:\n    def start(self):\n        return 2\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "start")["folded"][0];
+    assert_eq!(folded["rule"], "untyped-receiver", "{doc:#}");
+    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert!(callers_of(&doc, "start").is_empty(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("not affected (untyped-receiver): 1"), "{md}");
+    assert!(header(&md).contains("1 possible"), "{md}");
+}
+
+/// A type use of a function folds only where its types are written down.
+#[test]
+fn a_type_use_folds_only_for_a_declared_type() {
+    let typed = repo(
+        &[
+            (
+                "src/f.ts",
+                "export function f(a: number): number {\n  return a;\n}\n",
+            ),
+            (
+                "src/r.ts",
+                "import { f } from \"./f\";\n\nexport type R = ReturnType<typeof f>;\n",
+            ),
+        ],
+        &[(
+            "src/f.ts",
+            "export function f(a: number): number {\n  return a + 1;\n}\n",
+        )],
+    );
+    let doc = impact(typed.path(), "HEAD~1..HEAD");
+    let kinds: Vec<&str> = row(&doc, "f")["folded"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|f| f["rule"].as_str())
+        .collect();
+    assert!(
+        !kinds.contains(&"declared-type") || callers_of(&doc, "f").is_empty(),
+        "{doc:#}"
+    );
+    // An inferred return type: the body decides it, so the use stays listed.
+    let inferred = repo(
+        &[
+            (
+                "src/f.ts",
+                "export function f(a: number) {\n  return a;\n}\n",
+            ),
+            (
+                "src/r.ts",
+                "import { f } from \"./f\";\n\nexport type R = ReturnType<typeof f>;\n",
+            ),
+        ],
+        &[(
+            "src/f.ts",
+            "export function f(a: number) {\n  return String(a);\n}\n",
+        )],
+    );
+    let doc = impact(inferred.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+}
+
+/// The cases the table never folds: a removal, a rename, a narrowed visibility, a
+/// type, a field annotation a framework executes, a decorated docstring.
+#[test]
+fn a_removed_definition_folds_nothing() {
+    let tmp = repo(
+        &[
+            ("shop.py", "def legacy(i):\n    return i\n"),
+            (
+                "use.py",
+                "from shop import legacy\n\n\ndef go(i):\n    return legacy(i)\n",
+            ),
+        ],
+        // Another body: an identical one would pair as a rename.
+        &[("shop.py", "def other(i):\n    return i + 1\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+    assert!(callers_of(&doc, "legacy").contains(&"use.py"), "{doc:#}");
+}
+
+#[test]
+fn a_renamed_definition_folds_nothing() {
+    let tmp = repo(
+        &[
+            ("shop.py", "def total(items):\n    return sum(items)\n"),
+            (
+                "use.py",
+                "from shop import total\n\n\ndef go(i):\n    return total(i)\n",
+            ),
+        ],
+        &[(
+            "shop.py",
+            "def grand_total(items):\n    return sum(items)\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+}
+
+#[test]
+fn a_narrowed_visibility_folds_nothing() {
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/lib.rs", "pub mod pricing;\npub mod user;\n"),
+            (
+                "src/pricing.rs",
+                "pub fn total(x: u32) -> u32 {\n    x\n}\n",
+            ),
+            (
+                "src/user.rs",
+                "pub fn go() -> u32 {\n    crate::pricing::total(1)\n}\n",
+            ),
+        ],
+        &[(
+            "src/pricing.rs",
+            "pub(crate) fn total(x: u32) -> u32 {\n    x\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+}
+
+#[test]
+fn an_interface_change_folds_nothing() {
+    let tmp = repo(
+        &[
+            ("src/opts.ts", "export interface Opts {\n  a: number;\n}\n"),
+            (
+                "src/use.ts",
+                "import { Opts } from \"./opts\";\n\nexport const o: Opts = { a: 1 };\n",
+            ),
+        ],
+        &[(
+            "src/opts.ts",
+            "export interface Opts {\n  a: number;\n  b?: string;\n}\n",
+        )],
+    );
+    nothing_folds(&impact(tmp.path(), "HEAD~1..HEAD"));
+}
+
+/// A pydantic model's field annotation is run by the framework: a type use there
+/// is never folded, though a plain function's annotation of the same name is.
+#[test]
+fn an_annotation_a_framework_executes_is_never_folded() {
+    let tmp = repo(
+        &[
+            ("money.py", "Price: type = float\n"),
+            (
+                "model.py",
+                "from pydantic import BaseModel\n\nfrom money import Price\n\n\nclass Item(BaseModel):\n    price: Price\n",
+            ),
+        ],
+        &[("money.py", "Price: type = int\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+}
+
+/// A decorator may read the docstring (CLI help, routes): a decorated function's
+/// doc edit is no layout edit, and its callers are listed.
+#[test]
+fn a_decorated_docstring_change_is_not_set_aside() {
+    let tmp = repo(
+        &[
+            (
+                "app.py",
+                "import functools\n\n\n@functools.cache\ndef index():\n    \"\"\"Home page.\"\"\"\n    return 1\n",
+            ),
+            (
+                "use.py",
+                "from app import index\n\n\ndef go():\n    return index()\n",
+            ),
+        ],
+        &[(
+            "app.py",
+            "import functools\n\n\n@functools.cache\ndef index():\n    \"\"\"The home page.\"\"\"\n    return 1\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    nothing_folds(&doc);
+    assert_eq!(callers_of(&doc, "index"), ["use.py"], "{doc:#}");
 }

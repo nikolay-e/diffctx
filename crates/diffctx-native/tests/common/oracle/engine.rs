@@ -268,6 +268,11 @@ fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>,
         }
     }
     args.extend(["-f".into(), format.into(), "-q".into()]);
+    // The corpus asserts relations; what the answer folds has its own tests. A
+    // released binary has no such flag.
+    if std::env::var_os("DIFFCTX_BIN").is_none() {
+        args.push("--unfold".into());
+    }
     args.extend(case.query.args.iter().cloned());
 
     let mut command = match std::env::var_os("DIFFCTX_BIN") {
@@ -333,13 +338,15 @@ fn kind_of(relation: &str) -> Kind {
     match relation {
         "reference" => Kind::Reads,
         "implementation" => Kind::Overrides,
+        "reexports" => Kind::Reexports,
         _ => Kind::Calls,
     }
 }
 
 fn resolution_of(evidence: &str) -> Resolution {
     match evidence {
-        "resolved" => Resolution::Resolved,
+        // A static re-export binds: the module offers the definition on.
+        "resolved" | "reexport" => Resolution::Resolved,
         "candidate" => Resolution::Candidate,
         _ => Resolution::Unresolved,
     }

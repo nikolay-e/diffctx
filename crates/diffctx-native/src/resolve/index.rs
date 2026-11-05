@@ -240,7 +240,7 @@ impl Index {
         let scope = scope_path(&import.enclosing);
         let module = import.module.as_str().to_string();
         let file = &mut self.files[at];
-        if import.names.is_empty() && import.star.is_none() && import.relative == 0 {
+        if import.names.is_empty() && !import.star.is_star() && import.relative == 0 {
             // `import a.b.c` binds `a`; `import a.b.c as x` binds `x` to the whole.
             let (local, dotted) = match &import.default {
                 Some(alias) => (alias.clone(), module),
@@ -259,7 +259,7 @@ impl Index {
             });
             return;
         }
-        if import.star.is_some() {
+        if import.star.is_star() {
             file.imports.push(ImportRec {
                 scope,
                 local: None,

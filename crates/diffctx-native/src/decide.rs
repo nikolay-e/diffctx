@@ -17,7 +17,7 @@
 //!
 //! An absence is never a default. [`Complete`] is the witness that the search for
 //! a definition's uses left nothing unread; only this module makes one (the cell's
-//! own search, [`Coverage::searched`] and [`Coverage::scope`]), from the gaps the
+//! own search, [`Coverages::searched`] and [`Coverage::scope`]), from the gaps the
 //! search found, and an absence claim ([`Claim::Absent`]) or an exact
 //! count ([`Count::Exact`]) holds it. Every other outcome names its [`Gap`]. A
 //! failed read is an `Err` or a gap here, never an empty value: the lint that
@@ -25,25 +25,26 @@
 
 #![deny(clippy::disallowed_methods)]
 
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::facts::{
-    Def, DefChange, DefKey, DefKind, FactsCache, Language, ModulePath, Name, Origin, ProjectId,
-    Scope, SemanticDef, Visibility, facts_of, semantic_changes,
+    Def, DefChange, DefKey, DefKind, Delta, Disambig, Fact, FactsCache, Language, ModulePath, Name,
+    Origin, ProjectId, Scope, SemanticDef, Visibility, facts_of, semantic_changes,
 };
+use crate::fold::{self, Basis, Rule};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
-    Binding, CandidateReason, Definition, EvidenceKind, PythonResolver, Relation, Resolution,
-    TypeScriptResolver, UnresolvedReason,
+    Binding, CandidateReason, Definition, EvidenceKind, KotlinResolver, PythonResolver, Relation,
+    Resolution, RustResolver, TypeScriptResolver, UnresolvedReason,
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, ChangeKind, Loss, RangeSpec, RepoPath,
-    RunBudget, Side, SideTag,
+    RunBudget, Side, SideTag, WorkspaceModel,
 };
 
 /// Uses of a name that left, or moved, listed one by one up to this many; past
@@ -56,21 +57,27 @@ const AMBIGUOUS_MODULE: &str = "ambiguous_module";
 const IMPORT_UNRESOLVED: &str = "import_unresolved";
 const IMPORT_GLOB: &str = "import_glob";
 const GLOBAL: &str = "global";
+const OVERLOADED: &str = "overloaded";
+const DISPATCH: &str = "dispatch";
 
 /// The languages one resolver reads: a cell answers for one family.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Family {
     Python,
     TypeScript,
+    Rust,
+    Kotlin,
 }
 
 impl Family {
-    const ALL: [Self; 2] = [Self::Python, Self::TypeScript];
+    const ALL: [Self; 4] = [Self::Python, Self::TypeScript, Self::Rust, Self::Kotlin];
 
     fn has(self, language: Language) -> bool {
         match self {
             Self::Python => language == Language::Python,
             Self::TypeScript => matches!(language, Language::JavaScript | Language::TypeScript),
+            Self::Rust => language == Language::Rust,
+            Self::Kotlin => language == Language::Kotlin,
         }
     }
 
@@ -78,6 +85,8 @@ impl Family {
         match self {
             Self::Python => "Python",
             Self::TypeScript => "TypeScript/JavaScript",
+            Self::Rust => "Rust",
+            Self::Kotlin => "Kotlin",
         }
     }
 
@@ -92,6 +101,8 @@ impl Family {
 enum Resolver {
     Python(PythonResolver),
     TypeScript(TypeScriptResolver),
+    Rust(RustResolver),
+    Kotlin(KotlinResolver),
 }
 
 impl Resolver {
@@ -104,6 +115,8 @@ impl Resolver {
         Ok(match family {
             Family::Python => Self::Python(PythonResolver::open(ctx, side, cache)?),
             Family::TypeScript => Self::TypeScript(TypeScriptResolver::open(ctx, side, cache)?),
+            Family::Rust => Self::Rust(RustResolver::open(ctx, side, cache)?),
+            Family::Kotlin => Self::Kotlin(KotlinResolver::open(ctx, side, cache)?),
         })
     }
 
@@ -111,6 +124,8 @@ impl Resolver {
         match self {
             Self::Python(r) => r.bindings(),
             Self::TypeScript(r) => r.bindings(),
+            Self::Rust(r) => r.bindings(),
+            Self::Kotlin(r) => r.bindings(),
         }
     }
 
@@ -118,6 +133,8 @@ impl Resolver {
         match self {
             Self::Python(r) => r.definitions(),
             Self::TypeScript(r) => r.definitions(),
+            Self::Rust(r) => r.definitions(),
+            Self::Kotlin(r) => r.definitions(),
         }
     }
 
@@ -125,6 +142,23 @@ impl Resolver {
         match self {
             Self::Python(r) => r.references_to(key),
             Self::TypeScript(r) => r.references_to(key),
+            Self::Rust(r) => r.references_to(key),
+            Self::Kotlin(r) => r.references_to(key),
+        }
+    }
+
+    /// Whether a removal in `file` is a change of what the project exports. Rust
+    /// exports only through modules declared `pub` from a library root; a file
+    /// outside every crate (no manifest names it) and one the head no longer
+    /// holds are taken to have exported.
+    fn exports(&self, file: &str, workspace: &WorkspaceModel) -> bool {
+        match self {
+            Self::Rust(r) => {
+                r.is_public_module(file)
+                    || workspace.rust_module(file).is_none()
+                    || !r.definitions().iter().any(|d| d.file.as_str() == file)
+            }
+            _ => true,
         }
     }
 
@@ -132,6 +166,8 @@ impl Resolver {
         match self {
             Self::Python(r) => r.losses(),
             Self::TypeScript(r) => r.losses(),
+            Self::Rust(r) => r.losses(),
+            Self::Kotlin(r) => r.losses(),
         }
     }
 }
@@ -167,6 +203,12 @@ pub enum Gap {
     /// Changed code in `files` lies outside every tracked definition (a
     /// module-level statement, a `__main__` block): what it changes is not traced.
     Untracked { files: usize },
+    /// A trait's member, or the implementation of one: calls arrive through
+    /// `dyn Trait` and generic bounds, which only candidates follow.
+    Dispatched { via: String },
+    /// `files` that could name the definition invoke `cfg_if!`, which defines
+    /// items by expansion: what it declares is not read.
+    Macros { files: usize },
     /// The answer cap shed the definition: its callers were found, not listed.
     Capped,
     /// A route no model traces can reach it: dispatch, an untyped receiver, a
@@ -203,6 +245,14 @@ impl std::fmt::Display for Gap {
                 f,
                 "changed code outside any tracked definition in {files} file(s)"
             ),
+            Self::Dispatched { via } => write!(
+                f,
+                "it is a member of `{via}`, whose calls through `dyn {via}` or a bound are candidates"
+            ),
+            Self::Macros { files } => write!(
+                f,
+                "{files} file(s) that could name it declare items through `cfg_if!`, which is not expanded"
+            ),
             Self::Capped => f.write_str("the answer cap shed it"),
             Self::NotTraced => f.write_str("a route no model traces can reach it"),
         }
@@ -231,17 +281,17 @@ impl Coverage {
         Self::Partial(vec![gap])
     }
 
-    /// The search for one definition's callers outside the cell: the cell's own
-    /// coverage when the cell answered for it, the stop that cut the search short
+    /// The search for one relation's uses outside the cell: the cell's own
+    /// coverage of it when the cell answered, the stop that cut the search short
     /// or a route nothing traces when the answer names one, and the files that
     /// spell the name but were not analysed whole.
-    pub fn searched(
-        cell: Option<&Verdict>,
+    fn searching(
+        cell: Option<Self>,
         stopped: Option<&[LimitReason]>,
         not_traced: bool,
         unread_files: usize,
     ) -> Self {
-        let mut gaps: Vec<Gap> = cell.map_or_else(Vec::new, |v| v.coverage().gaps().to_vec());
+        let mut gaps: Vec<Gap> = cell.map_or_else(Vec::new, |c| c.gaps().to_vec());
         if gaps.is_empty() {
             if let Some(reasons) = stopped {
                 gaps.push(Gap::Stopped {
@@ -257,6 +307,23 @@ impl Coverage {
             });
         }
         Self::of(gaps)
+    }
+
+    /// Both coverages at once: complete only when each is, and then the witness
+    /// of the first. It makes no witness.
+    pub fn both(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Complete(witness), Self::Complete(_)) => Self::Complete(witness),
+            (first, second) => {
+                let mut gaps = first.gaps().to_vec();
+                for gap in second.gaps() {
+                    if !gaps.contains(gap) {
+                        gaps.push(gap.clone());
+                    }
+                }
+                Self::Partial(gaps)
+            }
+        }
     }
 
     /// What the run as a whole covered: a limit that can have lost a caller,
@@ -333,6 +400,72 @@ impl Count {
     }
 }
 
+/// What the search covered of a definition's uses, by the two things an answer
+/// says about them: its calls (calls, constructions, overrides) and its reads
+/// (reads, writes, a value passed on). One can be known while the other is not:
+/// an untyped read of a name leaves its reads undetermined and its calls found.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Coverages {
+    calls: Coverage,
+    reads: Coverage,
+}
+
+impl Coverages {
+    /// A search incomplete for one reason it already knows, of both.
+    pub fn partial(gap: Gap) -> Self {
+        Self {
+            calls: Coverage::partial(gap.clone()),
+            reads: Coverage::partial(gap),
+        }
+    }
+
+    /// What the cell covered of a definition.
+    pub fn of_verdict(verdict: &Verdict) -> Self {
+        Self {
+            calls: verdict.calls(),
+            reads: verdict.reads(),
+        }
+    }
+
+    /// The search for one definition's uses outside the cell, each relation
+    /// group starting from the cell's coverage of it (see `Coverage::searching`).
+    pub fn searched(
+        cell: Option<&Verdict>,
+        stopped: Option<&[LimitReason]>,
+        not_traced: bool,
+        unread_files: usize,
+    ) -> Self {
+        Self {
+            calls: Coverage::searching(cell.map(Verdict::calls), stopped, not_traced, unread_files),
+            reads: Coverage::searching(cell.map(Verdict::reads), stopped, not_traced, unread_files),
+        }
+    }
+
+    pub const fn calls(&self) -> &Coverage {
+        &self.calls
+    }
+
+    pub const fn reads(&self) -> &Coverage {
+        &self.reads
+    }
+
+    /// Both groups, as one coverage: what a claim about every use needs.
+    pub fn all(&self) -> Coverage {
+        self.calls.clone().both(self.reads.clone())
+    }
+}
+
+/// The relations of a use: the ones a change to a definition reaches its readers
+/// and callers through (`Relation::uses`).
+const USES: [Relation; 6] = [
+    Relation::Calls,
+    Relation::Instantiates,
+    Relation::Overrides,
+    Relation::Reads,
+    Relation::Writes,
+    Relation::PassesAsValue,
+];
+
 /// What a statement about a definition's uses may be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(
@@ -366,6 +499,11 @@ pub struct Use {
     pub scope: Scope,
     /// The owner of the line is itself changed in the range.
     pub also_changed: bool,
+    /// The rule of the folding table that says the change cannot have affected
+    /// this row; the answer folds it unless asked to list every row.
+    pub folded: Option<Rule>,
+    /// For a candidate: how many definitions share the name it may be.
+    pub sharing: usize,
 }
 
 /// The uses of a definition and what covered the search for them: the one
@@ -373,7 +511,7 @@ pub struct Use {
 /// relation an absence is claimed for.
 pub struct Verdict {
     pub uses: Vec<Use>,
-    coverage: Coverage,
+    by_relation: [(Relation, Coverage); 6],
 }
 
 impl Verdict {
@@ -394,24 +532,51 @@ impl Verdict {
         self.uses.iter().filter(|u| u.also_changed)
     }
 
-    pub fn coverage(&self) -> &Coverage {
-        &self.coverage
+    /// What covered the search of one relation of use.
+    pub fn relation(&self, relation: Relation) -> &Coverage {
+        self.by_relation
+            .iter()
+            .find(|(r, _)| *r == relation)
+            .map_or(&self.by_relation[0].1, |(_, coverage)| coverage)
+    }
+
+    fn merged<const N: usize>(&self, relations: [Relation; N]) -> Coverage {
+        relations
+            .into_iter()
+            .map(|r| self.relation(r).clone())
+            .reduce(Coverage::both)
+            .unwrap_or_else(|| self.by_relation[0].1.clone())
+    }
+
+    /// The calls of the definition: calls, constructions and overrides.
+    pub fn calls(&self) -> Coverage {
+        self.merged([Relation::Calls, Relation::Instantiates, Relation::Overrides])
+    }
+
+    /// The reads of the definition: reads, writes and a value passed on.
+    pub fn reads(&self) -> Coverage {
+        self.merged([Relation::Reads, Relation::Writes, Relation::PassesAsValue])
+    }
+
+    /// Every relation of use at once.
+    pub fn coverage(&self) -> Coverage {
+        self.calls().both(self.reads())
     }
 
     /// The gap the answer names first.
-    pub fn gap(&self) -> Option<&Gap> {
-        self.coverage.gaps().first()
+    pub fn gap(&self) -> Option<Gap> {
+        self.coverage().gaps().first().cloned()
     }
 
-    /// The strongest thing the evidence carries. An absence is the one claim only
-    /// a complete search makes.
-    pub fn claim(&self) -> Claim {
-        if self.resolved().next().is_some() {
+    /// The strongest thing the evidence carries of one relation. An absence is
+    /// the one claim only a complete search of that relation makes.
+    pub fn claim(&self, relation: Relation) -> Claim {
+        if self.resolved().any(|u| u.relation == relation) {
             Claim::Resolved
-        } else if self.candidates().next().is_some() {
+        } else if self.candidates().any(|u| u.relation == relation) {
             Claim::Candidate
         } else {
-            match &self.coverage {
+            match self.relation(relation) {
                 Coverage::Complete(witness) => Claim::Absent(*witness),
                 Coverage::Partial(gaps) => match gaps.first() {
                     Some(Gap::Unlanded { .. }) => Claim::Unresolved,
@@ -422,7 +587,7 @@ impl Verdict {
     }
 
     pub fn complete(&self) -> bool {
-        self.coverage.witness().is_some()
+        self.coverage().witness().is_some()
     }
 }
 
@@ -516,6 +681,25 @@ pub struct Changed {
     /// Part of the module's public surface: a removed one is a contract that
     /// moved.
     pub public: bool,
+    /// What the range did to the definition, for the folding table; none when
+    /// it was removed, renamed, moved, re-scoped, ambiguously paired or added.
+    basis: Option<Basis>,
+    /// A function, method or class with decorators: a decorator may read what a
+    /// doc or layout edit touched, so such an edit is never set aside.
+    pub decorated: bool,
+}
+
+impl Changed {
+    /// The parameters a compatible signature change added, when it was one.
+    pub fn new_parameters(&self) -> Vec<String> {
+        match &self.basis {
+            Some(Basis {
+                compatible: Some(names),
+                ..
+            }) => names.clone(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// The simple names in the parentheses of a class signature: `class A(B, m.C[int],
@@ -590,10 +774,14 @@ pub struct Cell {
     files: HashSet<String>,
     /// Files outside the run's pathspecs that hold uses the cell left out.
     outside: HashSet<String>,
+    /// Rust files that invoke `cfg_if!`.
+    macro_files: HashSet<String>,
+    /// Python files that import a library which executes annotations at run time.
+    runtime_files: RefCell<HashMap<String, bool>>,
     /// Names with uses that landed on nothing, by name: the files.
     /// The file, line, owner and whether it reads a property through a receiver
     /// nothing types.
-    unlanded: HashMap<String, Vec<(String, u32, Scope, bool)>>,
+    unlanded: HashMap<String, Vec<(String, u32, Scope, bool, Relation)>>,
     /// Resolved uses by target: the file and line of each.
     landed: HashMap<DefKey, Vec<(String, u32)>>,
     /// (user file, used file) pairs a binding links.
@@ -695,6 +883,8 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
             CandidateReason::ImportUnresolved => IMPORT_UNRESOLVED,
             CandidateReason::ImportGlob => IMPORT_GLOB,
             CandidateReason::Global => GLOBAL,
+            CandidateReason::Overloaded => OVERLOADED,
+            CandidateReason::Dispatch => DISPATCH,
         })),
         Resolution::Module { .. } | Resolution::Unresolved { .. } => None,
     }
@@ -764,6 +954,8 @@ impl Cell {
             bindings_by_file: HashMap::new(),
             files: HashSet::new(),
             outside: HashSet::new(),
+            macro_files: HashSet::new(),
+            runtime_files: RefCell::new(HashMap::new()),
             unlanded: HashMap::new(),
             landed: HashMap::new(),
             reaches: HashSet::new(),
@@ -795,7 +987,7 @@ impl Cell {
         let mut file_of: HashMap<&DefKey, &str> = HashMap::new();
         // Uses that landed on nothing: (name, file, owner, a use through a receiver
         // nothing types: a property read, and in TypeScript a method call).
-        let mut unlanded: Vec<(String, String, u32, Scope, bool)> = Vec::new();
+        let mut unlanded: Vec<(String, String, u32, Scope, bool, Relation)> = Vec::new();
         // The names a scope calls or reads through an untyped receiver and the
         // resolver placed as candidates: a read of `w.switch` beside the call
         // `w.switch()` is the call's question. A use a typed receiver resolved
@@ -825,6 +1017,12 @@ impl Cell {
                 continue;
             }
             self.files.insert(file.to_string());
+            if self.family == Family::Rust
+                && b.relation == Relation::Calls
+                && b.name.as_str() == "cfg_if"
+            {
+                self.macro_files.insert(file.to_string());
+            }
             self.bindings_by_file
                 .entry(file.to_string())
                 .or_default()
@@ -832,7 +1030,11 @@ impl Cell {
             let line = b.site.lines.0;
             match &b.resolution {
                 Resolution::Resolved { target, .. } => {
-                    if b.relation.uses() {
+                    // A Rust test reaches a type through the function that names it
+                    // in a signature or a type argument (`size_of::<T>()`).
+                    if b.relation.uses()
+                        || (self.family == Family::Rust && b.relation == Relation::TypeUses)
+                    {
                         self.landed
                             .entry(target.clone())
                             .or_default()
@@ -861,6 +1063,7 @@ impl Cell {
                                         UnresolvedReason::NoCandidates
                                             | UnresolvedReason::TooManyCandidates
                                     )),
+                            b.relation,
                         ));
                     }
                 }
@@ -873,14 +1076,14 @@ impl Cell {
                 ));
             }
         }
-        for (name, file, line, from, read) in unlanded {
+        for (name, file, line, from, read, relation) in unlanded {
             if read && placed.contains(&(file.clone(), from.clone(), name.clone())) {
                 continue;
             }
             self.unlanded
                 .entry(name)
                 .or_default()
-                .push((file, line, from, read));
+                .push((file, line, from, read, relation));
         }
         self.losses = self.head.losses().to_vec();
     }
@@ -923,12 +1126,23 @@ impl Cell {
             .into_iter()
             .filter(|d| !moved.contains(&d.key))
             .collect();
-        let layout_only = |change: &DefChange| {
-            matches!(change, DefChange::Changed { origin: Origin::Same, delta }
+        // A decorated function, method or class is never set aside as a doc or
+        // layout edit: a decorator may read the docstring (CLI help, routes).
+        let mut decorated: HashSet<DefKey> = HashSet::new();
+        for d in &python {
+            let only_doc = matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
+                if !(delta.signature || delta.body || delta.visibility || delta.decorators));
+            if only_doc && self.decorated_at_head(d) {
+                decorated.insert(d.key.clone());
+            }
+        }
+        let layout_only = |d: &SemanticDef| {
+            matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
                 if !(delta.signature || delta.body || delta.visibility || delta.decorators))
+                && !decorated.contains(&d.key)
         };
         for d in &python {
-            if !layout_only(&d.change) {
+            if !layout_only(d) {
                 self.changed_keys.insert(d.key.clone());
             }
         }
@@ -945,6 +1159,23 @@ impl Cell {
                     && c.key.local.name == *name
                     && c.key.local.container.as_slice() == outer
             })
+        };
+        // The members of a Rust type that moved (an enum's variants, a struct's
+        // fields) went with it: they are no removals of their own.
+        let family = self.family;
+        let holder_moved = |key: &DefKey| {
+            let Some((name, outer)) = key.local.container.split_last() else {
+                return false;
+            };
+            family == Family::Rust
+                && python.iter().any(|c| {
+                    matches!(&c.change, DefChange::Changed { origin: Origin::Moved { from }, .. }
+                        if from.project == key.project
+                            && from.module == key.module
+                            && from.language == key.language
+                            && from.local.name == *name
+                            && from.local.container.as_slice() == outer)
+                })
         };
         let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
         let mut removed: Vec<Changed> = Vec::new();
@@ -967,6 +1198,9 @@ impl Cell {
                     {
                         continue;
                     }
+                    if holder_moved(&d.key) || self.moved_within_type(&d.key, kind) {
+                        continue;
+                    }
                     let gone = Changed {
                         name: d.key.local.name.as_str().to_string(),
                         kind,
@@ -978,6 +1212,8 @@ impl Cell {
                         unpaired,
                         local: false,
                         public,
+                        basis: None,
+                        decorated: false,
                     };
                     // A class that lost its constructor is changed like one whose
                     // constructor was edited: what builds, extends or names it is
@@ -1001,6 +1237,8 @@ impl Cell {
                                     unpaired: false,
                                     local: false,
                                     public: false,
+                                    basis: None,
+                                    decorated: false,
                                 },
                             );
                         }
@@ -1029,6 +1267,8 @@ impl Cell {
                                 unpaired,
                                 local: false,
                                 public: false,
+                                basis: None,
+                                decorated: false,
                             };
                             held.subjects.truncate(1);
                             merge(&mut by_key, held);
@@ -1042,22 +1282,66 @@ impl Cell {
                     };
                     let how = match change {
                         DefChange::Added => How::Added,
-                        other => How::Edited {
-                            layout_only: layout_only(other),
+                        _ => How::Edited {
+                            layout_only: layout_only(d),
                         },
                     };
-                    let stale = match change {
+                    let basis = match change {
+                        DefChange::Changed {
+                            origin: Origin::Same,
+                            delta,
+                        } => self.basis_of(d, def, *delta),
+                        _ => None,
+                    };
+                    let mut stale = match change {
                         DefChange::Changed {
                             origin: Origin::Moved { from } | Origin::Renamed { from },
                             ..
                         } => vec![from.clone()],
                         _ => Vec::new(),
                     };
+                    // A Rust definition that moved while a file still names the old
+                    // path is a removal as well: what names it broke, and says so
+                    // under the old path, not as a caller of the new one.
+                    if let (
+                        Family::Rust,
+                        DefChange::Changed {
+                            origin: Origin::Moved { from },
+                            ..
+                        },
+                        Some(base_file),
+                    ) = (self.family, change, d.base.as_ref())
+                    {
+                        if let Some((kind, lines, public)) =
+                            self.base_definition(base_file, from)?
+                        {
+                            let gone = Changed {
+                                name: from.local.name.as_str().to_string(),
+                                kind,
+                                file: base_file.as_str().to_string(),
+                                lines,
+                                how: How::Removed,
+                                subjects: Vec::new(),
+                                stale: vec![from.clone()],
+                                unpaired: false,
+                                local: false,
+                                public,
+                                basis: None,
+                                decorated: false,
+                            };
+                            if !self.stale_uses(&gone).0.is_empty() {
+                                removed.push(gone);
+                                stale = Vec::new();
+                            }
+                        }
+                    }
                     let unpaired = matches!(change, DefChange::Unknown { .. });
-                    for changed in self.report_as(def, how, stale, unpaired, true) {
+                    for mut changed in self.report_as(def, how, stale, unpaired, true) {
                         if self.folds_into_its_class(&changed, def) {
                             continue;
                         }
+                        changed.basis.clone_from(&basis);
+                        changed.decorated = decorated.contains(&d.key);
                         merge(&mut by_key, changed);
                     }
                 }
@@ -1072,6 +1356,86 @@ impl Cell {
             ))
         });
         Ok(())
+    }
+
+    /// Whether a Rust member the head's `impl` no longer has is still a member of
+    /// its type: another `impl` of that type, in any module, has one of its name
+    /// and kind. An inherent member is matched by an inherent one and a trait
+    /// impl's by the impl of the same trait: a removed inherent method is a
+    /// removal whatever a trait impl of the type has under the same name.
+    fn moved_within_type(&self, key: &DefKey, kind: DefKind) -> bool {
+        let Resolver::Rust(head) = &self.head else {
+            return false;
+        };
+        if key.local.container.is_empty() {
+            return false;
+        }
+        let Ok(Resolver::Rust(base)) = self.base() else {
+            return false;
+        };
+        let Some(owner) = base.owner_of(key) else {
+            return false;
+        };
+        head.definitions().iter().any(|d| {
+            d.kind == kind
+                && d.key.local.name == key.local.name
+                && d.key.local.disambig == key.local.disambig
+                && head.owner_of(&d.key) == Some(owner)
+        })
+    }
+
+    /// Whether the definition at the head is a function, method or class with
+    /// decorators.
+    fn decorated_at_head(&self, d: &SemanticDef) -> bool {
+        let Some(file) = d.head.as_ref() else {
+            return false;
+        };
+        // A definition whose facts cannot be read is not known to be undecorated:
+        // `true` keeps it listed.
+        let Ok(found) = self.declared(SideTag::Head, file, &d.key) else {
+            return true;
+        };
+        found.is_some_and(|def| {
+            !def.decorators.is_empty()
+                && matches!(
+                    def.kind,
+                    DefKind::Function | DefKind::Method | DefKind::Constructor | DefKind::Class
+                )
+        })
+    }
+
+    /// What an edit in place did to a definition, as the folding table reads it.
+    /// None when the facts of either side are unread: then nothing folds.
+    fn basis_of(&self, d: &SemanticDef, def: &Definition, delta: Delta) -> Option<Basis> {
+        if delta.visibility || !(delta.signature || delta.body || delta.decorators) {
+            return None;
+        }
+        let (head, base) = (d.head.as_ref()?, d.base.as_ref()?);
+        let at_head = self.declared(SideTag::Head, head, &d.key).unwrap_or(None)?;
+        let compatible = if delta.signature && !delta.decorators {
+            let at_base = self.declared(SideTag::Base, base, &d.key).unwrap_or(None)?;
+            fold::compatible(
+                at_base.signature.as_deref()?,
+                at_head.signature.as_deref()?,
+                d.key.local.name.as_str(),
+                d.key.language,
+            )
+        } else {
+            None
+        };
+        Some(Basis {
+            kind: def.kind,
+            signature: delta.signature,
+            body: delta.body,
+            decorators: delta.decorators,
+            compatible,
+            typed: fold::declared_types(
+                def.kind,
+                d.key.language,
+                at_head.signature.as_deref(),
+                d.key.local.name.as_str(),
+            ),
+        })
     }
 
     /// A field declaration only one side has, with an equal one on the other
@@ -1266,6 +1630,8 @@ impl Cell {
             unpaired,
             local: self.inside_function(def),
             public: false,
+            basis: None,
+            decorated: false,
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
@@ -1324,7 +1690,8 @@ impl Cell {
         Ok(Some((
             def.kind,
             def.span.lines,
-            held && def.visibility == Visibility::Public,
+            held && def.visibility == Visibility::Public
+                && self.head.exports(file.as_str(), &self.ctx.workspace),
         )))
     }
 
@@ -1399,8 +1766,10 @@ impl Cell {
             let mut spans: Vec<(u32, u32)> = Vec::new();
             for (line, text) in &self.added[file] {
                 let text = text.trim_start();
-                let code = !text.is_empty()
-                    && !["#", "//", "/*", "*"].iter().any(|c| text.starts_with(c))
+                let code = text.chars().any(char::is_alphanumeric)
+                    && !["#", "//", "/*", "*", "@"]
+                        .iter()
+                        .any(|c| text.starts_with(c))
                     && !held.iter().any(|s| within(*line, *s))
                     && !imported.iter().any(|s| within(*line, *s));
                 if !code {
@@ -1506,6 +1875,8 @@ impl Cell {
             relation: b.relation,
             standing,
             scope: b.from.clone(),
+            folded: None,
+            sharing: b.targets().len(),
         })
     }
 
@@ -1519,10 +1890,12 @@ impl Cell {
                 .is_some_and(|d| d.key.local.container.is_empty() && d.kind == DefKind::Function)
     }
 
-    /// `export { a } from './m'` offers a changed definition on: a module that
-    /// re-exports it is where it reaches the package's users.
+    /// `export { a } from './m'` and `from .m import a as a` in a package's
+    /// `__init__` offer a changed definition on: a module that re-exports it is
+    /// where it reaches the package's users.
     fn reexports(&self, b: &Binding) -> bool {
-        self.family == Family::TypeScript && b.relation == Relation::Reexports
+        matches!(self.family, Family::TypeScript | Family::Python)
+            && b.relation == Relation::Reexports
     }
 
     /// An annotation or a base class: a changed type is read by every signature,
@@ -1563,28 +1936,41 @@ impl Cell {
             stale.iter().map(|u| (u.file.clone(), u.line)).collect();
         uses.extend(stale);
         let unplaced = self.unplaced(changed, &covered);
-        let mut gaps: Vec<Gap> = Vec::new();
+        // What the search could not tell of every relation, then what it could not
+        // tell of one: a use that landed on nothing is a gap of the relation it
+        // would have been, a read of a function leaves its calls known.
+        let mut lead: Vec<Gap> = Vec::new();
+        let mut per: Vec<(Relation, Gap)> = Vec::new();
         if changed.unpaired {
-            gaps.push(Gap::Unpaired);
+            lead.push(Gap::Unpaired);
         } else if !unplaced.is_empty() {
             if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
                 // A name that left, or moved, may still be spelled where nothing
                 // types the receiver: each such line may be a use that broke.
-                uses.extend(unplaced.into_iter().map(|(file, line, scope)| Use {
+                uses.extend(unplaced.into_iter().map(|(file, line, scope, _)| Use {
                     also_changed: self.in_diff(&file, line, &scope),
                     file,
                     line,
                     relation: Relation::Reads,
                     standing: Standing::Candidate(UNTYPED_RECEIVER),
                     scope,
+                    folded: None,
+                    sharing: 0,
                 }));
             } else {
-                gaps.push(Gap::Unlanded {
-                    uses: unplaced.len(),
-                });
+                for relation in USES {
+                    let landed_on_nothing = unplaced.iter().filter(|u| u.3 == relation).count();
+                    if landed_on_nothing > 0 {
+                        per.push((
+                            relation,
+                            Gap::Unlanded {
+                                uses: landed_on_nothing,
+                            },
+                        ));
+                    }
+                }
             }
         }
-        gaps.extend(base_gap);
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
                 b.file.as_str(),
@@ -1595,28 +1981,159 @@ impl Cell {
         uses.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.standing == b.standing);
         // A candidate that is itself changed was never a caller of record.
         uses.retain(|u| !u.also_changed || u.standing == Standing::Resolved);
+        if let Some(basis) = &changed.basis {
+            for u in uses.iter_mut().filter(|u| !u.also_changed) {
+                let candidate = matches!(u.standing, Standing::Candidate(_));
+                let runtime = self.runtime_annotation(u);
+                u.folded = fold::rule(basis, u.relation, candidate, runtime);
+            }
+        }
         Verdict {
             uses,
-            coverage: self.coverage(changed, gaps),
+            by_relation: self.coverage(changed, lead, per, base_gap.into_iter().collect()),
         }
     }
 
-    /// What covered the search: the gaps its definition found, the files outside
-    /// the run's pathspecs that could name it, and a read the cell lost.
-    fn coverage(&self, changed: &Changed, mut gaps: Vec<Gap>) -> Coverage {
+    /// Whether a type use is an annotation a framework may execute at run time
+    /// (Python): a class body's field annotation, one in the signature of a
+    /// decorated function, or any in a file that imports pydantic, fastapi,
+    /// dataclasses, attrs, marshmallow, typer or click. Unsure counts as yes.
+    fn runtime_annotation(&self, u: &Use) -> bool {
+        if self.family != Family::Python || u.relation != Relation::TypeUses {
+            return false;
+        }
+        if self.imports_runtime_library(&u.file) {
+            return true;
+        }
+        let Scope::Def(_) = root_scope(&u.scope) else {
+            return false;
+        };
+        let Some(key) = self.key_in(&u.file, &u.scope) else {
+            return true;
+        };
+        let Some(def) = self.definition(&key) else {
+            return true;
+        };
+        match def.kind {
+            DefKind::Class => true,
+            DefKind::Field | DefKind::Variable | DefKind::Constant => {
+                !key.local.container.is_empty()
+            }
+            DefKind::Function | DefKind::Method | DefKind::Constructor => RepoPath::new(&u.file)
+                .map_or(true, |file| {
+                    self.declared(SideTag::Head, &file, &key)
+                        .map_or(true, |found| {
+                            found.is_some_and(|d| !d.decorators.is_empty())
+                        })
+                }),
+            _ => false,
+        }
+    }
+
+    fn imports_runtime_library(&self, file: &str) -> bool {
+        const LIBRARIES: [&str; 7] = [
+            "pydantic",
+            "fastapi",
+            "dataclasses",
+            "attrs",
+            "attr",
+            "marshmallow",
+            "typer",
+        ];
+        if let Some(known) = self.runtime_files.borrow().get(file) {
+            return *known;
+        }
+        let found = RepoPath::new(file).map_or(true, |path| {
+            facts_of(&self.ctx, SideTag::Head, &self.cache, &path).map_or(true, |facts| {
+                facts.is_some_and(|f| {
+                    f.blob.facts.iter().any(|fact| match fact {
+                        Fact::Import(i) => {
+                            let root = i.module.as_str().split('.').next().unwrap_or("");
+                            LIBRARIES.contains(&root) || root == "click"
+                        }
+                        _ => false,
+                    })
+                })
+            })
+        });
+        self.runtime_files
+            .borrow_mut()
+            .insert(file.to_string(), found);
+        found
+    }
+
+    /// What covered the search of each relation of use: the gaps of every
+    /// relation (`lead`, `tail`), the one a relation has of its own (`per`), the
+    /// files outside the run's pathspecs that could name the definition, and a read
+    /// the cell lost. The one place the cell makes a `Complete`.
+    fn coverage(
+        &self,
+        changed: &Changed,
+        lead: Vec<Gap>,
+        per: Vec<(Relation, Gap)>,
+        tail: Vec<Gap>,
+    ) -> [(Relation, Coverage); 6] {
+        let mut tail = tail;
         let outside = self
             .outside
             .iter()
             .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
             .count();
         if outside > 0 {
-            gaps.push(Gap::OutsideScope { files: outside });
+            tail.push(Gap::OutsideScope { files: outside });
+        }
+        if self.family == Family::Rust {
+            let macros = self
+                .macro_files
+                .iter()
+                .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+                .count();
+            if macros > 0 {
+                tail.push(Gap::Macros { files: macros });
+            }
+            let dispatched = changed
+                .subjects
+                .iter()
+                .filter_map(|s| self.definition(&s.key))
+                .find_map(|def| self.dispatched_via(def));
+            if let Some(via) = dispatched {
+                tail.push(Gap::Dispatched { via });
+            }
         }
         let reasons = self.stops();
         if !reasons.is_empty() {
-            gaps.push(Gap::Stopped { reasons });
+            tail.push(Gap::Stopped { reasons });
         }
-        Coverage::of(gaps)
+        USES.map(|relation| {
+            let mut gaps = lead.clone();
+            gaps.extend(
+                per.iter()
+                    .filter(|(r, _)| *r == relation)
+                    .map(|(_, gap)| gap.clone()),
+            );
+            gaps.extend(tail.iter().cloned());
+            (relation, Coverage::of(gaps))
+        })
+    }
+
+    /// The trait a Rust definition belongs to: the one it implements, or the one
+    /// that declares it.
+    fn dispatched_via(&self, def: &crate::resolve::Definition) -> Option<String> {
+        let last = |name: &str| name.rsplit("::").next().unwrap_or(name).to_string();
+        if let Some(Disambig::ImplOf(tr)) = &def.key.local.disambig {
+            return Some(last(tr.as_str()));
+        }
+        let (name, outer) = def.key.local.container.split_last()?;
+        self.defs_by_file
+            .get(def.file.as_str())?
+            .iter()
+            .map(|at| &self.head.definitions()[*at])
+            .find(|d| {
+                d.kind == DefKind::Trait
+                    && d.key.local.container.as_slice() == outer
+                    && &d.key.local.name == name
+            })
+            .map(|tr| tr.key.local.name.as_str().to_string())
     }
 
     /// Uses at the head of a definition the range removed or moved away: lines
@@ -1642,8 +2159,8 @@ impl Cell {
                 if b.relation.uses() && !b.entry_guard && within_scope(&self.scope, b.file.as_str())
                 {
                     let standing = match (self.family, standing_of(&b.resolution)) {
-                        (Family::TypeScript, Some(standing)) => standing,
-                        _ => Standing::Resolved,
+                        (Family::Python, _) | (_, None) => Standing::Resolved,
+                        (_, Some(standing)) => standing,
                     };
                     named
                         .entry((b.file.as_str().to_string(), b.name.clone()))
@@ -1674,6 +2191,8 @@ impl Cell {
                     relation: h.relation,
                     standing,
                     scope: h.from.clone(),
+                    folded: None,
+                    sharing: 0,
                 });
             }
         }
@@ -1686,7 +2205,7 @@ impl Cell {
         &self,
         changed: &Changed,
         covered: &HashSet<(String, u32)>,
-    ) -> Vec<(String, u32, Scope)> {
+    ) -> Vec<(String, u32, Scope, Relation)> {
         // A property read through an object nothing types cannot be a use of a
         // top-level function or constant of a module: `c.env` is no use of the
         // exported `env`, which a use reaches through its import. Only a member
@@ -1700,12 +2219,12 @@ impl Cell {
             .get(&changed.name)
             .into_iter()
             .flatten()
-            .filter(|(file, line, _, read)| {
+            .filter(|(file, line, _, read, _)| {
                 !(top_level_only && *read)
                     && self.ctx.workspace.may_reference(file, &changed.file)
                     && !covered.contains(&(file.clone(), *line))
             })
-            .map(|(file, line, scope, _)| (file.clone(), *line, scope.clone()))
+            .map(|(file, line, scope, _, relation)| (file.clone(), *line, scope.clone(), *relation))
             .collect()
     }
 
@@ -1804,6 +2323,12 @@ fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
             }
             known.stale.extend(changed.stale);
             known.unpaired |= changed.unpaired;
+            // Two reasons for one entry fold by neither: the table has no row
+            // for the two together.
+            if known.basis != changed.basis {
+                known.basis = None;
+            }
+            known.decorated |= changed.decorated;
             known.how = match (known.how, changed.how) {
                 (How::Edited { layout_only: a }, How::Edited { layout_only: b }) => How::Edited {
                     layout_only: a && b,

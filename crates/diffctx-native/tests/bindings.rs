@@ -13,6 +13,8 @@ fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()
         .current_dir(repo)
         .env("DIFFCTX_NO_MARKER", "1")
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .output()
         .expect("run diffctx")

@@ -81,6 +81,7 @@ def build_impact(
     markdown: bool = ...,
     symbol: str | None = ...,
     budget: int | None = ...,
+    unfold: bool = ...,
 ) -> str: ...
 def hook_respond(event: str, stdin_json: str, gate: bool = ...) -> str | None: ...
 def compute_scored_state(

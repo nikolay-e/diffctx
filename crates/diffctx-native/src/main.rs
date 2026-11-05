@@ -65,6 +65,12 @@ struct Cli {
     #[arg(long, allow_negative_numbers = true, value_parser = parse_budget)]
     budget: Option<i64>,
 
+    /// Impact mode: list every row of a changed definition, each marked with the
+    /// rule of the folding table that would fold it, instead of counting the rows
+    /// the change cannot have affected in one line each
+    #[arg(long)]
+    unfold: bool,
+
     /// Output format
     #[arg(short = 'f', long, default_value = "yaml", value_enum)]
     format: OutputFormat,
@@ -515,7 +521,12 @@ fn run_impact(
 
 fn emit_impact(cli: &Cli, mut output: _diffctx::impact::ImpactOutput) -> Result<()> {
     let markdown = matches!(cli.format, OutputFormat::Md);
-    let mut rendered = _diffctx::impact::deliver(&mut output, markdown, resolve_budget(cli.budget));
+    let mut rendered = _diffctx::impact::deliver(
+        &mut output,
+        markdown,
+        resolve_budget(cli.budget),
+        cli.unfold,
+    );
     if !markdown {
         rendered.push('\n');
     }

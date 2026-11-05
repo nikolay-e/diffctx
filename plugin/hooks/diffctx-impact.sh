@@ -70,11 +70,13 @@ spec="diffctx[mcp]==1.20.0"
 # is logged here, or an audit could not tell it from a hook with nothing to say.
 # The binary's own log, not the `hook.log` an older pin rotates (#555).
 log_failure() {
-  local dir="${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx" session=-
+  local dir="${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx" session=- call=-
   local re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]+)"'
   [[ $payload =~ $re ]] && session=${BASH_REMATCH[1]}
+  re='"tool_use_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9_-]+)"'
+  [[ $payload =~ $re ]] && call=${BASH_REMATCH[1]}
   mkdir -p "$dir" 2>/dev/null &&
-    printf '%s %s %s - - error:%s - - %s\n' "$(date +%s)" "$session" "$hook_event" "$1" "${spec##*==}" >>"$dir/hook-runs.log" 2>/dev/null
+    printf '%s %s %s - - error:%s - - call=%s roots=- %s\n' "$(date +%s)" "$session" "$hook_event" "$1" "$call" "${spec##*==}" >>"$dir/hook-runs.log" 2>/dev/null
   return 0
 }
 

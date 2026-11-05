@@ -1026,6 +1026,7 @@ impl<'a> Engine<'a> {
         }
         self.call_assigned_after(f, binding + 1, local.site.bytes.end, depth)
             .or_else(|| self.entered_call(f, local.site.bytes.start, depth))
+            .or_else(|| self.alias_after(f, binding + 1, local.site.bytes.end, depth))
     }
 
     /// The object made by the call a `with` item binds the variable to:
@@ -1127,13 +1128,29 @@ impl<'a> Engine<'a> {
         if callee.use_kind != UseKind::Call {
             return None;
         }
+        self.chain_follows(f, after, lead, callee, true)?;
+        self.callee_result(f, callee, depth)
+    }
+
+    /// The text from `after` to `source` is `lead [await] chain.`, the chain
+    /// written before the name as the facts qualify it, and the expression ends
+    /// its statement: what a variable is assigned is that one reference. With
+    /// `call`, the reference is a callee and the statement ends with its call.
+    fn chain_follows(
+        &self,
+        f: usize,
+        after: u32,
+        lead: Lead,
+        source: &Ref,
+        call: bool,
+    ) -> Option<()> {
         let text = self.text(f)?;
         #[allow(
             clippy::disallowed_methods,
             reason = "the slice is read for an assignment shape; bytes that are not UTF-8 show none, so nothing is inferred from them"
         )]
         let between =
-            std::str::from_utf8(text.get(after as usize..callee.site.bytes.start as usize)?)
+            std::str::from_utf8(text.get(after as usize..source.site.bytes.start as usize)?)
                 .ok()?;
         let mut rest = match lead {
             Lead::Assign => {
@@ -1155,11 +1172,51 @@ impl<'a> Engine<'a> {
             }
         }
         let written: String = rest.split_whitespace().collect();
-        let expected: String = callee.qualifier.iter().map(|q| format!("{q}.")).collect();
-        if written != expected || !ends_statement(&text, callee.site.bytes.end as usize) {
+        let expected: String = source.qualifier.iter().map(|q| format!("{q}.")).collect();
+        let end = source.site.bytes.end as usize;
+        let ends = if call {
+            ends_statement(&text, end)
+        } else {
+            name_ends_statement(&text, end)
+        };
+        (written == expected && ends).then_some(())
+    }
+
+    /// What a variable assigned a name or an attribute chain holds, when the
+    /// chain is static: `internals = options.internals`,
+    /// `retry = self.options.retry`. The fact at `next` is the chain's last name,
+    /// read; what it resolves to is what the variable holds.
+    fn alias_after(
+        &self,
+        f: usize,
+        next: usize,
+        after: u32,
+        depth: usize,
+    ) -> Option<(Entity, EvidenceKind)> {
+        if depth >= MAX_DEPTH {
             return None;
         }
-        self.callee_result(f, callee, depth)
+        let facts = &self.ix.files[f].facts.blob.facts;
+        let Fact::Reference(source) = facts.get(next)? else {
+            return None;
+        };
+        if source.use_kind != UseKind::Read {
+            return None;
+        }
+        self.chain_follows(f, after, Lead::Assign, source, false)?;
+        match self.outcome(f, source, depth + 1) {
+            Outcome::Found {
+                entity:
+                    held @ (Entity::Class(_)
+                    | Entity::Instance(_)
+                    | Entity::Def(_)
+                    | Entity::Module(_)
+                    | Entity::Package(_)
+                    | Entity::Dynamic),
+                ..
+            } => Some((held, EvidenceKind::Aliased)),
+            _ => None,
+        }
     }
 
     /// What calling `callee` makes: the language's own object, an object of a
@@ -1330,7 +1387,11 @@ impl<'a> Engine<'a> {
         if self.literal_after(rec.file, rec.def.name_span.bytes.end) {
             return Entity::Builtin;
         }
-        match self.call_assigned_after(rec.file, rec.fact + 1, rec.def.name_span.bytes.end, 0) {
+        let after = rec.def.name_span.bytes.end;
+        match self
+            .call_assigned_after(rec.file, rec.fact + 1, after, 0)
+            .or_else(|| self.alias_after(rec.file, rec.fact + 1, after, 0))
+        {
             Some((entity, _)) => entity,
             None => Entity::Unknown,
         }
@@ -1832,6 +1893,16 @@ fn base_names(signature: &str) -> Vec<String> {
             (!item.contains('=') && is_dotted(head)).then(|| head.to_string())
         })
         .collect()
+}
+
+/// Whether a name that ends at `at` is the whole of its statement: nothing but
+/// blanks and a comment follows on the line.
+fn name_ends_statement(text: &[u8], mut at: usize) -> bool {
+    while text.get(at).is_some_and(|b| *b == b' ' || *b == b'\t') {
+        at += 1;
+    }
+    text.get(at)
+        .is_none_or(|b| matches!(*b, b'\n' | b'\r' | b'#' | b';'))
 }
 
 /// Whether the call whose callee ends at `at` is the end of its statement.

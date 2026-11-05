@@ -70,7 +70,11 @@ fn pairs(expected: &Relation, actual: &Relation) -> bool {
     // A test link carries no line: an expected site cannot be checked.
     let sites_agree = (tests && actual.sites.is_empty())
         || expected.sites.iter().all(|s| actual.sites.contains(s));
+    // A module that re-exports a definition is where it reaches the package's
+    // users, never a caller of it: only a `reexports` expectation names it, and
+    // it names nothing else.
     from_agrees
+        && (expected.kind == Kind::Reexports) == (actual.kind == Kind::Reexports)
         && expected.resolution == actual.resolution
         && sites_agree
         && (!actual.kind_stated || expected.loose_kind || expected.kind == actual.kind)

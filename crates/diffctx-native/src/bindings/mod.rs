@@ -274,6 +274,13 @@ pub struct Site<'c> {
 pub struct Finding {
     pub evidence: Evidence,
     pub relation: Relation,
+    /// What the use does, where the resolver says: a use the cell found. A
+    /// model's finding says only `relation`.
+    pub kind: Option<crate::lang::RelationKind>,
+    /// The rule of the folding table that says the change cannot have affected
+    /// the use, the relation kind it is counted under, and how many definitions
+    /// share the name a candidate may be.
+    pub fold: Option<(&'static str, &'static str, usize)>,
     pub lines: Vec<u32>,
 }
 
@@ -891,6 +898,8 @@ pub(crate) fn absorb(
         *best = Some(Finding {
             evidence,
             relation,
+            kind: None,
+            fold: None,
             lines: vec![line],
         });
         return;
@@ -899,6 +908,8 @@ pub(crate) fn absorb(
         *f = Finding {
             evidence,
             relation,
+            kind: None,
+            fold: None,
             lines: vec![line],
         };
         return;

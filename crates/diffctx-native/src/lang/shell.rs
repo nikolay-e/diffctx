@@ -479,6 +479,8 @@ impl LanguageFacts for ShellModel<'_> {
         Some(Finding {
             evidence,
             relation: Use::Call,
+            kind: None,
+            fold: None,
             lines,
         })
     }

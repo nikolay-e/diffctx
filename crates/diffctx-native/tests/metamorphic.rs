@@ -172,7 +172,8 @@ impl Built {
             Mode::Symbol => command.args(["--symbol", symbol.as_str()]),
         };
         command
-            .args(["-f", "json", "-q"])
+            // The suite compares relations, whatever the answer folds.
+            .args(["-f", "json", "-q", "--unfold"])
             .args(extra)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1")

@@ -2,7 +2,12 @@ name: ts_declarations_nested_in_a_factory_closure_call_each_other
 mode: symbol
 source: gh#554
 issue_state: closed
-tags: [typescript, nested-function, closure, zustand-store]
+tags: [typescript, nested-function, closure, zustand-store, local-of-definition]
+# Revision 12.3 (W5-N): `alpha`, `beta` and `gamma` never leave the store's
+# closure, so they are locals of `useStore`, not definitions. `--symbol alpha`
+# answers that it is a local of `src/store.ts::useStore` and lists its uses
+# inside it, each with the local it sits in (`beta`, `gamma`): the issue asked
+# who calls the helper, and the uses answer it.
 repo:
   initial_files:
     src/store.ts: |

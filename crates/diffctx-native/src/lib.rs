@@ -18,6 +18,7 @@ pub(crate) mod changed_lines;
 pub(crate) mod container;
 pub(crate) mod decide;
 pub(crate) mod excerpt;
+pub(crate) mod fold;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
 pub(crate) mod parsers;

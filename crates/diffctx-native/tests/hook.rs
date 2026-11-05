@@ -1711,6 +1711,10 @@ fn a_partial_answer_is_retried_a_bounded_number_of_times() {
         vec![true, true, false, false],
         "partial, retried once, then left alone"
     );
+    // The log says which answers were partial (fj#127).
+    let log = hook_log(cache.path());
+    let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
+    assert_eq!(&outcomes[..2], ["partial", "partial"], "{log}");
 }
 
 /// A wide change in one commit, the shape of Forgejo #113: `n` modules each
@@ -3686,4 +3690,178 @@ fn a_push_of_this_sessions_earlier_commit_names_nothing() {
     let pushed = run_line(repo, cache.path(), "git push -q origin HEAD:main");
     let context = pushed.stdout;
     assert!(!context.contains("did not make"), "{context}");
+}
+
+/// #640: a push of commits this session's calls made and had reviewed when
+/// they landed says so in one line, and does not list their callers again
+/// under "check these callers" - the one that reached nothing included.
+#[test]
+fn a_push_of_commits_already_reviewed_says_so_and_lists_no_callers() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let first = run_line(repo, cache.path(), "git commit -qam vat");
+    assert!(context_of(&first).contains("shop/checkout.py::charge"));
+    write(repo, "README.md", "# shop\n\nnotes\n");
+    let second = run_line(repo, cache.path(), "git commit -qam readme");
+    assert!(
+        context_of(&second).contains("reaches nothing"),
+        "{}",
+        second.stdout
+    );
+    let pushed = run_line(repo, cache.path(), "git push -q origin HEAD:main");
+    let context = context_of(&pushed);
+    assert!(context.contains("none of it is new to review"), "{context}");
+    assert!(!context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(!context.contains("Check the"), "{context}");
+}
+
+/// #667: a search whose matched files neither define the name nor use it (it
+/// is spelled in a comment) is settled from the files' own syntax, before any
+/// symbol is built; one that matches a use still builds the answer.
+#[test]
+fn a_search_matching_no_definition_or_use_builds_no_answer() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(repo, "notes/tasks.py", "# restock the shelf nightly\n");
+    commit_all(repo, "notes");
+    let profiles = TempDir::new().unwrap();
+    let mut n = 0;
+    let mut search = |query: &str| {
+        n += 1;
+        let ran = Command::new("sh")
+            .args(["-c", query])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let mut payload: serde_json::Value = serde_json::from_str(&in_session(
+            &format!("s{n}"),
+            &search_payload(repo, "Bash", query),
+        ))
+        .unwrap();
+        payload["tool_response"] =
+            serde_json::json!({"stdout": String::from_utf8_lossy(&ran.stdout), "stderr": ""});
+        let profile = profiles.path().join(format!("run{n}.jsonl"));
+        let h = hook_in_env(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &[("DIFFCTX_PROFILE", profile.as_path())],
+            &payload.to_string(),
+        );
+        let phases = std::fs::read_to_string(&profile).unwrap_or_default();
+        (h, phases)
+    };
+    let (comment, phases) = search("grep -n restock notes/tasks.py");
+    assert_eq!(comment.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" out-of-scope "),
+        "{}",
+        last_log_line(cache.path())
+    );
+    assert!(
+        !phases.contains("impact.setup"),
+        "no symbol was built for a comment: {phases}"
+    );
+    let (used, phases) = search("grep -n restock shop/shelf.py");
+    assert!(
+        context_of(&used).contains("shop/shelf.py::refill"),
+        "{}",
+        used.stdout
+    );
+    assert!(phases.contains("impact.setup"), "{phases}");
+}
+
+/// #676: a newline ends a statement as `;` does, so a grep on a later line of
+/// a multi-line command is looked up like one that starts it.
+#[test]
+fn a_grep_on_a_later_line_of_a_command_is_answered() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "true\ngrep -rn 'total(' shop/"),
+    );
+    assert!(
+        context_of(&h).contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+}
+
+/// AC8: what the hook says for one searched name on a clean tree is at most
+/// 150 tokens, the lead line included, however many callers the name has.
+#[test]
+fn a_clean_tree_search_answer_fits_one_hundred_and_fifty_tokens() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    for i in 0..40 {
+        write(
+            repo,
+            &format!("shop/user_{i}.py"),
+            &format!(
+                "from shop.pricing import total\n\n\ndef use_{i}(cart):\n    return total(cart.items) + {i}\n"
+            ),
+        );
+    }
+    commit_all(repo, "users");
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "grep -rn 'total(' shop/"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("--symbol total"), "{context}");
+    let tokens = _diffctx::tokenizer::count_tokens(&context);
+    assert!(tokens <= 150, "{tokens} tokens: {context}");
+}
+
+/// M1: a log line names the tool call it belongs to, which joins a call's
+/// lines with the transcript, and every repository something landed in.
+#[test]
+fn a_log_line_names_the_call_and_the_repositories_that_landed() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let command = "git commit -qam vat";
+    let with_call = |doc: String| {
+        let mut doc: serde_json::Value = serde_json::from_str(&doc).unwrap();
+        doc["tool_use_id"] = "toolu_log_1".into();
+        doc.to_string()
+    };
+    let pre = hook(
+        repo,
+        cache.path(),
+        &with_call(payload_in_session("s1", repo, command)),
+    );
+    assert_eq!(pre.stdout, "");
+    sh(repo, &[], command);
+    let after = with_call(in_session("s1", &payload_for("PostToolUse", repo, command)));
+    hook_with(repo, cache.path(), "posttooluse", &[], &after);
+    let log = hook_log(cache.path());
+    let lines: Vec<&str> = log.lines().collect();
+    assert!(lines[0].contains(" call=toolu_log_1 roots=- "), "{log}");
+    let name = repo.file_name().unwrap().to_string_lossy().to_string();
+    let landed = lines[1];
+    assert!(landed.contains(" call=toolu_log_1 roots="), "{log}");
+    assert!(
+        landed
+            .split(' ')
+            .any(|f| f.starts_with("roots=") && f.contains(&name)),
+        "{log}"
+    );
+    assert!(
+        landed.split(' ').last() == Some(_diffctx::run_provenance::BUILD_LABEL),
+        "the version stays last: {log}"
+    );
 }

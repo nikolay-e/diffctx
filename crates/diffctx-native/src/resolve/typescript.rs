@@ -14,8 +14,9 @@
 //! The facts carry no initializer of a variable, so the places that read the
 //! file's text are the narrow checks that `x = [await] [new] callee(...)` is the
 //! whole statement (a binding adjacent to a call, with nothing but `=` between
-//! them), that a name is followed by `: any`, and that a call's name sits right
-//! after a JSX `<`.
+//! them), that `const x = a.b.c [as T]` is one chain, or `const {k: x} = Class`
+//! one class, that a name is followed by `: any`, and that a call's name sits
+//! right after a JSX `<`.
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -548,7 +549,7 @@ fn add_import(file: &mut FileRec, import: &Import) {
             kind: import.kind,
         });
     };
-    if let Some(Some(local)) = &import.star {
+    if let Some(local) = import.star.alias() {
         push(
             local,
             Spec::Module {
@@ -740,8 +741,13 @@ fn annotation_after(text: &[u8], at: usize) -> Option<String> {
     if text.get(i) != Some(&b':') {
         return None;
     }
-    i += 1;
-    let start = i;
+    written_type(text, i + 1)
+}
+
+/// The type written from `start` to the `,`, `)`, `=`, `;` or end of line that
+/// closes it.
+fn written_type(text: &[u8], start: usize) -> Option<String> {
+    let mut i = start;
     let mut depth = 0usize;
     while let Some(&b) = text.get(i) {
         match b {
@@ -1860,8 +1866,161 @@ impl<'a> Engine<'a> {
             if let Some(found) = self.assigned_call(f, rec.fact, rec.site.bytes.end, depth) {
                 return found;
             }
+            if let Some(found) = self.assigned_path(f, &rec.scope, &rec.site, depth) {
+                return found;
+            }
         }
         (Entity::Unknown, EvidenceKind::Constructed)
+    }
+
+    /// What `const x = a.b.c [as T]` binds, when `x` is a plain declarator of the
+    /// statement: the type the assertion states, else what the chain holds
+    /// (`const internals = this._internals`). A default inside a pattern, a
+    /// chain that goes on into a call or an operator, and a chain nothing types
+    /// bind nothing.
+    fn assigned_path(
+        &self,
+        f: usize,
+        scope: &Scope,
+        site: &Span,
+        depth: usize,
+    ) -> Option<(Entity, EvidenceKind)> {
+        if depth >= MAX_DEPTH {
+            return None;
+        }
+        let text = self.text(f)?;
+        let mut before = site.bytes.start as usize;
+        while before > 0 && matches!(text.get(before - 1), Some(b' ' | b'\t')) {
+            before -= 1;
+        }
+        let keyword_end = before;
+        while before > 0 && text.get(before - 1).is_some_and(u8::is_ascii_alphabetic) {
+            before -= 1;
+        }
+        let keyword = text.get(before..keyword_end)?;
+        if !(keyword == b"const" || keyword == b"let" || keyword == b"var") {
+            return None;
+        }
+        let mut at = skip_blanks(&text, site.bytes.end as usize);
+        if text.get(at) != Some(&b'=') || matches!(text.get(at + 1), Some(b'=' | b'>')) {
+            return None;
+        }
+        at = skip_blanks(&text, at + 1);
+        let word_byte = |b: u8| is_ident_byte(b) || b == b'#';
+        let mut names: Vec<Name> = Vec::new();
+        loop {
+            let from = at;
+            while text.get(at).is_some_and(|b| word_byte(*b)) {
+                at += 1;
+            }
+            if at == from {
+                return None;
+            }
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "a name that is not UTF-8 is not read as a chain; nothing is inferred from it"
+            )]
+            let word = std::str::from_utf8(text.get(from..at)?).ok()?;
+            names.push(Name::new(word));
+            let mut next = at;
+            if text.get(next) == Some(&b'!') {
+                next += 1;
+            }
+            if text.get(next) == Some(&b'?') && text.get(next + 1) == Some(&b'.') {
+                at = next + 2;
+            } else if text.get(next) == Some(&b'.') {
+                at = next + 1;
+            } else {
+                at = next;
+                break;
+            }
+        }
+        let mut end = at;
+        while matches!(text.get(end), Some(b' ' | b'\t')) {
+            end += 1;
+        }
+        let asserted = text
+            .get(end..)
+            .is_some_and(|rest| rest.starts_with(b"as ") || rest.starts_with(b"as\t"));
+        if asserted {
+            let written = written_type(&text, end + 3)?;
+            return match self.type_expr(f, scope, &written) {
+                Entity::Unknown => None,
+                typed => Some((typed, EvidenceKind::TypedReceiver)),
+            };
+        }
+        if !expression_ends(&text, at) {
+            return None;
+        }
+        match self.path_entity(f, scope, &names, depth + 1) {
+            Entity::Unknown => None,
+            held => Some((held, EvidenceKind::Aliased)),
+        }
+    }
+
+    /// What `const {key: name} = Class` binds `name` to: the member `key` of the
+    /// class, when the declaration is the whole statement and the source is a
+    /// class of the repository (a static method kept under a short name).
+    fn destructured_alias(&self, id: usize) -> Option<Entity> {
+        let rec = &self.ix.defs[id];
+        if !matches!(rec.def.kind, DefKind::Constant | DefKind::Variable) {
+            return None;
+        }
+        let text = self.text(rec.file)?;
+        let (start, name_at) = (
+            rec.def.span.bytes.start as usize,
+            rec.def.name_span.bytes.start as usize,
+        );
+        let open = start + text.get(start..name_at)?.iter().position(|b| *b == b'{')?;
+        let close = group_end(&text, open)?;
+        if close <= name_at {
+            return None;
+        }
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a pattern that is not UTF-8 is not read; the name stays the variable it is"
+        )]
+        let pattern = std::str::from_utf8(text.get(open + 1..close - 1)?).ok()?;
+        let local = rec.def.local.name.as_str();
+        let key = split_top(pattern, ',').into_iter().find_map(|entry| {
+            let bound = entry.split('=').next().unwrap_or(entry);
+            match bound.split_once(':') {
+                Some((key, value)) => (value.trim() == local).then(|| key.trim()),
+                None => (bound.trim() == local).then(|| bound.trim()),
+            }
+        })?;
+        let mut at = skip_blanks(&text, close);
+        if text.get(at) != Some(&b'=') || matches!(text.get(at + 1), Some(b'=' | b'>')) {
+            return None;
+        }
+        at = skip_blanks(&text, at + 1);
+        let from = at;
+        while text
+            .get(at)
+            .is_some_and(|b| is_ident_byte(*b) || *b == b'.')
+        {
+            at += 1;
+        }
+        if !expression_ends(&text, at) {
+            return None;
+        }
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a source that is not UTF-8 is not read; the name stays the variable it is"
+        )]
+        let source = std::str::from_utf8(text.get(from..at)?).ok()?;
+        if !is_dotted(source) {
+            return None;
+        }
+        let Entity::Class(class) =
+            self.resolve_dotted(rec.file, &self.container_scope(rec), source, false)
+        else {
+            return None;
+        };
+        match self.class_member(class, &Name::new(key), false, false) {
+            Lookup::Found { entity, .. } => Some(entity),
+            _ => None,
+        }
     }
 
     /// The object made by the call that is the fact right after the binding at
@@ -2000,7 +2159,9 @@ impl<'a> Engine<'a> {
         }
         match self.assigned_call(rec.file, rec.fact, rec.def.name_span.bytes.end, 0) {
             Some((entity, _)) => entity,
-            None => Entity::Unknown,
+            None => self
+                .assigned_path(rec.file, &scope, &rec.def.name_span, 0)
+                .map_or(Entity::Unknown, |(entity, _)| entity),
         }
     }
 
@@ -2648,10 +2809,25 @@ impl<'a> Engine<'a> {
             }
             return match self.lookup_name(f, &r.enclosing, &r.name, want_type) {
                 Some(Named::Local(_)) => Outcome::Unresolved(UnresolvedReason::Local),
-                Some(Named::Hit(hit)) => Outcome::Found {
-                    entity: hit.entity,
-                    evidence: Evidence::through(hit.kind, self.paths(&hit.through)),
-                },
+                Some(Named::Hit(hit)) => {
+                    let alias = match hit.entity {
+                        Entity::Def(id) => self.destructured_alias(id),
+                        _ => None,
+                    };
+                    match alias {
+                        Some(member) => Outcome::Found {
+                            entity: member,
+                            evidence: Evidence::through(
+                                EvidenceKind::Aliased,
+                                self.paths(&hit.through),
+                            ),
+                        },
+                        None => Outcome::Found {
+                            entity: hit.entity,
+                            evidence: Evidence::through(hit.kind, self.paths(&hit.through)),
+                        },
+                    }
+                }
                 None => match self.global_outcome(f, &r.name) {
                     Some(found) => found,
                     None if is_global(r.name.as_str())
@@ -2676,6 +2852,9 @@ impl<'a> Engine<'a> {
         }
         if r.qualifier.is_empty() && matches!(r.receiver, Receiver::Unknown) {
             return Outcome::Unresolved(UnresolvedReason::Opaque);
+        }
+        if let (true, Receiver::Typed(written)) = (r.qualifier.is_empty(), &r.receiver) {
+            return self.literal_key(f, r, written.as_str());
         }
         let (base, kind) = self.base_entity(f, r, depth);
         let via_module = matches!(base, Entity::Module(_));
@@ -2704,6 +2883,36 @@ impl<'a> Engine<'a> {
             Lookup::Absent(reason) => Outcome::Unresolved(reason),
             Lookup::Untyped => self.untyped(f, r, false),
             Lookup::Any => self.untyped(f, r, true),
+        }
+    }
+
+    /// The key of an object literal the code types, a member of that type: the
+    /// facts state it as a name with no qualifier and the type the literal is
+    /// declared as. A type the repository does not hold, or one no member of
+    /// which has the name, claims nothing and is no unknown.
+    fn literal_key(&self, f: usize, r: &Ref, written: &str) -> Outcome {
+        match self.type_name_entity(f, &r.enclosing, written) {
+            Entity::Instance(class) => match self.class_member(class, &r.name, false, false) {
+                Lookup::Found {
+                    entity,
+                    through,
+                    inherited,
+                } => Outcome::Found {
+                    entity,
+                    evidence: Evidence::through(
+                        if inherited {
+                            EvidenceKind::Inherited
+                        } else {
+                            EvidenceKind::TypedReceiver
+                        },
+                        self.paths(&through),
+                    ),
+                },
+                Lookup::Absent(reason) => Outcome::Unresolved(reason),
+                _ => Outcome::Unresolved(UnresolvedReason::NoMember),
+            },
+            Entity::External => Outcome::Unresolved(UnresolvedReason::External),
+            _ => Outcome::Unresolved(UnresolvedReason::Builtin),
         }
     }
 
@@ -2887,7 +3096,7 @@ impl<'a> Engine<'a> {
             other => module_failure(other),
         };
         let mut bound = false;
-        if let Some(Some(local)) = &import.star {
+        if let Some(local) = import.star.alias() {
             out.push(make(local.clone(), whole()));
             bound = true;
         }

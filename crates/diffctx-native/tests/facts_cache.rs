@@ -4,10 +4,13 @@
 mod facts_fixture;
 mod snapshot_fixture;
 
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 use _diffctx::facts::{
-    CacheKey, FINGERPRINT, FactsCache, Language, SCHEMA, blob_oid, facts_of, hash_tokens, lang,
+    CacheKey, FINGERPRINT, Fact, FactsCache, Import, ImportKind, Language, ModulePath, Name,
+    SCHEMA, Scope, Span, Star, blob_oid, facts_of, hash_tokens, lang,
 };
 use _diffctx::snapshot::{Loss, RangeSpec, RepoPath, SideTag};
 use facts_fixture::{Toy, cache_in, context, entries, leftovers, review};
@@ -498,4 +501,254 @@ fn a_cache_is_keyed_on_the_fingerprint_of_the_build_unless_told_otherwise() {
     assert_eq!(FactsCache::disabled().fingerprint(), FINGERPRINT);
     assert_ne!(FINGERPRINT, 0);
     assert_eq!(FactsCache::disabled().with_fingerprint(9).fingerprint(), 9);
+}
+
+/// Every value a field of the facts can hold has to come back from the cache as
+/// it went in: an encoding that writes two values alike (a nested `Option` writes
+/// `Some(None)` as `null`) makes a cache hit answer differently from a miss.
+#[test]
+fn every_value_of_an_import_star_survives_the_encoding_the_cache_uses() {
+    for star in [Star::None, Star::Glob, Star::Alias(Name::new("ns"))] {
+        let fact = Fact::Import(Import {
+            site: Span::default(),
+            enclosing: Scope::Module,
+            module: ModulePath::new("m"),
+            relative: 0,
+            kind: ImportKind::Static,
+            names: Vec::new(),
+            star: star.clone(),
+            default: None,
+        });
+        let written = serde_json::to_vec(&fact).expect("encodes");
+        let read: Fact = serde_json::from_slice(&written).expect("decodes");
+        assert_eq!(read, fact, "{star:?}");
+    }
+}
+
+fn read_text(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok()
+}
+
+/// The sources of the impact and symbol corpus fixtures, each under a name of its
+/// own, and the sources of this repository in the languages that have facts.
+fn corpus_sources() -> Vec<(String, String)> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut found = Vec::new();
+    for mode in ["impact", "symbol"] {
+        for entry in walkdir::WalkDir::new(root.join("tests/cases").join(mode))
+            .sort_by_file_name()
+            .into_iter()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "yaml"))
+        {
+            let Some(text) = read_text(entry.path()) else {
+                continue;
+            };
+            let Ok(case) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+                continue;
+            };
+            for group in ["initial_files", "changed_files", "untracked_files"] {
+                let Some(files) = case["repo"][group].as_mapping() else {
+                    continue;
+                };
+                for (name, content) in files {
+                    if let (Some(name), Some(content)) = (name.as_str(), content.as_str()) {
+                        let at = found.len();
+                        found.push((format!("case{at}/{name}"), content.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    for (dir, extension) in [("crates/diffctx-native/src", "rs"), ("src/diffctx", "py")] {
+        for entry in walkdir::WalkDir::new(root.join(dir))
+            .sort_by_file_name()
+            .into_iter()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == extension))
+        {
+            if let Some(text) = read_text(entry.path()) {
+                let relative = entry.path().strip_prefix(&root).unwrap_or(entry.path());
+                found.push((
+                    format!("own/{}", relative.to_string_lossy().replace('\\', "/")),
+                    text,
+                ));
+            }
+        }
+    }
+    found
+}
+
+/// The class test of the cache: for every file of every corpus fixture, what a
+/// process reads back from the disk entry equals what the extractor made.
+#[test]
+fn every_registered_extractors_facts_equal_themselves_after_the_caches_round_trip() {
+    let sources = corpus_sources();
+    let refs: Vec<(&str, &str)> = sources
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    let (repo, head) = one_commit(&refs);
+    let ctx = review(&repo, &head, &head);
+    let dir = tempfile::tempdir().expect("dir");
+
+    let cold = FactsCache::new(dir.path().to_path_buf());
+    let mut made = Vec::new();
+    for (name, _) in &sources {
+        if let Some(file) = facts_of(&ctx, SideTag::Head, &cold, &path(name)).expect("facts") {
+            made.push((name, file.blob));
+        }
+    }
+    assert!(made.len() > 100, "{} files were read", made.len());
+
+    let warm = FactsCache::new(dir.path().to_path_buf());
+    for (name, blob) in &made {
+        let read = facts_of(&ctx, SideTag::Head, &warm, &path(name))
+            .expect("facts")
+            .expect("some");
+        assert_eq!(*read.blob, **blob, "{name} is not what the cache was given");
+    }
+    assert_eq!(warm.stats().discarded, 0);
+    assert!(
+        warm.stats().disk_hits > 0,
+        "the second process read nothing"
+    );
+
+    let globs = made
+        .iter()
+        .flat_map(|(_, blob)| &blob.facts)
+        .filter(|fact| matches!(fact, Fact::Import(i) if i.star == Star::Glob))
+        .count();
+    assert!(
+        globs > 0,
+        "no corpus file has a glob import to hold the test to"
+    );
+}
+
+fn answer(repo: &Repo, cache: &Path) -> Vec<u8> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_diffctx"));
+    for name in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(name);
+    }
+    let out = command
+        .current_dir(repo.path())
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("DIFFCTX_CACHE_DIR", cache)
+        .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-f", "json"])
+        .args(["-q", "--timeout", "600"])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    out.stdout
+}
+
+/// A run with a cold cache and one with a warm cache answer with the same bytes,
+/// on fixtures whose answer depends on a star import.
+#[test]
+fn a_cold_cache_and_a_warm_cache_give_byte_identical_answers_through_star_imports() {
+    const MANIFEST: &str =
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+    type Files<'a> = &'a [(&'a str, &'a str)];
+    let fixtures: [(&str, Files, Files); 4] = [
+        (
+            "Python `from lib import *`",
+            &[
+                ("lib.py", "def helper():\n    return 1\n"),
+                (
+                    "app.py",
+                    "from lib import *\n\n\ndef run():\n    return helper()\n",
+                ),
+            ],
+            &[("lib.py", "def helper():\n    return 2\n")],
+        ),
+        (
+            "Rust `use a::*`",
+            &[
+                ("Cargo.toml", MANIFEST),
+                ("src/lib.rs", "pub mod a;\npub mod user;\n"),
+                ("src/a.rs", "pub fn f() -> u32 {\n    1\n}\n"),
+                (
+                    "src/user.rs",
+                    "use crate::a::*;\n\npub fn g() -> u32 {\n    f()\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn gs() {\n        assert_eq!(g(), 1);\n    }\n}\n",
+                ),
+            ],
+            &[("src/a.rs", "pub fn f() -> u32 {\n    2\n}\n")],
+        ),
+        (
+            "Kotlin `import p.*`",
+            &[
+                (
+                    "src/main/kotlin/p/Util.kt",
+                    "package p\n\nfun slug(s: String): String = s\n",
+                ),
+                (
+                    "src/main/kotlin/q/Use.kt",
+                    "package q\n\nimport p.*\n\nfun title(s: String): String = slug(s)\n",
+                ),
+            ],
+            &[(
+                "src/main/kotlin/p/Util.kt",
+                "package p\n\nfun slug(s: String): String = s.trim()\n",
+            )],
+        ),
+        (
+            "TypeScript `export *`",
+            &[
+                (
+                    "src/a.ts",
+                    "export function f(): number {\n  return 1;\n}\n",
+                ),
+                ("src/index.ts", "export * from './a';\n"),
+                (
+                    "src/use.ts",
+                    "import { f } from './index';\n\nexport function g(): number {\n  return f();\n}\n",
+                ),
+            ],
+            &[(
+                "src/a.ts",
+                "export function f(): number {\n  return 2;\n}\n",
+            )],
+        ),
+    ];
+    for (what, base, head) in fixtures {
+        let repo = Repo::init();
+        for (name, text) in base {
+            repo.write(name, text);
+        }
+        repo.commit("base");
+        for (name, text) in head {
+            repo.write(name, text);
+        }
+        repo.commit("head");
+        let cache = tempfile::tempdir().expect("dir");
+        let cold = answer(&repo, cache.path());
+        assert!(
+            entries(&cache.path().join("diffctx").join("facts")).len() > 1,
+            "{what}: the cold run kept nothing for the warm one"
+        );
+        let warm = answer(&repo, cache.path());
+        assert_eq!(
+            String::from_utf8_lossy(&warm),
+            String::from_utf8_lossy(&cold),
+            "{what}: a cache hit answered differently from a miss"
+        );
+        let doc: serde_json::Value = serde_json::from_slice(&cold).expect("json");
+        assert!(
+            doc["changed"].as_array().is_some_and(|c| !c.is_empty()),
+            "{what}: {doc:#}"
+        );
+    }
 }

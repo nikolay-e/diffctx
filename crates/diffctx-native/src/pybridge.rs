@@ -145,6 +145,7 @@ fn build_locate(
     markdown = false,
     symbol = None,
     budget = None,
+    unfold = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn build_impact(
@@ -158,6 +159,7 @@ fn build_impact(
     markdown: bool,
     symbol: Option<String>,
     budget: Option<i64>,
+    unfold: bool,
 ) -> PyResult<String> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -191,7 +193,7 @@ fn build_impact(
     })?;
     // -1 is unlimited, as for pack; past u32, too.
     let cap = budget.map(|b| u32::try_from(b).unwrap_or(u32::MAX));
-    Ok(crate::impact::deliver(&mut output, markdown, cap))
+    Ok(crate::impact::deliver(&mut output, markdown, cap, unfold))
 }
 
 /// `diffctx hook <event>` for installs that reach diffctx through the PyPI

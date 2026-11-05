@@ -15,19 +15,27 @@
 //!   `if TYPE_CHECKING:` takes `Cfg("TYPE_CHECKING")`. A def's text excludes
 //!   its nested definitions and its module- or class-level assignments, which
 //!   are definitions of their own.
+//! - A `def` or `class` inside a function is a definition only when it leaves
+//!   the function (see `escaping_names`); any other is a `Closure` local of the
+//!   function, its lines and the uses inside it the function's own.
+//! - A module-level statement that changes what a module variable holds
+//!   (`X[k] = v`, `X.attr = v`, `del X[k]`, `X += v`, `X.pop(..)` on a dict, list
+//!   or set) is part of that variable's hashes (`scan_mutations`).
 //! - Hashes are FNV-1a over the definition's own parts: `body_hash` over the
 //!   body's tree (node kinds, nesting, leaf text; no comments, no docstring),
 //!   `text_hash` over its bytes, `doc_hash` over the docstring's words.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
 
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
-    PathMention, Receiver, Ref, Scope, Span, TypeName, UseKind, Visibility, expired, hash_text,
+    PathMention, Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired,
+    hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -291,6 +299,33 @@ fn has_child_of_kind(node: Node, kind: &str) -> bool {
     node.named_children(&mut cursor).any(|c| c.kind() == kind)
 }
 
+/// The methods of a dict, list or set that change it in place.
+const MUTATING_METHODS: [&str; 12] = [
+    "pop",
+    "update",
+    "append",
+    "extend",
+    "insert",
+    "remove",
+    "clear",
+    "setdefault",
+    "add",
+    "discard",
+    "sort",
+    "reverse",
+];
+
+/// What builds a dict, a list or a set.
+const CONTAINER_CONSTRUCTORS: [&str; 7] = [
+    "dict",
+    "list",
+    "set",
+    "defaultdict",
+    "OrderedDict",
+    "Counter",
+    "deque",
+];
+
 /// Statements and blocks a definition can sit in.
 fn is_container(kind: &str) -> bool {
     matches!(
@@ -313,6 +348,95 @@ fn is_container(kind: &str) -> bool {
     )
 }
 
+/// Builtins and library calls that use a callable argument to the end inside
+/// the call: a function handed to one goes nowhere.
+const RUNS_CALLABLE: [&str; 27] = [
+    "map",
+    "filter",
+    "sorted",
+    "min",
+    "max",
+    "sum",
+    "any",
+    "all",
+    "list",
+    "tuple",
+    "set",
+    "frozenset",
+    "zip",
+    "enumerate",
+    "reversed",
+    "next",
+    "iter",
+    "callable",
+    "isinstance",
+    "issubclass",
+    "print",
+    "len",
+    "repr",
+    "str",
+    "bool",
+    "type",
+    "id",
+];
+const RUNS_CALLABLE_METHODS: [&str; 8] = [
+    "reduce",
+    "starmap",
+    "takewhile",
+    "dropwhile",
+    "filterfalse",
+    "groupby",
+    "accumulate",
+    "sort",
+];
+/// Decorators that return the function they wrap, changed, to the name it was
+/// bound to: they hand it nowhere.
+const WRAPPING_DECORATORS: [&str; 14] = [
+    "wraps",
+    "lru_cache",
+    "cache",
+    "cached_property",
+    "partial",
+    "contextmanager",
+    "asynccontextmanager",
+    "staticmethod",
+    "classmethod",
+    "property",
+    "abstractmethod",
+    "overload",
+    "final",
+    "total_ordering",
+];
+/// Calls that keep their argument in the object they are called on.
+const STORES_ARGUMENT: [&str; 7] = [
+    "append",
+    "extend",
+    "add",
+    "insert",
+    "appendleft",
+    "setdefault",
+    "update",
+];
+
+enum Flow<'t> {
+    /// A value a function hands back: out of the definition when that function
+    /// is the definition's own or a lambda, else to whoever the named one is
+    /// handed to.
+    Returned {
+        value: Node<'t>,
+        from: Option<&'t str>,
+    },
+    Assigned {
+        target: Node<'t>,
+        value: Node<'t>,
+    },
+    Called(Node<'t>),
+    Decorated {
+        name: &'t str,
+        decorator: Node<'t>,
+    },
+}
+
 /// What a definition is known by once the file is indexed.
 #[derive(Clone)]
 struct Known {
@@ -330,6 +454,9 @@ struct Ix {
     in_fn: bool,
     guard: bool,
     type_checking: bool,
+    /// Inside a function's body: the names declared there that leave it. A
+    /// `def` or `class` among them is a definition, any other a local.
+    leaving: Option<Rc<HashSet<String>>>,
 }
 
 struct Cand {
@@ -373,6 +500,9 @@ struct Walker<'t> {
     vars: HashMap<usize, Known>,
     owned: HashSet<usize>,
     module_values: HashMap<String, Node<'t>>,
+    /// The module-level statements that change what a module variable holds,
+    /// by the variable (see `scan_mutations`).
+    mutations: HashMap<String, Vec<Node<'t>>>,
     types: HashMap<String, TypeName>,
 }
 
@@ -389,6 +519,7 @@ impl<'t> Walker<'t> {
             vars: HashMap::new(),
             owned: HashSet::new(),
             module_values: HashMap::new(),
+            mutations: HashMap::new(),
             types: HashMap::new(),
         }
     }
@@ -397,6 +528,7 @@ impl<'t> Walker<'t> {
         let mut cands = Vec::new();
         self.collect(root, &Ix::default(), &mut cands, 0);
         self.settle(cands);
+        self.scan_mutations(root, 0);
         let cx = Cx {
             scope: Scope::Module,
             in_fn: false,
@@ -543,6 +675,392 @@ impl<'t> Walker<'t> {
         (string.kind() == "string" && !has_child_of_kind(string, "interpolation")).then_some(first)
     }
 
+    // ---- what leaves a function
+
+    /// The names a value carries out of an expression: a name, the members of
+    /// a container literal, the branches of a conditional, the class an
+    /// instance is made from. A call's result carries nothing: the call is a
+    /// flow of its own.
+    fn carried(&self, node: Node<'t>, classes: &HashSet<&'t str>, out: &mut Vec<&'t str>) {
+        let mut cursor = node.walk();
+        let parts: Vec<Node<'t>> = match node.kind() {
+            "identifier" => {
+                out.push(self.text(node));
+                return;
+            }
+            "call" => {
+                let class = node
+                    .child_by_field_name("function")
+                    .filter(|f| f.kind() == "identifier")
+                    .map(|f| self.text(f))
+                    .filter(|name| classes.contains(name));
+                out.extend(class);
+                return;
+            }
+            "dictionary" => node
+                .named_children(&mut cursor)
+                .filter_map(|member| match member.kind() {
+                    "pair" => member.child_by_field_name("value"),
+                    "dictionary_splat" => member.named_child(0),
+                    _ => None,
+                })
+                .collect(),
+            "list"
+            | "tuple"
+            | "set"
+            | "expression_list"
+            | "parenthesized_expression"
+            | "list_splat"
+            | "await"
+            | "yield" => node.named_children(&mut cursor).collect(),
+            "keyword_argument" => node.child_by_field_name("value").into_iter().collect(),
+            "assignment" => node.child_by_field_name("right").into_iter().collect(),
+            "conditional_expression" => [0, 2]
+                .into_iter()
+                .filter_map(|at| node.named_child(at))
+                .collect(),
+            "boolean_operator" => ["left", "right"]
+                .into_iter()
+                .filter_map(|field| node.child_by_field_name(field))
+                .collect(),
+            _ => return,
+        };
+        for part in parts {
+            self.carried(part, classes, out);
+        }
+    }
+
+    /// The names a statement's target binds or writes: identifiers, and the
+    /// attributes and items written.
+    fn leaf_targets(&self, node: Node<'t>, out: &mut Vec<Node<'t>>) {
+        match node.kind() {
+            "identifier" | "attribute" | "subscript" => out.push(node),
+            "pattern_list"
+            | "tuple_pattern"
+            | "list_pattern"
+            | "list_splat_pattern"
+            | "as_pattern_target"
+            | "parenthesized_expression"
+            | "expression_list"
+            | "tuple"
+            | "list" => {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    self.leaf_targets(child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The name an attribute or item write is rooted in: `a` for `a.b[c]`.
+    fn target_root(&self, node: Node<'t>) -> Option<&'t str> {
+        let mut current = node;
+        loop {
+            match current.kind() {
+                "identifier" => return Some(self.text(current)),
+                "attribute" => current = current.child_by_field_name("object")?,
+                "subscript" => current = current.child_by_field_name("value")?,
+                _ => return None,
+            }
+        }
+    }
+
+    fn bind_parameters(
+        &self,
+        list: Node<'t>,
+        declared: &mut HashSet<&'t str>,
+        params: &mut HashSet<&'t str>,
+    ) {
+        let mut cursor = list.walk();
+        for parameter in list.named_children(&mut cursor) {
+            let bound = match parameter.kind() {
+                "identifier" => Some(parameter),
+                "typed_parameter" | "list_splat_pattern" | "dictionary_splat_pattern" => {
+                    first_identifier(parameter)
+                }
+                "default_parameter" | "typed_default_parameter" => {
+                    parameter.child_by_field_name("name")
+                }
+                _ => None,
+            };
+            if let Some(bound) = bound.filter(|b| b.kind() == "identifier") {
+                declared.insert(self.text(bound));
+                params.insert(self.text(bound));
+            }
+        }
+    }
+
+    /// The nested `def` a `return` or `yield` hands its value back from, when
+    /// it is not the definition whose body is `body`.
+    fn returning_function(&self, node: Node<'t>, body: Node<'t>) -> Option<&'t str> {
+        let mut current = node.parent();
+        while let Some(parent) = current {
+            if parent.id() == body.id() {
+                return None;
+            }
+            match parent.kind() {
+                "function_definition" => {
+                    return parent
+                        .child_by_field_name("name")
+                        .map(|name| self.text(name));
+                }
+                "lambda" => return None,
+                _ => current = parent.parent(),
+            }
+        }
+        None
+    }
+
+    /// Whether `name` read at `node` is a parameter of a `def` or lambda
+    /// between `node` and the definition's body: it names that parameter, not
+    /// a nested function of the same name beside it.
+    fn is_parameter_there(&self, node: Node<'t>, body: Node<'t>, name: &str) -> bool {
+        let mut current = node.parent();
+        while let Some(parent) = current {
+            if parent.id() == body.id() {
+                return false;
+            }
+            if matches!(parent.kind(), "function_definition" | "lambda") {
+                if let Some(list) = parent.child_by_field_name("parameters") {
+                    let mut declared: HashSet<&'t str> = HashSet::new();
+                    let mut params: HashSet<&'t str> = HashSet::new();
+                    self.bind_parameters(list, &mut declared, &mut params);
+                    if params.contains(name) {
+                        return true;
+                    }
+                }
+            }
+            current = parent.parent();
+        }
+        false
+    }
+
+    /// The names declared in a function's body that leave the function: one it
+    /// returns or yields (itself, in a container it returns, or as the class
+    /// of a returned instance), writes to something it did not declare (a
+    /// `global` or `nonlocal` name, an attribute of `self` or another
+    /// parameter, a module's item), hands to a call outside it, or decorates
+    /// with something that registers it. A call that runs its callable to the
+    /// end (`map`, `sorted(key=…)`, `reduce`) and a decorator that returns the
+    /// function it wraps hand it nowhere. A name stored in a local variable
+    /// leaves when that variable does.
+    fn escaping_names(&self, def: Node<'t>, body: Node<'t>) -> HashSet<String> {
+        let mut declared: HashSet<&'t str> = HashSet::new();
+        let mut params: HashSet<&'t str> = HashSet::new();
+        let mut outward: HashSet<&'t str> = HashSet::new();
+        let mut classes: HashSet<&'t str> = HashSet::new();
+        let mut flows: Vec<Flow<'t>> = Vec::new();
+        if let Some(list) = def.child_by_field_name("parameters") {
+            self.bind_parameters(list, &mut declared, &mut params);
+        }
+        let mut stack = vec![body];
+        while let Some(node) = stack.pop() {
+            let field = |name: &str| node.child_by_field_name(name);
+            match node.kind() {
+                "function_definition" | "class_definition" => {
+                    if let Some(name) = field("name") {
+                        declared.insert(self.text(name));
+                        if node.kind() == "class_definition" {
+                            classes.insert(self.text(name));
+                        }
+                    }
+                    if let Some(list) = field("parameters") {
+                        self.bind_parameters(list, &mut declared, &mut params);
+                    }
+                }
+                "lambda" => {
+                    if let Some(list) = field("parameters") {
+                        self.bind_parameters(list, &mut declared, &mut params);
+                    }
+                }
+                "decorated_definition" => {
+                    let name = field("definition")
+                        .and_then(|d| d.child_by_field_name("name"))
+                        .map(|n| self.text(n));
+                    let mut cursor = node.walk();
+                    for decorator in node
+                        .named_children(&mut cursor)
+                        .filter(|c| c.kind() == "decorator")
+                    {
+                        if let Some(name) = name {
+                            flows.push(Flow::Decorated { name, decorator });
+                        }
+                    }
+                }
+                "assignment" | "augmented_assignment" => {
+                    if let (Some(target), Some(value)) = (field("left"), field("right")) {
+                        let mut leaves = Vec::new();
+                        self.leaf_targets(target, &mut leaves);
+                        declared.extend(
+                            leaves
+                                .iter()
+                                .filter(|l| l.kind() == "identifier")
+                                .map(|l| self.text(*l)),
+                        );
+                        flows.push(Flow::Assigned { target, value });
+                    }
+                }
+                "named_expression" => {
+                    if let (Some(target), Some(value)) = (field("name"), field("value")) {
+                        declared.insert(self.text(target));
+                        flows.push(Flow::Assigned { target, value });
+                    }
+                }
+                "for_statement" | "for_in_clause" => {
+                    let mut leaves = Vec::new();
+                    if let Some(left) = field("left") {
+                        self.leaf_targets(left, &mut leaves);
+                    }
+                    declared.extend(
+                        leaves
+                            .iter()
+                            .filter(|l| l.kind() == "identifier")
+                            .map(|l| self.text(*l)),
+                    );
+                }
+                "as_pattern" => {
+                    let mut leaves = Vec::new();
+                    if let Some(alias) = field("alias") {
+                        self.leaf_targets(alias, &mut leaves);
+                    }
+                    declared.extend(leaves.iter().map(|l| self.text(*l)));
+                }
+                "import_statement" | "import_from_statement" => {
+                    let mut cursor = node.walk();
+                    for name in node.named_children(&mut cursor) {
+                        let bound = match name.kind() {
+                            "aliased_import" => name.child_by_field_name("alias"),
+                            "dotted_name" => name.named_child(0),
+                            _ => None,
+                        };
+                        declared.extend(bound.map(|b| self.text(b)));
+                    }
+                }
+                "global_statement" | "nonlocal_statement" => {
+                    let mut cursor = node.walk();
+                    outward.extend(
+                        node.named_children(&mut cursor)
+                            .filter(|c| c.kind() == "identifier")
+                            .map(|c| self.text(c)),
+                    );
+                }
+                "return_statement" | "yield" => {
+                    flows.extend(node.named_child(0).map(|value| Flow::Returned {
+                        value,
+                        from: self.returning_function(node, body),
+                    }));
+                }
+                "call" => flows.push(Flow::Called(node)),
+                _ => {}
+            }
+            let mut cursor = node.walk();
+            stack.extend(
+                node.named_children(&mut cursor)
+                    .filter(|c| c.kind() != "comment"),
+            );
+        }
+        let local = |root: &str| {
+            declared.contains(root) && !params.contains(root) && !outward.contains(root)
+        };
+        let mut leaving: HashSet<String> = HashSet::new();
+        let mut stored: Vec<(String, String)> = Vec::new();
+        let mut names: Vec<&'t str> = Vec::new();
+        for flow in &flows {
+            names.clear();
+            match flow {
+                Flow::Returned { value, from } => {
+                    self.carried(*value, &classes, &mut names);
+                    names.retain(|n| !self.is_parameter_there(*value, body, n));
+                    match from {
+                        Some(function) => stored
+                            .extend(names.iter().map(|n| (n.to_string(), function.to_string()))),
+                        None => leaving.extend(names.iter().map(|n| n.to_string())),
+                    }
+                }
+                Flow::Assigned { target, value } => {
+                    self.carried(*value, &classes, &mut names);
+                    names.retain(|n| !self.is_parameter_there(*value, body, n));
+                    let mut leaves = Vec::new();
+                    self.leaf_targets(*target, &mut leaves);
+                    for leaf in leaves {
+                        let into = if leaf.kind() == "identifier" {
+                            Some(self.text(leaf)).filter(|n| local(*n))
+                        } else {
+                            self.target_root(leaf).filter(|root| local(*root))
+                        };
+                        match into {
+                            Some(root) => stored
+                                .extend(names.iter().map(|n| (n.to_string(), root.to_string()))),
+                            None => leaving.extend(names.iter().map(|n| n.to_string())),
+                        }
+                    }
+                }
+                Flow::Called(call) => {
+                    if let Some(list) = call
+                        .child_by_field_name("arguments")
+                        .filter(|a| a.kind() == "argument_list")
+                    {
+                        let mut cursor = list.walk();
+                        for argument in list.named_children(&mut cursor) {
+                            self.carried(argument, &classes, &mut names);
+                        }
+                    }
+                    names.retain(|n| !self.is_parameter_there(*call, body, n));
+                    if names.is_empty() {
+                        continue;
+                    }
+                    let path = call
+                        .child_by_field_name("function")
+                        .and_then(|f| self.simple_chain(f));
+                    let Some(path) = path else {
+                        leaving.extend(names.iter().map(|n| n.to_string()));
+                        continue;
+                    };
+                    let (root, last) = (path[0], path[path.len() - 1]);
+                    if local(root) {
+                        if path.len() > 1 && STORES_ARGUMENT.contains(&last) {
+                            stored.extend(names.iter().map(|n| (n.to_string(), root.to_string())));
+                        }
+                    } else if !(path.len() == 1 && RUNS_CALLABLE.contains(&root))
+                        && !(path.len() > 1 && RUNS_CALLABLE_METHODS.contains(&last))
+                    {
+                        leaving.extend(names.iter().map(|n| n.to_string()));
+                    }
+                }
+                Flow::Decorated { name, decorator } => {
+                    let expression = decorator.named_child(0);
+                    let callee = expression
+                        .map(|e| {
+                            if e.kind() == "call" {
+                                e.child_by_field_name("function").unwrap_or(e)
+                            } else {
+                                e
+                            }
+                        })
+                        .and_then(|e| self.simple_chain(e));
+                    let wraps = callee.as_ref().is_some_and(|path| {
+                        local(path[0]) || WRAPPING_DECORATORS.contains(&path[path.len() - 1])
+                    });
+                    if !wraps {
+                        leaving.insert((*name).to_string());
+                    }
+                }
+            }
+        }
+        loop {
+            let known = leaving.len();
+            for (name, into) in &stored {
+                if leaving.contains(into) {
+                    leaving.insert(name.clone());
+                }
+            }
+            if leaving.len() == known {
+                return leaving;
+            }
+        }
+    }
+
     // ---- index: which definitions the file holds, and under which keys
 
     fn collect(&mut self, node: Node<'t>, ix: &Ix, out: &mut Vec<Cand>, depth: u16) {
@@ -608,6 +1126,19 @@ impl<'t> Walker<'t> {
         };
         let name = self.text(name_node).to_string();
         let is_class = def.kind() == "class_definition";
+        let body = def.child_by_field_name("body");
+        if ix
+            .leaving
+            .as_ref()
+            .is_some_and(|leaving| !leaving.contains(&name))
+        {
+            // A local function: what leaves the outer one from inside it is
+            // still a definition; a local class holds none.
+            if let (false, Some(body)) = (is_class, body) {
+                self.collect(body, ix, out, depth + 1);
+            }
+            return;
+        }
         let decorators = self.decorators(wrapper);
         let shape = shape_of(&decorators, &name);
         let kind = if is_class {
@@ -645,16 +1176,20 @@ impl<'t> Walker<'t> {
             decorators,
             receiver: receiver.clone(),
         });
-        let body = def.child_by_field_name("body");
         if let (Some(receiver), Some(body)) = (receiver.as_deref(), body) {
             self.collect_self_fields(body, receiver, &ix.container, out, 0);
         }
+        let leaving = match (is_class, body) {
+            (false, Some(body)) => Some(Rc::new(self.escaping_names(def, body))),
+            _ => None,
+        };
         let mut inner = Ix {
             container: ix.container.clone(),
             in_class: is_class,
             in_fn: ix.in_fn || !is_class,
             guard: false,
             type_checking: false,
+            leaving,
         };
         inner.container.push(name);
         if let Some(body) = body {
@@ -816,6 +1351,123 @@ impl<'t> Walker<'t> {
             receiver: None,
             name,
         });
+    }
+
+    /// The module-level statements (in any block of the module's own code except
+    /// a script's main guard, in none of a function or a class) that change what
+    /// a module variable `X` holds: `X[k] = v`, `X.attr = v`, `del X[k]`,
+    /// `X += v`, and a call of a mutating method (`pop`, `update`, `append`, …)
+    /// on an `X` bound to a dict, list or set. Such a statement is no
+    /// definition: it is kept against `X`, and its tree is part of the hashes of
+    /// `X`'s definition, so editing it is a change of `X` and its readers are
+    /// material. Any other module-level statement stays code outside every
+    /// definition.
+    fn scan_mutations(&mut self, node: Node<'t>, depth: u16) {
+        if depth > MAX_DEPTH || !self.tick() {
+            return;
+        }
+        match node.kind() {
+            "expression_statement" | "delete_statement" => {
+                if let Some(name) = self.mutated(node) {
+                    self.mutations.entry(name).or_default().push(node);
+                }
+            }
+            // The run of a script is no part of the module's value.
+            "if_statement"
+                if node
+                    .child_by_field_name("condition")
+                    .is_some_and(|c| self.is_main_guard(c)) => {}
+            kind if is_container(kind) => {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    self.scan_mutations(child, depth + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The module variable the statement changes the value of.
+    fn mutated(&self, statement: Node<'t>) -> Option<String> {
+        let held = |name: &str| self.module_values.contains_key(name);
+        let mut targets: Vec<Node<'t>> = Vec::new();
+        if statement.kind() == "delete_statement" {
+            let mut cursor = statement.walk();
+            for child in statement.named_children(&mut cursor) {
+                if child.kind() == "expression_list" {
+                    let mut inner = child.walk();
+                    targets.extend(child.named_children(&mut inner));
+                } else {
+                    targets.push(child);
+                }
+            }
+        } else {
+            let inner = statement.named_child(0)?;
+            match inner.kind() {
+                "assignment" => targets.extend(inner.child_by_field_name("left")),
+                "augmented_assignment" => {
+                    let left = inner.child_by_field_name("left")?;
+                    if left.kind() == "identifier" {
+                        let name = self.text(left);
+                        return held(name).then(|| name.to_string());
+                    }
+                    targets.push(left);
+                }
+                "call" => {
+                    let function = inner.child_by_field_name("function")?;
+                    let object = function.child_by_field_name("object")?;
+                    let method = function.child_by_field_name("attribute")?;
+                    if function.kind() != "attribute"
+                        || object.kind() != "identifier"
+                        || !MUTATING_METHODS.contains(&self.text(method))
+                    {
+                        return None;
+                    }
+                    let name = self.text(object);
+                    return (held(name) && self.holds_a_container(name)).then(|| name.to_string());
+                }
+                _ => {}
+            }
+        }
+        targets
+            .into_iter()
+            .filter(|target| matches!(target.kind(), "subscript" | "attribute"))
+            .find_map(|target| {
+                let mut current = target;
+                loop {
+                    current = match current.kind() {
+                        "subscript" => current.child_by_field_name("value")?,
+                        "attribute" => current.child_by_field_name("object")?,
+                        "identifier" => break,
+                        _ => return None,
+                    };
+                }
+                let name = self.text(current);
+                held(name).then(|| name.to_string())
+            })
+    }
+
+    /// Whether the module variable is first bound to a dict, a list or a set: a
+    /// literal, a comprehension, or the constructor of one.
+    fn holds_a_container(&self, name: &str) -> bool {
+        let Some(value) = self.module_values.get(name) else {
+            return false;
+        };
+        match value.kind() {
+            "dictionary"
+            | "list"
+            | "set"
+            | "dictionary_comprehension"
+            | "list_comprehension"
+            | "set_comprehension" => true,
+            "call" => value
+                .child_by_field_name("function")
+                .is_some_and(|function| {
+                    let callee = self.text(function);
+                    CONTAINER_CONSTRUCTORS.contains(&callee.rsplit('.').next().unwrap_or(callee))
+                }),
+            _ => false,
+        }
     }
 
     /// Gives every candidate its key: a variable assigned twice is one
@@ -1044,7 +1696,28 @@ impl<'t> Walker<'t> {
             self.leaf_tokens(t, &mut tokens);
             join_tokens(&tokens)
         });
-        let body_hash = value.map_or(0, |v| self.hash_tree(v, |_| false));
+        let mut body_hash = value.map_or(0, |v| self.hash_tree(v, |_| false));
+        let mut text_hash = hash_text(&self.bytes[statement.start_byte()..statement.end_byte()]);
+        if let Some(statements) = known
+            .key
+            .container
+            .is_empty()
+            .then(|| self.mutations.get(name))
+            .flatten()
+        {
+            // What a module-level statement does to the variable is part of its
+            // value: editing it is a change of the variable.
+            let mut body = Hasher::new();
+            let mut text = Hasher::new();
+            body.bytes(&body_hash.to_le_bytes());
+            text.bytes(&text_hash.to_le_bytes());
+            for statement in statements {
+                body.bytes(&self.hash_tree(*statement, |_| false).to_le_bytes());
+                text.token(self.bytes[statement.start_byte()..statement.end_byte()].trim_ascii());
+            }
+            body_hash = body.finish().unwrap_or(body_hash);
+            text_hash = text.finish().unwrap_or(text_hash);
+        }
         self.facts.push(Fact::Definition(Def {
             local: known.key.clone(),
             kind: known.kind,
@@ -1054,7 +1727,7 @@ impl<'t> Walker<'t> {
             decorators: Vec::new(),
             visibility: known.vis,
             body_hash,
-            text_hash: hash_text(&self.bytes[statement.start_byte()..statement.end_byte()]),
+            text_hash,
             doc_hash: None,
         }));
     }
@@ -1166,7 +1839,7 @@ impl<'t> Walker<'t> {
 
     fn def(&mut self, def: Node<'t>, wrapper: Option<Node<'t>>, cx: &Cx, depth: u16) {
         let Some(known) = self.keys.get(&def.id()).cloned() else {
-            self.children(def, cx, depth);
+            self.local_def(def, wrapper, cx, depth);
             return;
         };
         let outer = wrapper.unwrap_or(def);
@@ -1238,6 +1911,55 @@ impl<'t> Walker<'t> {
         }
         if let Some(body) = body {
             self.visit(body, &inner, depth);
+        }
+        self.types = saved;
+    }
+
+    /// A `def` or `class` inside a function that does not leave it: a local
+    /// name of the enclosing definition, whose parameters and body are read as
+    /// part of it.
+    fn local_def(&mut self, def: Node<'t>, wrapper: Option<Node<'t>>, cx: &Cx, depth: u16) {
+        if let Some(name) = def.child_by_field_name("name") {
+            self.local(name, LocalKind::Closure, cx);
+        }
+        if let Some(wrapper) = wrapper {
+            let mut cursor = wrapper.walk();
+            for decorator in wrapper
+                .named_children(&mut cursor)
+                .filter(|c| c.kind() == "decorator")
+            {
+                self.decorator(decorator, cx, depth);
+            }
+        }
+        let body = def.child_by_field_name("body");
+        if def.kind() == "class_definition" {
+            if let Some(bases) = def.child_by_field_name("superclasses") {
+                let mut cursor = bases.walk();
+                for base in bases.named_children(&mut cursor) {
+                    let value = if base.kind() == "keyword_argument" {
+                        base.child_by_field_name("value").unwrap_or(base)
+                    } else {
+                        base
+                    };
+                    let read = Cx {
+                        read: UseKind::TypeUse,
+                        ..cx.clone()
+                    };
+                    self.type_node(value, &read, depth);
+                }
+            }
+            if let Some(body) = body {
+                self.visit(body, cx, depth);
+            }
+            return;
+        }
+        let saved = self.types.clone();
+        self.params(def.child_by_field_name("parameters"), cx, depth);
+        if let Some(returns) = def.child_by_field_name("return_type") {
+            self.type_expr(returns, cx, depth);
+        }
+        if let Some(body) = body {
+            self.visit(body, cx, depth);
         }
         self.types = saved;
     }
@@ -1505,7 +2227,7 @@ impl<'t> Walker<'t> {
                 relative: 0,
                 kind: Self::import_kind(cx),
                 names: Vec::new(),
-                star: None,
+                star: Star::None,
                 default,
             }));
         }
@@ -1543,7 +2265,11 @@ impl<'t> Walker<'t> {
                 _ => {}
             }
         }
-        let star = has_child_of_kind(node, "wildcard_import").then_some(None);
+        let star = if has_child_of_kind(node, "wildcard_import") {
+            Star::Glob
+        } else {
+            Star::None
+        };
         self.facts.push(Fact::Import(Import {
             site: span(node),
             enclosing: cx.scope.clone(),
@@ -1571,7 +2297,7 @@ impl<'t> Walker<'t> {
             relative: relative as u32,
             kind: ImportKind::Dynamic,
             names: Vec::new(),
-            star: None,
+            star: Star::None,
             default: None,
         }));
     }

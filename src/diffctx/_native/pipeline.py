@@ -103,6 +103,7 @@ def build_impact(
     markdown: bool = False,
     symbol: str | None = None,
     budget: int | None = None,
+    unfold: bool = False,
 ) -> str:
     from diffctx._diffctx import build_impact as _rust_impact
 
@@ -117,6 +118,7 @@ def build_impact(
             markdown=markdown,
             symbol=symbol,
             budget=budget,
+            unfold=unfold,
         )
     )
 

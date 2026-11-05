@@ -144,13 +144,17 @@ fn definitions_by_kind_and_container() {
             &["Class A", "Method A.m", "Constructor A.__init__"],
         ),
         (
-            "def outer():\n    def inner(): pass\n    class K:\n        def m(self): pass\n",
+            "def outer():\n    def inner(): pass\n    class K:\n        def m(self): pass\n    return inner, K\n",
             &[
                 "Function outer",
                 "Function outer.inner",
                 "Class outer.K",
                 "Method outer.K.m",
             ],
+        ),
+        (
+            "def outer():\n    def inner(): pass\n    class K:\n        def m(self): pass\n",
+            &["Function outer"],
         ),
         (
             "MAX = 1\nname = 2\nclass C:\n    attr = 3\n    def __init__(self):\n        self.field = 4\n",
@@ -224,21 +228,21 @@ fn decorators_are_names_on_the_def_and_references_from_it() {
 }
 
 #[test]
-fn a_nested_def_has_its_own_key_scope_and_hashes() {
-    let source =
-        "def outer(x):\n    def inner(y):\n        return helper(y)\n    return inner(x)\n";
+fn a_nested_def_that_leaves_its_function_has_its_own_key_scope_and_hashes() {
+    let source = "def outer(x):\n    def inner(y):\n        return helper(y)\n    return inner\n";
     let blob = extract(source);
     let keys: Vec<String> = defs(&blob).iter().map(|d| key(&d.local)).collect();
     assert_eq!(keys, ["outer", "outer.inner"]);
-    assert_eq!(
-        ref_lines(source),
-        [
-            "Call helper in def:outer.inner",
-            "PassAsValue y in def:outer.inner",
-            "Call inner in def:outer",
-            "PassAsValue x in def:outer",
-        ]
-    );
+    let lines = ref_lines(source);
+    for wanted in [
+        "Call helper in def:outer.inner",
+        "PassAsValue y in def:outer.inner",
+    ] {
+        assert!(
+            lines.contains(&wanted.to_string()),
+            "{wanted} not in {lines:?}"
+        );
+    }
 
     let edited = extract(&source.replace("helper(y)", "other(y)"));
     assert_eq!(
@@ -253,6 +257,131 @@ fn a_nested_def_has_its_own_key_scope_and_hashes() {
         def(&edited, "outer.inner").body_hash,
         def(&blob, "outer.inner").body_hash
     );
+}
+
+#[test]
+fn a_nested_def_that_never_leaves_is_a_local_of_its_function() {
+    let source =
+        "def outer(x):\n    def inner(y):\n        return helper(y)\n    return inner(x)\n";
+    let blob = extract(source);
+    assert_eq!(lines_of_defs(source), ["Function outer"]);
+    assert_eq!(
+        ref_lines(source),
+        [
+            "Call helper in def:outer",
+            "PassAsValue y in def:outer",
+            "Call inner in def:outer",
+            "PassAsValue x in def:outer",
+        ]
+    );
+    let bound: Vec<String> = locals(&blob)
+        .iter()
+        .map(|l| {
+            format!(
+                "{:?} {} in {}",
+                l.kind,
+                l.name.as_str(),
+                scope(&l.enclosing)
+            )
+        })
+        .collect();
+    assert_eq!(
+        bound,
+        [
+            "Parameter x in def:outer",
+            "Closure inner in def:outer",
+            "Parameter y in def:outer",
+        ]
+    );
+    // Its change is its function's.
+    let edited = extract(&source.replace("helper(y)", "other(y)"));
+    assert_ne!(
+        def(&edited, "outer").body_hash,
+        def(&blob, "outer").body_hash
+    );
+}
+
+#[test]
+fn a_nested_def_or_class_is_a_definition_when_it_leaves_and_a_local_when_it_does_not() {
+    let table: &[(&str, &[&str])] = &[
+        (
+            "def f():\n    def a(): pass\n    return a\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    return {'k': a}\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f(obj):\n    def a(): pass\n    obj.hook = a\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f(self):\n    def a(): pass\n    self.cb = a\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    global REG\n    def a(): pass\n    REG = a\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    register(a)\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    xs = [a]\n    return xs\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    @register\n    def a(): pass\n",
+            &["Function f", "Function f.a"],
+        ),
+        (
+            "def f():\n    class K:\n        def m(self): pass\n    return K()\n",
+            &["Function f", "Class f.K", "Method f.K.m"],
+        ),
+        (
+            "def f():\n    def a():\n        def b(): pass\n        return b\n    return a\n",
+            &["Function f", "Function f.a", "Function f.a.b"],
+        ),
+        ("def f():\n    def a(): pass\n    a()\n", &["Function f"]),
+        // A parameter of the same name is that parameter, not the function.
+        (
+            "def f():\n    def a(): pass\n    def g(a):\n        return a\n    return g\n",
+            &["Function f", "Function f.g"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    return map(a, [])\n",
+            &["Function f"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    return sorted([], key=a)\n",
+            &["Function f"],
+        ),
+        (
+            "def f():\n    def a(): pass\n    xs = [a]\n    return len(xs)\n",
+            &["Function f"],
+        ),
+        (
+            "def f():\n    @functools.wraps(g)\n    def a(): pass\n",
+            &["Function f"],
+        ),
+        (
+            "def f():\n    class K:\n        def m(self): pass\n    K().m()\n",
+            &["Function f"],
+        ),
+        (
+            "def f():\n    def a():\n        def b(): pass\n        return b\n    return a()\n",
+            &["Function f"],
+        ),
+        (
+            "class C:\n    def run(self):\n        def helper(): pass\n        helper()\n",
+            &["Class C", "Method C.run"],
+        ),
+    ];
+    for (source, expected) in table {
+        assert_eq!(&lines_of_defs(source), expected, "{source}");
+    }
 }
 
 #[test]
@@ -558,7 +687,7 @@ fn imports_state_module_names_and_relative_depth() {
                     i.module.as_str(),
                     i.relative,
                     names.join(","),
-                    if i.star.is_some() { "*" } else { "-" },
+                    if i.star.is_star() { "*" } else { "-" },
                     i.default.as_ref().map_or("-", |d| d.as_str()),
                     i.kind
                 )
@@ -668,7 +797,7 @@ fn a_name_handed_to_a_call_is_passed_as_a_value() {
 
 #[test]
 fn visibility_follows_the_underscore_convention() {
-    let source = "def pub(): pass\ndef _priv(): pass\ndef __dunder__(): pass\nclass C:\n    def _prot(self): pass\n    def __mangled(self): pass\n    def run(self):\n        def helper(): pass\n";
+    let source = "def pub(): pass\ndef _priv(): pass\ndef __dunder__(): pass\nclass C:\n    def _prot(self): pass\n    def __mangled(self): pass\n    def run(self):\n        def helper(): pass\n        return helper\n";
     let blob = extract(source);
     let seen: Vec<String> = defs(&blob)
         .iter()
@@ -760,4 +889,67 @@ fn an_expired_run_says_so_instead_of_returning_a_clean_file() {
         blob.losses
     );
     assert!(parse_errors(&blob).is_empty());
+}
+
+/// W5-R1 (R2): a module-level statement that mutates a module variable is part
+/// of that variable's value, so its edit changes the variable's hashes and
+/// nothing else's. A statement that only reads it, one in a function, in the
+/// main guard, or a method that does not change a dict, list or set, does not.
+#[test]
+fn a_module_level_mutation_is_part_of_the_variable_it_changes() {
+    let body = |source: &str, name: &str| {
+        let blob = extract(source);
+        let found = def(&blob, name);
+        (found.body_hash, found.text_hash)
+    };
+    let base = "TABLE = {\"a\": 1}\nOTHER = 2\n";
+    let (table, other) = (body(base, "TABLE"), body(base, "OTHER"));
+    for (shape, statement) in [
+        ("item", "TABLE[\"b\"] = 2"),
+        ("attribute", "TABLE.note = 1"),
+        ("delete", "del TABLE[\"a\"]"),
+        ("method", "TABLE.pop(\"a\")"),
+        ("update", "TABLE.update({\"b\": 2})"),
+    ] {
+        let source = format!("{base}\nif OTHER:\n    {statement}\n");
+        assert_ne!(body(&source, "TABLE").0, table.0, "{shape}");
+        assert_ne!(body(&source, "TABLE").1, table.1, "{shape}");
+        assert_eq!(body(&source, "OTHER"), other, "{shape}");
+    }
+    let augmented = "COUNT = 1\nCOUNT += 1\n";
+    assert_ne!(
+        body(augmented, "COUNT").0,
+        body("COUNT = 1\n", "COUNT").0,
+        "augmented"
+    );
+    // A reformat of the statement is a change of the text and not of the tree.
+    let spaced = format!("{base}TABLE.pop( \"a\" )\n");
+    let tight = format!("{base}TABLE.pop(\"a\")\n");
+    assert_eq!(body(&spaced, "TABLE").0, body(&tight, "TABLE").0);
+    assert_ne!(body(&spaced, "TABLE").1, body(&tight, "TABLE").1);
+    for (shape, source) in [
+        ("a read", format!("{base}print(TABLE[\"a\"])\n")),
+        ("a call that reads", format!("{base}TABLE.get(\"a\")\n")),
+        (
+            "a function",
+            format!("{base}def f():\n    TABLE[\"b\"] = 2\n"),
+        ),
+        (
+            "the main guard",
+            format!("{base}if __name__ == \"__main__\":\n    TABLE.pop(\"a\")\n"),
+        ),
+        (
+            "a method of a value that is no container",
+            "N = 1\nN.pop(2)\n".to_string(),
+        ),
+        ("an unbound name", format!("{base}MISSING[\"b\"] = 2\n")),
+    ] {
+        let name = if shape.starts_with("a method") {
+            "N"
+        } else {
+            "TABLE"
+        };
+        let plain = if name == "N" { "N = 1\n" } else { base };
+        assert_eq!(body(&source, name), body(plain, name), "{shape}");
+    }
 }

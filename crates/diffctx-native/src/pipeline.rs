@@ -325,6 +325,9 @@ pub fn build_symbol_impact(
         Ok(state) => state,
         Err(e) => {
             return match e.downcast::<SymbolQueryError>() {
+                Ok(SymbolQueryError { locals, .. }) if !locals.is_empty() => {
+                    Ok(crate::impact::symbol_local_output(root_dir, query, locals))
+                }
                 Ok(SymbolQueryError {
                     named: Some(named), ..
                 }) => Ok(crate::impact::symbol_named_output(root_dir, query, named)),
@@ -780,6 +783,9 @@ pub struct SymbolQueryError {
     /// Files that spell a name nothing defines: the answer instead of the
     /// error (Forgejo #114).
     pub named: Option<crate::impact::SymbolNamed>,
+    /// Definitions the name is a local of: the answer when no definition has
+    /// it (a nested function that never leaves its function).
+    pub(crate) locals: Vec<crate::impact::LocalOf>,
 }
 
 impl std::fmt::Display for SymbolQueryError {
@@ -875,6 +881,185 @@ fn unanalysed_namers(
     )
 }
 
+/// The facts an extractor states about a file of a language whose definitions
+/// they are; `None` for any other.
+fn local_facts(path: &str, text: &str) -> Option<crate::facts::BlobFacts> {
+    use crate::facts::Extractor as _;
+    use crate::facts::lang::python::PythonExtractor;
+    use crate::facts::lang::typescript::{JavaScript, TypeScript};
+    let extension = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
+    let budget = crate::snapshot::RunBudget::default();
+    match extension.as_str() {
+        "py" | "pyi" => Some(PythonExtractor.extract(text.as_bytes(), &budget)),
+        "ts" | "tsx" | "mts" | "cts" => Some(TypeScript.extract(text.as_bytes(), &budget)),
+        "js" | "jsx" | "mjs" | "cjs" => Some(JavaScript.extract(text.as_bytes(), &budget)),
+        _ => None,
+    }
+}
+
+/// A fragment the fragmenter named `name` that the facts hold as a local of
+/// a definition and as no definition.
+fn is_local_fragment(fragment: &Fragment, name: &str, run: &crate::resource::RunContext) -> bool {
+    use crate::facts::{Fact, LocalKind};
+    let Some(text) = run.source().read_to_string(Path::new(fragment.path())) else {
+        return false;
+    };
+    let Some(blob) = local_facts(fragment.path(), &text) else {
+        return false;
+    };
+    let (from, to) = (fragment.start_line(), fragment.end_line());
+    let defined = blob.facts.iter().any(|f| {
+        matches!(f, Fact::Definition(d)
+            if d.local.name.as_str() == name && d.span.lines.0 <= to && from <= d.span.lines.1)
+    });
+    !defined
+        && blob.facts.iter().any(|f| {
+            matches!(f, Fact::LocalBinding(l)
+                if l.kind == LocalKind::Closure
+                    && l.name.as_str() == name
+                    && from <= l.site.lines.0
+                    && l.site.lines.1 <= to)
+        })
+}
+
+/// The definitions (and callbacks, outermost last) a scope sits in.
+fn scope_chain(scope: &crate::facts::Scope) -> (Vec<&str>, Vec<&crate::facts::Scope>) {
+    use crate::facts::Scope;
+    let mut callbacks = Vec::new();
+    let mut current = scope;
+    loop {
+        match current {
+            Scope::Callback { parent, .. } => {
+                callbacks.push(current);
+                current = parent;
+            }
+            Scope::Def(key) => {
+                let path = key
+                    .container
+                    .iter()
+                    .chain([&key.name])
+                    .map(|n| n.as_str())
+                    .collect();
+                return (path, callbacks);
+            }
+            Scope::Module => return (Vec::new(), callbacks),
+        }
+    }
+}
+
+/// Every definition that `name` is a local of (a nested function, class or
+/// closure that never leaves it), with each use of the name inside that
+/// definition: the answer to a `--symbol` no definition has. A use is a plain
+/// reference to the name, in the scope of the local or in a definition
+/// nested in it, that no parameter or local of the same name hides.
+fn local_uses(
+    root_dir: &Path,
+    files: &[PathBuf],
+    name: &str,
+    run: &crate::resource::RunContext,
+) -> Vec<crate::impact::LocalOf> {
+    use crate::facts::{Fact, LocalKind, Receiver};
+    let mut found: Vec<crate::impact::LocalOf> = Vec::new();
+    for file in files {
+        let Some(text) = run.source().read_to_string(file) else {
+            continue;
+        };
+        let display = crate::paths::display_rel_or_abs(root_dir, file);
+        let Some(blob) = local_facts(&display, &text) else {
+            continue;
+        };
+        let lines: Vec<&str> = text.split('\n').collect();
+        let indent = |line: u32| {
+            lines
+                .get(line as usize - 1)
+                .map_or(0, |l| l.len() - l.trim_start().len())
+        };
+        let locals: Vec<&crate::facts::Local> = blob
+            .facts
+            .iter()
+            .filter_map(|f| match f {
+                Fact::LocalBinding(l) => Some(l),
+                _ => None,
+            })
+            .collect();
+        for local in locals
+            .iter()
+            .filter(|l| l.kind == LocalKind::Closure && l.name.as_str() == name)
+        {
+            let (home, home_callbacks) = scope_chain(&local.enclosing);
+            let enclosing = if home.is_empty() {
+                display.clone()
+            } else {
+                format!("{display}::{}", home.join("."))
+            };
+            let mut uses: Vec<crate::impact::LocalUse> = Vec::new();
+            for r in blob.facts.iter().filter_map(|f| match f {
+                Fact::Reference(r) => Some(r),
+                _ => None,
+            }) {
+                if r.name.as_str() != name
+                    || !r.qualifier.is_empty()
+                    || matches!(r.receiver, Receiver::SelfType)
+                {
+                    continue;
+                }
+                let (at, at_callbacks) = scope_chain(&r.enclosing);
+                let inside = at.starts_with(&home)
+                    && (at.len() > home.len()
+                        || home_callbacks.iter().all(|c| at_callbacks.contains(c)));
+                let hidden = locals.iter().any(|l2| {
+                    l2.name.as_str() == name && l2.site != local.site && {
+                        let (own, _) = scope_chain(&l2.enclosing);
+                        own.len() > home.len() && at.starts_with(&own)
+                    }
+                });
+                if !inside || hidden {
+                    continue;
+                }
+                let line = r.site.lines.0;
+                // The inner local a use sits in: the nearest local declared
+                // above it whose body, by indentation, still holds the line.
+                let inner = if at == home {
+                    locals
+                        .iter()
+                        .filter(|l2| {
+                            l2.kind == LocalKind::Closure
+                                && l2.site.lines.0 < line
+                                && scope_chain(&l2.enclosing).0 == home
+                                && {
+                                    let base = indent(l2.site.lines.0);
+                                    indent(line) > base
+                                        && (l2.site.lines.0 + 1..line).all(|n| {
+                                            lines.get(n as usize - 1).is_none_or(|l| {
+                                                l.trim().is_empty() || indent(n) > base
+                                            })
+                                        })
+                                }
+                        })
+                        .max_by_key(|l2| l2.site.lines.0)
+                        .map(|l2| l2.name.as_str().to_string())
+                } else {
+                    None
+                };
+                uses.push(crate::impact::LocalUse {
+                    inside: inner.or_else(|| at.last().map(|s| s.to_string())),
+                    line,
+                    call: matches!(r.use_kind, crate::facts::UseKind::Call),
+                });
+            }
+            uses.sort_by_key(|u| u.line);
+            found.push(crate::impact::LocalOf {
+                path: display.clone(),
+                name: name.to_string(),
+                enclosing,
+                line: local.site.lines.0,
+                uses,
+            });
+        }
+    }
+    found
+}
+
 fn resolve_symbol_change_set(
     root_dir: &Path,
     scope: &[String],
@@ -889,6 +1074,7 @@ fn resolve_symbol_change_set(
             ),
             malformed: true,
             named: None,
+            locals: Vec::new(),
         }
         .into());
     };
@@ -1006,7 +1192,22 @@ fn resolve_symbol_change_set(
             .filter(|f| qualifier.is_none_or(|q| owned_by(f, q)))
             .collect();
     }
+    // A name the facts layer holds only as a local of a definition is no
+    // definition, whatever the fragmenter named.
+    definitions.retain(|f| !is_local_fragment(f, name, run));
     if definitions.is_empty() {
+        if segments.len() == 1 {
+            let locals = local_uses(root_dir, &files, name, run);
+            if !locals.is_empty() {
+                return Err(SymbolQueryError {
+                    message: format!("{name:?} is a local of a definition"),
+                    malformed: false,
+                    named: None,
+                    locals,
+                }
+                .into());
+            }
+        }
         let capped = if named_in > MAX_SYMBOL_FILES {
             format!(" (searched {MAX_SYMBOL_FILES} of the {named_in} files naming it)")
         } else {
@@ -1053,6 +1254,7 @@ fn resolve_symbol_change_set(
             ),
             malformed: false,
             named,
+            locals: Vec::new(),
         }
         .into());
     }

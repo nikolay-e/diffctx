@@ -1343,6 +1343,12 @@ struct Prepared {
 #[derive(Default)]
 struct Trace {
     session: Option<String>,
+    /// The tool call this run belongs to: the join between a call's
+    /// `PreToolUse` and `PostToolUse` lines and the session's transcript.
+    call: Option<String>,
+    /// Every repository the run found something landed in; the log's repo
+    /// field names the first.
+    roots: Vec<PathBuf>,
     verb: Option<&'static str>,
     root: Option<PathBuf>,
     range: Option<String>,
@@ -1547,6 +1553,9 @@ fn landed_in(
             if found.is_empty() {
                 trace.verb = Some(verb);
                 trace.root = Some(root.clone());
+            }
+            if !trace.roots.contains(&root) {
+                trace.roots.push(root.clone());
             }
             ranges.push(range.clone());
             let trigger = Trigger::Landed {
@@ -2707,6 +2716,54 @@ fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
     }
 }
 
+/// The names among `names` that a file the search looked in defines or
+/// references, when every place it looked is a file whose language the facts
+/// layer reads. A name its matched lines spell only in a comment or a string
+/// has no definition and no caller there: the answer ends `out-of-scope`, and
+/// building it to find out cost seconds a search (#667). `None` when a place
+/// is a directory, the whole repository, a file of a language the facts do not
+/// read or one that did not parse whole: the lookup decides.
+fn named_in_scope(
+    root: &Path,
+    scope: &Scope,
+    names: &[String],
+) -> Option<rustc_hash::FxHashSet<String>> {
+    use crate::facts::Fact;
+    const MAX_READ: u64 = 1024 * 1024;
+    // Past a few files the reading costs what the lookup would.
+    const MAX_PLACES: usize = 20;
+    if scope.0.is_empty() || scope.0.len() > MAX_PLACES {
+        return None;
+    }
+    let registry = crate::facts::lang::builtin();
+    let mut spelled: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
+    for place in &scope.0 {
+        let path = root.join(place);
+        if place.is_empty() || !path.is_file() || std::fs::metadata(&path).ok()?.len() > MAX_READ {
+            return None;
+        }
+        let language = crate::facts::Language::from_path(&snap::RepoPath::new(place).ok()?)?;
+        let bytes = std::fs::read(&path).ok()?;
+        let blob = registry
+            .get(language)?
+            .extract(&bytes, &crate::snapshot::RunBudget::default());
+        if !blob.losses.is_empty() {
+            return None;
+        }
+        for fact in &blob.facts {
+            let name = match fact {
+                Fact::Definition(def) => def.local.name.as_str(),
+                Fact::Reference(reference) => reference.name.as_str(),
+                _ => continue,
+            };
+            if names.iter().any(|n| n == name) {
+                spelled.insert(name.to_string());
+            }
+        }
+    }
+    Some(spelled)
+}
+
 /// A search answers every name it is a search for (#634): a name the
 /// pending change edits from the impact, which already has its callers
 /// (#337), any other as `--symbol` would. Silence when none has an answer.
@@ -2752,6 +2809,15 @@ fn search_answer(
         names.into_iter().partition(|n| edited.contains(n));
     let mut answers = Vec::new();
     let mut silence = "seen";
+    // A name no searched file defines or calls is no lookup worth a build.
+    let spelled = named_in_scope(&root, &scope, &others);
+    let others: Vec<String> = match &spelled {
+        Some(spelled) => others.into_iter().filter(|n| spelled.contains(n)).collect(),
+        None => others,
+    };
+    if spelled.is_some() && others.is_empty() {
+        silence = "out-of-scope";
+    }
     if let (Some(identity), false) = (&identity, edited.is_empty()) {
         match edited_answer(&root, identity, &edited, started, trace) {
             Ok(text) => answers.push(text),
@@ -2827,8 +2893,9 @@ fn edited_answer(
     Ok(answers.join("\n"))
 }
 
-/// The automatic answer to a search for a name, a pointer to the full one.
-const SYMBOL_TOKEN_CAP: u32 = 200;
+/// The automatic answer to a search for a name, a pointer to the full one: the
+/// whole text the agent reads for one name, lead line included (AC8).
+const SYMBOL_TOKEN_CAP: u32 = 150;
 
 /// More definitions than this make a searched name ambiguous.
 const MAX_SEARCH_DEFINITIONS: usize = 3;
@@ -2949,10 +3016,12 @@ fn one_symbol_answer(
         0 => String::new(),
         n => format!(" where you searched ({n} more definition(s) elsewhere)"),
     };
-    let text = crate::impact::render_automatic(&mut output, SYMBOL_TOKEN_CAP);
-    Ok(format!(
-        "You searched for `{name}`; diffctx resolved it{elsewhere} (`diffctx . --symbol {name} -f md` gives the whole answer):\n{text}"
-    ))
+    let lead = format!(
+        "You searched for `{name}`; diffctx resolved it{elsewhere} (`diffctx . --symbol {name} -f md` gives the whole answer):\n"
+    );
+    let room = SYMBOL_TOKEN_CAP.saturating_sub(crate::tokenizer::count_tokens(&lead));
+    let text = crate::impact::render_automatic(&mut output, room);
+    Ok(format!("{lead}{text}"))
 }
 
 /// The JSON the hook prints. The strict gate denies the command with the
@@ -3106,6 +3175,15 @@ fn review(
     let payload: serde_json::Value =
         serde_json::from_str(stdin_json).map_err(|_| "error:payload")?;
     trace.session = payload["session_id"].as_str().map(str::to_string);
+    trace.call = payload["tool_use_id"]
+        .as_str()
+        .map(|id| {
+            id.chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .take(64)
+                .collect::<String>()
+        })
+        .filter(|id| !id.is_empty());
     if matches!(event, Event::PostToolUse { .. }) {
         bracket_after(&payload);
     }
@@ -3184,6 +3262,44 @@ fn review(
     joined(answers).ok_or(silence.unwrap_or("empty"))
 }
 
+/// The marker that this session's own hook reviewed `oid` when it landed.
+fn reviewed_key(oid: &str, session: Option<&str>) -> String {
+    session_key(&format!("rev-{oid}"), session)
+}
+
+/// The commits of `range`, newest first, up to the cap a review lists.
+fn commits_of(root: &Path, range: &str) -> Vec<String> {
+    git_out(root, &["rev-list", "-n", "500", range, "--"])
+        .map(|list| list.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// A review of what a call committed is complete: each commit of its range is
+/// marked, so a later push of them is not reviewed a second time (#640).
+fn note_reviewed(landed: &Option<(PathBuf, String)>, trace: &Trace) {
+    let (Some((root, range)), false) = (landed, file_safe(trace.session.as_deref()).is_empty())
+    else {
+        return;
+    };
+    for oid in commits_of(root, range) {
+        mark_seen(&reviewed_key(&oid, trace.session.as_deref()));
+    }
+}
+
+/// A push whose every commit this session's earlier reviews covered: what it
+/// publishes was shown when it landed.
+fn pushes_only_reviewed(root: &Path, range: &str, session: Option<&str>) -> bool {
+    if file_safe(session).is_empty() {
+        return false;
+    }
+    let commits = commits_of(root, range);
+    !commits.is_empty()
+        && commits.len() < 500
+        && commits
+            .iter()
+            .all(|oid| is_seen(&reviewed_key(oid, session)))
+}
+
 /// The answer for one prepared range: a reminder of what was delivered
 /// before, the review, or why there is none.
 fn answer(
@@ -3197,6 +3313,34 @@ fn answer(
         return Err("seen");
     }
     let landed = matches!(prepared.trigger, Trigger::Landed { .. });
+    // The commits a call made, whose complete review is marked below.
+    let made = match (&prepared.trigger, &prepared.spec) {
+        (Trigger::Landed { .. }, None) => Some((prepared.root.clone(), prepared.range.clone())),
+        _ => None,
+    };
+    if let (
+        Trigger::Landed {
+            verb: "push",
+            unmade,
+            ..
+        },
+        Some(snap::RangeSpec::Pushed { .. }),
+    ) = (&prepared.trigger, &prepared.spec)
+    {
+        if unmade.is_empty()
+            && pushes_only_reviewed(&prepared.root, &prepared.range, trace.session.as_deref())
+        {
+            trace.noted = Some("reminder");
+            return Ok(hook_json(
+                event,
+                &format!(
+                    "diffctx: this push publishes ({}) only commits this session's calls made and had reviewed when they landed; none of it is new to review.",
+                    prepared.range
+                ),
+                false,
+            ));
+        }
+    }
     match (&prepared.shown, event) {
         // An answer that was empty stays empty: no reminder of callers that
         // were never listed. A landed record still says it in one line.
@@ -3204,6 +3348,7 @@ fn answer(
             if event == Event::PreToolUse {
                 mark_seen(&prepared.record_key);
             }
+            note_reviewed(&made, trace);
             if landed {
                 return Ok(nothing_reached(event, landed, trace));
             }
@@ -3213,6 +3358,7 @@ fn answer(
         // run): pointed at, never silence, which read as no review (#501).
         (Some(d), _) if !d.partial && (event == Event::PreToolUse || landed) => {
             mark_seen(&prepared.record_key);
+            note_reviewed(&made, trace);
             trace.noted = Some("reminder");
             return Ok(hook_json(event, &reminder(event, &d.headline), false));
         }
@@ -3252,8 +3398,16 @@ fn answer(
     });
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
-        Err("empty") => mark_delivered(&key, "", false),
-        Ok(a) => mark_delivered(&key, &a.headline, a.partial),
+        Err("empty") => {
+            mark_delivered(&key, "", false);
+            note_reviewed(&made, trace);
+        }
+        Ok(a) => {
+            mark_delivered(&key, &a.headline, a.partial);
+            if !a.partial {
+                note_reviewed(&made, trace);
+            }
+        }
         // A change that was not reviewed is said so, and which files it
         // changes: silence there reads as a clean review (#612, #613).
         Err(why) if recorded => return Ok(not_reviewed(event, &reviewed, why, &paths, trace)),
@@ -3274,6 +3428,10 @@ fn answer(
             let deny = gate && !a.partial;
             if deny {
                 trace.noted = Some("denied");
+            } else if a.partial {
+                // A review the run stopped short of is not a full one in the
+                // log either (fj#127).
+                trace.noted = Some("partial");
             }
             hook_json(event, &a.context, deny)
         }),
@@ -3361,9 +3519,16 @@ fn not_attributed(event: Event, trace: &mut Trace) -> String {
 
 fn not_analysed(event: Event, why: Silence, trace: &mut Trace) -> String {
     trace.noted = Some(why);
+    let because = match why {
+        "error:git" => "git refused a read of the repository's refs or reflogs",
+        "error:record" => "what it was about to do could not be recorded for the review after it",
+        _ => "git's record of it could not be read",
+    };
     hook_json(
         event,
-        "diffctx did not analyse this command: git's record of it could not be read. Run `diffctx <repo> --diff --mode impact` in that repository before going on.",
+        &format!(
+            "diffctx did not analyse this command: {because}. Run `diffctx <repo> --diff --mode impact` in that repository before going on."
+        ),
         false,
     )
 }
@@ -3382,8 +3547,10 @@ const LOG_NAME: &str = "hook-runs.log";
 /// only hooks that print, so without it a silent hook that decided "nothing
 /// to say" and one that never got an answer look the same afterwards.
 /// `<unix ts> <session> <event> <verb> <range> <outcome> <ms>ms <repo>
-/// <version>`: the version last, so an audit can tell an old pin's answer
-/// from the current one (#524) without moving the fields before it.
+/// call=<tool_use_id> roots=<repo,repo> <version>`: the version last, so an
+/// audit can tell an old pin's answer from the current one (#524) without
+/// moving the fields before it. `call` joins a call's lines with the
+/// transcript; `roots` names every repository something landed in (M1).
 fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let Some(dir) = cache_root() else { return };
     let path = dir.join(LOG_NAME);
@@ -3393,7 +3560,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     sweep_seen_daily(&dir.join("seen"));
     let session = file_safe(trace.session.as_deref());
     let line = format!(
-        "{} {} {} {} {} {outcome} {}ms {} {}\n",
+        "{} {} {} {} {} {outcome} {}ms {} call={} roots={} {}\n",
         now_secs(),
         if session.is_empty() { "-" } else { &session },
         event.name(),
@@ -3404,6 +3571,17 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
             || "-".to_string(),
             |r| r.to_string_lossy().replace(['\n', '\r'], "?")
         ),
+        trace.call.as_deref().unwrap_or("-"),
+        if trace.roots.is_empty() {
+            "-".to_string()
+        } else {
+            trace
+                .roots
+                .iter()
+                .map(|r| r.to_string_lossy().replace(['\n', '\r', ' ', ','], "?"))
+                .collect::<Vec<_>>()
+                .join(",")
+        },
         crate::run_provenance::BUILD_LABEL,
     );
     let _ = std::fs::create_dir_all(&dir);

@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicBool;
 use _diffctx::facts::lang::typescript::{JavaScript, TypeScript};
 use _diffctx::facts::{
     BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, LocalKey, Namespace, Receiver, Ref,
-    Scope, Visibility,
+    Scope, Star, Visibility,
 };
 use _diffctx::snapshot::{Loss, RunBudget};
 
@@ -161,9 +161,9 @@ fn import_line(import: &Import) -> String {
         })
         .collect();
     let star = match &import.star {
-        None => "-".to_string(),
-        Some(None) => "*".to_string(),
-        Some(Some(alias)) => alias.as_str().to_string(),
+        Star::None => "-".to_string(),
+        Star::Glob => "*".to_string(),
+        Star::Alias(alias) => alias.as_str().to_string(),
     };
     let default = import
         .default
@@ -614,10 +614,7 @@ fn locals_and_parameters_are_bindings_never_definitions() {
 }
 "#,
     );
-    assert_eq!(
-        defs(&facts),
-        vec!["outer Function", "outer.helper Function"]
-    );
+    assert_eq!(defs(&facts), vec!["outer Function"]);
     assert_eq!(
         locals(&facts),
         vec![
@@ -626,7 +623,8 @@ fn locals_and_parameters_are_bindings_never_definitions() {
             "Parameter rest in def outer",
             "Closure inner in def outer",
             "Parameter x in def outer",
-            "Parameter y in def outer.helper",
+            "Closure helper in def outer",
+            "Parameter y in def outer",
             "Variable item in def outer",
             "Variable err in def outer",
         ]
@@ -634,7 +632,7 @@ fn locals_and_parameters_are_bindings_never_definitions() {
 }
 
 #[test]
-fn a_named_nested_function_is_a_definition_of_its_enclosing_function() {
+fn a_nested_function_or_class_is_a_definition_only_when_it_leaves_its_function() {
     let facts = ts(r#"export function outer() {
   function inner(x: number) { return helper(x); }
   const run = () => {
@@ -643,47 +641,94 @@ fn a_named_nested_function_is_a_definition_of_its_enclosing_function() {
   };
   return inner(1) + run();
 }
+export function factory(target: Target, items: number[]) {
+  function onTick() { return 1; }
+  function made() { return 2; }
+  function listed() { return 3; }
+  function kept() { return 4; }
+  function loud() { return 5; }
+  function each(n: number) { return n; }
+  function suite() { return 6; }
+  class Impl { run() { return 7; } }
+  class Hidden { run() { return 8; } }
+  target.onTick = onTick;
+  const bag = { kept };
+  const hidden = new Hidden();
+  setTimeout(loud);
+  items.map(each);
+  it("works", suite);
+  return { made, handlers: [listed], bag, impl: new Impl() };
+}
 export const useStore = create()((set) => {
   function alpha() { return 1; }
   function beta() { return alpha(); }
-  return { play: async () => { await beta(); } };
+  return { play: async () => { await beta(); }, alpha };
 });
 "#);
     assert!(facts.losses.is_empty(), "{:?}", facts.losses);
-    assert_eq!(
-        defs(&facts),
-        vec![
-            "outer Function",
-            "outer.inner Function",
-            "outer.deep Function",
-            "useStore Constant",
-            "useStore.alpha Function",
-            "useStore.beta Function",
-            "useStore.play Method",
-        ]
-    );
+    let mut named = defs(&facts);
+    named.sort();
+    let mut expected = vec![
+        "outer Function",
+        "factory Function",
+        "factory.onTick Function",
+        "factory.made Function",
+        "factory.listed Function",
+        "factory.kept Function",
+        "factory.loud Function",
+        "factory.Impl Class",
+        "factory.Impl.run Method",
+        "useStore Constant",
+        "useStore.alpha Function",
+        "useStore.play Method",
+    ];
+    expected.sort();
+    assert_eq!(named, expected);
     let seen = refs(&facts);
-    for expected in [
-        "Call helper in def outer.inner",
-        "Call inner in def outer.deep",
-        "Call deep in def outer",
+    for wanted in [
+        "Call helper in def outer",
         "Call inner in def outer",
-        "Call alpha in def useStore.beta",
+        "Call deep in def outer",
+        "Call alpha in callback create in def useStore",
     ] {
         assert!(
-            seen.contains(&expected.to_string()),
-            "{expected} not in {seen:#?}"
+            seen.contains(&wanted.to_string()),
+            "{wanted} not in {seen:#?}"
         );
     }
-    let locals = locals(&facts);
-    assert!(locals.contains(&"Closure run in def outer".to_string()));
+    let bound = locals(&facts);
+    for wanted in [
+        "Closure inner in def outer",
+        "Closure deep in def outer",
+        "Closure each in def factory",
+        "Closure suite in def factory",
+        "Closure Hidden in def factory",
+        "Closure beta in callback create in def useStore",
+    ] {
+        assert!(
+            bound.contains(&wanted.to_string()),
+            "{wanted} not in {bound:#?}"
+        );
+    }
     assert!(
-        locals.iter().all(|l| !l.contains("Closure inner")
-            && !l.contains("Closure deep")
-            && !l.contains("Closure alpha")),
-        "{locals:?}"
+        bound.iter().all(|l| !l.contains("Closure alpha")
+            && !l.contains("Closure made")
+            && !l.contains("Closure Impl")),
+        "{bound:?}"
     );
-    assert!(locals.contains(&"Parameter x in def outer.inner".to_string()));
+}
+
+#[test]
+fn a_parameter_named_like_a_nested_function_is_not_that_function() {
+    let facts = ts(r#"export function make() {
+  function alpha() { return 1; }
+  function delta(alpha: number) { return alpha; }
+  return { delta };
+}
+"#);
+    let mut named = defs(&facts);
+    named.sort();
+    assert_eq!(named, vec!["make Function", "make.delta Function"]);
 }
 
 #[test]
@@ -1081,10 +1126,10 @@ fn a_change_inside_a_member_changes_the_member_alone() {
         hashes(&before, "makeSys.open").0,
         hashes(&after, "makeSys.open").0
     );
-    // A function declared inside another.
+    // A function declared inside another and returned by it.
     let outer = |body: &str| {
         format!(
-            "export function outer() {{\n  function inner() {{ return {body}; }}\n  return inner();\n}}\n"
+            "export function outer() {{\n  function inner() {{ return {body}; }}\n  return inner;\n}}\n"
         )
     };
     assert_eq!(hashes(&outer("1"), "outer"), hashes(&outer("2"), "outer"));
@@ -1092,6 +1137,18 @@ fn a_change_inside_a_member_changes_the_member_alone() {
         hashes(&outer("1"), "outer.inner").0,
         hashes(&outer("2"), "outer.inner").0
     );
+    // One that never leaves is part of the function: its change is the
+    // function's.
+    let local = |body: &str| {
+        format!(
+            "export function outer() {{\n  function inner() {{ return {body}; }}\n  return inner();\n}}\n"
+        )
+    };
+    assert_ne!(
+        hashes(&local("1"), "outer").0,
+        hashes(&local("2"), "outer").0
+    );
+    assert_eq!(defs(&ts(&local("1"))), vec!["outer Function"]);
     // A class gains a property arrow: the class, whose members are definitions
     // of their own, keeps its hashes, separators included.
     let manager = |extra: &str| {
@@ -1245,7 +1302,7 @@ fn a_function_assigned_to_a_member_defines_a_method_and_holds_its_own_functions(
 proto.handle = function handle(req) {
   function next(err) { return trim(err); }
   function trim(x) { return x; }
-  return next();
+  return next;
 };
 Foo.prototype.bar = function () { return 1; };
 res.send = (x) => x;
@@ -1255,7 +1312,6 @@ exports.keep = function () {};
     for expected in [
         "proto.handle Method",
         "proto.handle.next Function",
-        "proto.handle.trim Function",
         "Foo.bar Method",
         "res.send Method",
     ] {
@@ -1269,5 +1325,10 @@ exports.keep = function () {};
         1,
         "the write stays: it reads `proto`"
     );
+    assert!(
+        !named.contains(&"proto.handle.trim Function".to_string()),
+        "a function the method only calls is local: {named:?}"
+    );
     assert!(refs(&facts).contains(&"Call trim in def proto.handle.next".to_string()));
+    assert!(locals(&facts).contains(&"Closure trim in def proto.handle".to_string()));
 }

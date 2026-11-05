@@ -351,7 +351,7 @@ pub(super) fn walk<'t, O: Clone>(
     facts
 }
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     let mut facts = walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {

@@ -55,7 +55,7 @@ pub use language::Language;
 pub use model::{
     BlobFacts, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind, EntryPoint,
     Export, Fact, FileFacts, Import, ImportKind, Local, LocalKey, LocalKind, Namespace,
-    PathMention, Receiver, Ref, Scope, UseKind, Visibility,
+    PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
 };
 
 use rustc_hash::FxHashSet;

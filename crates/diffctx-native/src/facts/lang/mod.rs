@@ -9,11 +9,17 @@ use crate::facts::extractor::{Extractor, Registry};
 use crate::facts::hash::Hasher;
 use crate::facts::language::Language;
 
+pub mod kotlin;
 pub mod python;
+pub mod rust;
 pub mod typescript;
 
 fn shipped() -> Vec<Arc<dyn Extractor>> {
-    let mut all: Vec<Arc<dyn Extractor>> = vec![Arc::new(python::PythonExtractor)];
+    let mut all: Vec<Arc<dyn Extractor>> = vec![
+        Arc::new(python::PythonExtractor),
+        Arc::new(kotlin::KotlinExtractor),
+        Arc::new(rust::RustExtractor),
+    ];
     all.extend(typescript::extractors());
     all
 }

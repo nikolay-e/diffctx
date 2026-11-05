@@ -13,6 +13,8 @@ use support::{diffctx, repo, set};
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
         .current_dir(repo)
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .args(["-q", "-f", "json"])
         .output()
@@ -48,12 +50,32 @@ fn callers(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|c| c["evidence"] != "reexport")
         .map(|c| {
             format!(
                 "{}::{}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or("")
             )
+        })
+        .collect()
+}
+
+/// The modules that re-export the definition: each is its own row, stated as
+/// `reexports`, and is no caller of it.
+fn reexports(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
+    changed(doc, path, name)["callers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["evidence"] == "reexport")
+        .map(|c| {
+            assert_eq!(c["relation"], "reexports", "{c}");
+            assert!(
+                c["symbol"].is_null(),
+                "a re-export names no definition: {c}"
+            );
+            c["path"].as_str().unwrap_or("").to_string()
         })
         .collect()
 }
@@ -424,6 +446,7 @@ fn evidenced(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|c| c["evidence"] != "reexport")
         .map(|c| {
             format!(
                 "{}::{} {} {}",
@@ -716,6 +739,11 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
         ]),
         "{doc}"
     );
+    assert_eq!(
+        reexports(&doc, "shared/pkg/src/pkg/ip.py", "client_ip"),
+        set(&["shared/pkg/src/pkg/__init__.py"]),
+        "{doc}"
+    );
     let doc = symbol(tmp.path(), "apps/other/src/other/pkg.py:client_ip");
     assert_eq!(
         evidenced(&doc, "apps/other/src/other/pkg.py", "client_ip"),
@@ -727,8 +755,9 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
     );
 }
 
-/// #546: a function defined inside another is named only there, so a file
-/// over the size cap that spells its name is no possible caller of it. A
+/// #546: a function defined inside another and never returned is a local of it
+/// (Revision 12.3), named only there, so a file over the size cap that spells
+/// its name is no possible caller of it. A
 /// module-level function of the same commit, which such a file imports and
 /// calls, lists that call.
 #[test]
@@ -764,18 +793,20 @@ fn a_nested_function_has_no_callers_outside_its_function() {
             )
         })
         .collect();
-    // The enclosing function runs the nested one and is a caller of it; the
-    // file over the size cap is read whole by the facts layer, so it is a
-    // caller of the module-level function it imports and calls, and a hedge
-    // on neither.
-    assert_eq!(
-        listed,
-        set(&["lib/policy.py::cache_control", "lib/policy.py::value"]),
+    // The nested function never leaves `value_of` (Revision 12.3): it is a local,
+    // its change is `value_of`'s, and the answer has no entry for it. `value_of`
+    // has no caller, so it is listed only if the answer lists a change nothing
+    // calls. The file over the size cap is read whole by the facts layer, so it
+    // is a caller of the module-level function it imports and calls, and a
+    // hedge on neither.
+    assert!(listed.contains("lib/policy.py::cache_control"), "{doc}");
+    assert!(
+        listed.is_subset(&set(&[
+            "lib/policy.py::cache_control",
+            "lib/policy.py::value_of"
+        ])),
         "{doc}"
     );
-    let value = changed(&doc, "lib/policy.py", "value");
-    assert_eq!(value["callers"][0]["symbol"], "value_of", "{doc}");
-    assert!(value["missed_in"].is_null(), "{doc}");
     let control = changed(&doc, "lib/policy.py", "cache_control");
     assert_eq!(
         control["callers"][0]["path"], "child/src/pkg/domain.py",
@@ -962,6 +993,11 @@ fn apps_linked_by_uv_path_sources_are_callers_in_the_shared_package() {
             "apps/a/src/a/serve.py::serve",
             "apps/b/src/b/serve.py::serve"
         ]),
+        "{doc}"
+    );
+    assert_eq!(
+        reexports(&doc, "shared/kit/src/kit/auth.py", "auth_settings"),
+        set(&["shared/kit/src/kit/__init__.py"]),
         "{doc}"
     );
 }
