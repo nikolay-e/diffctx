@@ -560,7 +560,7 @@ fn run_case_with_scoring(
             .map(|f| f.path.clone())
             .collect();
         if !leaked.is_empty() {
-            return Err(Failed::from(format!(
+            return Err(oracle::assertion_failed(format!(
                 "auto_garbage leaked into the output: {}",
                 leaked.join(", ")
             )));
@@ -600,7 +600,9 @@ fn run_case_with_scoring(
              future regression here would be silently absorbed",
             oracle.score
         ))),
-        (false, false) => Err(Failed::from(format_failure(&oracle, &output, min_score))),
+        (false, false) => Err(oracle::assertion_failed(format_failure(
+            &oracle, &output, min_score,
+        ))),
     }
 }
 
@@ -731,7 +733,10 @@ fn run_oracle_case(
                  silently absorbed",
             )),
         ),
-        (true, false) => ("fail", Err(Failed::from(outcome.failures.join("\n\n")))),
+        (true, false) => (
+            "fail",
+            Err(oracle::assertion_failed(outcome.failures.join("\n\n"))),
+        ),
     };
     outcome.report.state = state;
     oracle::report::record(outcome.report);
@@ -833,8 +838,15 @@ fn main() {
             matches!(c.corpus, Corpus::Oracle(_)) && oracle::case::has_tag(&c.path, tag)
         });
     }
+    // The limit samples the selection corpus. The impact and symbol corpora
+    // are small, run the shipped binary and gate the answer's contract: they
+    // always run whole, so a red case cannot land behind a sample.
     if let Some(n) = limit {
-        cases = stratified_sample(cases, n);
+        let (whole, selection): (Vec<_>, Vec<_>) = cases
+            .into_iter()
+            .partition(|c| matches!(c.corpus, Corpus::Oracle(_)));
+        cases = stratified_sample(selection, n);
+        cases.extend(whole);
     }
 
     let mut trials: Vec<Trial> = cases

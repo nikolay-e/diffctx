@@ -67,6 +67,10 @@ thread_local! {
     static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
+)]
 fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
     let language = grammar()?;
     PARSER.with(|slot| {
@@ -1883,6 +1887,10 @@ impl<'t> Walker<'t> {
             }
             "subscript" => {
                 let value = node.child_by_field_name("value")?;
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "a subscript that is not an integer is not `parents[n]`, so the expression is no parent path"
+                )]
                 let up: usize = self
                     .text(node.child_by_field_name("subscript")?)
                     .parse()

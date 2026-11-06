@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::case::{Case, Compiled, Coverage};
 use super::engine::{Answer, absence_claims};
-use super::model::{Kind, Node, Relation, UnknownClass, precise};
+use super::model::{Kind, Node, Relation, UnknownClass};
 use super::report::{CaseReport, TargetReport};
 
 #[derive(Default)]
@@ -25,7 +25,7 @@ pub fn judge(
     let mut report = CaseReport::new(name, case, language);
     let mut failures = Vec::new();
 
-    compare_relations(case, compiled, language, answer, &mut report, &mut failures);
+    compare_relations(case, compiled, answer, &mut report, &mut failures);
     check_decoys(case, answer, &mut failures);
     check_definitions(case, answer, &mut failures);
     check_unknowns(case, answer, &mut failures);
@@ -54,7 +54,7 @@ pub fn judge(
     (failures, report)
 }
 
-fn pairs(expected: &Relation, actual: &Relation, strict: bool) -> bool {
+fn pairs(expected: &Relation, actual: &Relation) -> bool {
     let tests = expected.kind == Kind::TestsReach;
     // The engine names the test file that reaches a caller, never the test
     // function in it; a `named_by` row names a file, never a function. Their
@@ -73,13 +73,12 @@ fn pairs(expected: &Relation, actual: &Relation, strict: bool) -> bool {
     from_agrees
         && expected.resolution == actual.resolution
         && sites_agree
-        && (!strict || expected.kind == actual.kind)
+        && (!actual.kind_stated || expected.loose_kind || expected.kind == actual.kind)
 }
 
 fn compare_relations(
     case: &Case,
     compiled: &Compiled,
-    language: &str,
     answer: &Answer,
     report: &mut CaseReport,
     failures: &mut Vec<String>,
@@ -102,12 +101,11 @@ fn compare_relations(
         let mut red = false;
 
         for want in &expected {
-            let strict = precise(language, want.kind) && !want.loose_kind;
             let mut hits = 0;
             for (i, got) in actual.iter().enumerate() {
                 // A caller the engine reports once with several sites can satisfy
                 // several expectations that each name one of its sites.
-                if (taken[i] && want.sites.is_empty()) || !pairs(want, got, strict) {
+                if (taken[i] && want.sites.is_empty()) || !pairs(want, got) {
                     continue;
                 }
                 taken[i] = true;

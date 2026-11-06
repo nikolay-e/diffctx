@@ -134,6 +134,10 @@ impl TypeScriptResolver {
     }
 
     /// The bindings that resolve to `key` or have it among their candidates.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a key the index has no entry for has no references"
+    )]
     pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
         self.by_target
             .get(key)
@@ -402,6 +406,10 @@ impl Index {
         self.files[at].classic = !module_syntax;
         // What a module declares and marks public is offered under its own name,
         // unless it is offered only under another.
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a file with no top-level children offers nothing"
+        )]
         let offered: Vec<(Name, usize)> = self.files[at]
             .children
             .get(&Vec::new())
@@ -456,6 +464,10 @@ impl Index {
     /// classic scripts.
     fn collect_offers(&mut self) {
         for at in 0..self.files.len() {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "a file with no top-level children has none to offer"
+            )]
             let top = self.files[at]
                 .children
                 .get(&Vec::new())
@@ -749,6 +761,10 @@ fn annotation_after(text: &[u8], at: usize) -> Option<String> {
         }
         i += 1;
     }
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a type annotation that is not UTF-8 is not read as written text; the caller takes `None` as no written type"
+    )]
     let written = std::str::from_utf8(&text[start..i]).ok()?.trim();
     (!written.is_empty()).then(|| written.to_string())
 }
@@ -1230,6 +1246,10 @@ impl<'a> Engine<'a> {
     /// then those whose directory holds it, nearest first.
     fn projects_around(&self, f: usize) -> Vec<&Project> {
         let file = &self.ix.files[f];
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a file under no project has no project of its own to read imports with"
+        )]
         let mut found: Vec<&Project> = file
             .project
             .map(|id| vec![self.workspace.project(id)])
@@ -1865,6 +1885,10 @@ impl<'a> Engine<'a> {
             return None;
         }
         let text = self.text(f)?;
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "the slice is read for an assignment shape; bytes that are not UTF-8 show none, so nothing is inferred from them"
+        )]
         let between =
             std::str::from_utf8(text.get(after as usize..callee.site.bytes.start as usize)?)
                 .ok()?;
@@ -2201,6 +2225,10 @@ impl<'a> Engine<'a> {
         let rec = &self.ix.defs[class];
         let scope = self.container_scope(rec);
         let interface = rec.def.kind == DefKind::Interface;
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a definition without a signature lists no heritage"
+        )]
         let entities: Vec<(Entity, bool)> = rec
             .def
             .signature

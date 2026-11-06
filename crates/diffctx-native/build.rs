@@ -1,8 +1,9 @@
 //! Fingerprints of the code that decides what an on-disk cache may serve: the
-//! facts cache keys its entries on the sources under `src/facts/` and the lock
-//! file (the grammars come with it), the token cache on the sources that make
+//! facts cache keys its entries on every source under `src/` and the lock file
+//! (the grammars come with it), the token cache on the sources that make
 //! tokens. A hand-bumped version is forgotten by the change that needed it; a
-//! digest of the code cannot be.
+//! digest of the code cannot be. The facts extractors read through `parsers`,
+//! `languages` and the snapshot, so no subset of `src/` is a fingerprint.
 
 use std::env;
 use std::fs;
@@ -64,9 +65,8 @@ fn main() {
         .into_iter()
         .find(|p| p.is_file());
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/facts");
-    println!("cargo:rerun-if-changed=src/config");
-    let facts = digest(&root, &[], &["src/facts"], lock.as_deref());
+    println!("cargo:rerun-if-changed=src");
+    let facts = digest(&root, &[], &["src"], lock.as_deref());
     let tokens = digest(
         &root,
         &[

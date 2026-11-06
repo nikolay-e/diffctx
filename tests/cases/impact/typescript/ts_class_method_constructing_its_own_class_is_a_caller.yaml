@@ -1,0 +1,39 @@
+name: ts_class_method_constructing_its_own_class_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, oracle, fcn, own-class-use]
+repo:
+  initial_files:
+    src/foo.ts: |
+      export class Foo {
+        v: number;
+        constructor(o: { v?: number } = {}) {
+          this.v = o.v ?? 1;
+        }
+        clone(): Foo {
+          return new Foo({});
+        }
+      }
+    src/use.ts: |
+      import { Foo } from "./foo";
+
+      export function make(): Foo {
+        return new Foo();
+      }
+  changed_files:
+    src/foo.ts: |
+      export class Foo {
+        v: number;
+        constructor(o: { v?: number } = {}) {
+          this.v = o.v ?? 2;
+        }
+        clone(): Foo {
+          return new Foo({});
+        }
+      }
+  commit_message: "foo: default v is 2"
+expect:
+  relations:
+    - {from: "src/foo.ts::Foo.clone", to: "src/foo.ts::Foo", kind: instantiates, resolution: resolved, site: 7}
+    - {from: "src/use.ts::make", to: "src/foo.ts::Foo", kind: instantiates, resolution: resolved, site: 4}

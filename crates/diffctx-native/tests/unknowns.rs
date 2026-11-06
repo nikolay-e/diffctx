@@ -2722,3 +2722,81 @@ fn a_nested_builder_naming_itself_in_nine_supertypes_is_answered_whole() {
     assert!(!md.contains("(partial:"), "{md}");
     assert!(md.contains("Other.kt::addX"), "{md}");
 }
+
+/// gh#713: a changed definition whose only caller sits in a file the run
+/// withholds is not one "nothing calls". The run read what it could, so it says
+/// that no caller was found in the analysed scope, and why that is all it says.
+#[test]
+fn a_definition_beside_a_withheld_file_is_never_one_nothing_calls() {
+    let tmp = repo(
+        &[
+            (".diffctx/ignore", "app/tests/\n"),
+            ("app/__init__.py", ""),
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+            ("tests/test_other.py", "def test_x():\n    assert True\n"),
+        ],
+        &[
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2 + 1\n"),
+            (
+                "app/tests/test_conf.py",
+                "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 3\n",
+            ),
+        ],
+    );
+    let md = impact_markdown(tmp.path());
+    let header = md.lines().next().unwrap_or_default();
+    assert!(
+        header.contains(
+            "1 file(s) withheld by ignore rules, no caller found outside the diff in the analysed scope"
+        ),
+        "{md}"
+    );
+    assert!(!md.contains("nothing calls them"), "{md}");
+    assert!(!md.contains("0 caller(s)"), "{md}");
+    assert!(
+        md.contains(
+            "Changed, no caller found in the analysed scope (1 file(s) withheld by ignore rules), no static test link:\n  - app/conf.py::workers"
+        ),
+        "{md}"
+    );
+}
+
+/// gh#713: `empty` says the change reaches nothing, which holds only when no
+/// file the run withheld could name it. A change whose only possible reader is
+/// withheld is not empty, and the answer counts the withheld file; the same
+/// change with nothing withheld is.
+#[test]
+fn a_change_only_a_withheld_file_could_read_is_not_empty() {
+    let base = [
+        (".diffctx/ignore", "app/tests/\n"),
+        ("app/__init__.py", ""),
+        ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+    ];
+    let conf = ("app/conf.py", "def workers(cpu):\n    return cpu * 2 + 1\n");
+
+    let withheld = repo(
+        &base,
+        &[
+            conf,
+            (
+                "app/tests/test_conf.py",
+                "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 3\n",
+            ),
+        ],
+    );
+    let json = impact_json(withheld.path());
+    assert_eq!(json["empty"], false, "{json}");
+    assert_eq!(json["withheld_files"], 1, "{json}");
+    let md = impact_markdown(withheld.path());
+    assert!(
+        md.lines()
+            .next()
+            .is_some_and(|header| header.contains("1 file(s) withheld by ignore rules")),
+        "{md}"
+    );
+    assert!(!md.contains("No resolved static callers"), "{md}");
+
+    let open = repo(&base, &[conf]);
+    let json = impact_json(open.path());
+    assert_eq!(json["empty"], true, "{json}");
+}

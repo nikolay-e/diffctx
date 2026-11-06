@@ -58,6 +58,10 @@ impl Language {
     pub fn from_shebang(text: &[u8]) -> Option<Self> {
         let head = &text[..text.len().min(SHEBANG_BYTES)];
         let line = head.split(|byte| *byte == b'\n').next()?;
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a first line that is not UTF-8 is not a shebang"
+        )]
         let line = std::str::from_utf8(line).ok()?.strip_prefix("#!")?;
         let mut words = line.split_whitespace();
         let program = basename(words.next()?);

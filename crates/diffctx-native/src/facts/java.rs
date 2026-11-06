@@ -140,6 +140,10 @@ fn declarations(
         .child_by_field_name("body")
         .or_else(|| child(*node, "class_body"));
     let header_end = body.map_or_else(|| node.end_byte(), |b| b.start_byte());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
     let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     let in_interface = owners.last().is_some_and(|(_, _, interface)| *interface);
     let abstract_member =

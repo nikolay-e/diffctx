@@ -323,6 +323,10 @@ pub(crate) fn index_tree_with(exec: &Exec, work: &Path) -> Result<Oid> {
 /// the evidence the hook weighs, which `rev-list` cannot give. A log shorter
 /// than the cursor was rewritten or expired: that is an error, not "nothing
 /// new".
+#[allow(
+    clippy::disallowed_methods,
+    reason = "reads the file git itself names, outside the tree: the reflog is not a repository blob"
+)]
 pub fn reflog_since(
     root: &RepoRoot,
     name: &RefName,
