@@ -21,13 +21,13 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
     let resolved_root = dunce::canonicalize(root_dir)
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
+    // The checkout as it is: one snapshot, read through its reader alone.
+    let run = crate::resource::RunContext::unbounded();
+    let analysis = crate::source::Analysis::at_working_tree(&resolved_root, &run)?;
+    run.set_source(analysis.head());
+
     let included_set: FxHashSet<PathBuf> = FxHashSet::default();
-    let candidate_files = collect_candidate_files(
-        &resolved_root,
-        &included_set,
-        &[],
-        &crate::resource::RunContext::unbounded(),
-    );
+    let candidate_files = collect_candidate_files(&resolved_root, &included_set, &[], &run);
 
     info!(
         "project_graph: found {} candidate files",
@@ -38,11 +38,9 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
     let mut all_fragments = process_files_for_fragments(
         &candidate_files,
         &resolved_root,
-        &[],
         &mut seen_frag_ids,
-        None,
         false,
-        &crate::resource::RunContext::unbounded(),
+        &run,
     );
 
     crate::pipeline::assign_token_counts(&mut all_fragments);
@@ -59,7 +57,7 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
-        &crate::resource::RunContext::unbounded(),
+        &run,
     );
 
     let graph = graph::build_graph_capped(&all_fragments, capped);

@@ -1,0 +1,39 @@
+name: swift_cast_with_default_in_a_trailing_closure_parses
+mode: impact
+source: gh#537
+issue_state: closed
+tags:
+- swift
+- parse
+- coverage
+repo:
+  initial_files:
+    a.swift: |
+      func f(_ gaps: [[String: Any]], _ rate: Double) -> Double {
+          let s = gaps.reduce(0.0) { $0 + 2 / rate }
+          return s
+      }
+    main.swift: |
+      func run() -> Double {
+          return f([["frames": 3]], 2.0)
+      }
+  changed_files:
+    a.swift: |
+      func f(_ gaps: [[String: Any]], _ rate: Double) -> Double {
+          let s = gaps.reduce(0.0) { $0 + Double($1["frames"] as? Int ?? 1) }
+          return s
+      }
+  commit_message: Change swift cast with default in a trailing closure parses
+expect:
+  changed:
+  - a.swift::f
+  relations:
+  - from: main.swift::run
+    to: a.swift::f
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  coverage:
+    a.swift::f:
+      calls: complete

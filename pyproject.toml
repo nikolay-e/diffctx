@@ -5,7 +5,7 @@ requires = [ "maturin>=1.10,<1.16" ]
 
 [project]
 name = "diffctx"
-version = "1.20.0"
+version = "2.0.0.dev0"
 description = "Selects the minimum code an LLM needs to review a git diff"
 readme = "README.md"
 keywords = [
@@ -125,6 +125,7 @@ include = [
   { path = "Cargo.toml", format = "sdist" },
   { path = "Cargo.lock", format = "sdist" },
   { path = "crates/diffctx-native/Cargo.toml", format = "sdist" },
+  { path = "crates/diffctx-native/build.rs", format = "sdist" },
   { path = "crates/diffctx-native/src/**/*", format = "sdist" },
   { path = "rust-toolchain.toml", format = "sdist" },
 ]

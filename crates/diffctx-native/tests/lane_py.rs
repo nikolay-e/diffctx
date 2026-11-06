@@ -13,6 +13,8 @@ use support::{diffctx, repo, set};
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
         .current_dir(repo)
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .args(["-q", "-f", "json"])
         .output()
@@ -48,12 +50,32 @@ fn callers(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|c| c["evidence"] != "reexport")
         .map(|c| {
             format!(
                 "{}::{}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or("")
             )
+        })
+        .collect()
+}
+
+/// The modules that re-export the definition: each is its own row, stated as
+/// `reexports`, and is no caller of it.
+fn reexports(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
+    changed(doc, path, name)["callers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["evidence"] == "reexport")
+        .map(|c| {
+            assert_eq!(c["relation"], "reexports", "{c}");
+            assert!(
+                c["symbol"].is_null(),
+                "a re-export names no definition: {c}"
+            );
+            c["path"].as_str().unwrap_or("").to_string()
         })
         .collect()
 }
@@ -424,6 +446,7 @@ fn evidenced(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|c| c["evidence"] != "reexport")
         .map(|c| {
             format!(
                 "{}::{} {} {}",
@@ -623,7 +646,8 @@ fn a_test_importing_through_pytest_configuration_reaches_the_module() {
 /// in a consumer whose `[tool.uv.sources]` names the package are callers,
 /// though another module named `pkg` exists. A consumer without the source
 /// is a possible caller (the module is ambiguous), never none; another
-/// project's own `client_ip` keeps its callers, and a string, a comment and
+/// project's own `client_ip` keeps its callers and gains no guess from a
+/// project that cannot reach it, and a string, a comment and
 /// the lines of a parenthesised import stay off. Control: the package's own
 /// caller answers exactly.
 #[test]
@@ -715,21 +739,27 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
         ]),
         "{doc}"
     );
+    assert_eq!(
+        reexports(&doc, "shared/pkg/src/pkg/ip.py", "client_ip"),
+        set(&["shared/pkg/src/pkg/__init__.py"]),
+        "{doc}"
+    );
     let doc = symbol(tmp.path(), "apps/other/src/other/pkg.py:client_ip");
     assert_eq!(
         evidenced(&doc, "apps/other/src/other/pkg.py", "client_ip"),
-        set(&[
-            "apps/loose/src/loose/log.py::stamp candidate ambiguous_module",
-            "apps/other/src/other/pkg.py::own resolved -",
-        ]),
+        // `loose` declares a dependency on `pkg` and none on `other`, whose
+        // `other.pkg` module is not importable as `pkg`: it cannot reach
+        // `other`'s own `client_ip`, so it is no hedge there.
+        set(&["apps/other/src/other/pkg.py::own resolved -"]),
         "{doc}"
     );
 }
 
-/// #546: a function defined inside another is named only there, so a file
-/// over the size cap that spells its name is no possible caller of it. A
-/// module-level function of the same commit, which such a file could call,
-/// keeps the hedge.
+/// #546: a function defined inside another and never returned is a local of it
+/// (Revision 12.3), named only there, so a file over the size cap that spells
+/// its name is no possible caller of it. A
+/// module-level function of the same commit, which such a file imports and
+/// calls, lists that call.
 #[test]
 fn a_nested_function_has_no_callers_outside_its_function() {
     let mut big: String = (0..4000)
@@ -763,12 +793,26 @@ fn a_nested_function_has_no_callers_outside_its_function() {
             )
         })
         .collect();
-    assert_eq!(listed, set(&["lib/policy.py::cache_control"]), "{doc}");
-    assert_eq!(
-        changed(&doc, "lib/policy.py", "cache_control")["missed_in"],
-        serde_json::json!([{"path": "child/src/pkg/domain.py", "language": "python", "reason": "too_large"}]),
+    // The nested function never leaves `value_of` (Revision 12.3): it is a local,
+    // its change is `value_of`'s, and the answer has no entry for it. `value_of`
+    // has no caller, so it is listed only if the answer lists a change nothing
+    // calls. The file over the size cap is read whole by the facts layer, so it
+    // is a caller of the module-level function it imports and calls, and a
+    // hedge on neither.
+    assert!(listed.contains("lib/policy.py::cache_control"), "{doc}");
+    assert!(
+        listed.is_subset(&set(&[
+            "lib/policy.py::cache_control",
+            "lib/policy.py::value_of"
+        ])),
         "{doc}"
     );
+    let control = changed(&doc, "lib/policy.py", "cache_control");
+    assert_eq!(
+        control["callers"][0]["path"], "child/src/pkg/domain.py",
+        "{doc}"
+    );
+    assert!(control["missed_in"].is_null(), "{doc}");
 }
 
 /// #536: a deleted function is read off the syntax at the base, and only a
@@ -813,20 +857,36 @@ fn a_deleted_function_is_not_called_by_a_parameter_or_a_docstring() {
             )
         })
         .collect();
-    assert_eq!(listed, set(&["pkg/eval.py::load"]), "{doc}");
+    // Every removed definition is listed; only `load` has a reader, and
+    // `utterances` and `regions` are named by a parameter and a docstring word
+    // alone.
+    assert_eq!(
+        listed,
+        set(&[
+            "pkg/eval.py::load",
+            "pkg/eval.py::utterances",
+            "pkg/eval.py::regions"
+        ]),
+        "{doc}"
+    );
     assert_eq!(
         evidenced(&doc, "pkg/eval.py", "load"),
         set(&["pkg/report.py::report resolved -"]),
         "{doc}"
     );
+    for gone in ["utterances", "regions"] {
+        assert!(
+            evidenced(&doc, "pkg/eval.py", gone).is_empty(),
+            "{gone}: {doc}"
+        );
+    }
 }
 
 /// #400: a field removed from a class is read off the syntax at the base,
 /// and a read through the instance its module builds (`from svc.config
 /// import settings`, `settings = AppSettings()`) is a caller of it. A read
 /// of a field the class keeps, the same field name on another class's
-/// instance, and the name in a string and a comment are not. Control: the
-/// class keeps its constructor callers.
+/// instance, and the name in a string and a comment are not.
 #[test]
 fn a_removed_field_is_read_through_the_instance_its_module_builds() {
     let config = |field: &str| {
@@ -862,14 +922,12 @@ fn a_removed_field_is_read_through_the_instance_its_module_builds() {
         &[("svc/config.py", &config(""))],
     );
     let doc = impact(tmp.path());
+    // The reader of the lost field is listed under the class that lost it
+    // (gh#400 of the corpus), and the class's constructor callers are not
+    // claimed: removing a field changes no construction site.
     assert_eq!(
-        evidenced(&doc, "svc/config.py", "bravo"),
+        evidenced(&doc, "svc/config.py", "AppSettings"),
         set(&["svc/job.py::run resolved -"]),
-        "{doc}"
-    );
-    assert_eq!(
-        callers(&doc, "svc/config.py", "AppSettings"),
-        set(&["svc/config.py::settings", "svc/factory.py::build"]),
         "{doc}"
     );
 }
@@ -935,6 +993,11 @@ fn apps_linked_by_uv_path_sources_are_callers_in_the_shared_package() {
             "apps/a/src/a/serve.py::serve",
             "apps/b/src/b/serve.py::serve"
         ]),
+        "{doc}"
+    );
+    assert_eq!(
+        reexports(&doc, "shared/kit/src/kit/auth.py", "auth_settings"),
+        set(&["shared/kit/src/kit/__init__.py"]),
         "{doc}"
     );
 }
@@ -1019,4 +1082,83 @@ fn a_removed_module_constant_names_the_readers_it_breaks() {
         set(&["pkg/client.py::retry", "pkg/worker.py::work"]),
         "{doc}"
     );
+}
+
+/// gh#712: every removed definition is reported, a private one too; the
+/// fields of a class that left go with its line, a field that moved between a
+/// base and its subclass is neither removed nor changed, and a surviving
+/// field of the same name as a removed one is not removed.
+#[test]
+fn every_removed_definition_is_reported_and_a_moved_field_is_not() {
+    let tmp = repo(
+        &[(
+            "api.py",
+            "class _Facts:\n    note: str\n    amount: int\n\n\nclass ThingCreate(_Facts):\n    kind: str\n\n\nclass ThingUpdate(_Facts):\n    kind: str | None\n\n\ndef create_thing(body: ThingCreate):\n    return body\n\n\ndef update_thing(body: ThingUpdate):\n    return body\n",
+        )],
+        &[(
+            "api.py",
+            "class ThingUpdate:\n    note: str\n    amount: int\n    kind: str | None\n\n\ndef update_thing(body: ThingUpdate):\n    return body\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    let listed: BTreeSet<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| {
+            format!(
+                "{}::{} {}",
+                c["path"].as_str().unwrap_or(""),
+                c["symbol"].as_str().unwrap_or(""),
+                c["kind"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        set(&[
+            "api.py::ThingUpdate class",
+            "api.py::_Facts removed",
+            "api.py::ThingCreate removed",
+            "api.py::create_thing removed",
+        ]),
+        "{doc}"
+    );
+    assert_eq!(
+        changed(&doc, "api.py", "_Facts")["callers"],
+        serde_json::json!([]),
+        "{doc}"
+    );
+}
+
+/// A field is named by its class: two classes' fields of one name are two
+/// definitions, and the one that stays is not the one that left.
+#[test]
+fn a_removed_field_is_named_by_its_class() {
+    let tmp = repo(
+        &[(
+            "api.py",
+            "class Create:\n    kind: str = \"\"\n    size: int = 0\n\n\nclass Update:\n    kind: str = \"\"\n",
+        )],
+        &[(
+            "api.py",
+            "class Create:\n    size: int = 0\n\n\nclass Update:\n    kind: str = \"\"\n",
+        )],
+    );
+    let doc = impact(tmp.path());
+    let removed: BTreeSet<String> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == "removed")
+        .filter_map(|c| c["symbol"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(removed, set(&["Create.kind"]), "{doc}");
+    let contracts: BTreeSet<String> = doc["contracts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["symbol"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(contracts, set(&["Create.kind"]), "{doc}");
 }

@@ -1,0 +1,87 @@
+name: config_shell_script_naming_changed_files_by_path
+mode: impact
+source: gh#609
+issue_state: open
+tags:
+- config
+- yaml
+- shell
+- references-path
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    chart/templates/rules.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: demo
+      spec:
+        groups:
+          - name: demo
+            rules:
+              - alert: DemoDown
+                expr: up{job="demo"} == 0
+    chart/ci/rules-test.yaml: |
+      tests:
+        - interval: 1m
+          alert_rule_test: []
+    chart/ci/rules-test.sh: |
+      CI_DIR=$(cd "$(dirname "$0")" && pwd)
+      WORK=$(mktemp -d)
+      helm template demo "$CI_DIR/.." --show-only templates/rules.yaml | yq ".spec" > "$WORK/rules.yaml"
+      cp "$CI_DIR/rules-test.yaml" "$WORK/tests.yaml"
+      promtool test rules "$WORK/tests.yaml"
+    rootrel.sh: |
+      cp chart/ci/rules-test.yaml /tmp/t.yaml
+      cat chart/templates/rules.yaml
+    chart/ci/dotrel.sh: |
+      cd "$(dirname "$0")"
+      cp ./rules-test.yaml /tmp/t2.yaml
+  changed_files:
+    chart/templates/rules.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: demo
+      spec:
+        groups:
+          - name: demo
+            rules:
+              - alert: DemoDown
+                expr: up{job="demo"} == 0 and on() vector(1)
+    chart/ci/rules-test.yaml: |
+      tests:
+        - interval: 30s
+          alert_rule_test: []
+  commit_message: Change config shell script naming changed files by path
+expect:
+  relations:
+  - from: chart/ci/rules-test.sh
+    to: chart/templates/rules.yaml
+    kind: references_path
+    resolution: resolved
+    site: 3
+  - from: chart/ci/rules-test.sh
+    to: chart/ci/rules-test.yaml
+    kind: references_path
+    resolution: resolved
+    site: 4
+  - from: rootrel.sh
+    to: chart/ci/rules-test.yaml
+    kind: references_path
+    resolution: resolved
+    site: 1
+  - from: rootrel.sh
+    to: chart/templates/rules.yaml
+    kind: references_path
+    resolution: resolved
+    site: 2
+  - from: chart/ci/dotrel.sh
+    to: chart/ci/rules-test.yaml
+    kind: references_path
+    resolution: resolved
+    site: 2
+  exact: true

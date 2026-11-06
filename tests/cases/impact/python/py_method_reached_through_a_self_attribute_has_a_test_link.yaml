@@ -1,0 +1,58 @@
+name: py_method_reached_through_a_self_attribute_has_a_test_link
+mode: impact
+source: gh#694
+issue_state: open
+tags: [python, self-attribute, receiver-typing, tests-reach]
+repo:
+  initial_files:
+    bot/__init__.py: ""
+    bot/desk.py: |
+      class Desk:
+          async def prepare(self, message):
+              if self._declined(message):
+                  return None
+              return message
+
+          def _declined(self, message):
+              return message.size > 10
+    bot/runtime.py: |
+      from bot.desk import Desk
+
+
+      class Runtime:
+          def __init__(self):
+              self.media = Desk()
+
+          async def handle_media(self, message):
+              return await self._locked(lambda: self.media.prepare(message))
+
+          async def _locked(self, work):
+              return await work()
+    tests/test_runtime.py: |
+      import asyncio
+
+      from bot.runtime import Runtime
+
+
+      def test_handle_media_keeps_small_messages():
+          class Message:
+              size = 1
+
+          assert asyncio.run(Runtime().handle_media(Message())) is not None
+  changed_files:
+    bot/desk.py: |
+      class Desk:
+          async def prepare(self, message):
+              if self._declined(message):
+                  return None
+              return message
+
+          def _declined(self, message):
+              return message.size > 20
+  commit_message: "desk: allow larger media"
+expect:
+  changed: [bot/desk.py::_declined]
+  relations:
+    - {from: "bot/desk.py::prepare", to: "bot/desk.py::_declined", kind: calls, resolution: resolved, site: 3}
+    - {from: "tests/test_runtime.py", to: "bot/desk.py::prepare", kind: tests_reach, resolution: resolved}
+  not_untested: [_declined]

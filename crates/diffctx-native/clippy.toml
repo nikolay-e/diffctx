@@ -1,0 +1,20 @@
+# The ban of the snapshot module, the facts layer, the resolvers and `decide` (each
+# denies the lint in its own mod.rs or file; the rest of the crate allows it in
+# Cargo.toml). A reader's failure is an `Err`, never an empty value: the first
+# three turn one into the other. The rest are the doors to a repository: its bytes
+# come through the snapshot reader, so only `snapshot/` reads the disk or starts a
+# process. A justified use carries
+# `#[allow(clippy::disallowed_methods, reason = "...")]`.
+disallowed-methods = [
+    { path = "std::result::Result::ok", reason = "drops the error: a failed git or disk read would read as an absent value (m3, relay arch-migration)" },
+    { path = "std::result::Result::unwrap_or_default", reason = "turns a failed read into an empty value" },
+    { path = "std::option::Option::unwrap_or_default", reason = "turns an unanswered question into an empty value" },
+    { path = "std::fs::read", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::fs::read_to_string", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::fs::read_dir", reason = "a repository is listed through the snapshot reader" },
+    { path = "std::fs::read_link", reason = "a repository's links are read through the snapshot reader" },
+    { path = "std::fs::metadata", reason = "a repository's files are stat'ed through the snapshot reader" },
+    { path = "std::fs::symlink_metadata", reason = "a repository's files are stat'ed through the snapshot reader" },
+    { path = "std::fs::File::open", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::process::Command::new", reason = "git is started by the snapshot module alone" },
+]

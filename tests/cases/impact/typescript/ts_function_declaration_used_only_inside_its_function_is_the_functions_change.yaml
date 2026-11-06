@@ -1,0 +1,42 @@
+name: ts_function_declaration_used_only_inside_its_function_is_the_functions_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, local-binding, nested-definition, closure, decoy]
+repo:
+  initial_files:
+    src/format.ts: |
+      export function formatRow(row: { cells: string[] }): string {
+        function cell(s: string): string {
+          return s.padEnd(8);
+        }
+        return row.cells.map(cell).join('|');
+      }
+    src/util/text.ts: |
+      export function cell(s: string, n: number): string {
+        return s.padEnd(n);
+      }
+    src/report.ts: |
+      import { formatRow } from './format';
+      import { cell } from './util/text';
+
+      export function render(row: { cells: string[] }): string {
+        return cell(formatRow(row), 20);
+      }
+  changed_files:
+    src/format.ts: |
+      export function formatRow(row: { cells: string[] }): string {
+        function cell(s: string): string {
+          return s.padEnd(10);
+        }
+        return row.cells.map(cell).join('|');
+      }
+  commit_message: "format: pad cells to ten"
+expect:
+  changed: [src/format.ts::formatRow]
+  relations:
+    - {from: "src/report.ts::render", to: "src/format.ts::formatRow", kind: calls, resolution: resolved, site: 5}
+  callers:
+    cell: []
+  decoys:
+    cell: [src/util/text.ts]

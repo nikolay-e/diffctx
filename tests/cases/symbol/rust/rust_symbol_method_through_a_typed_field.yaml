@@ -1,0 +1,69 @@
+name: rust_symbol_method_through_a_typed_field
+mode: symbol
+source: gh#484
+issue_state: open
+tags:
+- rust
+- methods
+- ambiguity
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod bound;
+      pub mod meter;
+      pub mod resolver;
+    src/resolver.rs: |
+      pub struct Resolver {
+          pub depth: u32,
+      }
+
+      impl Resolver {
+          pub fn imports_file(&self, a: &str) -> bool {
+              a.len() as u32 > self.depth
+          }
+      }
+    src/meter.rs: |
+      pub struct Meter;
+
+      impl Meter {
+          pub fn imports_file(&self, a: &str) -> bool {
+              a.is_empty()
+          }
+      }
+
+      pub fn measure(m: &Meter) -> bool {
+          m.imports_file("y")
+      }
+    src/bound.rs: |
+      use crate::resolver::Resolver;
+
+      pub struct Bound {
+          resolver: Resolver,
+      }
+
+      impl Bound {
+          pub fn reaches(&self, t: &str) -> bool {
+              self.resolver.imports_file(t)
+          }
+      }
+  commit_message: Change rust symbol method through a typed field
+query:
+  symbol: src/resolver.rs:imports_file
+expect:
+  relations:
+  - from: src/bound.rs::Bound.reaches
+    to: src/resolver.rs::Resolver.imports_file
+    kind: calls
+    resolution: resolved
+    site: 9
+  exact: true
+  decoys:
+    src/resolver.rs::Resolver.imports_file:
+    - src/meter.rs
+  definitions:
+  - src/resolver.rs::Resolver.imports_file

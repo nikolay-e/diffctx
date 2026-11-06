@@ -1,0 +1,68 @@
+name: swift_symbol_free_function_is_not_a_method_namesake
+mode: symbol
+source: gh#526
+issue_state: closed
+tags:
+- swift
+- functions
+repo:
+  initial_files:
+    Sources/Track.swift: |
+      func lostFree(why: String) { print(why) }
+
+      final class Track {
+          func sourceLost(why: String, nowNs: UInt64) { print(why, nowNs) }
+
+          func again() {
+              sourceLost(why: "self", nowNs: 3)
+              self.sourceLost(why: "self", nowNs: 4)
+          }
+      }
+    Sources/main.swift: |
+      var them: Track?
+
+      func check(_ track: Track) {
+          track.sourceLost(why: "x", nowNs: 2)
+          lostFree(why: "y")
+      }
+
+      func drainAll() {
+          them?.sourceLost(why: "z", nowNs: 5)
+          guard let me = them else { return }
+          me.sourceLost(why: "w", nowNs: 6)
+      }
+    Sources/Other.swift: |
+      final class Other {
+          func sourceLost(why: String, nowNs: UInt64) { print(why, nowNs) }
+      }
+
+      func viaOther(_ o: Other) {
+          o.sourceLost(why: "d", nowNs: 9)
+      }
+
+      func notes() -> String {
+          // track.sourceLost(why:nowNs:) and lostFree(why:) were the old way
+          return "track.sourceLost(why:) lostFree(why:)"
+      }
+    Sources/Loop.swift: |
+      func loop(_ all: [Track]) {
+          for t in all {
+              t.sourceLost(why: "l", nowNs: 7)
+          }
+      }
+  commit_message: Change swift symbol free function is not a method namesake
+query:
+  symbol: lostFree
+expect:
+  relations:
+  - from: Sources/main.swift::check
+    to: Sources/Track.swift::lostFree
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: true
+  decoys:
+    Sources/Track.swift::lostFree:
+    - Sources/Other.swift::notes
+  definitions:
+  - Sources/Track.swift::lostFree

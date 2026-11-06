@@ -150,6 +150,11 @@ fn declaration(
     );
     let mut all_owners: Vec<String> = owners.iter().map(|(n, _)| n.clone()).collect();
     all_owners.extend(nested_in);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without attributes states none"
+    )]
+    let annotations = modifiers.map(|m| attributes(m, bytes)).unwrap_or_default();
     Some(Declaration {
         name,
         kind,
@@ -173,7 +178,7 @@ fn declaration(
         }),
         inner: false,
         abstract_member: node.kind() == "protocol_function_declaration",
-        annotations: modifiers.map(|m| attributes(m, bytes)).unwrap_or_default(),
+        annotations,
         required_params: None,
         params: None,
         start_line: line_of(*node),
@@ -303,6 +308,10 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     }
     // A local is not in scope in its own initializer.
     let start = node.end_byte();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a binding with no pattern node names nothing"
+    )]
     let names = node
         .child_by_field_name("name")
         .map(|p| pattern_names(p, bytes))
@@ -380,11 +389,15 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             }
         }
         "for_statement" => {
-            for name in node
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "a `for` with no pattern node binds nothing"
+            )]
+            let names = node
                 .child_by_field_name("item")
                 .map(|p| pattern_names(p, bytes))
-                .unwrap_or_default()
-            {
+                .unwrap_or_default();
+            for name in names {
                 bindings.push(Binding::new(
                     name,
                     None,

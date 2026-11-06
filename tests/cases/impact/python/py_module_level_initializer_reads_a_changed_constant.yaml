@@ -1,0 +1,30 @@
+name: py_module_level_initializer_reads_a_changed_constant
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, module-level, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/decoders.py: |
+      SUPPORTED_DECODERS = {"gzip": 1, "br": 2}
+    pkg/client.py: |
+      from pkg.decoders import SUPPORTED_DECODERS
+
+      ACCEPT_ENCODING = ", ".join(
+          [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+      )
+    pkg/legacy.py: |
+      SUPPORTED_DECODERS = {}
+
+      ACCEPT = ", ".join(SUPPORTED_DECODERS)
+  changed_files:
+    pkg/decoders.py: |
+      SUPPORTED_DECODERS = {"gzip": 1, "br": 2, "zstd": 3}
+  commit_message: "decoders: add zstd"
+expect:
+  changed: [pkg/decoders.py::SUPPORTED_DECODERS]
+  relations:
+    - {from: "pkg/client.py", to: "pkg/decoders.py::SUPPORTED_DECODERS", kind: reads, resolution: resolved, site: 4}
+  decoys:
+    pkg/decoders.py::SUPPORTED_DECODERS: [pkg/legacy.py::ACCEPT]

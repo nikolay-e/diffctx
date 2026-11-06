@@ -1,0 +1,57 @@
+name: ts_path_alias_consumers_are_callers
+mode: symbol
+source: gh#372
+issue_state: open
+tags: [typescript, tsconfig-paths, vite-alias, workspace]
+repo:
+  initial_files:
+    shared/pkg/client-telemetry.js: |
+      export function installClientTelemetry(options) {
+        return options;
+      }
+    app-a/public/api.js: |
+      import { installClientTelemetry } from "../../shared/pkg/client-telemetry.js";
+
+      export function start() {
+        return installClientTelemetry({});
+      }
+    app-b/tsconfig.json: |
+      { "compilerOptions": { "baseUrl": ".", "paths": { "@pkg/*": ["../shared/pkg/*"] } } }
+    app-b/src/main.ts: |
+      import { installClientTelemetry } from "@pkg/client-telemetry";
+
+      export function boot() {
+        return installClientTelemetry({});
+      }
+    app-c/vite.config.ts: |
+      import { defineConfig } from "vite";
+
+      export default defineConfig({
+        resolve: { alias: { "@pkg": "../shared/pkg" } },
+      });
+    app-c/src/main.ts: |
+      import { installClientTelemetry } from "@pkg/client-telemetry";
+
+      export function launch() {
+        return installClientTelemetry({});
+      }
+query:
+  symbol: installClientTelemetry
+expect:
+  definitions: [shared/pkg/client-telemetry.js::installClientTelemetry]
+  relations:
+    - from: "app-a/public/api.js::start"
+      to: "shared/pkg/client-telemetry.js::installClientTelemetry"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - from: "app-b/src/main.ts::boot"
+      to: "shared/pkg/client-telemetry.js::installClientTelemetry"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - from: "app-c/src/main.ts::launch"
+      to: "shared/pkg/client-telemetry.js::installClientTelemetry"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4

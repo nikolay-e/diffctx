@@ -1,0 +1,497 @@
+//! Negative tests for the judge's lenient rules (wave 1's A1-A5): each rule
+//! accepts something a stricter reading would not, and each is probed with a
+//! synthetic engine answer carrying the defect the rule must still catch. A
+//! control beside it shows the leniency itself still holds, so a rule cannot
+//! be tightened into a flood of false reds either.
+
+use libtest_mimic::{Failed, Trial};
+use serde_json::{Value, json};
+
+use super::case::{self, Mode};
+use super::engine::{absence_claims, extract};
+use super::judge::judge;
+use super::model::Kind;
+
+enum Verdict {
+    /// The evaluation fails, and a failure mentions this text.
+    Fails(&'static str),
+    Passes,
+}
+
+struct Probe {
+    what: &'static str,
+    case: &'static str,
+    answer: Value,
+    verdict: Verdict,
+}
+
+fn failures(case_yaml: &str, answer: &Value) -> Result<Vec<String>, String> {
+    let case = case::parse(case_yaml, "negative", Mode::Impact)?;
+    let compiled = case.expect.compile()?;
+    Ok(judge("negative", &case, &compiled, "python", &extract(answer)?).0)
+}
+
+fn run(probes: Vec<Probe>) -> Result<(), Failed> {
+    let mut slipped = Vec::new();
+    for probe in probes {
+        let found = failures(probe.case, &probe.answer).map_err(Failed::from)?;
+        match probe.verdict {
+            Verdict::Fails(needle) if !found.iter().any(|f| f.contains(needle)) => {
+                slipped.push(format!(
+                    "{}: expected a failure mentioning `{needle}`, got {found:?}",
+                    probe.what
+                ));
+            }
+            Verdict::Passes if !found.is_empty() => {
+                slipped.push(format!("{}: expected a pass, got {found:?}", probe.what));
+            }
+            _ => {}
+        }
+    }
+    if slipped.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(slipped.join("\n")))
+    }
+}
+
+/// An impact answer for a change to `shop/pricing.py::total` with these callers.
+fn answer(callers: &Value) -> Value {
+    json!({
+        "changed": [{
+            "path": "shop/pricing.py", "symbol": "total", "kind": "function",
+            "lines": "1-2", "callers": callers,
+        }],
+        "changed_files": ["shop/pricing.py"],
+        "empty": false,
+        "tests_known": true,
+    })
+}
+
+fn charge(evidence: &str, relation: &str, tested_by: Option<&str>) -> Value {
+    let mut caller = json!({
+        "path": "shop/checkout.py", "symbol": "charge", "lines": "4-5",
+        "evidence": evidence, "relation": relation, "sites": [5],
+    });
+    if let Some(test) = tested_by {
+        caller["tested_by"] = json!(test);
+    }
+    caller
+}
+
+const CHARGE_IS_CALLED_AND_TESTED: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: calls, site: 5}
+    - {from: 'tests/test_checkout.py::test_charge', to: 'shop/checkout.py::charge', kind: tests_reach}
+";
+
+const CHARGE_CALLS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: calls, site: 5}
+";
+
+const CHARGE_READS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: reads, site: 5}
+";
+
+const CHARGE_ANNOTATES_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: type_use, site: 5}
+";
+
+const CHARGE_IS_A_CALLER: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  callers: {total: ['shop/checkout.py::charge']}
+";
+
+const SCHEMA_ROW_IS_REMOVED: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {api/schema.py: x}
+expect:
+  removed: ['api/schema.py::Row']
+";
+
+const POST_IS_READ_BY_THE_PAGE: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {content/blog/post.md: x}
+expect:
+  relations:
+    - {from: 'src/pages/index.astro', to: 'content/blog/post.md', kind: reads}
+";
+
+fn contract(path: &str, kind: &str) -> Value {
+    json!({
+        "changed": [], "changed_files": ["api/schema.py"], "empty": false,
+        "contracts": [{"path": path, "symbol": "Row", "kind": kind}],
+    })
+}
+
+fn collection_read(path: &str, collection: &str) -> Value {
+    json!({
+        "changed": [], "changed_files": ["content/blog/post.md"], "empty": false,
+        "collection_reads": [{"path": path, "line": 3, "collection": collection}],
+    })
+}
+
+/// A1: a test expectation names a test function, the engine only the test file.
+fn a1_test_file_stands_for_its_function() -> Result<(), Failed> {
+    run(vec![
+        Probe {
+            what: "the test file the answer names is the expected one",
+            case: CHARGE_IS_CALLED_AND_TESTED,
+            answer: answer(&json!([charge(
+                "resolved",
+                "call",
+                Some("tests/test_checkout.py")
+            )])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "another test file reaches the caller",
+            case: CHARGE_IS_CALLED_AND_TESTED,
+            answer: answer(&json!([charge(
+                "resolved",
+                "call",
+                Some("tests/test_other.py")
+            )])),
+            verdict: Verdict::Fails("missing tests/test_checkout.py"),
+        },
+        Probe {
+            what: "no test reaches the caller",
+            case: CHARGE_IS_CALLED_AND_TESTED,
+            answer: answer(&json!([charge("resolved", "call", None)])),
+            verdict: Verdict::Fails("missing tests/test_checkout.py"),
+        },
+    ])
+}
+
+/// A2: a removed public API in `contracts` counts as a removed definition.
+fn a2_only_a_removed_api_contract_is_a_removal() -> Result<(), Failed> {
+    run(vec![
+        Probe {
+            what: "the expected contract is removed",
+            case: SCHEMA_ROW_IS_REMOVED,
+            answer: contract("api/schema.py", "removed_api"),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the contract only changed",
+            case: SCHEMA_ROW_IS_REMOVED,
+            answer: contract("api/schema.py", "changed_api"),
+            verdict: Verdict::Fails("`api/schema.py::Row` is not reported as a removed definition"),
+        },
+        Probe {
+            what: "another file's contract was removed",
+            case: SCHEMA_ROW_IS_REMOVED,
+            answer: contract("api/other.py", "removed_api"),
+            verdict: Verdict::Fails("`api/schema.py::Row` is not reported as a removed definition"),
+        },
+    ])
+}
+
+/// A3: a caller found only by its name is textual and yields no relation.
+fn a3_a_name_match_is_no_caller() -> Result<(), Failed> {
+    run(vec![Probe {
+        what: "the only row for the expected caller is a word match",
+        case: CHARGE_CALLS_TOTAL,
+        answer: answer(&json!([charge("name", "call", None)])),
+        verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+    }])
+}
+
+/// A4: while an answer states no kind, code kinds are compared on (from, to,
+/// resolution) alone.
+fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
+    run(vec![
+        Probe {
+            what: "a read stands for the expected call while the answer states no kind",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([charge("resolved", "reference", None)])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the caller is only a candidate",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([charge("candidate", "call", None)])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "another function calls it",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([{
+                "path": "shop/report.py", "symbol": "build", "lines": "4-5",
+                "evidence": "resolved", "relation": "call", "sites": [5],
+            }])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "the caller reads it on another line",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([{
+                "path": "shop/checkout.py", "symbol": "charge", "lines": "4-9",
+                "evidence": "resolved", "relation": "call", "sites": [8],
+            }])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+    ])
+}
+
+/// A6: a row that states its kind (a precise cell's) is compared on it, and on
+/// its site; one that states none is not.
+fn a6_a_stated_kind_is_compared() -> Result<(), Failed> {
+    let stated = |kind: &str, sites: &[u32]| {
+        let mut row = charge("resolved", "call", None);
+        row["kind"] = json!(kind);
+        row["sites"] = json!(sites);
+        row
+    };
+    run(vec![
+        Probe {
+            what: "the stated kind is the expected one",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("calls", &[5])])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the answer states a read where a call is expected",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("reads", &[5])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "the stated kind is right and the site is not",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("calls", &[9])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "the answer states a type use where a read is expected",
+            case: CHARGE_READS_TOTAL,
+            answer: answer(&json!([stated("type_use", &[5])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -reads->"),
+        },
+        Probe {
+            what: "the answer states a type use and a type use is expected",
+            case: CHARGE_ANNOTATES_TOTAL,
+            answer: answer(&json!([stated("type_use", &[5])])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "a convenience field names no kind, so any stated code kind satisfies it",
+            case: CHARGE_IS_A_CALLER,
+            answer: answer(&json!([stated("reads", &[5])])),
+            verdict: Verdict::Passes,
+        },
+    ])
+}
+
+/// A stated kind no schema names is an answer the harness cannot evaluate, not a red case.
+fn a_kind_no_schema_names_cannot_be_evaluated() -> Result<(), Failed> {
+    let mut row = charge("resolved", "call", None);
+    row["kind"] = json!("invokes");
+    match failures(CHARGE_CALLS_TOTAL, &answer(&json!([row]))) {
+        Err(why) if why.contains("no relation kind") => Ok(()),
+        other => Err(Failed::from(format!(
+            "a row stating `invokes` gave {other:?}, not an evaluation error"
+        ))),
+    }
+}
+
+/// One vocabulary: the engine's relation kinds (`lang::RelationKind`, which the
+/// resolver's relations map onto), the harness's and the case schema's are the
+/// same names, each spelled once.
+fn the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary() -> Result<(), Failed> {
+    let schema =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cases/impact/SCHEMA.md");
+    let text = std::fs::read_to_string(&schema)
+        .map_err(|e| Failed::from(format!("read {}: {e}", schema.display())))?;
+    let bullet = text
+        .split("- `kind`:")
+        .nth(1)
+        .and_then(|rest| rest.split("- `resolution`").next())
+        .ok_or_else(|| Failed::from("SCHEMA.md no longer lists the `kind` values"))?;
+    let mut wrong = Vec::new();
+    for engine in _diffctx::RelationKind::ALL {
+        let name = engine.name();
+        if Kind::parse(name).is_none_or(|k| k.name() != name) {
+            wrong.push(format!("the harness does not know the engine's `{name}`"));
+        }
+        if !bullet.contains(&format!("`{name}`")) {
+            wrong.push(format!("SCHEMA.md does not list the engine's `{name}`"));
+        }
+    }
+    for harness in Kind::ALL {
+        let name = harness.name();
+        if _diffctx::RelationKind::parse(name).is_none_or(|k| k.name() != name) {
+            wrong.push(format!("the engine does not know the harness's `{name}`"));
+        }
+    }
+    if wrong.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(wrong.join("\n")))
+    }
+}
+
+const PACKAGE_REEXPORTS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/__init__.py', to: 'shop/pricing.py::total', kind: reexports, resolution: resolved, site: 1}
+";
+
+const SOMEONE_CALLS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  callers: {total: ['shop/__init__.py']}
+";
+
+/// A6b: a static re-export is a `reexports` relation, `resolved`; it satisfies
+/// no caller expectation, and a caller row does not satisfy it.
+fn a_static_reexport_is_a_resolved_reexports_relation() -> Result<(), Failed> {
+    let reexport = json!({
+        "path": "shop/__init__.py", "lines": "1-1", "evidence": "reexport",
+        "relation": "reexports", "sites": [1],
+    });
+    run(vec![
+        Probe {
+            what: "the re-export row is a resolved `reexports` relation",
+            case: PACKAGE_REEXPORTS_TOTAL,
+            answer: answer(&json!([reexport.clone()])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "a call row is no re-export",
+            case: PACKAGE_REEXPORTS_TOTAL,
+            answer: answer(&json!([{
+                "path": "shop/__init__.py", "lines": "1-1", "evidence": "resolved",
+                "relation": "call", "sites": [1],
+            }])),
+            verdict: Verdict::Fails("missing shop/__init__.py -reexports->"),
+        },
+        Probe {
+            what: "a re-export row is no caller",
+            case: SOMEONE_CALLS_TOTAL,
+            answer: answer(&json!([reexport])),
+            verdict: Verdict::Fails("missing shop/__init__.py -calls->"),
+        },
+    ])
+}
+
+/// A5: `collection_reads` yield `reads` from the reading file to the changed
+/// files under `content/<collection>/`.
+fn a5_a_collection_read_reaches_only_its_collection() -> Result<(), Failed> {
+    run(vec![
+        Probe {
+            what: "the page reads the collection the file sits in",
+            case: POST_IS_READ_BY_THE_PAGE,
+            answer: collection_read("src/pages/index.astro", "blog"),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the page reads another collection",
+            case: POST_IS_READ_BY_THE_PAGE,
+            answer: collection_read("src/pages/index.astro", "docs"),
+            verdict: Verdict::Fails("missing src/pages/index.astro -reads-> content/blog/post.md"),
+        },
+        Probe {
+            what: "another file reads the collection",
+            case: POST_IS_READ_BY_THE_PAGE,
+            answer: collection_read("src/pages/about.astro", "blog"),
+            verdict: Verdict::Fails("missing src/pages/index.astro -reads-> content/blog/post.md"),
+        },
+    ])
+}
+
+/// A partial answer's zero is a claim whichever way it says callers were left out.
+fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
+    let said =
+        absence_claims("1 changed file(s), 0 caller(s) outside the diff; callers not determined");
+    let counted = absence_claims("1 changed file(s), 3 caller(s) outside the diff");
+    if said.is_empty() || !counted.is_empty() {
+        return Err(Failed::from(format!(
+            "a zero beside `not determined` gave {said:?}; a plain count gave {counted:?}"
+        )));
+    }
+    Ok(())
+}
+
+pub fn trials() -> Vec<Trial> {
+    let rules: [(&str, fn() -> Result<(), Failed>); 10] = [
+        (
+            "a1_test_file_stands_for_its_function",
+            a1_test_file_stands_for_its_function,
+        ),
+        (
+            "a2_only_a_removed_api_contract_is_a_removal",
+            a2_only_a_removed_api_contract_is_a_removal,
+        ),
+        ("a3_a_name_match_is_no_caller", a3_a_name_match_is_no_caller),
+        (
+            "a4_kind_is_loose_but_the_rest_is_not",
+            a4_kind_is_loose_but_the_rest_is_not,
+        ),
+        (
+            "a5_a_collection_read_reaches_only_its_collection",
+            a5_a_collection_read_reaches_only_its_collection,
+        ),
+        ("a6_a_stated_kind_is_compared", a6_a_stated_kind_is_compared),
+        (
+            "a_kind_no_schema_names_cannot_be_evaluated",
+            a_kind_no_schema_names_cannot_be_evaluated,
+        ),
+        (
+            "the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary",
+            the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary,
+        ),
+        (
+            "a_static_reexport_is_a_resolved_reexports_relation",
+            a_static_reexport_is_a_resolved_reexports_relation,
+        ),
+        (
+            "a_zero_beside_not_determined_is_a_claim",
+            a_zero_beside_not_determined_is_a_claim,
+        ),
+    ];
+    rules
+        .into_iter()
+        .map(|(name, test)| {
+            Trial::test(format!("harness/negative/{name}"), test).with_kind("oracle")
+        })
+        .collect()
+}

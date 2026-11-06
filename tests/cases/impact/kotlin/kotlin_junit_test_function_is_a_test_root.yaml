@@ -1,0 +1,56 @@
+name: kotlin_junit_test_function_is_a_test_root
+mode: impact
+source: gh#664
+issue_state: open
+tags:
+- kotlin
+- tests
+- unknowns
+repo:
+  initial_files:
+    src/main/kotlin/shop/Cart.kt: |
+      package shop
+
+      class Cart {
+          fun empty(items: Int): Boolean = items == 0
+      }
+    src/test/kotlin/shop/HttpTestBase.kt: |
+      package shop
+
+      abstract class HttpTestBase {
+          fun get(path: String): Int = path.length
+      }
+    src/test/kotlin/shop/CartTest.kt: |
+      package shop
+
+      import org.junit.jupiter.api.Test
+      import kotlin.test.assertEquals
+
+      class CartTest : HttpTestBase() {
+          @Test
+          fun `a cart with no items is empty`() {
+              assertEquals(true, Cart().empty(0))
+          }
+      }
+  changed_files:
+    src/test/kotlin/shop/CartTest.kt: |
+      package shop
+
+      import org.junit.jupiter.api.Test
+      import kotlin.test.assertEquals
+
+      class CartTest : HttpTestBase() {
+          @Test
+          fun `a cart with no items is empty`() {
+              assertEquals(true, Cart().empty(0))
+          }
+
+          @Test
+          fun `the cart page answers`() {
+              assertEquals(5, get("/cart"))
+              assertEquals(false, Cart().empty(2))
+          }
+      }
+  commit_message: Change kotlin junit test function is a test root
+expect:
+  unknowns: {}

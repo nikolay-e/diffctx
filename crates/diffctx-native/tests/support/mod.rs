@@ -5,6 +5,9 @@
 // Every suite compiles this module and uses a part of it.
 #![allow(dead_code)]
 
+pub mod answer;
+pub mod seeds;
+
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
@@ -35,6 +38,10 @@ pub fn git(repo: &Path, args: &[&str]) {
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_OBJECT_DIRECTORY")
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        .env_remove("GIT_PREFIX")
         .args(args)
         .output()
         .expect("run git");

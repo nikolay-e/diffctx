@@ -8,6 +8,7 @@
 pub mod git;
 pub mod in_memory_harness;
 mod paths;
+pub mod snapshot;
 
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;
@@ -15,7 +16,9 @@ pub(crate) mod canon;
 pub mod change_class;
 pub(crate) mod changed_lines;
 pub(crate) mod container;
+pub(crate) mod decide;
 pub(crate) mod excerpt;
+pub(crate) mod fold;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
 pub(crate) mod parsers;
@@ -24,9 +27,10 @@ pub(crate) mod testfiles;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
-pub(crate) mod facts;
+pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod provenance;
+pub mod resolve;
 
 // Ranking: relevance of each candidate to the change.
 pub(crate) mod core;
@@ -51,6 +55,7 @@ pub mod hook;
 pub mod impact;
 pub mod kotlin_bindings;
 pub(crate) mod lang;
+pub use lang::{Cell, CellState, RelationKind, is_precise};
 pub mod locate;
 pub mod render;
 
@@ -65,6 +70,7 @@ pub mod profile;
 pub mod resource;
 pub mod run_provenance;
 pub mod sanitize;
+pub mod shadow;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;

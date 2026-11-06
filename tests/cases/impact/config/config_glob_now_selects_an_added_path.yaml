@@ -1,0 +1,27 @@
+name: config_glob_now_selects_an_added_path
+mode: impact
+source: gh#522
+issue_state: open
+tags:
+- config
+- toml
+- glob
+- configures
+repo:
+  initial_files:
+    ruff.toml: |
+      src = ["*/*/*"]
+    tool/scripts/run.py: |
+      print('run')
+  changed_files:
+    tool/scripts/fixtures/requests/__init__.py: |
+      """Fixture package."""
+  commit_message: Change config glob now selects an added path
+expect:
+  relations:
+  - from: ruff.toml
+    to: tool/scripts/fixtures/requests/__init__.py
+    kind: configures
+    resolution: resolved
+    site: 1
+  exact: true

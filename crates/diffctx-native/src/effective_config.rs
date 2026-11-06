@@ -187,6 +187,7 @@ pub const SEMANTIC_ENV: &[&str] = &[
     "DIFFCTX_RRF_K",
     "DIFFCTX_TEST_DEADLINE_AFTER_POLLS",
     "DIFFCTX_TEST_DEADLINE_EXPIRED",
+    "DIFFCTX_TEST_READ_FAULT",
     "DIFFCTX_TOKEN_SAFETY_FACTOR",
 ];
 
@@ -215,6 +216,8 @@ pub const NON_SEMANTIC_ENV: &[&str] = &[
     "DIFFCTX_PROVENANCE",
     "DIFFCTX_PROVENANCE_DUMP",
     "DIFFCTX_RANDOM_BASELINE_SEED",
+    // Makes a missing native binary a failure of the tests that need it, not a skip.
+    "DIFFCTX_REQUIRE_NATIVE",
     "DIFFCTX_SCORING",
     "DIFFCTX_TEST_WATCHDOG_GRACE_SECS",
     "DIFFCTX_TOKEN_CACHE_DIR",

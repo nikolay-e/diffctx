@@ -1,0 +1,69 @@
+name: kotlin_symbol_property_read_through_an_extension_property_chain
+mode: symbol
+source: gh#561
+issue_state: open
+tags:
+- kotlin
+- properties
+- reads
+repo:
+  initial_files:
+    src/main/kotlin/app/ShopApplication.kt: |
+      package app
+
+      class Context
+
+      class DevicePresence
+
+      class AppContainer {
+          val devicePresence = DevicePresence()
+          val swipeSearch = true
+      }
+
+      val Context.appContainer: AppContainer
+          get() = AppContainer()
+    src/main/kotlin/feature/DevicesViewModel.kt: |
+      package feature
+
+      import app.AppContainer
+      import app.DevicePresence
+
+      class DevicesViewModel(val presence: DevicePresence)
+
+      fun buildDevices(container: AppContainer): DevicesViewModel = DevicesViewModel(container.devicePresence)
+    src/main/kotlin/feature/GroupViewModel.kt: |
+      package feature
+
+      import app.AppContainer
+
+      class GroupViewModel(val presence: Any)
+
+      fun buildGroup(container: AppContainer) = GroupViewModel(presence = container.devicePresence)
+    src/main/kotlin/root/RootScreen.kt: |
+      package root
+
+      import app.Context
+      import app.appContainer
+
+      fun screen(context: Context): Boolean = context.appContainer.swipeSearch
+    src/main/kotlin/other/Other.kt: |
+      package other
+
+      class Other {
+          val devicePresence = "unrelated"
+      }
+
+      fun read(o: Other): String = o.devicePresence
+  commit_message: Change kotlin symbol property read through an extension property chain
+query:
+  symbol: swipeSearch
+expect:
+  relations:
+  - from: src/main/kotlin/root/RootScreen.kt::screen
+    to: src/main/kotlin/app/ShopApplication.kt::AppContainer.swipeSearch
+    kind: reads
+    resolution: resolved
+    site: 6
+  exact: true
+  definitions:
+  - src/main/kotlin/app/ShopApplication.kt::AppContainer.swipeSearch

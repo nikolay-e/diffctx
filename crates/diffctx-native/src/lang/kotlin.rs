@@ -48,12 +48,16 @@ impl<'a> KotlinModel<'a> {
     }
 }
 
+/// Kotlin's callers and removals are the facts layer's (`decide`); this model
+/// keeps what the resolver of `kotlin_bindings` still answers alone: the
+/// implementers of an abstract member (#566), whether a public signature
+/// moved, and the annotations an entry point is read off. `Uses` keeps the
+/// model attached to a cell-owned definition for those, and gives it no use
+/// lines (impact takes only a page's from it).
 const KOTLIN: &[Relation] = &[
-    Relation::Callers,
     Relation::Uses,
     Relation::Implementations,
     Relation::PublicApi,
-    Relation::Removals,
 ];
 
 /// Java needs no `@Override` and Swift no `override` to implement a member,

@@ -13,6 +13,8 @@ fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()
         .current_dir(repo)
         .env("DIFFCTX_NO_MARKER", "1")
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .output()
         .expect("run diffctx")
@@ -530,7 +532,7 @@ fn an_unresolved_receiver_is_a_possible_caller_and_counted_as_one() {
             ),
             (
                 "jobs.py",
-                "def nightly(ledger):\n    return ledger.reconcile_all()\n",
+                "import ledger\n\n\ndef nightly(w):\n    return w.reconcile_all()\n",
             ),
         ],
         &[(
@@ -694,6 +696,10 @@ fn a_spread_call_of_an_imported_function_is_a_caller() {
 fn a_context_manager_binds_its_target_and_no_binding_spans_lines() {
     let tmp = repo(
         &[
+            (
+                "server/pyproject.toml",
+                "[project]\nname = \"server\"\nversion = \"0.1.0\"\n",
+            ),
             ("server/src/srv/__init__.py", ""),
             (
                 "server/src/srv/app.py",
@@ -732,10 +738,13 @@ fn a_context_manager_binds_its_target_and_no_binding_spans_lines() {
         ],
         "{doc}"
     );
+    // `client/` imports `mcp` and nothing of `srv`, and declares no
+    // dependency on `server/`: a parameter nothing types in a project that
+    // cannot reach the definition is no possible caller (gh#649, gh#666).
     assert_eq!(
         callers(&doc, "call_tool", "candidate"),
-        vec!["client/tests/test_run.py::test_fixture_session"],
-        "a parameter nothing types stays possible: {doc}"
+        Vec::<&str>::new(),
+        "a project that cannot import the definition is no hedge: {doc}"
     );
 }
 
@@ -799,7 +808,7 @@ fn go_callers_bind_through_the_package_and_the_stated_type() {
     );
     assert_eq!(
         callers(&doc, "Total", "candidate"),
-        Vec::<String>::new(),
+        Vec::<&str>::new(),
         "{doc}"
     );
     assert_eq!(

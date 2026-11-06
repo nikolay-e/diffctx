@@ -1,0 +1,62 @@
+name: py_removed_private_base_and_public_classes_are_all_reported
+mode: impact
+source: gh#712
+issue_state: open
+tags: [python, removed, fields, private, inheritance]
+repo:
+  initial_files:
+    api.py: |
+      from pydantic import BaseModel
+
+
+      class _Facts(BaseModel):
+          note: str
+          amount: int
+
+
+      class ThingCreate(_Facts):
+          kind: str
+
+
+      class ThingUpdate(_Facts):
+          kind: str | None
+
+
+      def create_thing(body: ThingCreate):
+          return body
+
+
+      def update_thing(body: ThingUpdate):
+          return body
+
+
+      def delete_thing(thing_id):
+          return thing_id
+  changed_files:
+    api.py: |
+      from pydantic import BaseModel
+
+
+      class ThingUpdate(BaseModel):
+          note: str
+          amount: int
+          kind: str | None
+
+
+      def update_thing(body: ThingUpdate):
+          return body
+  commit_message: "api: fold the shared facts into the update model"
+# gh#712: the private base `_Facts` and the public `ThingCreate`, `create_thing`
+# and `delete_thing` all left, and each is reported. The fields are not
+# definitions of their own: `ThingCreate.kind` left with its class,
+# `ThingUpdate.kind` is still there, and `note` and `amount` moved from the base
+# into `ThingUpdate` with their declarations unchanged.
+expect:
+  removed: [_Facts, ThingCreate, create_thing, delete_thing]
+  changed:
+    - api.py::ThingUpdate
+    - api.py::_Facts
+    - api.py::ThingCreate
+    - api.py::create_thing
+    - api.py::delete_thing
+  never_empty: true

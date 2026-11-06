@@ -1,0 +1,39 @@
+name: py_test_calling_a_wrapper_is_not_a_caller_of_what_the_wrapper_calls
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, two-hop-wrapper, tests-reach]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/_impl.py: |
+      def get_pager_file(command):
+          return open(command)
+    pkg/api.py: |
+      from pkg import _impl
+
+
+      def get_pager_file(command):
+          return _impl.get_pager_file(command)
+    tests/test_api.py: |
+      from pkg.api import get_pager_file
+
+
+      def test_pager_file_is_found():
+          assert get_pager_file("less")
+  changed_files:
+    pkg/_impl.py: |
+      def get_pager_file(command):
+          return open(command, "rb")
+  commit_message: "impl: open the pager file in binary mode"
+expect:
+  changed: [pkg/_impl.py::get_pager_file]
+  relations:
+    - from: "pkg/api.py::get_pager_file"
+      to: "pkg/_impl.py::get_pager_file"
+      kind: calls
+      resolution: resolved
+      site: 5
+    - {from: "tests/test_api.py", to: "pkg/api.py::get_pager_file", kind: tests_reach, resolution: resolved}
+  decoys:
+    pkg/_impl.py::get_pager_file: [tests/test_api.py]

@@ -1,0 +1,40 @@
+name: rust_call_inside_a_closure_is_a_caller
+mode: symbol
+source: gh#547
+issue_state: closed
+tags:
+- rust
+- closure
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod impact;
+    src/impact.rs: |
+      fn missed_namers(state: &str, files: &[String], symbol: &str) -> Vec<String> {
+          files.iter().map(|f| format!("{state}{f}{symbol}")).collect()
+      }
+
+      pub fn build_impact(state: &str, files: Vec<String>, symbol: Option<&str>) -> Vec<String> {
+          let missed_in = symbol
+              .map(|s| missed_namers(state, &files, s))
+              .unwrap_or_default();
+          missed_in
+      }
+  commit_message: Change rust call inside a closure is a caller
+query:
+  symbol: missed_namers
+expect:
+  relations:
+  - from: src/impact.rs::build_impact
+    to: src/impact.rs::missed_namers
+    kind: calls
+    resolution: resolved
+    site: 7
+  exact: true
+  definitions:
+  - src/impact.rs::missed_namers

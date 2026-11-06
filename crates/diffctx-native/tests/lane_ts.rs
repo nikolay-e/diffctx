@@ -13,6 +13,8 @@ use support::{diffctx, git, repo, set};
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
         .current_dir(repo)
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
         .args(["-q", "-f", "json"])
         .output()
@@ -162,7 +164,8 @@ export default memo(Badge);
 ";
 
 /// #504: `<Ui.Panel />` through `export * as Ui from './Card'`, and a
-/// default export wrapped in `memo`, rendered as `<Badge />`.
+/// default export wrapped in `memo`, rendered as `<Badge />`. A rendered
+/// element instantiates the component, which the answer calls a call.
 #[test]
 fn jsx_reaches_namespaced_and_wrapped_components() {
     let changed = CARD
@@ -201,14 +204,11 @@ fn jsx_reaches_namespaced_and_wrapped_components() {
     let out = impact(tmp.path());
     assert_eq!(
         callers(&out, "src/ui/Card.tsx", "Panel"),
-        set(&["reference src/Page.tsx::Page"])
+        set(&["call src/Page.tsx::Page"])
     );
     assert_eq!(
         callers(&out, "src/ui/Card.tsx", "Badge"),
-        set(&[
-            "reference src/Page.tsx::Page",
-            "reference src/ui/Card.tsx:11-11"
-        ])
+        set(&["call src/Page.tsx::Page", "reference src/ui/Card.tsx:11-11"])
     );
 }
 
@@ -857,13 +857,16 @@ export async function play() {
 }
 ";
 
-/// #554: functions declared in a factory closure call each other, as at
-/// module level; an indented function there read as a member of the
-/// interface above it, and in a long closure one spanning a whole chunk of
-/// its body had no definition at all. A parameter shadowing the name,
-/// another module's function and a method of a class are not callers.
+/// #554, as ruled in Revision 12.3: a function declared in a factory closure
+/// that never leaves it is a local of the definition around it, not a
+/// definition. `--symbol` on it answers whose local it is and lists its uses
+/// inside that definition, each with the inner local or definition it sits
+/// in; a change to it is the enclosing definition's. At module level the same
+/// functions are definitions and their callers are listed as before. A
+/// parameter shadowing the name, another module's function and a method of a
+/// class are not uses.
 #[test]
-fn functions_nested_in_a_factory_closure_call_each_other() {
+fn functions_nested_in_a_factory_closure_are_locals_with_their_uses() {
     let pad = "    x = x + 1;\n".repeat(20);
     let long = STORE
         .replace("): number {\n", &format!("): number {{\n{pad}"))
@@ -886,19 +889,32 @@ fn functions_nested_in_a_factory_closure_call_each_other() {
             &long.replace("String(alpha(x))", "String(alpha(x + 1))"),
         )],
     );
-    assert_eq!(
-        callers(&impact(tmp.path()), "src/long.ts", "beta"),
-        set(&["call src/long.ts::gamma"])
+    // The change is inside `beta`, which is no definition: no entry of the
+    // answer is `beta`.
+    let changed = impact(tmp.path());
+    assert!(
+        changed["changed"]
+            .as_array()
+            .expect("changed")
+            .iter()
+            .all(|c| c["symbol"] != "beta" && c["symbol"] != "alpha"),
+        "{changed:#}"
     );
-    for path in ["src/store.ts", "src/long.ts", "src/flat.ts"] {
+    for path in ["src/store.ts", "src/long.ts"] {
         let at = |name: &str| format!("{path}:{name}");
+        let alpha = symbol(tmp.path(), &at("alpha"));
         assert_eq!(
-            callers(&symbol(tmp.path(), &at("alpha")), path, "alpha"),
+            callers(&alpha, path, "alpha"),
             set(&[
                 &format!("call {path}::beta"),
                 &format!("call {path}::gamma")
             ]),
-            "{path}"
+            "{path}: the parameter `alpha` of `delta` is no use"
+        );
+        let note = alpha["changed"][0]["unresolved"].as_str().unwrap_or("");
+        assert!(
+            note.contains(&format!("is a local of `{path}::useStore`")),
+            "{path}: {note}"
         );
         assert_eq!(
             callers(&symbol(tmp.path(), &at("beta")), path, "beta"),
@@ -910,7 +926,18 @@ fn functions_nested_in_a_factory_closure_call_each_other() {
             set(&[&format!("call {path}::play")]),
             "{path}"
         );
+        // `delta` leaves the closure (the store returns it): a definition.
+        assert!(
+            symbol(tmp.path(), &at("delta"))["changed"][0]["kind"] != "local",
+            "{path}"
+        );
     }
+    // Module level: definitions, with their callers.
+    let flat = symbol(tmp.path(), "src/flat.ts:alpha");
+    assert_eq!(
+        callers(&flat, "src/flat.ts", "alpha"),
+        set(&["call src/flat.ts::beta", "call src/flat.ts::gamma"])
+    );
 }
 
 /// The paths a definition's answer names as not fully analysed.
@@ -1150,10 +1177,11 @@ fn inline_html_script_top_level_and_function_calls_are_callers() {
     );
 }
 
-/// Forgejo #106: `const Card = lazy(() => import('./Card'))` binds the
-/// module's default export, so the component it renders is referenced there.
-/// A same-named default export of another module, and a lazy import of a
-/// module whose default export is another component, are not callers.
+/// Forgejo #106: `const Card = lazy(() => import('./Card'))` loads the
+/// module's default export, so that line is where the component is used; the
+/// element rendered from the constant is the constant's own. A same-named
+/// default export of another module, and a lazy import of a module whose
+/// default export is another component, are not callers.
 #[test]
 fn a_lazy_import_binds_the_default_export_of_a_relative_module() {
     let card = "export default function Card() {\n  return <div>Old</div>;\n}\n";
@@ -1182,8 +1210,8 @@ fn a_lazy_import_binds_the_default_export_of_a_relative_module() {
     assert_eq!(
         callers(&impact(tmp.path()), "src/Card.tsx", "Card"),
         set(&[
-            "reference src/App.tsx::App",
-            "reference src/Async.tsx::Async"
+            "reference src/App.tsx::Card",
+            "reference src/Async.tsx::Card"
         ])
     );
 }

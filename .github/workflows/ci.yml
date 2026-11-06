@@ -58,6 +58,97 @@ jobs:
         run: SKIP=cargo-test pre-commit run --all-files
 
   # ============================================================================
+  # A consumer pins the commit a release tag first named (#500, #513): a tag
+  # off main, or a release left as a draft, strands that pin. Both are checked
+  # on every run with the whole history. The publication check reads the
+  # releases, so it runs on pull requests only: a push to main lands a release
+  # commit and its tag a few minutes before the release is published.
+  # ============================================================================
+  release-tags:
+    name: Release tags are immutable
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Every release tag is an ancestor of main
+        run: |
+          off_main=$(bash .github/scripts/release-tags.sh origin/main)
+          if [[ -n "$off_main" ]]; then
+            echo "::error::release tags off main: ${off_main//$'\n'/ }"
+            exit 1
+          fi
+
+      - name: Every release tag has a published release
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          unpublished=$(bash .github/scripts/unpublished-release-tags.sh)
+          if [[ -n "$unpublished" ]]; then
+            echo "::error::release tags without a published release: ${unpublished//$'\n'/ }"
+            exit 1
+          fi
+
+  # ============================================================================
+  # A fix ships with the test that would have caught its class, red on the pull
+  # request's base and green on its head (T9). The base build is cached by the
+  # base commit, so a frozen main is built once. The epoch pull request carries
+  # work that was gated stream by stream and is not judged again, and neither
+  # does the architecture migration's integration branch, which is that work
+  # before it is folded; its exemption ends with the branch.
+  # ============================================================================
+  class-test:
+    name: Class test
+    if: github.event_name == 'pull_request' && github.head_ref != 'next' && github.head_ref != 'relay/arch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      BASE_TARGET_DIR: ${{ github.workspace }}/../class-test-base-target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the base
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Cache the base build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ env.BASE_TARGET_DIR }}
+          key: class-test-base-${{ github.event.pull_request.base.sha }}
+
+      - name: Run the class test on the base and on the head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash .github/scripts/class-test.sh
+
+  # ============================================================================
   # Rust dependency advisories. Separate job because the pre-commit hook can
   # only skip when cargo-audit is absent, and it is absent on GitHub runners —
   # so this is the only place the check actually runs.
@@ -191,7 +282,8 @@ jobs:
       # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
-          docker run --rm diffctx:ci --version | grep -qx "diffctx $(cut -d'"' -f2 src/diffctx/version.py)"
+          crate_version=$(grep -m1 '^version = ' crates/diffctx-native/Cargo.toml | cut -d'"' -f2)
+          docker run --rm diffctx:ci --version | grep -qx "diffctx ${crate_version}"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
@@ -298,17 +390,24 @@ jobs:
 
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites where paths, line endings and process
-  # spawning differ.
+  # spawning differ. One Windows job held them all and took 53, 80, 71, 54 and
+  # over 90 minutes on its last five runs (the compile about 8, the corpus 35
+  # and more), so Windows runs in three parts: the library and half the
+  # integration suites, the other half, and the corpus. `part` is
+  # scripts/cargo-test-suites.sh's argument, and tests/test_ci_runs_every_suite.py
+  # holds the parts of each OS to every suite.
   rust-diffctx-test-cross:
-    name: Rust diffctx tests (${{ matrix.os }})
+    name: Rust diffctx tests (${{ matrix.os }}${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - {os: macos-latest, part: all, label: ""}
+          - {os: windows-latest, part: "rest:1/2", label: ", 1/2"}
+          - {os: windows-latest, part: "rest:2/2", label: ", 2/2"}
+          - {os: windows-latest, part: corpus, label: ", corpus"}
     runs-on: ${{ matrix.os }}
-    # The hang guard of #510. The green Windows cell took 59.9 and 59.1
-    # minutes on 38751976320 and 38770819847 (corpus 2031 s and 2393 s), so
-    # 60 would cut a passing run.
+    # The hang guard of #510, no longer the margin of a whole Windows run.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -332,7 +431,9 @@ jobs:
 
       - name: Build and test
         shell: bash
-        run: scripts/cargo-test-suites.sh
+        env:
+          PART: ${{ matrix.part }}
+        run: scripts/cargo-test-suites.sh "$PART"
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
       # first build of it must not be the release itself.
@@ -436,14 +537,18 @@ jobs:
           fi
 
       # tests/test_fit_contract.py holds the native binary to the artifact the
-      # Python CLI and the MCP server deliver (#507); one cell builds it, and
-      # without it those cases skip.
+      # Python CLI and the MCP server deliver (#507); one cell builds it. Where
+      # it is built those cases fail rather than skip, and the other cells
+      # skip them.
       - name: Build the native binary for the door contract
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         shell: bash
         run: |
           cargo build --release --locked --bin diffctx
-          echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx" >> "$GITHUB_ENV"
+          {
+            echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx"
+            echo "DIFFCTX_REQUIRE_NATIVE=1"
+          } >> "$GITHUB_ENV"
 
       - name: Run Tests with Coverage
         shell: bash

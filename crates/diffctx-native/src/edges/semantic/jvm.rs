@@ -496,7 +496,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
         else {
             return FxHashMap::default();
         };
-        let source = crate::source::current();
+        let source = crate::resource::current_source();
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
@@ -798,6 +798,12 @@ impl EdgeBuilder for JVMEdgeBuilder {
             let mut defs_of: FxHashMap<&FragmentId, Option<crate::kotlin_bindings::KDef>> =
                 FxHashMap::default();
             for jf in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
+                // One user fragment can cost seconds on a large Kotlin
+                // repository: past the deadline the edges found so far are
+                // the graph, and the run says it is partial.
+                if !crate::resource::current_check() {
+                    break;
+                }
                 let user = rel(jf.path());
                 let Some(facts) = resolver.facts(&user) else {
                     continue;

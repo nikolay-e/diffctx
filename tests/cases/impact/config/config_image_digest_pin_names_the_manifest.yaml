@@ -1,0 +1,34 @@
+name: config_image_digest_pin_names_the_manifest
+mode: impact
+source: fj#128
+issue_state: open
+tags:
+- config
+- docker
+- digest
+- references-path
+repo:
+  initial_files:
+    images/foo/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo hi
+    deploy.yaml: |
+      image:
+        repository: registry.example.com/images/foo
+        digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    images/bar/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo bar
+  changed_files:
+    images/foo/Dockerfile: |
+      FROM alpine:3.21
+      RUN echo hi
+  commit_message: Change config image digest pin names the manifest
+expect:
+  relations:
+  - from: deploy.yaml
+    to: images/foo/Dockerfile
+    kind: references_path
+    resolution: candidate
+    site: 2
+  exact: true

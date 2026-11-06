@@ -1,0 +1,31 @@
+name: lua_changed_function_nothing_calls_is_not_modelled
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- no-grammar
+- lua
+repo:
+  initial_files:
+    greeter.lua: |
+      local M = {}
+
+      function M.hello(name)
+        return "hi " .. name
+      end
+
+      return M
+  changed_files:
+    greeter.lua: |
+      local M = {}
+
+      function M.hello(name)
+        return "hello " .. name
+      end
+
+      return M
+  commit_message: Change lua changed function nothing calls is not modelled
+expect:
+  discloses: true
+  no_negative_claims: true

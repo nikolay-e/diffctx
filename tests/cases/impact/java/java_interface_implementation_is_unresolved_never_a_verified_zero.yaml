@@ -1,0 +1,64 @@
+name: java_interface_implementation_is_unresolved_never_a_verified_zero
+mode: impact
+source: gh#387
+issue_state: closed
+tags:
+- java
+- dispatch
+- unknowns
+repo:
+  initial_files:
+    src/main/java/h/Handler.java: |
+      package h;
+
+      public interface Handler {
+          void handle(String s);
+      }
+    src/main/java/h/A.java: |
+      package h;
+
+      public class A implements Handler {
+          public void handle(String s) {
+              System.out.println("a" + s);
+          }
+      }
+    src/main/java/h/B.java: |
+      package h;
+
+      public class B implements Handler {
+          public void handle(String s) {
+              System.out.println("b" + s);
+          }
+      }
+    src/main/java/h/C.java: |
+      package h;
+
+      public class C implements Handler {
+          public void handle(String s) {
+              System.out.println("c" + s);
+          }
+      }
+    src/main/java/h/Dispatcher.java: |
+      package h;
+
+      public class Dispatcher {
+          public void dispatch(Handler h) {
+              h.handle("x");
+          }
+      }
+  changed_files:
+    src/main/java/h/A.java: |
+      package h;
+
+      public class A implements Handler {
+          public void handle(String s) {
+              System.out.println("a:" + s);
+          }
+      }
+  commit_message: Change java interface implementation is unresolved never a verified zero
+expect:
+  changed:
+  - src/main/java/h/A.java::A.handle
+  unknowns:
+    handle: overridable
+  never_empty: true

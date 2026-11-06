@@ -362,6 +362,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         if c_changed.is_empty() {
             return vec![];
         }
+        let source = crate::resource::current_source();
 
         let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
@@ -372,7 +373,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
             let mut included_headers: FxHashSet<String> = FxHashSet::default();
             for f in &frontier {
-                if let Some(content) = crate::source::read_to_string(f) {
+                if let Some(content) = source.read_to_string(f) {
                     included_headers.extend(extract_includes(&content));
                 }
             }
@@ -404,7 +405,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                     hop_found.push(candidate.clone());
                     continue;
                 }
-                if let Some(content) = crate::source::read_to_string(candidate) {
+                if let Some(content) = source.read_to_string(candidate) {
                     let cand_includes = extract_includes(&content);
                     for inc in &cand_includes {
                         let inc_name = if inc.contains('/') {

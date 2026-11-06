@@ -1,0 +1,35 @@
+name: py_member_shared_with_third_party_types_is_not_resolved_by_name
+mode: impact
+source: gh#399
+issue_state: closed
+tags: [python, attribute-read, decoy]
+repo:
+  initial_files:
+    models/__init__.py: ""
+    models/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+    reports/__init__.py: ""
+    reports/summary.py: |
+      import pandas as pd
+
+
+      def names(path):
+          df = pd.read_csv(path)
+          return list(df.columns)
+  changed_files:
+    models/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          @property
+          def columns(self):
+              return sorted(self.rows[0])
+  commit_message: "table: expose the column names"
+expect:
+  callers:
+    columns: []
+  decoys:
+    columns: [reports/summary.py]

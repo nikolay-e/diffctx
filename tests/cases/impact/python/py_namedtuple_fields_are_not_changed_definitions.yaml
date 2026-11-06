@@ -1,0 +1,36 @@
+name: py_namedtuple_fields_are_not_changed_definitions
+mode: impact
+source: fj#129
+issue_state: open
+tags: [python, namedtuple, changed-definition]
+repo:
+  initial_files:
+    server/models.py: |
+      from typing import NamedTuple
+
+
+      class Reading(NamedTuple):
+          sensor: str
+          value: float
+    server/app.py: |
+      from server.models import Reading
+
+
+      def read(sensor):
+          return Reading(sensor, 1.0)
+  changed_files:
+    server/models.py: |
+      from typing import NamedTuple
+
+
+      class Reading(NamedTuple):
+          sensor: str
+          value: float
+          unit: str = "c"
+  commit_message: "models: a unit for readings"
+# fj#129: a NamedTuple's fields are not changed definitions of their own; the
+# change is the class `Reading`. The construction site in app.py is not listed
+# as a caller: a defaulted field keeps every constructor working (#388), so the
+# answer counts it as signature-compatible.
+expect:
+  changed: [server/models.py::Reading]

@@ -8,11 +8,55 @@
 //! carries what the grammar knows: a brace group spanning lines, a rename,
 //! an import inside a comment that is not an import at all.
 
+//! Two layers share the name. `java`, `kotlin`, `python`, `scala` and `swift` are
+//! the syntax facts the edge builders read today (`LanguageFacts`, `Declaration`).
+//! The rest is the facts layer of the 2.0 architecture: what an [`Extractor`]
+//! says about a blob ([`BlobFacts`]), the cache keyed by blob ([`FactsCache`]),
+//! the facts of a file of a snapshot ([`facts_of`]) and what a range did to the
+//! definitions ([`semantic_changes`]). It reads a repository only through
+//! `crate::snapshot` (`tests/facts_isolation.rs` holds it) and replaces the first
+//! layer language by language.
+//!
+//! An empty value is never how a failed read or a lost fact looks here: the
+//! methods that make one (`Result::ok`, `unwrap_or_default`) and a direct read of
+//! the disk or of a child process are denied in this module. A justified use
+//! carries `#[allow(clippy::disallowed_methods, reason = "...")]`.
+
+#![deny(clippy::disallowed_methods)]
+
 pub mod java;
 pub mod kotlin;
 pub mod python;
 pub mod scala;
 pub mod swift;
+
+mod blob;
+mod cache;
+mod changes;
+mod extractor;
+mod file;
+mod hash;
+mod ids;
+pub mod lang;
+mod language;
+mod model;
+mod module;
+
+pub use blob::blob_oid;
+pub use cache::{
+    CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir,
+};
+pub use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes};
+pub use extractor::{Extractor, Registry, expired};
+pub use file::facts_of;
+pub use hash::{Hasher, hash_text, hash_tokens};
+pub use ids::{ModulePath, Name, ProjectId, Span, TypeName};
+pub use language::Language;
+pub use model::{
+    BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind,
+    EntryPoint, Export, Fact, FileFacts, Import, ImportKind, Local, LocalKey, LocalKind, Namespace,
+    PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
+};
 
 use rustc_hash::FxHashSet;
 

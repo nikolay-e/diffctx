@@ -65,6 +65,12 @@ struct Cli {
     #[arg(long, allow_negative_numbers = true, value_parser = parse_budget)]
     budget: Option<i64>,
 
+    /// Impact mode: list every row of a changed definition, each marked with the
+    /// rule of the folding table that would fold it, instead of counting the rows
+    /// the change cannot have affected in one line each
+    #[arg(long)]
+    unfold: bool,
+
     /// Output format
     #[arg(short = 'f', long, default_value = "yaml", value_enum)]
     format: OutputFormat,
@@ -121,6 +127,11 @@ struct Cli {
     /// Suppress the token summary on stderr
     #[arg(short = 'q', long)]
     quiet: bool,
+
+    /// Migration measurement: per changed file, the changed definitions the
+    /// impact path reports beside the facts layer's, as JSON
+    #[arg(long, hide = true, requires = "diff_ref", conflicts_with_all = ["symbol", "mode"])]
+    shadow: bool,
 }
 
 #[derive(Subcommand)]
@@ -440,9 +451,7 @@ fn working_tree_is_clean(root: &Path) -> bool {
 }
 
 fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
-    _diffctx::git::resolve_duration_range(root, Some(diff_ref))
-        .map(|resolved| resolved.from_duration)
-        .unwrap_or(false)
+    _diffctx::git::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -512,7 +521,12 @@ fn run_impact(
 
 fn emit_impact(cli: &Cli, mut output: _diffctx::impact::ImpactOutput) -> Result<()> {
     let markdown = matches!(cli.format, OutputFormat::Md);
-    let mut rendered = _diffctx::impact::deliver(&mut output, markdown, resolve_budget(cli.budget));
+    let mut rendered = _diffctx::impact::deliver(
+        &mut output,
+        markdown,
+        resolve_budget(cli.budget),
+        cli.unfold,
+    );
     if !markdown {
         rendered.push('\n');
     }
@@ -599,6 +613,12 @@ fn real_main() -> Result<()> {
             )
         })?;
         return emit_impact(&cli, output);
+    }
+    if cli.shadow {
+        let report = run_with_deadline(timeout, move || {
+            _diffctx::shadow::report(&path, diff_ref.as_deref(), alpha, scoring_mode, timeout)
+        })?;
+        return write_stdout(&format!("{report}\n"));
     }
     if mode == "impact" {
         return run_impact(&cli, path, diff_ref, alpha, scoring_mode, timeout);

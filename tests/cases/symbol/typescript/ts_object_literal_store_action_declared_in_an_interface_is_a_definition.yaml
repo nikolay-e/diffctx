@@ -1,0 +1,40 @@
+name: ts_object_literal_store_action_declared_in_an_interface_is_a_definition
+mode: symbol
+source: gh#473
+issue_state: closed
+tags: [typescript, object-literal-method, interface-property, zustand-store]
+repo:
+  initial_files:
+    src/player/store.ts: |
+      import { create } from 'zustand';
+
+      interface PlayerActions {
+        updateCurrentTrackLyrics: (lyrics: string) => void;
+      }
+
+      interface PlayerStore extends PlayerActions {
+        lyrics: string;
+      }
+
+      export const usePlayerStore = create<PlayerStore>()((set, get) => ({
+        lyrics: '',
+        updateCurrentTrackLyrics: (lyrics: string) => {
+          set({ lyrics });
+        },
+      }));
+    src/player/useLyricsFetch.ts: |
+      import { usePlayerStore } from './store';
+
+      export function applySaved(saved: string) {
+        usePlayerStore.getState().updateCurrentTrackLyrics(saved);
+      }
+query:
+  symbol: updateCurrentTrackLyrics
+expect:
+  definitions: [src/player/store.ts::updateCurrentTrackLyrics]
+  relations:
+    - from: "src/player/useLyricsFetch.ts::applySaved"
+      to: "src/player/store.ts::updateCurrentTrackLyrics"
+      kind: "calls"
+      resolution: "candidate"
+      site: 4

@@ -1,0 +1,57 @@
+name: config_generated_copy_is_not_a_second_consumer
+mode: impact
+source: fj#110
+issue_state: open
+tags:
+- config
+- generated
+- named-by
+- decoy
+repo:
+  initial_files:
+    tools/run.py: |
+      import sys
+
+
+      def greet(name):
+          return "hello " + name
+
+
+      def main():
+          print(greet("a"))
+          return 0
+
+
+      if __name__ == "__main__":
+          sys.exit(main())
+    src/dash.jsonnet: |
+      // source of the dashboard
+      local run = "tools/run.py";
+      { run: run }
+    out/dash.yaml: |
+      # GENERATED from src/dash.jsonnet - do not edit
+      run: tools/run.py
+  changed_files:
+    tools/run.py: |
+      import sys
+
+
+      def greet(name):
+          return "hi " + name
+
+
+      def main():
+          print(greet("a"))
+          return 0
+
+
+      if __name__ == "__main__":
+          sys.exit(main())
+  commit_message: Change config generated copy is not a second consumer
+expect:
+  changed:
+  - tools/run.py::greet
+  named_by:
+  - src/dash.jsonnet
+  not_named_by:
+  - out/dash.yaml

@@ -1,0 +1,97 @@
+name: rust_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- rust
+- body-only
+- smoke
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod legacy;
+      pub mod notes;
+      pub mod pricing;
+      pub mod report;
+    src/notes.rs: |
+      // pricing::total(items) is documented here
+      pub const NOTE: &str = "pricing::total(items)";
+    other/Cargo.toml: |
+      [package]
+      name = "other"
+      version = "0.1.0"
+      edition = "2021"
+    other/src/lib.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.len() as u32
+      }
+
+      pub fn caller() -> u32 {
+          total(&[1])
+      }
+    src/pricing.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.iter().sum()
+      }
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn charge(items: &[u32]) -> u32 {
+          total(items) + 1
+      }
+    src/report.rs: |
+      pub fn build(items: &[u32]) -> String {
+          format!("{}", crate::pricing::total(items))
+      }
+    src/legacy.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.len() as u32
+      }
+
+      pub fn legacy_sum(items: &[u32]) -> u32 {
+          total(items)
+      }
+    tests/checkout.rs: |
+      #[test]
+      fn charge_adds_one() {
+          assert_eq!(fixture::checkout::charge(&[1, 2]), 4);
+      }
+  changed_files:
+    src/pricing.rs: |
+      pub fn total(items: &[u32]) -> u32 {
+          items.iter().copied().sum::<u32>()
+      }
+  commit_message: Change rust body only change reaches callers
+expect:
+  changed:
+  - src/pricing.rs::total
+  relations:
+  - from: src/checkout.rs::charge
+    to: src/pricing.rs::total
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/report.rs::build
+    to: src/pricing.rs::total
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: tests/checkout.rs::charge_adds_one
+    to: src/checkout.rs::charge
+    kind: tests_reach
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    src/pricing.rs::total:
+    - src/legacy.rs
+    - src/notes.rs
+    - other/src/lib.rs
+  not_untested:
+  - total

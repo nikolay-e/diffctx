@@ -1,0 +1,78 @@
+name: config_k8s_object_names_are_references
+mode: impact
+source: gh#352
+issue_state: open
+tags:
+- config
+- kubernetes
+- servicename
+- configmapref
+repo:
+  initial_files:
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db-svc
+      spec:
+        port: 5432
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-settings
+      data:
+        mode: fast
+    k8s/statefulset.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: db
+      spec:
+        serviceName: db-svc
+        template:
+          spec:
+            containers:
+              - name: db
+                envFrom:
+                  - configMapRef:
+                      name: app-settings
+    k8s/other-service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: other-svc
+  changed_files:
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db-svc
+      spec:
+        port: 5433
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-settings
+      data:
+        mode: slow
+  commit_message: Change config k8s object names are references
+expect:
+  relations:
+  - from: k8s/statefulset.yaml
+    to: k8s/service.yaml
+    kind: reads
+    resolution: resolved
+    site: 6
+  - from: k8s/statefulset.yaml
+    to: k8s/configmap.yaml
+    kind: reads
+    resolution: resolved
+    site: 13
+  exact: true
+  decoys:
+    k8s/service.yaml:
+    - k8s/other-service.yaml
+    k8s/configmap.yaml:
+    - k8s/other-service.yaml

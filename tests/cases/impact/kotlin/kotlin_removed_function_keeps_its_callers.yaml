@@ -1,0 +1,46 @@
+name: kotlin_removed_function_keeps_its_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- removal
+repo:
+  initial_files:
+    src/main/kotlin/p/Util.kt: |
+      package p
+
+      fun slug(s: String): String = s.lowercase()
+
+      fun keep(): Int = 1
+    src/main/kotlin/p/User.kt: |
+      package p
+
+      fun title(s: String): String = slug(s).replaceFirstChar { it.uppercase() }
+    src/main/kotlin/q/Other.kt: |
+      package q
+
+      fun slug(s: String): String = s
+
+      fun useQ(): String = slug("x")
+  changed_files:
+    src/main/kotlin/p/Util.kt: |
+      package p
+
+      fun keep(): Int = 1
+  commit_message: Change kotlin removed function keeps its callers
+expect:
+  changed:
+  - src/main/kotlin/p/Util.kt::slug
+  relations:
+  - from: src/main/kotlin/p/User.kt::title
+    to: src/main/kotlin/p/Util.kt::slug
+    kind: calls
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    src/main/kotlin/p/Util.kt::slug:
+    - src/main/kotlin/q/Other.kt
+  removed:
+  - slug

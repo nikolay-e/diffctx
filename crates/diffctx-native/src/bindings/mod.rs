@@ -18,7 +18,6 @@ use crate::source::Source;
 mod js;
 mod python;
 
-use js::TsConfigs;
 pub use js::js_bindings;
 pub(crate) use js::js_facts;
 pub use python::python_bindings;
@@ -124,13 +123,10 @@ pub struct Resolver<'a> {
     root: &'a Path,
     source: &'a Source,
     files: FxHashSet<String>,
-    ts_configs: TsConfigs,
     cache: RefCell<FxHashMap<String, Rc<FileBindings>>>,
     /// Python resolution scans every file of the snapshot; the same
     /// importer asks about the same specifier once per caller it checks.
     resolved: RefCell<FxHashMap<(String, String), Resolution>>,
-    /// The repository's own npm packages, by name: (directory, entries).
-    workspace: std::cell::OnceCell<FxHashMap<String, (String, Vec<String>)>>,
     /// Whole files, for the module-level bindings a function reads.
     texts: RefCell<FxHashMap<String, Option<Rc<str>>>>,
     /// The directories a Python file puts on `sys.path`, by importer.
@@ -141,15 +137,12 @@ pub struct Resolver<'a> {
 
 impl<'a> Resolver<'a> {
     pub fn new(root: &'a Path, source: &'a Source, files: FxHashSet<String>) -> Self {
-        let ts_configs = TsConfigs::read(source, root, &files);
         Self {
             root,
             source,
             files,
-            ts_configs,
             cache: RefCell::default(),
             resolved: RefCell::default(),
-            workspace: std::cell::OnceCell::new(),
             texts: RefCell::default(),
             python_roots: RefCell::default(),
             python_env: python::PythonEnv::default(),
@@ -192,22 +185,14 @@ impl<'a> Resolver<'a> {
         answer
     }
 
-    /// The file a symlink of the working tree names, where the import of
+    /// The file a symlink of the analysed side names, where the import of
     /// the link lands: Node and Vite load a module by its real path, so
     /// `./client-telemetry.js` linked to a shared module is that module
-    /// (#372). A snapshot lists no links (`Source::list_blobs`), and an
-    /// import of one stays unresolved there.
+    /// (#372). The link is followed inside the snapshot only; an import of
+    /// one that leaves it stays unresolved.
     fn real_path(&self, path: String) -> String {
-        let at = crate::paths::repo_join(self.root, &path);
-        let linked = matches!(self.source, Source::WorkingTree(_))
-            && std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink());
-        if !linked {
-            return path;
-        }
-        dunce::canonicalize(self.root)
-            .ok()
-            .zip(dunce::canonicalize(&at).ok())
-            .and_then(|(root, real)| crate::paths::display_rel(&root, &real))
+        self.source
+            .link_target(&path)
             .filter(|real| self.files.contains(real))
             .unwrap_or(path)
     }
@@ -289,6 +274,13 @@ pub struct Site<'c> {
 pub struct Finding {
     pub evidence: Evidence,
     pub relation: Relation,
+    /// What the use does, where the resolver says: a use the cell found. A
+    /// model's finding says only `relation`.
+    pub kind: Option<crate::lang::RelationKind>,
+    /// The rule of the folding table that says the change cannot have affected
+    /// the use, the relation kind it is counted under, and how many definitions
+    /// share the name a candidate may be.
+    pub fold: Option<(&'static str, &'static str, usize)>,
     pub lines: Vec<u32>,
 }
 
@@ -906,6 +898,8 @@ pub(crate) fn absorb(
         *best = Some(Finding {
             evidence,
             relation,
+            kind: None,
+            fold: None,
             lines: vec![line],
         });
         return;
@@ -914,6 +908,8 @@ pub(crate) fn absorb(
         *f = Finding {
             evidence,
             relation,
+            kind: None,
+            fold: None,
             lines: vec![line],
         };
         return;

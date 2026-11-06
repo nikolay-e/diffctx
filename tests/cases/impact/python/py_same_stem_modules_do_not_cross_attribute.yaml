@@ -1,0 +1,45 @@
+name: py_same_stem_modules_do_not_cross_attribute
+mode: impact
+source: gh#343
+issue_state: closed
+tags: [python, same-stem, decoy, smoke, body-only]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(items):
+          return sum(i.price for i in items)
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(cart):
+          return cart.pay(total(cart.items))
+    shop/report.py: |
+      from shop.pricing import total
+
+
+      def summarize(orders):
+          return [total(o.items) for o in orders]
+    legacy/__init__.py: ""
+    legacy/pricing.py: |
+      def total(items):
+          return len(items)
+    legacy/invoice.py: |
+      from legacy.pricing import total
+
+
+      def render(items):
+          return "count: %d" % total(items)
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return round(sum(i.price for i in items) * 1.19, 2)
+  commit_message: "pricing: totals include VAT"
+expect:
+  changed: [shop/pricing.py::total]
+  relations:
+    - {from: "shop/checkout.py::charge", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+    - {from: "shop/report.py::summarize", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+  decoys:
+    "shop/pricing.py::total": [legacy/pricing.py, legacy/invoice.py]

@@ -534,6 +534,8 @@ impl LanguageFacts for SqlModel<'_> {
                 Kind::Routine => Use::Call,
                 Kind::View => Use::Reference,
             },
+            kind: None,
+            fold: None,
             lines,
         })
     }

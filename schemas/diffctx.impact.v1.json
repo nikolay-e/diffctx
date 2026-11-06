@@ -74,6 +74,18 @@
       "format": "uint",
       "minimum": 0
     },
+    "deleted_modules": {
+      "description": "Modules the change deletes that no file at the head imports: one entry\neach, in place of a line per definition they held.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DeletedModule"
+      }
+    },
+    "deleted_modules_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
     "named_by": {
       "description": "Lines outside the change that name a changed file by its path from\nanother runtime or a config: a command line, a Dockerfile, a\nsettings entry that runs it (#393, #523). Imports are callers.",
       "type": "array",
@@ -127,7 +139,7 @@
       "type": "boolean"
     },
     "truncated": {
-      "description": "Callers dropped to fit `IMPACT_TOKEN_CAP`, lowest weight first.",
+      "description": "Callers dropped to fit `IMPACT_TOKEN_CAP`, the last dealt first.",
       "type": "integer",
       "format": "uint",
       "minimum": 0
@@ -168,7 +180,7 @@
       "minimum": 0
     },
     "untested_unlisted": {
-      "description": "The changed definitions of that count which nothing calls, so they\nare not among `changed`: `path::symbol (lines)` each.",
+      "description": "The changed definitions of that count with no caller found in the\nanalysed scope, so they are not among `changed`: `path::symbol (lines)`\neach. Their searches were complete; `limits` and `withheld_files` say\nwhether the run's scope was whole, which makes it \"nothing calls them\".",
       "type": "array",
       "items": {
         "type": "string"
@@ -224,6 +236,15 @@
     "unanalysed_files_omitted": {
       "type": "integer",
       "format": "uint",
+      "minimum": 0
+    },
+    "budget_needed": {
+      "description": "Set when the least the answer can say still outgrows the budget asked:\nthe tokens that least takes, which a budget of that size delivers. The\nanswer cuts nothing more than that least.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
       "minimum": 0
     }
   },
@@ -306,6 +327,29 @@
         "line",
         "target",
         "kind"
+      ]
+    },
+    "DeletedModule": {
+      "description": "A module the range deletes and no file at the head imports: its definitions\nare named once, here, since nothing can reach any of them.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "definitions": {
+          "description": "The definitions it held.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "dynamic_import": {
+          "description": "An import whose name is computed at run time could reach it, and the facts\ncannot rule one out: \"no importers\" is what was found, not a proof.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "definitions"
       ]
     },
     "PathReference": {
@@ -447,6 +491,40 @@
           "items": {
             "$ref": "#/$defs/UnanalysedFile"
           }
+        },
+        "also_changed": {
+          "description": "Callers that are themselves changed in the range: `path::symbol\n(lines)` each. They are the diff's own lines, never callers outside\nit, and the definition they call is live, not one nothing calls.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "possibly_also_changed": {
+          "description": "Users the range changes too whose binding is not resolved (a receiver\nnothing types, a name shared by several definitions): possibly using the\ndefinition, never named as callers. `path::symbol (lines)` each.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "callers_omitted": {
+          "description": "Callers the answer cap dropped, last dealt first: of a listed symbol, the\nones missing from `callers`, which is then a lower bound; of an omitted\nstub, its whole caller set. The same definition asked for alone may name\nmore.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "omitted": {
+          "description": "Only on the one entry that stands for the definitions the cap shed:\neach of them, `path::name`, with the callers it had.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OmittedDefinition"
+          }
+        },
+        "folded": {
+          "description": "Rows the change cannot have affected, counted one line per (relation\nkind, rule) instead of listed (the folding table of the plan); every row\nis listed, marked `folded_by`, when the answer is asked to unfold.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Folded"
+          }
         }
       },
       "required": [
@@ -522,6 +600,20 @@
           "type": "string",
           "default": ""
         },
+        "kind": {
+          "description": "What the reference does (`calls`, `reads`, `writes`, `imports`,\n`reexports`, `overrides`, `instantiates`, `passes_as_value`), stated\nonly where the (language, relation) cell is `precise`; elsewhere a row\nsays `relation` alone.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "folded_by": {
+          "description": "The rule of the folding table that would fold this row: only an answer\nasked to list every row carries it (`--unfold`); otherwise the row is\ncounted in `folded`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "sites": {
           "description": "The lines that reference the definition, when known.",
           "type": "array",
@@ -552,11 +644,11 @@
           ]
         },
         "reason": {
-          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, or `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched.",
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched, or `outside_definitions`:\ncode the range changed that no tracked definition holds (a module-level\nstatement, a `__main__` block), whose effect is not traced.",
           "type": "string"
         },
         "lines": {
-          "description": "Where the parse broke, the first few lines.",
+          "description": "Where the parse broke, the first few lines; for `outside_definitions`,\nthe first and last line of each changed run, in pairs.",
           "type": "array",
           "items": {
             "type": "integer",
@@ -568,6 +660,78 @@
       "required": [
         "path",
         "reason"
+      ]
+    },
+    "OmittedDefinition": {
+      "description": "A changed definition the answer cap shed, and the callers it was shed with.",
+      "type": "object",
+      "properties": {
+        "definition": {
+          "type": "string"
+        },
+        "lines": {
+          "description": "Where it is, so two methods of one name are two definitions.",
+          "type": "string"
+        },
+        "callers_omitted": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "definition",
+        "lines",
+        "callers_omitted"
+      ]
+    },
+    "Folded": {
+      "description": "Rows of one changed definition folded under one rule of the folding table.",
+      "type": "object",
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "The relation kind the rows are: `calls`, `type_use`, `overrides`, ...",
+          "type": "string"
+        },
+        "count": {
+          "description": "How many rows. Exact only when `exact`; otherwise at least.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "examples": {
+          "description": "The first three, tests first, then by path and line, so the same change names the same ones.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parameters": {
+          "description": "For `check-the-default`: the parameters the change added.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sharing": {
+          "description": "For `untyped-receiver`: the most definitions that share the name a row\nmay be.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "rule",
+        "kind",
+        "count",
+        "exact",
+        "examples"
       ]
     },
     "Contract": {

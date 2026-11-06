@@ -1,0 +1,84 @@
+name: swift_symbol_instance_method_calls_resolve_through_their_receiver
+mode: symbol
+source: gh#526
+issue_state: closed
+tags:
+- swift
+- methods
+- receivers
+- smoke
+repo:
+  initial_files:
+    Sources/Track.swift: |
+      func lostFree(why: String) { print(why) }
+
+      final class Track {
+          func sourceLost(why: String, nowNs: UInt64) { print(why, nowNs) }
+
+          func again() {
+              sourceLost(why: "self", nowNs: 3)
+              self.sourceLost(why: "self", nowNs: 4)
+          }
+      }
+    Sources/main.swift: |
+      var them: Track?
+
+      func check(_ track: Track) {
+          track.sourceLost(why: "x", nowNs: 2)
+          lostFree(why: "y")
+      }
+
+      func drainAll() {
+          them?.sourceLost(why: "z", nowNs: 5)
+          guard let me = them else { return }
+          me.sourceLost(why: "w", nowNs: 6)
+      }
+    Sources/Other.swift: |
+      final class Other {
+          func sourceLost(why: String, nowNs: UInt64) { print(why, nowNs) }
+      }
+
+      func viaOther(_ o: Other) {
+          o.sourceLost(why: "d", nowNs: 9)
+      }
+
+      func notes() -> String {
+          // track.sourceLost(why:nowNs:) and lostFree(why:) were the old way
+          return "track.sourceLost(why:) lostFree(why:)"
+      }
+    Sources/Loop.swift: |
+      func loop(_ all: [Track]) {
+          for t in all {
+              t.sourceLost(why: "l", nowNs: 7)
+          }
+      }
+  commit_message: Change swift symbol instance method calls resolve through their receiver
+query:
+  symbol: Sources/Track.swift:sourceLost
+expect:
+  relations:
+  - from: Sources/Track.swift::Track.again
+    to: Sources/Track.swift::Track.sourceLost
+    kind: calls
+    resolution: resolved
+  - from: Sources/main.swift::check
+    to: Sources/Track.swift::Track.sourceLost
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: Sources/main.swift::drainAll
+    to: Sources/Track.swift::Track.sourceLost
+    kind: calls
+    resolution: resolved
+  - from: Sources/Loop.swift::loop
+    to: Sources/Track.swift::Track.sourceLost
+    kind: calls
+    resolution: candidate
+    site: 3
+  exact: true
+  decoys:
+    Sources/Track.swift::Track.sourceLost:
+    - Sources/Other.swift::viaOther
+    - Sources/Other.swift::notes
+  definitions:
+  - Sources/Track.swift::Track.sourceLost

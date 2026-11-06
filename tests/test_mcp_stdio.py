@@ -32,6 +32,7 @@ _TOOL_SNAPSHOT = {
             "paths",
             "repo_path",
             "symbol",
+            "unfold",
         ],
         ["repo_path"],
     ),

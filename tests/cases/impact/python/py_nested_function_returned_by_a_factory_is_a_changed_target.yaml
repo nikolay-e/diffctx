@@ -1,0 +1,41 @@
+name: py_nested_function_returned_by_a_factory_is_a_changed_target
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, nested-definition, factory-return, decoy]
+repo:
+  initial_files:
+    src/handlers.py: |
+      def make_handler(prefix):
+          def handle(message):
+              return prefix + message
+
+          return handle
+    src/app.py: |
+      from src.handlers import make_handler
+
+
+      def run(messages):
+          handler = make_handler("> ")
+          return [handler(m) for m in messages]
+    src/other.py: |
+      def handle(event):
+          return event
+
+
+      def dispatch(event):
+          return handle(event)
+  changed_files:
+    src/handlers.py: |
+      def make_handler(prefix):
+          def handle(message):
+              return prefix + message.strip()
+
+          return handle
+  commit_message: "handlers: strip the message"
+expect:
+  changed: [src/handlers.py::handle]
+  exact: false
+  never_empty: true
+  decoys:
+    src/handlers.py::handle: [src/other.py]

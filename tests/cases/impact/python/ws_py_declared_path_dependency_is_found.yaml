@@ -1,0 +1,55 @@
+name: ws_py_declared_path_dependency_is_found
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, workspace, cross-project, uv-sources, decoy, body-only]
+repo:
+  initial_files:
+    core/pyproject.toml: |
+      [project]
+      name = "core-lib"
+      version = "0.1.0"
+    core/src/pricing/__init__.py: ""
+    core/src/pricing/cart.py: |
+      class Cart:
+          def total(self):
+              return 0
+    app/pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0.1.0"
+      dependencies = ["core-lib"]
+
+      [tool.uv.sources]
+      core-lib = { path = "../core" }
+    app/src/app/__init__.py: ""
+    app/src/app/checkout.py: |
+      from pricing.cart import Cart
+
+
+      def charge(cart):
+          return cart.total()
+    stray/pyproject.toml: |
+      [project]
+      name = "stray"
+      version = "0.1.0"
+    stray/src/stray/__init__.py: ""
+    stray/src/stray/report.py: |
+      from pricing.cart import Cart
+
+
+      def build(cart):
+          return cart.total()
+  changed_files:
+    core/src/pricing/cart.py: |
+      class Cart:
+          def total(self):
+              return 1
+  commit_message: "cart: a cart totals one"
+expect:
+  changed: [core/src/pricing/cart.py::Cart.total]
+  relations:
+    - {from: "app/src/app/checkout.py::charge", to: "core/src/pricing/cart.py::Cart.total", kind: calls,
+       resolution: candidate, site: 5}
+  decoys:
+    "core/src/pricing/cart.py::Cart.total": [stray/src/stray/report.py]

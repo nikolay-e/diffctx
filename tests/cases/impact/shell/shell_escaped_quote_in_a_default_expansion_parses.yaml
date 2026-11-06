@@ -1,0 +1,43 @@
+name: shell_escaped_quote_in_a_default_expansion_parses
+mode: impact
+source: gh#521
+issue_state: closed
+tags:
+- shell
+- parse
+- coverage
+repo:
+  initial_files:
+    a.sh: |
+      #!/bin/bash
+      : "${SEL:=input[type=\"text\"], input[type=\"email\"]}"
+      echo "$SEL" helper
+    b.sh: |
+      #!/bin/bash
+      : "${SEL:=input[type=text], input[type=email]}"
+      echo "$SEL" helper
+    lib.mjs: |
+      export function helper() { return 1; }
+    main.mjs: |
+      import { helper } from "./lib.mjs";
+
+      export function run() {
+        return helper();
+      }
+  changed_files:
+    lib.mjs: |
+      export function helper() { return 2; }
+  commit_message: Change shell escaped quote in a default expansion parses
+expect:
+  changed:
+  - lib.mjs::helper
+  relations:
+  - from: main.mjs::run
+    to: lib.mjs::helper
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: true
+  coverage:
+    lib.mjs::helper:
+      calls: complete

@@ -13,7 +13,7 @@ use support::{diffctx, repo};
 fn symbol(repo: &Path, query: &str) -> Value {
     let out = diffctx()
         .current_dir(repo)
-        .args(["--symbol", query, "-q"])
+        .args(["--symbol", query, "-q", "--unfold"])
         .output()
         .expect("run diffctx");
     assert!(
@@ -27,7 +27,15 @@ fn symbol(repo: &Path, query: &str) -> Value {
 fn impact(repo: &Path) -> Value {
     let out = diffctx()
         .current_dir(repo)
-        .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q"])
+        // The suite asserts relations, whatever the answer folds.
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "--unfold",
+        ])
         .output()
         .expect("run diffctx");
     assert!(
@@ -417,9 +425,10 @@ fn companion_and_object_members_bind_through_their_holder_case_kept() {
         ],
         &[],
     );
+    // `UI.DP` reads a constant: the use is a reference, not a call.
     assert_eq!(
         callers(&symbol(tmp.path(), "UI.DP"), "DP"),
-        ["src/main/kotlin/a/Layout.kt::gutter resolved call"]
+        ["src/main/kotlin/a/Layout.kt::gutter resolved reference"]
     );
     assert_eq!(
         callers(&symbol(tmp.path(), "create"), "create"),

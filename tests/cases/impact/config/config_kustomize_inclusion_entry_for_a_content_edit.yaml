@@ -1,0 +1,35 @@
+name: config_kustomize_inclusion_entry_for_a_content_edit
+mode: impact
+source: gh#564
+issue_state: open
+tags:
+- config
+- kustomize
+- named-by
+- noise
+repo:
+  initial_files:
+    kustomization.yaml: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - deploy.yaml
+    deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 1
+  changed_files:
+    deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 2
+  commit_message: Change config kustomize inclusion entry for a content edit
+expect:
+  not_named_by:
+  - kustomization.yaml

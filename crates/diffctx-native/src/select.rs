@@ -1040,8 +1040,8 @@ fn setup_and_select_core(
     // the core pass places. A core's stub can also arrive through the greedy
     // or a post-pass (core skipped, stub picked later), and it stands in for
     // the change just the same. Recording only the core pass's placements
-    // rendered such a stub as context (measured: `select_with_params`'s stub
-    // lost its role on the bitcheck fixture). The set is safe to hold as
+    // rendered such a stub as context (measured on this repository:
+    // `select_with_params`'s stub lost its role). The set is safe to hold as
     // candidates: only SELECTED fragments are ever asked, and a selected stub
     // cannot coexist with its selected core (interval superset), so selected
     // AND paired is exactly "placed as a stand-in".

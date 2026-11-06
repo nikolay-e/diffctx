@@ -1,0 +1,70 @@
+name: config_argo_workflow_field_reaches_the_referenced_template
+mode: impact
+source: gh#689
+issue_state: open
+tags:
+- config
+- argo
+- kubernetes
+- configures
+repo:
+  initial_files:
+    wf/template.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: nightly-job
+      spec:
+        entrypoint: run
+        onExit: notify
+        templates:
+          - name: run
+            container:
+              image: alpine:3.20
+              command: [sh, -c, "echo work"]
+          - name: notify
+            container:
+              image: alpine:3.20
+              command: [sh, -c, "echo done"]
+    wf/cron.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: CronWorkflow
+      metadata:
+        name: nightly
+      spec:
+        schedule: "0 3 * * *"
+        workflowSpec:
+          workflowTemplateRef:
+            name: nightly-job
+          podSpecPatch: |
+            initContainers:
+              - name: init
+                resources:
+                  requests:
+                    cpu: 100m
+  changed_files:
+    wf/cron.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: CronWorkflow
+      metadata:
+        name: nightly
+      spec:
+        schedule: "0 3 * * *"
+        workflowSpec:
+          workflowTemplateRef:
+            name: nightly-job
+          podSpecPatch: |
+            initContainers:
+              - name: init
+                resources:
+                  requests:
+                    cpu: 5m
+  commit_message: Change config argo workflow field reaches the referenced template
+expect:
+  relations:
+  - from: wf/cron.yaml
+    to: wf/template.yaml
+    kind: configures
+    resolution: resolved
+    site: 9
+  exact: true

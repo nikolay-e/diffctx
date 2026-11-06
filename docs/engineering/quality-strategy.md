@@ -240,7 +240,7 @@ publication, so `update-packaging-manifests` is a real publishing job
 and must not carry `continue-on-error`.
 
 `channel-parity.yml` (weekly, or `gh workflow run channel-parity.yml`)
-compares every channel against `src/diffctx/version.py`, fetches each release
+compares every channel against the last release (`server.json`), fetches each release
 asset unauthenticated (a drafted release 404s there while `gh release download`
 still succeeds) and opens or refreshes one issue on drift. A release QA pass
 still verifies every live channel by INSTALLING it:

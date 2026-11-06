@@ -1,0 +1,58 @@
+name: go_interface_call_reaches_an_implementation_as_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- go
+- dispatch
+- candidate
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    store/store.go: |
+      package store
+
+      type Store interface {
+          Get(k string) string
+      }
+
+      type Mem struct{}
+
+      func (Mem) Get(k string) string {
+          return k
+      }
+    svc/svc.go: |
+      package svc
+
+      import "example.com/app/store"
+
+      func Load(s store.Store) string {
+          return s.Get("a")
+      }
+  changed_files:
+    store/store.go: |
+      package store
+
+      type Store interface {
+          Get(k string) string
+      }
+
+      type Mem struct{}
+
+      func (Mem) Get(k string) string {
+          return k + "!"
+      }
+  commit_message: Change go interface call reaches an implementation as a candidate
+expect:
+  changed:
+  - store/store.go::Mem.Get
+  relations:
+  - from: svc/svc.go::Load
+    to: store/store.go::Mem.Get
+    kind: calls
+    resolution: candidate
+    site: 6
+  exact: true

@@ -1,6 +1,7 @@
 # tests/test_cli.py
 import pytest
 import yaml
+from packaging.version import Version
 
 import diffctx
 
@@ -74,7 +75,7 @@ def test_run_defaults_to_diffctx_identity(capsys):
     assert exc.value.code == 0
     out = capsys.readouterr().out.strip()
     assert out == f"diffctx {BUILD_LABEL}"
-    assert BUILD_LABEL in (diffctx.__version__, f"{diffctx.__version__}+source")
+    assert Version(BUILD_LABEL.removesuffix("+source")) == Version(diffctx.__version__)
 
 
 def test_run_executes_tree_mode(temp_project):

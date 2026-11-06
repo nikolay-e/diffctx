@@ -1,0 +1,30 @@
+name: ts_exported_arrow_const_is_a_changed_symbol
+mode: impact
+source: gh#324
+issue_state: closed
+tags: [typescript, arrow-const, body-only, smoke]
+repo:
+  initial_files:
+    src/engine/panel.ts: |
+      export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+    src/ui/knob.ts: |
+      import { clamp } from '../engine/panel';
+
+      export function drag(v: number): number {
+        return clamp(v, 0, 1);
+      }
+    src/ui/slider.ts: |
+      import { clamp } from '../engine/panel';
+
+      export function move(v: number): number {
+        return clamp(v + 1, 0, 10);
+      }
+  changed_files:
+    src/engine/panel.ts: |
+      export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+  commit_message: "panel: clamp from the other side"
+expect:
+  changed: [src/engine/panel.ts::clamp]
+  relations:
+    - {from: "src/ui/knob.ts::drag", to: "src/engine/panel.ts::clamp", kind: calls, resolution: resolved, site: 4}
+    - {from: "src/ui/slider.ts::move", to: "src/engine/panel.ts::clamp", kind: calls, resolution: resolved, site: 4}

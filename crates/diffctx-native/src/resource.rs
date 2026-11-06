@@ -54,6 +54,15 @@ pub enum LimitReason {
     SanitizationRedaction,
 }
 
+/// Test hook: the n-th blob read of every analysis fails on purpose, base and
+/// head sides counted together, or one side's alone with `base:N` / `head:N`.
+/// Semantic — it changes the artifact.
+pub const TEST_READ_FAULT_ENV: &str = "DIFFCTX_TEST_READ_FAULT";
+
+pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFault>> {
+    crate::snapshot::ReadFault::parse(&std::env::var(TEST_READ_FAULT_ENV).ok()?)
+}
+
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest
 /// bound memory, which the wall clock alone never did — 38M edge
 /// contributions took 11 GB before a single one was deduplicated (#196).
@@ -178,6 +187,12 @@ impl LimitReason {
                 | Self::SelectionBudgetExceeded
                 | Self::SanitizationRedaction
         )
+    }
+
+    /// A run that noted it did not finish looking: what it printed as a
+    /// count of what it found is a lower bound.
+    pub fn stops_a_search(self) -> bool {
+        matches!(self, Self::Deadline | Self::Cancelled | Self::ReadFailed)
     }
 
     /// Loses context only in the file it names.
@@ -396,13 +411,21 @@ impl RunContext {
         *self.inner.head_rev.lock().unwrap() = rev;
     }
 
+    /// The current side of the analysis this run serves; a run that was
+    /// given none reads nothing.
     pub fn source(&self) -> crate::source::Source {
         self.inner
             .source
             .lock()
             .unwrap()
             .clone()
-            .unwrap_or_default()
+            .unwrap_or_else(crate::source::Source::empty)
+    }
+
+    /// What bounds a git child started for this run: its I/O deadline and
+    /// its cancellation.
+    pub fn io_limits(&self) -> (Option<Instant>, Arc<AtomicBool>) {
+        (self.inner.io_expires_at, self.inner.cancel.clone())
     }
 
     pub fn set_source(&self, source: crate::source::Source) {
@@ -464,6 +487,7 @@ impl RunContext {
             self.inner.tripped.store(true, Ordering::Relaxed);
             return false;
         }
+        #[allow(deprecated, reason = "try_update needs Rust 1.95; MSRV is 1.85")]
         let logical = self.inner.polls_left.as_ref().is_some_and(|left| {
             left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
                 .is_err()
@@ -533,8 +557,24 @@ impl RunContext {
         self.inner.withheld.lock().unwrap().len()
     }
 
+    /// What limited the run: the reasons noted on it, and a failed read the
+    /// snapshot layer recorded even if its caller dropped the error.
     pub fn reasons(&self) -> Vec<LimitReason> {
-        self.inner.reasons.lock().unwrap().iter().copied().collect()
+        let mut all: BTreeSet<LimitReason> = self.inner.reasons.lock().unwrap().clone();
+        if self.source().lost_a_read() {
+            all.insert(LimitReason::ReadFailed);
+        }
+        all.into_iter().collect()
+    }
+
+    /// The reasons that make a count of what the run searched for unfinished:
+    /// the deadline, a cancellation, a read that failed. Empty while nothing
+    /// of the kind has been noted; once it is not, a caller count the run
+    /// prints is what it reached, not what there is.
+    pub fn stops(&self) -> Vec<LimitReason> {
+        let mut stops = self.reasons();
+        stops.retain(|r| r.stops_a_search());
+        stops
     }
 
     /// Records `n` more edge emissions. `false` once the run is over its
@@ -594,6 +634,8 @@ thread_local! {
     /// (the discovery strategies run on rayon workers).
     static CHANGED_LINES: RefCell<Option<Arc<crate::changed_lines::ChangedLines>>> =
         const { RefCell::new(None) };
+    /// The analysis' source on a thread the run's context is not published to.
+    static SOURCE: RefCell<Option<crate::source::Source>> = const { RefCell::new(None) };
 }
 
 pub struct ScopedContext {
@@ -655,6 +697,12 @@ impl RunNotes {
     }
 }
 
+/// `true` while the current run may go on; always `true` on a thread that
+/// serves no run. The first expiry is noted as the deadline, as `check` does.
+pub fn current_check() -> bool {
+    with_current(RunContext::check).unwrap_or(true)
+}
+
 /// The current run's note, when this thread runs one.
 pub fn note_current(reason: LimitReason) {
     with_current(|ctx| ctx.note(reason));
@@ -709,8 +757,29 @@ pub fn current_changed_lines() -> Option<Arc<crate::changed_lines::ChangedLines>
         .or_else(|| with_current(RunContext::changed_lines).flatten())
 }
 
-pub fn current_source() -> Option<crate::source::Source> {
-    with_current(RunContext::source)
+/// The source of the run this thread serves, or of the analysis a worker was
+/// handed with `with_source`. Outside both it reads nothing: there is no
+/// working-tree default to fall back on.
+pub fn current_source() -> crate::source::Source {
+    SOURCE
+        .with(|c| c.borrow().clone())
+        .or_else(|| with_current(RunContext::source))
+        .unwrap_or_else(crate::source::Source::empty)
+}
+
+/// Runs `f` with `source` published to this thread: for rayon workers the
+/// run's context is not published to.
+pub fn with_source<T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> T {
+    let prev = SOURCE.with(|c| c.replace(Some(source.clone())));
+    struct Restore(Option<crate::source::Source>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            SOURCE.with(|c| *c.borrow_mut() = prev);
+        }
+    }
+    let _restore = Restore(prev);
+    f()
 }
 
 /// What bounds a git child started now: the run's I/O deadline and its
