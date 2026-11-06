@@ -23,7 +23,24 @@ from tests.framework.pygit2_backend import Pygit2Repo
 from .conftest import run_diffctx_subprocess
 
 NATIVE_BIN = os.environ.get("DIFFCTX_NATIVE_BIN")
-needs_native = pytest.mark.skipif(not NATIVE_BIN, reason="DIFFCTX_NATIVE_BIN names no native binary")
+# The job that builds the binary sets this: there a missing binary is a failure
+# of the job, not a reason to skip the contract it exists to hold.
+REQUIRE_NATIVE = os.environ.get("DIFFCTX_REQUIRE_NATIVE") == "1"
+
+
+def _native_bin() -> str:
+    if NATIVE_BIN and os.path.isfile(NATIVE_BIN):
+        return NATIVE_BIN
+    message = f"DIFFCTX_NATIVE_BIN names no native binary ({NATIVE_BIN!r})"
+    if REQUIRE_NATIVE:
+        pytest.fail(message)
+    pytest.skip(message)
+
+
+@pytest.fixture
+def native_bin() -> str:
+    return _native_bin()
+
 
 HELPERS = "HEAD~1..HEAD"
 TIER = "HEAD~2..HEAD~1"
@@ -63,7 +80,7 @@ def repo(tmp_path_factory):
 
 
 def _native(repo, *args: str) -> str:
-    out = subprocess.run([NATIVE_BIN, ".", *args, "-q"], cwd=repo.path, capture_output=True, text=True, encoding="utf-8")
+    out = subprocess.run([_native_bin(), ".", *args, "-q"], cwd=repo.path, capture_output=True, text=True, encoding="utf-8")
     assert out.returncode == 0, out.stderr
     return out.stdout
 
@@ -109,10 +126,8 @@ def test_every_door_delivers_one_artifact_within_its_budget(repo, diff_range, bu
     doors = {"cli": _cli(repo, *args)}
     if fmt == "md":
         doors["mcp"] = _mcp(repo, diff_ref=diff_range, mode="pack", budget_tokens=budget)
-    elif NATIVE_BIN:
-        doors["native"] = _native(repo, *args)
     else:
-        pytest.skip("DIFFCTX_NATIVE_BIN names no native binary")
+        doors["native"] = _native(repo, *args)
     for door, text in doors.items():
         assert count_tokens(text) <= budget, f"{door} -f {fmt} delivered {count_tokens(text)} tokens"
     fragments = {door: _fragments(text, fmt) for door, text in doors.items()}
@@ -121,16 +136,25 @@ def test_every_door_delivers_one_artifact_within_its_budget(repo, diff_range, bu
     assert all(text == doors["cli"] for text in doors.values()), "the doors deliver different documents"
 
 
-@needs_native
+def _says_budget_too_small(text: str, fmt: str) -> bool:
+    """The least an impact answer can say may outgrow a budget; it then says so
+    (a line in Markdown, `budget_needed` in JSON) and cuts nothing more."""
+    if fmt == "json":
+        return "budget_needed" in json.loads(text)
+    return "(budget too small:" in text
+
+
 @pytest.mark.parametrize("fmt", ["md", "json"])
 @pytest.mark.parametrize("budget", [150, 400, 2000])
-def test_impact_is_fitted_once_to_the_budget_asked(repo, budget, fmt):
+def test_impact_is_fitted_once_to_the_budget_asked(repo, native_bin, budget, fmt):
     args = ("--diff", BOTH, "--mode", "impact", "--budget", str(budget), "-f", fmt)
     doors = {"native": _native(repo, *args), "cli": _cli(repo, *args)}
     if fmt == "md":
         doors["mcp"] = _mcp(repo, diff_ref=BOTH, mode="impact", budget_tokens=budget).rstrip("\n") + "\n"
     for door, text in doors.items():
-        assert count_tokens(text) <= budget, f"{door} impact -f {fmt} delivered {count_tokens(text)} tokens"
+        assert count_tokens(text) <= budget or _says_budget_too_small(
+            text, fmt
+        ), f"{door} impact -f {fmt} delivered {count_tokens(text)} tokens without saying the budget is too small"
     assert all(text == doors["native"] for text in doors.values()), doors
 
 

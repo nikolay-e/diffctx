@@ -99,11 +99,12 @@ jobs:
   # request's base and green on its head (T9). The base build is cached by the
   # base commit, so a frozen main is built once. The epoch pull request carries
   # work that was gated stream by stream and is not judged again, and neither
-  # does a `relay/*` integration branch, which is that work before it is folded.
+  # does the architecture migration's integration branch, which is that work
+  # before it is folded; its exemption ends with the branch.
   # ============================================================================
   class-test:
     name: Class test
-    if: github.event_name == 'pull_request' && github.head_ref != 'next' && !startsWith(github.head_ref, 'relay/')
+    if: github.event_name == 'pull_request' && github.head_ref != 'next' && github.head_ref != 'relay/arch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -389,17 +390,24 @@ jobs:
 
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites where paths, line endings and process
-  # spawning differ.
+  # spawning differ. One Windows job held them all and took 53, 80, 71, 54 and
+  # over 90 minutes on its last five runs (the compile about 8, the corpus 35
+  # and more), so Windows runs in three parts: the library and half the
+  # integration suites, the other half, and the corpus. `part` is
+  # scripts/cargo-test-suites.sh's argument, and tests/test_ci_runs_every_suite.py
+  # holds the parts of each OS to every suite.
   rust-diffctx-test-cross:
-    name: Rust diffctx tests (${{ matrix.os }})
+    name: Rust diffctx tests (${{ matrix.os }}${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - {os: macos-latest, part: all, label: ""}
+          - {os: windows-latest, part: "rest:1/2", label: ", 1/2"}
+          - {os: windows-latest, part: "rest:2/2", label: ", 2/2"}
+          - {os: windows-latest, part: corpus, label: ", corpus"}
     runs-on: ${{ matrix.os }}
-    # The hang guard of #510. The green Windows cell took 59.9 and 59.1
-    # minutes on 38751976320 and 38770819847 (corpus 2031 s and 2393 s), so
-    # 60 would cut a passing run.
+    # The hang guard of #510, no longer the margin of a whole Windows run.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -423,7 +431,9 @@ jobs:
 
       - name: Build and test
         shell: bash
-        run: scripts/cargo-test-suites.sh
+        env:
+          PART: ${{ matrix.part }}
+        run: scripts/cargo-test-suites.sh "$PART"
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
       # first build of it must not be the release itself.
@@ -527,14 +537,18 @@ jobs:
           fi
 
       # tests/test_fit_contract.py holds the native binary to the artifact the
-      # Python CLI and the MCP server deliver (#507); one cell builds it, and
-      # without it those cases skip.
+      # Python CLI and the MCP server deliver (#507); one cell builds it. Where
+      # it is built those cases fail rather than skip, and the other cells
+      # skip them.
       - name: Build the native binary for the door contract
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         shell: bash
         run: |
           cargo build --release --locked --bin diffctx
-          echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx" >> "$GITHUB_ENV"
+          {
+            echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx"
+            echo "DIFFCTX_REQUIRE_NATIVE=1"
+          } >> "$GITHUB_ENV"
 
       - name: Run Tests with Coverage
         shell: bash

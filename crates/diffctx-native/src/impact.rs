@@ -154,10 +154,6 @@ pub struct ImpactOutput {
     /// found, shown or shed, and keeps the possible ones apart (#413).
     #[serde(skip)]
     pub truncated_possible: usize,
-    /// Symbols shed whole beyond the first, which the one entry for the shed
-    /// definitions stands for: `changed.len() + symbols_omitted` counts them all.
-    #[serde(skip)]
-    pub symbols_omitted: usize,
     /// The tokens the answer took before shedding: the budget that shows a
     /// shed symbol, which its stub names.
     #[serde(skip)]
@@ -253,6 +249,35 @@ pub struct ImpactOutput {
     #[serde(skip)]
     #[schemars(skip)]
     pub cap: u32,
+    /// Set when the least the answer can say still outgrows the budget asked:
+    /// the tokens that least takes, which a budget of that size delivers. The
+    /// answer cuts nothing more than that least.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_needed: Option<u32>,
+}
+
+impl ImpactOutput {
+    /// Every changed definition the answer stands for: the listed ones, and
+    /// the shed ones its one omitted entry counts.
+    pub(crate) fn definitions(&self) -> usize {
+        self.changed
+            .iter()
+            .map(|c| match &c.unresolved {
+                Some(Unknown::Omitted { count, .. }) => *count,
+                _ => 1,
+            })
+            .sum()
+    }
+
+    /// Callers the cap dropped from definitions still listed. The omitted
+    /// entry carries its own callers, which `truncated` counts as well.
+    fn callers_shed_from_listed(&self) -> usize {
+        self.changed
+            .iter()
+            .filter(|c| !is_omitted(c))
+            .map(|c| c.callers_omitted)
+            .sum()
+    }
 }
 
 /// The files outside documents and data that spell a name nothing defines:
@@ -4572,7 +4597,6 @@ pub fn build_impact(
         empty: false,
         truncated: 0,
         truncated_possible: 0,
-        symbols_omitted: 0,
         needs: 0,
         truncated_untested: 0,
         truncated_textual: 0,
@@ -4595,6 +4619,7 @@ pub fn build_impact(
         untraced_omitted: 0,
         unfinished_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
+        budget_needed: None,
     };
     output.empty = proves_empty(&output);
     output
@@ -6177,9 +6202,10 @@ static PATH_TOKEN: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::
         .expect("path token regex")
 });
 
+/// The document as the command line prints it, which ends the line.
 fn serialized_tokens(output: &ImpactOutput) -> u32 {
     serde_json::to_string(output)
-        .map(|s| crate::tokenizer::count_tokens(&s))
+        .map(|s| crate::tokenizer::count_tokens(&format!("{s}\n")))
         .unwrap_or(0)
 }
 
@@ -6368,6 +6394,22 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.stale_references_omitted += 1;
         return true;
     }
+    // Last, what the counts already say: the header counts the definitions no
+    // test reaches, the omitted entry its definitions and callers, so their
+    // names go only when nothing else can, and the answer still fits.
+    if output.untested_called_in_diff.pop().is_some() || output.untested_unlisted.pop().is_some() {
+        return true;
+    }
+    // The first shed name outranks a contracts line that only counts: which
+    // definition the answer is silent about is worth more than "and N more".
+    // Without an entry to carry a name the count is all there is to say.
+    if output.contracts.is_empty()
+        && output.contracts_omitted > 0
+        && output.changed.iter().any(is_omitted)
+    {
+        output.contracts_omitted = 0;
+        return true;
+    }
     false
 }
 
@@ -6404,7 +6446,6 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             // most callers, so a module of thirty thousand removals does not
             // outgrow the cap with its own list.
             entry.omitted.truncate(MAX_OMITTED_NAMED);
-            output.symbols_omitted += 1;
         }
         None => output.changed.push(ChangedSymbol {
             path: "(changed definitions)".to_string(),
@@ -6427,8 +6468,8 @@ fn omit(output: &mut ImpactOutput, i: usize) {
 
 /// When even the entry outgrows the cap, its list gives up the names with the
 /// fewest callers; the count and the callers stay whole, and the first name, the
-/// definition with the most callers, stays: which definition the answer is
-/// silent about outweighs a placeholder for a contract.
+/// definition with the most callers, stays: it is part of the least the answer
+/// can say.
 fn trim_omitted(output: &mut ImpactOutput) -> bool {
     output
         .changed
@@ -6539,13 +6580,33 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
 pub fn deliver(output: &mut ImpactOutput, markdown: bool, cap: Option<u32>) -> String {
     let _render = crate::profile::phase("render");
     let cap = cap.unwrap_or(IMPACT_TOKEN_CAP);
+    let markdown_tokens = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, false));
+    let measure: &dyn Fn(&ImpactOutput) -> u32 = if markdown {
+        &markdown_tokens
+    } else {
+        &serialized_tokens
+    };
+    fit_with(output, cap, measure);
+    declare_budget_too_small(output, cap, measure);
     if markdown {
-        let measure = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, false));
-        fit_with(output, cap, &measure);
         render(output, false)
     } else {
-        fit_with(output, cap, &serialized_tokens);
         serde_json::to_string(output).unwrap_or_default()
+    }
+}
+
+/// When the least the answer can say (the header, the omitted entry with its
+/// first name, the counts) still outgrows `cap`, the answer says so and names
+/// the tokens it takes, cutting nothing more: a budget of that size delivers it
+/// without this declaration.
+fn declare_budget_too_small(
+    output: &mut ImpactOutput,
+    cap: u32,
+    measure: &dyn Fn(&ImpactOutput) -> u32,
+) {
+    let tokens = measure(output);
+    if tokens > cap {
+        output.budget_needed = Some(tokens);
     }
 }
 
@@ -6590,6 +6651,18 @@ pub fn render_markdown(output: &ImpactOutput) -> String {
 }
 
 fn render(output: &ImpactOutput, compact: bool) -> String {
+    let mut out = render_answer(output, compact);
+    if let Some(needed) = output.budget_needed {
+        let _ = writeln!(
+            out,
+            "(budget too small: the least this answer can say takes {needed} tokens, over the {} asked; `--budget {needed}` or a larger one delivers it without this note)",
+            output.cap
+        );
+    }
+    out
+}
+
+fn render_answer(output: &ImpactOutput, compact: bool) -> String {
     let mut out = String::new();
     if let (Some(symbol), Some(named)) = (&output.symbol, &output.symbol_named) {
         write_symbol_named(&mut out, symbol, named);
@@ -6898,7 +6971,6 @@ pub(crate) fn symbol_named_output(
         empty: false,
         truncated: 0,
         truncated_possible: 0,
-        symbols_omitted: 0,
         needs: 0,
         truncated_untested: 0,
         truncated_textual: 0,
@@ -6920,6 +6992,7 @@ pub(crate) fn symbol_named_output(
         untraced_omitted: 0,
         unfinished_omitted: 0,
         cap: IMPACT_TOKEN_CAP,
+        budget_needed: None,
     }
 }
 
@@ -7199,7 +7272,7 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
             let _ = writeln!(
                 out,
                 "diffctx impact for symbol {symbol}: {} definition(s){}, {}{guard_summary}",
-                output.changed.len() + output.symbols_omitted,
+                output.definitions(),
                 withheld("file(s) naming it"),
                 callers_phrase(output, callers, ""),
             );
@@ -7629,11 +7702,13 @@ fn write_tail(out: &mut String, output: &ImpactOutput) {
         usize::MAX,
         output.contracts_omitted,
     );
-    if output.truncated > 0 {
+    // The omitted entry says how many callers it carries and its own budget.
+    let weaker = output.callers_shed_from_listed();
+    if weaker > 0 {
         let _ = writeln!(
             out,
-            "({} weaker caller(s) omitted to stay under {} tokens; a larger budget (--budget, budget_tokens) lists them)",
-            output.truncated, output.cap
+            "({weaker} weaker caller(s) omitted to stay under {} tokens; a larger budget (--budget, budget_tokens) lists them)",
+            output.cap
         );
     }
     let callers = || output.changed.iter().flat_map(|c| &c.callers);

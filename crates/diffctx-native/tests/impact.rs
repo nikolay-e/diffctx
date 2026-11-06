@@ -4200,6 +4200,93 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
     );
 }
 
+fn engine_version(version: usize) -> String {
+    let helpers: String = (0..5)
+        .map(|i| format!("def helper_{i}(x):\n    return x + {}\n\n\n", i * version))
+        .collect();
+    let steps: String = (0..60)
+        .map(|i| format!("    step_{i} = helper_{}(rows[{i}]) * {version}\n", i % 5))
+        .collect();
+    format!("{helpers}def plan(rows):\n{steps}    return step_0\n")
+}
+
+/// The answer is fitted to the budget asked: when nothing else can go, the
+/// lists of untested definitions and the names of the omitted ones give way to
+/// the counts the header and the omitted entry already hold. Helpers called
+/// only from `plan`, a rewritten `plan` and a budget near the least an answer
+/// can say left them whole at 218 tokens against 150 (the Python door-contract
+/// suite runs this with the native binary on one CI job only).
+#[test]
+fn an_answer_at_a_tight_budget_sheds_its_names_to_fit() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "zsrc/x.py",
+        "def compute(a, b):\n    return a + b\n\n\ndef helper(x):\n    return x * 2\n",
+    );
+    write(
+        repo,
+        "tests/test_x.py",
+        "from zsrc.x import compute\n\n\ndef test_compute():\n    assert compute(1, 2) == 3\n",
+    );
+    write(repo, "README.md", "# Project\n\nCompute adds numbers.\n");
+    write(repo, "app/engine.py", &engine_version(1));
+    commit_all(repo, "initial");
+    let body: String = (0..40).map(|i| format!("    total += {i} * 0\n")).collect();
+    write(
+        repo,
+        "zsrc/x.py",
+        &format!(
+            "def compute(a, b):\n    total = a + b\n{body}    return total\n\n\ndef helper(x):\n    return x * 2\n"
+        ),
+    );
+    let asserts: String = (0..25)
+        .map(|i| format!("    assert compute({i}, 2) == {i}+2\n"))
+        .collect();
+    write(
+        repo,
+        "tests/test_x.py",
+        &format!("from zsrc.x import compute\n\n\ndef test_compute():\n{asserts}"),
+    );
+    let docs: String = (0..20)
+        .map(|i| format!("Line {i} of docs about compute.\n"))
+        .collect();
+    write(
+        repo,
+        "README.md",
+        &format!("# Project\n\nCompute adds numbers.\n\n{docs}"),
+    );
+    commit_all(repo, "rewrite compute, its tests and docs");
+    write(repo, "app/engine.py", &engine_version(2));
+    commit_all(repo, "bump the helpers, rewrite plan");
+    for budget in ["150", "200", "300"] {
+        let out = diffctx()
+            .current_dir(repo)
+            .args([
+                "--diff",
+                "HEAD~2..HEAD",
+                "--mode",
+                "impact",
+                "-q",
+                "--budget",
+                budget,
+            ])
+            .output()
+            .expect("run diffctx");
+        assert!(out.status.success());
+        let text = String::from_utf8(out.stdout).expect("utf8");
+        let tokens = _diffctx::tokenizer::count_tokens(&text);
+        assert!(
+            tokens <= budget.parse::<u32>().unwrap(),
+            "{budget}: {tokens} tokens: {text}"
+        );
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("impact JSON");
+        assert_eq!(doc["untested_definitions"], 5, "{budget}: {doc:#}");
+    }
+}
+
 /// A class that lost its constructor is changed like one whose constructor was
 /// edited: its subclasses and the signatures naming it are listed, and the
 /// removed `__init__` row alone says nothing about them.
@@ -4879,7 +4966,12 @@ fn a_stale_reference_outlives_routine_callers_under_the_budget() {
     for n in 0..6 {
         assert!(text.contains(&format!("docs/note{n}.md")), "{text}");
     }
-    assert!(text.contains("weaker caller(s) omitted"), "{text}");
+    // The shed callers are disclosed: in the trailer, or in the omitted entry
+    // that carries them, which states how many.
+    assert!(
+        text.contains("weaker caller(s) omitted") || text.contains("caller(s) are not listed)"),
+        "{text}"
+    );
 }
 
 /// One config per host, `lines` addresses long, all spelled with `noun`.

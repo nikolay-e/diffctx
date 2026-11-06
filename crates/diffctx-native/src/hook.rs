@@ -2758,7 +2758,7 @@ fn one_symbol_answer(
     }
     // A name defined all over (`main`, `run`, `new`) is no lookup a short
     // answer can serve: its first definitions crowd out the one searched.
-    if output.changed.len() + output.symbols_omitted > MAX_SEARCH_DEFINITIONS {
+    if output.definitions() > MAX_SEARCH_DEFINITIONS {
         return Err("ambiguous");
     }
     let elsewhere = match defined - output.changed.len() {
