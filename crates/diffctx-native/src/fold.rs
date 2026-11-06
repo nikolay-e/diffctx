@@ -20,6 +20,8 @@ pub enum Rule {
     CheckTheDefault,
     /// A row only a name links, through a receiver nothing types.
     UntypedReceiver,
+    /// Only comments changed: the definition's code is as it was.
+    NoCodeChange,
 }
 
 impl Rule {
@@ -30,13 +32,16 @@ impl Rule {
             Self::DeclaredType => "declared-type",
             Self::CheckTheDefault => "check-the-default",
             Self::UntypedReceiver => "untyped-receiver",
+            Self::NoCodeChange => "no-code-change",
         }
     }
 }
 
 /// What the range did to one definition, as far as the table reads it. Only an
 /// edit in place has one: a removal, a rename, a move, a change of visibility
-/// and an ambiguous pairing have none, and nothing of them folds.
+/// and an ambiguous pairing have none, and nothing of them folds. A basis with no
+/// signature, body or decorator change is an edit of comments alone: the caller
+/// builds none when a docstring changed, which a decorator may read.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Basis {
     pub kind: DefKind,
@@ -57,6 +62,14 @@ pub fn rule(basis: &Basis, relation: Relation, candidate: bool, runtime: bool) -
     use DefKind::{
         Class, Constant, Constructor, Field, Function, Method, Property, Struct, Variable,
     };
+    // A comment is stored nowhere a caller or a decorator can read: the object
+    // the decorator wraps and every annotation a framework runs are the same. A
+    // candidate keeps its own rule below.
+    let code_untouched = !(basis.signature || basis.body || basis.decorators);
+    if code_untouched && !candidate && matches!(basis.kind, Function | Method | Constructor | Class)
+    {
+        return Some(Rule::NoCodeChange);
+    }
     if runtime && relation == Relation::TypeUses {
         return None;
     }
@@ -393,5 +406,81 @@ mod tests {
         assert!(!typed("function f ( a : number )", Language::TypeScript));
         assert!(typed("fn f(a: u32)", Language::Rust));
         assert!(!typed("fun f(a: Int): Int", Language::Kotlin));
+    }
+
+    #[test]
+    fn a_comment_only_edit_folds_every_relation_of_a_function_method_or_class() {
+        let comment_only = |kind| Basis {
+            kind,
+            signature: false,
+            body: false,
+            decorators: false,
+            compatible: None,
+            typed: false,
+        };
+        for kind in [
+            DefKind::Function,
+            DefKind::Method,
+            DefKind::Constructor,
+            DefKind::Class,
+        ] {
+            for relation in [
+                Relation::Calls,
+                Relation::Reads,
+                Relation::Writes,
+                Relation::Instantiates,
+                Relation::PassesAsValue,
+                Relation::TypeUses,
+                Relation::Overrides,
+                Relation::Reexports,
+            ] {
+                assert_eq!(
+                    rule(&comment_only(kind), relation, false, false),
+                    Some(Rule::NoCodeChange),
+                    "{kind:?} {relation:?}"
+                );
+            }
+        }
+        // An annotation a framework runs is the same code; a candidate keeps the
+        // rule of its own.
+        let function = comment_only(DefKind::Function);
+        assert_eq!(
+            rule(&function, Relation::TypeUses, false, true),
+            Some(Rule::NoCodeChange)
+        );
+        assert_eq!(
+            rule(&function, Relation::Calls, true, false),
+            Some(Rule::UntypedReceiver)
+        );
+        // Code that changed is the table's other rows, never this one.
+        for edited in [
+            Basis {
+                body: true,
+                ..function.clone()
+            },
+            Basis {
+                signature: true,
+                ..function.clone()
+            },
+            Basis {
+                decorators: true,
+                ..function.clone()
+            },
+        ] {
+            assert_ne!(
+                rule(&edited, Relation::Calls, false, false),
+                Some(Rule::NoCodeChange)
+            );
+        }
+        // Only the kinds the row names.
+        assert_ne!(
+            rule(
+                &comment_only(DefKind::Interface),
+                Relation::TypeUses,
+                false,
+                false
+            ),
+            Some(Rule::NoCodeChange)
+        );
     }
 }

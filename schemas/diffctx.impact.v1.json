@@ -74,6 +74,18 @@
       "format": "uint",
       "minimum": 0
     },
+    "deleted_modules": {
+      "description": "Modules the change deletes that no file at the head imports: one entry\neach, in place of a line per definition they held.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DeletedModule"
+      }
+    },
+    "deleted_modules_omitted": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
     "named_by": {
       "description": "Lines outside the change that name a changed file by its path from\nanother runtime or a config: a command line, a Dockerfile, a\nsettings entry that runs it (#393, #523). Imports are callers.",
       "type": "array",
@@ -317,6 +329,29 @@
         "kind"
       ]
     },
+    "DeletedModule": {
+      "description": "A module the range deletes and no file at the head imports: its definitions\nare named once, here, since nothing can reach any of them.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "definitions": {
+          "description": "The definitions it held.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "dynamic_import": {
+          "description": "An import whose name is computed at run time could reach it, and the facts\ncannot rule one out: \"no importers\" is what was found, not a proof.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "definitions"
+      ]
+    },
     "PathReference": {
       "type": "object",
       "properties": {
@@ -459,6 +494,13 @@
         },
         "also_changed": {
           "description": "Callers that are themselves changed in the range: `path::symbol\n(lines)` each. They are the diff's own lines, never callers outside\nit, and the definition they call is live, not one nothing calls.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "possibly_also_changed": {
+          "description": "Users the range changes too whose binding is not resolved (a receiver\nnothing types, a name shared by several definitions): possibly using the\ndefinition, never named as callers. `path::symbol (lines)` each.",
           "type": "array",
           "items": {
             "type": "string"

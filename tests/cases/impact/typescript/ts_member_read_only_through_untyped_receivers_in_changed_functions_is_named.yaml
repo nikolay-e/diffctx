@@ -1,0 +1,34 @@
+name: ts_member_read_only_through_untyped_receivers_in_changed_functions_is_named
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, method, untyped-receiver, also-changed, e1]
+repo:
+  initial_files:
+    src/retry.ts: |
+      export class RetryObject {
+        computeDelay(): number {
+          return 1;
+        }
+      }
+    src/delay.ts: |
+      export function calculateRetryDelay(retry: any): number {
+        return 0;
+      }
+  changed_files:
+    src/retry.ts: |
+      export class RetryObject {
+        computeDelay(): number {
+          return 2;
+        }
+      }
+    src/delay.ts: |
+      export function calculateRetryDelay(retry: any): number {
+        return retry.computeDelay();
+      }
+  commit_message: "retry: the delay asks the retry object"
+# The only caller is a function the same range changes, through a receiver nothing
+# types: no resolved use, so the method is named with that function as a possible
+# user, never left out and never a caller.
+expect:
+  changed: [src/retry.ts::RetryObject.computeDelay]

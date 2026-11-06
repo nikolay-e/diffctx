@@ -1805,10 +1805,11 @@ fn this_constructor_reaches_the_class_and_the_classes_that_extend_it() {
     );
 }
 
-/// An export list reads the names it offers; a function assigned to a member
-/// is a definition its callers find by name.
+/// R19: an export statement that names a definition of its own module is that
+/// module's export of it, `reexports`; a function assigned to a member is a
+/// definition its callers find by name.
 #[test]
-fn export_lists_read_their_names_and_assigned_methods_are_called() {
+fn export_lists_reexport_their_names_and_assigned_methods_are_called() {
     let fx = snapshot(&[
         (
             "m.ts",
@@ -1819,13 +1820,91 @@ fn export_lists_read_their_names_and_assigned_methods_are_called() {
             "var proto = module.exports = {};\nproto.handle = function handle(req) {\n  return req;\n};\nproto.run = function (req) {\n  return this.handle(req);\n};\n",
         ),
     ]);
-    let fire = fx.at("m.ts", "fire", 3);
-    assert_eq!(fire.relation, Relation::Reads);
-    assert_eq!(fx.lands(fire), "m.ts::fire");
+    let offered: Vec<(Relation, String, String)> = fx
+        .imports_of("m.ts")
+        .into_iter()
+        .map(|b| (b.relation, b.name.as_str().to_string(), fx.lands(b)))
+        .collect();
+    assert_eq!(
+        offered,
+        [
+            (Relation::Reexports, "fire".into(), "m.ts::fire".into()),
+            (Relation::Reexports, "handle".into(), "m.ts::handle".into()),
+        ]
+    );
     assert_eq!(
         fx.lands_at("router.js", "handle", 6),
         "candidate(UntypedReceiver) router.js::proto.handle"
     );
+}
+
+/// R19: every form that offers a definition of the module as it is — ESM or
+/// CommonJS — is one `reexports` row on the statement, with no second read of
+/// the name inside it; a statement that declares what it exports is no row of
+/// it, and a name nothing binds is a dangling export.
+#[test]
+fn every_export_form_reexports_the_definition_it_names() {
+    let fx = snapshot(&[
+        (
+            "esm.ts",
+            "function a() { return 1; }\nfunction b() { return 2; }\nfunction c() { return 3; }\nexport { a, b as bee };\nexport default c;\n",
+        ),
+        ("cjs1.js", "function x() { return 1; }\nexports.x = x;\n"),
+        (
+            "cjs2.js",
+            "function y() { return 1; }\nmodule.exports = y;\n",
+        ),
+        (
+            "cjs3.js",
+            "function p() { return 1; }\nfunction q() { return 2; }\nmodule.exports = { p, quoted: q };\n",
+        ),
+        ("own.ts", "export default function own() { return 1; }\n"),
+        ("member.js", "exports.run = function run() { return 1; };\n"),
+        ("gone.ts", "export { missing };\n"),
+    ]);
+    let rows = |file: &str| -> Vec<(u32, String, String)> {
+        fx.imports_of(file)
+            .into_iter()
+            .inspect(|b| assert_eq!(b.relation, Relation::Reexports, "{file}: {b:#?}"))
+            .map(|b| (b.site.lines.0, b.name.as_str().to_string(), fx.lands(b)))
+            .collect()
+    };
+    assert_eq!(
+        rows("esm.ts"),
+        [
+            (4, "a".into(), "esm.ts::a".into()),
+            (4, "b".into(), "esm.ts::b".into()),
+            (5, "c".into(), "esm.ts::c".into()),
+        ]
+    );
+    assert_eq!(rows("cjs1.js"), [(2, "x".into(), "cjs1.js::x".into())]);
+    assert_eq!(rows("cjs2.js"), [(2, "y".into(), "cjs2.js::y".into())]);
+    assert_eq!(
+        rows("cjs3.js"),
+        [
+            (3, "p".into(), "cjs3.js::p".into()),
+            (3, "q".into(), "cjs3.js::q".into()),
+        ]
+    );
+    assert_eq!(rows("own.ts"), []);
+    assert_eq!(rows("member.js"), []);
+    assert_eq!(
+        rows("gone.ts"),
+        [(1, "missing".into(), "unresolved(NoBinding)".into())]
+    );
+    for file in ["cjs1.js", "cjs2.js", "cjs3.js"] {
+        let read_again: Vec<&Binding> = fx
+            .head
+            .bindings()
+            .iter()
+            .filter(|b| {
+                b.file.as_str() == file
+                    && b.relation == Relation::Reads
+                    && matches!(b.resolution, Resolution::Resolved { .. })
+            })
+            .collect();
+        assert!(read_again.is_empty(), "{file}: {read_again:#?}");
+    }
 }
 
 /// W5-R1 (R1): `const {f} = Class` and `const {f: g} = Class` bind the name to

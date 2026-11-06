@@ -40,7 +40,10 @@ repo:
         };
       }
 expect:
-  changed: [src/manager.ts::submit, src/manager.ts::passes]
+  # `passes` is added and its only user is `submit`, a definition the range
+  # changes too: a definition the range adds names no user of its own range, so
+  # nothing is named for it (the same reading as `py_added_definition_names_no_user_of_its_own_range`).
+  changed: [src/manager.ts::submit]
   not_untested: [submit]
   relations:
     - {from: "tests/manager.test.ts", to: "src/manager.ts::submit", kind: calls, resolution: resolved, site: 5}

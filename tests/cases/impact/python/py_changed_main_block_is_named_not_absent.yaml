@@ -2,7 +2,7 @@ name: py_changed_main_block_is_named_not_absent
 mode: impact
 source: synthetic
 issue_state: closed
-tags: [python, oracle, fcn, main-block, disclosure]
+tags: [python, oracle, fcn, main-block, module-variable]
 repo:
   initial_files:
     tool.py: |
@@ -28,6 +28,9 @@ repo:
           print(x)
   commit_message: "tool: run with 2"
 expect:
-  discloses: true
+  # Python has no block scope: `x` bound in the main guard is a module variable,
+  # so the change of the block is the change of that definition, named with its
+  # reader, not a stretch of code outside every definition.
+  changed: [tool.py::x]
   no_negative_claims: true
   never_empty: true

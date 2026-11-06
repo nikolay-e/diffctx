@@ -115,6 +115,12 @@ pub struct ImpactOutput {
     pub stale_references: Vec<StaleReference>,
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub stale_references_omitted: usize,
+    /// Modules the change deletes that no file at the head imports: one entry
+    /// each, in place of a line per definition they held.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deleted_modules: Vec<DeletedModule>,
+    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    pub deleted_modules_omitted: usize,
     /// Lines outside the change that name a changed file by its path from
     /// another runtime or a config: a command line, a Dockerfile, a
     /// settings entry that runs it (#393, #523). Imports are callers.
@@ -282,6 +288,19 @@ impl ImpactOutput {
     }
 }
 
+/// A module the range deletes and no file at the head imports: its definitions
+/// are named once, here, since nothing can reach any of them.
+#[derive(Debug, Serialize, JsonSchema, Clone)]
+pub struct DeletedModule {
+    pub path: String,
+    /// The definitions it held.
+    pub definitions: usize,
+    /// An import whose name is computed at run time could reach it, and the facts
+    /// cannot rule one out: "no importers" is what was found, not a proof.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dynamic_import: bool,
+}
+
 /// The files outside documents and data that spell a name nothing defines:
 /// a textual match, not a resolved binding.
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -350,6 +369,11 @@ pub struct ChangedSymbol {
     /// it, and the definition they call is live, not one nothing calls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also_changed: Vec<String>,
+    /// Users the range changes too whose binding is not resolved (a receiver
+    /// nothing types, a name shared by several definitions): possibly using the
+    /// definition, never named as callers. `path::symbol (lines)` each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub possibly_also_changed: Vec<String>,
     /// Callers the answer cap dropped, last dealt first: of a listed symbol, the
     /// ones missing from `callers`, which is then a lower bound; of an omitted
     /// stub, its whole caller set. The same definition asked for alone may name
@@ -681,6 +705,7 @@ fn unfinished_symbol(
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed: Vec::new(),
+        possibly_also_changed: Vec::new(),
         callers_omitted: 0,
         omitted: Vec::new(),
         folded: Vec::new(),
@@ -1430,13 +1455,6 @@ fn names_module(path: &str, own: &str, spells: impl Fn(&str) -> bool) -> bool {
             .into_iter()
             .flatten()
             .any(|w| spells(&w.to_string_lossy()))
-}
-
-fn is_python_path(path: &str) -> bool {
-    matches!(
-        Path::new(path).extension().and_then(|e| e.to_str()),
-        Some("py" | "pyi")
-    )
 }
 
 /// A file the fragments set aside for its size, which the facts layer read
@@ -3060,10 +3078,20 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         .chain(verdict.candidates())
         .map(cell_row)
         .collect();
-    let also_changed: Vec<String> = verdict
-        .also_changed()
-        .map(|u| label(&u.file, None, &u.line.to_string()))
-        .collect();
+    let users = |resolved: bool| -> Vec<String> {
+        verdict
+            .also_changed()
+            .filter(|u| (u.standing == decide::Standing::Resolved) == resolved)
+            .map(|u| label(&u.file, None, &u.line.to_string()))
+            .collect()
+    };
+    // A definition the range adds has no user outside the range that could depend
+    // on it: the users the range writes are the diff, named nowhere.
+    let (also_changed, possibly_also_changed) = if def.how == decide::How::Added {
+        (Vec::new(), Vec::new())
+    } else {
+        (users(true), users(false))
+    };
     ChangedSymbol {
         path: def.file.clone(),
         symbol: Some(def.display_name()),
@@ -3081,6 +3109,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed,
+        possibly_also_changed,
         callers_omitted: 0,
         omitted: Vec::new(),
         folded: Vec::new(),
@@ -3552,7 +3581,8 @@ pub fn build_impact(
                 .iter()
                 .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts));
         // A decorated definition is never set aside as layout or doc: a decorator
-        // may read what the edit touched.
+        // may read what the edit touched. A comment-only edit is traced and its rows
+        // fold as no code change, a docstring edit lists them.
         let layout = match py {
             Some(def) => {
                 (matches!(def.how, decide::How::Edited { layout_only: true }) || hunk_layout)
@@ -3822,6 +3852,7 @@ pub fn build_impact(
             dropped.insert("inside_the_diff", kept - sources.len());
         }
         let mut also_changed: Vec<String> = Vec::new();
+        let mut possibly_also_changed: Vec<String> = Vec::new();
         // Uses on lines no fragment owns keep the resolver's own row.
         let mut loose: Vec<Caller> = Vec::new();
         for u in verdict.iter().flat_map(|v| v.uses.iter()) {
@@ -3836,7 +3867,12 @@ pub fn build_impact(
             else {
                 if u.also_changed {
                     called_in_diff = true;
-                    also_changed.push(label(&u.file, None, &u.line.to_string()));
+                    let users = if u.standing == decide::Standing::Resolved {
+                        &mut also_changed
+                    } else {
+                        &mut possibly_also_changed
+                    };
+                    users.push(label(&u.file, None, &u.line.to_string()));
                 } else {
                     loose.push(cell_row(u));
                 }
@@ -3847,7 +3883,12 @@ pub fn build_impact(
             }
             if u.also_changed {
                 called_in_diff = true;
-                also_changed.push(label(
+                let users = if u.standing == decide::Standing::Resolved {
+                    &mut also_changed
+                } else {
+                    &mut possibly_also_changed
+                };
+                users.push(label(
                     &u.file,
                     frag.symbol_name.as_deref(),
                     &lines_of(&frag.id),
@@ -3859,6 +3900,18 @@ pub fn build_impact(
         }
         also_changed.sort();
         also_changed.dedup();
+        possibly_also_changed.sort();
+        possibly_also_changed.dedup();
+        // A resolved caller inside the diff is a caller: the framework route a
+        // definition nothing calls may take is not claimed over it. A possible one
+        // proves nothing, and the route stands.
+        let resolved_in_diff = !also_changed.is_empty();
+        // Called in the diff still, so never "nothing calls it": but a definition the
+        // range adds names no user of its own range (see `cell_symbol`).
+        if py.is_some_and(|def| def.how == decide::How::Added) {
+            also_changed.clear();
+            possibly_also_changed.clear();
+        }
         // A pytest fixture is called by the runner, for every test or fixture
         // that names it as a parameter — in its own file or under the
         // directory of the conftest that defines it (#401).
@@ -4226,10 +4279,16 @@ pub fn build_impact(
         {
             Some(model) => definition(model, core)
                 .is_some_and(|def| model.public_change(def, &base).unwrap_or(false)),
+            // An export's place in the surface moves when it is added, renamed or
+            // moved, or its kind or signature changes: the facts layer says it
+            // for its languages, the declaration text for the rest.
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
                     && lang::rust::module_is_public(&state.run.source(), core.path())
-                    && signature_changed(state, &base_texts, core)
+                    && py.map_or_else(
+                        || signature_changed(state, &base_texts, core),
+                        |def| def.api,
+                    )
             }
         };
         // A test's declarations are no API: nothing but its runner calls
@@ -4257,7 +4316,7 @@ pub fn build_impact(
                 crate::facts::DefKind::Method | crate::facts::DefKind::Property
             )
         });
-        let route = (callers.is_empty() && dispatchable)
+        let route = (callers.is_empty() && !resolved_in_diff && dispatchable)
             .then(|| dispatch_route(state, core, file_of(core)))
             .flatten();
         // The role that gives the definition an implicit caller (R3): where a
@@ -4274,7 +4333,9 @@ pub fn build_impact(
                 })
         };
         let mut linkless_role = false;
-        let entry: Option<String> = if tests.is_test(core) {
+        // A test helper the range's own tests call is traced like any definition:
+        // the runner enters only what no one calls.
+        let entry: Option<String> = if tests.is_test(core) && also_changed.is_empty() {
             Some("test (run by the test runner)".to_string())
         } else if matches!(entered, Some(Entered::Script)) {
             Some("run as a script (if __name__ == \"__main__\")".to_string())
@@ -4436,11 +4497,6 @@ pub fn build_impact(
             let own = rel(state, core.path());
             missed_in.retain(|f| f.path == own);
         }
-        // A test's definitions are run by the runner: the callers changed with
-        // them are the diff's own lines, not a reason to list them.
-        if tests.is_test(core) {
-            also_changed.clear();
-        }
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), &missed_in);
         // Nothing said of a definition needs every relation of it known.
         if let Some(complete) = coverage.all().witness().filter(|_| {
@@ -4449,6 +4505,7 @@ pub fn build_impact(
                 && commits < 2
                 && query.is_none()
                 && also_changed.is_empty()
+                && possibly_also_changed.is_empty()
         }) {
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
@@ -4479,7 +4536,7 @@ pub fn build_impact(
             && compatible_callers == 0
             && commits < 2
             && coverage.all().witness().is_some()
-            && !also_changed.is_empty();
+            && !(also_changed.is_empty() && possibly_also_changed.is_empty());
         if only_in_diff && untested {
             untested_called_in_diff.push(label(
                 &rel(state, core.path()),
@@ -4500,6 +4557,7 @@ pub fn build_impact(
             compatible_callers,
             missed_in,
             also_changed,
+            possibly_also_changed,
             callers_omitted: 0,
             omitted: Vec::new(),
             folded: Vec::new(),
@@ -4527,6 +4585,7 @@ pub fn build_impact(
             compatible_callers: 0,
             missed_in: Vec::new(),
             also_changed: Vec::new(),
+            possibly_also_changed: Vec::new(),
             callers_omitted: 0,
             omitted: Vec::new(),
             folded: Vec::new(),
@@ -4546,19 +4605,16 @@ pub fn build_impact(
             ));
             continue;
         }
-        // A test's own definitions are run by the runner, not called.
-        if crate::testfiles::is_test_path(Path::new(&entry.file)) {
-            continue;
-        }
         let verdict = cell.verdict(entry);
-        if verdict.uses.is_empty() && verdict.complete() {
+        let sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
+        if sym.callers.is_empty()
+            && sym.also_changed.is_empty()
+            && sym.possibly_also_changed.is_empty()
+            && verdict.complete()
+        {
             continue;
         }
-        changed.push(cell_symbol(
-            entry,
-            &verdict,
-            format!("{:?}", entry.kind).to_lowercase(),
-        ));
+        changed.push(sym);
     }
     {
         let stops = state.run.stops();
@@ -4625,27 +4681,17 @@ pub fn build_impact(
         let mut from_facts =
             removed_by_models(state, &registry, &base, head_rev.as_deref(), &one_tree);
         // A removed name is listed with its readers, or with what could not be
-        // told; a public class attribute that left is listed alone (#699). A
-        // removed public definition is a contract that moved, listed or not.
+        // told, or alone (#699). A removed public definition is a contract that
+        // moved, listed or not.
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
             let sym = cell_symbol(
                 entry,
                 &cells.of(&entry.file)?.verdict(entry),
                 "removed".to_string(),
             );
-            let attribute = entry.public
-                && matches!(
-                    entry.kind,
-                    crate::facts::DefKind::Field
-                        | crate::facts::DefKind::Variable
-                        | crate::facts::DefKind::Constant
-                )
-                && !entry.name.starts_with('_');
-            // Every removed Python definition is reported, private ones too: with
-            // the readers the head still has, or as one nothing references.
-            if attribute || is_python_path(&entry.file) {
-                listed_alone.insert((sym.path.clone(), entry.display_name()));
-            }
+            // Every removed definition of a cell language is reported, private ones
+            // too: with the readers the head still has, or as one nothing references.
+            listed_alone.insert((sym.path.clone(), entry.display_name()));
             let contract = entry.public.then(|| Contract {
                 path: sym.path.clone(),
                 symbol: Some(entry.display_name()),
@@ -4758,6 +4804,11 @@ pub fn build_impact(
     } else {
         (Vec::new(), 0)
     };
+    let (deleted_modules, changed) = if query.is_none() {
+        dead_modules(state, &cells, changed, &stale)
+    } else {
+        (Vec::new(), changed)
+    };
     let (named_by, named_by_omitted) = if query.is_none() {
         let _named = crate::profile::phase("impact.named_by");
         let (mut named, omitted) = named_by_path(state, analysed);
@@ -4836,6 +4887,8 @@ pub fn build_impact(
         deleted_files: state.deleted_files.clone(),
         stale_references: stale,
         stale_references_omitted: stale_omitted,
+        deleted_modules,
+        deleted_modules_omitted: 0,
         named_by,
         named_by_omitted,
         key_searches,
@@ -5136,6 +5189,7 @@ fn removed_by_models(
                 compatible_callers: 0,
                 missed_in: Vec::new(),
                 also_changed: Vec::new(),
+                possibly_also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
                 folded: Vec::new(),
@@ -5437,6 +5491,7 @@ fn removed_definitions(
                 compatible_callers: 0,
                 missed_in: Vec::new(),
                 also_changed: Vec::new(),
+                possibly_also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
                 folded: Vec::new(),
@@ -5584,6 +5639,51 @@ fn naming(
     let basename = target.rsplit('/').next().unwrap_or(target);
     (unique_basename && basename.contains('.') && trimmed == basename)
         .then_some(Naming::UniqueBasename)
+}
+
+/// The modules the range deletes that no head file imports, named once instead of
+/// definition by definition, and the changed list without their entries. A module
+/// something imports keeps its per-definition listing, whose importers are stale
+/// references. Only a module of a cell language is read this way: its imports are
+/// the facts'. A computed import may reach it, so the claim says "none found"
+/// whenever the facts cannot rule one out (`Cells::computed_imports_possible`).
+fn dead_modules(
+    state: &ScoredState,
+    cells: &Cells,
+    changed: Vec<ChangedSymbol>,
+    stale: &[StaleReference],
+) -> (Vec<DeletedModule>, Vec<ChangedSymbol>) {
+    let mut dead: Vec<DeletedModule> = Vec::new();
+    for file in &state.deleted_files {
+        let held: Vec<&ChangedSymbol> = changed
+            .iter()
+            .filter(|c| c.kind == "removed" && &c.path == file)
+            .collect();
+        if held.is_empty()
+            || cells.of(file).is_none()
+            || held.iter().any(|c| !c.callers.is_empty())
+            || stale.iter().any(|r| &r.target == file)
+        {
+            continue;
+        }
+        dead.push(DeletedModule {
+            path: file.clone(),
+            definitions: held.len(),
+            dynamic_import: false,
+        });
+    }
+    if dead.is_empty() {
+        return (dead, changed);
+    }
+    let dynamic_import = cells.computed_imports_possible();
+    for module in &mut dead {
+        module.dynamic_import = dynamic_import;
+    }
+    let changed = changed
+        .into_iter()
+        .filter(|c| !(c.kind == "removed" && dead.iter().any(|m| m.path == c.path)))
+        .collect();
+    (dead, changed)
 }
 
 /// What still names a path the change deleted or renamed, in the tree the
@@ -6542,6 +6642,7 @@ fn reaches_nothing(output: &ImpactOutput) -> bool {
         && output.contracts.is_empty()
         && output.stale_references.is_empty()
         && output.stale_references_omitted == 0
+        && output.deleted_modules.iter().all(|m| !m.dynamic_import)
         && output.named_by.is_empty()
         && output.named_by_omitted == 0
         && output.key_searches.is_empty()
@@ -6563,7 +6664,7 @@ fn unread_scope(output: &ImpactOutput) -> decide::Coverage {
 /// A symbol listed for its changed callers alone: nothing outside the diff
 /// depends on it, which is what `empty` says.
 fn only_in_the_diff(c: &ChangedSymbol) -> bool {
-    (!c.also_changed.is_empty() || c.kind == "removed")
+    (!(c.also_changed.is_empty() && c.possibly_also_changed.is_empty()) || c.kind == "removed")
         && c.callers.is_empty()
         && c.coverage.all().witness().is_some()
         && c.folded.is_empty()
@@ -6618,6 +6719,10 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.named_by_omitted = 0;
         return true;
     }
+    if output.deleted_modules.pop().is_some() {
+        output.deleted_modules_omitted += 1;
+        return true;
+    }
     if output.layout_only.len() > MAX_UNTESTED_NAMED {
         output.layout_only_omitted += output.layout_only.len() - MAX_UNTESTED_NAMED;
         output.layout_only.truncate(MAX_UNTESTED_NAMED);
@@ -6630,6 +6735,16 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
             .filter(|f| f.reason == "content_untraced")
             .count();
         output.unanalysed_files.truncate(MAX_UNANALYSED_LISTED);
+        return true;
+    }
+    // The definitions of test files rank last among the targets: they go first,
+    // whole, into the entry that names what the cap shed.
+    if let Some(i) = output
+        .changed
+        .iter()
+        .rposition(|c| in_test_file(c) && !is_unfinished(c))
+    {
+        shed_definition(output, i);
         return true;
     }
     // A word match is the weakest row there is: it goes before a guess.
@@ -6754,6 +6869,7 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             compatible_callers: 0,
             missed_in: Vec::new(),
             also_changed: Vec::new(),
+            possibly_also_changed: Vec::new(),
             callers_omitted: gone.callers_omitted,
             omitted: vec![gone],
             folded,
@@ -6847,21 +6963,32 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
         c.callers.len() == 1 && c.unresolved.is_none()
     }) {
         Some((i, _)) => {
-            let gone = &output.changed[i];
-            output.truncated += gone.callers.len();
-            output.truncated_possible += gone
-                .callers
-                .iter()
-                .filter(|c| c.evidence == "candidate")
-                .count();
-            output.truncated_textual += gone.callers.iter().filter(|c| is_textual(c)).count();
-            output.truncated_untested +=
-                gone.callers.iter().filter(|c| without_test_link(c)).count();
-            omit(output, i);
+            shed_definition(output, i);
             true
         }
         None => false,
     }
+}
+
+/// A definition shed whole, with the rows it had: they are counted as shed, and
+/// the omitted entry names it.
+fn shed_definition(output: &mut ImpactOutput, i: usize) {
+    let gone = &output.changed[i];
+    output.truncated += gone.callers.len();
+    output.truncated_possible += gone
+        .callers
+        .iter()
+        .filter(|c| c.evidence == "candidate")
+        .count();
+    output.truncated_textual += gone.callers.iter().filter(|c| is_textual(c)).count();
+    output.truncated_untested += gone.callers.iter().filter(|c| without_test_link(c)).count();
+    omit(output, i);
+}
+
+/// A definition of a test file: it ranks after every other target, so the cap
+/// sheds it first.
+fn in_test_file(c: &ChangedSymbol) -> bool {
+    !is_omitted(c) && crate::testfiles::is_test_path(Path::new(&c.path))
 }
 
 /// The answer as the reader receives it, fitted to `cap` tokens measured on
@@ -7080,6 +7207,14 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
                 "No resolved static callers outside the diff in the analysed scope."
             );
         }
+        // What the claim stands on is shown: the definitions only the range's own
+        // changes use, and the ones it removed that nothing references.
+        write_inside_only(&mut out, output);
+        write_deleted_modules(&mut out, output);
+        let scope = scope_coverage(output).witness();
+        for sym in output.changed.iter().filter(|s| !inside_only(s)) {
+            write_symbol(&mut out, sym, output.tests_known, compact, scope);
+        }
         write_layout_only(&mut out, output);
         write_untested_unlisted(&mut out, output);
         return out;
@@ -7119,11 +7254,14 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
             || dispatched(s).is_some_and(|t| shared.contains(&t))
             || stalled(s)
             || is_omitted(s)
+            || inside_only(s)
     };
     let scope = scope_coverage(output).witness();
     for sym in output.changed.iter().filter(|s| !folded(s)) {
         write_symbol(&mut out, sym, output.tests_known, compact, scope);
     }
+    write_inside_only(&mut out, output);
+    write_deleted_modules(&mut out, output);
     write_unfinished(
         &mut out,
         output,
@@ -7156,6 +7294,100 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
 
 /// Names shown on the folded line before the rest is counted.
 const TOO_COMMON_NAMED: usize = 8;
+
+/// A changed definition every use of which is itself changed in the range (R14),
+/// complete in what it searched: the diff already shows its users. A removed one
+/// is never among them, since a line that still names it is a broken reference.
+fn inside_only(s: &ChangedSymbol) -> bool {
+    !is_omitted(s)
+        && s.kind != "removed"
+        && s.kind != "local"
+        && s.callers.is_empty()
+        && s.folded.is_empty()
+        && s.compatible_callers == 0
+        && s.unresolved.is_none()
+        && s.missed_in.is_empty()
+        && s.entry.is_none()
+        && s.commits < 2
+        && !(s.also_changed.is_empty() && s.possibly_also_changed.is_empty())
+        && s.coverage.all().witness().is_some()
+}
+
+/// One line for the definitions only the range's own changes use, each with its
+/// users: "nothing outside the diff depends on it" shown, not implied.
+fn write_inside_only(out: &mut String, output: &ImpactOutput) {
+    let inside: Vec<&ChangedSymbol> = output.changed.iter().filter(|s| inside_only(s)).collect();
+    if inside.is_empty() {
+        return;
+    }
+    let named: Vec<String> = inside
+        .iter()
+        .take(TOO_COMMON_NAMED)
+        .map(|s| {
+            let users = |all: &[String], lead: &str| -> Option<String> {
+                let shown: Vec<&str> = all
+                    .iter()
+                    .take(MAX_ALSO_CHANGED_SHOWN)
+                    .map(String::as_str)
+                    .collect();
+                let more = match all.len() - shown.len() {
+                    0 => String::new(),
+                    n => format!(" and {n} more"),
+                };
+                (!shown.is_empty()).then(|| format!("{lead} {}{more}", shown.join(", ")))
+            };
+            let both: Vec<String> = [
+                users(&s.also_changed, "used by"),
+                users(&s.possibly_also_changed, "possibly used by"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            format!(
+                "{} ({})",
+                label(&s.path, s.symbol.as_deref(), &s.lines),
+                both.join("; ")
+            )
+        })
+        .collect();
+    let rest = match inside.len() - named.len() {
+        0 => String::new(),
+        n => format!("; and {n} more"),
+    };
+    let possible = if inside.iter().any(|s| !s.possibly_also_changed.is_empty()) {
+        " (a possible user is one whose binding is not resolved)"
+    } else {
+        ""
+    };
+    let _ = writeln!(
+        out,
+        "- changed, used only by definitions changed in this range: {}{rest}{possible}",
+        named.join("; ")
+    );
+}
+
+/// A deleted module nothing imports: one line, never one per definition.
+fn write_deleted_modules(out: &mut String, output: &ImpactOutput) {
+    for m in &output.deleted_modules {
+        let found = if m.dynamic_import {
+            "no importer found; imports computed at run time are not read"
+        } else {
+            "no importers"
+        };
+        let _ = writeln!(
+            out,
+            "- deleted module {}: {} definition(s), {found}",
+            m.path, m.definitions
+        );
+    }
+    if output.deleted_modules_omitted > 0 {
+        let _ = writeln!(
+            out,
+            "- {} more deleted module(s), no importers",
+            output.deleted_modules_omitted
+        );
+    }
+}
 
 fn write_unfinished(out: &mut String, output: &ImpactOutput, stalled: &[&ChangedSymbol]) {
     let total = stalled.len() + output.unfinished_omitted;
@@ -7342,6 +7574,8 @@ pub(crate) fn symbol_named_output(
         deleted_files: Vec::new(),
         stale_references: Vec::new(),
         stale_references_omitted: 0,
+        deleted_modules: Vec::new(),
+        deleted_modules_omitted: 0,
         named_by: Vec::new(),
         named_by_omitted: 0,
         key_searches: Vec::new(),
@@ -7457,6 +7691,7 @@ pub(crate) fn symbol_local_output(
             compatible_callers: 0,
             missed_in: Vec::new(),
             also_changed: Vec::new(),
+            possibly_also_changed: Vec::new(),
             callers_omitted: 0,
             omitted: Vec::new(),
             folded: Vec::new(),

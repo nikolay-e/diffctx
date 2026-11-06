@@ -32,10 +32,10 @@ use std::rc::Rc;
 use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
 
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
-    Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
-    PathMention, Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired,
-    hash_text,
+    BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
+    Fact, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
+    Namespace, PathMention, Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility,
+    expired, hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -452,7 +452,6 @@ struct Ix {
     container: Vec<String>,
     in_class: bool,
     in_fn: bool,
-    guard: bool,
     type_checking: bool,
     /// Inside a function's body: the names declared there that leave it. A
     /// `def` or `class` among them is a definition, any other a local.
@@ -483,7 +482,6 @@ impl Cand {
 struct Cx {
     scope: Scope,
     in_fn: bool,
-    guard: bool,
     type_only: bool,
     receiver: Option<String>,
     read: UseKind,
@@ -532,7 +530,6 @@ impl<'t> Walker<'t> {
         let cx = Cx {
             scope: Scope::Module,
             in_fn: false,
-            guard: false,
             type_only: false,
             receiver: None,
             read: UseKind::Read,
@@ -1086,11 +1083,8 @@ impl<'t> Walker<'t> {
                 let condition = node.child_by_field_name("condition");
                 let consequence = node.child_by_field_name("consequence");
                 let type_checking = condition.is_some_and(|c| self.is_type_checking(c));
-                let guard =
-                    ix.container.is_empty() && condition.is_some_and(|c| self.is_main_guard(c));
                 let branch = Ix {
                     type_checking: ix.type_checking || type_checking,
-                    guard: ix.guard || guard,
                     ..ix.clone()
                 };
                 let mut cursor = node.walk();
@@ -1187,7 +1181,6 @@ impl<'t> Walker<'t> {
             container: ix.container.clone(),
             in_class: is_class,
             in_fn: ix.in_fn || !is_class,
-            guard: false,
             type_checking: false,
             leaving,
         };
@@ -1253,7 +1246,7 @@ impl<'t> Walker<'t> {
     }
 
     fn collect_assignment(&mut self, statement: Node<'t>, ix: &Ix, out: &mut Vec<Cand>) {
-        if ix.in_fn || ix.guard {
+        if ix.in_fn {
             return;
         }
         let Some(assignment) = statement
@@ -1866,7 +1859,6 @@ impl<'t> Walker<'t> {
         let inner = Cx {
             scope: Scope::Def(known.key.clone()),
             in_fn: cx.in_fn || !is_class,
-            guard: false,
             type_only: cx.type_only,
             receiver: known.receiver.clone().or_else(|| cx.receiver.clone()),
             read: UseKind::Read,
@@ -2064,7 +2056,7 @@ impl<'t> Walker<'t> {
             "identifier" => {
                 if let Some(known) = self.vars.get(&node.id()).cloned() {
                     self.emit_binding(node, statement, value, annotation, &known);
-                } else if cx.in_fn || cx.guard {
+                } else if cx.in_fn {
                     self.local(node, LocalKind::Variable, cx);
                 } else {
                     self.emit_ref(node, cx, Receiver::None, UseKind::Write, &[]);
@@ -2172,7 +2164,6 @@ impl<'t> Walker<'t> {
             self.visit(condition, cx, depth);
         }
         let mut branch = cx.clone();
-        branch.guard = cx.guard || guard;
         branch.type_only = cx.type_only || condition.is_some_and(|c| self.is_type_checking(c));
         self.visit_field(node, "consequence", &branch, depth);
         let mut cursor = node.walk();
@@ -2287,6 +2278,11 @@ impl<'t> Walker<'t> {
             return;
         };
         let Some(text) = self.plain_string(argument) else {
+            self.facts.push(Fact::ComputedImport(ComputedImport {
+                site: span(argument),
+                enclosing: cx.scope.clone(),
+                kind: ImportKind::Dynamic,
+            }));
             return;
         };
         let relative = text.chars().take_while(|c| *c == '.').count();

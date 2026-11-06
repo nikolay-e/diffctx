@@ -16,9 +16,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
 
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind, Language,
-    Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref, Scope,
-    Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
+    BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind,
+    Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref,
+    Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -1391,11 +1391,11 @@ impl<'t> Declarer<'t> {
         } = scan;
         let src = self.src;
         let mut escapes: Option<FxHashSet<String>> = None;
-        let mut leaves = |name: Option<Node<'t>>| {
+        let mut leaves = |name: Option<&str>| {
             name.is_some_and(|name| {
                 escapes
                     .get_or_insert_with(|| escaping_names(src, body))
-                    .contains(text(src, name))
+                    .contains(name)
             })
         };
         // The object literal a function hands back as its expression body, or a
@@ -1420,17 +1420,42 @@ impl<'t> Declarer<'t> {
             let mut inside = local;
             match node.kind() {
                 "function_declaration" | "generator_function_declaration" => {
-                    if leaves(field(node, "name")) {
+                    if leaves(field(node, "name").map(|n| text(src, n))) {
                         self.function(node, container.clone(), false);
                         continue;
                     }
                     inside = true;
                 }
                 "class_declaration" | "abstract_class_declaration" => {
-                    if leaves(field(node, "name")) {
+                    if leaves(field(node, "name").map(|n| text(src, n))) {
                         self.class(node, container.clone(), false);
                     }
                     continue;
+                }
+                // A function value is one rule with a declaration: a constant
+                // holding it, or a member it is assigned to, is a definition
+                // when it leaves, and the lines of any other are its owner's.
+                "variable_declarator" => {
+                    let held = field(node, "name")
+                        .filter(|n| n.kind() == "identifier")
+                        .zip(field(node, "value").filter(|v| function_value(*v).is_some()));
+                    if let Some((name, value)) = held {
+                        if leaves(Some(text(src, name)))
+                            && self.escaping_constant(node, name, value, &container)
+                        {
+                            continue;
+                        }
+                    }
+                }
+                "assignment_expression" => {
+                    if let (Some(left), Some(right)) = (field(node, "left"), field(node, "right")) {
+                        let root = target_root(src, left);
+                        if root.is_some_and(|root| leaves(Some(root)))
+                            && self.escaping_member(node, left, right, &container)
+                        {
+                            continue;
+                        }
+                    }
                 }
                 "class" => continue,
                 // A callback hands its object back as a function does: the
@@ -1456,6 +1481,90 @@ impl<'t> Declarer<'t> {
                 }
             }
         }
+    }
+
+    /// A constant or variable holding a function that leaves its definition is a
+    /// definition of its own. Only a declaration that holds nothing else is one:
+    /// its siblings' lines would leave the owner's hash with it.
+    fn escaping_constant(
+        &mut self,
+        declarator: Node<'t>,
+        name_node: Node<'t>,
+        value: Node<'t>,
+        container: &[Name],
+    ) -> bool {
+        let Some(declaration) = declarator
+            .parent()
+            .filter(|p| matches!(p.kind(), "lexical_declaration" | "variable_declaration"))
+        else {
+            return false;
+        };
+        if kids(declaration)
+            .iter()
+            .filter(|k| k.kind() == "variable_declarator")
+            .count()
+            != 1
+        {
+            return false;
+        }
+        self.declarators.insert(declarator.id());
+        self.value_def(
+            declarator,
+            declaration,
+            name_node,
+            text(self.src, name_node).to_string(),
+            Some(value),
+            Some(declarator),
+            DefKind::Variable,
+            container.to_vec(),
+            Visibility::Private,
+        );
+        true
+    }
+
+    /// `got.extend = (…) => {…}` in a function whose `got` leaves: a method of
+    /// that object, as `proto.handle = function …` is in a module.
+    fn escaping_member(
+        &mut self,
+        assignment: Node<'t>,
+        left: Node<'t>,
+        right: Node<'t>,
+        container: &[Name],
+    ) -> bool {
+        let Some(function) = function_value(right) else {
+            return false;
+        };
+        if left.kind() != "member_expression" {
+            return false;
+        }
+        let path = path_of(self.src, left);
+        let (Some((member, owner)), Some(name_node)) = (path.split_last(), field(left, "property"))
+        else {
+            return false;
+        };
+        if owner.is_empty() || owner[0].as_str() == "this" {
+            return false;
+        }
+        let outer = assignment
+            .parent()
+            .filter(|p| p.kind() == "expression_statement")
+            .unwrap_or(assignment);
+        let mut owned = container.to_vec();
+        owned.extend(owner.iter().cloned());
+        self.add(Spec {
+            node: function,
+            outer,
+            name_node,
+            name: member.as_str().to_string(),
+            container: owned,
+            kind: DefKind::Method,
+            type_namespace: false,
+            visibility: Visibility::Private,
+            signature: signature(self.src, &[function]),
+            body: body_of(function),
+            owner: true,
+        });
+        true
     }
 
     /// The methods and function-valued properties of an object literal.
@@ -3247,6 +3356,18 @@ impl<'t> Walker<'t> {
             .into_iter()
             .find(|c| c.is_named() && c.kind() != "comment");
         let Some(module) = first.and_then(|n| string_value(self.src, n)) else {
+            // A specifier the code computes loads a module no text names.
+            if let Some(argument) = first {
+                self.facts.push(Fact::ComputedImport(ComputedImport {
+                    site: span(argument),
+                    enclosing: self.written_scope(call),
+                    kind: if dynamic {
+                        ImportKind::Dynamic
+                    } else {
+                        ImportKind::Require
+                    },
+                }));
+            }
             return false;
         };
         let Bindings {

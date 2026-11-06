@@ -268,6 +268,19 @@ pub struct EntryPoint {
     pub target: Scope,
 }
 
+/// An import whose module the code computes: `importlib.import_module(name)`,
+/// `__import__(name)`, `import(expr)` or `require(expr)` with an argument that is
+/// no literal. What it loads is not named in the text, so any module may be its
+/// target: an absence of importers is a claim only where no file holds one.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct ComputedImport {
+    pub site: Span,
+    pub enclosing: Scope,
+    /// `Dynamic` for `import(...)`, `import_module` and `__import__`; `Require`
+    /// for `require(...)`.
+    pub kind: ImportKind,
+}
+
 /// A repository path written in code (`sys.path.insert`, a `join` of literals).
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PathMention {
@@ -317,6 +330,7 @@ pub enum Fact {
     PathMention(PathMention),
     ConfigKey(ConfigKey),
     LocalBinding(Local),
+    ComputedImport(ComputedImport),
 }
 
 impl Fact {
@@ -334,6 +348,7 @@ impl Fact {
             Self::PathMention(mention) => &mention.site,
             Self::ConfigKey(key) => &key.site,
             Self::LocalBinding(local) => &local.site,
+            Self::ComputedImport(computed) => &computed.site,
         }
     }
 
@@ -348,6 +363,7 @@ impl Fact {
             Self::Reference(_) => 5,
             Self::PathMention(_) => 6,
             Self::ConfigKey(_) => 7,
+            Self::ComputedImport(_) => 8,
         }
     }
 }

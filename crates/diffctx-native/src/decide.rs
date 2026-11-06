@@ -687,6 +687,10 @@ pub struct Changed {
     /// A function, method or class with decorators: a decorator may read what a
     /// doc or layout edit touched, so such an edit is never set aside.
     pub decorated: bool,
+    /// What the range did moves the definition's place in the module's surface: it
+    /// was added, renamed or moved, or its signature (which carries its kind) or
+    /// its visibility changed. A body, doc or decorator edit leaves it.
+    pub api: bool,
 }
 
 impl Changed {
@@ -1127,7 +1131,9 @@ impl Cell {
             .filter(|d| !moved.contains(&d.key))
             .collect();
         // A decorated function, method or class is never set aside as a doc or
-        // layout edit: a decorator may read the docstring (CLI help, routes).
+        // layout edit: a decorator may read the docstring (CLI help, routes). A
+        // docstring edit lists its rows; a comment-only one is traced and its rows
+        // fold as no code change (`basis_of`).
         let mut decorated: HashSet<DefKey> = HashSet::new();
         for d in &python {
             let only_doc = matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
@@ -1214,6 +1220,7 @@ impl Cell {
                         public,
                         basis: None,
                         decorated: false,
+                        api: false,
                     };
                     // A class that lost its constructor is changed like one whose
                     // constructor was edited: what builds, extends or names it is
@@ -1239,6 +1246,7 @@ impl Cell {
                                     public: false,
                                     basis: None,
                                     decorated: false,
+                                    api: false,
                                 },
                             );
                         }
@@ -1269,6 +1277,7 @@ impl Cell {
                                 public: false,
                                 basis: None,
                                 decorated: false,
+                                api: false,
                             };
                             held.subjects.truncate(1);
                             merge(&mut by_key, held);
@@ -1328,6 +1337,7 @@ impl Cell {
                                 public,
                                 basis: None,
                                 decorated: false,
+                                api: false,
                             };
                             if !self.stale_uses(&gone).0.is_empty() {
                                 removed.push(gone);
@@ -1336,12 +1346,17 @@ impl Cell {
                         }
                     }
                     let unpaired = matches!(change, DefChange::Unknown { .. });
-                    for mut changed in self.report_as(def, how, stale, unpaired, true) {
-                        if self.folds_into_its_class(&changed, def) {
-                            continue;
+                    let api = match change {
+                        DefChange::Changed { origin, delta } => {
+                            !matches!(origin, Origin::Same) || delta.signature || delta.visibility
                         }
+                        _ => true,
+                    };
+                    for mut changed in self.report_as(def, how, stale, unpaired, true) {
                         changed.basis.clone_from(&basis);
                         changed.decorated = decorated.contains(&d.key);
+                        changed.api =
+                            api && changed.subjects.first().is_some_and(|s| s.key == d.key);
                         merge(&mut by_key, changed);
                     }
                 }
@@ -1405,9 +1420,12 @@ impl Cell {
     }
 
     /// What an edit in place did to a definition, as the folding table reads it.
-    /// None when the facts of either side are unread: then nothing folds.
+    /// None when the facts of either side are unread, or when the edit moved the
+    /// definition's visibility or only its docstring (a decorator may read it): then
+    /// nothing folds. A comment-only edit has a basis with no code delta.
     fn basis_of(&self, d: &SemanticDef, def: &Definition, delta: Delta) -> Option<Basis> {
-        if delta.visibility || !(delta.signature || delta.body || delta.decorators) {
+        let code = delta.signature || delta.body || delta.decorators;
+        if delta.visibility || (!code && delta.doc) {
             return None;
         }
         let (head, base) = (d.head.as_ref()?, d.base.as_ref()?);
@@ -1538,23 +1556,6 @@ impl Cell {
         Ok(seen)
     }
 
-    /// A field of a class is the class's line, edited, unless something outside
-    /// the diff reads it: a new or edited class prints no line per field.
-    fn folds_into_its_class(&self, changed: &Changed, def: &crate::resolve::Definition) -> bool {
-        self.family == Family::Python
-            && matches!(
-                changed.kind,
-                DefKind::Field | DefKind::Variable | DefKind::Constant
-            )
-            && !def.key.local.container.is_empty()
-            && !matches!(changed.how, How::Edited { layout_only: true })
-            && self.owner(def).is_some()
-            && {
-                let verdict = self.verdict(changed);
-                verdict.complete() && verdict.uses.iter().all(|u| u.also_changed)
-            }
-    }
-
     fn definition(&self, key: &DefKey) -> Option<&crate::resolve::Definition> {
         self.defs_by_key
             .get(key)
@@ -1632,6 +1633,7 @@ impl Cell {
             public: false,
             basis: None,
             decorated: false,
+            api: false,
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
@@ -1948,7 +1950,8 @@ impl Cell {
                 // A name that left, or moved, may still be spelled where nothing
                 // types the receiver: each such line may be a use that broke.
                 uses.extend(unplaced.into_iter().map(|(file, line, scope, _)| Use {
-                    also_changed: self.in_diff(&file, line, &scope),
+                    // Still named at the head, so possibly broken, whoever changed it.
+                    also_changed: false,
                     file,
                     line,
                     relation: Relation::Reads,
@@ -1979,8 +1982,6 @@ impl Cell {
             ))
         });
         uses.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.standing == b.standing);
-        // A candidate that is itself changed was never a caller of record.
-        uses.retain(|u| !u.also_changed || u.standing == Standing::Resolved);
         if let Some(basis) = &changed.basis {
             for u in uses.iter_mut().filter(|u| !u.also_changed) {
                 let candidate = matches!(u.standing, Standing::Candidate(_));
@@ -1992,6 +1993,23 @@ impl Cell {
             uses,
             by_relation: self.coverage(changed, lead, per, base_gap.into_iter().collect()),
         }
+    }
+
+    /// Whether a head file of the family holds an import whose target the code
+    /// computes. A file whose facts cannot be read is not known to hold none.
+    fn computes_an_import(&self) -> bool {
+        self.files.iter().any(|file| {
+            RepoPath::new(file).map_or(true, |path| {
+                facts_of(&self.ctx, SideTag::Head, &self.cache, &path).map_or(true, |facts| {
+                    facts.is_some_and(|f| {
+                        f.blob
+                            .facts
+                            .iter()
+                            .any(|fact| matches!(fact, Fact::ComputedImport(_)))
+                    })
+                })
+            })
+        })
     }
 
     /// Whether a type use is an annotation a framework may execute at run time
@@ -2156,7 +2174,9 @@ impl Cell {
         let mut named: HashMap<(String, Name), Standing> = HashMap::new();
         for key in &changed.stale {
             for b in base.references_to(key) {
-                if b.relation.uses() && !b.entry_guard && within_scope(&self.scope, b.file.as_str())
+                if strands(b.relation)
+                    && !b.entry_guard
+                    && within_scope(&self.scope, b.file.as_str())
                 {
                     let standing = match (self.family, standing_of(&b.resolution)) {
                         (Family::Python, _) | (_, None) => Standing::Resolved,
@@ -2178,14 +2198,16 @@ impl Cell {
             for at in self.bindings_by_file.get(&file).into_iter().flatten() {
                 let h = &self.head.bindings()[*at];
                 if h.name != name
-                    || !h.relation.uses()
+                    || !strands(h.relation)
                     || !matches!(h.resolution, Resolution::Unresolved { .. })
                 {
                     continue;
                 }
                 let line = h.site.lines.0;
                 out.push(Use {
-                    also_changed: self.in_diff(&file, line, &h.from),
+                    // A line that still names what left is a broken reference
+                    // whoever else the range changed: never the diff's own line.
+                    also_changed: false,
                     file: file.clone(),
                     line,
                     relation: h.relation,
@@ -2300,10 +2322,24 @@ impl Cells {
         self.cells.iter().find(|cell| cell.owns(rel))
     }
 
+    /// Whether a head file of a cell language may import a module by a name it
+    /// computes (`importlib.import_module(name)`, `import(path)`, `require(path)`),
+    /// which no importer search can see: some file holds a `ComputedImport` fact, or
+    /// a family could not be read at all, so none is known to hold none.
+    pub fn computed_imports_possible(&self) -> bool {
+        !self.lost.is_empty() || self.cells.iter().any(Cell::computes_an_import)
+    }
+
     /// Whether `rel` is a file of a family that could not be resolved.
     pub fn lost(&self, rel: &str) -> bool {
         self.lost.iter().any(|family| family.has_path(rel))
     }
+}
+
+/// Whether a line that names a definition the range removed is stranded by it: a
+/// use that now finds nothing, or an export that still offers the missing name.
+fn strands(relation: Relation) -> bool {
+    relation.uses() || relation == Relation::Reexports
 }
 
 /// Reports one definition once, with the subjects of every reason it is
@@ -2329,6 +2365,7 @@ fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
                 known.basis = None;
             }
             known.decorated |= changed.decorated;
+            known.api |= changed.api;
             known.how = match (known.how, changed.how) {
                 (How::Edited { layout_only: a }, How::Edited { layout_only: b }) => How::Edited {
                     layout_only: a && b,

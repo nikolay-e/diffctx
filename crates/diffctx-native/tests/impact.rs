@@ -1208,8 +1208,11 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
     );
     assert_eq!(doc["untested_definitions"], 2, "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    let (nothing, inside) = md
+    let (before, inside) = md
         .split_once("Changed, called only from inside the diff, no static test link:")
+        .unwrap_or_else(|| panic!("{md}"));
+    let (_, nothing) = before
+        .split_once("Changed, nothing calls them, no static test link:")
         .unwrap_or_else(|| panic!("{md}"));
     assert!(nothing.contains("  - app/rates.py::quote ("), "{md}");
     assert!(!nothing.contains("_scale"), "{md}");
@@ -1264,7 +1267,9 @@ fn a_python_caller_changed_in_the_range_is_named_apart_from_the_callers_outside_
         "{md}"
     );
     assert!(
-        md.contains("  - also changed in this diff: app/rates.py::quote ("),
+        md.contains(
+            "- changed, used only by definitions changed in this range: app/rates.py::_scale ("
+        ) && md.contains("(used by app/rates.py::quote ("),
         "{md}"
     );
     assert!(!md.contains("called from app/rates.py"), "{md}");
@@ -3784,14 +3789,17 @@ fn only_declarations_the_head_lost_are_removed_definitions() {
         ],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed: Vec<String> = doc["changed"]
+    let mut removed: Vec<String> = doc["changed"]
         .as_array()
         .unwrap()
         .iter()
         .filter(|c| c["kind"] == "removed")
         .map(|c| c["symbol"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(removed, ["shown"], "{doc}");
+    removed.sort();
+    // Every removed definition of a cell language is listed, the private one too;
+    // only the public one is a contract.
+    assert_eq!(removed, ["record", "shown"], "{doc}");
     let contracts = contract_symbols(&doc);
     assert!(
         contracts.contains(&"removed_api shown".to_string()),
@@ -5712,6 +5720,80 @@ fn a_body_only_change_folds_the_reexports_of_the_function() {
     assert_eq!(folded["count"], 1, "{doc:#}");
 }
 
+/// R19: an export statement that names a definition of its own module is the
+/// module's export of it, in ESM and in CommonJS: a body-only change leaves it
+/// as it was, `--unfold` lists it as a `reexports` row.
+#[test]
+fn a_body_only_change_folds_the_module_own_export_of_the_function() {
+    let cases: [(&str, &str, &str); 4] = [
+        (
+            "src/f.ts",
+            "function f(a: number): number {\n  return a{n};\n}\nexport { f };\n",
+            "ESM list",
+        ),
+        (
+            "src/f.ts",
+            "function f(a: number): number {\n  return a{n};\n}\nexport default f;\n",
+            "ESM default",
+        ),
+        (
+            "src/f.js",
+            "function f(a) {\n  return a{n};\n}\nexports.f = f;\n",
+            "exports.f",
+        ),
+        (
+            "src/f.js",
+            "function f(a) {\n  return a{n};\n}\nmodule.exports = { f };\n",
+            "module.exports object",
+        ),
+    ];
+    for (path, template, form) in cases {
+        let (before, after) = (
+            template.replace("{n}", " + 1"),
+            template.replace("{n}", " + 2"),
+        );
+        let tmp = repo(&[(path, before.as_str())], &[(path, after.as_str())]);
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        let folded = &row(&doc, "f")["folded"][0];
+        assert_eq!(folded["rule"], "imports-a-body", "{form}: {doc:#}");
+        assert_eq!(folded["kind"], "reexports", "{form}: {doc:#}");
+        assert_eq!(folded["count"], 1, "{form}: {doc:#}");
+        assert!(callers_of(&doc, "f").is_empty(), "{form}: {doc:#}");
+        let unfolded = impact_unfolded(tmp.path());
+        let listed = row(&unfolded, "f")["callers"].as_array().expect("callers");
+        assert_eq!(listed.len(), 1, "{form}: {unfolded:#}");
+        assert_eq!(
+            listed[0]["folded_by"], "imports-a-body",
+            "{form}: {unfolded:#}"
+        );
+    }
+}
+
+/// R19: a removal leaves the export dangling, which breaks the module at load,
+/// so the export is listed, never folded.
+#[test]
+fn a_removed_definition_lists_the_export_that_names_it() {
+    for (path, base, head, form) in [
+        (
+            "src/f.ts",
+            "function f(a: number): number {\n  return a;\n}\nexport { f };\n",
+            "export { f };\n",
+            "ESM list",
+        ),
+        (
+            "src/f.js",
+            "function f(a) {\n  return a;\n}\nexports.f = f;\n",
+            "exports.f = f;\n",
+            "exports.f",
+        ),
+    ] {
+        let tmp = repo(&[(path, base)], &[(path, head)]);
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        nothing_folds(&doc);
+        assert!(callers_of(&doc, "f").contains(&path), "{form}: {doc:#}");
+    }
+}
+
 /// A candidate row — a call through a receiver nothing types — folds under the
 /// receiver, and the header still counts it as possible.
 #[test]
@@ -5923,4 +6005,529 @@ fn a_decorated_docstring_change_is_not_set_aside() {
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     nothing_folds(&doc);
     assert_eq!(callers_of(&doc, "index"), ["use.py"], "{doc:#}");
+}
+
+fn impact_budget(repo: &Path, budget: u32) -> serde_json::Value {
+    let out = diffctx()
+        .current_dir(repo)
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "--budget",
+            &budget.to_string(),
+        ])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "impact --budget {budget} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("impact JSON")
+}
+
+/// A helper in a test file is a definition like any other: the tests the range
+/// changes use it, and the answer names it with them on the one line for what
+/// only the range's own changes use. The test function nothing calls stays silent.
+#[test]
+fn a_test_helper_used_only_by_changed_tests_is_named_like_any_definition() {
+    let tmp = repo(
+        &[
+            ("tests/__init__.py", ""),
+            ("tests/helpers.py", "def make(n):\n    return n\n"),
+            (
+                "tests/test_make.py",
+                "from tests.helpers import make\n\n\ndef test_make():\n    assert make(1) == 1\n",
+            ),
+        ],
+        &[
+            ("tests/helpers.py", "def make(n):\n    return n + 0\n"),
+            (
+                "tests/test_make.py",
+                "from tests.helpers import make\n\n\ndef test_make():\n    assert make(2) == 2\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let make = row(&doc, "make");
+    assert_eq!(make["callers"], serde_json::json!([]), "{doc:#}");
+    assert!(
+        make["also_changed"][0]
+            .as_str()
+            .is_some_and(|s| s.starts_with("tests/test_make.py::test_make (")),
+        "{doc:#}"
+    );
+    assert!(
+        !changed_symbols(&doc).contains(&"test_make".to_string()),
+        "a test nothing calls says nothing: {doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "- changed, used only by definitions changed in this range: tests/helpers.py::make ("
+        ) && md.contains("(used by tests/test_make.py::test_make ("),
+        "{md}"
+    );
+}
+
+/// Definitions of test files rank after every other target: when the cap sheds
+/// whole definitions, the test helper goes first, though it sorts before the
+/// definition outside the tests.
+#[test]
+fn the_cap_sheds_the_definitions_of_test_files_before_any_other() {
+    let rates = |k: u32| -> String {
+        (0..4)
+            .map(|i| format!("def quote{i}(x):\n    return x + {k}\n"))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+            + "\n"
+    };
+    let api: String = "from zrates.rates import quote0, quote1, quote2, quote3\n\n\n".to_string()
+        + &(0..4)
+            .map(|i| format!("def handler{i}(x):\n    return quote{i}(x)\n"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+    let tmp = repo(
+        &[
+            ("aaa/__init__.py", ""),
+            ("aaa/test_helpers.py", "def make(n):\n    return n\n"),
+            (
+                "aaa/test_use.py",
+                "from aaa.test_helpers import make\n\n\ndef test_make():\n    assert make(1) == 1\n",
+            ),
+            ("zrates/__init__.py", ""),
+            ("zrates/rates.py", &rates(0)),
+            ("zrates/api.py", &api),
+        ],
+        &[
+            ("aaa/test_helpers.py", "def make(n):\n    return n + 0\n"),
+            ("zrates/rates.py", &rates(1)),
+        ],
+    );
+    let whole = impact_budget(tmp.path(), 2_000);
+    assert!(
+        callers_of(&whole, "make") == ["aaa/test_use.py"]
+            && callers_of(&whole, "quote3") == ["zrates/api.py"],
+        "every definition is listed with its caller: {whole:#}"
+    );
+    // Across the sweep: no definition outside the tests is shed while the test
+    // helper, which sorts first, is still listed. (Where the first shed takes two,
+    // the omitted entry's own text is why one does not fit.)
+    let helper = "aaa/test_helpers.py::make";
+    let top = _diffctx::tokenizer::count_tokens(&whole.to_string()) + 20;
+    let mut helper_shed = false;
+    for budget in (60..=top).rev().step_by(20) {
+        let doc = impact_budget(tmp.path(), budget);
+        let omitted: Vec<&str> = doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["kind"] == "omitted")
+            .flat_map(|c| c["omitted"].as_array().into_iter().flatten())
+            .filter_map(|d| d["definition"].as_str())
+            .collect();
+        helper_shed |= omitted.contains(&helper);
+        assert!(
+            omitted.iter().all(|d| *d == helper) || omitted.contains(&helper),
+            "budget {budget}: a definition outside the tests is shed while the helper is listed: {doc:#}"
+        );
+    }
+    assert!(helper_shed, "no budget shed the test helper");
+}
+
+/// A field the range edits, read only by a function the range changes, is named
+/// with its user: "nothing outside the diff" is shown, not implied.
+#[test]
+fn a_field_used_only_by_changed_definitions_is_named_with_its_users() {
+    let tmp = repo(
+        &[
+            ("pkg/__init__.py", ""),
+            (
+                "pkg/opts.py",
+                "class Options:\n    retries = 1\n    limit = 3\n",
+            ),
+            (
+                "pkg/use.py",
+                "from pkg.opts import Options\n\n\ndef attempts(options: Options):\n    return 1\n",
+            ),
+        ],
+        &[
+            (
+                "pkg/opts.py",
+                "class Options:\n    retries = 1\n    limit = 4\n",
+            ),
+            (
+                "pkg/use.py",
+                "from pkg.opts import Options\n\n\ndef attempts(options: Options):\n    return options.limit\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let limit = doc["changed"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter()
+                .find(|c| c["symbol"].as_str().is_some_and(|s| s.ends_with("limit")))
+        })
+        .unwrap_or_else(|| panic!("the field is not listed: {doc:#}"));
+    assert_eq!(limit["callers"], serde_json::json!([]), "{doc:#}");
+    assert!(
+        limit["also_changed"][0]
+            .as_str()
+            .is_some_and(|s| s.starts_with("pkg/use.py::attempts (")),
+        "{doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("- changed, used only by definitions changed in this range: ")
+            && md.contains("pkg/opts.py::limit (")
+            && md.contains("(used by pkg/use.py::attempts ("),
+        "{md}"
+    );
+}
+
+/// A definition the range adds has no user outside the range that could depend on
+/// it, and the users the range writes are the diff: it is named nowhere, and never
+/// as one nothing calls.
+#[test]
+fn a_definition_the_range_adds_names_no_user_of_its_own_range() {
+    let tmp = repo(
+        &[
+            ("app.py", "def run(x):\n    return x\n"),
+            (
+                "tests/test_app.py",
+                "from app import run\n\n\ndef test_run():\n    assert run(1) == 1\n",
+            ),
+        ],
+        &[(
+            "app.py",
+            "def helper(x):\n    return x + 1\n\n\ndef run(x):\n    return helper(x)\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        !changed_symbols(&doc).contains(&"helper".to_string()),
+        "{doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("changed, used only by"), "{md}");
+    assert!(!md.contains("helper"), "{md}");
+}
+
+/// A removed definition a line still names at the head is a broken reference
+/// whatever else the range changed in that line's function: its user is a caller
+/// of the removed name, never one of the diff's own lines.
+#[test]
+fn a_removed_definition_still_named_by_a_changed_function_keeps_that_user() {
+    let tmp = repo(
+        &[
+            (
+                "lib.py",
+                "def old(x):\n    return x\n\n\ndef keep(x):\n    return x\n",
+            ),
+            (
+                "app.py",
+                "from lib import old\n\n\ndef run(x):\n    return old(x)\n",
+            ),
+        ],
+        &[
+            ("lib.py", "def keep(x):\n    return x\n"),
+            (
+                "app.py",
+                "from lib import old\n\n\ndef run(x):\n    return old(x) + 1\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let old = row(&doc, "old");
+    assert_eq!(old["kind"], "removed", "{doc:#}");
+    assert_eq!(callers_of(&doc, "old"), ["app.py"], "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("called from app.py::run"), "{md}");
+    assert!(!md.contains("nothing references it"), "{md}");
+}
+
+/// Every removed definition of a cell language is listed, a private constant of a
+/// TypeScript module too: here as one nothing references.
+#[test]
+fn a_removed_private_typescript_constant_is_listed_alone() {
+    let tmp = repo(
+        &[(
+            "src/util.ts",
+            "const factor = 7;\n\nexport function price(a: number): number {\n  return a * factor;\n}\n",
+        )],
+        &[(
+            "src/util.ts",
+            "export function price(a: number): number {\n  return a * 7;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let factor = row(&doc, "factor");
+    assert_eq!(factor["kind"], "removed", "{doc:#}");
+    assert_eq!(factor["callers"], serde_json::json!([]), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains("src/util.ts::factor (removed; was "), "{md}");
+    assert!(md.contains("nothing references it"), "{md}");
+}
+
+/// A contract row is about the export's place in the surface: a declaration
+/// reflowed over lines, with a new body, keeps its name, kind and signature and
+/// is none; a parameter added is one.
+#[test]
+fn an_export_that_keeps_its_name_kind_and_signature_is_no_contract() {
+    let tmp = repo_steps_for_exports();
+    let reflowed = impact(tmp.path(), "HEAD~2..HEAD~1");
+    assert!(
+        !contract_symbols(&reflowed).contains(&"public_api mono".to_string()),
+        "{reflowed:#}"
+    );
+    let widened = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        contract_symbols(&widened).contains(&"public_api mono".to_string()),
+        "{widened:#}"
+    );
+}
+
+/// A method whose only caller is a function the range changes, through a
+/// receiver nothing types, has no resolved use and so no caller: silence there
+/// would read as "nothing uses it". It is named with that function as a possible
+/// user, never as a caller or as a resolved user.
+#[test]
+fn a_method_called_only_through_untyped_receivers_in_changed_functions_is_possibly_used() {
+    let tmp = repo(
+        &[
+            (
+                "src/retry.ts",
+                "export class RetryObject {\n  computeDelay(): number {\n    return 1;\n  }\n}\n",
+            ),
+            (
+                "src/delay.ts",
+                "export function calculateRetryDelay(retry: any): number {\n  return 0;\n}\n",
+            ),
+        ],
+        &[
+            (
+                "src/retry.ts",
+                "export class RetryObject {\n  computeDelay(): number {\n    return 2;\n  }\n}\n",
+            ),
+            (
+                "src/delay.ts",
+                "export function calculateRetryDelay(retry: any): number {\n  return retry.computeDelay();\n}\n",
+            ),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let method = doc["changed"]
+        .as_array()
+        .and_then(|rows| {
+            rows.iter().find(|c| {
+                c["symbol"]
+                    .as_str()
+                    .is_some_and(|s| s.ends_with("computeDelay"))
+            })
+        })
+        .unwrap_or_else(|| panic!("the method is not listed: {doc:#}"));
+    assert_eq!(method["callers"], serde_json::json!([]), "{doc:#}");
+    assert!(method.get("also_changed").is_none(), "{doc:#}");
+    assert!(
+        method["possibly_also_changed"][0]
+            .as_str()
+            .is_some_and(|s| s.starts_with("src/delay.ts::calculateRetryDelay (")),
+        "{doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("computeDelay (")
+            && md.contains("(possibly used by src/delay.ts::calculateRetryDelay ("),
+        "{md}"
+    );
+    assert!(!md.contains("(used by src/delay.ts"), "{md}");
+}
+
+fn repo_steps_for_exports() -> TempDir {
+    support::repo_steps(&[
+        &[(
+            "src/panel.ts",
+            "export function mono(x: number, y: number): number {\n  return x * y;\n}\n",
+        )],
+        &[(
+            "src/panel.ts",
+            "export function mono(\n  x: number,\n  y: number\n): number {\n  return x * y + 1;\n}\n",
+        )],
+        &[(
+            "src/panel.ts",
+            "export function mono(\n  x: number,\n  y: number,\n  z: number\n): number {\n  return x * y + z;\n}\n",
+        )],
+    ])
+}
+
+/// One escape rule for every function value: a constant holding an arrow that
+/// the function returns through an object is a definition like a declaration is,
+/// so a change of its body is its own entry and never the function's.
+#[test]
+fn a_changed_function_value_that_leaves_its_function_has_its_own_entry() {
+    let source = |each: &str| {
+        format!(
+            "export function create() {{\n  const got: any = () => 1;\n  function eachDecl(n: number) {{ return n + {each}; }}\n  const eachConst = (n: number) => n + {each};\n  got.eachDecl = eachDecl;\n  got.eachConst = eachConst;\n  return got;\n}}\n"
+        )
+    };
+    let (before, after) = (source("1"), source("2"));
+    let tmp = repo(
+        &[
+            ("src/c.ts", before.as_str()),
+            (
+                "src/u.ts",
+                "import { create } from \"./c\";\n\nexport function g() {\n  return create();\n}\n",
+            ),
+        ],
+        &[("src/c.ts", after.as_str())],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let symbols: Vec<&str> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["symbol"].as_str())
+        .collect();
+    for wanted in ["eachDecl", "eachConst"] {
+        assert!(
+            symbols
+                .iter()
+                .any(|s| *s == wanted || s.ends_with(&format!(".{wanted}"))),
+            "{wanted} is not an entry of {symbols:?}"
+        );
+    }
+    assert!(
+        !symbols.contains(&"create"),
+        "the edit is attributed to create: {symbols:?}"
+    );
+}
+
+/// A comment is stored nowhere a decorator can read: a comment-only edit of a
+/// decorated function leaves every relation as it was, counted in one line,
+/// where a docstring edit (above) keeps its callers listed.
+#[test]
+fn a_comment_only_change_of_a_decorated_function_folds_every_relation() {
+    let tmp = repo(
+        &[
+            (
+                "app.py",
+                "import functools\n\n\n@functools.cache\ndef index():\n    return 1\n",
+            ),
+            (
+                "use.py",
+                "from app import index\n\n\ndef go():\n    return index()\n",
+            ),
+        ],
+        &[(
+            "app.py",
+            "import functools\n\n\n@functools.cache\ndef index():\n    # one is enough\n    return 1\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "index")["folded"][0];
+    assert_eq!(folded["rule"], "no-code-change", "{doc:#}");
+    assert_eq!(folded["kind"], "calls", "{doc:#}");
+    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert!(callers_of(&doc, "index").is_empty(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("calls not affected (no-code-change): 1"),
+        "{md}"
+    );
+}
+
+fn repo_deleting_a_schema_module(others: &[(&str, &str)]) -> TempDir {
+    let models = (0..10)
+        .map(|i| format!("class Model{i}:\n    name = \"\"\n    id = 0\n"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "pkg/__init__.py", "");
+    write(repo, "pkg/schema.py", &models);
+    write(repo, "app/other.py", "def go():\n    return 1\n");
+    for (path, text) in others {
+        write(repo, path, text);
+    }
+    commit_all(repo, "initial");
+    std::fs::remove_file(repo.join("pkg/schema.py")).expect("delete the module");
+    commit_all(repo, "drop the schema module");
+    tmp
+}
+
+fn removed_symbols(doc: &serde_json::Value) -> Vec<&str> {
+    doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["kind"] == "removed")
+        .filter_map(|c| c["symbol"].as_str())
+        .collect()
+}
+
+/// A module the range deletes that no file imports is one line, not one per
+/// definition it held: no import reaches any of them, so no name of a removed
+/// class's field is a candidate for anything. No file computes an import target
+/// here, so the claim is "no importers", not "none found".
+#[test]
+fn a_deleted_module_nothing_imports_is_named_once() {
+    let tmp = repo_deleting_a_schema_module(&[]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        doc["deleted_modules"],
+        serde_json::json!([{"path": "pkg/schema.py", "definitions": 10}]),
+        "{doc:#}"
+    );
+    assert!(removed_symbols(&doc).is_empty(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("- deleted module pkg/schema.py: 10 definition(s), no importers"),
+        "{md}"
+    );
+    assert!(!md.contains("too common"), "{md}");
+    assert_eq!(md.matches("deleted module").count(), 1, "{md}");
+}
+
+/// The same module with an importer: the importer is a stale reference to what
+/// left, and the definitions are listed one by one.
+#[test]
+fn a_deleted_module_with_an_importer_keeps_its_definitions_and_the_importer() {
+    let tmp = repo_deleting_a_schema_module(&[(
+        "app/use.py",
+        "from pkg.schema import Model0\n\n\ndef build():\n    return Model0()\n",
+    )]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(doc.get("deleted_modules").is_none(), "{doc:#}");
+    assert_eq!(removed_symbols(&doc).len(), 10, "{doc:#}");
+    assert_eq!(callers_of(&doc, "Model0"), ["app/use.py"], "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("deleted module"), "{md}");
+}
+
+/// An import whose name is computed anywhere may reach the module: "no importers"
+/// becomes "none found", and the answer is no empty one.
+#[test]
+fn a_computed_import_leaves_a_deleted_module_unproven() {
+    let tmp = repo_deleting_a_schema_module(&[(
+        "app/loader.py",
+        "import importlib\n\n\ndef load(name):\n    return importlib.import_module(name)\n",
+    )]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["deleted_modules"][0]["dynamic_import"], true, "{doc:#}");
+    assert_ne!(
+        doc["empty"], true,
+        "a claim with a gap is no empty answer: {doc:#}"
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "- deleted module pkg/schema.py: 10 definition(s), no importer found; imports computed at run time are not read"
+        ),
+        "{md}"
+    );
 }
