@@ -227,6 +227,9 @@ pub enum RelationKind {
     Overrides,
     Instantiates,
     PassesAsValue,
+    /// A name written where a type is expected: an annotation, `typeof` in a
+    /// type, a type assertion, a type argument, a base class.
+    TypeUse,
     Configures,
     Executes,
     ReferencesPath,
@@ -238,7 +241,7 @@ pub enum RelationKind {
     reason = "read by the oracle harness once lib.rs re-exports the cells"
 )]
 impl RelationKind {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Calls,
         Self::Reads,
         Self::Writes,
@@ -247,6 +250,7 @@ impl RelationKind {
         Self::Overrides,
         Self::Instantiates,
         Self::PassesAsValue,
+        Self::TypeUse,
         Self::Configures,
         Self::Executes,
         Self::ReferencesPath,
@@ -263,6 +267,7 @@ impl RelationKind {
             Self::Overrides => "overrides",
             Self::Instantiates => "instantiates",
             Self::PassesAsValue => "passes_as_value",
+            Self::TypeUse => "type_use",
             Self::Configures => "configures",
             Self::Executes => "executes",
             Self::ReferencesPath => "references_path",
@@ -320,16 +325,63 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
 /// that deletes its old path.
 const PRECISE: &[(&str, RelationKind)] = &[];
 
-/// Whether the cell is `Precise`. The oracle harness compares a relation's
-/// `kind` strictly for exactly these cells, and needs no registry to ask.
-#[allow(
-    dead_code,
-    reason = "read by the oracle harness once lib.rs re-exports the cells"
-)]
+/// Whether the cell is `Precise`: a caller row states its `kind` for exactly
+/// these cells.
 pub fn is_precise(language: &str, relation: &str) -> bool {
     PRECISE
         .iter()
         .any(|(l, k)| *l == language && k.name() == relation)
+}
+
+/// The cell language a file's definitions belong to: the corpus directories.
+fn cell_language(path: &str) -> &'static str {
+    match crate::languages::get_language_for_file(path) {
+        Some("python") => "python",
+        Some("typescript" | "tsx" | "javascript" | "jsx") => "typescript",
+        Some("rust") => "rust",
+        Some("kotlin") => "kotlin",
+        Some("java") => "java",
+        Some("swift") => "swift",
+        Some("go") => "go",
+        Some("bash" | "zsh") => "shell",
+        Some("sql") => "sql",
+        Some("yaml" | "json" | "toml" | "ini" | "dockerfile") => "config",
+        Some("html" | "css" | "scss") => "web",
+        _ => "other",
+    }
+}
+
+/// The schema v1 kind of a use a resolver found: construction is
+/// `instantiates`, never `calls`, and a name in a type position is `type_use`.
+const fn kind_of_use(relation: crate::resolve::Relation) -> RelationKind {
+    use crate::resolve::Relation as Use;
+    match relation {
+        Use::Calls => RelationKind::Calls,
+        Use::Reads => RelationKind::Reads,
+        Use::Writes => RelationKind::Writes,
+        Use::Instantiates => RelationKind::Instantiates,
+        Use::PassesAsValue => RelationKind::PassesAsValue,
+        Use::Imports => RelationKind::Imports,
+        Use::Reexports => RelationKind::Reexports,
+        Use::Overrides => RelationKind::Overrides,
+        Use::TypeUses => RelationKind::TypeUse,
+    }
+}
+
+/// The kind a caller row of a definition in `path` states: its relation's,
+/// when the (language, relation) cell is `Precise`; no other cell says which
+/// kind of "called from" a row is.
+pub fn stated_kind(path: &str, relation: crate::resolve::Relation) -> Option<&'static str> {
+    stated_kind_by(is_precise, path, relation)
+}
+
+fn stated_kind_by(
+    precise: impl Fn(&str, &str) -> bool,
+    path: &str,
+    relation: crate::resolve::Relation,
+) -> Option<&'static str> {
+    let kind = kind_of_use(relation).name();
+    precise(cell_language(path), kind).then_some(kind)
 }
 
 /// The kinds a model answering `relation` finds. The engine reports one
@@ -351,7 +403,7 @@ fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
 fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
     use RelationKind::{
         Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, TestsReach,
-        Writes,
+        TypeUse, Writes,
     };
     matches!(language, "python" | "typescript")
         && matches!(
@@ -361,6 +413,7 @@ fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
                 | Writes
                 | Instantiates
                 | PassesAsValue
+                | TypeUse
                 | Overrides
                 | Imports
                 | Reexports
@@ -656,8 +709,43 @@ mod tests {
                 "{language} references_path"
             );
         }
+        assert_eq!(
+            state("typescript", RelationKind::TypeUse),
+            Some(CellState::Heuristic)
+        );
+        assert_eq!(state("rust", RelationKind::TypeUse), Some(CellState::None));
         assert_eq!(state("other", RelationKind::Calls), Some(CellState::None));
         assert_eq!(state("rust", RelationKind::Writes), Some(CellState::None));
+    }
+
+    #[test]
+    fn a_row_states_its_kind_exactly_where_the_registry_says_precise() {
+        use crate::resolve::Relation as Use;
+        let python_calls =
+            |language: &str, relation: &str| language == "python" && relation == "calls";
+        let stated = |path, relation| stated_kind_by(python_calls, path, relation);
+        assert_eq!(stated("shop/pricing.py", Use::Calls), Some("calls"));
+        assert_eq!(stated("shop/pricing.py", Use::Reads), None);
+        assert_eq!(stated("shop/pricing.rs", Use::Calls), None);
+        assert_eq!(stated("shop/pricing.py", Use::TypeUses), None);
+        let python_types = |language: &str, relation: &str| {
+            language == "python" && ["type_use", "instantiates"].contains(&relation)
+        };
+        let types = |relation| stated_kind_by(python_types, "shop/pricing.py", relation);
+        assert_eq!(types(Use::TypeUses), Some("type_use"));
+        assert_eq!(types(Use::Instantiates), Some("instantiates"));
+        assert_eq!(types(Use::Calls), None, "construction is never a call");
+        for (path, relation) in [
+            ("a.py", Use::Calls),
+            ("a.ts", Use::Reads),
+            ("a.rs", Use::Overrides),
+        ] {
+            assert_eq!(
+                stated_kind(path, relation),
+                None,
+                "{path}: no cell is precise yet"
+            );
+        }
     }
 
     #[test]

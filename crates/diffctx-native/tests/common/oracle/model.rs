@@ -16,6 +16,7 @@ pub enum Kind {
     Overrides,
     Instantiates,
     PassesAsValue,
+    TypeUse,
     Configures,
     Executes,
     ReferencesPath,
@@ -33,7 +34,7 @@ pub enum Class {
 }
 
 impl Kind {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 13] = [
         Self::Calls,
         Self::Reads,
         Self::Writes,
@@ -42,6 +43,7 @@ impl Kind {
         Self::Overrides,
         Self::Instantiates,
         Self::PassesAsValue,
+        Self::TypeUse,
         Self::Configures,
         Self::Executes,
         Self::ReferencesPath,
@@ -58,6 +60,7 @@ impl Kind {
             Self::Overrides => "overrides",
             Self::Instantiates => "instantiates",
             Self::PassesAsValue => "passes_as_value",
+            Self::TypeUse => "type_use",
             Self::Configures => "configures",
             Self::Executes => "executes",
             Self::ReferencesPath => "references_path",
@@ -228,6 +231,9 @@ pub struct Relation {
     pub sites: Vec<u32>,
     /// A convenience field named no kind: any code kind satisfies it.
     pub loose_kind: bool,
+    /// The answer named the kind itself (a precise cell's row): it is then
+    /// compared strictly, and otherwise only (from, to, resolution) are.
+    pub kind_stated: bool,
 }
 
 impl Relation {
@@ -246,17 +252,4 @@ impl Relation {
             self.resolution.name()
         )
     }
-}
-
-/// The cells a decision has made `precise` (`PRECISE` in `src/lang/mod.rs`,
-/// which a unit test there holds empty until one is): for those `kind` is
-/// compared strictly. The harness keeps its own copy because the class-test gate
-/// compiles it against the pull request's base, which may not export the
-/// engine's `is_precise`; the change that makes a cell precise edits both.
-const PRECISE: &[(&str, &str)] = &[];
-
-pub fn precise(language: &str, kind: Kind) -> bool {
-    PRECISE
-        .iter()
-        .any(|(l, k)| *l == language && *k == kind.name())
 }

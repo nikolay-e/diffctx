@@ -198,6 +198,7 @@ impl Expect {
                 resolution: spec.resolution,
                 sites: spec.site.into_iter().collect(),
                 loose_kind: false,
+                kind_stated: false,
             });
         }
         for (target, froms) in &self.callers {
@@ -211,6 +212,7 @@ impl Expect {
                     resolution: Resolution::Resolved,
                     sites: Vec::new(),
                     loose_kind: true,
+                    kind_stated: false,
                 });
             }
         }
@@ -225,6 +227,7 @@ impl Expect {
                     resolution: Resolution::Resolved,
                     sites: Vec::new(),
                     loose_kind: false,
+                    kind_stated: false,
                 });
             }
         }

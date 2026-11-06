@@ -108,6 +108,10 @@ impl PythonResolver {
     }
 
     /// The bindings that resolve to `key` or have it among their candidates.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a key the index has no entry for has no references"
+    )]
     pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
         self.by_target
             .get(key)
@@ -1124,6 +1128,10 @@ impl<'a> Engine<'a> {
             return None;
         }
         let text = self.text(f)?;
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "the slice is read for an assignment shape; bytes that are not UTF-8 show none, so nothing is inferred from them"
+        )]
         let between =
             std::str::from_utf8(text.get(after as usize..callee.site.bytes.start as usize)?)
                 .ok()?;
@@ -1254,6 +1262,10 @@ impl<'a> Engine<'a> {
             return Entity::Unknown;
         };
         let from = rec.def.span.bytes.start as usize;
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a body that is not UTF-8 resolves as `Entity::Unknown`, which callers keep unresolved"
+        )]
         let Some(body) = text
             .get(from..rec.def.span.bytes.end as usize)
             .and_then(|b| std::str::from_utf8(b).ok())
@@ -1506,6 +1518,10 @@ impl<'a> Engine<'a> {
         }
         self.bases.borrow_mut().insert(class, Rc::new(Vec::new()));
         let rec = &self.ix.defs[class];
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a definition without a signature lists no bases"
+        )]
         let entities: Vec<Entity> = rec
             .def
             .signature

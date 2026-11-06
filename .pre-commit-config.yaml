@@ -311,8 +311,10 @@ repos:
         pass_filenames: false
         # 48 >= the corpus's stratum count, so round 0 of the stratified sample
         # reaches every directory; at 20 the same first case of the first
-        # twenty strata ran on every commit and the rest never did. Case edits
-        # under tests/cases must run it too, or a case lands with no run.
+        # twenty strata ran on every commit and the rest never did. The limit
+        # samples the selection corpus only: impact and symbol cases always run
+        # whole, so a red one cannot land behind the sample. Case edits under
+        # tests/cases must run it too, or a case lands with no run.
         files: ^(Cargo\.(toml|lock)|crates/diffctx-native/|tests/cases/)
         types: [file]
 

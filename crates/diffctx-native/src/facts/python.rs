@@ -42,6 +42,10 @@ fn key(content: &str) -> u64 {
 
 /// The facts of one blob, parsed once per run whoever asks first. `None`
 /// when the grammar is not compiled in or the parse timed out.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a poisoned cache lock is a miss: the blob is parsed again"
+)]
 pub fn facts(content: &str) -> Option<Arc<PythonFacts>> {
     let key = key(content);
     if let Some(hit) = CACHE.lock().ok().and_then(|c| c.get(&key).cloned()) {
@@ -255,6 +259,10 @@ fn steps(
         }
         "subscript" => {
             let value = node.child_by_field_name("value")?;
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "a subscript that is not an integer is not `parents[n]`, so the expression is no parent path"
+            )]
             let n: usize = text(node.child_by_field_name("subscript")?, bytes)
                 .parse()
                 .ok()?;

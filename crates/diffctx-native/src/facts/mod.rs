@@ -16,6 +16,13 @@
 //! definitions ([`semantic_changes`]). It reads a repository only through
 //! `crate::snapshot` (`tests/facts_isolation.rs` holds it) and replaces the first
 //! layer language by language.
+//!
+//! An empty value is never how a failed read or a lost fact looks here: the
+//! methods that make one (`Result::ok`, `unwrap_or_default`) and a direct read of
+//! the disk or of a child process are denied in this module. A justified use
+//! carries `#[allow(clippy::disallowed_methods, reason = "...")]`.
+
+#![deny(clippy::disallowed_methods)]
 
 pub mod java;
 pub mod kotlin;

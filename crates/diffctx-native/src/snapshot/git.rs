@@ -247,6 +247,10 @@ pub const REPO_LOCATING_ENV: [&str; 7] = [
 /// The one way the crate builds a git command, the facade's included. The
 /// repo-locating variables inherited from a parent process are scrubbed: they
 /// silently redirect every command to the wrong repository.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this module is the one door that starts git"
+)]
 pub(crate) fn git_command(root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")

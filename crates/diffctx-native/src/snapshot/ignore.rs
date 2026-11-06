@@ -136,6 +136,10 @@ pub(crate) fn check(
 /// anchored patterns. `Err` when the declared policy could not be read in
 /// full: "no policy" is the one answer that publishes what was declared
 /// private.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "reads the ignore files of the working tree, which git itself would read from the disk"
+)]
 fn working_tree_patterns(exec: &Exec, root: &Path) -> Result<Vec<String>> {
     let files = exec.records(
         root,
@@ -162,6 +166,10 @@ fn working_tree_patterns(exec: &Exec, root: &Path) -> Result<Vec<String>> {
     Ok(patterns)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "opens the query list it just wrote, as git's standard input"
+)]
 fn run(
     exec: &Exec,
     dir: &Path,

@@ -295,6 +295,10 @@ fn remember(content: &str, facts: Arc<KotlinFacts>) {
 /// The facts of one blob: from the parse the fragmenter already made of the
 /// same bytes when there was one, else from a parse of their own. `None`
 /// when the grammar is not compiled in or the parse timed out.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a poisoned cache lock is a miss: the blob is parsed again"
+)]
 pub fn facts(content: &str) -> Option<Arc<KotlinFacts>> {
     if let Some(hit) = CACHE
         .lock()
@@ -508,6 +512,10 @@ pub fn end_with_accessors(node: &Node) -> (u32, usize) {
 }
 
 fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -> Declaration {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration the grammar gives no name node is recorded nameless"
+    )]
     let name = declared_name(node, bytes).unwrap_or_default();
     let modifiers = child(*node, "modifiers");
     let visibility = modifiers.and_then(|m| visibility_of(m, bytes));
@@ -525,6 +533,11 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
     let (params, required_params) = child(*node, "function_value_parameters")
         .map(|p| count_params(p))
         .map_or((None, None), |(a, r)| (Some(a), Some(r)));
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
+    let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     Declaration {
         name,
         kind,
@@ -539,7 +552,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
         is_override,
         inner: modifiers.is_some_and(|m| has_word(m, bytes, "inner")),
         abstract_member,
-        annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
+        annotations,
         required_params,
         params,
         start_line: line_of(*node),
@@ -587,6 +600,11 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
     let modifiers = child(*node, "modifiers");
     let visibility = modifiers.and_then(|m| visibility_of(m, bytes));
     let is_override = modifiers.is_some_and(|m| has_word(m, bytes, "override"));
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
+    let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     facts.declarations.push(Declaration {
         name,
         kind: "property",
@@ -599,7 +617,7 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
         is_override,
         inner: false,
         abstract_member: false,
-        annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
+        annotations,
         required_params: None,
         params: None,
         start_line: line_of(*node),
@@ -1095,6 +1113,10 @@ fn dotted(identifier: Node, bytes: &[u8]) -> String {
         .join(".")
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a node whose bytes are not UTF-8 has no identifier text"
+)]
 pub(super) fn text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
     node.utf8_text(bytes).ok()
 }

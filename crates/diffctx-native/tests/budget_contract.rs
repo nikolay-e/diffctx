@@ -394,6 +394,7 @@ fn check(shape: &Shape) {
     (shape.build)(repo);
     let whole = whole(repo, shape);
     let schema = _diffctx::impact::impact_schema();
+    let mut listed: Vec<(u32, std::collections::BTreeSet<String>)> = Vec::new();
     for format in [Format::Markdown, Format::Json] {
         let least = declared_need(&run(repo, shape, format, Some(1)), format)
             .unwrap_or_else(|| panic!("{} {format:?}: one token is below any answer", shape.name));
@@ -438,11 +439,45 @@ fn check(shape: &Shape) {
                 );
             }
             match format {
-                Format::Json => check_json(shape, &whole, &schema, &text, &at),
+                Format::Json => {
+                    check_json(shape, &whole, &schema, &text, &at);
+                    listed.push((cap, listed_rows(&text)));
+                }
                 Format::Markdown => check_markdown(shape, &whole, &text, &at),
             }
         }
     }
+    listed.sort_by_key(|(cap, _)| *cap);
+    for pair in listed.windows(2) {
+        let ((smaller, rows), (larger, more)) = (&pair[0], &pair[1]);
+        let missing: Vec<&String> = rows.difference(more).collect();
+        assert!(
+            missing.is_empty(),
+            "{}: budget {larger} dropped what budget {smaller} listed: {missing:?}",
+            shape.name
+        );
+    }
+}
+
+/// Every listed definition and every caller listed under one: a larger budget
+/// lists a superset of these, since the answer is a prefix of one fixed order.
+fn listed_rows(text: &str) -> std::collections::BTreeSet<String> {
+    let doc: Value = serde_json::from_str(text).expect("impact JSON");
+    let mut out = std::collections::BTreeSet::new();
+    for changed in rows(&doc["changed"])
+        .iter()
+        .filter(|c| c["kind"] != "omitted")
+    {
+        let owner = format!("{}::{}", changed["path"], changed["symbol"]);
+        out.insert(owner.clone());
+        for caller in rows(&changed["callers"]) {
+            out.insert(format!(
+                "{owner} <- {} {}",
+                caller["path"], caller["symbol"]
+            ));
+        }
+    }
+    out
 }
 
 /// Forty changed classes with three callers each: at a tight budget nothing

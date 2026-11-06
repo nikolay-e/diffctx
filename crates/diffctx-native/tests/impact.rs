@@ -3247,9 +3247,16 @@ fn a_code_change_without_a_parse_is_not_analysed_not_an_all_clear() {
             )
         })
         .collect();
+    // `tools/run.py` is parsed whole, and its changed top-level statement holds no
+    // definition: what it changes is not traced, which the answer says. A file the
+    // run did not analyse whole has its own reason and is never listed twice.
     assert_eq!(
         unanalysed,
         vec![
+            (
+                "tools/run.py".to_string(),
+                "outside_definitions".to_string()
+            ),
             ("num/solver.f90".to_string(), "no_grammar".to_string()),
             ("tools/broken.py".to_string(), "parse_failed".to_string()),
         ],
@@ -4200,6 +4207,167 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
     );
 }
 
+/// R11: a class that lost its constructor is reached through what a constructor
+/// reaches: its instantiations and the `super()` call of the constructor a
+/// subclass overrides. A signature that names the class and a subclass that
+/// only extends it are uses of the class the removal leaves alone.
+#[test]
+fn a_class_that_lost_its_constructor_lists_what_builds_and_overrides_it() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def __init__(self, request):\n        self.request = request\n\n    def decode(self, data):\n        return data\n",
+    );
+    write(
+        repo,
+        "gzip_dec.py",
+        "from dec import Decoder\n\n\nclass Gzip(Decoder):\n    def __init__(self, request):\n        super().__init__(request)\n\n    def flush(self):\n        return b\"\"\n",
+    );
+    write(
+        repo,
+        "make.py",
+        "from dec import Decoder\n\n\ndef build(request):\n    return Decoder(request)\n",
+    );
+    write(
+        repo,
+        "plain_dec.py",
+        "from dec import Decoder\n\n\nclass Plain(Decoder):\n    def flush(self):\n        return b\"\"\n",
+    );
+    write(
+        repo,
+        "pick.py",
+        "from dec import Decoder\n\n\ndef pick(items: list[Decoder]):\n    return items[0]\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "dec.py",
+        "class Decoder:\n    def decode(self, data):\n        return data\n",
+    );
+    commit_all(repo, "drop the constructor");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let mut paths: Vec<&str> = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .filter(|c| {
+            (c["symbol"] == "Decoder" && c["kind"] == "class")
+                || (c["symbol"] == "__init__" && c["kind"] == "removed")
+        })
+        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .map(|c| c["path"].as_str().unwrap())
+        .collect();
+    paths.sort_unstable();
+    paths.dedup();
+    assert_eq!(paths, ["gzip_dec.py", "make.py"], "{doc}");
+}
+
+/// R11: an edited constructor reaches the class's instantiations, not the other
+/// uses of the class: a signature that names it, an `isinstance` check and the
+/// class handed on as a value stay with the class, which the edit leaves alone.
+#[test]
+fn an_edited_constructor_reaches_instantiations_not_other_uses_of_its_class() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(
+        repo,
+        "box.py",
+        "class Box:\n    def __init__(self, size):\n        self.size = size\n",
+    );
+    write(
+        repo,
+        "make.py",
+        "from box import Box\n\n\ndef make(size):\n    return Box(size)\n",
+    );
+    write(
+        repo,
+        "describe.py",
+        "from box import Box\n\n\ndef describe(box: Box):\n    return box\n",
+    );
+    write(
+        repo,
+        "check.py",
+        "from box import Box\n\n\ndef is_box(obj):\n    return isinstance(obj, Box)\n",
+    );
+    write(
+        repo,
+        "pass_on.py",
+        "from box import Box\n\n\ndef factory():\n    return map(Box, [1, 2])\n",
+    );
+    commit_all(repo, "base");
+    write(
+        repo,
+        "box.py",
+        "class Box:\n    def __init__(self, size):\n        self.size = int(size)\n",
+    );
+    commit_all(repo, "size is an int");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let mut paths: Vec<&str> = doc["changed"]
+        .as_array()
+        .expect("changed")
+        .iter()
+        .filter(|c| c["symbol"] == "Box" && c["kind"] == "class")
+        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .map(|c| c["path"].as_str().unwrap())
+        .collect();
+    paths.sort_unstable();
+    assert_eq!(paths, ["make.py"], "{doc}");
+}
+
+/// #456: prose and comments the same change wrote about a deletion are its
+/// record of it; a mention outside the change, or a code line it wrote, is
+/// still a stale reference.
+#[test]
+fn the_changes_own_record_of_a_deletion_is_no_stale_reference() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "plugin/constraints.txt", "x==1\n");
+    write(repo, "CHANGELOG.md", "# Changes\n");
+    write(repo, "OUTSIDE.md", "Pin with plugin/constraints.txt.\n");
+    write(
+        repo,
+        "tests/test_pub.py",
+        "def test_pub():\n    assert True\n",
+    );
+    write(repo, "tools/load.py", "def load():\n    return 1\n");
+    commit_all(repo, "base");
+    std::fs::remove_file(repo.join("plugin/constraints.txt")).unwrap();
+    write(
+        repo,
+        "CHANGELOG.md",
+        "# Changes\n\n- `plugin/constraints.txt` is gone.\n",
+    );
+    write(
+        repo,
+        "tests/test_pub.py",
+        "# plugin/constraints.txt was the launcher lock\ndef test_pub():\n    assert True\n",
+    );
+    write(
+        repo,
+        "tools/load.py",
+        "def load():\n    return open(\"plugin/constraints.txt\").read()\n",
+    );
+    commit_all(repo, "drop the constraints");
+    let stale: Vec<String> = impact(repo, "HEAD~1..HEAD")["stale_references"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| r["path"].as_str().unwrap().to_string())
+        .collect();
+    assert!(stale.contains(&"OUTSIDE.md".to_string()), "{stale:?}");
+    assert!(stale.contains(&"tools/load.py".to_string()), "{stale:?}");
+    assert!(!stale.contains(&"CHANGELOG.md".to_string()), "{stale:?}");
+    assert!(
+        !stale.contains(&"tests/test_pub.py".to_string()),
+        "{stale:?}"
+    );
+}
+
 fn engine_version(version: usize) -> String {
     let helpers: String = (0..5)
         .map(|i| format!("def helper_{i}(x):\n    return x + {}\n\n\n", i * version))
@@ -4285,99 +4453,6 @@ fn an_answer_at_a_tight_budget_sheds_its_names_to_fit() {
         let doc: serde_json::Value = serde_json::from_str(&text).expect("impact JSON");
         assert_eq!(doc["untested_definitions"], 5, "{budget}: {doc:#}");
     }
-}
-
-/// A class that lost its constructor is changed like one whose constructor was
-/// edited: its subclasses and the signatures naming it are listed, and the
-/// removed `__init__` row alone says nothing about them.
-#[test]
-fn a_class_that_lost_its_constructor_lists_what_extends_and_names_it() {
-    let tmp = TempDir::new().expect("tempdir");
-    let repo = tmp.path();
-    init_repo(repo);
-    write(
-        repo,
-        "dec.py",
-        "class Decoder:\n    def __init__(self, request):\n        self.request = request\n\n    def decode(self, data):\n        return data\n",
-    );
-    write(
-        repo,
-        "gzip_dec.py",
-        "from dec import Decoder\n\n\nclass Gzip(Decoder):\n    def flush(self):\n        return b\"\"\n",
-    );
-    write(
-        repo,
-        "pick.py",
-        "from dec import Decoder\n\n\ndef pick(items: list[Decoder]):\n    return items[0]\n",
-    );
-    commit_all(repo, "base");
-    write(
-        repo,
-        "dec.py",
-        "class Decoder:\n    def decode(self, data):\n        return data\n",
-    );
-    commit_all(repo, "drop the constructor");
-    let doc = impact(repo, "HEAD~1..HEAD");
-    let mut paths: Vec<&str> = doc["changed"]
-        .as_array()
-        .expect("changed")
-        .iter()
-        .filter(|c| c["symbol"] == "Decoder" && c["kind"] == "class")
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
-        .map(|c| c["path"].as_str().unwrap())
-        .collect();
-    paths.sort_unstable();
-    assert_eq!(paths, ["gzip_dec.py", "pick.py"], "{doc}");
-}
-
-/// #456: prose and comments the same change wrote about a deletion are its
-/// record of it; a mention outside the change, or a code line it wrote, is
-/// still a stale reference.
-#[test]
-fn the_changes_own_record_of_a_deletion_is_no_stale_reference() {
-    let tmp = TempDir::new().expect("tempdir");
-    let repo = tmp.path();
-    init_repo(repo);
-    write(repo, "plugin/constraints.txt", "x==1\n");
-    write(repo, "CHANGELOG.md", "# Changes\n");
-    write(repo, "OUTSIDE.md", "Pin with plugin/constraints.txt.\n");
-    write(
-        repo,
-        "tests/test_pub.py",
-        "def test_pub():\n    assert True\n",
-    );
-    write(repo, "tools/load.py", "def load():\n    return 1\n");
-    commit_all(repo, "base");
-    std::fs::remove_file(repo.join("plugin/constraints.txt")).unwrap();
-    write(
-        repo,
-        "CHANGELOG.md",
-        "# Changes\n\n- `plugin/constraints.txt` is gone.\n",
-    );
-    write(
-        repo,
-        "tests/test_pub.py",
-        "# plugin/constraints.txt was the launcher lock\ndef test_pub():\n    assert True\n",
-    );
-    write(
-        repo,
-        "tools/load.py",
-        "def load():\n    return open(\"plugin/constraints.txt\").read()\n",
-    );
-    commit_all(repo, "drop the constraints");
-    let stale: Vec<String> = impact(repo, "HEAD~1..HEAD")["stale_references"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|r| r["path"].as_str().unwrap().to_string())
-        .collect();
-    assert!(stale.contains(&"OUTSIDE.md".to_string()), "{stale:?}");
-    assert!(stale.contains(&"tools/load.py".to_string()), "{stale:?}");
-    assert!(!stale.contains(&"CHANGELOG.md".to_string()), "{stale:?}");
-    assert!(
-        !stale.contains(&"tests/test_pub.py".to_string()),
-        "{stale:?}"
-    );
 }
 
 /// #440: deleting a module of 30 000 definitions searches for every name
@@ -4972,6 +5047,103 @@ fn a_stale_reference_outlives_routine_callers_under_the_budget() {
         text.contains("weaker caller(s) omitted") || text.contains("caller(s) are not listed)"),
         "{text}"
     );
+}
+
+/// The cap deals rows out round-robin over (definition, relation kind): a
+/// constant read in many files and a function called from as many keep rows in
+/// proportion, neither kind is shed before the other, and a larger budget
+/// lists a superset of a smaller one's rows.
+#[test]
+fn a_cap_deals_rows_round_robin_and_a_larger_budget_lists_a_superset() {
+    const FILES: usize = 24;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "pkg/__init__.py", "");
+    write(repo, "pkg/settings.py", "MAX_RETRIES = 3\n");
+    write(repo, "pkg/calc.py", "def compute(x):\n    return x\n");
+    for i in 0..FILES {
+        write(
+            repo,
+            &format!("pkg/readers/r{i:02}.py"),
+            &format!(
+                "from pkg.settings import MAX_RETRIES\n\n\ndef read_{i:02}():\n    return MAX_RETRIES + {i}\n"
+            ),
+        );
+        write(
+            repo,
+            &format!("pkg/callers/c{i:02}.py"),
+            &format!(
+                "from pkg.calc import compute\n\n\ndef call_{i:02}():\n    return compute({i})\n"
+            ),
+        );
+    }
+    commit_all(repo, "base");
+    write(repo, "pkg/settings.py", "MAX_RETRIES = 5\n");
+    write(repo, "pkg/calc.py", "def compute(x):\n    return x + 1\n");
+    commit_all(repo, "change");
+    let answer = |budget: u32| {
+        let out = diffctx()
+            .current_dir(repo)
+            .args([
+                "--diff",
+                "HEAD~1..HEAD",
+                "--mode",
+                "impact",
+                "-q",
+                "--budget",
+                &budget.to_string(),
+            ])
+            .output()
+            .expect("run diffctx");
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).expect("utf8")
+    };
+    let rows = |text: &str, symbol: &str| -> Vec<String> {
+        let doc: serde_json::Value = serde_json::from_str(text).expect("impact JSON");
+        doc["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["symbol"] == symbol)
+            .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+            .map(|k| k["path"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    let whole = answer(1_000_000);
+    for symbol in ["MAX_RETRIES", "compute"] {
+        assert_eq!(rows(&whole, symbol).len(), FILES, "{symbol}: {whole}");
+    }
+    let half = _diffctx::tokenizer::count_tokens(&whole) / 2;
+    let mut shown: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    for budget in [half / 2, half, half + half / 2, 2 * half] {
+        let text = answer(budget);
+        let (reads, calls) = (rows(&text, "MAX_RETRIES"), rows(&text, "compute"));
+        if let Some((earlier_reads, earlier_calls)) = shown.last() {
+            assert!(
+                earlier_reads.iter().all(|r| reads.contains(r))
+                    && earlier_calls.iter().all(|c| calls.contains(c)),
+                "{budget}: a larger budget dropped a row: {text}"
+            );
+        }
+        if budget == half {
+            assert!(
+                reads.len() >= FILES / 4 && calls.len() >= FILES / 4,
+                "{budget}: both kinds keep rows: {text}"
+            );
+            assert!(
+                reads.len() < FILES && calls.len() < FILES,
+                "{budget}: half the rows must overflow the cap: {text}"
+            );
+            assert!(
+                reads.len().abs_diff(calls.len()) <= 2,
+                "{budget}: {} reads against {} calls: {text}",
+                reads.len(),
+                calls.len()
+            );
+        }
+        shown.push((reads, calls));
+    }
 }
 
 /// One config per host, `lines` addresses long, all spelled with `noun`.

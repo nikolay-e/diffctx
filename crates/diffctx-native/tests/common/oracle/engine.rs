@@ -95,7 +95,7 @@ pub fn run(case: &Case, name: &str) -> Result<Answer, String> {
             dump(name, "json", &output.stdout);
             let doc: Value = serde_json::from_slice(&output.stdout)
                 .map_err(|e| format!("the answer is not JSON: {e}"))?;
-            extract(&doc)
+            extract(&doc)?
         }
         None => Answer {
             empty: true,
@@ -369,10 +369,26 @@ fn path_relation(from: &Value, target: &str, resolution: Resolution) -> Relation
         resolution,
         sites: u32::try_from(count(from, "line")).into_iter().collect(),
         loose_kind: false,
+        kind_stated: false,
     }
 }
 
-pub fn extract(doc: &Value) -> Answer {
+/// The kind a caller row states, when it does: a precise cell's rows carry
+/// one, and a name that is no schema v1 kind is an engine defect the harness
+/// cannot evaluate around.
+fn stated_kind(caller: &Value) -> Result<Option<Kind>, String> {
+    match text(caller, "kind") {
+        None => Ok(None),
+        Some(name) => Kind::parse(name).map(Some).ok_or_else(|| {
+            format!(
+                "a caller row of {} states the kind `{name}`, which is no relation kind",
+                text(caller, "path").unwrap_or("?")
+            )
+        }),
+    }
+}
+
+pub fn extract(doc: &Value) -> Result<Answer, String> {
     let mut answer = Answer {
         empty: doc.get("empty").and_then(Value::as_bool).unwrap_or(false),
         truncated: count(doc, "truncated"),
@@ -412,13 +428,15 @@ pub fn extract(doc: &Value) -> Answer {
                 continue;
             }
             let from = node_of(caller);
+            let stated = stated_kind(caller)?;
             answer.relations.push(Relation {
                 from: from.clone(),
                 to: definition.clone(),
-                kind: kind_of(text(caller, "relation").unwrap_or("call")),
+                kind: stated.unwrap_or_else(|| kind_of(text(caller, "relation").unwrap_or("call"))),
                 resolution: resolution_of(text(caller, "evidence").unwrap_or("name")),
                 sites: lines_of(caller),
                 loose_kind: false,
+                kind_stated: stated.is_some(),
             });
             if let Some(test) = text(caller, "tested_by") {
                 answer.relations.push(Relation {
@@ -428,6 +446,7 @@ pub fn extract(doc: &Value) -> Answer {
                     resolution: Resolution::Resolved,
                     sites: Vec::new(),
                     loose_kind: false,
+                    kind_stated: false,
                 });
             }
         }
@@ -450,6 +469,7 @@ pub fn extract(doc: &Value) -> Answer {
                 resolution: Resolution::Unresolved,
                 sites: lines_in(file),
                 loose_kind: false,
+                kind_stated: false,
             });
         }
         if !missed.is_empty() {
@@ -506,6 +526,7 @@ pub fn extract(doc: &Value) -> Answer {
                 resolution: Resolution::Candidate,
                 sites: u32::try_from(count(row, "line")).into_iter().collect(),
                 loose_kind: false,
+                kind_stated: false,
             });
         }
     }
@@ -539,8 +560,9 @@ pub fn extract(doc: &Value) -> Answer {
                 resolution: Resolution::Resolved,
                 sites: u32::try_from(count(read, "line")).into_iter().collect(),
                 loose_kind: false,
+                kind_stated: false,
             });
         }
     }
-    answer
+    Ok(answer)
 }

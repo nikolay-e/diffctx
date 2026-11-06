@@ -97,6 +97,10 @@ fn grammar(syntax: Syntax) -> Option<Grammar> {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "past the end the tree-sitter read callback gives no bytes"
+)]
 fn parse(syntax: Syntax, source: &str, budget: &RunBudget) -> Parsed {
     let Some(grammar) = grammar(syntax) else {
         return Parsed::Missing;
@@ -162,6 +166,10 @@ fn spelled_without_bare_ampersands(
 
 /// `source` with each `&` that is neither `&&`, `&=` nor a character reference
 /// (`&amp;`, `&#38;`) spelled `|`, at the same byte; `None` when there is none.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the only edit swaps one ASCII byte for another, so the text stays UTF-8 and the conversion cannot fail"
+)]
 fn without_bare_ampersands(source: &str) -> Option<String> {
     let bytes = source.as_bytes();
     let reference = |rest: &[u8]| {
@@ -1381,7 +1389,12 @@ impl<'t> Declarer<'t> {
             body: body.map_or(Body::Absent, Body::Members),
             owner: true,
         });
-        for member in body.map(kids).unwrap_or_default() {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "an enum without a body has no members"
+        )]
+        let members = body.map(kids).unwrap_or_default();
+        for member in members {
             let (name_node, value) = match member.kind() {
                 "enum_assignment" => match field(member, "name") {
                     Some(name_node) => (name_node, field(member, "value")),
@@ -2746,6 +2759,10 @@ impl<'t> Walker<'t> {
         let Some(first) = written.next() else {
             return;
         };
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "a glob whose directory is not a plain string names no pattern"
+        )]
         let patterns: Vec<String> = if context {
             let recursive = written.next().is_none_or(|flag| self.t(flag) != "false");
             string_value(self.src, first)
@@ -3072,6 +3089,10 @@ impl<'t> Walker<'t> {
             .arg
             .filter(|_| !owner && !declaration && !signature_only);
         if let Some(id) = passed {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "an argument whose call recorded no callee path passes to a callee of no known name"
+            )]
             let callee = self.callees.get(id as usize).cloned().unwrap_or_default();
             let parent = Box::new(self.current());
             self.scopes.push(Scope::Callback {

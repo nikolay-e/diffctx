@@ -15,7 +15,13 @@
 //!
 //! The layer reads a repository only through `crate::snapshot` and `crate::facts`
 //! (`tests/resolve_isolation.rs` holds it).
+//!
+//! An empty value is never how a failed read or a lost fact looks here: the
+//! methods that make one (`Result::ok`, `unwrap_or_default`) and a direct read of
+//! the disk or of a child process are denied in this module. A justified use
+//! carries `#[allow(clippy::disallowed_methods, reason = "...")]`.
 
+#![deny(clippy::disallowed_methods)]
 #![allow(clippy::cognitive_complexity, clippy::significant_drop_tightening)]
 
 mod index;

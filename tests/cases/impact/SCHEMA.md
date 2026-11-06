@@ -107,7 +107,9 @@ Everything is optional; an absent field asserts nothing.
 ### Relations
 
 - `kind`: `calls`, `reads`, `writes`, `imports`, `reexports`, `overrides`,
-  `instantiates`, `passes_as_value`, `configures` (from the configurer to the
+  `instantiates`, `passes_as_value`, `type_use` (a name written where a type is
+  expected: an annotation, `typeof` in a type, a type assertion, a type
+  argument; never `reads`), `configures` (from the configurer to the
   configured), `executes`, `references_path`, `tests_reach` (test function to
   its direct callee; transitive reach is asserted with `tested_by` or
   `not_untested`).

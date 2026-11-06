@@ -54,6 +54,10 @@ pub fn grammar_digest(language: Language) -> u64 {
             hasher.token(&(grammar.parse_state_count() as u64).to_le_bytes());
             hasher.token(&(grammar.field_count() as u64).to_le_bytes());
             for id in 0..grammar.node_kind_count() {
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "node kind ids are u16 in the grammar ABI, so the conversion cannot fail; an unnamed kind hashes as the empty name"
+                )]
                 let kind = u16::try_from(id)
                     .ok()
                     .and_then(|id| grammar.node_kind_for_id(id))

@@ -3307,6 +3307,73 @@ fn a_file_written_before_the_call_ran_is_not_its_own() {
     assert_inventory_only(&h);
 }
 
+/// A call that rewrites a file somebody already modified is told apart from
+/// one that creates the change: git's record holds no earlier copy, so the
+/// review covers the file's whole difference from `HEAD` and says that the
+/// file was already modified before the call changed it. The rewrite has
+/// another size, so no clock decides it.
+#[test]
+fn a_file_already_modified_before_the_call_is_named_so() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(&main, bash_call("c1", std::time::SystemTime::now(), None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1.19/1.2/ shop/pricing.py && git diff",
+        || {
+            write(
+                repo,
+                "shop/pricing.py",
+                "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
+            );
+        },
+    );
+    assert!(
+        h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        h.stdout
+            .contains("already modified before this call changed them: shop/pricing.py"),
+        "{}",
+        h.stdout
+    );
+}
+
+/// A file a call adds to a directory git lists whole (nothing of it is
+/// tracked) is the call's, whichever file of the directory the inspection
+/// names.
+#[test]
+fn a_file_the_call_adds_to_an_untracked_directory_is_its_own() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(&main, bash_call("c1", std::time::SystemTime::now(), None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1/10/ shop/inventory.py && echo notes > shop/extra/notes.txt && git diff",
+        || {
+            add_unrelated_edit(repo);
+            write(repo, "shop/extra/notes.txt", "notes\n");
+        },
+    );
+    assert_inventory_only(&h);
+}
+
 /// #668: the old paths of a renamed directory are as much the session's
 /// write as the new ones.
 #[test]
