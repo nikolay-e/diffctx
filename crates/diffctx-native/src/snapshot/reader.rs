@@ -498,6 +498,10 @@ impl SnapshotReader {
     /// recorded: a file that vanished, was replaced or was rewritten since is
     /// a named loss (`Loss::SnapshotChanged`), never its new content. What
     /// was read once is answered again as read.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the working-tree door: the one place that reads a tracked file from the disk"
+    )]
     fn read_disk(&self, row: &Row) -> Result<Option<Bytes>> {
         let path = &row.path;
         let known = lock(&self.inner.remembered)?
@@ -756,6 +760,10 @@ fn apply_floor(rows: &mut [Row]) {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the working-tree door: the one place that stats a tracked file"
+)]
 fn disk_meta(at: &Path) -> Result<Option<(Mode, Stamp)>> {
     let meta = match std::fs::symlink_metadata(at) {
         Ok(meta) => meta,
@@ -799,6 +807,10 @@ fn is_executable(_meta: &std::fs::Metadata) -> bool {
     false
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the working-tree door: the one place that reads a link from the disk"
+)]
 fn link_text(at: &Path) -> Result<Vec<u8>> {
     let target = std::fs::read_link(at)?;
     #[cfg(unix)]
@@ -842,6 +854,10 @@ fn join_inside(parent: &str, text: &str) -> Option<RepoPath> {
 
 /// The blob ids `git add` would store for `paths` (repo-relative), in order:
 /// the repository's filters (line endings, LFS) applied, nothing written.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "feeds git the list of paths it hashes through a file it just wrote"
+)]
 fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Oid>> {
     let mut oids: Vec<Option<Oid>> = vec![None; paths.len()];
     // `--stdin-paths` is line-delimited: a name holding a newline would split.

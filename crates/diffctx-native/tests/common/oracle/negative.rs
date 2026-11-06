@@ -27,7 +27,7 @@ struct Probe {
 fn failures(case_yaml: &str, answer: &Value) -> Result<Vec<String>, String> {
     let case = case::parse(case_yaml, "negative", Mode::Impact)?;
     let compiled = case.expect.compile()?;
-    Ok(judge("negative", &case, &compiled, "python", &extract(answer)).0)
+    Ok(judge("negative", &case, &compiled, "python", &extract(answer)?).0)
 }
 
 fn run(probes: Vec<Probe>) -> Result<(), Failed> {
@@ -97,6 +97,35 @@ repo:
 expect:
   relations:
     - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: calls, site: 5}
+";
+
+const CHARGE_READS_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: reads, site: 5}
+";
+
+const CHARGE_ANNOTATES_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: type_use, site: 5}
+";
+
+const CHARGE_IS_A_CALLER: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  callers: {total: ['shop/checkout.py::charge']}
 ";
 
 const SCHEMA_ROW_IS_REMOVED: &str = r"
@@ -198,11 +227,12 @@ fn a3_a_name_match_is_no_caller() -> Result<(), Failed> {
     }])
 }
 
-/// A4: code kinds are compared on (from, to, resolution) while no cell is precise.
+/// A4: while an answer states no kind, code kinds are compared on (from, to,
+/// resolution) alone.
 fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
     run(vec![
         Probe {
-            what: "a read stands for the expected call while no cell is precise",
+            what: "a read stands for the expected call while the answer states no kind",
             case: CHARGE_CALLS_TOTAL,
             answer: answer(&json!([charge("resolved", "reference", None)])),
             verdict: Verdict::Passes,
@@ -232,6 +262,67 @@ fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
             verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
         },
     ])
+}
+
+/// A6: a row that states its kind (a precise cell's) is compared on it, and on
+/// its site; one that states none is not.
+fn a6_a_stated_kind_is_compared() -> Result<(), Failed> {
+    let stated = |kind: &str, sites: &[u32]| {
+        let mut row = charge("resolved", "call", None);
+        row["kind"] = json!(kind);
+        row["sites"] = json!(sites);
+        row
+    };
+    run(vec![
+        Probe {
+            what: "the stated kind is the expected one",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("calls", &[5])])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the answer states a read where a call is expected",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("reads", &[5])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "the stated kind is right and the site is not",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([stated("calls", &[9])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+        Probe {
+            what: "the answer states a type use where a read is expected",
+            case: CHARGE_READS_TOTAL,
+            answer: answer(&json!([stated("type_use", &[5])])),
+            verdict: Verdict::Fails("missing shop/checkout.py::charge -reads->"),
+        },
+        Probe {
+            what: "the answer states a type use and a type use is expected",
+            case: CHARGE_ANNOTATES_TOTAL,
+            answer: answer(&json!([stated("type_use", &[5])])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "a convenience field names no kind, so any stated code kind satisfies it",
+            case: CHARGE_IS_A_CALLER,
+            answer: answer(&json!([stated("reads", &[5])])),
+            verdict: Verdict::Passes,
+        },
+    ])
+}
+
+/// A stated kind no schema names is an answer the harness cannot evaluate, not a red case.
+fn a_kind_no_schema_names_cannot_be_evaluated() -> Result<(), Failed> {
+    let mut row = charge("resolved", "call", None);
+    row["kind"] = json!("invokes");
+    match failures(CHARGE_CALLS_TOTAL, &answer(&json!([row]))) {
+        Err(why) if why.contains("no relation kind") => Ok(()),
+        other => Err(Failed::from(format!(
+            "a row stating `invokes` gave {other:?}, not an evaluation error"
+        ))),
+    }
 }
 
 /// A5: `collection_reads` yield `reads` from the reading file to the changed
@@ -273,7 +364,7 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
 }
 
 pub fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 6] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 8] = [
         (
             "a1_test_file_stands_for_its_function",
             a1_test_file_stands_for_its_function,
@@ -290,6 +381,11 @@ pub fn trials() -> Vec<Trial> {
         (
             "a5_a_collection_read_reaches_only_its_collection",
             a5_a_collection_read_reaches_only_its_collection,
+        ),
+        ("a6_a_stated_kind_is_compared", a6_a_stated_kind_is_compared),
+        (
+            "a_kind_no_schema_names_cannot_be_evaluated",
+            a_kind_no_schema_names_cannot_be_evaluated,
         ),
         (
             "a_zero_beside_not_determined_is_a_claim",

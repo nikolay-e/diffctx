@@ -1,0 +1,35 @@
+name: py_changed_init_is_not_reached_by_annotations
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, fcn, init-reach, decoy]
+repo:
+  initial_files:
+    shapes/__init__.py: ""
+    shapes/box.py: |
+      class Box:
+          def __init__(self, size):
+              self.size = size
+    shapes/make.py: |
+      from shapes.box import Box
+
+
+      def make(size):
+          return Box(size)
+    shapes/describe.py: |
+      from shapes.box import Box
+
+
+      def describe(box: Box):
+          return box
+  changed_files:
+    shapes/box.py: |
+      class Box:
+          def __init__(self, size):
+              self.size = int(size)
+  commit_message: "box: size is an int"
+expect:
+  relations:
+    - {from: "shapes/make.py::make", to: "shapes/box.py::Box", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    shapes/box.py::Box: [shapes/describe.py]

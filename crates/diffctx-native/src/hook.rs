@@ -123,6 +123,10 @@ pub struct Owned {
     pub files: Vec<String>,
     /// Changed files no write of this session touched: read as committed.
     pub others: Vec<String>,
+    /// Of `files`, those only a call that found them already modified is
+    /// seen to have changed: what differs from `HEAD` there is more than that
+    /// call did.
+    pub prior: Vec<String>,
     /// Bash calls of the session the hook could not bracket: what one of
     /// them wrote cannot be told from another session's edit.
     pub unbracketed: usize,
@@ -299,6 +303,9 @@ struct Before {
     /// the call (a cursor of the snapshot layer).
     #[serde(default)]
     head_cursor: u64,
+    /// Where that reflog is, so a later event can see it grow without asking git.
+    #[serde(default)]
+    head_log: Option<PathBuf>,
     /// The repository's git directory, which outlives a work tree the line
     /// removes after pushing from it (#642).
     #[serde(default)]
@@ -319,6 +326,18 @@ struct Tracked {
 }
 
 impl Before {
+    /// The repository the record was taken in, without asking git again
+    /// where it lives.
+    fn repo_at(&self, work_tree: &Path) -> Result<snap::RepoRoot, Silence> {
+        match &self.common {
+            Some(common_dir) => Ok(snap::RepoRoot {
+                work_tree: work_tree.to_path_buf(),
+                common_dir: common_dir.clone(),
+            }),
+            None => snap::open(work_tree).map_err(|_| "error:git"),
+        }
+    }
+
     /// Where the record can still be read: its work tree, or once the line
     /// removed it, the repository's main one, which holds the same remote refs.
     fn live_root(&self) -> Option<PathBuf> {
@@ -342,12 +361,52 @@ struct Record {
     at: u64,
 }
 
+/// How many bytes a reflog holds: how far it had run.
+fn log_len(path: &Path) -> u64 {
+    std::fs::metadata(path).map_or(0, |m| m.len())
+}
+
+/// The git directory of a checked-out work tree: its `.git`, or the directory
+/// a linked work tree's `.git` file names.
+fn git_dir_of(work_tree: &Path) -> Option<PathBuf> {
+    let dot_git = work_tree.join(".git");
+    if dot_git.is_dir() {
+        return Some(dot_git);
+    }
+    let text = std::fs::read_to_string(&dot_git).ok()?;
+    let dir = Path::new(text.strip_prefix("gitdir:")?.trim());
+    Some(if dir.is_absolute() {
+        dir.to_path_buf()
+    } else {
+        work_tree.join(dir)
+    })
+}
+
+/// The work tree's own `HEAD` reflog, the record of every move it made. Read
+/// off its `.git`: one git call per work tree is what made every Bash call
+/// pay for each linked work tree of a repository.
+fn head_log(work_tree: &Path) -> Option<PathBuf> {
+    git_dir_of(work_tree)
+        .map(|dir| dir.join("logs").join("HEAD"))
+        .or_else(|| {
+            git_out(
+                work_tree,
+                &[
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "logs/HEAD",
+                ],
+            )
+            .map(PathBuf::from)
+        })
+}
+
 /// Where a repository stands: its refs, and how far the reflogs that tell a
 /// commit from a checkout from a push had run. Read through the snapshot
 /// layer, so a failed git call is a named failure and never an empty ref list.
 fn refs_of(repo: &snap::RepoRoot) -> Result<Before, Silence> {
     let refs = snap::refs(repo).map_err(|_| "error:git")?;
-    let log_len = |path: &Path| std::fs::metadata(path).map_or(0, |m| m.len());
     let tracking = refs
         .tracking
         .iter()
@@ -362,28 +421,59 @@ fn refs_of(repo: &snap::RepoRoot) -> Result<Before, Silence> {
             }
         })
         .collect();
-    // The work tree's own `HEAD` reflog, the record of every move it made.
-    let log = git_out(
-        &repo.work_tree,
-        &[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "logs/HEAD",
-        ],
-    )
-    .ok_or("error:git")?;
+    let log = head_log(&repo.work_tree).ok_or("error:git")?;
     Ok(Before {
         root: repo.work_tree.clone(),
         head: refs.head.map(|oid| oid.to_string()).unwrap_or_default(),
         tracking,
-        head_cursor: log_len(Path::new(&log)),
+        head_cursor: log_len(&log),
+        head_log: Some(log),
         common: Some(repo.common_dir.clone()),
     })
 }
 
+/// The checked-out work trees of a repository, this one included, with the
+/// commit each `HEAD` is at (empty on an unborn branch): one `git worktree
+/// list` where opening each tree asked git twice per tree. A bare or pruned
+/// entry has no work tree and is left out.
+fn work_trees(home: &snap::RepoRoot) -> Result<Vec<(PathBuf, String)>, Silence> {
+    let listing =
+        crate::git::run_git_z(&home.work_tree, &["worktree", "list", "--porcelain", "-z"])
+            .map_err(|_| "error:git")?;
+    let mut trees: Vec<(PathBuf, String, bool)> = Vec::new();
+    for line in &listing {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            trees.push((PathBuf::from(path), String::new(), true));
+        } else if let Some(tree) = trees.last_mut() {
+            if let Some(head) = line.strip_prefix("HEAD ") {
+                tree.1 = head.to_string();
+            } else if line == "bare" || line.starts_with("prunable") {
+                tree.2 = false;
+            }
+        }
+    }
+    Ok(trees
+        .into_iter()
+        .filter(|(_, _, usable)| *usable)
+        .map(|(path, head, _)| {
+            let unborn = head.bytes().all(|b| b == b'0');
+            (canonical(&path), if unborn { String::new() } else { head })
+        })
+        .collect())
+}
+
 /// `HEAD`'s reflog entries since `before`, oldest first.
 fn head_moves(before: &Before, repo: &snap::RepoRoot) -> Result<Vec<snap::ReflogEntry>, Silence> {
+    // A log that has not grown holds no move: nothing to read and no git to
+    // ask where it is.
+    let unmoved = before
+        .head_log
+        .as_deref()
+        .and_then(|log| std::fs::metadata(log).ok())
+        .is_some_and(|m| m.len() == before.head_cursor);
+    if unmoved {
+        return Ok(Vec::new());
+    }
     snap::reflog_since(
         repo,
         &snap::RefName("HEAD".to_string()),
@@ -467,7 +557,7 @@ fn landed(
         return Ok(found);
     };
     let root = live.as_path();
-    let repo = snap::open(root).map_err(|_| "error:git")?;
+    let repo = before.repo_at(root)?;
     // A work tree the line removed leaves its `HEAD` log behind with it.
     let entries = if live == before.root {
         head_moves(before, &repo)
@@ -1353,10 +1443,13 @@ fn prepare_landed(
 }
 
 /// Before any Bash call runs: where the repository it starts in, and each
-/// of that repository's linked work trees, stand. Nothing about what the
-/// call will do is read off its text: git's reflog says it afterwards, and
-/// whatever moved in these repositories during the call is the call's (a
-/// peer committing in the same checkout is indistinguishable from it).
+/// of that repository's linked work trees, stand, and what the call's own
+/// work tree holds by stat. Nothing about what the call will do is read off
+/// its text: git's reflog says it afterwards, and whatever moved in these
+/// repositories during the call is the call's (a peer committing in the same
+/// checkout is indistinguishable from it). Nothing here reads a file's
+/// bytes, and git is asked about refs once for the repository, not once per
+/// work tree.
 fn record_before(
     payload: &serde_json::Value,
     command: &str,
@@ -1372,12 +1465,15 @@ fn record_before(
         Err(snap::SnapshotError::NotARepo(_)) => return Err("not-git"),
         Err(_) => return Err("error:git"),
     };
-    let mut repos = vec![refs_of(&home)?];
-    for tree in snap::worktrees(&home).map_err(|_| "error:git")? {
-        if tree.work_tree != home.work_tree && tree.work_tree.is_dir() {
-            repos.push(refs_of(&tree)?);
-        }
-    }
+    // The stat listing is one git call of its own: it runs beside the refs.
+    let repos = std::thread::scope(|scope| {
+        let stamped = scope.spawn(crate::profile::carry(|| {
+            bracket_before(payload, &home.work_tree);
+        }));
+        let repos = repos_before(&home);
+        let _ = stamped.join();
+        repos
+    })?;
     trace.root = Some(home.work_tree.clone());
     let record = Record {
         repos,
@@ -1389,6 +1485,28 @@ fn record_before(
         &json,
     );
     Ok(())
+}
+
+/// `home` and its linked work trees as the call finds them. The remote-tracking
+/// refs are shared by every work tree, so only `home`'s record holds them; the
+/// others hold where their own `HEAD` stands.
+fn repos_before(home: &snap::RepoRoot) -> Result<Vec<Before>, Silence> {
+    let mut repos = vec![refs_of(home)?];
+    for (work_tree, head) in work_trees(home)? {
+        if work_tree == home.work_tree || !work_tree.is_dir() {
+            continue;
+        }
+        let log = head_log(&work_tree).ok_or("error:git")?;
+        repos.push(Before {
+            root: work_tree,
+            head,
+            tracking: Vec::new(),
+            head_cursor: log_len(&log),
+            head_log: Some(log),
+            common: Some(home.common_dir.clone()),
+        });
+    }
+    Ok(repos)
 }
 
 /// Every repository of `record` that moved, as a range to review each.
@@ -1624,9 +1742,15 @@ fn own_changes(
             "not-this-session"
         });
     }
+    let prior = files
+        .iter()
+        .filter(|p| writes.ledger.prior.contains(*p) && !writes.files.contains(&top.join(p)))
+        .cloned()
+        .collect();
     Ok(Some(Owned {
         files,
         others,
+        prior,
         unbracketed: writes.unbracketed,
     }))
 }
@@ -1665,7 +1789,13 @@ impl Writes {
     /// file only an unbracketed call could have written is nobody's: it is
     /// read as committed and the call is counted (#404).
     fn wrote(&self, root: &Path, rel: &str) -> bool {
-        self.ledger.paths.contains(rel) || self.files.contains(&root.join(rel))
+        self.ledger.paths.contains(rel)
+            || self
+                .ledger
+                .dirs
+                .iter()
+                .any(|dir| rel.starts_with(dir.as_str()))
+            || self.files.contains(&root.join(rel))
     }
 
     /// One transcript entry: an edit tool's path, a Bash call starting, or
@@ -1702,19 +1832,25 @@ impl Writes {
 }
 
 /// What the hook saw each Bash call of a session change in a checkout: its
-/// `PreToolUse` and `PostToolUse` both read the paths that differ from `HEAD`
-/// and what the working tree holds at each, and the call wrote what differs
-/// between them. A transcript's times cannot say it: a call's span also holds
-/// the wait before it ran, a peer's write inside it, a later rewrite moves a
-/// file out of it, and the call being answered has no result yet (#662,
-/// #674, Forgejo #117, #93). A call that could not be bracketed is counted
-/// and named, never guessed at.
+/// `PreToolUse` and `PostToolUse` both stamp the paths that differ from
+/// `HEAD` (size and mtime), and the call changed what differs between them.
+/// A transcript's times cannot say it: a call's span also holds the wait
+/// before it ran, a peer's write inside it, a later rewrite moves a file out
+/// of it, and the call being answered has no result yet (#662, #674,
+/// Forgejo #117, #93). A call that could not be bracketed is counted and
+/// named, never guessed at.
 #[derive(Default)]
 struct Bracketed {
     /// Every call the session bracketed, in any repository.
     calls: rustc_hash::FxHashSet<String>,
-    /// The paths they changed in this checkout, relative to it.
+    /// The paths they changed in this checkout, relative to it. An untracked
+    /// directory is listed whole, with a trailing `/`.
     paths: rustc_hash::FxHashSet<String>,
+    /// Of those, the untracked directories, which name every file below.
+    dirs: Vec<String>,
+    /// The paths only calls that found them already modified changed: what
+    /// differs from `HEAD` there is more than those calls did.
+    prior: rustc_hash::FxHashSet<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -1722,6 +1858,9 @@ struct BracketedCall {
     id: String,
     root: PathBuf,
     paths: Vec<String>,
+    /// Of `paths`, those already modified (or untracked) when the call began.
+    #[serde(default)]
+    dirty: Vec<String>,
 }
 
 /// More dirty paths than this and a call is left to its transcript span: the
@@ -1729,12 +1868,14 @@ struct BracketedCall {
 const MAX_BRACKETED_PATHS: usize = 20_000;
 
 /// Every path the index or working tree holds differently from `HEAD`, with
-/// the identity of what the working tree holds there (0: nothing): the blob
-/// id `git add` would store for a regular file, so a rewrite with the same
-/// bytes, a `touch` or a copy that restores the time changes nothing, and
-/// another process's write to other bytes does (gh#674, fj#117). What has no
-/// blob (a link, a nested repository) keeps its stat identity.
-fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
+/// its stamp: size and mtime (0: nothing there). Nothing is hashed, so a
+/// rewrite of the same bytes counts as a change, and a path git lists is
+/// stamped whatever its kind. An untracked directory is one entry, stamped as
+/// the directory: a file added to it or removed from it moves the stamp, a
+/// file of it rewritten in place does not. Listing every untracked file
+/// instead cost about as much again as the rest of the call's recording on a
+/// work tree with thousands of them.
+fn dirty_stamps(root: &Path) -> Option<FxHashMap<String, u64>> {
     let status = crate::git::run_git_z(
         root,
         &[
@@ -1742,7 +1883,7 @@ fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
             "status",
             "--porcelain",
             "-z",
-            "--untracked-files=all",
+            "--untracked-files=normal",
             "--no-renames",
         ],
     )
@@ -1750,48 +1891,29 @@ fn dirty_stats(root: &Path) -> Option<FxHashMap<String, u64>> {
     if status.len() > MAX_BRACKETED_PATHS {
         return None;
     }
-    let repo = snap::open(root).ok()?;
-    let mut stats: FxHashMap<String, u64> = FxHashMap::default();
-    let mut blobs: Vec<(String, snap::RepoPath)> = Vec::new();
-    for entry in &status {
-        let Some(path) = entry.get(3..) else { continue };
-        let at = root.join(path);
-        let regular = std::fs::symlink_metadata(&at).is_ok_and(|m| m.is_file());
-        match snap::RepoPath::new(path) {
-            Ok(repo_path) if regular => blobs.push((path.to_string(), repo_path)),
-            _ => {
-                stats.insert(path.to_string(), stat_identity(&at));
-            }
-        }
-    }
-    let names: Vec<snap::RepoPath> = blobs.iter().map(|(_, p)| p.clone()).collect();
-    let oids = snap::hash_working_paths(&repo, &names).ok()?;
-    for ((path, _), oid) in blobs.into_iter().zip(oids) {
-        stats.insert(path, Fnv::new().feed(oid.as_str().as_bytes()).0 | 1);
-    }
-    Some(stats)
+    Some(
+        status
+            .iter()
+            .filter_map(|entry| entry.get(3..))
+            .map(|path| (path.to_string(), stamp(&root.join(path))))
+            .collect(),
+    )
 }
 
-fn stat_identity(path: &Path) -> u64 {
+fn stamp(path: &Path) -> u64 {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return 0;
     };
-    let nanos = |t: std::io::Result<SystemTime>| {
-        t.ok()
-            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_nanos())
-    };
-    let mut hash = Fnv::new();
-    hash.feed(&meta.len().to_le_bytes())
-        .feed(&nanos(meta.modified()).to_le_bytes());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        hash.feed(&meta.ctime().to_le_bytes())
-            .feed(&meta.ctime_nsec().to_le_bytes())
-            .feed(&meta.ino().to_le_bytes());
-    }
-    hash.0 | 1
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
+    Fnv::new()
+        .feed(&meta.len().to_le_bytes())
+        .feed(&mtime.to_le_bytes())
+        .0
+        | 1
 }
 
 fn bracket_key(session: &str, id: &str) -> String {
@@ -1802,55 +1924,74 @@ fn ledger_path(session: &str) -> Option<PathBuf> {
     marker(&session_key("wrote", Some(session)))
 }
 
-/// The `PreToolUse` of a Bash call leaves what the checkout holds; its
-/// `PostToolUse` adds what differs to the session's ledger. Never an
-/// answer: a call that cannot be bracketed is counted as such.
-fn bracket(event: Event, payload: &serde_json::Value) {
+/// The session and call a Bash event belongs to; a call with no id cannot be
+/// bracketed.
+fn bracket_ids(payload: &serde_json::Value) -> Option<(&str, &str)> {
     if payload["tool_name"].as_str() != Some("Bash") {
-        return;
+        return None;
     }
-    let (Some(session), Some(id)) = (
-        payload["session_id"].as_str(),
-        payload["tool_use_id"].as_str(),
-    ) else {
+    Some((
+        payload["session_id"].as_str()?,
+        payload["tool_use_id"].as_str()?,
+    ))
+}
+
+/// The `PreToolUse` of a Bash call leaves what its checkout holds.
+fn bracket_before(payload: &serde_json::Value, root: &Path) {
+    let _phase = crate::profile::phase("hook.bracket");
+    let Some((session, id)) = bracket_ids(payload) else {
+        return;
+    };
+    if let Some(stamps) = dirty_stamps(root) {
+        if let Ok(json) = serde_json::to_string(&(root, stamps)) {
+            mark_seen_with(&bracket_key(session, id), &json);
+        }
+    }
+}
+
+/// The `PostToolUse` of a Bash call adds what its checkout holds differently
+/// now to the session's ledger: a path whose stamp moved, one that appeared,
+/// and one that left the listing with a stamp moved (restored, deleted; not
+/// one a commit or `git add` merely stopped listing). Never an answer: a
+/// call that cannot be bracketed is counted as such.
+fn bracket_after(payload: &serde_json::Value) {
+    let Some((session, id)) = bracket_ids(payload) else {
         return;
     };
     let key = bracket_key(session, id);
-    if event == Event::PreToolUse {
-        let _phase = crate::profile::phase("hook.bracket");
-        if let Some(stats) = repo_root(payload, None).and_then(|root| {
-            let stats = dirty_stats(&root)?;
-            serde_json::to_string(&(root, stats)).ok()
-        }) {
-            mark_seen_with(&key, &stats);
-        }
-        return;
-    }
     let Some((root, before)) = seen_headline(&key, SEEN_TTL)
         .and_then(|s| serde_json::from_str::<(PathBuf, FxHashMap<String, u64>)>(&s).ok())
     else {
         return;
     };
     unmark(&key);
-    let Some(after) = dirty_stats(&root) else {
+    let Some(after) = dirty_stamps(&root) else {
         return;
     };
     let mut paths: Vec<String> = after
         .iter()
-        .filter(|(path, id)| before.get(*path) != Some(id))
+        .filter(|(path, now)| before.get(*path) != Some(now))
         .map(|(path, _)| path.clone())
         .chain(
             before
-                .keys()
-                .filter(|path| !after.contains_key(*path))
-                .cloned(),
+                .iter()
+                .filter(|(path, was)| {
+                    !after.contains_key(*path) && stamp(&root.join(path)) != **was
+                })
+                .map(|(path, _)| path.clone()),
         )
         .collect();
     paths.sort();
+    let dirty = paths
+        .iter()
+        .filter(|path| before.contains_key(*path))
+        .cloned()
+        .collect();
     let call = BracketedCall {
         id: id.to_string(),
         root,
         paths,
+        dirty,
     };
     if let (Some(path), Ok(mut line)) = (ledger_path(session), serde_json::to_string(&call)) {
         line.push('\n');
@@ -1877,6 +2018,17 @@ fn bracketed(session: Option<&str>, root: &Path) -> Bracketed {
         .filter_map(|line| serde_json::from_str::<BracketedCall>(line).ok())
     {
         if call.root == root {
+            let dirty: rustc_hash::FxHashSet<&String> = call.dirty.iter().collect();
+            for path in &call.paths {
+                if !dirty.contains(path) {
+                    ledger.prior.remove(path);
+                } else if !ledger.paths.contains(path) {
+                    ledger.prior.insert(path.clone());
+                }
+            }
+            ledger
+                .dirs
+                .extend(call.paths.iter().filter(|p| p.ends_with('/')).cloned());
             ledger.paths.extend(call.paths);
         }
         ledger.calls.insert(call.id);
@@ -2079,11 +2231,34 @@ fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
                     own.unbracketed
                 ));
             }
+            lead.push_str(&already_modified(own));
             return lead;
+        }
+        (Event::PostToolUse { .. }, Trigger::Inspect { own: Some(own), .. })
+            if !own.prior.is_empty() =>
+        {
+            return format!(
+                "diffctx reviewed the pending change you just inspected.{}",
+                already_modified(own)
+            );
         }
         (Event::PostToolUse { .. }, _) => "diffctx reviewed the pending change you just inspected.",
     };
     lead.to_string()
+}
+
+/// What a call changed in a file that was already modified when it began is
+/// not told apart from what was there: git's record holds no earlier copy.
+/// The review covers the file's whole difference from `HEAD`, and says so.
+fn already_modified(own: &Owned) -> String {
+    if own.prior.is_empty() {
+        return String::new();
+    }
+    format!(
+        " {} reviewed file(s) were already modified before this call changed them: {}. For those the review covers their whole difference from HEAD, not only what the call changed.",
+        own.prior.len(),
+        some_of(&own.prior)
+    )
 }
 
 /// The first few of a list of paths, the rest counted.
@@ -2221,6 +2396,15 @@ fn impact_context(
     };
     if output.empty && hedge.is_none() {
         return Err("empty");
+    }
+    // The files it read reach nothing, and files it withheld could: said in one
+    // line, never as "reaches nothing".
+    if let Some(line) = crate::impact::unread_line(&output, range).filter(|_| hedge.is_none()) {
+        return Ok(Answer {
+            context: line.clone(),
+            headline: line,
+            partial: false,
+        });
     }
     output.range_name = range_name(trigger, range);
     let partial = !output.limits.is_empty();
@@ -2892,8 +3076,8 @@ fn names_other_repositories(payload: &serde_json::Value) -> Option<String> {
     let mut own: Vec<PathBuf> = Vec::new();
     if let Ok(home) = snap::open(&cwd) {
         own.push(canonical(&home.work_tree));
-        if let Ok(trees) = snap::worktrees(&home) {
-            own.extend(trees.iter().map(|t| canonical(&t.work_tree)));
+        if let Ok(trees) = work_trees(&home) {
+            own.extend(trees.into_iter().map(|(work_tree, _)| work_tree));
         }
     }
     let elsewhere = places.iter().any(|place| match place {
@@ -2922,7 +3106,9 @@ fn review(
     let payload: serde_json::Value =
         serde_json::from_str(stdin_json).map_err(|_| "error:payload")?;
     trace.session = payload["session_id"].as_str().map(str::to_string);
-    bracket(event, &payload);
+    if matches!(event, Event::PostToolUse { .. }) {
+        bracket_after(&payload);
+    }
     let command = payload["tool_input"]["command"]
         .as_str()
         .unwrap_or_default();

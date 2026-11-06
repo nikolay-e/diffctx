@@ -147,7 +147,7 @@ pub struct ImpactOutput {
     /// was edited twice: the diff already says everything. A hook stays
     /// silent on this, which is why it is a field and not an absence.
     pub empty: bool,
-    /// Callers dropped to fit `IMPACT_TOKEN_CAP`, lowest weight first.
+    /// Callers dropped to fit `IMPACT_TOKEN_CAP`, the last dealt first.
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub truncated: usize,
     /// Of `truncated`, the possible callers: the header counts every caller
@@ -192,8 +192,10 @@ pub struct ImpactOutput {
     /// a change nobody calls can still be a change nothing tests.
     #[serde(default, skip_serializing_if = "crate::render::is_zero")]
     pub untested_definitions: usize,
-    /// The changed definitions of that count which nothing calls, so they
-    /// are not among `changed`: `path::symbol (lines)` each.
+    /// The changed definitions of that count with no caller found in the
+    /// analysed scope, so they are not among `changed`: `path::symbol (lines)`
+    /// each. Their searches were complete; `limits` and `withheld_files` say
+    /// whether the run's scope was whole, which makes it "nothing calls them".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub untested_unlisted: Vec<String>,
     /// The changed definitions of that count whose only callers are inside
@@ -348,7 +350,7 @@ pub struct ChangedSymbol {
     /// it, and the definition they call is live, not one nothing calls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also_changed: Vec<String>,
-    /// Callers the answer cap dropped, weakest first: of a listed symbol, the
+    /// Callers the answer cap dropped, last dealt first: of a listed symbol, the
     /// ones missing from `callers`, which is then a lower bound; of an omitted
     /// stub, its whole caller set. The same definition asked for alone may name
     /// more.
@@ -358,6 +360,11 @@ pub struct ChangedSymbol {
     /// each of them, `path::name`, with the callers it had.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub omitted: Vec<OmittedDefinition>,
+    /// What the search for its callers covered. An absence is printed only from
+    /// a complete one; `unresolved` says in words what the gaps were.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub(crate) coverage: decide::Coverage,
 }
 
 /// A changed definition the answer cap shed, and the callers it was shed with.
@@ -409,6 +416,9 @@ pub enum Unknown {
     /// module-level block): its uses are not resolved, and finding none says
     /// nothing.
     Untracked { name: String },
+    /// A gap in the search, in words (`decide::Gap`): what was not read, so that
+    /// finding no callers does not mean there are none.
+    Uncovered { why: String },
 }
 
 impl std::fmt::Display for Unknown {
@@ -456,6 +466,10 @@ impl std::fmt::Display for Unknown {
             Self::Untracked { name } => write!(
                 f,
                 "`{name}` is not a tracked definition here (a block-scoped binding); its uses are not resolved"
+            ),
+            Self::Uncovered { why } => write!(
+                f,
+                "callers not determined: {why}, so finding none does not mean there are none"
             ),
             Self::Omitted { needs, count } => write!(
                 f,
@@ -511,6 +525,12 @@ pub struct Caller {
     /// callback, a value passed on.
     #[serde(default, skip_serializing_if = "is_call")]
     pub relation: &'static str,
+    /// What the reference does (`calls`, `reads`, `writes`, `imports`,
+    /// `reexports`, `overrides`, `instantiates`, `passes_as_value`), stated
+    /// only where the (language, relation) cell is `precise`; elsewhere a row
+    /// says `relation` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<&'static str>,
     /// The lines that reference the definition, when known.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sites: Vec<u32>,
@@ -550,6 +570,40 @@ pub(crate) fn is_omitted(s: &ChangedSymbol) -> bool {
     matches!(s.unresolved, Some(Unknown::Omitted { .. }))
 }
 
+/// What the search for one definition's callers did not cover: the cell's own
+/// gaps, the reasons the answer names for it (`unresolved`) and the files that
+/// spell it but were not analysed whole (`missed_in`). The one place that
+/// decides whether an absence may be claimed for it.
+fn search_coverage(
+    verdict: Option<&decide::Verdict>,
+    unresolved: Option<&Unknown>,
+    missed_in: &[UnanalysedFile],
+) -> decide::Coverage {
+    let (stopped, not_traced) = match unresolved {
+        Some(Unknown::Unfinished { stops }) => (Some(stops.as_slice()), false),
+        Some(_) => (None, true),
+        None => (None, false),
+    };
+    decide::Coverage::searched(verdict, stopped, not_traced, missed_in.len())
+}
+
+/// What the run as a whole did not cover: a stop or limit that can have lost a
+/// caller, files withheld by ignore rules. A definition's own gaps are its own.
+fn scope_coverage(output: &ImpactOutput) -> decide::Coverage {
+    let untracked = output
+        .unanalysed_files
+        .iter()
+        .filter(|f| f.reason == OUTSIDE_DEFINITIONS)
+        .count();
+    decide::Coverage::scope(&output.limits, output.withheld_files, untracked)
+}
+
+/// A definition the answer lists as one nothing calls: only a complete search
+/// makes one.
+fn absence(named: String, _complete: decide::Complete) -> String {
+    named
+}
+
 fn unfinished_symbol(
     path: String,
     symbol: Option<String>,
@@ -574,6 +628,9 @@ fn unfinished_symbol(
         also_changed: Vec::new(),
         callers_omitted: 0,
         omitted: Vec::new(),
+        coverage: decide::Coverage::partial(decide::Gap::Stopped {
+            reasons: stops.to_vec(),
+        }),
     }
 }
 
@@ -625,11 +682,14 @@ pub struct UnanalysedFile {
     pub language: Option<&'static str>,
     /// `no_grammar`, `parse_timeout`, `parse_failed` (nothing read),
     /// `parse_partial` (read but for the error lines), `too_large` (over the
-    /// size cap), `unreadable`, or `content_untraced`: a file outside code
+    /// size cap), `unreadable`, `content_untraced`: a file outside code
     /// whose keys, values or rules something may read, of which only the
-    /// lines naming the file by path were searched.
+    /// lines naming the file by path were searched, or `outside_definitions`:
+    /// code the range changed that no tracked definition holds (a module-level
+    /// statement, a `__main__` block), whose effect is not traced.
     pub reason: &'static str,
-    /// Where the parse broke, the first few lines.
+    /// Where the parse broke, the first few lines; for `outside_definitions`,
+    /// the first and last line of each changed run, in pairs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<u32>,
 }
@@ -982,6 +1042,31 @@ fn is_document(path: &str) -> bool {
 /// template, a query, a stylesheet — which nothing here traces (#559),
 /// ordered by language then path so the listed ones and the counted rest are
 /// stable.
+/// The reason of a changed file's lines that no tracked definition holds.
+const OUTSIDE_DEFINITIONS: &str = "outside_definitions";
+
+/// Runs of changed lines listed per file before the rest are dropped.
+const MAX_OUTSIDE_RUNS: usize = 8;
+
+/// The changed code the cells' definitions do not hold, one entry per file with
+/// its runs of lines.
+fn outside_definitions(cells: &Cells) -> Vec<UnanalysedFile> {
+    cells
+        .iter()
+        .flat_map(decide::Cell::outside_definitions)
+        .map(|(path, spans)| UnanalysedFile {
+            language: crate::languages::get_language_for_file(&path),
+            path,
+            reason: OUTSIDE_DEFINITIONS,
+            lines: spans
+                .into_iter()
+                .take(MAX_OUTSIDE_RUNS)
+                .flat_map(|(first, last)| [first, last])
+                .collect(),
+        })
+        .collect()
+}
+
 fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFile> {
     let mut fragmented: FxHashMap<String, bool> = FxHashMap::default();
     for f in state.run.bounded(&state.all_fragments) {
@@ -2095,7 +2180,7 @@ const MAX_TEST_HOPS: usize = 2;
 /// The chunks of one long function (`main[88]`, `main[120]`) are one caller
 /// with several call sites, not several callers, and so is a file's
 /// module-level code split into unnamed chunks (#349); distinct functions
-/// stay distinct, and so do evidence levels.
+/// stay distinct, and so do evidence levels and stated kinds.
 fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
     let mut merged: Vec<Caller> = Vec::new();
     for mut c in callers {
@@ -2111,6 +2196,7 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
         let same = |m: &&mut Caller| {
             m.path == c.path
                 && m.evidence == c.evidence
+                && m.kind == c.kind
                 && m.symbol.as_deref().map(base_symbol) == c.symbol.as_deref().map(base_symbol)
         };
         match merged.iter_mut().find(|m| same(m)) {
@@ -2798,15 +2884,9 @@ fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
         .min_by_key(|f| (f.symbol_name.is_none(), f.line_count()))
 }
 
-/// A call, an instantiation or an override is a caller; a name written where a
-/// type or a value is expected is a reference, weaker: when the cap sheds, the
-/// references go first, each symbol keeping its strongest row of every relation.
-fn finding_weight(finding: &Finding) -> f64 {
-    match finding.relation {
-        Relation::Reference => 0.9,
-        Relation::Call | Relation::Implementation => 1.0,
-    }
-}
+/// What every row the resolver found weighs: the kinds of relation are not
+/// ranked against each other, the cap deals the rows out among them.
+const FINDING_WEIGHT: f64 = 1.0;
 
 fn cell_finding(u: &decide::Use) -> Finding {
     use crate::resolve::Relation as Uses;
@@ -2840,6 +2920,12 @@ fn cell_unknown(gap: &decide::Gap, name: &str) -> Unknown {
         decide::Gap::Unpaired => Unknown::Unpaired {
             name: name.to_string(),
         },
+        decide::Gap::Stopped { reasons } => Unknown::Unfinished {
+            stops: reasons.clone(),
+        },
+        other => Unknown::Uncovered {
+            why: other.to_string(),
+        },
     }
 }
 
@@ -2860,7 +2946,7 @@ fn cell_row(u: &decide::Use) -> Caller {
         path: u.file.clone(),
         symbol: caller,
         lines: format!("{0}-{0}", u.line),
-        weight: finding_weight(&finding),
+        weight: FINDING_WEIGHT,
         tested_by: None,
         tested_via: None,
         file_tested: false,
@@ -2881,6 +2967,9 @@ fn cell_row(u: &decide::Use) -> Caller {
             Relation::Implementation => "implementation",
             Relation::Call => "call",
         },
+        // A use resolves within one language, so the caller's file names the
+        // cell of the definition it reaches.
+        kind: lang::stated_kind(&u.file, u.relation),
         sites: finding.lines,
     }
 }
@@ -2905,17 +2994,18 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         commits: 0,
         callers: {
             let mut merged = merge_by_symbol(callers);
-            merged.sort_by(|a, b| b.weight.total_cmp(&a.weight));
+            merged.sort_by_key(|c| relation_rank(c.relation));
             merged
         },
         entry: None,
-        unresolved: verdict.gap.as_ref().map(|gap| cell_unknown(gap, &def.name)),
+        unresolved: verdict.gap().map(|gap| cell_unknown(gap, &def.name)),
         untested: false,
         compatible_callers: 0,
         missed_in: Vec::new(),
         also_changed,
         callers_omitted: 0,
         omitted: Vec::new(),
+        coverage: verdict.coverage().clone(),
     }
 }
 
@@ -3677,7 +3767,7 @@ pub fn build_impact(
                 continue;
             }
             let finding = cell_finding(u);
-            sources.push((frag, finding_weight(&finding), Some(finding)));
+            sources.push((frag, FINDING_WEIGHT, Some(finding)));
         }
         also_changed.sort();
         also_changed.dedup();
@@ -3958,6 +4048,7 @@ pub fn build_impact(
                         Some(Relation::Implementation) => "implementation",
                         _ => "call",
                     },
+                    kind: None,
                     // A word match cites the line that spells the name, not
                     // the start of the function around it.
                     sites: match found {
@@ -4129,7 +4220,7 @@ pub fn build_impact(
         );
         let unresolved = verdict
             .as_ref()
-            .and_then(|v| v.gap.as_ref())
+            .and_then(decide::Verdict::gap)
             .map(|gap| cell_unknown(gap, &shown))
             .or(unresolved);
         // Read after the search: a stop noted while it ran, or before it
@@ -4205,14 +4296,14 @@ pub fn build_impact(
         if tests.is_test(core) {
             also_changed.clear();
         }
-        if callers.is_empty()
-            && compatible_callers == 0
-            && commits < 2
-            && query.is_none()
-            && unresolved.is_none()
-            && missed_in.is_empty()
-            && also_changed.is_empty()
-        {
+        let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), &missed_in);
+        if let Some(complete) = coverage.witness().filter(|_| {
+            callers.is_empty()
+                && compatible_callers == 0
+                && commits < 2
+                && query.is_none()
+                && also_changed.is_empty()
+        }) {
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
             let named = label(
@@ -4228,7 +4319,7 @@ pub fn build_impact(
                 if called_in_diff {
                     untested_called_in_diff.push(named);
                 } else {
-                    untested_unlisted.push(named);
+                    untested_unlisted.push(absence(named, complete));
                 }
             } else if let Some(role) = entry.as_ref().filter(|_| !tests.is_test(core)) {
                 entry_unlisted.push(format!("{named} \u{2014} {role}"));
@@ -4241,8 +4332,7 @@ pub fn build_impact(
         let only_in_diff = callers.is_empty()
             && compatible_callers == 0
             && commits < 2
-            && unresolved.is_none()
-            && missed_in.is_empty()
+            && coverage.witness().is_some()
             && !also_changed.is_empty();
         if only_in_diff && untested {
             untested_called_in_diff.push(label(
@@ -4266,6 +4356,7 @@ pub fn build_impact(
             also_changed,
             callers_omitted: 0,
             omitted: Vec::new(),
+            coverage,
         });
     }
     drop(callers);
@@ -4290,6 +4381,7 @@ pub fn build_impact(
             also_changed: Vec::new(),
             callers_omitted: 0,
             omitted: Vec::new(),
+            coverage: decide::Coverage::partial(decide::Gap::NotTraced),
         });
     }
     for entry in &cell_apart {
@@ -4531,7 +4623,16 @@ pub fn build_impact(
         (Vec::new(), 0)
     };
     let mut unanalysed = if query.is_none() {
-        unanalysed_files(state, &changed_files)
+        // A file the run did not analyse whole has its own reason, which already
+        // says its effect is unknown: it is never listed twice. The rest come
+        // first, so that the cap on the list keeps them.
+        let others = unanalysed_files(state, &changed_files);
+        let mut all: Vec<UnanalysedFile> = outside_definitions(&cells)
+            .into_iter()
+            .filter(|o| !others.iter().any(|f| f.path == o.path))
+            .collect();
+        all.extend(others);
+        all
     } else {
         Vec::new()
     };
@@ -4817,6 +4918,7 @@ fn removed_by_models(
                         Relation::Implementation => "implementation",
                         Relation::Call => "call",
                     },
+                    kind: None,
                     sites: vec![line],
                 });
             }
@@ -4883,6 +4985,7 @@ fn removed_by_models(
                 also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
+                coverage: decide::Coverage::partial(decide::Gap::NotTraced),
             },
             contract,
         ));
@@ -5152,6 +5255,7 @@ fn removed_definitions(
                 } else {
                     "reference"
                 },
+                kind: None,
                 sites: vec![line],
             });
         }
@@ -5177,6 +5281,7 @@ fn removed_definitions(
                 also_changed: Vec::new(),
                 callers_omitted: 0,
                 omitted: Vec::new(),
+                coverage: decide::Coverage::partial(decide::Gap::NotTraced),
             },
             contract,
         ));
@@ -6209,9 +6314,9 @@ fn serialized_tokens(output: &ImpactOutput) -> u32 {
         .unwrap_or(0)
 }
 
-/// Drops possible callers first, then the weakest caller that is not its
-/// relation's strongest row for the symbol, then those, until `measure` fits
-/// `cap`, then symbols that have nothing left to say. The cap
+/// Drops word matches, then possible callers, then the rows dealt last among
+/// the (definition, relation kind) groups of the rest (`last_dealt`), until
+/// `measure` fits `cap`, then symbols that have nothing left to say. The cap
 /// is on what the reader receives, so it is measured on the delivered text.
 ///
 /// Every step drops an entry, so the measure falls as steps add up, and the
@@ -6262,8 +6367,16 @@ fn shed(output: &mut ImpactOutput, steps: usize) -> usize {
 }
 
 /// The one rule for `empty` (#505): nothing outside the diff depends on the
-/// change, no contract moved, and nothing was cut, left unread or capped.
+/// change, no contract moved, and nothing was cut, left unread or capped. It is
+/// an absence claim, so it holds only with the witness: every changed
+/// definition's search was complete, and so was the run's scope.
 fn proves_empty(output: &ImpactOutput) -> bool {
+    reaches_nothing(output) && unread_scope(output).witness().is_some()
+}
+
+/// What the files it read say: nothing outside the diff depends on the change.
+/// Whether the files it did not read could say otherwise is `unread_scope`.
+fn reaches_nothing(output: &ImpactOutput) -> bool {
     output.symbol_named.is_none()
         && output.changed.iter().all(only_in_the_diff)
         && output.contracts.is_empty()
@@ -6276,9 +6389,15 @@ fn proves_empty(output: &ImpactOutput) -> bool {
         && output.collection_reads_omitted == 0
         && output.truncated == 0
         && output.contracts_omitted == 0
-        && output.limits.is_empty()
-        && output.unanalysed_files.is_empty()
         && output.lockfile_changes.is_empty()
+}
+
+/// What the run left unread: its scope (a limit, withheld files) and the changed
+/// files it could not analyse.
+fn unread_scope(output: &ImpactOutput) -> decide::Coverage {
+    let unanalysed = output.unanalysed_files.len() + output.unanalysed_files_omitted;
+    scope_coverage(output)
+        .with((unanalysed > 0).then_some(decide::Gap::Unread { files: unanalysed }))
 }
 
 /// A symbol listed for its changed callers alone: nothing outside the diff
@@ -6286,10 +6405,33 @@ fn proves_empty(output: &ImpactOutput) -> bool {
 fn only_in_the_diff(c: &ChangedSymbol) -> bool {
     (!c.also_changed.is_empty() || c.kind == "removed")
         && c.callers.is_empty()
-        && c.unresolved.is_none()
+        && c.coverage.witness().is_some()
         && c.compatible_callers == 0
-        && c.missed_in.is_empty()
         && c.commits < 2
+}
+
+/// The files it read reach nothing outside the diff, and the only thing keeping
+/// that from being `empty` is files the run withheld: what a withheld file names
+/// is unknown, so the answer says what was not read instead of "reaches nothing"
+/// (#464, gh#713). A limit or an unanalysed file leaves the answer as it was.
+fn withheld_only(output: &ImpactOutput) -> bool {
+    output.withheld_files > 0
+        && output.limits.is_empty()
+        && output.unanalysed_files.is_empty()
+        && output.unanalysed_files_omitted == 0
+        && reaches_nothing(output)
+}
+
+/// The hook's one line for that case; `None` for any other.
+pub fn unread_line(output: &ImpactOutput, range: &str) -> Option<String> {
+    withheld_only(output).then(|| {
+        format!(
+            "diffctx: {range} reaches nothing outside the diff in the files it read; not analysed: {} (what they name is unknown).",
+            decide::Gap::Withheld {
+                files: output.withheld_files
+            }
+        )
+    })
 }
 
 /// One step of shedding, least needed first; `false` once nothing more can
@@ -6330,32 +6472,20 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         return true;
     }
     // A word match is the weakest row there is: it goes before a guess.
-    if let Some(sym) = output
-        .changed
-        .iter_mut()
-        .find(|c| c.callers.iter().any(is_textual))
-    {
-        if let Some(i) = sym.callers.iter().rposition(is_textual) {
-            sym.callers.remove(i);
-            sym.callers_omitted += 1;
-            output.truncated += 1;
-            output.truncated_textual += 1;
-            return true;
-        }
+    if let Some((i, r)) = last_dealt(&output.changed, |_, row| is_textual(row)) {
+        output.changed[i].callers.remove(r);
+        output.changed[i].callers_omitted += 1;
+        output.truncated += 1;
+        output.truncated_textual += 1;
+        return true;
     }
     // A possible caller is a guess; a changed contract is a fact (#413).
-    if let Some(sym) = output
-        .changed
-        .iter_mut()
-        .find(|c| c.callers.iter().any(|x| x.evidence == "candidate"))
-    {
-        if let Some(i) = sym.callers.iter().rposition(|x| x.evidence == "candidate") {
-            sym.callers.remove(i);
-            sym.callers_omitted += 1;
-            output.truncated += 1;
-            output.truncated_possible += 1;
-            return true;
-        }
+    if let Some((i, r)) = last_dealt(&output.changed, |_, row| row.evidence == "candidate") {
+        output.changed[i].callers.remove(r);
+        output.changed[i].callers_omitted += 1;
+        output.truncated += 1;
+        output.truncated_possible += 1;
+        return true;
     }
     if output.contracts.pop().is_some() {
         output.contracts_omitted += 1;
@@ -6462,6 +6592,7 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             also_changed: Vec::new(),
             callers_omitted: gone.callers_omitted,
             omitted: vec![gone],
+            coverage: decide::Coverage::partial(decide::Gap::Capped),
         }),
     }
 }
@@ -6478,97 +6609,92 @@ fn trim_omitted(output: &mut ImpactOutput) -> bool {
         .is_some_and(|entry| entry.omitted.len() > 1 && entry.omitted.pop().is_some())
 }
 
-/// The row of `c` the diversity floor lets go: the last one that is not the
-/// strongest of its relation kind. Rows of a symbol are ordered by weight,
-/// then path, then lines, so the first of a kind is its strongest.
-fn spare_caller(c: &ChangedSymbol) -> Option<usize> {
-    (1..c.callers.len()).rev().find(|&i| {
-        c.callers[..i]
-            .iter()
-            .any(|earlier| earlier.relation == c.callers[i].relation)
-    })
+/// The order a symbol's relation kinds are dealt in and listed.
+fn relation_rank(relation: &str) -> u8 {
+    match relation {
+        "call" => 0,
+        "implementation" => 1,
+        "reference" => 2,
+        "reexports" => 3,
+        _ => 4,
+    }
 }
 
-/// The weakest of the (symbol, row) pairs offered. Equal weights shed from the
-/// symbol with the most callers, so a commit that changes forty definitions
-/// keeps all of them to the last; then the path and the first line decide,
-/// never "the first in the file".
-fn weakest_row(changed: &[ChangedSymbol], rows: Vec<(usize, usize)>) -> Option<(usize, usize)> {
-    let first_line = |c: &ChangedSymbol| {
-        c.lines
-            .split('-')
-            .next()
-            .and_then(|n| n.parse::<u32>().ok())
-            .unwrap_or(0)
-    };
-    rows.into_iter().min_by(|&(i, ri), &(j, rj)| {
-        let (a, b) = (&changed[i], &changed[j]);
-        a.callers[ri]
-            .weight
-            .total_cmp(&b.callers[rj].weight)
-            .then_with(|| b.callers.len().cmp(&a.callers.len()))
-            .then_with(|| a.path.cmp(&b.path))
-            .then_with(|| first_line(a).cmp(&first_line(b)))
-    })
+/// The row the cap sheds next among those `accepts` offers, as (symbol, row).
+/// Rows are dealt out in rounds over (changed definition, relation kind): each
+/// round gives every group that still has rows its next-strongest one, in the
+/// order the definitions are listed, and the row dealt last goes first. So the
+/// strongest row of every kind every definition has outlasts all the others,
+/// no kind is shed before another, and a larger budget shows a superset of a
+/// smaller one's rows: the answer is a prefix of one fixed order.
+fn last_dealt(
+    changed: &[ChangedSymbol],
+    accepts: impl Fn(&ChangedSymbol, &Caller) -> bool,
+) -> Option<(usize, usize)> {
+    let mut last: Option<((usize, usize, u8), (usize, usize))> = None;
+    for (i, c) in changed.iter().enumerate() {
+        let mut dealt: Vec<(&str, usize)> = Vec::new();
+        for (r, row) in c
+            .callers
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| accepts(c, row))
+        {
+            let round = match dealt.iter_mut().find(|(kind, _)| *kind == row.relation) {
+                Some((_, rows)) => {
+                    *rows += 1;
+                    *rows
+                }
+                None => {
+                    dealt.push((row.relation, 0));
+                    0
+                }
+            };
+            let order = (round, i, relation_rank(row.relation));
+            if last.as_ref().is_none_or(|(latest, _)| order > *latest) {
+                last = Some((order, (i, r)));
+            }
+        }
+    }
+    last.map(|(_, at)| at)
 }
 
 fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
-    // A symbol keeps its strongest row of each relation kind (call,
-    // reference, implementation, re-export) until nothing else in the answer
-    // can go: weights alone shed every reference before any call, so a
-    // symbol read by many and called by few lost the reads altogether.
-    // A symbol's only caller goes last: while another symbol still has a
-    // tail to shed, dropping a whole symbol would make the selection look
-    // arbitrary, one function listed with all its callers and another
-    // with none (#386).
-    let spare: Vec<(usize, usize)> = output
-        .changed
-        .iter()
-        .enumerate()
-        .filter_map(|(i, c)| spare_caller(c).map(|r| (i, r)))
-        .collect();
-    let tail = |min_callers: usize| -> Vec<(usize, usize)> {
-        output
-            .changed
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.callers.len() >= min_callers)
-            .map(|(i, c)| (i, c.callers.len() - 1))
-            .collect()
-    };
-    let weakest =
-        weakest_row(&output.changed, spare).or_else(|| weakest_row(&output.changed, tail(2)));
-    if let Some((i, r)) = weakest {
+    // A definition that keeps another row gives up the one dealt last: the
+    // strongest row of each relation kind goes only when nothing else in the
+    // answer can, and rows of one kind never outlast another kind wholesale,
+    // which weights alone did (a symbol read by many and called by few lost
+    // its reads altogether).
+    if let Some((i, r)) = last_dealt(&output.changed, |c, _| c.callers.len() >= 2) {
         let shed = output.changed[i].callers.remove(r);
         output.changed[i].callers_omitted += 1;
         output.truncated_untested += usize::from(without_test_link(&shed));
         output.truncated += 1;
         return true;
     }
-    match weakest_row(&output.changed, tail(1)) {
-        // The strongest caller of a symbol is the fact; the symbol goes
-        // whole once that is all it has left, never one caller at a time.
-        Some((i, _)) if output.changed[i].unresolved.is_none() => {
-            output.truncated += output.changed[i].callers.len();
-            output.truncated_possible += output.changed[i]
+    // A symbol's only caller goes last: dropping a whole symbol while another
+    // still has a tail to shed would make the selection look arbitrary, one
+    // function listed with all its callers and another with none (#386). The
+    // strongest caller of a symbol is the fact, so the symbol goes whole once
+    // that is all it has left, never one caller at a time.
+    match last_dealt(&output.changed, |c, _| {
+        c.callers.len() == 1 && c.unresolved.is_none()
+    }) {
+        Some((i, _)) => {
+            let gone = &output.changed[i];
+            output.truncated += gone.callers.len();
+            output.truncated_possible += gone
                 .callers
                 .iter()
                 .filter(|c| c.evidence == "candidate")
                 .count();
-            output.truncated_textual += output.changed[i]
-                .callers
-                .iter()
-                .filter(|c| is_textual(c))
-                .count();
-            output.truncated_untested += output.changed[i]
-                .callers
-                .iter()
-                .filter(|c| without_test_link(c))
-                .count();
+            output.truncated_textual += gone.callers.iter().filter(|c| is_textual(c)).count();
+            output.truncated_untested +=
+                gone.callers.iter().filter(|c| without_test_link(c)).count();
             omit(output, i);
             true
         }
-        _ => false,
+        None => false,
     }
 }
 
@@ -6669,7 +6795,7 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
         return out;
     }
     write_header(&mut out, output);
-    if output.empty
+    if (output.empty || withheld_only(output))
         && output.changed_files.is_empty()
         && output.untracked_files.is_empty()
         && output.deleted_files.is_empty()
@@ -6738,8 +6864,9 @@ fn render_answer(output: &ImpactOutput, compact: bool) -> String {
             || stalled(s)
             || is_omitted(s)
     };
+    let scope = scope_coverage(output).witness();
     for sym in output.changed.iter().filter(|s| !folded(s)) {
-        write_symbol(&mut out, sym, output.tests_known, compact);
+        write_symbol(&mut out, sym, output.tests_known, compact, scope);
     }
     write_unfinished(
         &mut out,
@@ -7034,7 +7161,8 @@ fn textual_rows(output: &ImpactOutput) -> Vec<String> {
 
 /// The caller count as far as it is known: symbols whose callers could not
 /// be resolved, or a run that stopped early, make a zero no finding (#387).
-fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String {
+fn callers_phrase(output: &ImpactOutput, count: decide::Count, scope: &str) -> String {
+    let callers = count.found();
     // Nothing was traced: a count of zero would count what no one looked for.
     if output.traced_definitions == 0
         && !output.layout_only.is_empty()
@@ -7090,7 +7218,11 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
     } else if callers == 0 && !unresolved.is_empty() && unresolved.len() == output.changed.len() {
         format!("callers unresolved for {unresolved_names}")
     } else {
-        let mut p = format!("{callers} caller(s){scope}");
+        // A count of nothing is an absence: said as one only with the scope whole.
+        let mut p = match count {
+            decide::Count::AtLeast(0) => format!("no caller found{scope} in the analysed scope"),
+            _ => format!("{callers} caller(s){scope}"),
+        };
         if !unresolved.is_empty() {
             let _ = write!(p, ", callers unresolved for {unresolved_names}");
         }
@@ -7102,7 +7234,7 @@ fn callers_phrase(output: &ImpactOutput, callers: usize, scope: &str) -> String 
     if textual > 0 {
         phrase.push_str(&format!(", {textual} named only textually (not resolved)"));
     }
-    if stops.is_empty() && !output.limits.is_empty() {
+    if stops.is_empty() && !output.limits.is_empty() && callers > 0 {
         phrase.push_str(" found in a partial run");
     }
     phrase
@@ -7167,11 +7299,32 @@ fn write_unanalysed(out: &mut String, output: &ImpactOutput) {
         Some(format!("({lead}: {}{more})", groups.join("; ")))
     };
     let untraced = |f: &&UnanalysedFile| f.reason == "content_untraced";
+    let outside = |f: &&UnanalysedFile| f.reason == OUTSIDE_DEFINITIONS;
     let whole: Vec<&UnanalysedFile> = output
         .unanalysed_files
         .iter()
-        .filter(|f| !partial(f) && !untraced(f))
+        .filter(|f| !partial(f) && !untraced(f) && !outside(f))
         .collect();
+    let spans: Vec<String> = output
+        .unanalysed_files
+        .iter()
+        .filter(outside)
+        .map(|f| {
+            let runs: Vec<String> = f
+                .lines
+                .chunks(2)
+                .map(|run| format!("{}–{}", run[0], run.last().copied().unwrap_or(run[0])))
+                .collect();
+            format!("{}:{}", f.path, runs.join(", "))
+        })
+        .collect();
+    if !spans.is_empty() {
+        let _ = writeln!(
+            out,
+            "(changed code outside any tracked definition, whose effect is not traced: {})",
+            spans.join("; ")
+        );
+    }
     let parts: Vec<&UnanalysedFile> = output.unanalysed_files.iter().filter(partial).collect();
     let content: Vec<&UnanalysedFile> = output.unanalysed_files.iter().filter(untraced).collect();
     for text in [
@@ -7214,6 +7367,7 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
     let callers = all().filter(|c| c.evidence == "resolved").count() + output.truncated
         - output.truncated_possible
         - output.truncated_textual;
+    let counted = scope_coverage(output).count(callers);
     let possible = all().filter(|c| c.evidence == "candidate").count() + output.truncated_possible;
     let untested = all().filter(|c| without_test_link(c)).count() + output.truncated_untested;
     // Labelled, and only beside a caller: "0 without a static test link"
@@ -7254,10 +7408,18 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
         };
         let partial = count("parse_partial");
         let untraced = count("content_untraced") + output.untraced_omitted;
-        let unanalysed =
-            output.unanalysed_files.len() + output.unanalysed_files_omitted - partial - untraced;
+        let outside = count(OUTSIDE_DEFINITIONS);
+        let unanalysed = output.unanalysed_files.len() + output.unanalysed_files_omitted
+            - partial
+            - untraced
+            - outside;
         if unanalysed > 0 {
             clause.push_str(&format!(", {unanalysed} not analysed"));
+        }
+        if outside > 0 {
+            clause.push_str(&format!(
+                ", {outside} with changed code outside any tracked definition"
+            ));
         }
         if partial > 0 {
             clause.push_str(&format!(", {partial} analysed only in part"));
@@ -7274,7 +7436,7 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                 "diffctx impact for symbol {symbol}: {} definition(s){}, {}{guard_summary}",
                 output.definitions(),
                 withheld("file(s) naming it"),
-                callers_phrase(output, callers, ""),
+                callers_phrase(output, counted, ""),
             );
         }
         None => {
@@ -7297,7 +7459,7 @@ fn write_header(out: &mut String, output: &ImpactOutput) {
                 withheld("file(s)"),
                 callers_phrase(
                     output,
-                    callers,
+                    counted,
                     if output.unanalysed_files.is_empty() {
                         " outside the diff"
                     } else {
@@ -7364,7 +7526,13 @@ fn reason_text(reason: Option<&str>) -> &'static str {
     }
 }
 
-fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compact: bool) {
+fn write_symbol(
+    out: &mut String,
+    sym: &ChangedSymbol,
+    tests_known: bool,
+    compact: bool,
+    scope: Option<decide::Complete>,
+) {
     let commits = if sym.commits >= 2 {
         format!(" [touched by {} commits]", sym.commits)
     } else {
@@ -7397,11 +7565,20 @@ fn write_symbol(out: &mut String, sym: &ChangedSymbol, tests_known: bool, compac
     }
     if sym.kind == "removed"
         && sym.callers.is_empty()
-        && sym.unresolved.is_none()
         && sym.missed_in.is_empty()
         && sym.also_changed.is_empty()
     {
-        let _ = writeln!(out, "  - nothing references it");
+        // An absence needs the definition's search complete; said as a fact of
+        // the repository only when the run's scope was whole too.
+        match (sym.coverage.witness(), scope) {
+            (Some(_), Some(_)) => {
+                let _ = writeln!(out, "  - nothing references it");
+            }
+            (Some(_), None) => {
+                let _ = writeln!(out, "  - no reference found in the analysed scope");
+            }
+            (None, _) => {}
+        }
     }
     if sym.compatible_callers > 0 {
         let _ = writeln!(
@@ -7544,15 +7721,20 @@ fn write_untested(out: &mut String, output: &ImpactOutput) {
     if !output.tests_known {
         return;
     }
-    // Under a limit, no caller found is all the run can say.
-    let uncalled = if output.limits.is_empty() {
-        "Changed, nothing calls them, no static test link:"
+    // Without a complete scope, no caller found is all the run can say.
+    let scope = scope_coverage(output);
+    let uncalled = if scope.witness().is_some() {
+        "Changed, nothing calls them, no static test link:".to_string()
     } else {
-        "Changed, no caller found in this partial run, no static test link:"
+        let why: Vec<String> = scope.gaps().iter().map(ToString::to_string).collect();
+        format!(
+            "Changed, no caller found in the analysed scope ({}), no static test link:",
+            why.join("; ")
+        )
     };
     write_list(
         out,
-        uncalled,
+        &uncalled,
         &output.untested_unlisted,
         MAX_UNTESTED_NAMED,
         0,

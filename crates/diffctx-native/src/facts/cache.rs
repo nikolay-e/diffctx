@@ -23,10 +23,12 @@ use crate::facts::language::Language;
 use crate::facts::model::{BlobFacts, Fact};
 use crate::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader};
 
-/// Bumped when the stored layout changes.
+/// The stored layout, named in the key and in the file name. This file is under
+/// `src/`, so a change to the layout moves [`FINGERPRINT`] whether or not this is
+/// bumped.
 pub const SCHEMA: u32 = 1;
 
-/// The digest of the sources under `src/facts/` and of the lock file the crate was
+/// The digest of the sources under `src/` and of the lock file the crate was
 /// built with (`build.rs`): what an extractor emits is a function of them, so an
 /// entry written by another build is a miss and nobody has to remember to say so.
 pub const FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/facts_fingerprint.in"));
@@ -121,6 +123,10 @@ struct Store {
 }
 
 impl Store {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the facts cache is the tool's own store under the user cache directory, not repository bytes; an entry whose metadata cannot be read is left out of the size count"
+    )]
     fn scan(&self) -> Vec<Stored> {
         let Ok(dir) = fs::read_dir(&self.dir) else {
             return Vec::new();
@@ -304,6 +310,10 @@ impl FactsCache {
         }
     }
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the facts cache is the tool's own store under the user cache directory, not repository bytes; an entry that does not decode is a miss, counted as discarded"
+    )]
     fn read_entry(&self, store: &Store, key: &CacheKey, name: &str) -> Option<Arc<BlobFacts>> {
         let path = store.dir.join(name);
         let bytes = match fs::read(&path) {

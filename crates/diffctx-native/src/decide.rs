@@ -3,16 +3,27 @@
 //!
 //! The resolver says what each reference lands on; this module turns that into
 //! the statements the answer prints. Every statement about a definition's
-//! callers is one of four claims: `resolved` (a static chain leads to it),
+//! callers is one of five claims: `resolved` (a static chain leads to it),
 //! `candidate` (the receiver is not typed, so the definition is one it may be),
-//! `unresolved` (names like it that landed on nothing) or `partial` (the answer
-//! is incomplete). An absence, "nothing calls it" or "untested", is printed only
-//! when the definition's coverage is complete, and a caller that is itself
-//! changed in the range is `also_changed`, never a caller outside the diff.
+//! `unresolved` (names like it that landed on nothing), `partial` (the answer
+//! is incomplete) or `absent` (nothing calls it, and the search was complete).
+//! An absence, "nothing calls it" or "untested", is printed only from that last
+//! one, and a caller that is itself changed in the range is `also_changed`,
+//! never a caller outside the diff.
 //!
 //! The changed definitions are the facts layer's `semantic_changes`; the callers
 //! are the resolver's bindings. The ranking graph and the text filters take no
 //! part.
+//!
+//! An absence is never a default. [`Complete`] is the witness that the search for
+//! a definition's uses left nothing unread; only this module makes one (the cell's
+//! own search, [`Coverage::searched`] and [`Coverage::scope`]), from the gaps the
+//! search found, and an absence claim ([`Claim::Absent`]) or an exact
+//! count ([`Count::Exact`]) holds it. Every other outcome names its [`Gap`]. A
+//! failed read is an `Err` or a gap here, never an empty value: the lint that
+//! says so is denied in this module.
+
+#![deny(clippy::disallowed_methods)]
 
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -29,9 +40,10 @@ use crate::resolve::{
     Binding, CandidateReason, Definition, EvidenceKind, PythonResolver, Relation, Resolution,
     TypeScriptResolver, UnresolvedReason,
 };
+use crate::resource::LimitReason;
 use crate::snapshot::{
-    self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
-    SideTag,
+    self, Admission, AdmissionPolicy, AnalysisContext, ChangeKind, Loss, RangeSpec, RepoPath,
+    RunBudget, Side, SideTag,
 };
 
 /// Uses of a name that left, or moved, listed one by one up to this many; past
@@ -72,9 +84,7 @@ impl Family {
     /// Whether a file of this extension is read by the family's resolver.
     fn has_path(self, path: &str) -> bool {
         RepoPath::new(path)
-            .ok()
-            .and_then(|p| Language::from_path(&p))
-            .is_some_and(|language| self.has(language))
+            .is_ok_and(|p| Language::from_path(&p).is_some_and(|language| self.has(language)))
     }
 }
 
@@ -126,13 +136,217 @@ impl Resolver {
     }
 }
 
+/// The witness that the search for a definition's uses covered everything that
+/// could name it. It has no public field and no `Default`, and `Coverage::of`,
+/// which makes it, is private to this module: the cell's search, `searched` and
+/// `scope` are the only call sites, so an absence or an exact count cannot be
+/// written without the coverage computation having found no gap.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Complete(());
+
+/// Why a definition's answer is incomplete.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Gap {
+    /// `uses` of the name that could be a use of the definition landed on
+    /// nothing the model could name: an untyped read, a name no import binds.
+    Unlanded { uses: usize },
+    /// The range pairs the definition's two sides ambiguously.
+    Unpaired,
+    /// The base side of the range could not be resolved: what still names a
+    /// removed or moved definition is the base's question, and it went unasked.
+    BaseUnresolved { reason: String },
+    /// The run stopped (a deadline, a failed read) before the search finished.
+    Stopped { reasons: Vec<LimitReason> },
+    /// The run is limited to pathspecs, and `files` outside them could name the
+    /// definition: their uses were left out.
+    OutsideScope { files: usize },
+    /// Files that spell the name were not analysed whole.
+    Unread { files: usize },
+    /// Files the run withheld by ignore rules were not read.
+    Withheld { files: usize },
+    /// Changed code in `files` lies outside every tracked definition (a
+    /// module-level statement, a `__main__` block): what it changes is not traced.
+    Untracked { files: usize },
+    /// The answer cap shed the definition: its callers were found, not listed.
+    Capped,
+    /// A route no model traces can reach it: dispatch, an untyped receiver, a
+    /// language no binding model reads.
+    NotTraced,
+}
+
+impl std::fmt::Display for Gap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unlanded { uses } => write!(f, "{uses} use(s) that landed on nothing"),
+            Self::Unpaired => f.write_str("its two sides of the range pair ambiguously"),
+            Self::BaseUnresolved { reason } => {
+                write!(f, "the base side of the range was not resolved ({reason})")
+            }
+            Self::Stopped { reasons } => {
+                write!(
+                    f,
+                    "the run was limited ({})",
+                    crate::impact::reason_names(reasons)
+                )
+            }
+            Self::OutsideScope { files } => {
+                write!(
+                    f,
+                    "{files} file(s) outside the run's pathspecs were left out"
+                )
+            }
+            Self::Unread { files } => {
+                write!(f, "{files} file(s) naming it were not analysed whole")
+            }
+            Self::Withheld { files } => write!(f, "{files} file(s) withheld by ignore rules"),
+            Self::Untracked { files } => write!(
+                f,
+                "changed code outside any tracked definition in {files} file(s)"
+            ),
+            Self::Capped => f.write_str("the answer cap shed it"),
+            Self::NotTraced => f.write_str("a route no model traces can reach it"),
+        }
+    }
+}
+
+/// What the search for a definition's uses covered.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Coverage {
+    Complete(Complete),
+    Partial(Vec<Gap>),
+}
+
+impl Coverage {
+    /// The coverage computation: complete exactly when the search found no gap.
+    fn of(gaps: Vec<Gap>) -> Self {
+        if gaps.is_empty() {
+            Self::Complete(Complete(()))
+        } else {
+            Self::Partial(gaps)
+        }
+    }
+
+    /// A search that is incomplete for one reason it already knows.
+    pub fn partial(gap: Gap) -> Self {
+        Self::Partial(vec![gap])
+    }
+
+    /// The search for one definition's callers outside the cell: the cell's own
+    /// coverage when the cell answered for it, the stop that cut the search short
+    /// or a route nothing traces when the answer names one, and the files that
+    /// spell the name but were not analysed whole.
+    pub fn searched(
+        cell: Option<&Verdict>,
+        stopped: Option<&[LimitReason]>,
+        not_traced: bool,
+        unread_files: usize,
+    ) -> Self {
+        let mut gaps: Vec<Gap> = cell.map_or_else(Vec::new, |v| v.coverage().gaps().to_vec());
+        if gaps.is_empty() {
+            if let Some(reasons) = stopped {
+                gaps.push(Gap::Stopped {
+                    reasons: reasons.to_vec(),
+                });
+            } else if not_traced {
+                gaps.push(Gap::NotTraced);
+            }
+        }
+        if unread_files > 0 {
+            gaps.push(Gap::Unread {
+                files: unread_files,
+            });
+        }
+        Self::of(gaps)
+    }
+
+    /// What the run as a whole covered: a limit that can have lost a caller,
+    /// files withheld by ignore rules, and files with changed code no tracked
+    /// definition holds.
+    pub fn scope(limits: &[LimitReason], withheld: usize, untracked: usize) -> Self {
+        let mut gaps = Vec::new();
+        if !limits.is_empty() {
+            gaps.push(Gap::Stopped {
+                reasons: limits.to_vec(),
+            });
+        }
+        if withheld > 0 {
+            gaps.push(Gap::Withheld { files: withheld });
+        }
+        if untracked > 0 {
+            gaps.push(Gap::Untracked { files: untracked });
+        }
+        Self::of(gaps)
+    }
+
+    /// The same coverage with one more gap, when there is one. A complete
+    /// coverage with none stays the witness it was; this never makes one.
+    pub fn with(self, gap: Option<Gap>) -> Self {
+        match (self, gap) {
+            (coverage, None) => coverage,
+            (Self::Complete(_), Some(gap)) => Self::Partial(vec![gap]),
+            (Self::Partial(mut gaps), Some(gap)) => {
+                gaps.push(gap);
+                Self::Partial(gaps)
+            }
+        }
+    }
+
+    pub fn witness(&self) -> Option<Complete> {
+        match self {
+            Self::Complete(witness) => Some(*witness),
+            Self::Partial(_) => None,
+        }
+    }
+
+    pub fn gaps(&self) -> &[Gap] {
+        match self {
+            Self::Complete(_) => &[],
+            Self::Partial(gaps) => gaps,
+        }
+    }
+
+    /// `found` uses as the answer may count them: exactly only when nothing was
+    /// left unread, otherwise as the least there are.
+    pub fn count(&self, found: usize) -> Count {
+        self.witness().map_or(Count::AtLeast(found), |witness| {
+            Count::Exact(found, witness)
+        })
+    }
+}
+
+/// A number of uses, and whether it is the whole.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(
+    dead_code,
+    reason = "the witness is held so that an exact count needs one, never read"
+)]
+pub enum Count {
+    Exact(usize, Complete),
+    AtLeast(usize),
+}
+
+impl Count {
+    pub const fn found(self) -> usize {
+        match self {
+            Self::Exact(n, _) | Self::AtLeast(n) => n,
+        }
+    }
+}
+
 /// What a statement about a definition's uses may be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(
+    dead_code,
+    reason = "the witness is held so that an absence needs one, never read"
+)]
 pub enum Claim {
     Resolved,
     Candidate,
     Unresolved,
     Partial,
+    /// Nothing calls the definition and nothing that could was left unread: the
+    /// only claim an answer may print as an absence.
+    Absent(Complete),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -154,19 +368,12 @@ pub struct Use {
     pub also_changed: bool,
 }
 
-/// Why a definition's answer is incomplete.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Gap {
-    /// `uses` of the name that could be a use of the definition landed on
-    /// nothing the model could name: an untyped read, a name no import binds.
-    Unlanded { uses: usize },
-    /// The range pairs the definition's two sides ambiguously.
-    Unpaired,
-}
-
+/// The uses of a definition and what covered the search for them: the one
+/// coverage of the relations that use it (`Relation::uses`), which is every
+/// relation an absence is claimed for.
 pub struct Verdict {
     pub uses: Vec<Use>,
-    pub gap: Option<Gap>,
+    coverage: Coverage,
 }
 
 impl Verdict {
@@ -187,24 +394,35 @@ impl Verdict {
         self.uses.iter().filter(|u| u.also_changed)
     }
 
-    /// The strongest thing the evidence carries. `None` is an absence: nothing
-    /// calls the definition and nothing that could was left unread, which is the
-    /// only case an answer may say so.
-    pub fn claim(&self) -> Option<Claim> {
+    pub fn coverage(&self) -> &Coverage {
+        &self.coverage
+    }
+
+    /// The gap the answer names first.
+    pub fn gap(&self) -> Option<&Gap> {
+        self.coverage.gaps().first()
+    }
+
+    /// The strongest thing the evidence carries. An absence is the one claim only
+    /// a complete search makes.
+    pub fn claim(&self) -> Claim {
         if self.resolved().next().is_some() {
-            Some(Claim::Resolved)
+            Claim::Resolved
         } else if self.candidates().next().is_some() {
-            Some(Claim::Candidate)
+            Claim::Candidate
         } else {
-            self.gap.as_ref().map(|gap| match gap {
-                Gap::Unlanded { .. } => Claim::Unresolved,
-                Gap::Unpaired => Claim::Partial,
-            })
+            match &self.coverage {
+                Coverage::Complete(witness) => Claim::Absent(*witness),
+                Coverage::Partial(gaps) => match gaps.first() {
+                    Some(Gap::Unlanded { .. }) => Claim::Unresolved,
+                    _ => Claim::Partial,
+                },
+            }
         }
     }
 
     pub fn complete(&self) -> bool {
-        self.gap.is_none()
+        self.coverage.witness().is_some()
     }
 }
 
@@ -214,6 +432,11 @@ enum Reach {
     Every,
     /// Building the class: what a constructor's callers do.
     Construction,
+    /// What a changed or removed constructor reaches (R11): the class's
+    /// instantiations and the explicit and `super()` calls of the constructor.
+    /// Annotations, `isinstance`, `raises` and the class passed as a value are
+    /// uses of the class a constructor change leaves alone.
+    Constructor,
     /// Only the base identities in `stale` reach it: a class reported for a
     /// field it lost.
     Stale,
@@ -227,6 +450,10 @@ impl Reach {
                 relation,
                 Relation::Instantiates | Relation::Calls | Relation::PassesAsValue
             ),
+            Self::Constructor => matches!(
+                relation,
+                Relation::Instantiates | Relation::Calls | Relation::Overrides
+            ),
             Self::Stale => false,
         }
     }
@@ -236,6 +463,27 @@ impl Reach {
 struct Subject {
     key: DefKey,
     reach: Reach,
+    /// The span of the definition whose change this is, when it has no members:
+    /// a use inside it is the definition's own (a function calling itself). A
+    /// class has none, since the members around the change are other
+    /// definitions: the unchanged ones are callers, the changed ones
+    /// `also_changed`.
+    within: Option<(u32, u32)>,
+}
+
+/// The span a use must lie in to be the definition's own use of itself.
+fn own_span(kind: DefKind, lines: (u32, u32)) -> Option<(u32, u32)> {
+    (!matches!(
+        kind,
+        DefKind::Class
+            | DefKind::Struct
+            | DefKind::Enum
+            | DefKind::Trait
+            | DefKind::Interface
+            | DefKind::Object
+            | DefKind::Module
+    ))
+    .then_some(lines)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -322,11 +570,14 @@ pub struct Cell {
     ctx: AnalysisContext,
     cache: FactsCache,
     head: Resolver,
-    base: OnceCell<Option<Resolver>>,
+    base: OnceCell<Result<Resolver, String>>,
     changed: Vec<Changed>,
     /// Every key the range changed outside layout, by its head key.
     changed_keys: HashSet<DefKey>,
     hunks: Hunks,
+    /// The lines each file gained or rewrote, by number, outside formatter-only
+    /// hunks.
+    added: HashMap<String, Vec<(u32, String)>>,
     /// The project, module and language of each file that holds a definition.
     homes: HashMap<String, (ProjectId, ModulePath, Language)>,
     /// Definitions by file: indices into the head's definitions.
@@ -337,6 +588,8 @@ pub struct Cell {
     bindings_by_file: HashMap<String, Vec<usize>>,
     /// Files the resolver read.
     files: HashSet<String>,
+    /// Files outside the run's pathspecs that hold uses the cell left out.
+    outside: HashSet<String>,
     /// Names with uses that landed on nothing, by name: the files.
     /// The file, line, owner and whether it reads a property through a receiver
     /// nothing types.
@@ -370,7 +623,7 @@ fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Ana
     let budget = RunBudget {
         deadline,
         cancel: Some(cancel),
-        read_fault: None,
+        read_fault: crate::resource::test_read_fault().map(snapshot::ReadFault::at),
     };
     // The cap the engine reads a changed file under: a file past it is listed,
     // not read, here as in the fragments.
@@ -392,6 +645,22 @@ fn loads_lazily(b: &Binding) -> bool {
     b.relation == Relation::Imports
         && matches!(&b.resolution, Resolution::Resolved { evidence, .. }
             if evidence.kind == EvidenceKind::DynamicImport)
+}
+
+/// The losses that leave a search a lower bound: a read that failed or a deadline.
+fn stops_in(losses: &[Loss]) -> Vec<LimitReason> {
+    let mut out = Vec::new();
+    for loss in losses {
+        let reason = match loss {
+            Loss::Deadline { .. } => LimitReason::Deadline,
+            Loss::ReadFailed { .. } => LimitReason::ReadFailed,
+            _ => continue,
+        };
+        if !out.contains(&reason) {
+            out.push(reason);
+        }
+    }
+    out
 }
 
 /// Whether `file` is inside the run's pathspecs (all of the repository when
@@ -488,11 +757,13 @@ impl Cell {
             changed: Vec::new(),
             changed_keys: HashSet::new(),
             hunks: HashMap::new(),
+            added: HashMap::new(),
             homes: HashMap::new(),
             defs_by_file: HashMap::new(),
             defs_by_key: HashMap::new(),
             bindings_by_file: HashMap::new(),
             files: HashSet::new(),
+            outside: HashSet::new(),
             unlanded: HashMap::new(),
             landed: HashMap::new(),
             reaches: HashSet::new(),
@@ -506,6 +777,12 @@ impl Cell {
                 .entry(h.path.clone())
                 .or_default()
                 .push(h.new_range());
+            if !h.layout {
+                cell.added
+                    .entry(h.path.clone())
+                    .or_default()
+                    .extend((h.new_start..).zip(h.added.iter().cloned()));
+            }
         }
         cell.index();
         if !symbol {
@@ -544,6 +821,7 @@ impl Cell {
         for (at, b) in self.head.bindings().iter().enumerate() {
             let file = b.file.as_str();
             if !within_scope(&self.scope, file) {
+                self.outside.insert(file.to_string());
                 continue;
             }
             self.files.insert(file.to_string());
@@ -716,7 +994,8 @@ impl Cell {
                                     how: How::Edited { layout_only: false },
                                     subjects: vec![Subject {
                                         key: class.key.clone(),
-                                        reach: Reach::Every,
+                                        reach: Reach::Constructor,
+                                        within: own_span(class.kind, class.span.lines),
                                     }],
                                     stale: Vec::new(),
                                     unpaired: false,
@@ -734,7 +1013,7 @@ impl Cell {
                             .then(|| self.class_holding(&gone.file, &d.key))
                             .flatten();
                     match class {
-                        Some(class) if !self.stale_uses(&gone).is_empty() => {
+                        Some(class) if !self.stale_uses(&gone).0.is_empty() => {
                             let mut held = Changed {
                                 name: class.key.local.name.as_str().to_string(),
                                 kind: class.kind,
@@ -744,6 +1023,7 @@ impl Cell {
                                 subjects: vec![Subject {
                                     key: class.key.clone(),
                                     reach: Reach::Stale,
+                                    within: own_span(class.kind, class.span.lines),
                                 }],
                                 stale: vec![d.key.clone()],
                                 unpaired,
@@ -980,6 +1260,7 @@ impl Cell {
             subjects: vec![Subject {
                 key: def.key.clone(),
                 reach,
+                within: own_span(def.kind, def.span.lines),
             }],
             stale: stale.clone(),
             unpaired,
@@ -990,10 +1271,11 @@ impl Cell {
         match def.kind {
             DefKind::Constructor => match self.owner(def) {
                 Some(class) => {
-                    let mut changed = own(class, Reach::Every);
+                    let mut changed = own(class, Reach::Constructor);
                     changed.subjects.push(Subject {
                         key: def.key.clone(),
                         reach: Reach::Every,
+                        within: own_span(def.kind, def.span.lines),
                     });
                     out.push(changed);
                 }
@@ -1047,15 +1329,18 @@ impl Cell {
     }
 
     /// The resolver of the base side, built when a removed or moved definition
-    /// asks who still names it.
-    fn base(&self) -> Option<&Resolver> {
+    /// asks who still names it. A side that could not be resolved is the reason
+    /// the question went unasked, not an empty answer to it.
+    fn base(&self) -> Result<&Resolver, Gap> {
         self.base
             .get_or_init(|| {
                 Resolver::open(self.family, &self.ctx, SideTag::Base, &self.cache)
-                    .map_err(|e| tracing::warn!("decide: the base side was not resolved ({e})"))
-                    .ok()
+                    .map_err(|e| format!("{e:#}"))
             })
             .as_ref()
+            .map_err(|reason| Gap::BaseUnresolved {
+                reason: reason.clone(),
+            })
     }
 
     pub fn changed(&self) -> &[Changed] {
@@ -1065,16 +1350,69 @@ impl Cell {
     /// What the cell could not read, for the run's limits: a read that failed or
     /// a deadline. Files it read in part are said by the answer's own
     /// unanalysed list.
-    pub fn stops(&self) -> Vec<crate::resource::LimitReason> {
+    pub fn stops(&self) -> Vec<LimitReason> {
+        stops_in(&self.losses)
+    }
+
+    /// The runs of changed lines in the family's files that no tracked definition
+    /// holds and that are code, not a blank line, a comment or an import: a
+    /// module-level statement, the body of an `if __name__ == "__main__":`. The
+    /// cell traces definitions, so what these lines change is not traced, and the
+    /// answer says so. A file the range adds, and a test file, have no callers to
+    /// lose.
+    pub fn outside_definitions(&self) -> Vec<(String, Vec<(u32, u32)>)> {
+        let added_files: HashSet<&str> = self
+            .ctx
+            .changes
+            .changes
+            .iter()
+            .filter(|c| c.kind == ChangeKind::Added)
+            .map(|c| c.path.as_str())
+            .collect();
+        let mut files: Vec<&String> = self.added.keys().collect();
+        files.sort();
         let mut out = Vec::new();
-        for loss in &self.losses {
-            let reason = match loss {
-                Loss::Deadline { .. } => crate::resource::LimitReason::Deadline,
-                Loss::ReadFailed { .. } => crate::resource::LimitReason::ReadFailed,
-                _ => continue,
-            };
-            if !out.contains(&reason) {
-                out.push(reason);
+        for file in files {
+            if !self.family.has_path(file)
+                || !within_scope(&self.scope, file)
+                || added_files.contains(file.as_str())
+                || crate::testfiles::is_test_path(std::path::Path::new(file))
+            {
+                continue;
+            }
+            let held: Vec<(u32, u32)> = self
+                .defs_by_file
+                .get(file)
+                .into_iter()
+                .flatten()
+                .map(|at| self.head.definitions()[*at].span.lines)
+                .collect();
+            let imported: Vec<(u32, u32)> = self
+                .bindings_by_file
+                .get(file)
+                .into_iter()
+                .flatten()
+                .map(|at| &self.head.bindings()[*at])
+                .filter(|b| matches!(b.relation, Relation::Imports | Relation::Reexports))
+                .map(|b| b.site.lines)
+                .collect();
+            let mut spans: Vec<(u32, u32)> = Vec::new();
+            for (line, text) in &self.added[file] {
+                let text = text.trim_start();
+                let code = !text.is_empty()
+                    && !["#", "//", "/*", "*"].iter().any(|c| text.starts_with(c))
+                    && !held.iter().any(|s| within(*line, *s))
+                    && !imported.iter().any(|s| within(*line, *s));
+                if !code {
+                    continue;
+                }
+                match spans.last_mut() {
+                    Some(last) if last.1 + 1 == *line => last.1 = *line,
+                    _ => spans.push((*line, *line)),
+                }
+            }
+            if !spans.is_empty() {
+                out.push((file.clone(), spans));
             }
         }
         out
@@ -1211,39 +1549,42 @@ impl Cell {
                 // of another file runs.
                 if !reaches
                     || (b.entry_guard && self.runs_as_entry(changed, subject, b))
-                    || (b.file.as_str() == changed.file && within(b.site.lines.0, changed.lines))
+                    || subject.within.is_some_and(|own| {
+                        b.file.as_str() == changed.file && within(b.site.lines.0, own)
+                    })
                 {
                     continue;
                 }
                 uses.extend(self.use_of(b));
             }
         }
-        let stale = self.stale_uses(changed);
+        let (stale, base_gap) = self.stale_uses(changed);
         let covered: HashSet<(String, u32)> =
             stale.iter().map(|u| (u.file.clone(), u.line)).collect();
         uses.extend(stale);
         let unplaced = self.unplaced(changed, &covered);
-        let gap = if changed.unpaired {
-            Some(Gap::Unpaired)
-        } else if unplaced.is_empty() {
-            None
-        } else if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
-            // A name that left, or moved, may still be spelled where nothing
-            // types the receiver: each such line may be a use that broke.
-            uses.extend(unplaced.into_iter().map(|(file, line, scope)| Use {
-                also_changed: self.in_diff(&file, line, &scope),
-                file,
-                line,
-                relation: Relation::Reads,
-                standing: Standing::Candidate(UNTYPED_RECEIVER),
-                scope,
-            }));
-            None
-        } else {
-            Some(Gap::Unlanded {
-                uses: unplaced.len(),
-            })
-        };
+        let mut gaps: Vec<Gap> = Vec::new();
+        if changed.unpaired {
+            gaps.push(Gap::Unpaired);
+        } else if !unplaced.is_empty() {
+            if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
+                // A name that left, or moved, may still be spelled where nothing
+                // types the receiver: each such line may be a use that broke.
+                uses.extend(unplaced.into_iter().map(|(file, line, scope)| Use {
+                    also_changed: self.in_diff(&file, line, &scope),
+                    file,
+                    line,
+                    relation: Relation::Reads,
+                    standing: Standing::Candidate(UNTYPED_RECEIVER),
+                    scope,
+                }));
+            } else {
+                gaps.push(Gap::Unlanded {
+                    uses: unplaced.len(),
+                });
+            }
+        }
+        gaps.extend(base_gap);
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
                 b.file.as_str(),
@@ -1254,18 +1595,44 @@ impl Cell {
         uses.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.standing == b.standing);
         // A candidate that is itself changed was never a caller of record.
         uses.retain(|u| !u.also_changed || u.standing == Standing::Resolved);
-        Verdict { uses, gap }
+        Verdict {
+            uses,
+            coverage: self.coverage(changed, gaps),
+        }
+    }
+
+    /// What covered the search: the gaps its definition found, the files outside
+    /// the run's pathspecs that could name it, and a read the cell lost.
+    fn coverage(&self, changed: &Changed, mut gaps: Vec<Gap>) -> Coverage {
+        let outside = self
+            .outside
+            .iter()
+            .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+            .count();
+        if outside > 0 {
+            gaps.push(Gap::OutsideScope { files: outside });
+        }
+        let reasons = self.stops();
+        if !reasons.is_empty() {
+            gaps.push(Gap::Stopped { reasons });
+        }
+        Coverage::of(gaps)
     }
 
     /// Uses at the head of a definition the range removed or moved away: lines
     /// the base resolved to it, which the head still spells and no longer lands.
-    fn stale_uses(&self, changed: &Changed) -> Vec<Use> {
+    /// With them, the gap that kept the base side from saying all of it: it was
+    /// not resolved, or what it read was cut short.
+    fn stale_uses(&self, changed: &Changed) -> (Vec<Use>, Option<Gap>) {
         if changed.stale.is_empty() {
-            return Vec::new();
+            return (Vec::new(), None);
         }
-        let Some(base) = self.base() else {
-            return Vec::new();
+        let base = match self.base() {
+            Ok(base) => base,
+            Err(gap) => return (Vec::new(), Some(gap)),
         };
+        let reasons = stops_in(base.losses());
+        let gap = (!reasons.is_empty()).then_some(Gap::Stopped { reasons });
         // How sure the base was of each: a call through an interface-typed
         // receiver reached the definition as a candidate, and the line that
         // still spells it is one.
@@ -1310,7 +1677,7 @@ impl Cell {
                 });
             }
         }
-        out
+        (out, gap)
     }
 
     /// The uses of the name that landed on nothing, in files that could reach
@@ -1397,7 +1764,7 @@ impl Cells {
                         "impact: the {} cell was not resolved ({e}); its definitions are undetermined",
                         family.name()
                     );
-                    state.run.note(crate::resource::LimitReason::ReadFailed);
+                    state.run.note(LimitReason::ReadFailed);
                     lost.push(family);
                 }
             }

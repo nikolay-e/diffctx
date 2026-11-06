@@ -996,6 +996,146 @@ read_sweeps! {
     kotlin_locate: Kotlin, Locate;
 }
 
+// ---- a read of the base side that failed under a removed definition (m3) ----
+
+/// A method the range removes, and a file that still calls it through a variable
+/// typed by an assignment: the base side reads the file's text to know that
+/// `gadget.run()` was a call of `Gadget.run`.
+fn removed_method() -> Fixture {
+    let tmp = scratch();
+    let repo = tmp.path().join("repo");
+    git(&repo, &["init", "-q", "."]);
+    git(&repo, &["config", "user.email", "test@example.com"]);
+    git(&repo, &["config", "user.name", "diffctx tests"]);
+    std::fs::write(
+        repo.join("gadget.py"),
+        "class Gadget:\n    def run(self):\n        return 1\n\n    def stop(self):\n        return 0\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repo.join("caller.py"),
+        "from gadget import Gadget\n\n\ndef drive():\n    gadget = Gadget()\n    return gadget.run()\n",
+    )
+    .unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "initial"]);
+    std::fs::write(
+        repo.join("gadget.py"),
+        "class Gadget:\n    def stop(self):\n        return 0\n",
+    )
+    .unwrap();
+    git(&repo, &["commit", "-qam", "drop run"]);
+    Fixture {
+        tmp,
+        range: "HEAD~1..HEAD".to_string(),
+    }
+}
+
+/// The row of the removed method, when the answer lists one.
+fn removed_run(doc: &serde_json::Value) -> Option<&serde_json::Value> {
+    doc["changed"]
+        .as_array()?
+        .iter()
+        .find(|c| c["kind"] == "removed" && c["symbol"] == "run")
+}
+
+/// Whether the row names the file that still calls the method.
+fn names_the_caller(row: &serde_json::Value) -> bool {
+    row["callers"]
+        .as_array()
+        .is_some_and(|callers| callers.iter().any(|c| c["path"] == "caller.py"))
+}
+
+/// A blob read of the base side that fails is no reason to say that nothing
+/// references a method its caller still spells: the answer names the caller, or
+/// says why it could not tell, or is an error or a disclosed partial run. The
+/// fault reaches the reader of the cell too, so the sweep strikes the reads that
+/// side makes (`DIFFCTX_TEST_READ_FAULT`).
+#[test]
+fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() {
+    let fx = removed_method();
+    // No disk cache to serve a blob's facts: every blob is read.
+    let no_cache = fx.tmp.path().join("no-cache");
+    std::fs::write(&no_cache, "").unwrap();
+    let no_cache = no_cache.to_str().expect("utf-8 path").to_string();
+    let json_args = Query::Impact.args(&fx.range, "");
+    let md_args = [
+        ".",
+        "--diff",
+        fx.range.as_str(),
+        "--mode",
+        "impact",
+        "-f",
+        "md",
+        "-q",
+    ];
+    let run = |args: &[&str], fail: Option<usize>| {
+        let at = fail.map(|n| n.to_string());
+        let mut env: Vec<(&str, &str)> = vec![("DIFFCTX_CACHE_DIR", no_cache.as_str())];
+        if let Some(n) = at.as_deref() {
+            env.push(("DIFFCTX_TEST_READ_FAULT", n));
+        }
+        fx.run_with("no-such-verb", "none", args, &env)
+    };
+
+    let clean = run(&json_args, None);
+    assert!(
+        clean.status.success(),
+        "the clean run failed: {}",
+        String::from_utf8_lossy(&clean.stderr)
+    );
+    let clean = json(&clean);
+    assert!(
+        removed_run(&clean).is_some_and(names_the_caller),
+        "the clean run must name the file that still calls `run`: {clean:#}"
+    );
+
+    let mut broken: Vec<String> = Vec::new();
+    let mut reached_the_cell = false;
+    let mut struck = 0;
+    loop {
+        let out = run(&json_args, Some(struck));
+        let strikes = String::from_utf8_lossy(&out.stderr)
+            .matches("failed on purpose")
+            .count();
+        if strikes == 0 {
+            break;
+        }
+        // One strike for the run's own reader, one for the cell's.
+        reached_the_cell |= strikes > 1;
+        if out.status.success() {
+            let doc = json(&out);
+            let told = impact_disclosed(&doc)
+                || removed_run(&doc)
+                    .is_some_and(|row| names_the_caller(row) || row["unresolved"].is_string());
+            if !told {
+                broken.push(format!("blob read {struck}: {doc}"));
+            }
+            let md = run(&md_args, Some(struck));
+            let md = String::from_utf8_lossy(&md.stdout);
+            if md.contains("nothing references it") {
+                broken.push(format!("blob read {struck}: {md}"));
+            }
+        }
+        struck += 1;
+        assert!(struck < 5_000, "the sweep never ended");
+    }
+    assert!(
+        struck > 0,
+        "no read was struck, so the sweep measures nothing"
+    );
+    assert!(
+        reached_the_cell,
+        "the fault never struck the cell's own reader: the sweep says nothing about the base side"
+    );
+    assert!(
+        broken.is_empty(),
+        "{} of {struck} failed reads left an answer that says nothing references `run`, or says nothing\n{}",
+        broken.len(),
+        broken.join("\n")
+    );
+}
+
 /// The changed file is past the size cap, so what it defines is not read: the
 /// answer says so in every mode, and never reads as a change nothing depends
 /// on (#505).

@@ -127,7 +127,7 @@
       "type": "boolean"
     },
     "truncated": {
-      "description": "Callers dropped to fit `IMPACT_TOKEN_CAP`, lowest weight first.",
+      "description": "Callers dropped to fit `IMPACT_TOKEN_CAP`, the last dealt first.",
       "type": "integer",
       "format": "uint",
       "minimum": 0
@@ -168,7 +168,7 @@
       "minimum": 0
     },
     "untested_unlisted": {
-      "description": "The changed definitions of that count which nothing calls, so they\nare not among `changed`: `path::symbol (lines)` each.",
+      "description": "The changed definitions of that count with no caller found in the\nanalysed scope, so they are not among `changed`: `path::symbol (lines)`\neach. Their searches were complete; `limits` and `withheld_files` say\nwhether the run's scope was whole, which makes it \"nothing calls them\".",
       "type": "array",
       "items": {
         "type": "string"
@@ -465,7 +465,7 @@
           }
         },
         "callers_omitted": {
-          "description": "Callers the answer cap dropped, weakest first: of a listed symbol, the\nones missing from `callers`, which is then a lower bound; of an omitted\nstub, its whole caller set. The same definition asked for alone may name\nmore.",
+          "description": "Callers the answer cap dropped, last dealt first: of a listed symbol, the\nones missing from `callers`, which is then a lower bound; of an omitted\nstub, its whole caller set. The same definition asked for alone may name\nmore.",
           "type": "integer",
           "format": "uint",
           "minimum": 0
@@ -551,6 +551,13 @@
           "type": "string",
           "default": ""
         },
+        "kind": {
+          "description": "What the reference does (`calls`, `reads`, `writes`, `imports`,\n`reexports`, `overrides`, `instantiates`, `passes_as_value`), stated\nonly where the (language, relation) cell is `precise`; elsewhere a row\nsays `relation` alone.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "sites": {
           "description": "The lines that reference the definition, when known.",
           "type": "array",
@@ -581,11 +588,11 @@
           ]
         },
         "reason": {
-          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, or `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched.",
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched, or `outside_definitions`:\ncode the range changed that no tracked definition holds (a module-level\nstatement, a `__main__` block), whose effect is not traced.",
           "type": "string"
         },
         "lines": {
-          "description": "Where the parse broke, the first few lines.",
+          "description": "Where the parse broke, the first few lines; for `outside_definitions`,\nthe first and last line of each changed run, in pairs.",
           "type": "array",
           "items": {
             "type": "integer",

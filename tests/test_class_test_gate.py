@@ -24,14 +24,26 @@ pytestmark = pytest.mark.skipif(
 )
 
 FAKE_CARGO = """#!{python}
-import pathlib, sys
+import os, pathlib, sys
 
 args = sys.argv[1:]
 crate = pathlib.Path.cwd()
 root = crate.parent.parent
-if "--no-run" in args:
+engine = (crate / "src" / "lib.rs").read_text()
+MARKER = "diffctx-case: assertion failed"
+
+if args[0] == "build":
+    if "nobuild" in engine:
+        sys.exit(1)
+    if "nobinary" not in engine:
+        binary = pathlib.Path(os.environ["CARGO_TARGET_DIR"]) / "release" / "diffctx"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text(engine)
+        binary.chmod(0o755)
     sys.exit(0)
-fixed = "v2" in (crate / "src" / "lib.rs").read_text()
+if "--no-run" in args:
+    harness = (crate / "tests" / "yaml_cases.rs").read_text()
+    sys.exit(1 if "yaml_cases" in args and "uses_new_api" in harness and "v2" not in engine else 0)
 cases = sorted(p for p in (root / "tests" / "cases").rglob("*.yaml"))
 
 def trial(path):
@@ -44,9 +56,26 @@ if "--list" in args:
     sys.exit(0)
 if "--exact" in args:
     [path] = [p for p in cases if trial(p) == args[args.index("--exact") + 1]]
-    sys.exit(0 if fixed or "needs_fix" not in path.read_text() else 1)
+    text = path.read_text()
+    # An impact or symbol case asks the binary DIFFCTX_BIN names; a selection
+    # case asks the engine its own tree carries.
+    engine = pathlib.Path(os.environ["DIFFCTX_BIN"]).read_text() if "DIFFCTX_BIN" in os.environ else engine
+    if "crash" in engine or "setup_error" in text:
+        print("thread panicked before any assertion")
+        sys.exit(101)
+    if "needs_fix" in text and "v2" not in engine:
+        print(MARKER)
+        sys.exit(101)
+    sys.exit(0)
 suite = args[args.index("--test") + 1]
-sys.exit(0 if fixed or "needs_fix" not in (crate / "tests" / f"{{suite}}.rs").read_text() else 1)
+text = (crate / "tests" / f"{{suite}}.rs").read_text()
+if "crash" in text:
+    print("process aborted")
+    sys.exit(134)
+if "needs_fix" in text and "v2" not in engine:
+    print("test result: FAILED. 0 passed; 1 failed")
+    sys.exit(101)
+sys.exit(0)
 """
 
 
@@ -80,7 +109,12 @@ def _commit(repo: Path, env: dict[str, str], subject: str, files: dict[str, str 
     return _git(repo, env, "rev-parse", "HEAD")
 
 
-def _run_gate(tmp_path: Path, commits: list[tuple[str, dict[str, str | None]]], body: str = "") -> subprocess.CompletedProcess:
+def _run_gate(
+    tmp_path: Path,
+    commits: list[tuple[str, dict[str, str | None]]],
+    body: str = "",
+    base_engine: str = "v1\n",
+) -> subprocess.CompletedProcess:
     env = _env(tmp_path)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -90,7 +124,7 @@ def _run_gate(tmp_path: Path, commits: list[tuple[str, dict[str, str | None]]], 
         env,
         "chore: base",
         {
-            ENGINE: "v1\n",
+            ENGINE: base_engine,
             f"{CRATE}/tests/yaml_cases.rs": "harness\n",
             f"{CRATE}/tests/metamorphic.rs": "// no property yet\n",
             "tests/cases/impact/python/existing.yaml": "always_green\n",
@@ -162,6 +196,61 @@ class TestAFixNeedsItsClassTest:
             tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", "tests/cases/impact/python/existing.yaml": None})]
         )
         assert result.returncode == 1
+
+
+class TestWhereEachKindOfTestRuns:
+    def test_an_impact_case_runs_the_heads_harness_against_a_binary_built_from_the_base(self, tmp_path):
+        """A harness that needs what only the head has still reads the case: the base is a process."""
+        harness = {f"{CRATE}/tests/yaml_cases.rs": "uses_new_api\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **harness, **RED_CASE})])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case impact/python/body_only is red on the base" in result.stdout
+
+    def test_a_selection_case_runs_on_the_bases_own_harness(self, tmp_path):
+        """The case file is the pull request's; a harness change of its own never reaches the base."""
+        harness = {f"{CRATE}/tests/yaml_cases.rs": "uses_new_api\n"}
+        case = {"tests/cases/diff/algorithm/shape.yaml": "needs_fix\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **harness, **case})])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case algorithm/shape is red on the base" in result.stdout
+
+
+class TestRedMeansAFailedAssertion:
+    """Anything else that stops a test on the base is an error of the gate (exit 2): it proves nothing."""
+
+    def _gate_error(self, result):
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "without a failed assertion" in result.stdout + result.stderr
+        assert "is red on the base" not in result.stdout
+
+    def test_a_base_binary_that_crashes_is_no_red_case(self, tmp_path):
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE})], base_engine="v1 crash\n")
+        self._gate_error(result)
+
+    def test_a_case_whose_setup_fails_is_no_red_case(self, tmp_path):
+        case = {"tests/cases/impact/python/body_only.yaml": "needs_fix setup_error\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **case})])
+        self._gate_error(result)
+
+    def test_a_selection_case_that_dies_on_the_base_is_no_red_case(self, tmp_path):
+        case = {"tests/cases/diff/algorithm/shape.yaml": "needs_fix setup_error\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **case})])
+        self._gate_error(result)
+
+    def test_a_suite_that_aborts_on_the_base_is_no_red_suite(self, tmp_path):
+        suite = {f"{CRATE}/tests/metamorphic.rs": "needs_fix crash\n"}
+        result = _run_gate(tmp_path, [("fix: the property", {ENGINE: "v2\n", **suite})])
+        self._gate_error(result)
+
+    def test_a_base_that_leaves_no_binary_is_a_gate_error(self, tmp_path):
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE})], base_engine="v1 nobinary\n")
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "left no binary" in result.stdout + result.stderr
+
+    def test_a_base_that_does_not_build_is_a_gate_error(self, tmp_path):
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE})], base_engine="v1 nobuild\n")
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "does not build its binary" in result.stdout + result.stderr
 
 
 class TestWhereTheGateDoesNotApply:

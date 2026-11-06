@@ -30,6 +30,15 @@ pub const LANGUAGES: &[&str] = &[
     "other",
 ];
 
+/// Opens a failure that is the case's own assertion. `.github/scripts/class-test.sh`
+/// counts a case red on the base only when its output carries this line: a
+/// harness or setup error, a crash or a missing binary carries none.
+pub const ASSERTION_FAILED: &str = "diffctx-case: assertion failed";
+
+pub fn assertion_failed(details: impl std::fmt::Display) -> libtest_mimic::Failed {
+    libtest_mimic::Failed::from(format!("{ASSERTION_FAILED}\n{details}"))
+}
+
 /// What one case concluded; `failures` is empty for a green case. The caller
 /// sets the report's state once the baseline has been consulted, then records it.
 pub struct Outcome {
