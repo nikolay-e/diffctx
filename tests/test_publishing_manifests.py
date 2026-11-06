@@ -152,11 +152,24 @@ class TestPluginEvalMock:
     def test_the_eval_tool_listing_is_the_server_s_own(self):
         """#320: the plugin evals serve `diffctx_context` from a mock, and a
         listing that drifted from the server measured a tool nobody ships
-        (an old description, `mode` defaulting to locate, no `symbol`)."""
+        (an old description, `mode` defaulting to locate, no `symbol`).
+
+        `plugin/` follows the published engine, and the post-publish finalize
+        moves it (the relay's T1): the mock is the server's own listing only
+        while the plugin pins this tree's engine version."""
         pytest.importorskip("mcp")
         import asyncio
 
+        from diffctx import __version__
         from diffctx.mcp.server import mcp as server
+
+        pin = re.search(r"diffctx\[mcp\]==([^\"\s]+)", (PROJECT_ROOT / "plugin" / "pyproject.toml").read_text(encoding="utf-8"))
+        pinned = pin.group(1) if pin else None
+        if pinned != __version__:
+            pytest.skip(
+                f"plugin/ pins engine {pinned}, this tree is {__version__}: the mock follows the published engine "
+                "and the post-publish finalize moves it (T1, Revision 11 item 11)"
+            )
 
         # Compared by name: other tests in the same process register the
         # opt-in legacy tools on this shared server.

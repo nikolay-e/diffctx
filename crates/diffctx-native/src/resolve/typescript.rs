@@ -153,6 +153,38 @@ impl TypeScriptResolver {
     }
 }
 
+/// A CommonJS export statement names what it offers where it is read: the walker
+/// sees `x` of `exports.x = x` as a read of `x`, and that read is the export row
+/// of the statement, not a second use of it.
+fn reads_inside_exports_are_the_export(bindings: &mut Vec<Binding>) {
+    let exports: Vec<(RepoPath, std::ops::Range<u32>, DefKey)> = bindings
+        .iter()
+        .filter(|b| b.relation == Relation::Reexports && matches!(b.from, Scope::Module))
+        .filter_map(|b| match &b.resolution {
+            Resolution::Resolved { target, .. } => {
+                Some((b.file.clone(), b.site.bytes.clone(), target.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    if exports.is_empty() {
+        return;
+    }
+    bindings.retain(|b| {
+        let Resolution::Resolved { target, .. } = &b.resolution else {
+            return true;
+        };
+        !(b.relation == Relation::Reads
+            && matches!(b.from, Scope::Module)
+            && exports.iter().any(|(file, bytes, key)| {
+                *file == b.file
+                    && key == target
+                    && bytes.start <= b.site.bytes.start
+                    && b.site.bytes.end <= bytes.end
+            }))
+    });
+}
+
 // ---- the index
 
 /// The names from the outermost definition to the one in question.
@@ -1048,6 +1080,7 @@ impl<'a> Engine<'a> {
         }
         self.globs_imported(&mut bindings);
         self.overrides(&mut bindings);
+        reads_inside_exports_are_the_export(&mut bindings);
         let definitions = self
             .ix
             .defs
@@ -3268,28 +3301,11 @@ impl<'a> Engine<'a> {
                 name,
                 from: None,
                 ..
-            } => {
-                let mut through = Vec::new();
-                let entity = self.module_name(f, name, 0, &mut through, &mut Seen::new());
-                if let Some(Entity::Class(id) | Entity::Def(id)) = entity {
-                    if self.ix.defs[id].file == f || self.reachable(f, id) {
-                        // The list names what it offers: a read of it.
-                        let mut read = make(
-                            site,
-                            name.clone(),
-                            Resolution::Resolved {
-                                target: self.ix.defs[id].key.clone(),
-                                evidence: Evidence::through(
-                                    EvidenceKind::SameScope,
-                                    self.paths(&through),
-                                ),
-                            },
-                        );
-                        read.relation = Relation::Reads;
-                        out.push(read);
-                    }
-                }
-            }
+            } => self.offered(f, site, name, out),
+            Export::Default {
+                site,
+                local: Some(name),
+            } => self.offered(f, site, name, out),
             Export::Star { site, from, alias } => {
                 let resolution = match self.module(f, from.as_str()) {
                     ModRes::File(g) => Resolution::Module {
@@ -3306,6 +3322,48 @@ impl<'a> Engine<'a> {
             }
             _ => {}
         }
+    }
+
+    /// `export { a }`, `export default a`, `exports.a = a` and `module.exports =
+    /// a` offer a definition of the module as it is: the module's export of it,
+    /// which a change to its body leaves as it was and a removal breaks at load.
+    /// A name nothing in the module binds is a dangling export, kept as a row
+    /// that landed on nothing.
+    fn offered(&self, f: usize, site: &Span, name: &Name, out: &mut Vec<Binding>) {
+        let mut through = Vec::new();
+        let entity = self.module_name(f, name, 0, &mut through, &mut Seen::new());
+        let resolution = match entity {
+            // `export default function f() {}` and `exports.f = function f() {}`
+            // declare what they export: the statement is the definition.
+            Some(Entity::Class(id) | Entity::Def(id))
+                if self.ix.defs[id].file == f
+                    && self.ix.defs[id].def.span.bytes.start <= site.bytes.start
+                    && site.bytes.end <= self.ix.defs[id].def.span.bytes.end =>
+            {
+                return;
+            }
+            Some(Entity::Class(id) | Entity::Def(id))
+                if self.ix.defs[id].file == f || self.reachable(f, id) =>
+            {
+                Resolution::Resolved {
+                    target: self.ix.defs[id].key.clone(),
+                    evidence: Evidence::through(EvidenceKind::SameScope, self.paths(&through)),
+                }
+            }
+            None => Resolution::Unresolved {
+                reason: UnresolvedReason::NoBinding,
+            },
+            Some(_) => return,
+        };
+        out.push(Binding {
+            file: self.path_of(f).clone(),
+            site: site.clone(),
+            from: Scope::Module,
+            relation: Relation::Reexports,
+            name: name.clone(),
+            resolution,
+            entry_guard: false,
+        });
     }
 
     /// A glob loads every module its patterns match: an import of each, whose

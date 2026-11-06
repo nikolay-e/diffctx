@@ -2126,6 +2126,23 @@ fn a_test_is_run_by_its_runner() {
     assert_no_negative_claim(&impact_markdown(kotlin.path()));
 }
 
+/// Python has no block scope: a name bound in the main guard is a module-level
+/// definition, so `--symbol` finds it instead of reporting that nothing
+/// defines it.
+#[test]
+fn a_binding_in_the_main_guard_is_found_by_symbol() {
+    let script = repo(
+        &[(
+            "job.py",
+            "def run(n):\n    return n\n\n\nif __name__ == '__main__':\n    outcome = run(1)\n    print(outcome)\n",
+        )],
+        &[],
+    );
+    let md = symbol_markdown(script.path(), "outcome");
+    assert!(!md.contains("no definition found"), "{md}");
+    assert!(md.contains("job.py::outcome"), "{md}");
+}
+
 /// Forgejo #111: a module's own `if __name__ == "__main__":` guard calling a
 /// changed function is not a caller outside the diff and not a test gap; the
 /// definition says it runs as a script. A Go and a Java `main` are program

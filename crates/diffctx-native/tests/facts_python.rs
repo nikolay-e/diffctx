@@ -6,8 +6,8 @@ use std::sync::atomic::AtomicBool;
 
 use _diffctx::facts::lang::python::PythonExtractor;
 use _diffctx::facts::{
-    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, Language, Local, LocalKey, Receiver,
-    Ref, Scope, TypeName,
+    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Language, Local,
+    LocalKey, Receiver, Ref, Scope, TypeName,
 };
 use _diffctx::snapshot::{Loss, RunBudget, Stage};
 
@@ -178,7 +178,10 @@ fn definitions_by_kind_and_container() {
             &["Function f"],
         ),
         ("x = 1\nx = 2\n", &["Variable x"]),
-        ("if __name__ == \"__main__\":\n    app = 1\n", &[]),
+        (
+            "if __name__ == \"__main__\":\n    app = 1\n",
+            &["Variable app"],
+        ),
         ("X: int = 1\n", &["Constant X"]),
     ];
     for (source, expected) in table {
@@ -492,6 +495,77 @@ fn the_main_guard_is_module_scope_and_an_entry_not_a_caller() {
         ["Call helper in def:main", "Call main in module"]
     );
     assert_eq!(lines_of_defs(source), ["Function main"]);
+}
+
+/// Python has no block scope: a name bound in a module-level `if`, `for`,
+/// `while`, `with`, `try` or `match` (a script's main guard among them) is a
+/// module variable, and a read of it resolves to that definition instead of
+/// passing as a local.
+#[test]
+fn a_binding_in_a_module_level_compound_statement_is_a_module_definition() {
+    let table: &[(&str, &str)] = &[
+        ("if ready:\n    a = 1\nelse:\n    a = 2\n", "Variable a"),
+        ("for n in range(3):\n    b = n\n", "Variable b"),
+        ("while go():\n    c = 1\n", "Variable c"),
+        ("with open(p) as f:\n    d = f.read()\n", "Variable d"),
+        (
+            "try:\n    e = load()\nexcept OSError:\n    e = None\n",
+            "Variable e",
+        ),
+        (
+            "match cmd:\n    case 1:\n        g = 1\n    case _:\n        g = 2\n",
+            "Variable g",
+        ),
+        (
+            "if __name__ == \"__main__\":\n    x = f(1)\n    print(x)\n",
+            "Variable x",
+        ),
+    ];
+    for (source, wanted) in table {
+        assert!(
+            lines_of_defs(source).iter().any(|line| line == wanted),
+            "{wanted} missing in {:?} for {source}",
+            lines_of_defs(source)
+        );
+    }
+    let guarded = "if __name__ == \"__main__\":\n    x = f(1)\n    print(x)\n";
+    let lines = ref_lines(guarded);
+    assert!(
+        lines.contains(&"Read x in module".to_string())
+            || lines.contains(&"PassAsValue x in module".to_string()),
+        "the read of x is a use of the module variable: {lines:?}"
+    );
+    assert!(locals(&extract(guarded)).is_empty());
+}
+
+/// What `importlib.import_module(name)` loads is not in the text: the import is a
+/// fact of its own, where the literal one is an import.
+#[test]
+fn an_import_the_code_computes_is_a_computed_import_and_a_literal_one_is_not() {
+    let blob = extract(
+        "import importlib\n\n\ndef load(name):\n    a = importlib.import_module(name)\n    b = importlib.import_module(\"pkg.mod\")\n    c = __import__(f\"x.{name}\")\n    d = __import__(\"y\")\n    return a, b, c, d\n",
+    );
+    let computed: Vec<(u32, String, ImportKind)> = blob
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::ComputedImport(c) => Some((c.site.lines.0, scope(&c.enclosing), c.kind)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        computed,
+        [
+            (5, "def:load".to_string(), ImportKind::Dynamic),
+            (7, "def:load".to_string(), ImportKind::Dynamic),
+        ]
+    );
+    let literal: Vec<&str> = imports(&blob)
+        .iter()
+        .filter(|i| i.kind == ImportKind::Dynamic)
+        .map(|i| i.module.as_str())
+        .collect();
+    assert_eq!(literal, ["pkg.mod", "y"]);
 }
 
 #[test]

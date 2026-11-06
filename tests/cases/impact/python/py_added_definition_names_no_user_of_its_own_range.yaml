@@ -1,0 +1,25 @@
+name: py_added_definition_names_no_user_of_its_own_range
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, added-definition, also-changed]
+repo:
+  initial_files:
+    app.py: |
+      def run(x):
+          return x
+  changed_files:
+    app.py: |
+      def helper(x):
+          return x + 1
+
+
+      def run(x):
+          return helper(x)
+  commit_message: "app: a helper for run"
+# A definition the range adds has no user outside the range that could depend on
+# it; the user the range writes is the diff. Nothing is named. The standard header
+# ("No resolved static callers outside the diff in the analysed scope") is true here
+# and is no negative claim about `helper`, so it is not asserted away.
+expect:
+  changed: []

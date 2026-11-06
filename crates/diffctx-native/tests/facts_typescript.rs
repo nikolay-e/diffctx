@@ -7,8 +7,8 @@ use std::sync::atomic::AtomicBool;
 
 use _diffctx::facts::lang::typescript::{JavaScript, TypeScript};
 use _diffctx::facts::{
-    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, LocalKey, Namespace, Receiver, Ref,
-    Scope, Star, Visibility,
+    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, LocalKey, Namespace,
+    Receiver, Ref, Scope, Star, Visibility,
 };
 use _diffctx::snapshot::{Loss, RunBudget};
 
@@ -1105,6 +1105,102 @@ fn the_file_serves_both_languages() {
         .map(|extractor| extractor.language().to_string())
         .collect();
     assert_eq!(languages, ["typescript", "javascript"]);
+}
+
+/// One escape rule for every function value: a declaration, a constant holding
+/// an arrow and a function assigned to a member of what the function returns are
+/// each a definition when they leave it, and the lines of one that stays belong
+/// to the function around it.
+#[test]
+fn a_function_value_that_leaves_its_function_is_a_definition_like_a_declaration() {
+    let create = |each: &str, member: &str, quiet: &str| {
+        format!(
+            "export function create() {{\n  const got: any = () => 1;\n  function eachDecl(n: number) {{ return n + {each}; }}\n  const eachConst = (n: number) => n + {each};\n  const quiet = () => {quiet};\n  got.eachDecl = eachDecl;\n  got.eachConst = eachConst;\n  got.extend = (o: number) => o + {member};\n  got.hold = () => quiet();\n  return got;\n}}\n"
+        )
+    };
+    let facts = ts(&create("1", "1", "1"));
+    assert!(facts.losses.is_empty(), "{:?}", facts.losses);
+    let mut named = defs(&facts);
+    named.sort();
+    let mut expected = vec![
+        "create Function",
+        "create.got Function",
+        "create.eachDecl Function",
+        "create.eachConst Function",
+        "create.got.extend Method",
+        "create.got.hold Method",
+    ];
+    expected.sort();
+    assert_eq!(named, expected);
+    let bound = locals(&facts);
+    assert!(
+        bound.contains(&"Closure quiet in def create".to_string()),
+        "{bound:#?}"
+    );
+    assert!(
+        bound.iter().all(|l| !l.contains("Closure eachConst")),
+        "{bound:#?}"
+    );
+
+    let hashes = |source: &str, name: &str| {
+        let facts = ts(source);
+        let def = def_named(&facts, name);
+        (def.body_hash, def.text_hash)
+    };
+    // The body of each that leaves is its own change, never `create`'s.
+    let (before, after) = (create("1", "1", "1"), create("2", "2", "1"));
+    assert_eq!(hashes(&before, "create"), hashes(&after, "create"));
+    for member in ["create.eachDecl", "create.eachConst", "create.got.extend"] {
+        assert_ne!(
+            hashes(&before, member).0,
+            hashes(&after, member).0,
+            "{member}"
+        );
+    }
+    assert_eq!(
+        hashes(&before, "create.got.hold"),
+        hashes(&after, "create.got.hold")
+    );
+    // The constant that stays is part of its function.
+    let kept = create("1", "1", "2");
+    assert_ne!(hashes(&before, "create").0, hashes(&kept, "create").0);
+    assert_eq!(
+        hashes(&before, "create.eachConst"),
+        hashes(&kept, "create.eachConst")
+    );
+}
+
+/// A specifier the code computes loads a module no text names: a fact of its
+/// own for `import(expr)` and `require(expr)`, where a literal one is an import.
+#[test]
+fn an_import_the_code_computes_is_a_computed_import_and_a_literal_one_is_not() {
+    let facts = ts(
+        "export async function load(name: string) {\n  const a = await import(`./${name}`);\n  const b = require(name);\n  const c = await import('./lit');\n  const d = require('./lit2');\n  return [a, b, c, d];\n}\n",
+    );
+    let computed: Vec<(u32, String, ImportKind)> = facts
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::ComputedImport(c) => Some((c.site.lines.0, scope(&c.enclosing), c.kind)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        computed,
+        [
+            (2, "def load".to_string(), ImportKind::Dynamic),
+            (3, "def load".to_string(), ImportKind::Require),
+        ]
+    );
+    let literal: Vec<&str> = facts
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::Import(i) => Some(i.module.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(literal, ["./lit", "./lit2"]);
 }
 
 #[test]

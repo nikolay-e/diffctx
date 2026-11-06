@@ -1,0 +1,38 @@
+name: py_removed_definition_still_named_by_a_changed_function_keeps_that_user
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-definition, stale, e1]
+repo:
+  initial_files:
+    lib.py: |
+      def old(x):
+          return x
+
+
+      def keep(x):
+          return x
+    app.py: |
+      from lib import old
+
+
+      def run(x):
+          return old(x)
+  changed_files:
+    lib.py: |
+      def keep(x):
+          return x
+    app.py: |
+      from lib import old
+
+
+      def run(x):
+          return old(x) + 1
+  commit_message: "lib: drop old"
+# A line that still names the removed definition is a broken reference whether or
+# not its function changed in the same range.
+expect:
+  changed: [lib.py::old]
+  relations:
+    - {from: "app.py::run", to: "lib.py::old", kind: calls, resolution: resolved, site: 5}
+  removed: [old]

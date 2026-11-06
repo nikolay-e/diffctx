@@ -1,0 +1,24 @@
+name: ts_reflowed_export_with_a_new_body_is_no_contract
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, contracts, rule-i]
+repo:
+  initial_files:
+    src/panel.ts: |
+      export function mono(x: number, y: number): number {
+        return x * y;
+      }
+  changed_files:
+    src/panel.ts: |
+      export function mono(
+        x: number,
+        y: number
+      ): number {
+        return x * y + 1;
+      }
+  commit_message: "panel: reflow the declaration, new body"
+# A contract row is about the export's place in the surface: its name, kind and
+# signature are unchanged, only the declaration's lines and the body moved.
+expect:
+  not_contracts: [mono]
