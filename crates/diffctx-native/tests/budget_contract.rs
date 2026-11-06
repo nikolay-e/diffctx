@@ -592,10 +592,12 @@ fn stopped_run(repo: &Path) {
     commit_all(repo, "change");
 }
 
-/// Definitions and callers under a path of eight long directories.
+/// Definitions and callers under a path long in tokens, within the 260
+/// characters a Windows runner's temporary directory leaves: three long
+/// directories, the rest of the length in the file names.
 fn long_path(repo: &Path) {
-    let dir: Vec<String> = (0..8)
-        .map(|d| format!("component_{d}_with_a_deliberately_long_directory_name"))
+    let dir: Vec<String> = (0..3)
+        .map(|d| format!("component_{d}_long_directory_name"))
         .collect();
     let (slashed, dotted) = (dir.join("/"), dir.join("."));
     let body = |i: usize, extra: &str| {
@@ -606,15 +608,15 @@ fn long_path(repo: &Path) {
     for i in 0..10 {
         write(
             repo,
-            &format!("{slashed}/billing_module_{i:02}.py"),
+            &format!("{slashed}/billing_module_with_a_long_file_name_{i:02}.py"),
             &body(i, ""),
         );
         for k in 0..3 {
             write(
                 repo,
-                &format!("{slashed}/callers/call_{i:02}_{k}.py"),
+                &format!("{slashed}/callers/call_outstanding_account_balances_{i:02}_{k}.py"),
                 &format!(
-                    "from {dotted}.billing_module_{i:02} import reconcile_outstanding_account_balances_{i:02}\n\n\ndef run_{i:02}_{k}(l):\n    return reconcile_outstanding_account_balances_{i:02}(l)\n"
+                    "from {dotted}.billing_module_with_a_long_file_name_{i:02} import reconcile_outstanding_account_balances_{i:02}\n\n\ndef run_{i:02}_{k}(l):\n    return reconcile_outstanding_account_balances_{i:02}(l)\n"
                 ),
             );
         }
@@ -623,7 +625,7 @@ fn long_path(repo: &Path) {
     for i in 0..10 {
         write(
             repo,
-            &format!("{slashed}/billing_module_{i:02}.py"),
+            &format!("{slashed}/billing_module_with_a_long_file_name_{i:02}.py"),
             &body(i, " or None"),
         );
     }
