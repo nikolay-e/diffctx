@@ -225,6 +225,15 @@
       "type": "integer",
       "format": "uint",
       "minimum": 0
+    },
+    "budget_needed": {
+      "description": "Set when the least the answer can say still outgrows the budget asked:\nthe tokens that least takes, which a budget of that size delivers. The\nanswer cuts nothing more than that least.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0
     }
   },
   "required": [
