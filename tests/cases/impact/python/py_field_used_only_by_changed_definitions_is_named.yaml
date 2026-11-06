@@ -1,0 +1,36 @@
+name: py_field_used_only_by_changed_definitions_is_named
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, field, also-changed, e1]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/opts.py: |
+      class Options:
+          retries = 1
+          limit = 3
+    pkg/use.py: |
+      from pkg.opts import Options
+
+
+      def attempts(options: Options):
+          return 1
+  changed_files:
+    pkg/opts.py: |
+      class Options:
+          retries = 1
+          limit = 4
+    pkg/use.py: |
+      from pkg.opts import Options
+
+
+      def attempts(options: Options):
+          return options.limit
+  commit_message: "opts: a higher limit, read by attempts"
+# R14: the one use of the edited field is a definition the same range changes, so
+# it is no caller outside the diff. The field is still named, with that user, on
+# the answer's one line for definitions only the range's own changes use. (A field
+# the range adds is not: nothing outside the range could depend on it.)
+expect:
+  changed: [pkg/opts.py::Options.limit]

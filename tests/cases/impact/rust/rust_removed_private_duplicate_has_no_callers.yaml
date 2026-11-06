@@ -66,6 +66,7 @@ repo:
 expect:
   changed:
   - src/gone_mod.rs::gone
+  - src/a.rs::absorb
   relations:
   - from: src/c.rs::keep
     to: src/gone_mod.rs::gone
