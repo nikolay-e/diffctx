@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 MODULE = "<module>"
+UNCAPPED_BUDGET = 200_000  # `--budget` far above any answer the engine builds: the cap never bites
 
 SUFFIX_GRAMMAR = {
     ".py": "python",
@@ -19,6 +20,7 @@ SUFFIX_GRAMMAR = {
     ".rs": "rust",
     ".go": "go",
     ".kt": "kotlin",
+    ".java": "java",
 }
 
 
@@ -72,3 +74,5 @@ class Relation:
     site: int  # 1-based line of the reference in the `from` file
     resolution: str = "resolved"
     in_diff: bool = False
+    rule: str | None = None  # the folding rule (Rev 12.1) under which the change cannot affect it; None: affected
+    moved: tuple[str, ...] = ()  # the rulings (R8...) that changed this row's kind from what the syntax alone gave

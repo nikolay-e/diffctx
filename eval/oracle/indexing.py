@@ -15,13 +15,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import corpus as corpus_config
-from runners import PLANNERS, Context
+from runners import NEEDS_SANDBOX, PLANNERS, Context, clean_gradle_outputs, sandboxed
 from scipindex import Index, read_index
 from toolbin import install_tool, tool_path
 
-CACHE = corpus_config.ROOT / "cache"
+CACHE = corpus_config.CACHE
 TOOLS = corpus_config.ROOT / "tools"
-EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target")
+EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target", ".gradle")
 
 
 @dataclass
@@ -88,6 +88,8 @@ def present_code_files(tree: Path, language: str) -> set[str]:
         relative = path.relative_to(tree)
         if any(part in EXCLUDED_PARTS for part in relative.parts) or not path.is_file() or path.is_symlink():
             continue
+        if language == "go" and any(part.startswith(("_", ".")) or part == "testdata" for part in relative.parts[:-1]):
+            continue  # the go tool leaves out directories named like this: no package is built from them
         if corpus_config.is_code_path(language, relative.as_posix()):
             found.add(relative.as_posix())
     return found
@@ -126,7 +128,7 @@ def index_snapshot(
     install: bool = True,
     retry_failed: bool = False,
 ) -> IndexResult:
-    package, version = corpus_config.indexer_pin(repo.language)
+    package, version = corpus_config.indexer_pin(corpus, repo.language)
     slot = CACHE / "index" / repo.name / sha / f"{package}-{version}"
     meta = slot / "meta.json"
     if meta.exists():
@@ -140,6 +142,9 @@ def index_snapshot(
         home = Path(home_dir)
         env = scrubbed_env(home)
         result = _run_indexer(corpus, repo, sha, tree, out, home, env, install)
+        if result.reason.startswith(NEEDS_SANDBOX):
+            result.indexer, result.version = package, version
+            return result  # depends on where this runs, not on the commit: not cached
         result.seconds = round(time.monotonic() - started, 1)
         if result.ok:
             index = read_index(out)
@@ -169,6 +174,9 @@ def _run_indexer(
     if plan.command is None:
         result.reason = plan.blocked
         return result
+    if plan.runs_third_party_code and not sandboxed():
+        result.reason = f"{NEEDS_SANDBOX}: refused to run the repository's build tooling outside a container"
+        return result
     try:
         done = subprocess.run(
             plan.command, cwd=tree, env=plan.env, capture_output=True, timeout=corpus.index_seconds, check=False
@@ -181,6 +189,8 @@ def _run_indexer(
         result.reason = f"indexer exited {done.returncode}: {tail}"
         return result
     result.ok, result.reason = True, "ok"
+    if repo.language in ("kotlin", "java"):
+        clean_gradle_outputs(tree)
     return result
 
 
@@ -194,10 +204,12 @@ def _from_meta(meta: dict, slot: Path, package: str, version: str) -> IndexResul
 
 
 def setup_tools(corpus: corpus_config.Corpus, languages: set[str] | None = None) -> None:
-    """Install the pinned npm indexers without lifecycle scripts, and the SCIP CLI after its checksum matches."""
+    """Install the pinned npm indexers without lifecycle scripts, and every release binary after its checksum matches."""
     wanted = languages or set(corpus_config.LANGUAGES)
     if wanted & set(corpus_config.INDEXERS):
         with tempfile.TemporaryDirectory(prefix="oracle-home-", ignore_cleanup_errors=True) as home:
             env = scrubbed_env(Path(home))
             subprocess.run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=TOOLS, env=env, check=True)
-    install_tool(corpus.tools["scip"])
+    names = {"scip"} | {corpus_config.INDEXER_TOOLS[lang] for lang in wanted if lang in corpus_config.INDEXER_TOOLS}
+    for name in sorted(names):
+        install_tool(corpus.tools[name])

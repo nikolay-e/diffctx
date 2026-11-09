@@ -196,3 +196,227 @@ def test_a_role_or_layout_only_listing_is_no_absence_claim_and_a_constructor_is_
     init = Definition("shop/pricing.py", "function", "__init__", ("Cart",), 2, 3, 1, 4, "()", "h", "s")
     cells, _ = compare(init, [Relation("shop/report.py::build", init.key, "instantiates", 2)], parsed)
     assert (cells[0]["fn"], cells[0]["fcn"]) == (1, True)
+
+
+def test_a_truncation_no_entry_owns_makes_every_target_a_partial_answer():
+    # 1.20.0 reports the callers its cap dropped as one top-level count; no entry says which symbol lost them.
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build")]
+    entry = {"path": "shop/pricing.py", "symbol": "total", "lines": "1-3", "kind": "function", "callers": []}
+    capped = parse_answer({"changed": [entry], "truncated": 5}, RESOLVE)
+
+    cells, _ = compare(TARGET, truth, capped)
+
+    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (2, False, True)
+    # a target the answer does not list at all is partial too
+    elsewhere = Definition("shop/other.py", "function", "other", (), 1, 3, 0, 4, "()", "o", "o")
+    cells, _ = compare(elsewhere, [Relation("shop/report.py::build", elsewhere.key, "calls", 2)], capped)
+    assert (cells[0]["fcn"], cells[0]["abstained"]) == (False, True)
+
+
+def test_a_truncation_a_symbol_owns_marks_only_that_symbol_and_no_truncation_marks_none():
+    truth = [relation("shop/checkout.py::charge")]
+    entry = {"path": "shop/pricing.py", "symbol": "total", "lines": "1-3", "kind": "function", "callers": []}
+    other = Definition("shop/other.py", "function", "other", (), 1, 3, 0, 4, "()", "o", "o")
+    other_truth = [Relation("shop/report.py::build", other.key, "calls", 2)]
+    other_entry = {
+        "path": "shop/other.py",
+        "symbol": "other",
+        "lines": "1-3",
+        "kind": "function",
+        "callers": [caller("shop/report.py", "build", "1-4")],
+    }
+    resolve = make_resolver(lambda path: {**DEFS, "shop/other.py": [other]}.get(path, []))
+
+    owned = parse_answer({"changed": [{**entry, "callers_omitted": 1}, other_entry], "truncated": 1}, resolve)
+    whole = parse_answer({"changed": [entry]}, RESOLVE)
+
+    assert compare(TARGET, truth, owned)[0][0]["abstained"] is True
+    assert compare(other, other_truth, owned)[0][0]["abstained"] is False
+    assert compare(TARGET, truth, whole)[0][0]["fcn"] is True
+
+
+def test_a_type_use_and_an_import_are_scored_under_their_own_kind_not_as_reads():
+    truth = [relation("shop/checkout.py::charge", "type_use"), relation("shop/report.py::build", "imports")]
+
+    cells, details = compare(TARGET, truth, answer([caller("shop/checkout.py", "charge", "1-3")]))
+
+    assert {(c["kind"], c["truth"], c["tp"], c["fn"]) for c in cells} == {("type_use", 1, 1, 0), ("imports", 1, 0, 1)}
+    assert {d["kind"] for d in details} == {"type_use", "imports"}
+
+
+def test_an_engine_call_row_on_a_class_target_is_scored_as_an_instantiation():
+    shop = Definition("shop/pricing.py", "class", "Shop", (), 1, 3, 0, 6, "()", "h", "s")
+    wrong = answer([caller("shop/report.py", "build", "1-4", relation="call")])
+    wrong.targets[shop.key] = wrong.targets.pop(TARGET.key)
+
+    cells, details = compare(shop, [], wrong)
+
+    assert [(c["kind"], c["fp"]) for c in cells] == [("instantiates", 1)]
+    assert details[0]["moved"] == ["R10"]
+    plain = answer([caller("shop/report.py", "build", "1-4", relation="call")])
+    assert [(c["kind"], c["fp"]) for c in compare(TARGET, [], plain)[0]] == [("calls", 1)]
+
+
+def test_a_constructor_is_scored_under_its_class_whichever_the_language_names_it():
+    errors = "source/errors.ts"
+    cls = Definition(errors, "class", "RequestError", (), 1, 20, 0, 6, "()", "c", "c")
+    ctor = Definition(errors, "method", "constructor", ("RequestError",), 3, 8, 2, 2, "()", "k", "k")
+    caller_def = Definition("source/index.ts", "function", "fail", (), 1, 4, 0, 9, "()", "f", "f")
+    resolve = make_resolver(lambda path: {errors: [cls, ctor], "source/index.ts": [caller_def]}.get(path, []))
+    entry = {"path": errors, "symbol": "RequestError", "lines": "1-20", "kind": "class", "callers": []}
+    entry["callers"] = [{"path": "source/index.ts", "symbol": "fail", "lines": "1-4", "weight": 1.0, "evidence": "resolved"}]
+    reported = parse_answer({"changed": [entry]}, resolve)
+    truth = [Relation(caller_def.key, ctor.key, "instantiates", 2)]
+
+    cells, _ = compare(ctor, truth, reported)
+
+    assert [(c["kind"], c["truth"], c["tp"], c["fn"], c["fcn"]) for c in cells] == [("instantiates", 1, 1, 0, False)]
+
+
+def test_a_use_the_engine_lists_as_also_changed_counts_as_the_relation():
+    truth = [relation("shop/checkout.py::charge")]
+    entry = {
+        "path": "shop/pricing.py",
+        "symbol": "total",
+        "lines": "1-3",
+        "kind": "function",
+        "callers": [],
+        "also_changed": ["shop/checkout.py::charge (1-3)", "shop/report.py::build[7] (1-4)"],
+    }
+    listed = parse_answer({"changed": [entry]}, RESOLVE)
+
+    cells, details = compare(TARGET, truth, listed)
+
+    assert [(c["kind"], c["tp"], c["fp"], c["fcn"], c["kind_mismatches"]) for c in cells] == [
+        ("calls", 1, 0, False, 0),
+        ("reads", 0, 1, False, 0),
+    ]
+    assert {d["verdict"]: d["moved"] for d in details} == {"tp": [], "fp": ["R14"]}
+    silent = answer([])
+    assert compare(TARGET, truth, silent)[0][0]["fn"] == 1
+
+
+def test_an_entry_or_a_truncation_disclosed_with_nothing_listed_is_an_abstention_not_a_false_complete_negative():
+    truth = [relation("shop/checkout.py::charge")]
+    entry = {"path": "shop/pricing.py", "symbol": "total", "lines": "1-3", "kind": "function", "callers": []}
+    entered = parse_answer({"changed": [{**entry, "entry": 'run as a script (if __name__ == "__main__")'}]}, RESOLVE)
+    cut = parse_answer({"changed": [entry], "truncated": 4}, RESOLVE)
+    cut_elsewhere = parse_answer({"changed": [{**entry, "callers_omitted": 1}], "truncated": 1}, RESOLVE)
+
+    for disclosed in (entered, cut, cut_elsewhere):
+        cells, _ = compare(TARGET, truth, disclosed)
+        assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, False, True)
+
+
+def test_a_row_that_states_its_kind_is_scored_under_it_and_a_wrong_kind_is_counted():
+    truth = [relation("shop/checkout.py::charge", "type_use")]
+    stated = answer(
+        [
+            caller("shop/checkout.py", "charge", "1-3", relation="reference", kind="calls"),
+            caller("shop/report.py", "build", "1-4", relation="reference", kind="type_use"),
+        ]
+    )
+
+    cells, details = compare(TARGET, truth, stated)
+
+    assert {(c["kind"], c["tp"], c["fp"], c["kind_mismatches"]) for c in cells} == {("type_use", 1, 1, 1)}
+    assert {d["kind"] for d in details} == {"type_use"}
+    unstated = answer([caller("shop/report.py", "build", "1-4", relation="reference")])
+    assert [c["kind"] for c in compare(TARGET, [], unstated)[0]] == ["reads"]
+
+
+def test_a_truth_pair_the_folding_table_folds_is_not_an_affected_one_and_recall_is_taken_over_the_affected():
+    folded = Relation("shop/checkout.py::charge", TARGET.key, "calls", 2, rule="no-code-change")
+    affected = Relation("shop/report.py::build", TARGET.key, "calls", 3)
+
+    cells, details = compare(TARGET, [folded, affected], answer([caller("shop/report.py", "build", "1-4")]))
+
+    [cell] = cells
+    assert (cell["truth"], cell["tp"], cell["truth_affected"], cell["tp_affected"]) == (2, 1, 1, 1)
+    assert {d["from"]: (d["affected"], d["rule"]) for d in details} == {
+        "shop/checkout.py::charge": (False, "no-code-change"),
+        "shop/report.py::build": (True, None),
+    }
+    listed = answer([caller("shop/checkout.py", "charge", "1-3")])
+    [only] = compare(TARGET, [folded, affected], listed)[0]
+    assert (only["tp"], only["tp_affected"], only["truth_affected"]) == (1, 0, 1)
+
+
+def test_a_truth_pair_the_engine_folded_and_the_oracle_says_is_affected_is_a_false_fold():
+    affected = Relation("shop/checkout.py::charge", TARGET.key, "calls", 2)
+    unaffected = Relation("shop/report.py::build", TARGET.key, "calls", 3, rule="no-code-change")
+    rows = [
+        caller("shop/checkout.py", "charge", "1-3", folded_by="no-code-change"),
+        caller("shop/report.py", "build", "1-4", folded_by="no-code-change"),
+    ]
+
+    cells, details = compare(TARGET, [affected, unaffected], answer(rows))
+
+    [cell] = cells
+    assert (cell["tp"], cell["folded"], cell["false_fold"], cell["tp_affected"]) == (2, 2, 1, 0)
+    assert {d["from"]: (d["folded_by"], d["false_fold"]) for d in details} == {
+        "shop/checkout.py::charge": ("no-code-change", True),
+        "shop/report.py::build": ("no-code-change", False),
+    }
+    listed = answer([caller("shop/checkout.py", "charge", "1-3")])
+    [plain] = compare(TARGET, [affected], listed)[0]
+    assert (plain["folded"], plain["false_fold"], plain["tp_affected"]) == (0, 0, 1)
+
+
+def test_silence_about_relations_the_change_cannot_reach_is_no_false_complete_negative():
+    imported = Relation("shop/__init__.py::<module>", TARGET.key, "imports", 12, rule="imports-a-body")
+    called = Relation("shop/checkout.py::charge", TARGET.key, "calls", 2)
+
+    [only_import] = compare(TARGET, [imported], answer([]))[0]
+    cells = {c["kind"]: c for c in compare(TARGET, [imported, called], answer([]))[0]}
+
+    assert (only_import["truth"], only_import["truth_affected"], only_import["fcn"]) == (1, 0, False)
+    assert (cells["imports"]["fcn"], cells["calls"]["fcn"]) == (False, True)
+
+
+def test_an_also_changed_entry_spelled_path_and_lines_names_the_definition_that_holds_them():
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build")]
+    entry = {
+        "path": "shop/pricing.py",
+        "symbol": "total",
+        "lines": "1-3",
+        "kind": "function",
+        "callers": [],
+        "also_changed": ["shop/checkout.py:1-3", "shop/report.py:2", "shop/elsewhere.py:5-9"],
+    }
+    listed = parse_answer({"changed": [entry]}, RESOLVE)
+
+    cells, details = compare(TARGET, truth, listed)
+
+    assert {(d["from"], d["verdict"]) for d in details} == {
+        ("shop/checkout.py::charge", "tp"),
+        ("shop/report.py::build", "tp"),
+        ("shop/elsewhere.py::<module>", "fp"),
+    }
+    assert [c["fcn"] for c in cells] == [False, False]
+
+
+def test_a_candidate_folded_as_an_untyped_receiver_claims_nothing_so_it_is_no_false_fold():
+    affected = Relation("shop/checkout.py::charge", TARGET.key, "calls", 2)
+    rows = [caller("shop/checkout.py", "charge", "1-3", evidence="candidate", folded_by="untyped-receiver")]
+
+    [cell], [detail] = compare(TARGET, [affected], answer(rows))
+
+    assert (cell["folded"], cell["false_fold"], cell["tp_weak"]) == (1, 0, 1)
+    assert detail["false_fold"] is False
+
+
+def test_a_pair_is_folded_only_when_every_row_the_answer_has_for_it_is():
+    reads = Relation("shop/checkout.py::charge", TARGET.key, "reads", 9)
+    exported = Relation("shop/checkout.py::charge", TARGET.key, "reexports", 2)
+    folded_first = [
+        caller("shop/checkout.py", "charge", "1-3", relation="reexports", folded_by="imports-a-body"),
+        caller("shop/checkout.py", "charge", "1-3", relation="reference"),
+    ]
+
+    [cell], [detail] = compare(TARGET, [reads, exported], answer(folded_first))
+    only_folded = answer([folded_first[0], {**folded_first[0], "relation": "reexports"}])
+    [whole], [row] = compare(TARGET, [exported], only_folded)
+
+    assert (cell["folded"], cell["false_fold"], detail["folded_by"]) == (0, 0, None)  # a listed row answers for the pair
+    assert (whole["folded"], row["folded_by"]) == (1, "imports-a-body")  # every row folded: the pair is

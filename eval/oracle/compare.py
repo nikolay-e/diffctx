@@ -2,47 +2,21 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
 
+from answer import Answer, AnswerCaller, Resolver, TargetAnswer
+from answer import parse_answer as parse_answer  # the scorer's callers read answers through this module
 from model import MODULE, Definition, Relation
 
-KIND_PRIORITY = ("calls", "instantiates", "passes_as_value", "writes", "reads", "overrides", "reexports", "imports")
+CONSTRUCTORS = {"__init__", "constructor"}
+
+KIND_PRIORITY = ("calls", "instantiates", "passes_as_value", "writes", "reads", "type_use", "overrides", "reexports", "imports")
 CALL_KINDS = {"calls", "instantiates"}
 # A `reexport` row is a module that re-exports the definition: resolved evidence, relation `reexports`.
 EVIDENCE_RANK = {"resolved": 2, "reexport": 2, "candidate": 1}
 SURE = {"resolved", "reexport"}
-
-Resolver = Callable[[str, str | None, str | None], str]
-
-
-@dataclass
-class AnswerCaller:
-    from_key: str
-    evidence: str
-    relation: str  # call | reference | reexports
-
-
-@dataclass
-class TargetAnswer:
-    key: str
-    callers: list[AnswerCaller] = field(default_factory=list)
-    unresolved: str | None = None
-    missed_in: list[str] = field(default_factory=list)
-    callers_omitted: int = 0  # callers the answer cap dropped from this symbol: its list is a lower bound
-
-
-@dataclass
-class Answer:
-    targets: dict[str, TargetAnswer]
-    limits: list[str]
-    unanalysed: set[str]
-    empty: bool
-    # Definitions the cap shed whose names the answer also left out ("and N more"): any target it does not
-    # list may be one of them.
-    unnamed_omitted: int = 0
+# `untyped-receiver` folds a candidate: weak evidence shown as a count, no claim that the change cannot reach it.
+NOT_A_CLAIM = {"untyped-receiver"}
 
 
 def _line_span(lines: str | None) -> tuple[int, int] | None:
@@ -71,57 +45,21 @@ def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
                 return named[0].key
         return f"{path}::{symbol}"
 
+    def by_span(path: str, lines: str) -> str:
+        """The definition a bare `path:lines` names: the narrowest one holding the span, else the one overlapping most."""
+        span = _line_span(lines)
+        for provider in providers:
+            defs = provider(path)
+            holding = [d for d in defs if span and d.start <= span[0] and span[1] <= d.end]
+            if holding:
+                return min(holding, key=lambda d: d.end - d.start).key
+            overlapping = [d for d in defs if span and d.start <= span[1] and span[0] <= d.end]
+            if overlapping:
+                return max(overlapping, key=lambda d: min(span[1], d.end) - max(span[0], d.start)).key
+        return f"{path}::{MODULE}"
+
+    resolve.by_span = by_span  # type: ignore[attr-defined]
     return resolve
-
-
-_OMITTED = re.compile(r"^(?P<count>\d+) changed definition\(s\) omitted")
-_LISTED = re.compile(r"^(?P<path>\S+?)::(?P<name>\S+) \((?P<lines>\d+-\d+)\)")
-_NOT_TRACED = {
-    "entry_unlisted": "entered by a runner or the framework: callers not traced",
-    "layout_only": "changed only in comments, formatting or position: callers not traced",
-}
-
-
-def parse_answer(data: dict, resolve: Resolver) -> Answer:
-    targets: dict[str, TargetAnswer] = {}
-    unnamed = 0
-    for entry in data.get("changed", []):
-        key = resolve(entry["path"], entry.get("symbol"), entry.get("lines"))
-        target = targets.setdefault(key, TargetAnswer(key))
-        target.unresolved = entry.get("unresolved") or target.unresolved
-        target.missed_in += [m.get("path", "") for m in entry.get("missed_in", [])]
-        target.callers_omitted += int(entry.get("callers_omitted", 0) or 0)
-        # The definitions the cap shed are named on one entry, `path::name` and their lines each.
-        named = entry.get("omitted", [])
-        for shed in named:
-            path, _, name = str(shed.get("definition", "")).partition("::")
-            shed_key = resolve(path, name or None, shed.get("lines"))
-            gone = targets.setdefault(shed_key, TargetAnswer(shed_key))
-            gone.unresolved = entry.get("unresolved") or gone.unresolved
-            gone.callers_omitted += int(shed.get("callers_omitted", 0) or 0)
-        counted = _OMITTED.match(str(entry.get("unresolved") or ""))
-        if counted:
-            unnamed += max(0, int(counted["count"]) - len(named))
-        for caller in entry.get("callers", []):
-            from_key = resolve(caller["path"], caller.get("symbol"), caller.get("lines"))
-            relation = caller.get("relation") if caller.get("relation") in ("reference", "reexports") else "call"
-            target.callers.append(AnswerCaller(from_key, caller.get("evidence", "resolved"), relation))
-    # A definition the answer files under a role or a layout-only change says what it does not trace: it
-    # claims no absence of callers.
-    for section, why in _NOT_TRACED.items():
-        for text in data.get(section, []):
-            found = _LISTED.match(str(text))
-            if found:
-                key = resolve(found["path"], found["name"], found["lines"])
-                role = targets.setdefault(key, TargetAnswer(key))
-                role.unresolved = role.unresolved or why
-    return Answer(
-        targets=targets,
-        limits=[json.dumps(limit, sort_keys=True) for limit in data.get("limits", [])],
-        unanalysed={u.get("path", "") for u in data.get("unanalysed_files", [])},
-        empty=bool(data.get("empty", False)),
-        unnamed_omitted=unnamed,
-    )
 
 
 def best_kind(relations: list[Relation]) -> str:
@@ -130,9 +68,15 @@ def best_kind(relations: list[Relation]) -> str:
 
 
 def _strongest(callers: list[AnswerCaller]) -> dict[str, AnswerCaller]:
+    """One row per caller: the surest evidence, and among equals a listed row over a folded one, so a pair counts as folded
+    only when every row the answer has for it is."""
+
+    def rank(c: AnswerCaller) -> tuple[int, bool]:
+        return EVIDENCE_RANK.get(c.evidence, 0), not c.folded_by
+
     best: dict[str, AnswerCaller] = {}
     for c in callers:
-        if c.from_key not in best or EVIDENCE_RANK.get(c.evidence, 0) > EVIDENCE_RANK.get(best[c.from_key].evidence, 0):
+        if c.from_key not in best or rank(c) > rank(best[c.from_key]):
             best[c.from_key] = c
     return best
 
@@ -148,6 +92,10 @@ def _blank_cell(target: str, kind: str) -> dict:
         "fp": 0,
         "fp_weak": 0,
         "kind_mismatches": 0,
+        "truth_affected": 0,  # truth pairs the folding table does not fold for this change
+        "tp_affected": 0,
+        "folded": 0,  # truth pairs the engine marked folded
+        "false_fold": 0,  # ... of which the oracle says the change affects: the gate is 0
         "abstained": False,
         "fcn": False,
     }
@@ -165,18 +113,23 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     ignored = {k for k, rels in grouped.items() if all(r.in_diff for r in rels)}
     scored = {k: [r for r in rels if not r.in_diff] for k, rels in grouped.items() if k not in ignored}
     reported = answer.targets.get(target.key)
-    if reported is None and target.key.endswith(".__init__"):
+    constructor = next((name for name in CONSTRUCTORS if target.key.endswith(f".{name}")), None)
+    if reported is None and constructor:
         # A constructor is reported as its class: its callers build the class.
-        reported = answer.targets.get(target.key.removesuffix(".__init__"))
+        reported = answer.targets.get(target.key.removesuffix(f".{constructor}"))
     callers = _strongest(reported.callers) if reported else {}
     # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
     # is a partial answer: the listed callers count, the missing truth is abstention.
     abstained = (
         bool(answer.limits)
+        or answer.truncated_unattributed > 0
         or target.path in answer.unanalysed
         or bool(reported and (reported.unresolved or reported.missed_in or reported.callers_omitted))
         or (reported is None and answer.unnamed_omitted > 0)
     )
+    # `entry`, `truncated`, `callers_omitted` and `also_changed` disclose what the list leaves out: with nothing else
+    # listed for the target, the answer abstains (R15). `callers_omitted` and `also_changed` are read above.
+    abstained = abstained or (not callers and (answer.truncated > 0 or bool(reported and reported.entry)))
     cells: dict[str, dict] = {}
     details: list[dict] = []
 
@@ -187,6 +140,8 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         kind = best_kind(relations)
         row = cell(kind)
         row["truth"] += 1
+        affected = any(r.rule is None for r in relations)
+        row["truth_affected"] += affected
         caller = callers.get(from_key)
         if caller is None:
             row["fn"] += 1
@@ -194,20 +149,44 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         else:
             status, evidence = ("tp" if caller.evidence in SURE else "tp_weak"), caller.evidence
             row[status] += 1
-            row["kind_mismatches"] += (kind in CALL_KINDS) != (caller.relation == "call")
-        details.append(_detail(status, from_key, target, relations[0], kind, evidence, reported))
+            false_fold = bool(caller.folded_by) and caller.folded_by not in NOT_A_CLAIM and affected
+            row["folded"] += bool(caller.folded_by)
+            row["false_fold"] += false_fold
+            row["tp_affected"] += affected and status == "tp" and not caller.folded_by
+            row["kind_mismatches"] += _kind_mismatch(kind, caller)
+        shown = next((r for r in relations if r.kind == kind), relations[0])
+        folded_by = caller.folded_by if caller else None
+        details.append(_detail(status, from_key, target, shown, kind, evidence, reported, affected=affected, folded_by=folded_by))
     for from_key, caller in callers.items():
         if from_key in scored or from_key in ignored:
             continue
-        kind = {"call": "calls", "reexports": "reexports"}.get(caller.relation, "reads")
+        kind = caller.kind or {"call": "calls", "reexports": "reexports"}.get(caller.relation, "reads")
+        moved = ["R14"] if caller.relation == "also_changed" else []
+        if kind == "calls" and _constructs(target):
+            kind, moved = "instantiates", [*moved, "R10"]  # a call that builds a class is an instantiation
         status = "fp" if caller.evidence in SURE else "fp_weak"
         cell(kind)[status] += 1
-        details.append(_detail(status, from_key, target, None, kind, caller.evidence, reported))
+        details.append(_detail(status, from_key, target, None, kind, caller.evidence, reported, moved))
     complete_negative = bool(scored) and not callers and not abstained
     for row in cells.values():
         row["abstained"] = abstained
-        row["fcn"] = complete_negative and row["truth"] > 0
+        row["fcn"] = (
+            complete_negative and row["truth_affected"] > 0
+        )  # silence about what the change cannot reach is no false claim
     return list(cells.values()), details
+
+
+def _kind_mismatch(kind: str, caller: AnswerCaller) -> bool:
+    """The engine's row names another kind than the truth's: its own `kind` when it states one, else call against not-call."""
+    if caller.relation == "also_changed":
+        return False
+    if caller.kind is not None:
+        return caller.kind != kind and not (caller.kind in CALL_KINDS and kind in CALL_KINDS)
+    return (kind in CALL_KINDS) != (caller.relation == "call")
+
+
+def _constructs(target: Definition) -> bool:
+    return target.kind == "class" or target.name in CONSTRUCTORS
 
 
 def _detail(
@@ -218,6 +197,9 @@ def _detail(
     kind: str,
     evidence: str | None,
     reported: TargetAnswer | None,
+    moved: list[str] | None = None,
+    affected: bool | None = None,
+    folded_by: str | None = None,
 ) -> dict:
     return {
         "verdict": status,
@@ -225,6 +207,11 @@ def _detail(
         "to": target.key,
         "kind": kind,
         "site": relation.site if relation else None,
+        "moved": list(relation.moved) if relation else moved or [],
+        "affected": affected,
+        "folded_by": folded_by,
+        "false_fold": bool(folded_by) and folded_by not in NOT_A_CLAIM and bool(affected),
+        "rule": relation.rule if relation else None,
         "evidence": evidence,
         "target_decorated": target.decorated,
         "unresolved": reported.unresolved if reported else None,
