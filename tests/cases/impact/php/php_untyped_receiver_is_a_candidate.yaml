@@ -1,0 +1,47 @@
+name: php_untyped_receiver_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- untyped
+repo:
+  initial_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 1;
+          }
+      }
+    src/Page.php: |
+      <?php
+
+      function render($g)
+      {
+          return $g->hello();
+      }
+  changed_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change untyped receiver is a candidate
+expect:
+  changed:
+  - src/Greeter.php::Greeter.hello
+  relations:
+  - from: src/Page.php::render
+    to: src/Greeter.php::Greeter.hello
+    kind: calls
+    resolution: candidate
+    site: 5

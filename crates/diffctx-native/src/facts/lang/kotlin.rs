@@ -42,6 +42,7 @@ use std::ops::Range;
 
 use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
 
+use crate::facts::framework;
 use crate::facts::kotlin as old;
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Import, ImportKind,
@@ -139,6 +140,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.deadline();
     }
     blob.facts = reader.facts;
+    framework::derive(&mut blob);
     blob.in_source_order();
     blob
 }
@@ -589,6 +591,7 @@ impl<'a> Reader<'a> {
             site: self.name_span(d),
             kind,
             target: Scope::Def(self.keys[index].clone()),
+            framework: None,
         }));
     }
 

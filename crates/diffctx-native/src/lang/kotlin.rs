@@ -1,12 +1,13 @@
-//! Kotlin, Java and Swift: definitions, uses and supertypes from their
-//! syntax facts (`facts::kotlin`, `facts::java`, `facts::swift`, one shape),
-//! resolved by `kotlin_bindings::KotlinResolver` (#335, #526).
+//! Swift: definitions, uses and supertypes from its syntax facts
+//! (`facts::swift`, Kotlin's shape), resolved by
+//! `kotlin_bindings::KotlinResolver` (#526). Kotlin's and Java's are the facts
+//! layer's (`decide`'s Kotlin and Java cells): their callers, removals,
+//! implementers (overrides), public signatures and entry annotations.
 
 use std::path::Path;
 
-use super::{At, DefId, Implementer, LanguageFacts, Relation, RemovedDef, Table, UseSite};
+use super::{At, DefId, LanguageFacts, Relation, Table, UseSite};
 use crate::bindings::Finding;
-use crate::facts::kotlin::Visibility;
 use crate::impact::base_symbol;
 use crate::kotlin_bindings::{KDef, KotlinResolver};
 use crate::source::Source;
@@ -18,14 +19,6 @@ pub(super) struct KotlinModel<'a> {
 }
 
 impl<'a> KotlinModel<'a> {
-    pub(super) fn kotlin(root: &'a Path, source: &'a Source) -> Self {
-        Self::of(KotlinResolver::new(root, source), KOTLIN)
-    }
-
-    pub(super) fn java(root: &'a Path, source: &'a Source) -> Self {
-        Self::of(KotlinResolver::java(root, source), CALLS)
-    }
-
     /// The model of the Swift files among `files`.
     pub(super) fn swift<'f>(
         root: &'a Path,
@@ -48,21 +41,8 @@ impl<'a> KotlinModel<'a> {
     }
 }
 
-/// Kotlin's callers and removals are the facts layer's (`decide`); this model
-/// keeps what the resolver of `kotlin_bindings` still answers alone: the
-/// implementers of an abstract member (#566), whether a public signature
-/// moved, and the annotations an entry point is read off. `Uses` keeps the
-/// model attached to a cell-owned definition for those, and gives it no use
-/// lines (impact takes only a page's from it).
-const KOTLIN: &[Relation] = &[
-    Relation::Uses,
-    Relation::Implementations,
-    Relation::PublicApi,
-];
-
-/// Java needs no `@Override` and Swift no `override` to implement a member,
-/// so the facts cannot list their implementations; their API and removals
-/// are still read off the fragments.
+/// Swift needs no `override` to implement a member, so the facts cannot list
+/// its implementations; its uses and removals are read off the fragments.
 const CALLS: &[Relation] = &[Relation::Callers, Relation::Uses];
 
 impl LanguageFacts for KotlinModel<'_> {
@@ -98,80 +78,7 @@ impl LanguageFacts for KotlinModel<'_> {
         Some(self.resolver.use_lines(path, &self.defs.get(def)))
     }
 
-    fn implementers(&self, def: DefId, paths: &[String]) -> Option<Vec<Implementer>> {
-        self.answers(Relation::Implementations)?;
-        let def = self.defs.get(def);
-        if !def.decl.abstract_member {
-            return Some(Vec::new());
-        }
-        Some(
-            self.resolver
-                .implementers(&def, paths.iter().map(String::as_str))
-                .into_iter()
-                .map(|(path, decl)| Implementer {
-                    path,
-                    name: decl.name,
-                    start_line: decl.start_line,
-                })
-                .collect(),
-        )
-    }
-
     fn annotations(&self, def: DefId) -> Option<Vec<String>> {
         Some(self.defs.get(def).decl.annotations.clone())
-    }
-
-    fn public_change(&self, def: DefId, base: &str) -> Option<bool> {
-        self.answers(Relation::PublicApi)?;
-        let def = self.defs.get(def);
-        Some(
-            def.decl.effective == Some(Visibility::Public)
-                && self
-                    .resolver
-                    .facts_at(base, &def.path)
-                    .and_then(|old| {
-                        old.declarations
-                            .iter()
-                            .find(|d| d.key() == def.decl.key())
-                            .map(|d| d.signature != def.decl.signature)
-                    })
-                    .unwrap_or(true),
-        )
-    }
-
-    fn removed(&self, base: &str, pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
-        self.answers(Relation::Removals)?;
-        let mut out = Vec::new();
-        for (old_path, new_path) in pairs.iter().filter(|(old, _)| self.resolver.covers(old)) {
-            let Some(old) = self.resolver.facts_at(base, old_path) else {
-                continue;
-            };
-            let new = new_path.as_deref().and_then(|p| self.resolver.facts(p));
-            // Uses resolve against the file the head has; the row carries the
-            // path its base line numbers belong to (#540).
-            let path = new_path.clone().unwrap_or_else(|| old_path.clone());
-            for d in &old.declarations {
-                let kept = new
-                    .as_ref()
-                    .is_some_and(|n| n.declarations.iter().any(|x| x.key() == d.key()));
-                if kept || d.kind == "constructor" {
-                    continue;
-                }
-                let def = KDef {
-                    path: path.clone(),
-                    decl: d.clone(),
-                    package: old.package.clone(),
-                };
-                let removed = RemovedDef {
-                    path: old_path.clone(),
-                    name: d.name.clone(),
-                    lines: (d.start_line, d.end_line),
-                    public: d.effective == Some(Visibility::Public),
-                    def: self.defs.push(def)?,
-                };
-                out.push(removed);
-            }
-        }
-        Some(out)
     }
 }

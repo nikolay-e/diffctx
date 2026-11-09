@@ -1,0 +1,77 @@
+name: config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- helm
+- values
+- reads
+- release
+- decoy
+repo:
+  initial_files:
+    helmfile.yaml: |
+      releases:
+        - name: demo
+          chart: ./chart
+          values:
+            - envs/values-prod.yaml
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    chart/values.yaml: |
+      image:
+        tag: "1"
+    envs/values-prod.yaml: |
+      image:
+        tag: "2"
+    other/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    other/templates/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: demo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                image: "app:{{ .Values.image.tag }}"
+    chart/templates/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: demo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                image: "app:{{ .Values.image.tag }}"
+  changed_files:
+    envs/values-prod.yaml: |
+      image:
+        tag: "3"
+  commit_message: Change config helm release values file is read by the template of its chart as resolved
+expect:
+  relations:
+  - from: chart/templates/deploy.yaml
+    to: envs/values-prod.yaml
+    kind: reads
+    resolution: resolved
+    site: 10
+  # The Helmfile that gives the chart this file also names it by path.
+  - from: helmfile.yaml
+    to: envs/values-prod.yaml
+    kind: references_path
+    resolution: resolved
+    site: 5
+  exact: true
+  decoys:
+    envs/values-prod.yaml:
+    - other/templates/deploy.yaml

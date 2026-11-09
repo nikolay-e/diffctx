@@ -186,6 +186,7 @@ impl Walk {
                     if matches!(
                         loss,
                         Loss::ParseError { .. }
+                            | Loss::GrammarOutdated { .. }
                             | Loss::ExtractorFailed { .. }
                             | Loss::Deadline { .. }
                     ) {

@@ -1,0 +1,43 @@
+name: c_quoted_include_resolves_through_the_include_root
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- include
+repo:
+  initial_files:
+    include/net/sock.h: |
+      int sock_open(void);
+    src/sock.c: |
+      #include "net/sock.h"
+
+      int sock_open(void)
+      {
+          return 1;
+      }
+    src/main.c: |
+      #include "net/sock.h"
+
+      int main(void)
+      {
+          return sock_open();
+      }
+  changed_files:
+    src/sock.c: |
+      #include "net/sock.h"
+
+      int sock_open(void)
+      {
+          return 2;
+      }
+  commit_message: Change quoted include resolves through the include root
+expect:
+  changed:
+  - src/sock.c::sock_open
+  relations:
+  - from: src/main.c::main
+    to: src/sock.c::sock_open
+    kind: calls
+    resolution: resolved
+    site: 5

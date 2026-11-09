@@ -6,7 +6,6 @@
 
 mod bound;
 pub(crate) use bound::is_page;
-mod go;
 mod kotlin;
 pub(crate) mod rust;
 mod shell;
@@ -164,10 +163,6 @@ pub enum Relation {
     /// Every line of a file where a use could reach it, read off the syntax
     /// rather than waiting for a graph edge.
     Uses,
-    /// Classes implementing an abstract member.
-    Implementations,
-    /// Whether a public declaration's signature moved since the base.
-    PublicApi,
     /// Definitions the range removed, read off the facts at the base.
     Removals,
     /// Whether a file still binds a name from another file.
@@ -204,10 +199,15 @@ pub const TIERS: &[(Tier, &str, &[&str])] = &[
     (Tier::One, "Kotlin", &["kotlin"]),
     (Tier::Two, "Go", &["go"]),
     (Tier::Two, "Java", &["java"]),
+    (Tier::Two, "PHP", &["php"]),
+    (Tier::Two, "C", &["c"]),
+    (Tier::Two, "C++", &["cpp"]),
     (Tier::Two, "Swift", &["swift"]),
     (Tier::Two, "SQL", &["sql"]),
     (Tier::Two, "shell", &["bash", "zsh"]),
     (Tier::Two, "YAML/k8s/Helm/Argo", &["yaml"]),
+    (Tier::Two, "Terraform", &["terraform"]),
+    (Tier::Two, "Dockerfile", &["dockerfile"]),
     (Tier::Two, "HTML/Astro", &["html", "astro"]),
 ];
 
@@ -315,11 +315,16 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
     ("rust", "x.rs"),
     ("kotlin", "X.kt"),
     ("java", "X.java"),
+    ("php", "X.php"),
+    ("c", "x.c"),
+    ("cpp", "x.cpp"),
     ("swift", "X.swift"),
     ("go", "x.go"),
+    ("terraform", "main.tf"),
     ("shell", "x.sh"),
     ("sql", "x.sql"),
     ("config", "x.yaml"),
+    ("dockerfile", "Dockerfile"),
     ("web", "x.html"),
     ("other", "x.rb"),
 ];
@@ -345,11 +350,16 @@ fn cell_language(path: &str) -> &'static str {
         Some("rust") => "rust",
         Some("kotlin") => "kotlin",
         Some("java") => "java",
+        Some("php") => "php",
+        Some("c") => "c",
+        Some("cpp") => "cpp",
         Some("swift") => "swift",
         Some("go") => "go",
+        Some("terraform") => "terraform",
         Some("bash" | "zsh") => "shell",
         Some("sql") => "sql",
-        Some("yaml" | "json" | "toml" | "ini" | "dockerfile") => "config",
+        Some("dockerfile") => "dockerfile",
+        Some("yaml" | "json" | "toml" | "ini") => "config",
         Some("html" | "css" | "scss") => "web",
         _ => "other",
     }
@@ -391,26 +401,36 @@ fn stated_kind_by(
 /// "called from" family and does not say which kind it found, so a model
 /// that answers callers answers every kind a caller can be.
 fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
-    use RelationKind::{Calls, Executes, Instantiates, Overrides, PassesAsValue, Reads};
+    use RelationKind::{Calls, Executes, Instantiates, PassesAsValue, Reads};
     match relation {
         Relation::Callers if language == "shell" => &[Calls, Executes],
         Relation::Callers => &[Calls, Reads, Instantiates, PassesAsValue],
-        Relation::Implementations => &[Overrides],
         Relation::Imports => &[RelationKind::Imports],
-        Relation::Uses | Relation::PublicApi | Relation::Removals => &[],
+        Relation::Uses | Relation::Removals => &[],
     }
 }
 
 /// The relations the facts layer's resolvers answer (`decide.rs`), which no
 /// model of this registry reads callers for: Python's, TypeScript's with
-/// JavaScript's, Rust's and Kotlin's.
+/// JavaScript's, Rust's, Kotlin's, Java's, Go's, PHP's, C's, C++'s, Terraform's, a
+/// Dockerfile's and the configuration family's.
 fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
     use RelationKind::{
         Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, TestsReach,
         TypeUse, Writes,
     };
-    matches!(language, "python" | "typescript" | "rust" | "kotlin")
-        && matches!(
+    (language == "config" && relation == Reads)
+        // Terraform's cell reads a name (`var.x`, `module.m.out`) and writes a
+        // variable (a module's argument, a variable file's assignment): nothing
+        // else of the relations exists there yet.
+        || (language == "terraform" && matches!(relation, Reads | Writes))
+        || (language == "dockerfile" && matches!(relation, Reads | Imports))
+        || (language == "shell"
+            && matches!(relation, Calls | Reads | Writes | Imports | TestsReach))
+        || (matches!(
+            language,
+            "python" | "typescript" | "rust" | "kotlin" | "java" | "go" | "php" | "c" | "cpp"
+        ) && matches!(
             relation,
             Calls
                 | Reads
@@ -422,7 +442,7 @@ fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
                 | Imports
                 | Reexports
                 | TestsReach
-        )
+        ))
 }
 
 /// A definition one model resolved, as that model's own handle.
@@ -443,13 +463,6 @@ pub struct UseSite<'a> {
     pub path: &'a str,
     pub lines: (u32, u32),
     pub frag: Option<(&'a Fragment, &'a [&'a Fragment])>,
-}
-
-/// A class member implementing an abstract one.
-pub struct Implementer {
-    pub path: String,
-    pub name: String,
-    pub start_line: u32,
 }
 
 /// A definition the range removed, as the base's facts state it.
@@ -480,18 +493,12 @@ pub trait LanguageFacts {
     fn names_from(&self, _def: DefId, _path: &str) -> bool {
         true
     }
-    fn implementers(&self, _def: DefId, _paths: &[String]) -> Option<Vec<Implementer>> {
-        None
-    }
     fn annotations(&self, _def: DefId) -> Option<Vec<String>> {
         None
     }
     /// The trait a member implements or declares, whose calls may arrive
     /// through a dispatch no model follows.
     fn dispatched(&self, _def: DefId) -> Option<String> {
-        None
-    }
-    fn public_change(&self, _def: DefId, _base: &str) -> Option<bool> {
         None
     }
     /// `pairs` are (path at the base, path at the head or `None` when
@@ -524,12 +531,9 @@ impl<'a> Registry<'a> {
         files: rustc_hash::FxHashSet<String>,
     ) -> Self {
         let mut models = bound::models(root, source, files.clone());
-        models.push(Box::new(shell::ShellModel::new(root, source, &files)));
+        models.push(Box::new(shell::ShellModel::new(root, source)));
         models.push(Box::new(kotlin::KotlinModel::swift(root, source, &files)));
-        models.push(Box::new(kotlin::KotlinModel::java(root, source)));
         models.push(Box::new(sql::SqlModel::new(root, source)));
-        models.push(Box::new(kotlin::KotlinModel::kotlin(root, source)));
-        models.push(Box::new(go::GoModel::new(root, source)));
         Self { models }
     }
 
@@ -667,14 +671,17 @@ mod tests {
             ("src/App.kt", Tier::One),
             ("cmd/main.go", Tier::Two),
             ("src/Main.java", Tier::Two),
+            ("src/Users.php", Tier::Two),
+            ("src/users.c", Tier::Two),
+            ("src/users.cpp", Tier::Two),
             ("Sources/App.swift", Tier::Two),
             ("db/q.sql", Tier::Two),
             ("bin/run.sh", Tier::Two),
             ("deploy/app.yaml", Tier::Two),
+            ("deploy/Dockerfile", Tier::Two),
             ("web/index.html", Tier::Two),
             ("src/pages/index.astro", Tier::Two),
             ("lib/users.rb", Tier::Three),
-            ("src/Users.php", Tier::Three),
             ("src/Users.cs", Tier::Three),
             ("src/Users.scala", Tier::Three),
         ];
@@ -698,7 +705,17 @@ mod tests {
                 .find(|c| c.language == language && c.relation == relation)
                 .map(|c| c.state)
         };
-        for language in ["python", "typescript", "rust", "kotlin"] {
+        for language in [
+            "python",
+            "typescript",
+            "rust",
+            "kotlin",
+            "java",
+            "go",
+            "php",
+            "c",
+            "cpp",
+        ] {
             assert_eq!(
                 state(language, RelationKind::Calls),
                 Some(CellState::Heuristic),
@@ -725,7 +742,10 @@ mod tests {
             state("rust", RelationKind::Writes),
             Some(CellState::Heuristic)
         );
-        assert_eq!(state("go", RelationKind::Writes), Some(CellState::None));
+        assert_eq!(
+            state("go", RelationKind::Writes),
+            Some(CellState::Heuristic)
+        );
     }
 
     #[test]

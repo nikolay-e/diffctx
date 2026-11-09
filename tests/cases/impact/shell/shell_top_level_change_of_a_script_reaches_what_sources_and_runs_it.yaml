@@ -1,0 +1,45 @@
+name: shell_top_level_change_of_a_script_reaches_what_sources_and_runs_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- shell
+- script
+- decoy
+repo:
+  initial_files:
+    lib.sh: |
+      greet() {
+        echo hi
+      }
+      echo loading
+    a.sh: |
+      . ./lib.sh
+      greet
+    b.sh: |
+      bash lib.sh
+    c.sh: |
+      echo lib.sh is mentioned
+  changed_files:
+    lib.sh: |
+      greet() {
+        echo hi
+      }
+      echo starting
+  commit_message: Change shell top level change of a script reaches what sources and runs it
+expect:
+  relations:
+  - from: a.sh
+    to: lib.sh
+    kind: imports
+    resolution: resolved
+    site: 1
+  - from: b.sh
+    to: lib.sh
+    kind: calls
+    resolution: resolved
+    site: 1
+  exact: true
+  decoys:
+    lib.sh:
+    - c.sh

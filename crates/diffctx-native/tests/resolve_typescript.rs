@@ -1696,6 +1696,95 @@ fn chains_read_their_members_and_object_types_have_members() {
     );
 }
 
+/// What lands on the name `name` on `line` of `file`, every binding of it, sorted.
+fn landings(fx: &Fixture, file: &str, name: &str, line: u32) -> Vec<String> {
+    let mut found: Vec<String> = fx
+        .head
+        .bindings()
+        .iter()
+        .filter(|b| {
+            b.file.as_str() == file
+                && b.name.as_str() == name
+                && b.site.lines.0 == line
+                && !matches!(
+                    b.relation,
+                    Relation::Imports | Relation::Reexports | Relation::Overrides
+                )
+        })
+        .map(|b| fx.lands(b))
+        .collect();
+    found.sort();
+    found
+}
+
+const RETRY: &str =
+    "export interface Retry {\n  attempt: number;\n  call: (n: number) => number;\n}\n";
+
+/// A destructured typed parameter reads the members it names; an object literal
+/// whose type the code states — the initializer of a typed constant, what a
+/// function declared `: Retry` returns, an argument of a parameter declared
+/// `Retry` — writes them; a function-typed property called through a typed
+/// receiver is called. Where nothing states the type the use is still a use: an
+/// unresolved read, which keeps the answer from claiming it is complete.
+#[test]
+fn members_are_reached_through_patterns_literals_and_calls_of_a_typed_value() {
+    let fx = snapshot(&[
+        ("t.ts", RETRY),
+        (
+            "u.ts",
+            "import type {Retry} from './t';\n\nexport const viaDestructuring = ({attempt}: Retry) => attempt + 1;\nexport const viaMember = (r: Retry) => r.call(r.attempt);\nexport const viaReturn = (): Retry => ({attempt: 1, call: n => n});\nconst typed: Retry = {attempt: 2, call: n => n};\nexport function takes(r: Retry): number { return r.attempt; }\nexport const viaArgument = takes({attempt: 3, call: n => n});\nexport const inferred = ({attempt}) => attempt;\n",
+        ),
+    ]);
+    let attempt = "t.ts::Retry.attempt".to_string();
+    let call = "t.ts::Retry.call".to_string();
+    let local = "unresolved(Local)".to_string();
+    assert_eq!(
+        landings(&fx, "u.ts", "attempt", 3),
+        [attempt.clone(), local.clone()]
+    );
+    assert_eq!(landings(&fx, "u.ts", "call", 4), [call.clone()]);
+    let called = fx
+        .head
+        .bindings()
+        .iter()
+        .find(|b| b.name.as_str() == "call" && b.site.lines.0 == 4)
+        .expect("the call");
+    assert_eq!(called.relation, Relation::Calls);
+    assert_eq!(landings(&fx, "u.ts", "attempt", 4), [attempt.clone()]);
+    for line in [5, 6, 8] {
+        assert_eq!(landings(&fx, "u.ts", "attempt", line), [attempt.clone()]);
+        assert_eq!(landings(&fx, "u.ts", "call", line), [call.clone()]);
+    }
+    assert_eq!(
+        landings(&fx, "u.ts", "attempt", 9),
+        [local, "unresolved(UntypedRead)".to_string()],
+        "a name taken of a value nothing types is an unresolved read"
+    );
+}
+
+/// A function-typed property reached through a chain of typed members is called;
+/// an interface method with nothing that implements it stays a candidate.
+#[test]
+fn a_function_typed_property_called_through_a_typed_chain_is_called() {
+    let fx = snapshot(&[
+        (
+            "t.ts",
+            "export interface RetryOptions {\n  calculateDelay: (n: number) => number;\n}\nexport interface Options {\n  retry: RetryOptions;\n}\nexport interface Clock {\n  now(): number;\n}\n",
+        ),
+        (
+            "u.ts",
+            "import type {Options, Clock} from './t';\n\nexport function delay(o: Options): number {\n  return o.retry.calculateDelay(1);\n}\nexport function tick(c: Clock): number {\n  return c.now();\n}\n",
+        ),
+    ]);
+    let delayed = fx.at("u.ts", "calculateDelay", 4);
+    assert_eq!(delayed.relation, Relation::Calls);
+    assert_eq!(fx.lands(delayed), "t.ts::RetryOptions.calculateDelay");
+    assert_eq!(
+        fx.lands_at("u.ts", "now", 7),
+        "candidate(UntypedReceiver) t.ts::Clock.now"
+    );
+}
+
 /// gh#554, as ruled in Revision 12.3: a function declared inside another that
 /// never leaves it is a local of the enclosing definition. A call of it from
 /// its siblings is a use of that local, not of a definition, and the

@@ -24,16 +24,33 @@
 #![deny(clippy::disallowed_methods)]
 #![allow(clippy::cognitive_complexity, clippy::significant_drop_tightening)]
 
+mod c;
+mod chart;
+mod config;
+mod dockerfile;
+mod go;
 mod index;
+mod java;
 mod kotlin;
 mod modules;
+mod php;
 mod python;
 mod rust;
+mod shell;
+mod terraform;
 mod typescript;
 
+pub use c::CResolver;
+pub use config::ConfigResolver;
+pub use dockerfile::DockerfileResolver;
+pub use go::GoResolver;
+pub use java::JavaResolver;
 pub use kotlin::KotlinResolver;
+pub use php::{DYNAMIC, PhpResolver};
 pub use python::PythonResolver;
 pub use rust::RustResolver;
+pub use shell::ShellResolver;
+pub use terraform::TerraformResolver;
 pub use typescript::TypeScriptResolver;
 
 use crate::facts::{DefKey, DefKind, Name, Scope, Span};
@@ -183,6 +200,28 @@ pub enum CandidateReason {
     /// A call through a supertype of a type that overrides the member: it may
     /// run in the override.
     Dispatch,
+    /// A name a macro of the project defines: what the call or the use is, once
+    /// the preprocessor has run, is not read.
+    Macro,
+    /// A function found by argument-dependent lookup: any function of the name
+    /// in a namespace the argument types may bring in.
+    Adl,
+    /// Several objects of the name and kind stand in view, in namespaces the
+    /// referring file does not tell apart: it may be any of them.
+    AnyNamespace,
+    /// A name found only with another case than the one written: the language
+    /// does not say names are case-insensitive, and its tools disagree.
+    CaseFold,
+    /// A field whose key ends in `Name` or `Ref` and no row of the table names:
+    /// it may name an object of that name, of any kind.
+    NameSuffix,
+    /// A label selector: every definition of labels in its namespace that holds
+    /// all of its pairs. A selector is a candidate by nature: it may carry
+    /// expressions, and the labels may be set elsewhere.
+    LabelSelector,
+    /// A chart's own `values.yaml`, read by every release of it: the repository
+    /// names no release, so it may be overridden or not.
+    NoRelease,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -216,6 +255,9 @@ pub enum UnresolvedReason {
     MissingModule,
     /// A receiver chain the facts do not let the resolver follow.
     Opaque,
+    /// A selector no object's labels satisfy: it selects nothing now, and may
+    /// have selected what a change took the labels from.
+    NoMatch,
 }
 
 impl UnresolvedReason {

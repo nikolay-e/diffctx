@@ -1,0 +1,41 @@
+name: tf_removed_variable_leaves_the_input_that_set_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- module
+- removal
+repo:
+  initial_files:
+    main.tf: |
+      module "net" {
+        source = "./modules/net"
+        size   = 3
+      }
+    modules/net/main.tf: |
+      variable "size" {
+        default = 1
+      }
+
+      variable "keep" {
+        default = 2
+      }
+  changed_files:
+    modules/net/main.tf: |
+      variable "keep" {
+        default = 2
+      }
+  commit_message: tf removed variable leaves the input that set it
+expect:
+  changed:
+  - modules/net/main.tf::var.size
+  relations:
+  - from: main.tf::module.net
+    to: modules/net/main.tf::var.size
+    kind: writes
+    resolution: resolved
+    site: 3
+  exact: true
+  removed:
+  - size

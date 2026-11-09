@@ -1,0 +1,38 @@
+name: ts_destructured_typed_parameter_reads_the_member_it_names
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- typescript
+- destructuring
+- interface-member
+repo:
+  initial_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: number;
+      }
+    src/u.ts: |
+      import type {Retry} from './t';
+
+      export const viaDestructuring = ({attempt}: Retry) => attempt + 1;
+      export const viaMember = (r: Retry) => r.attempt;
+  changed_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: bigint;
+      }
+  commit_message: ts destructured typed parameter reads the member it names
+expect:
+  relations:
+  - from: src/u.ts::viaDestructuring
+    to: src/t.ts::Retry.attempt
+    kind: reads
+    resolution: resolved
+    site: 3
+  - from: src/u.ts::viaMember
+    to: src/t.ts::Retry.attempt
+    kind: reads
+    resolution: resolved
+    site: 4
+  exact: true

@@ -1,0 +1,35 @@
+name: shell_variable_a_sourced_file_assigns_is_read_by_the_scripts_that_source_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- shell
+- variable
+- reads
+- decoy
+repo:
+  initial_files:
+    lib.sh: |
+      FOO=one
+    user.sh: |
+      . ./lib.sh
+      echo "$FOO"
+    other.sh: |
+      echo "$FOO"
+  changed_files:
+    lib.sh: |
+      FOO=two
+  commit_message: Change shell variable a sourced file assigns is read by the scripts that source it
+expect:
+  changed:
+  - lib.sh::FOO
+  relations:
+  - from: user.sh
+    to: lib.sh::FOO
+    kind: reads
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    lib.sh::FOO:
+    - other.sh

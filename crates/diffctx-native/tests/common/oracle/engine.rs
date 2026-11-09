@@ -21,6 +21,10 @@ pub struct Answer {
     pub touched: Vec<Node>,
     pub removed: Vec<Node>,
     pub untested: Vec<Node>,
+    /// Definitions whose entry role names a test that reaches them, and those
+    /// whose role names none.
+    pub entry_tested: Vec<Node>,
+    pub entry_not_tested: Vec<Node>,
     /// A definition whose callers the engine could not resolve, with the
     /// class of its sentence (`None` when no class matches it).
     pub unknowns: Vec<(Node, Option<UnknownClass>, String)>,
@@ -29,6 +33,8 @@ pub struct Answer {
     pub gapped: Vec<Node>,
     pub stale: Vec<String>,
     pub named_by: Vec<String>,
+    /// (path, class) of every row of `stale_references` and `named_by`.
+    pub mention_classes: Vec<(String, String)>,
     pub contracts: Vec<Node>,
     pub empty: bool,
     pub tests_known: bool,
@@ -249,6 +255,26 @@ fn materialise(mode: Mode, spec: &Repo) -> Result<Materialised, String> {
     Ok(Materialised { dir, base })
 }
 
+/// The binary under test: `DIFFCTX_BIN` when set, else this build's.
+fn binary() -> Command {
+    match std::env::var_os("DIFFCTX_BIN") {
+        Some(bin) => Command::new(bin),
+        None => crate::support::diffctx(),
+    }
+}
+
+/// Whether the binary lists `--unfold` in its help, asked once per run: the
+/// capability decides, not where the binary came from.
+fn supports_unfold() -> bool {
+    static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        binary()
+            .arg("--help")
+            .output()
+            .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("--unfold"))
+    })
+}
+
 /// The binary's answer in `format`, or `None` when a `--symbol` lookup names
 /// a symbol nothing defines (the binary exits nonzero saying so).
 fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>, String> {
@@ -269,16 +295,13 @@ fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>,
     }
     args.extend(["-f".into(), format.into(), "-q".into()]);
     // The corpus asserts relations; what the answer folds has its own tests. A
-    // released binary has no such flag.
-    if std::env::var_os("DIFFCTX_BIN").is_none() {
+    // binary that predates the flag (the class test's base) is asked without it.
+    if supports_unfold() {
         args.push("--unfold".into());
     }
     args.extend(case.query.args.iter().cloned());
 
-    let mut command = match std::env::var_os("DIFFCTX_BIN") {
-        Some(bin) => Command::new(bin),
-        None => crate::support::diffctx(),
-    };
+    let mut command = binary();
     let output = command
         .current_dir(repo.dir.path())
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -425,6 +448,13 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
         {
             answer.untested.push(definition.clone());
         }
+        if let Some(entry) = text(changed, "entry") {
+            if entry.contains("reachable from tests:") {
+                answer.entry_tested.push(definition.clone());
+            } else {
+                answer.entry_not_tested.push(definition.clone());
+            }
+        }
         for caller in items(changed, "callers") {
             answer.caller_rows.push((
                 text(caller, "path").unwrap_or("").to_string(),
@@ -493,7 +523,15 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
     }
     for key in ["entry_unlisted", "layout_only"] {
         for label in items(doc, key).iter().filter_map(Value::as_str) {
-            answer.touched.push(node_of_label(label));
+            let node = node_of_label(label);
+            if key == "entry_unlisted" {
+                if label.contains("reachable from tests:") {
+                    answer.entry_tested.push(node.clone());
+                } else {
+                    answer.entry_not_tested.push(node.clone());
+                }
+            }
+            answer.touched.push(node);
         }
     }
 
@@ -505,6 +543,10 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
             answer
                 .stale
                 .push(text(reference, "path").unwrap_or("").to_string());
+            answer.mention_classes.push((
+                text(reference, "path").unwrap_or("").to_string(),
+                text(reference, "class").unwrap_or("").to_string(),
+            ));
         }
     }
     for reference in items(doc, "named_by") {
@@ -520,6 +562,10 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
             answer
                 .named_by
                 .push(text(reference, "path").unwrap_or("").to_string());
+            answer.mention_classes.push((
+                text(reference, "path").unwrap_or("").to_string(),
+                text(reference, "class").unwrap_or("").to_string(),
+            ));
         }
     }
     // A name no file defines, spelled in files: the rows are candidates for

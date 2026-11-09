@@ -9,6 +9,7 @@ A snapshot whose index failed or is incomplete excludes the commit and is counte
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import random
@@ -48,7 +49,21 @@ def diffctx_binary() -> Path:
     return Path(found)
 
 
+@functools.cache
+def supports_unfold(binary: Path) -> bool:
+    """Whether the binary lists `--unfold` in its help: the capability, not where the binary came from."""
+    done = subprocess.run([str(binary), "--help"], capture_output=True, check=False)
+    return b"--unfold" in done.stdout
+
+
+def lists_relations(args: list[str]) -> bool:
+    """Impact and `--symbol` answers fold what a change cannot have affected; the oracle scores every relation."""
+    return "--symbol" in args or ("--mode" in args and args[args.index("--mode") + 1] == "impact")
+
+
 def run_diffctx(binary: Path, cwd: Path, args: list[str], timeout: int) -> Run:
+    if lists_relations(args) and supports_unfold(binary):
+        args = [*args, "--unfold"]
     with tempfile.TemporaryDirectory(prefix="oracle-home-", ignore_cleanup_errors=True) as home:
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "LC_ALL": "C", "GIT_CONFIG_GLOBAL": "/dev/null"}
         started = time.perf_counter()

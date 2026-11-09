@@ -1,0 +1,77 @@
+name: tf_changed_resource_reaches_the_references_to_its_address
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- body-only
+repo:
+  initial_files:
+    main.tf: |
+      resource "terraform_data" "app" {
+        input = "1"
+      }
+
+      data "terraform_remote_state" "app" {
+        backend = "local"
+      }
+
+      output "id" {
+        value = terraform_data.app.id
+      }
+
+      resource "terraform_data" "after" {
+        depends_on = [terraform_data.app]
+      }
+
+      output "n" {
+        value = data.terraform_remote_state.app.outputs
+      }
+    other.tf: |
+      locals {
+        app = 1
+      }
+
+      output "z" {
+        value = local.app
+      }
+  changed_files:
+    main.tf: |
+      resource "terraform_data" "app" {
+        input = "2"
+      }
+
+      data "terraform_remote_state" "app" {
+        backend = "local"
+      }
+
+      output "id" {
+        value = terraform_data.app.id
+      }
+
+      resource "terraform_data" "after" {
+        depends_on = [terraform_data.app]
+      }
+
+      output "n" {
+        value = data.terraform_remote_state.app.outputs
+      }
+  commit_message: tf changed resource reaches the references to its address
+expect:
+  changed:
+  - main.tf::terraform_data.app
+  relations:
+  - from: main.tf::output.id
+    to: main.tf::terraform_data.app
+    kind: reads
+    resolution: resolved
+    site: 10
+  - from: main.tf::terraform_data.after
+    to: main.tf::terraform_data.app
+    kind: reads
+    resolution: resolved
+    site: 14
+  exact: true
+  decoys:
+    main.tf::terraform_data.app:
+    - other.tf

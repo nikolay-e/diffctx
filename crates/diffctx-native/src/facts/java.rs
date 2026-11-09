@@ -26,7 +26,7 @@ pub fn facts(content: &str) -> Option<KotlinFacts> {
 /// interface, whose members are public unless they say otherwise.
 type Owners = Vec<(String, Option<Visibility>, bool)>;
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {

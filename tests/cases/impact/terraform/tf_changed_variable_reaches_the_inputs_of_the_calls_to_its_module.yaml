@@ -1,0 +1,62 @@
+name: tf_changed_variable_reaches_the_inputs_of_the_calls_to_its_module
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- module
+- signature
+repo:
+  initial_files:
+    main.tf: |
+      module "net" {
+        source = "./modules/net"
+        cidr   = "10.0.0.0/16"
+      }
+
+      module "other" {
+        source = "./modules/other"
+        cidr   = "x"
+      }
+    modules/net/main.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      output "vpc" {
+        value = var.cidr
+      }
+    modules/other/main.tf: |
+      variable "cidr" {}
+
+      output "o" {
+        value = var.cidr
+      }
+  changed_files:
+    modules/net/main.tf: |
+      variable "cidr" {
+        type = list(string)
+      }
+
+      output "vpc" {
+        value = var.cidr
+      }
+  commit_message: tf changed variable reaches the inputs of the calls to its module
+expect:
+  changed:
+  - modules/net/main.tf::var.cidr
+  relations:
+  - from: modules/net/main.tf::output.vpc
+    to: modules/net/main.tf::var.cidr
+    kind: reads
+    resolution: resolved
+    site: 6
+  - from: main.tf::module.net
+    to: modules/net/main.tf::var.cidr
+    kind: writes
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    modules/net/main.tf::var.cidr:
+    - modules/other/main.tf

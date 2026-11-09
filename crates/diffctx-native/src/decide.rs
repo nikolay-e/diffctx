@@ -32,14 +32,17 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::facts::{
-    Def, DefChange, DefKey, DefKind, Delta, Disambig, Fact, FactsCache, Language, ModulePath, Name,
-    Origin, ProjectId, Scope, SemanticDef, Visibility, facts_of, semantic_changes,
+    Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
+    Framework, Language, ModulePath, Name, Origin, ProjectId, Scope, SemanticDef, Visibility,
+    facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
-    Binding, CandidateReason, Definition, EvidenceKind, KotlinResolver, PythonResolver, Relation,
-    Resolution, RustResolver, TypeScriptResolver, UnresolvedReason,
+    Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
+    EvidenceKind, GoResolver, JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation,
+    Resolution, RustResolver, ShellResolver, TerraformResolver, TypeScriptResolver,
+    UnresolvedReason,
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
@@ -59,6 +62,13 @@ const IMPORT_GLOB: &str = "import_glob";
 const GLOBAL: &str = "global";
 const OVERLOADED: &str = "overloaded";
 const DISPATCH: &str = "dispatch";
+const MACRO: &str = "macro";
+const ADL: &str = "adl";
+const ANY_NAMESPACE: &str = "any_namespace";
+const NAME_SUFFIX: &str = "name_suffix";
+const LABEL_SELECTOR: &str = "label_selector";
+const NO_RELEASE: &str = "no_release";
+const CASE_FOLD: &str = "case_fold";
 
 /// The languages one resolver reads: a cell answers for one family.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -67,10 +77,37 @@ pub enum Family {
     TypeScript,
     Rust,
     Kotlin,
+    Java,
+    Go,
+    Php,
+    C,
+    /// YAML files read as configuration objects: what an object's fields name,
+    /// by the table of the facts layer.
+    Config,
+    /// Terraform files: a module is a directory, and a name is a traversal's
+    /// root and its attributes.
+    Terraform,
+    /// A Dockerfile: its stages, the variables and places its instructions name.
+    Dockerfile,
+    /// Shell scripts: functions and variables, the files a script sources.
+    Shell,
 }
 
 impl Family {
-    const ALL: [Self; 4] = [Self::Python, Self::TypeScript, Self::Rust, Self::Kotlin];
+    const ALL: [Self; 12] = [
+        Self::Python,
+        Self::TypeScript,
+        Self::Rust,
+        Self::Kotlin,
+        Self::Java,
+        Self::Go,
+        Self::Php,
+        Self::C,
+        Self::Config,
+        Self::Terraform,
+        Self::Dockerfile,
+        Self::Shell,
+    ];
 
     fn has(self, language: Language) -> bool {
         match self {
@@ -78,6 +115,14 @@ impl Family {
             Self::TypeScript => matches!(language, Language::JavaScript | Language::TypeScript),
             Self::Rust => language == Language::Rust,
             Self::Kotlin => language == Language::Kotlin,
+            Self::Java => language == Language::Java,
+            Self::Go => language == Language::Go,
+            Self::Php => language == Language::Php,
+            Self::C => matches!(language, Language::C | Language::Cpp),
+            Self::Config => language.is_config_family(),
+            Self::Terraform => language == Language::Terraform,
+            Self::Dockerfile => language == Language::Dockerfile,
+            Self::Shell => matches!(language, Language::Shell | Language::ShellUnread),
         }
     }
 
@@ -87,11 +132,25 @@ impl Family {
             Self::TypeScript => "TypeScript/JavaScript",
             Self::Rust => "Rust",
             Self::Kotlin => "Kotlin",
+            Self::Java => "Java",
+            Self::Go => "Go",
+            Self::Php => "PHP",
+            Self::C => "C",
+            Self::Config => "configuration",
+            Self::Terraform => "Terraform",
+            Self::Dockerfile => "Dockerfile",
+            Self::Shell => "shell",
         }
     }
 
     /// Whether a file of this extension is read by the family's resolver.
     fn has_path(self, path: &str) -> bool {
+        // A YAML file is the configuration cell's only where it holds objects
+        // (`Cell::owns` reads that off the resolver): the rest of the YAML of a
+        // repository (workflows, compose files, values) is read by other paths.
+        if self == Self::Config {
+            return false;
+        }
         RepoPath::new(path)
             .is_ok_and(|p| Language::from_path(&p).is_some_and(|language| self.has(language)))
     }
@@ -103,6 +162,14 @@ enum Resolver {
     TypeScript(TypeScriptResolver),
     Rust(RustResolver),
     Kotlin(KotlinResolver),
+    Java(JavaResolver),
+    Go(GoResolver),
+    Php(PhpResolver),
+    C(CResolver),
+    Config(ConfigResolver),
+    Terraform(TerraformResolver),
+    Dockerfile(DockerfileResolver),
+    Shell(ShellResolver),
 }
 
 impl Resolver {
@@ -112,11 +179,26 @@ impl Resolver {
         side: SideTag,
         cache: &FactsCache,
     ) -> Result<Self> {
+        let _open = crate::profile::detail(
+            match side {
+                SideTag::Head => "resolver.open.head",
+                SideTag::Base => "resolver.open.base",
+            },
+            family.name(),
+        );
         Ok(match family {
             Family::Python => Self::Python(PythonResolver::open(ctx, side, cache)?),
             Family::TypeScript => Self::TypeScript(TypeScriptResolver::open(ctx, side, cache)?),
             Family::Rust => Self::Rust(RustResolver::open(ctx, side, cache)?),
             Family::Kotlin => Self::Kotlin(KotlinResolver::open(ctx, side, cache)?),
+            Family::Java => Self::Java(JavaResolver::open(ctx, side, cache)?),
+            Family::Go => Self::Go(GoResolver::open(ctx, side, cache)?),
+            Family::Php => Self::Php(PhpResolver::open(ctx, side, cache)?),
+            Family::C => Self::C(CResolver::open(ctx, side, cache)?),
+            Family::Config => Self::Config(ConfigResolver::open(ctx, side, cache)?),
+            Family::Terraform => Self::Terraform(TerraformResolver::open(ctx, side, cache)?),
+            Family::Dockerfile => Self::Dockerfile(DockerfileResolver::open(ctx, side, cache)?),
+            Family::Shell => Self::Shell(ShellResolver::open(ctx, side, cache)?),
         })
     }
 
@@ -126,6 +208,14 @@ impl Resolver {
             Self::TypeScript(r) => r.bindings(),
             Self::Rust(r) => r.bindings(),
             Self::Kotlin(r) => r.bindings(),
+            Self::Java(r) => r.bindings(),
+            Self::Go(r) => r.bindings(),
+            Self::Php(r) => r.bindings(),
+            Self::C(r) => r.bindings(),
+            Self::Config(r) => r.bindings(),
+            Self::Terraform(r) => r.bindings(),
+            Self::Dockerfile(r) => r.bindings(),
+            Self::Shell(r) => r.bindings(),
         }
     }
 
@@ -135,6 +225,14 @@ impl Resolver {
             Self::TypeScript(r) => r.definitions(),
             Self::Rust(r) => r.definitions(),
             Self::Kotlin(r) => r.definitions(),
+            Self::Java(r) => r.definitions(),
+            Self::Go(r) => r.definitions(),
+            Self::Php(r) => r.definitions(),
+            Self::C(r) => r.definitions(),
+            Self::Config(r) => r.definitions(),
+            Self::Terraform(r) => r.definitions(),
+            Self::Dockerfile(r) => r.definitions(),
+            Self::Shell(r) => r.definitions(),
         }
     }
 
@@ -144,11 +242,20 @@ impl Resolver {
             Self::TypeScript(r) => r.references_to(key),
             Self::Rust(r) => r.references_to(key),
             Self::Kotlin(r) => r.references_to(key),
+            Self::Java(r) => r.references_to(key),
+            Self::Go(r) => r.references_to(key),
+            Self::Php(r) => r.references_to(key),
+            Self::C(r) => r.references_to(key),
+            Self::Config(r) => r.references_to(key),
+            Self::Terraform(r) => r.references_to(key),
+            Self::Dockerfile(r) => r.references_to(key),
+            Self::Shell(r) => r.references_to(key),
         }
     }
 
     /// Whether a removal in `file` is a change of what the project exports. Rust
-    /// exports only through modules declared `pub` from a library root; a file
+    /// exports only through modules declared `pub` from a library root, Go through
+    /// packages other than `main` and those under `internal/`; a file
     /// outside every crate (no manifest names it) and one the head no longer
     /// holds are taken to have exported.
     fn exports(&self, file: &str, workspace: &WorkspaceModel) -> bool {
@@ -156,6 +263,10 @@ impl Resolver {
             Self::Rust(r) => {
                 r.is_public_module(file)
                     || workspace.rust_module(file).is_none()
+                    || !r.definitions().iter().any(|d| d.file.as_str() == file)
+            }
+            Self::Go(r) => {
+                r.is_public_package(file)
                     || !r.definitions().iter().any(|d| d.file.as_str() == file)
             }
             _ => true,
@@ -168,6 +279,22 @@ impl Resolver {
             Self::TypeScript(r) => r.losses(),
             Self::Rust(r) => r.losses(),
             Self::Kotlin(r) => r.losses(),
+            Self::Java(r) => r.losses(),
+            Self::Go(r) => r.losses(),
+            Self::Php(r) => r.losses(),
+            Self::C(r) => r.losses(),
+            Self::Config(r) => r.losses(),
+            Self::Terraform(r) => r.losses(),
+            Self::Dockerfile(r) => r.losses(),
+            Self::Shell(r) => r.losses(),
+        }
+    }
+
+    /// The module calls that name a source outside the repository.
+    fn external_sources(&self) -> usize {
+        match self {
+            Self::Terraform(r) => r.external_sources(),
+            _ => 0,
         }
     }
 }
@@ -206,14 +333,31 @@ pub enum Gap {
     /// A trait's member, or the implementation of one: calls arrive through
     /// `dyn Trait` and generic bounds, which only candidates follow.
     Dispatched { via: String },
-    /// `files` that could name the definition invoke `cfg_if!`, which defines
-    /// items by expansion: what it declares is not read.
-    Macros { files: usize },
+    /// `files` that could name the definition reach it through macros or define it
+    /// under conditional compilation (Rust: `cfg_if!`, which defines items by
+    /// expansion): what the preprocessor makes of it is not read.
+    Macros { files: usize, what: &'static str },
     /// The answer cap shed the definition: its callers were found, not listed.
     Capped,
     /// A route no model traces can reach it: dispatch, an untyped receiver, a
     /// language no binding model reads.
     NotTraced,
+    /// `files` hold a template (Helm, Go template files) that was read around,
+    /// not expanded: what it renders is not known.
+    Templated { files: usize },
+    /// `files` of a chart or release whose values or context are not determined:
+    /// a key that no release is known to read is not an unread key.
+    ContextUnbound { files: usize },
+    /// The object is generated (a Kustomize generator, `count` or `for_each`,
+    /// a rendered chart): its name is not written in any file.
+    #[allow(dead_code, reason = "the config cells of wave 7 build it")]
+    RenderedElsewhere { files: usize },
+    /// `pointers` name a source outside the repository (a remote repository,
+    /// a registry module, an image): what they reach is not held.
+    ExternalSource { pointers: usize },
+    /// `files` run or read a path the shell computes at run time (`source
+    /// "$x"`, `eval`): what they reach is not named in the text.
+    SourceFlag { files: usize },
 }
 
 impl std::fmt::Display for Gap {
@@ -249,12 +393,29 @@ impl std::fmt::Display for Gap {
                 f,
                 "it is a member of `{via}`, whose calls through `dyn {via}` or a bound are candidates"
             ),
-            Self::Macros { files } => write!(
-                f,
-                "{files} file(s) that could name it declare items through `cfg_if!`, which is not expanded"
-            ),
+            Self::Macros { files, what } => {
+                write!(f, "{files} file(s) that could name it {what}")
+            }
             Self::Capped => f.write_str("the answer cap shed it"),
             Self::NotTraced => f.write_str("a route no model traces can reach it"),
+            Self::Templated { files } => {
+                write!(f, "{files} template file(s) were read around, not expanded")
+            }
+            Self::ContextUnbound { files } => write!(
+                f,
+                "{files} file(s) of a chart or release whose context is not determined"
+            ),
+            Self::RenderedElsewhere { files } => write!(
+                f,
+                "{files} file(s) generate objects whose names are not written in any file"
+            ),
+            Self::ExternalSource { pointers } => write!(
+                f,
+                "{pointers} source(s) outside the repository were not followed"
+            ),
+            Self::SourceFlag { files } => {
+                write!(f, "{files} file(s) read a path computed at run time")
+            }
         }
     }
 }
@@ -637,6 +798,11 @@ struct Subject {
 }
 
 /// The span a use must lie in to be the definition's own use of itself.
+/// The labels of a configuration object: a definition of its own, under it.
+fn is_label_definition(key: &DefKey) -> bool {
+    key.local.container.len() == 1 && matches!(key.local.name.as_str(), "labels" | "pod-labels")
+}
+
 fn own_span(kind: DefKind, lines: (u32, u32)) -> Option<(u32, u32)> {
     (!matches!(
         kind,
@@ -689,7 +855,8 @@ pub struct Changed {
     pub decorated: bool,
     /// What the range did moves the definition's place in the module's surface: it
     /// was added, renamed or moved, or its signature (which carries its kind) or
-    /// its visibility changed. A body, doc or decorator edit leaves it.
+    /// its visibility changed. A body, doc or decorator edit leaves it. In Kotlin
+    /// a definition not public at the head has no place in the surface to move.
     pub api: bool,
 }
 
@@ -736,6 +903,13 @@ fn bases_in(signature: Option<&str>) -> Vec<String> {
 impl Changed {
     /// The name the answer gives it: a member field is `Class.field`, so two
     /// classes' fields of one name are two definitions.
+    /// The name the answer prints beside the file. A shell script is the definition
+    /// of its own file: the file names it, and the path a second time would make it
+    /// two names.
+    pub fn symbol(&self) -> Option<String> {
+        (!(self.kind == DefKind::Module && self.name == self.file)).then(|| self.display_name())
+    }
+
     pub fn display_name(&self) -> String {
         let key = self
             .subjects
@@ -889,6 +1063,13 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
             CandidateReason::Global => GLOBAL,
             CandidateReason::Overloaded => OVERLOADED,
             CandidateReason::Dispatch => DISPATCH,
+            CandidateReason::Macro => MACRO,
+            CandidateReason::Adl => ADL,
+            CandidateReason::AnyNamespace => ANY_NAMESPACE,
+            CandidateReason::NameSuffix => NAME_SUFFIX,
+            CandidateReason::LabelSelector => LABEL_SELECTOR,
+            CandidateReason::NoRelease => NO_RELEASE,
+            CandidateReason::CaseFold => CASE_FOLD,
         })),
         Resolution::Module { .. } | Resolution::Unresolved { .. } => None,
     }
@@ -1020,10 +1201,22 @@ impl Cell {
                 self.outside.insert(file.to_string());
                 continue;
             }
-            self.files.insert(file.to_string());
-            if self.family == Family::Rust
+            // A configuration file that only names places (a Kustomize file) is
+            // not the cell's: it holds no object a use could land on.
+            if !(self.family == Family::Config && b.relation == Relation::Imports) {
+                self.files.insert(file.to_string());
+            }
+            if (self.family == Family::Rust
                 && b.relation == Relation::Calls
-                && b.name.as_str() == "cfg_if"
+                && b.name.as_str() == "cfg_if")
+                || (self.family == Family::C
+                    && matches!(
+                        b.resolution,
+                        Resolution::Candidate {
+                            reason: CandidateReason::Macro,
+                            ..
+                        }
+                    ))
             {
                 self.macro_files.insert(file.to_string());
             }
@@ -1096,9 +1289,12 @@ impl Cell {
     fn read_changes(&mut self) -> Result<()> {
         let set = semantic_changes(&self.ctx, &self.cache)?;
         self.losses.extend(set.losses.iter().cloned());
+        let (reshaped, away) = self.reshaped_defaults(&set.defs)?;
         let python: Vec<_> = set
             .defs
             .iter()
+            .filter(|d| !away.contains(&d.key))
+            .chain(reshaped.iter())
             .filter(|d| self.family.has(d.key.language))
             .filter(|d| {
                 [&d.head, &d.base]
@@ -1208,7 +1404,7 @@ impl Cell {
                         continue;
                     }
                     let gone = Changed {
-                        name: d.key.local.name.as_str().to_string(),
+                        name: self.shown_name(kind, d.key.local.name.as_str(), file.as_str()),
                         kind,
                         file: file.as_str().to_string(),
                         lines,
@@ -1345,13 +1541,21 @@ impl Cell {
                             }
                         }
                     }
+                    // The selectors that selected labels at the base, and select
+                    // nothing after the edit, are the readers the edit broke: the
+                    // key is its own stale name.
+                    if self.family == Family::Config
+                        && is_label_definition(&d.key)
+                        && matches!(change, DefChange::Changed { origin: Origin::Same, delta }
+                            if delta.body)
+                    {
+                        stale = vec![d.key.clone()];
+                    }
                     let unpaired = matches!(change, DefChange::Unknown { .. });
-                    let api = match change {
-                        DefChange::Changed { origin, delta } => {
-                            !matches!(origin, Origin::Same) || delta.signature || delta.visibility
-                        }
-                        _ => true,
-                    };
+                    // A default export that only changed its form is one export: its
+                    // place in the surface moves with its signature, not its name.
+                    let reshaped_here = reshaped.iter().any(|r| r.key == d.key);
+                    let api = self.surface_moved(d, change, reshaped_here);
                     for mut changed in self.report_as(def, how, stale, unpaired, true) {
                         changed.basis.clone_from(&basis);
                         changed.decorated = decorated.contains(&d.key);
@@ -1399,6 +1603,89 @@ impl Cell {
         })
     }
 
+    /// Whether the range moved the definition's place in the module's surface: it
+    /// is new, moved to another file or container, renamed, or has another
+    /// signature or visibility than at the base. A body, doc or layout edit is
+    /// none, and a default export that only changed its form (`reshaped`) moves
+    /// with its signature and visibility alone. In Kotlin (JVM callers and the
+    /// modules that depend on them name it)
+    /// it also has to be public at the head.
+    fn surface_moved(&self, d: &SemanticDef, change: &DefChange, reshaped: bool) -> bool {
+        let moved = match change {
+            DefChange::Changed { delta, .. } if reshaped => delta.signature || delta.visibility,
+            DefChange::Changed { origin, delta } => {
+                !matches!(origin, Origin::Same) || delta.signature || delta.visibility
+            }
+            _ => true,
+        };
+        moved
+            && (self.family != Family::Kotlin
+                || d.head.as_ref().is_some_and(|file| {
+                    self.declared(SideTag::Head, file, &d.key)
+                        .unwrap_or(None)
+                        .is_some_and(|def| def.visibility == Visibility::Public)
+                }))
+    }
+
+    /// The annotations a Kotlin definition states at the head, by where it is:
+    /// the JVM entry points a framework calls are read off them. `None` for
+    /// another family or a definition the facts do not hold.
+    pub fn annotations_at(&self, file: &str, name: &str, lines: (u32, u32)) -> Option<Vec<String>> {
+        if self.family != Family::Kotlin {
+            return None;
+        }
+        let def = self.head.definitions().iter().find(|d| {
+            d.file.as_str() == file
+                && d.key.local.name.as_str() == name
+                && d.span.lines.0 <= lines.1
+                && lines.0 <= d.span.lines.1
+        })?;
+        let found = self
+            .declared(SideTag::Head, &def.file, &def.key)
+            .unwrap_or(None)?;
+        Some(
+            found
+                .decorators
+                .iter()
+                .map(|n| n.as_str().to_string())
+                .collect(),
+        )
+    }
+
+    /// The entries a framework makes of the definition at the head, by where it
+    /// is: what the facts state of who calls it (a route, a scheduled job, a
+    /// command, a tool, a fixture). Empty for a definition no rule matches, and
+    /// for one the facts do not hold.
+    pub fn framework_entries_at(
+        &self,
+        file: &str,
+        name: &str,
+        lines: (u32, u32),
+    ) -> Vec<(EntryKind, Framework)> {
+        let Some(def) = self.head.definitions().iter().find(|d| {
+            d.file.as_str() == file
+                && d.key.local.name.as_str() == name
+                && d.span.lines.0 <= lines.1
+                && lines.0 <= d.span.lines.1
+        }) else {
+            return Vec::new();
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &def.file) else {
+            return Vec::new();
+        };
+        facts
+            .blob
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::EntryPoint(entry) if entry.target == Scope::Def(def.key.local.clone()) => {
+                    Some((entry.kind, entry.framework.clone()?))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Whether the definition at the head is a function, method or class with
     /// decorators.
     fn decorated_at_head(&self, d: &SemanticDef) -> bool {
@@ -1424,6 +1711,15 @@ impl Cell {
     /// definition's visibility or only its docstring (a decorator may read it): then
     /// nothing folds. A comment-only edit has a basis with no code delta.
     fn basis_of(&self, d: &SemanticDef, def: &Definition, delta: Delta) -> Option<Basis> {
+        // The folding table has no row for a configuration definition: one changed
+        // key reaching one reader is the whole answer, whatever the kind says
+        // (a Helm named template and a shell function are `Function`s).
+        if matches!(
+            self.family,
+            Family::Config | Family::Terraform | Family::Dockerfile | Family::Shell
+        ) {
+            return None;
+        }
         let code = delta.signature || delta.body || delta.decorators;
         if delta.visibility || (!code && delta.doc) {
             return None;
@@ -1556,6 +1852,82 @@ impl Cell {
         Ok(seen)
     }
 
+    /// The module's default export when it changed its form and nothing else: `export
+    /// default (a) => …` became `export default function name(a) { … }`, or `export
+    /// default f` over a constant. The facts see the removal of `default` and a new
+    /// named definition; the export is one, so the two are one rename of it (with the
+    /// signature compared, since the name was never part of it), and neither is an
+    /// export removed or added. The second list holds the keys the pair replaces.
+    fn reshaped_defaults(&self, defs: &[SemanticDef]) -> Result<(Vec<SemanticDef>, Vec<DefKey>)> {
+        let mut pairs = Vec::new();
+        let mut away = Vec::new();
+        if self.family != Family::TypeScript {
+            return Ok((pairs, away));
+        }
+        for gone in defs.iter().filter(|d| {
+            matches!(d.change, DefChange::Removed)
+                && d.head.is_none()
+                && d.key.local.name.as_str() == "default"
+                && d.key.local.container.is_empty()
+        }) {
+            let Some(file) = gone.base.as_ref() else {
+                continue;
+            };
+            let Some(head) = facts_of(&self.ctx, SideTag::Head, &self.cache, file)? else {
+                continue;
+            };
+            let Some(local) = head.blob.facts.iter().find_map(|fact| match fact {
+                Fact::Export(Export::Default { local: Some(l), .. }) => Some(l.clone()),
+                _ => None,
+            }) else {
+                continue;
+            };
+            let Some(added) = defs.iter().find(|d| {
+                matches!(d.change, DefChange::Added)
+                    && d.head.as_ref() == Some(file)
+                    && d.key.local.name == local
+                    && d.key.local.container.is_empty()
+                    && d.key.project == gone.key.project
+                    && d.key.module == gone.key.module
+            }) else {
+                continue;
+            };
+            let before = self.declared(SideTag::Base, file, &gone.key)?;
+            let after = self.declared(SideTag::Head, file, &added.key)?;
+            let (Some(before), Some(after)) = (before, after) else {
+                continue;
+            };
+            pairs.push(SemanticDef {
+                key: added.key.clone(),
+                change: DefChange::Changed {
+                    origin: Origin::Renamed {
+                        from: gone.key.clone(),
+                    },
+                    delta: Delta {
+                        signature: before.kind != after.kind || before.signature != after.signature,
+                        body: true,
+                        ..Delta::default()
+                    },
+                },
+                base: Some(file.clone()),
+                head: Some(file.clone()),
+            });
+            away.push(gone.key.clone());
+            away.push(added.key.clone());
+        }
+        Ok((pairs, away))
+    }
+
+    /// The name the answer gives a definition: a script is named by its path, its
+    /// definition being the program of the file.
+    fn shown_name(&self, kind: DefKind, name: &str, file: &str) -> String {
+        if self.family == Family::Shell && kind == DefKind::Module {
+            file.to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
     fn definition(&self, key: &DefKey) -> Option<&crate::resolve::Definition> {
         self.defs_by_key
             .get(key)
@@ -1617,7 +1989,7 @@ impl Cell {
     ) -> Vec<Changed> {
         let mut out = Vec::new();
         let own = |def: &crate::resolve::Definition, reach| Changed {
-            name: def.key.local.name.as_str().to_string(),
+            name: self.shown_name(def.kind, def.key.local.name.as_str(), def.file.as_str()),
             kind: def.kind,
             file: def.file.as_str().to_string(),
             lines: def.span.lines,
@@ -1794,16 +2166,27 @@ impl Cell {
         self.files.contains(rel) || self.family.has_path(rel)
     }
 
+    /// Whether what consumes the family's files lies outside the code the cell
+    /// reads: a CI workflow, a compose file or a script runs a Dockerfile, and
+    /// a tool applies a configuration. The cell traces the relations inside and
+    /// between the files; their consumers are reached only by a mention.
+    pub fn consumed_outside(&self) -> bool {
+        matches!(self.family, Family::Config | Family::Dockerfile)
+    }
+
     /// Whether the resolver read the file whole: its definitions and uses are
     /// the cell's, whatever the fragments made of it. A file the grammar read
     /// only in part has uses the cell never saw, so it stays a name's unread
     /// namer.
     pub fn read(&self, rel: &str) -> bool {
         self.files.contains(rel)
-            && !self
-                .losses
-                .iter()
-                .any(|loss| matches!(loss, Loss::ParseError { path, .. } if path.as_str() == rel))
+            && !self.losses.iter().any(|loss| {
+                matches!(
+                    loss,
+                    Loss::ParseError { path, .. } | Loss::GrammarOutdated { path, .. }
+                        if path.as_str() == rel
+                )
+            })
     }
 
     /// The definition of a queried name or a fragment at these lines, as the
@@ -2100,6 +2483,18 @@ impl Cell {
         if outside > 0 {
             tail.push(Gap::OutsideScope { files: outside });
         }
+        // A module's variables and outputs are what a call reaches: a call whose
+        // source is outside the repository may be a caller of any of them.
+        let external = self.head.external_sources();
+        let interface = changed.subjects.iter().any(|s| {
+            matches!(
+                s.key.local.container.first().map(Name::as_str),
+                Some("var" | "output")
+            )
+        });
+        if external > 0 && interface {
+            tail.push(Gap::ExternalSource { pointers: external });
+        }
         if self.family == Family::Rust {
             let macros = self
                 .macro_files
@@ -2107,7 +2502,10 @@ impl Cell {
                 .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
                 .count();
             if macros > 0 {
-                tail.push(Gap::Macros { files: macros });
+                tail.push(Gap::Macros {
+                    files: macros,
+                    what: "declare items through `cfg_if!`, which is not expanded",
+                });
             }
             let dispatched = changed
                 .subjects
@@ -2116,6 +2514,63 @@ impl Cell {
                 .find_map(|def| self.dispatched_via(def));
             if let Some(via) = dispatched {
                 tail.push(Gap::Dispatched { via });
+            }
+        }
+        if self.family == Family::C {
+            let macros = self
+                .macro_files
+                .iter()
+                .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+                .count();
+            if macros > 0 {
+                tail.push(Gap::Macros {
+                    files: macros,
+                    what: "call or use it through macros, whose expansion is not read",
+                });
+            }
+            // What a build configures may not exist: the definition is under `#if`.
+            let conditional = changed.subjects.iter().any(|s| {
+                matches!(&s.key.local.disambig, Some(Disambig::Cfg(cond)) if cond != "declaration")
+            });
+            if conditional {
+                tail.push(Gap::Macros {
+                    files: 1,
+                    what: "define it under conditional compilation, which is not evaluated",
+                });
+            }
+        }
+        // What a configuration object's readers could be, outside what the cell
+        // reads: a place a file names outside the repository, a name a template
+        // writes.
+        if let Resolver::Config(config) = &self.head {
+            if config.external_sources() > 0 {
+                tail.push(Gap::ExternalSource {
+                    pointers: config.external_sources(),
+                });
+            }
+            if config.templated_files() > 0 {
+                tail.push(Gap::Templated {
+                    files: config.templated_files(),
+                });
+            }
+            if config.unbound_values() > 0 {
+                tail.push(Gap::ContextUnbound {
+                    files: config.unbound_values(),
+                });
+            }
+        }
+        // A script that sources a path nothing settles may source any name; one
+        // the bash grammar does not read may call or define any.
+        if let Resolver::Shell(shell) = &self.head {
+            if shell.unknown_sources() > 0 {
+                tail.push(Gap::SourceFlag {
+                    files: shell.unknown_sources(),
+                });
+            }
+            if shell.unread_scripts() > 0 {
+                tail.push(Gap::Unread {
+                    files: shell.unread_scripts(),
+                });
             }
         }
         let reasons = self.stops();
@@ -2174,7 +2629,7 @@ impl Cell {
         let mut named: HashMap<(String, Name), Standing> = HashMap::new();
         for key in &changed.stale {
             for b in base.references_to(key) {
-                if strands(b.relation)
+                if strands(self.family, b.relation)
                     && !b.entry_guard
                     && within_scope(&self.scope, b.file.as_str())
                 {
@@ -2195,14 +2650,25 @@ impl Cell {
         }
         let mut out = Vec::new();
         for ((file, name), standing) in named {
-            for at in self.bindings_by_file.get(&file).into_iter().flatten() {
-                let h = &self.head.bindings()[*at];
-                if h.name != name
-                    || !strands(h.relation)
-                    || !matches!(h.resolution, Resolution::Unresolved { .. })
-                {
-                    continue;
-                }
+            let stranded: Vec<&Binding> = self
+                .bindings_by_file
+                .get(&file)
+                .into_iter()
+                .flatten()
+                .map(|at| &self.head.bindings()[*at])
+                .filter(|h| {
+                    h.name == name
+                        && strands(self.family, h.relation)
+                        && matches!(h.resolution, Resolution::Unresolved { .. })
+                })
+                .collect();
+            // An import is a broken line too, but a file that still uses the name
+            // has said so on the use: the import names it only when nothing else does.
+            let used = stranded.iter().any(|h| h.relation != Relation::Imports);
+            for h in stranded
+                .into_iter()
+                .filter(|h| !used || h.relation != Relation::Imports)
+            {
                 let line = h.site.lines.0;
                 out.push(Use {
                     // A line that still names what left is a broken reference
@@ -2237,10 +2703,19 @@ impl Cell {
             .first()
             .is_some_and(|s| !s.key.local.container.is_empty());
         let top_level_only = self.family == Family::TypeScript && !member;
+        // A use whose name is not written (`$o->$m()`, `new $c`) may be of any
+        // definition of a kind its relation reaches.
+        let dynamic = self
+            .unlanded
+            .get(crate::resolve::DYNAMIC)
+            .into_iter()
+            .flatten()
+            .filter(|(_, _, _, _, relation)| dynamic_reaches(*relation, changed.kind));
         self.unlanded
             .get(&changed.name)
             .into_iter()
             .flatten()
+            .chain(dynamic)
             .filter(|(file, line, _, read, _)| {
                 !(top_level_only && *read)
                     && self.ctx.workspace.may_reference(file, &changed.file)
@@ -2274,6 +2749,87 @@ impl Cell {
     pub fn reaches(&self, user_file: &str, used_file: &str) -> bool {
         self.reaches
             .contains(&(user_file.to_string(), used_file.to_string()))
+    }
+
+    /// The file and line of each resolved use of the definition called `name`
+    /// at `lines` of `file`: who a test has to be, or to reach, to reach it.
+    pub fn users(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<(String, u32)> {
+        let Some(def) = self.definition_at(file, name, lines) else {
+            return Vec::new();
+        };
+        self.landed
+            .get(&def.key)
+            .map_or_else(Vec::new, |uses| uses.clone())
+    }
+
+    /// Whether the family's files name other files by a path they write (a
+    /// `COPY`, a `source`, a kustomization's `resources`, a module's `source`),
+    /// which its resolver settles from the file's own directory.
+    fn points_by_path(&self) -> bool {
+        matches!(
+            self.family,
+            Family::Config | Family::Terraform | Family::Dockerfile | Family::Shell
+        )
+    }
+
+    /// The file and line of each pointer the family settled on `target`.
+    pub fn pointers_to(&self, target: &str) -> Vec<(String, u32)> {
+        if !self.points_by_path() {
+            return Vec::new();
+        }
+        self.head
+            .bindings()
+            .iter()
+            .filter(|b| {
+                matches!(&b.resolution, Resolution::Module { file, .. } if file.as_str() == target)
+                    && within_scope(&self.scope, b.file.as_str())
+            })
+            .map(|b| (b.file.as_str().to_string(), b.site.lines.0))
+            .collect()
+    }
+
+    /// Whether the family settled a pointer written at `file:line` on a file
+    /// other than `target`.
+    pub fn points_elsewhere(&self, file: &str, line: u32, target: &str) -> bool {
+        self.points_by_path()
+            && self.bindings_by_file.get(file).is_some_and(|at| {
+                at.iter().map(|i| &self.head.bindings()[*i]).any(|b| {
+                    b.site.lines.0 <= line
+                        && line <= b.site.lines.1
+                        && matches!(&b.resolution, Resolution::Module { file: found, .. }
+                                if found.as_str() != target)
+                })
+            })
+    }
+
+    /// The files whose bindings reach something in `used_file`.
+    pub fn reached_from<'a>(&'a self, used_file: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.reaches
+            .iter()
+            .filter(move |(_, used)| used == used_file)
+            .map(|(user, _)| user.as_str())
+    }
+}
+
+/// Whether a use that names nothing it could be a use of a definition of this
+/// kind: a call reaches what is called, an instantiation a class, an access a
+/// value.
+fn dynamic_reaches(relation: Relation, kind: DefKind) -> bool {
+    match relation {
+        Relation::Calls | Relation::PassesAsValue => matches!(
+            kind,
+            DefKind::Function | DefKind::Method | DefKind::Constructor
+        ),
+        Relation::Instantiates => matches!(kind, DefKind::Class),
+        Relation::Reads | Relation::Writes => matches!(
+            kind,
+            DefKind::Property
+                | DefKind::Constant
+                | DefKind::Field
+                | DefKind::EnumMember
+                | DefKind::Variable
+        ),
+        _ => false,
     }
 }
 
@@ -2337,9 +2893,19 @@ impl Cells {
 }
 
 /// Whether a line that names a definition the range removed is stranded by it: a
-/// use that now finds nothing, or an export that still offers the missing name.
-fn strands(relation: Relation) -> bool {
-    relation.uses() || relation == Relation::Reexports
+/// use that now finds nothing, or an export that still offers the missing name. In
+/// the code families a name written where a type is expected, and an import of it,
+/// are the only uses a removed interface, class or alias may have: a file that still
+/// imports a removed type and annotates with it is broken, and without them the
+/// search of a removed type finds nothing and the answer says nothing references it.
+fn strands(family: Family, relation: Relation) -> bool {
+    relation.uses()
+        || relation == Relation::Reexports
+        || (matches!(relation, Relation::TypeUses | Relation::Imports)
+            && !matches!(
+                family,
+                Family::Config | Family::Terraform | Family::Dockerfile | Family::Shell
+            ))
 }
 
 /// Reports one definition once, with the subjects of every reason it is

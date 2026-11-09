@@ -1,0 +1,19 @@
+name: ts_default_export_with_a_new_parameter_is_a_contract
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, contracts, rule-i]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number, z: number): number {
+        return x * y * z;
+      }
+  commit_message: "rate: a third parameter"
+# The same reshaping, with a parameter added: the default export's signature
+# moved, so it is a contract.
+expect:
+  contracts: [src/rate.ts]

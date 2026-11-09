@@ -1,0 +1,33 @@
+name: cpp_template_function_is_one_definition_with_its_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- template
+repo:
+  initial_files:
+    src/clamp.hpp: |
+      template <typename T>
+      T clamp(T v, T lo, T hi) { return v < lo ? lo : v > hi ? hi : v + 0; }
+    src/use.cpp: |
+      #include "clamp.hpp"
+
+      int limit(int v)
+      {
+          return clamp<int>(v, 0, 10);
+      }
+  changed_files:
+    src/clamp.hpp: |
+      template <typename T>
+      T clamp(T v, T lo, T hi) { return v < lo ? lo : v > hi ? hi : v + 1; }
+  commit_message: Change template function is one definition with its callers
+expect:
+  changed:
+  - src/clamp.hpp::clamp
+  relations:
+  - from: src/use.cpp::limit
+    to: src/clamp.hpp::clamp
+    kind: calls
+    resolution: resolved
+    site: 5

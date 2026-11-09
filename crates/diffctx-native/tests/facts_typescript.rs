@@ -803,6 +803,10 @@ fn nested_callbacks_nest_their_scopes() {
     );
 }
 
+/// The facts state what the call site writes: each key of the literal is a write
+/// of the callee's parameter (`<arg0>.callee.key`), and each value a pass. Whether
+/// the callee's parameter type has such a key is the resolver's to say; an
+/// external callee (`useQuery`) claims nothing.
 #[test]
 fn an_object_literal_property_passed_to_a_call_is_passed_as_a_value() {
     let facts = ts(r#"import { useQuery } from "./lib";
@@ -817,10 +821,45 @@ export function useThing(onDone: () => void) {
         vec![
             "Read save in def useThing",
             "Call useQuery in def useThing",
+            "Write <arg0>.useQuery.queryKey in def useThing",
             "PassAsValue key in def useThing",
+            "Write <arg0>.useQuery.queryFn in def useThing",
             "Call fetch in callback useQuery in def useThing",
+            "Write <arg0>.useQuery.mutationFn in def useThing",
             "PassAsValue mutationFn in def useThing",
+            "Write <arg0>.useQuery.onSuccess in def useThing",
             "PassAsValue onDone in def useThing",
+        ]
+    );
+}
+
+/// A type assertion on the receiver is the type of the receiver, whatever the
+/// value was declared as: `(options as Opts).pagination` is a member of `Opts`.
+/// A type no name stands for (`any`) is none, and the read says so; `as const`
+/// keeps the type the value had.
+#[test]
+fn a_type_assertion_on_a_receiver_types_it_as_the_asserted_type() {
+    let facts = ts(r#"export function f(options: Norm) {
+  (options as Opts).pagination = 1;
+  const a = (<Other>options).pagination;
+  const b = (options as any).pagination;
+  const c = (options as Opts | null)?.pagination;
+  const d = (options as const).pagination;
+  return [a, b, c, d];
+}
+"#);
+    let seen: Vec<String> = ref_named(&facts, "pagination")
+        .iter()
+        .map(|r| format!("{:?} {}", r.use_kind, receiver(&r.receiver)))
+        .collect();
+    assert_eq!(
+        seen,
+        vec![
+            "Write typed Opts",
+            "Read typed Other",
+            "Read unknown",
+            "Read typed Opts",
+            "Read typed Norm",
         ]
     );
 }
@@ -1201,6 +1240,61 @@ fn an_import_the_code_computes_is_a_computed_import_and_a_literal_one_is_not() {
         })
         .collect();
     assert_eq!(literal, ["./lit", "./lit2"]);
+}
+
+/// Where the code states the type of a value, the names an object pattern takes
+/// and the keys of an object literal are the members of that type; where it
+/// states none, a pattern's name is a read through a value nothing types, and a
+/// key handed to a call waits for the callee's parameter. Nothing is dropped.
+#[test]
+fn patterns_and_literals_name_the_members_of_the_type_the_code_states() {
+    let facts = ts(
+        "export const a = ({attempt}: Retry) => attempt;\nexport const b = ({call, attempt: n}) => n;\nexport const c = (): Retry => ({attempt: 1, call() {}, other});\nexport function d(x: number) { return takes(x, {attempt: 2}); }\nconst {z}: Retry = w;\nconst {y} = require('m');\nexport function e(r: Retry) { const {attempt} = r; return attempt; }\n",
+    );
+    let special: Vec<(u32, String, String, String)> = references(&facts)
+        .into_iter()
+        .filter(|r| {
+            matches!(r.receiver, Receiver::Typed(_))
+                || r.qualifier
+                    .first()
+                    .is_some_and(|q| q.as_str().starts_with('<'))
+        })
+        .map(|r| {
+            (
+                r.site.lines.0,
+                format!("{:?} {}", r.use_kind, r.name.as_str()),
+                receiver(&r.receiver),
+                r.qualifier
+                    .iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join("."),
+            )
+        })
+        .collect();
+    let row = |line: u32, what: &str, receiver: &str, qualifier: &str| {
+        (
+            line,
+            what.to_string(),
+            receiver.to_string(),
+            qualifier.to_string(),
+        )
+    };
+    assert_eq!(
+        special,
+        [
+            row(1, "Read attempt", "typed Retry", ""),
+            row(2, "Read call", "unknown", "<untyped>"),
+            row(2, "Read attempt", "unknown", "<untyped>"),
+            row(3, "Write attempt", "typed Retry", ""),
+            row(3, "Write call", "typed Retry", ""),
+            row(3, "Write other", "typed Retry", ""),
+            row(4, "Write attempt", "unknown", "<arg1>.takes"),
+            row(5, "Read z", "typed Retry", ""),
+            row(7, "Read attempt", "typed Retry", ""),
+        ]
+    );
+    assert!(ref_named(&facts, "y").is_empty(), "an import binds names");
 }
 
 #[test]
