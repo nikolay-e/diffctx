@@ -1,0 +1,62 @@
+name: c_prototype_in_a_header_pairs_with_its_definition_and_a_static_stays_home
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- prototype
+- static
+repo:
+  initial_files:
+    src/util.h: |
+      #ifndef UTIL_H
+      #define UTIL_H
+
+      int add(int a, int b);
+
+      #endif
+    src/util.c: |
+      #include "util.h"
+
+      int add(int a, int b)
+      {
+          return a + b;
+      }
+    src/main.c: |
+      #include "util.h"
+
+      int main(void)
+      {
+          return add(1, 2);
+      }
+    src/other.c: |
+      static int add(int a, int b)
+      {
+          return a - b;
+      }
+
+      int other(void)
+      {
+          return add(3, 1);
+      }
+  changed_files:
+    src/util.c: |
+      #include "util.h"
+
+      int add(int a, int b)
+      {
+          return b + a;
+      }
+  commit_message: Change prototype in a header pairs with its definition and a static stays home
+expect:
+  changed:
+  - src/util.c::add
+  relations:
+  - from: src/main.c::main
+    to: src/util.c::add
+    kind: calls
+    resolution: resolved
+    site: 5
+  decoys:
+    src/util.c::add:
+    - src/other.c

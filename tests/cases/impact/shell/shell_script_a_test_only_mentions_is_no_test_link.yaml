@@ -1,0 +1,37 @@
+name: shell_script_a_test_only_mentions_is_no_test_link
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- shell
+- script-path
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    scripts/deploy.sh: |
+      deploy() {
+        echo deploying
+      }
+
+      deploy
+    tests/test_notes.py: |
+      # scripts/deploy.sh is run by the nightly job, not by this suite
+      DOC = "see scripts/deploy.sh"
+
+
+      def test_the_doc_is_kept():
+          assert DOC
+  changed_files:
+    scripts/deploy.sh: |
+      deploy() {
+        echo shipping
+      }
+
+      deploy
+  commit_message: Change what the deploy script prints
+expect:
+  changed:
+  - scripts/deploy.sh::deploy
+  untested:
+  - deploy

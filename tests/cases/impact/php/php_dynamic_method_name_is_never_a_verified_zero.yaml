@@ -1,0 +1,47 @@
+name: php_dynamic_method_name_is_never_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- dynamic
+- absence-claim
+repo:
+  initial_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 1;
+          }
+      }
+    src/Router.php: |
+      <?php
+
+      class Router
+      {
+          public function run($target, string $method)
+          {
+              return $target->$method();
+          }
+      }
+  changed_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change dynamic method name is never a verified zero
+expect:
+  changed:
+  - src/Greeter.php::Greeter.hello
+  discloses: true
+  no_negative_claims: true

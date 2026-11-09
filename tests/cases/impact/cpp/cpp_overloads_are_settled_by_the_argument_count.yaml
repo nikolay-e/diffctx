@@ -1,0 +1,36 @@
+name: cpp_overloads_are_settled_by_the_argument_count
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- overload
+repo:
+  initial_files:
+    src/area.cpp: |
+      int area(int r) { return r * r; }
+
+      int area(int w, int h) { return w * h + 0; }
+
+      int one() { return area(2); }
+
+      int two() { return area(2, 3); }
+  changed_files:
+    src/area.cpp: |
+      int area(int r) { return r * r; }
+
+      int area(int w, int h) { return w * h + 1; }
+
+      int one() { return area(2); }
+
+      int two() { return area(2, 3); }
+  commit_message: Change overloads are settled by the argument count
+expect:
+  changed:
+  - src/area.cpp::area
+  relations:
+  - from: src/area.cpp::two
+    to: src/area.cpp::area
+    kind: calls
+    resolution: resolved
+    site: 7

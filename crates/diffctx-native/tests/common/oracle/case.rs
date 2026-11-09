@@ -154,6 +154,12 @@ pub struct Expect {
     pub untested: Vec<String>,
     #[serde(default)]
     pub not_untested: Vec<String>,
+    /// Definitions an entry role (a route, a command, a script run by a runner)
+    /// excuses from `untested`, with and without a test that reaches the entry.
+    #[serde(default)]
+    pub entry_tested: Vec<String>,
+    #[serde(default)]
+    pub entry_not_tested: Vec<String>,
     #[serde(default)]
     pub stale: Vec<String>,
     #[serde(default)]
@@ -162,6 +168,11 @@ pub struct Expect {
     pub named_by: Vec<String>,
     #[serde(default)]
     pub not_named_by: Vec<String>,
+    /// The kind of place (`code`, `config`, `command`, `prose`, `data`,
+    /// `ignore_list`) each listed path names the change from, in `stale_references`
+    /// or `named_by`.
+    #[serde(default)]
+    pub mention_class: BTreeMap<String, String>,
     #[serde(default)]
     pub contracts: Vec<String>,
     #[serde(default)]
@@ -312,6 +323,7 @@ pub fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
             }
         }
     }
+    check_contract_paths(&case)?;
     for flag in &case.query.args {
         if matches!(
             flag.as_str(),
@@ -334,6 +346,36 @@ pub fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
         ));
     }
     Ok(case)
+}
+
+/// `contracts` and `not_contracts` list files. A name that is no file of the case's
+/// repository at the base or the head can never match a contract row, so a
+/// `not_contracts` entry like that passes whatever the engine says.
+fn check_contract_paths(case: &Case) -> Result<(), String> {
+    let repo = &case.repo;
+    let known = |path: &str| {
+        repo.initial_files.contains_key(path)
+            || repo.changed_files.contains_key(path)
+            || repo.untracked_files.contains_key(path)
+            || repo.deleted_files.iter().any(|p| p == path)
+            || repo
+                .renamed_files
+                .iter()
+                .any(|(old, new)| old == path || new == path)
+    };
+    for (key, listed) in [
+        ("contracts", &case.expect.contracts),
+        ("not_contracts", &case.expect.not_contracts),
+    ] {
+        if let Some(entry) = listed.iter().find(|entry| !known(entry)) {
+            return Err(format!(
+                "expect.{key} lists `{entry}`, which is no file of the case's repository at \
+                 the base or the head: the entries are file paths, and any other text \
+                 can never match a contract"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_source(source: &str) -> Result<(), String> {

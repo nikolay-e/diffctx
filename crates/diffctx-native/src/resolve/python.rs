@@ -13,7 +13,7 @@
 //! the file's text is the check that `name = [await] callee(...)` is the whole
 //! statement: a binding adjacent to a call, with nothing but `=` between them.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
@@ -209,6 +209,9 @@ struct Engine<'a> {
     assumed: RefCell<HashMap<(usize, Path, Name), Entity>>,
     bases: RefCell<HashMap<usize, Rc<Vec<Entity>>>>,
     imported: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
+    /// The classes of the repository that have a class among their ancestors,
+    /// by that ancestor.
+    subclasses: OnceCell<HashMap<usize, Vec<usize>>>,
     losses: RefCell<Vec<Loss>>,
 }
 
@@ -231,6 +234,7 @@ impl<'a> Engine<'a> {
             assumed: RefCell::default(),
             bases: RefCell::default(),
             imported: RefCell::default(),
+            subclasses: OnceCell::new(),
             losses: RefCell::default(),
         }
     }
@@ -329,6 +333,23 @@ impl<'a> Engine<'a> {
             entry_guard: guarded,
         };
         out.push(binding(&r.name, relation, resolution));
+        // A read or a call through `self` inside a class body is found on the
+        // class or its bases, and may as well run in any subclass that replaces
+        // the member: the subclass definition has a possible reader.
+        let overriding = self.overriding(f, r);
+        if !overriding.is_empty() {
+            out.push(binding(
+                &r.name,
+                relation,
+                Resolution::Candidate {
+                    targets: overriding
+                        .iter()
+                        .map(|id| self.ix.defs[*id].key.clone())
+                        .collect(),
+                    reason: CandidateReason::Dispatch,
+                },
+            ));
+        }
         // The facts keep the head of a chain out of the references: `limits.max`
         // is the name `max` with `limits` written before it, and reading `limits`
         // is part of it. The head's own binding is made here, at the chain's line.
@@ -339,6 +360,67 @@ impl<'a> Engine<'a> {
         // in `self.decoder.decode()` is read.
         for (member, resolution) in self.chain_reads(f, r) {
             out.push(binding(&member, Relation::Reads, resolution));
+        }
+    }
+
+    /// The members of subclasses that replace the member a method of a class
+    /// reads or calls through its own instance (`self.x`, `cls.x`): one per
+    /// subclass of the class, in any depth, that defines `x` itself. A write
+    /// makes an attribute of the instance and reaches none.
+    fn overriding(&self, f: usize, r: &Ref) -> Vec<usize> {
+        if r.use_kind == UseKind::Write || r.qualifier.len() != 1 {
+            return Vec::new();
+        }
+        let scope = scope_path(&r.enclosing);
+        let Some((receiver, class)) = self.receiver_name(f, &scope) else {
+            return Vec::new();
+        };
+        if r.qualifier[0] != receiver {
+            return Vec::new();
+        }
+        let mut found: Vec<usize> = self
+            .subclasses_of(class)
+            .into_iter()
+            .flat_map(|sub| self.own_members(sub, &r.name))
+            .filter(|id| self.reachable(f, *id))
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
+    /// Every class of the repository that has `class` among its ancestors.
+    fn subclasses_of(&self, class: usize) -> Vec<usize> {
+        let all = self.subclasses.get_or_init(|| {
+            let mut map: HashMap<usize, Vec<usize>> = HashMap::new();
+            for (id, rec) in self.ix.defs.iter().enumerate() {
+                if rec.def.kind != DefKind::Class {
+                    continue;
+                }
+                let mut queue: VecDeque<usize> = VecDeque::new();
+                let mut seen: HashSet<usize> = HashSet::new();
+                let first = self.bases(id);
+                queue.extend(first.iter().filter_map(|b| match b {
+                    Entity::Class(c) => Some(*c),
+                    _ => None,
+                }));
+                while let Some(ancestor) = queue.pop_front() {
+                    if !seen.insert(ancestor) {
+                        continue;
+                    }
+                    map.entry(ancestor).or_default().push(id);
+                    let next = self.bases(ancestor);
+                    queue.extend(next.iter().filter_map(|b| match b {
+                        Entity::Class(c) => Some(*c),
+                        _ => None,
+                    }));
+                }
+            }
+            map
+        });
+        match all.get(&class) {
+            Some(subs) => subs.clone(),
+            None => Vec::new(),
         }
     }
 

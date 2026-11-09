@@ -1,0 +1,62 @@
+name: py_command_a_test_invokes_by_name_is_reached
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- click
+- command
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    cli.py: |
+      import click
+
+
+      @click.group()
+      def cli():
+          pass
+
+
+      @cli.command("sync")
+      def sync_command():
+          return 1
+
+
+      @cli.command("prune")
+      def prune_command():
+          return 2
+    tests/test_cli.py: |
+      from click.testing import CliRunner
+
+      from cli import cli
+
+
+      def test_sync():
+          result = CliRunner().invoke(cli, ["sync"])
+          assert result.exit_code == 0
+  changed_files:
+    cli.py: |
+      import click
+
+
+      @click.group()
+      def cli():
+          pass
+
+
+      @cli.command("sync")
+      def sync_command():
+          return 3
+
+
+      @cli.command("prune")
+      def prune_command():
+          return 4
+  commit_message: Change what the commands return
+expect:
+  entry_tested:
+  - sync_command
+  entry_not_tested:
+  - prune_command

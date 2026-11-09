@@ -101,6 +101,11 @@ pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
 /// wall clock (#510, #489, #502). Semantic, like the expired deadline.
 pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POLLS";
 
+/// Test hook: the hook's one wall-clock ceiling is spent before its analysis
+/// starts, as when an engine does not return in time, so a test reaches what
+/// the hook says then without waiting for a clock. Semantic, like the deadline.
+pub const TEST_HOOK_CEILING_EXPIRED_ENV: &str = "DIFFCTX_TEST_HOOK_CEILING_EXPIRED";
+
 impl ResourceBudget {
     pub fn resolve(timeout_secs: u64) -> Self {
         let limits = &*crate::config::limits::LIMITS;

@@ -1,0 +1,58 @@
+name: php_interface_call_reaches_an_implementation_as_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- dispatch
+- interface
+repo:
+  initial_files:
+    src/Handler.php: |
+      <?php
+
+      interface Handler
+      {
+          public function handle(): int;
+      }
+    src/A.php: |
+      <?php
+
+      class A implements Handler
+      {
+          public function handle(): int
+          {
+              return 1;
+          }
+      }
+    src/Dispatcher.php: |
+      <?php
+
+      class Dispatcher
+      {
+          public function dispatch(Handler $h): int
+          {
+              return $h->handle();
+          }
+      }
+  changed_files:
+    src/A.php: |
+      <?php
+
+      class A implements Handler
+      {
+          public function handle(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change interface call reaches an implementation as a candidate
+expect:
+  changed:
+  - src/A.php::A.handle
+  relations:
+  - from: src/Dispatcher.php::Dispatcher.dispatch
+    to: src/A.php::A.handle
+    kind: calls
+    resolution: candidate
+    site: 7

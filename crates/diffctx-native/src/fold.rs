@@ -294,9 +294,9 @@ fn has_default(text: &str) -> bool {
 /// and a call that worked still does: the base list is a prefix of the head's
 /// with the same names, defaults and types, every added parameter has a default,
 /// is optional or takes the rest, and what surrounds the list is the same. Never
-/// in Rust, which has neither.
+/// in Rust or Go, which have neither.
 pub fn compatible(base: &str, head: &str, name: &str, language: Language) -> Option<Vec<String>> {
-    if language == Language::Rust {
+    if matches!(language, Language::Rust | Language::Go) {
         return None;
     }
     let (base_before, base_params, base_after) = parameters(base, name)?;
@@ -324,8 +324,8 @@ pub fn compatible(base: &str, head: &str, name: &str, language: Language) -> Opt
 
 /// Whether a definition's types are written down: what a body change cannot
 /// move. Python: every parameter but `self` and `cls` annotated and a return
-/// type; TypeScript: an explicit return type; Rust: always; a variable: an
-/// annotation. Kotlin and the rest: not said, so not declared.
+/// type; TypeScript: an explicit return type; Rust and Go: always; a variable: an
+/// annotation (Go: a type written after the name). Kotlin and the rest: not said, so not declared.
 pub fn declared_types(
     kind: DefKind,
     language: Language,
@@ -334,10 +334,16 @@ pub fn declared_types(
 ) -> bool {
     match kind {
         DefKind::Variable | DefKind::Constant | DefKind::Field | DefKind::Property => {
-            language == Language::Rust || signature.is_some_and(|s| s.contains(':'))
+            match language {
+                Language::Rust => true,
+                // `x int =`: a name and a type; `x =`: the type is inferred.
+                Language::Go => signature
+                    .is_some_and(|s| s.split_whitespace().filter(|t| *t != "=").count() > 1),
+                _ => signature.is_some_and(|s| s.contains(':')),
+            }
         }
         DefKind::Function | DefKind::Method | DefKind::Constructor => match language {
-            Language::Rust => true,
+            Language::Rust | Language::Go => true,
             Language::Python => signature.is_some_and(|s| {
                 parameters(s, name).is_some_and(|(_, params, after)| {
                     after.contains("->")

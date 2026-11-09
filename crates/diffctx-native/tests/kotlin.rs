@@ -303,6 +303,34 @@ fn implementers_of_a_changed_abstract_member_are_their_own_relation() {
     );
 }
 
+/// A method a framework calls through its annotation is an entry point, read
+/// off the annotations the facts state: here the second of two on one line,
+/// which the first-token text read of the fragment never saw. The change to it
+/// is named as entered by the framework, not as a function nothing calls.
+#[test]
+fn a_framework_annotated_function_is_an_entry_point() {
+    let job = |body: &str| {
+        format!(
+            "package a.jobs\n\nimport org.springframework.scheduling.annotation.Scheduled\n\nclass Cleanup {{\n    @Suppress(\"unused\") @Scheduled(fixedRate = 1000)\n    fun purge() {{\n        println(\"{body}\")\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo(
+        &[("src/main/kotlin/a/jobs/Cleanup.kt", &job("one"))],
+        &[("src/main/kotlin/a/jobs/Cleanup.kt", &job("two"))],
+    );
+    let doc = impact(tmp.path());
+    let entered: Vec<&str> = doc["entry_unlisted"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|e| e.as_str()).collect())
+        .unwrap_or_default();
+    assert!(
+        entered
+            .iter()
+            .any(|e| e.contains("purge") && e.contains("entry point: scheduled job (spring)")),
+        "{doc:#}"
+    );
+}
+
 /// `internal` stops at the project — a test of the same project reaches
 /// it, another project does not.
 #[test]

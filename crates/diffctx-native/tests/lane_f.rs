@@ -170,7 +170,7 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     ("src/pipeline.rs", Some("build_file_cache")),
     ("src/impact.rs", Some("unanalysed_files")),
     ("src/impact.rs", Some("missed_namers")),
-    ("src/impact.rs", Some("stale_references")),
+    ("src/impact/mentions.rs", Some("stale_references")),
     ("src/impact.rs", Some("fit_with")),
     // The snapshot layer lists and reads the repository for every run: its
     // loops are over a listing already in memory, and each git call and
@@ -269,7 +269,7 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
         "the strategies",
     ),
     (
-        "src/impact.rs",
+        "src/impact/mentions.rs",
         "for (target, _) in &targets",
         "the deleted and renamed paths",
     ),

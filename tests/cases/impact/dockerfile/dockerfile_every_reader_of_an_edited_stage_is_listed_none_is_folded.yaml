@@ -1,0 +1,56 @@
+name: dockerfile_every_reader_of_an_edited_stage_is_listed_none_is_folded
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- no-fold
+- copy-from
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS build
+      RUN echo a > /out
+
+      FROM alpine:3.20 AS one
+      COPY --from=build /out /one
+
+      FROM alpine:3.20 AS two
+      COPY --from=build /out /two
+
+      FROM alpine:3.20 AS three
+      COPY --from=build /out /three
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS build
+      RUN echo b > /out
+
+      FROM alpine:3.20 AS one
+      COPY --from=build /out /one
+
+      FROM alpine:3.20 AS two
+      COPY --from=build /out /two
+
+      FROM alpine:3.20 AS three
+      COPY --from=build /out /three
+  commit_message: Change every reader of an edited stage is listed none is folded
+expect:
+  changed:
+  - Dockerfile::build
+  relations:
+  - from: Dockerfile::one
+    to: Dockerfile::build
+    kind: reads
+    resolution: resolved
+    site: 5
+  - from: Dockerfile::two
+    to: Dockerfile::build
+    kind: reads
+    resolution: resolved
+    site: 8
+  - from: Dockerfile::three
+    to: Dockerfile::build
+    kind: reads
+    resolution: resolved
+    site: 11
+  exact: true

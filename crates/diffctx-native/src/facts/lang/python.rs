@@ -31,6 +31,7 @@ use std::rc::Rc;
 
 use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
 
+use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
     Fact, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
@@ -122,6 +123,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.losses.push(Loss::ExtractorFailed { path: unbound() });
     }
     blob.facts = std::mem::take(&mut walker.facts);
+    framework::derive(&mut blob);
     blob.in_source_order();
     blob
 }
@@ -2159,6 +2161,7 @@ impl<'t> Walker<'t> {
                 site: span(node),
                 kind: EntryKind::ScriptGuard,
                 target: Scope::Module,
+                framework: None,
             }));
         } else if let Some(condition) = condition {
             self.visit(condition, cx, depth);

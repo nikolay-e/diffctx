@@ -1,0 +1,76 @@
+name: php_function_import_and_a_grouped_alias_bind_their_calls
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- use-function
+- grouped-use
+repo:
+  initial_files:
+    src/helpers.php: |
+      <?php
+      namespace App\Helpers;
+
+      function slug(string $s): string
+      {
+          return strtolower($s);
+      }
+    src/Util/Str.php: |
+      <?php
+      namespace App\Util;
+
+      class Str
+      {
+          public static function upper(string $s): string
+          {
+              return strtoupper($s);
+          }
+      }
+    src/Page.php: |
+      <?php
+      namespace App;
+
+      use function App\Helpers\slug;
+      use App\Util\{Str as S};
+
+      function title(string $s): string
+      {
+          return slug(S::upper($s));
+      }
+  changed_files:
+    src/helpers.php: |
+      <?php
+      namespace App\Helpers;
+
+      function slug(string $s): string
+      {
+          return trim(strtolower($s));
+      }
+    src/Util/Str.php: |
+      <?php
+      namespace App\Util;
+
+      class Str
+      {
+          public static function upper(string $s): string
+          {
+              return trim(strtoupper($s));
+          }
+      }
+  commit_message: Change function import and a grouped alias bind their calls
+expect:
+  changed:
+  - src/helpers.php::slug
+  - src/Util/Str.php::Str.upper
+  relations:
+  - from: src/Page.php::title
+    to: src/helpers.php::slug
+    kind: calls
+    resolution: resolved
+    site: 9
+  - from: src/Page.php::title
+    to: src/Util/Str.php::Str.upper
+    kind: calls
+    resolution: resolved
+    site: 9

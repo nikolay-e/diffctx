@@ -570,7 +570,8 @@ fn a_test_that_runs_the_binary_reaches_main() {
 
 /// R1: a word match is listed as text, never counted or rendered as a caller.
 /// #681: a removed shell function whose name sits in another script's path and
-/// argument. Forgejo #115: a Python constant named by a shell variable in a
+/// argument is no caller, and the shell facts read that script whole, so it is no
+/// textual row either: the cell found no use of the function in it. Forgejo #115: a Python constant named by a shell variable in a
 /// template. A C# method called from another file (the lexical tier: no binding
 /// model reads C#). A resolved Python caller beside them stays a caller.
 #[test]
@@ -630,12 +631,13 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     let (head, text) = md.split_once(section).unwrap_or_else(|| panic!("{md}"));
     assert!(head.contains("1 caller(s) outside the diff"), "{md}");
     assert!(
-        head.contains("1 caller(s) outside the diff, 3 named only textually (not resolved)"),
+        head.contains("1 caller(s) outside the diff, 2 named only textually (not resolved)"),
         "{md}"
     );
-    for row in ["hooks/cap.sh:", "ops/run.sh.j2", "src/Invoice.cs:"] {
+    for row in ["ops/run.sh.j2", "src/Invoice.cs:"] {
         assert!(text.contains(row), "{row}: {md}");
     }
+    assert!(!md.contains("hooks/cap.sh"), "{md}");
     // The row cites the line that spells the name, not its function's start.
     assert!(text.contains("src/Invoice.cs:3 names Rate"), "{md}");
     for shown_as_caller in ["hooks/cap.sh", "ops/run.sh.j2", "src/Invoice.cs"] {
@@ -878,6 +880,46 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         assert_eq!(json["empty"], true, "{path}: {json}");
         assert!(json.get("unanalysed_files").is_none(), "{path}: {json}");
     }
+}
+
+/// A Dockerfile and a configuration are traced by their cell inside and
+/// between the files; what builds or applies them lies outside. Nothing
+/// naming the file is a gap, never a clean zero; a workflow that builds it by
+/// its path is the reader, and the answer names it instead.
+#[test]
+fn a_dockerfile_nothing_names_is_a_gap_and_one_a_workflow_builds_is_named() {
+    let before = "FROM alpine\nENV PORT=80\n";
+    let after = "FROM alpine\nENV PORT=8080\n";
+    let unnamed = repo(&[("Dockerfile", before)], &[("Dockerfile", after)]);
+    let json = impact_json(unnamed.path());
+    assert_eq!(json["empty"], false, "{json}");
+    assert!(
+        json["unanalysed_files"]
+            .as_array()
+            .is_some_and(|files| files
+                .iter()
+                .any(|f| f["path"] == "Dockerfile" && f["reason"] == "content_untraced")),
+        "{json}"
+    );
+
+    let built = repo(
+        &[
+            ("Dockerfile", before),
+            (
+                ".github/workflows/ci.yml",
+                "jobs:\n  image:\n    steps:\n      - run: docker build -f Dockerfile .\n",
+            ),
+        ],
+        &[("Dockerfile", after)],
+    );
+    let json = impact_json(built.path());
+    assert!(
+        json["named_by"].as_array().is_some_and(|rows| rows
+            .iter()
+            .any(|r| r["target"] == "Dockerfile" && r["path"] == ".github/workflows/ci.yml")),
+        "{json}"
+    );
+    assert!(json.get("unanalysed_files").is_none(), "{json}");
 }
 
 /// #563: a changed document is named by the config or code that reads it
@@ -1492,10 +1534,13 @@ fn a_file_over_the_size_cap_that_names_the_symbol_is_read() {
         ),
         "{md}"
     );
+    // The facts read the over-cap test whole: it is the test of the subclass, and no
+    // hedge about an unread file is left to print.
     assert!(
-        md.contains("tests/test_child.py names ChildServer but was not read (over the size cap)"),
+        md.contains("pkg/server.py::ChildServer (4-4) — reachable from tests: tests/test_child.py"),
         "{md}"
     );
+    assert!(!md.contains("was not read (over the size cap)"), "{md}");
     assert!(
         md.contains("called from pkg/small.py::make (4-5) — no static test link found\n"),
         "{md}"
@@ -1795,7 +1840,7 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
 }
 
 /// #505: a verdict needs a model. A changed method whose only caller is in
-/// its own file, in a language no binding model reads (C#, Ruby, C, PHP),
+/// its own file, in a language no binding model reads (C#, Ruby),
 /// read `empty`, "nothing calls them", and the hook said the commit reached
 /// nothing. Its callers are now unresolved, named; a cross-file caller the
 /// graph links and a Python same-file caller are still found.
@@ -1811,16 +1856,6 @@ fn a_verdict_needs_a_model() {
             "lib/users.rb",
             "class Users\n  def find_one(id)\n    id\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
             "class Users\n  def find_one(id)\n    id + 1\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
-        ),
-        (
-            "src/users.c",
-            "int find_one(int id) {\n  return id;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
-            "int find_one(int id) {\n  return id + 1;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
-        ),
-        (
-            "src/Users.php",
-            "<?php\nclass Users {\n  function findOne($id) {\n    return $id;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
-            "<?php\nclass Users {\n  function findOne($id) {\n    return $id + 1;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
         ),
     ];
     for (path, base, change) in unmodelled {
@@ -1885,12 +1920,6 @@ fn a_language_without_a_model_never_claims_an_absence() {
             "orphan",
             "class Users\n  def orphan(id)\n    id\n  end\nend\n",
             "class Users\n  def orphan(id)\n    id + 1\n  end\nend\n",
-        ),
-        (
-            "src/Users.php",
-            "orphan",
-            "<?php\nclass Users {\n  function orphan($id) {\n    return $id;\n  }\n}\n",
-            "<?php\nclass Users {\n  function orphan($id) {\n    return $id + 1;\n  }\n}\n",
         ),
         (
             "src/Users.cs",
@@ -2293,7 +2322,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     let md = impact_markdown(api.path());
     assert!(md.contains(ENTRY_LIST), "{md}");
     assert!(
-        md.contains("api.py::reviews (6-8) — registered by `router.get` — reached through the framework, not traced"),
+        md.contains("api.py::reviews (6-8) — entry point: route GET /reviews (fastapi)"),
         "{md}"
     );
     assert!(

@@ -24,10 +24,12 @@
 
 #![deny(clippy::disallowed_methods)]
 
+pub mod config;
 pub mod java;
 pub mod kotlin;
 pub mod python;
 pub mod scala;
+pub mod shell;
 pub mod swift;
 
 mod blob;
@@ -35,6 +37,8 @@ mod cache;
 mod changes;
 mod extractor;
 mod file;
+pub mod framework;
+mod grammar;
 mod hash;
 mod ids;
 pub mod lang;
@@ -54,8 +58,8 @@ pub use ids::{ModulePath, Name, ProjectId, Span, TypeName};
 pub use language::Language;
 pub use model::{
     BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind,
-    EntryPoint, Export, Fact, FileFacts, Import, ImportKind, Local, LocalKey, LocalKind, Namespace,
-    PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
+    EntryPoint, Export, Fact, FileFacts, Framework, Import, ImportKind, Local, LocalKey, LocalKind,
+    Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
 };
 
 use rustc_hash::FxHashSet;

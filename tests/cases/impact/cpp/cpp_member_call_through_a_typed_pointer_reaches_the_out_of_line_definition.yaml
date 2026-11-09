@@ -1,0 +1,53 @@
+name: cpp_member_call_through_a_typed_pointer_reaches_the_out_of_line_definition
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- out-of-line
+repo:
+  initial_files:
+    src/greeter.hpp: |
+      class Greeter {
+      public:
+          void hello(int n);
+      };
+    src/greeter.cpp: |
+      #include "greeter.hpp"
+
+      void Greeter::hello(int n)
+      {
+          n += 1;
+      }
+    src/main.cpp: |
+      #include "greeter.hpp"
+
+      void run(Greeter *g)
+      {
+          g->hello(1);
+      }
+    src/other.hpp: |
+      struct Other {
+          void hello(int n) { n += 5; }
+      };
+  changed_files:
+    src/greeter.cpp: |
+      #include "greeter.hpp"
+
+      void Greeter::hello(int n)
+      {
+          n += 2;
+      }
+  commit_message: Change member call through a typed pointer reaches the out of line definition
+expect:
+  changed:
+  - src/greeter.cpp::Greeter.hello
+  relations:
+  - from: src/main.cpp::run
+    to: src/greeter.cpp::Greeter.hello
+    kind: calls
+    resolution: resolved
+    site: 5
+  decoys:
+    src/greeter.cpp::Greeter.hello:
+    - src/other.hpp

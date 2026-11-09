@@ -1,0 +1,72 @@
+name: config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- helm
+- calls
+- decoy
+repo:
+  initial_files:
+    charts/app/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    charts/app/templates/_helpers.tpl: |
+      {{- define "chart.waitForDb" -}}
+      wait-for-db
+      {{- end -}}
+
+      {{- define "chart.init" -}}
+      {{ include "chart.waitForDb" . }}
+      {{- end -}}
+    charts/app/templates/deployment.yaml: |
+      spec:
+        initContainers:
+          - name: {{ include "chart.waitForDb" . }}
+    charts/app/templates/job.yaml: |
+      spec:
+        command: {{ include "chart.waitForDb" . }}
+    charts/other/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    charts/other/templates/_helpers.tpl: |
+      {{- define "chart.waitForDb" -}}
+      other
+      {{- end -}}
+    charts/other/templates/job.yaml: |
+      spec:
+        command: {{ include "chart.waitForDb" . }}
+  changed_files:
+    charts/app/templates/_helpers.tpl: |
+      {{- define "chart.waitForDb" -}}
+      wait-for-database
+      {{- end -}}
+
+      {{- define "chart.init" -}}
+      {{ include "chart.waitForDb" . }}
+      {{- end -}}
+  commit_message: Change config helm edited named template is called by the includes of its own chart
+expect:
+  relations:
+  - from: charts/app/templates/_helpers.tpl::chart.init
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 6
+  - from: charts/app/templates/deployment.yaml
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 3
+  - from: charts/app/templates/job.yaml
+    to: charts/app/templates/_helpers.tpl::chart.waitForDb
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    charts/app/templates/_helpers.tpl::chart.waitForDb:
+    - charts/other

@@ -2866,9 +2866,23 @@ fn edited_answer(
     }
     mark_seen_with(&tries, &(attempt + 1).to_string());
     let root = root.to_path_buf();
-    let known = within_deadline(started, move || {
-        run_impact(&root, "HEAD", None, PIPELINE_SECS).map(known_answers)
-    })?;
+    let known = match within_budget(started, move |secs| {
+        run_impact(&root, "HEAD", None, secs).map(known_answers)
+    }) {
+        // Said, never silence: the name was searched, and the reader cannot
+        // tell a quiet analysis from one that did not finish. It stays
+        // unmarked (and counted as an attempt), so a later search tries again.
+        Err("timeout") => {
+            trace.noted = Some("timeout");
+            let first = names[0];
+            return Ok(format!(
+                "diffctx: the pending change edits {}; the analysis of what references {} ran past the hook's deadline and was not finished. `diffctx . --symbol {first} -f md` runs it without one.",
+                quoted(&names),
+                if names.len() == 1 { "it" } else { "them" },
+            ));
+        }
+        known => known?,
+    };
     unmark(&tries);
     let mut answers = Vec::new();
     for name in names {
@@ -2901,8 +2915,8 @@ const SYMBOL_TOKEN_CAP: u32 = 150;
 const MAX_SEARCH_DEFINITIONS: usize = 3;
 
 /// Names one search answers as `--symbol` would. Each runs the pipeline
-/// within the hook's one deadline, so a name past it is silence, answered on
-/// a later search: about one answered search in ten seeks a second name.
+/// within the hook's one deadline, so a name past it is said and left for a
+/// later search: about one answered search in ten seeks a second name.
 const MAX_SEARCH_NAMES: usize = 3;
 
 /// A search for a name the pending change does not edit, on any tree: where
@@ -2930,10 +2944,18 @@ fn symbol_answer(
     }
     let mut answers = Vec::new();
     let mut silence = "empty";
+    let mut cut: Vec<&String> = Vec::new();
     for name in fresh {
         mark_seen(&key(name));
         match one_symbol_answer(root, name, scope, lookup, started) {
             Ok(text) => answers.push(text),
+            // The budget is spent: the name is said, and left for a later
+            // search; the names after it were never started.
+            Err("timeout") => {
+                unmark(&key(name));
+                cut.push(name);
+                break;
+            }
             Err(why) => {
                 // A shape that is no lookup does not use the name up.
                 if why == "not-a-lookup" {
@@ -2943,10 +2965,26 @@ fn symbol_answer(
             }
         }
     }
+    if let Some(first) = cut.first() {
+        trace.noted = Some("timeout");
+        answers.push(format!(
+            "diffctx: the lookup of {} ran past the hook's deadline and was not finished; `diffctx . --symbol {first} -f md` runs it without one.",
+            quoted(&cut),
+        ));
+    }
     if answers.is_empty() {
         return Err(silence);
     }
     Ok(answers.join("\n"))
+}
+
+/// Names, each in code quotes, for a sentence.
+fn quoted(names: &[&String]) -> String {
+    names
+        .iter()
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn one_symbol_answer(
@@ -2957,17 +2995,10 @@ fn one_symbol_answer(
     started: Instant,
 ) -> Result<String, Silence> {
     let (root, lookup) = (root.to_path_buf(), name.to_string());
-    let mut output = within_deadline(started, move || {
+    let mut output = within_budget(started, move |secs| {
         let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
-        crate::pipeline::build_symbol_impact(
-            &root,
-            &lookup,
-            &[],
-            DEFAULT_PPR_ALPHA,
-            scoring,
-            PIPELINE_SECS,
-        )
-        .map_err(|_| "no-symbol")
+        crate::pipeline::build_symbol_impact(&root, &lookup, &[], DEFAULT_PPR_ALPHA, scoring, secs)
+            .map_err(|_| "no-symbol")
     })?;
     // No definition, but files spell it: one line, since the grep that led
     // here printed the lines and cannot say no binding was found (R2). Only a
@@ -3043,39 +3074,24 @@ fn hook_json(event: Event, context: &str, gate: bool) -> String {
     serde_json::json!({ "hookSpecificOutput": out }).to_string()
 }
 
-/// `work`, bounded: past the deadline the hook prints nothing rather than
-/// holding the tool call. A hook that stalls a commit teaches the user to
-/// remove it.
-fn within_deadline<T: Send + 'static>(
+/// `work` inside the hook's one budget (Forgejo #113): the review of a range,
+/// the analysis of a pending change, the lookup of a name. The engine's own
+/// deadline is cooperative: it stops the phase it is in, then renders what it
+/// read, and that tail has no deadline of its own. The engine therefore gets
+/// its share of what is left of the ceiling, not of the whole, so time the
+/// hook spent before it (or on the name before) no longer comes out of the
+/// tail; and at the ceiling the hook waits `TAIL_GRACE_SECS` more for the
+/// partial answer the engine is already rendering, where it used to drop it
+/// for a bare timeout. Only a run that does not return in that time is a
+/// timeout, and every caller says so by name.
+fn within_budget<T: Send + 'static>(
     started: Instant,
-    work: impl FnOnce() -> Result<T, Silence> + Send + 'static,
+    work: impl FnOnce(u64) -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(crate::profile::carry(move || {
-        let _ = tx.send(work());
-    }));
-    let left = Duration::from_secs(HOOK_DEADLINE_SECS).saturating_sub(started.elapsed());
-    match rx.recv_timeout(left) {
-        Ok(result) => result,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("timeout"),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("error:panic"),
-    }
-}
-
-/// The review of one range inside the hook's one budget (Forgejo #113). The
-/// engine's own deadline is cooperative: it stops the phase it is in, then
-/// renders what it read, and that tail has no deadline of its own. The
-/// engine therefore gets its share of what is left of the ceiling, so time
-/// the hook spent before the review no longer comes out of the tail; and
-/// at the ceiling the hook waits `TAIL_GRACE_SECS` more for the partial
-/// answer the engine is already rendering, where it used to drop it for a
-/// bare timeout. Only a run that does not return in that time is a timeout.
-fn review_within_budget(
-    started: Instant,
-    work: impl FnOnce(u64) -> Result<Answer, Silence> + Send + 'static,
-) -> Result<Answer, Silence> {
     let left = HOOK_DEADLINE_SECS.saturating_sub(started.elapsed().as_secs());
-    if left == 0 {
+    if left == 0
+        || std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1")
+    {
         return Err("timeout");
     }
     let engine_secs = (left * PIPELINE_SECS / HOOK_DEADLINE_SECS).max(1);
@@ -3393,7 +3409,7 @@ fn answer(
     let paths = range_paths(&root, &range);
     let named = paths.clone();
     let recorded = !matches!(trigger, Trigger::Inspect { .. });
-    let answer = review_within_budget(started, move |secs| {
+    let answer = within_budget(started, move |secs| {
         impact_context(event, &trigger, &root, &range, spec, secs, &named)
     });
     match &answer {
