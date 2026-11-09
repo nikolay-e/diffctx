@@ -81,15 +81,48 @@ a body-only edit, a deletion and a move.
 
 ### Languages
 
-Python and TypeScript/JavaScript only: the oracle gates the cells that migrate
-next. Rust, Go and Kotlin were indexed with rust-analyzer, scip-go and
-scip-java until 2.0.0's wave 2.5; their repositories, pinned tools and plans
-return with their cells (wave 5). A repository that cannot be fetched or
-indexed is counted in `commits.jsonl` and does not fail the round; `measure`
-exits non-zero only when no commit of a selected language was measured.
+Python, TypeScript/JavaScript, Rust and Kotlin; Go returns with its cell. A
+repository that cannot be fetched or indexed is counted in `commits.jsonl` and
+does not fail the round; `measure` exits non-zero only when no commit of a
+selected language was measured.
 
-The cache (`cache/`, ignored) is keyed by repository, commit, indexer and
-indexer version.
+Rust and Kotlin are indexed by release binaries pinned in `corpus.toml` with a
+SHA-256 per build: rust-analyzer (`rust-analyzer scip`) and scip-java. Each
+plan (`runners.py`) fetches dependencies in a step that runs none of the
+repository's code, then runs the indexer with as little of it as the indexer
+allows.
+
+- **Rust.** `cargo fetch --locked`, then rust-analyzer offline with its
+  build-script command replaced by `true` and proc macros off, so no
+  `build.rs` or proc macro runs. The repository's `.cargo/` and
+  `rust-toolchain*` are removed from the exported tree (a copy; no measured
+  project is edited, and none gets a `[workspace]` table). The cache lives
+  outside every Cargo workspace (`$ORACLE_CACHE`, default
+  `~/.cache/diffctx-oracle`): cargo refuses a package that "believes it is in a
+  workspace when it is not", which a cache under a checkout's root triggers. A
+  failed fetch keeps the end of cargo's message in the index record. Code that build
+  scripts or macros generate is missing from the index; the completeness
+  record shows it, and the standard library's symbols are not in it (the
+  resolved ratio of a Rust index is about a third).
+- **Kotlin.** scip-java indexes Kotlin only by running the repository's Gradle
+  build, which executes its build scripts, plugins and downloaded code. No
+  option avoids that, so Gradle never runs on the machine that started the
+  oracle: the plan starts it in a throwaway container (`docker run`, the JDK
+  image pinned by digest in `runners.py`) with only the snapshot, the
+  launcher, the output directory and the Gradle cache mounted and none of the
+  host's home or environment. When the oracle itself runs inside a container
+  and `ORACLE_SANDBOX=1` says so, it runs in place; the variable alone, where
+  no container is detected (`/.dockerenv` or the cgroup), is refused outright.
+  Without Docker the repository is skipped as `needs_sandbox`, counted and
+  never scored as empty. scip-java
+  0.14 is required: 0.13.2's Kotlin support failed on Gradle 9 builds
+  ("Querying the mapped value of map(...) before task ... has completed") and
+  was the "indexer exited 1" of the first CI run. A repository whose tests
+  live in included builds (`includeBuild`) is indexed by scip-java without
+  them and falls below the completeness ratio; the corpus avoids those.
+
+The cache (`$ORACLE_CACHE`, default `~/.cache/diffctx-oracle`) is keyed by
+repository, commit, indexer and indexer version.
 
 ## Adjudication and truth filters
 

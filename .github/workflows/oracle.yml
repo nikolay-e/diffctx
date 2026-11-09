@@ -2,15 +2,18 @@
 name: oracle
 
 # Measures diffctx against the SCIP oracle in eval/oracle (T10, T23), on the
-# cells that migrate next: Python and TypeScript/JavaScript. Rust, Go and
-# Kotlin return with their cells (wave 5). The run fails only when no Python
-# or no TypeScript commit was measured.
+# cells that migrate next: Python, TypeScript/JavaScript, Rust and Kotlin (Go
+# returns with its cell). The run fails only when a selected language has no
+# measured commit.
 #
 # Before 2.0.0 it runs on pull_request events that carry the label `oracle`
 # (fast subset: one repository per language, ten commits) or `oracle:full`
 # (the whole corpus). workflow_dispatch and schedule are declared for later:
 # GitHub fires both only for a workflow file on the default branch, and main
 # stays frozen until 2.0.0.
+#
+# Kotlin is indexed through the repository's Gradle build, which runs its build scripts: the oracle starts it in a
+# throwaway container (the runner's Docker) and never runs Gradle on the runner itself.
 #
 # Nothing here has a secret. Indexing runs third-party tooling, so the job
 # holds a read-only token that is not persisted into the checkout, and the
@@ -63,6 +66,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Keep the oracle's cache outside the Cargo workspace
+        run: echo "ORACLE_CACHE=${RUNNER_TEMP}/oracle-cache" >> "$GITHUB_ENV"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
@@ -93,7 +99,7 @@ jobs:
       - name: Cache the oracle's indexes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: eval/oracle/cache
+          path: ${{ runner.temp }}/oracle-cache
           key: oracle-${{ hashFiles('eval/oracle/corpus.toml', 'eval/oracle/tools/package-lock.json') }}
           restore-keys: oracle-
 

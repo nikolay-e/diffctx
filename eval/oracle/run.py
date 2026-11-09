@@ -9,6 +9,7 @@ import adjudicate
 import bench
 import measure
 import report
+import runners
 import selftest
 from corpus import load_corpus
 from indexing import setup_tools
@@ -40,6 +41,7 @@ def main(argv: list[str]) -> int:
     if not argv or argv[0] not in COMMANDS:
         print(f"usage: run.py {{{'|'.join(COMMANDS)}}} [options]", file=sys.stderr)
         return 2
+    runners.refuse_unfounded_sandbox_claim()
     return COMMANDS[argv[0]](argv[1:])
 
 

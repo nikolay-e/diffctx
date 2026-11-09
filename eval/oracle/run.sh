@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # One local oracle round: install the pinned indexers, measure, time, report.
 #
-#   eval/oracle/run.sh [--repo NAME]... [--commits N] [--fast] [--out DIR] [--no-install] [--retry-failed]
+#   eval/oracle/run.sh [--repo NAME]... [--commits N] [--fast] [--budget N|uncapped] [--out DIR] [--no-install] [--retry-failed]
+#
+# Third-party build tooling (Gradle for Kotlin) never runs on this machine: the plan starts it in a throwaway container,
+# or, when this script itself runs inside one, in place with ORACLE_SANDBOX=1. The variable alone is refused where no
+# container is detected (/.dockerenv or the cgroup), and a plan that would run such tooling here is refused.
 #
 # DIFFCTX_BIN is the diffctx under test (default: target/release/diffctx). Optional inputs to the report:
 # DIFFCTX_ORACLE_REPORT (the YAML corpus), ORACLE_METAMORPHIC_REPORT and ORACLE_FAULTS_REPORT (a JSON file or
@@ -27,6 +31,10 @@ while [ $# -gt 0 ]; do
   --fast)
     select_args+=("$1")
     shift
+    ;;
+  --budget)
+    measure_args+=("$1" "$2")
+    shift 2
     ;;
   --no-install | --retry-failed)
     measure_args+=("$1")

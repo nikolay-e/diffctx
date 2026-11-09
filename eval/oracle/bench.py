@@ -47,7 +47,11 @@ def symbol_name(git_dir: Path, repo_name: str, base: str, head: str, language: s
     for side, sha in (("base", base), ("head", head)):
         snapshots[side] = Snapshot(gitrepo.export_tree(git_dir, sha, CACHE / "trees" / repo_name / sha), Index(), language)
     changed = changed_definitions(
-        gitrepo.diff_changes(git_dir, base, head), snapshots["base"].definitions, snapshots["head"].definitions
+        gitrepo.diff_changes(git_dir, base, head),
+        snapshots["base"].definitions,
+        snapshots["head"].definitions,
+        snapshots["base"].inert_lines,
+        snapshots["head"].inert_lines,
     )
     names = [c.head.name for c in changed if c.head is not None and c.status in ("modified", "added", "moved", "renamed")]
     return rng.choice(names) if names else None

@@ -177,3 +177,32 @@ def test_a_wrapper_and_the_function_it_calls_are_told_apart_by_the_files_a_calle
 
     assert [r.from_key for r in found] == ["tests/test_b.py::test_b"]
     assert snap.filters.dropped == {"homonym": 1}
+
+
+RESPONSE = """var res = {};
+res.jsonp = function jsonp(obj) {
+  return res.send(obj);
+};
+res.other = 1;
+"""
+RES = "scip-typescript npm express 0 `response.js`/res."
+
+
+def test_the_target_of_an_assignment_is_no_use_by_the_function_assigned(tmp_path: Path):
+    (tmp_path / "response.js").write_text(RESPONSE)
+    document = Document(
+        "response.js",
+        1,
+        [
+            occurrence(at(RESPONSE, 0, "res"), RES, ROLE_DEFINITION),
+            occurrence(at(RESPONSE, 1, "res"), RES),  # the assignment target: a use by the module
+            occurrence(at(RESPONSE, 2, "res"), RES),  # inside the function body: a use by the function
+        ],
+        [],
+    )
+    snap = Snapshot(tmp_path, Index(documents=[document]), "javascript")
+
+    found = relations_to(snap, target(snap, "response.js::res"))
+
+    assert [(r.from_key, r.site) for r in found] == [("response.js::jsonp", 3)]
+    assert snap.filters.dropped == {"fnexpr": 1}

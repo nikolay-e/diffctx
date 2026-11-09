@@ -118,3 +118,8 @@ def test_the_shipped_adjudicated_sets_are_decided_references():
     assert len(loaded) == 196
     assert all(r["final"] in adj.DECIDED and r["scip_kind"] for r in loaded.values())
     assert not any("code" in r for r in loaded.values())
+
+
+def test_a_type_use_and_an_import_are_labels_an_adjudicator_may_give():
+    assert adj.KIND_OF["type_use"] == "type_use" and adj.KIND_OF["import"] == "imports"
+    assert {"type_use", "import"} <= adj.DECIDED

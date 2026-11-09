@@ -196,7 +196,7 @@ def oracle_changed(fixture: Fixture, repo: Path, base: str, head: str) -> dict[s
     """The oracle's own answer: changed definition key -> status."""
     before, after = snapshots(fixture, repo, base, head)
     changes = gitrepo.diff_changes(repo / ".git", base, head)
-    found = changed_definitions(changes, before.definitions, after.definitions)
+    found = changed_definitions(changes, before.definitions, after.definitions, before.inert_lines, after.inert_lines)
     return {c.base.key if c.base is not None else c.target.key: c.status for c in found}
 
 

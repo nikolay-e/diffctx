@@ -136,6 +136,18 @@ def kind_at(path: str, source: str, line: int, needle: str, is_class: bool = Fal
         (0, "class A(foo): pass", "foo", False, "reads"),
         (0, "z = foo.attr", "foo", False, "reads"),
         (0, "@foo\ndef f(): pass", "foo", False, "calls"),
+        (0, "from m import foo", "foo", False, "imports"),
+        (0, "from m import (a, foo as bar)", "foo", False, "imports"),
+        (0, "import foo", "foo", False, "imports"),
+        (1, "def f():\n    from m import foo\n    return foo()", "foo", False, "imports"),
+        (0, "def f(a: foo): pass", "foo", False, "type_use"),
+        (0, "def f() -> foo: pass", "foo", False, "type_use"),
+        (0, "x: foo = 1", "foo", False, "type_use"),
+        (0, "def f(a: Optional[foo]): pass", "foo", False, "type_use"),
+        (0, "def f(a: 'foo'): pass", "foo", False, "type_use"),
+        (0, "def f(a=foo): pass", "foo", False, "reads"),
+        (0, "isinstance(x, foo)", "foo", False, "passes_as_value"),
+        (0, "x: int = foo()", "foo", False, "calls"),
     ],
 )
 def test_python_reference_kinds(line, text, needle, is_class, expected):
@@ -154,6 +166,26 @@ def test_python_reference_kinds(line, text, needle, is_class, expected):
         ("const o = { k: foo };", "foo", False, "passes_as_value"),
         ('export { foo } from "./x";', "foo", False, "reexports"),
         ("const y = foo.x;", "foo", False, "reads"),
+        ('import { foo } from "./x";', "foo", False, "imports"),
+        ('import type { foo } from "./x";', "foo", False, "imports"),
+        ('import foo from "./x";', "foo", False, "imports"),
+        ('import * as foo from "./x";', "foo", False, "imports"),
+        ('import foo = require("./x");', "foo", False, "imports"),
+        ("let a: foo = x;", "foo", False, "type_use"),
+        ("const o: I = { foo: 1 };", "foo", False, "writes"),
+        ("got({ foo: { a: 1 } });", "foo", False, "writes"),
+        ("const o = { foo };", "foo", False, "reads"),
+        ("const o = { k: foo.bar };", "foo", False, "reads"),
+        ("function f(a: Array<foo>): void {}", "foo", False, "type_use"),
+        ("const x = y as foo;", "foo", False, "type_use"),
+        ("const x = <foo>y;", "foo", False, "type_use"),
+        ("class A implements foo {}", "foo", False, "type_use"),
+        ("type T = typeof foo;", "foo", False, "type_use"),
+        ("type T = ReturnType<typeof foo.bar>;", "foo", False, "type_use"),
+        ("const x = f<foo>(y);", "foo", False, "type_use"),
+        ("class A extends foo {}", "foo", False, "reads"),
+        ("const x = foo as string;", "foo", False, "reads"),
+        ("if (typeof foo === 'string') {}", "foo", False, "reads"),
     ],
 )
 def test_script_reference_kinds(text, needle, is_class, expected):
@@ -212,3 +244,36 @@ def test_tokens_of_a_leaf_or_a_comment_stay_inside_the_node():
     assert leaf.type == "identifier" and syntax.tokens(leaf, source) == [b"x"]
     [comment] = [n for n in syntax.kids(tree.root_node, True) if n.type == "comment"]
     assert syntax.tokens(comment, source) == []
+
+
+def test_comment_only_lines_cover_every_line_of_a_doc_comment_and_not_a_trailing_comment():
+    source = "class A {\n\t/**\n\tNo stars here.\n\t*/\n\tget x() { return 1; } // trailing\n\t// alone\n}\n"
+    tree = syntax.parse("m.ts", source.encode())
+
+    assert syntax.comment_only_lines(tree.root_node, source.encode()) == {2, 3, 4, 6}
+    python = b"class A:\n    # alone\n    x = 1  # trailing\n"
+    assert syntax.comment_only_lines(syntax.parse("m.py", python).root_node, python) == {2}
+
+
+@pytest.mark.parametrize(
+    ("path", "text", "nth", "expected"),
+    [
+        ("m.ts", "const foo = 1;\nexport { foo };", 0, "reexports"),
+        ("m.ts", "const foo = 1;\nexport { foo as bar };", 0, "reexports"),
+        ("m.ts", "const foo = 1;\nexport default foo;", 0, "reexports"),
+        ("m.js", "function foo() {}\nexports.foo = foo;", 1, "reexports"),
+        ("m.js", "function foo() {}\nexports.foo = foo;", 0, "reexports"),
+        ("m.js", "function foo() {}\nmodule.exports.foo = foo;", 0, "reexports"),
+        ("m.js", "function foo() {}\nother.foo = foo;", 0, "reads"),
+        ("m.js", "function foo() {}\nmodule.exports.foo = foo;", 1, "reexports"),
+        ("m.js", "function foo() {}\nmodule.exports = foo;", 0, "reexports"),
+        ("m.js", "function foo() {}\nmodule.exports = { foo };", 0, "reexports"),
+        ("m.js", "function foo() {}\nmodule.exports = { foo: foo };", 1, "reexports"),
+        ("m.js", "function foo() {}\nconst o = { foo };", 0, "reads"),
+        ("m.js", "function foo() {}\nother.foo = foo;", 1, "passes_as_value"),
+        ("m.js", "function foo() {}\nmodule.exports = { foo: foo() };", 1, "calls"),
+        ("m.js", "function foo() {}\nregister(foo);", 0, "passes_as_value"),
+    ],
+)
+def test_an_export_statement_naming_a_definition_of_its_own_module_is_a_reexport(path, text, nth, expected):
+    assert kind_at(path, text, 1, "foo", nth=nth) == expected

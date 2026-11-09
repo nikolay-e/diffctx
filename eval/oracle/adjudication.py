@@ -20,6 +20,8 @@ KIND_OF = {
     "override": "overrides",
     "write": "writes",
     "reexport": "reexports",
+    "import": "imports",
+    "type_use": "type_use",
 }
 DECIDED = set(KIND_OF) | {"none", "unresolved"}
 Key = tuple[str, str, str, str]

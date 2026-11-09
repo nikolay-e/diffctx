@@ -18,10 +18,13 @@ import argparse
 import json
 import re
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 import adjudication
+import paired
 from corpus import ROOT
+from model import UNCAPPED_BUDGET
 
 TIERS = {
     "python": 1,
@@ -78,6 +81,10 @@ def scip_rows(cells: list[dict]) -> list[dict]:
         total = groups[key]
         for field in ("truth", "tp", "tp_weak", "fn", "fp", "fp_weak", "kind_mismatches"):
             total[field] += cell[field]
+        total["truth_affected"] += cell.get("truth_affected", cell["truth"])
+        total["tp_affected"] += cell.get("tp_affected", cell["tp"])
+        total["folded"] += cell.get("folded", 0)
+        total["false_fold"] += cell.get("false_fold", 0)
         total["cells"] += 1
         total["abstained"] += bool(cell["abstained"])
         total["fcn"] += bool(cell["fcn"])
@@ -94,14 +101,72 @@ def scip_rows(cells: list[dict]) -> list[dict]:
                 "truth": t["truth"],
                 "precision": _ratio(t["tp"], t["tp"] + t["fp"]),
                 "recall": _ratio(t["tp"], t["truth"]),
+                "truth_affected": t["truth_affected"],
+                "recall_affected": _ratio(t["tp_affected"], t["truth_affected"]),
                 "recall_with_candidates": _ratio(t["tp"] + t["tp_weak"], t["truth"]),
                 "abstention_share": _ratio(t["abstained"], t["cells"]),
                 "false_complete_negatives": t["fcn"],
+                "folded": t["folded"],
+                "false_fold": t["false_fold"],
                 "weak_per_answer": _ratio(t["tp_weak"] + t["fp_weak"], len(answers[(language, mode, kind)])),
                 "kind_mismatches": t["kind_mismatches"],
             }
         )
     return rows
+
+
+@dataclass(frozen=True)
+class LoadedRun:
+    path: Path
+    engine: str | None
+    budget: int | None
+
+    @property
+    def cells(self) -> list[dict]:
+        found = self.path / "cells.jsonl"
+        return read_records(found) if found.exists() else []
+
+
+def load_run(spec: str) -> LoadedRun:
+    """`DIR` or `DIR@BUDGET`: the directory of one measure run; its `run.json` says which engine and budget made it.
+
+    `@BUDGET` (a token count or `uncapped`) names the budget of a run measured before `run.json` existed.
+    """
+    directory, _, given = spec.partition("@")
+    path = Path(directory)
+    meta_file = path / "run.json"
+    meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else {}
+    budget = (UNCAPPED_BUDGET if given == "uncapped" else int(given)) if given else meta.get("budget")
+    return LoadedRun(path, meta.get("engine"), budget)
+
+
+def budget_label(budget: int | None) -> str:
+    return "default" if budget is None else "uncapped" if budget >= UNCAPPED_BUDGET else str(budget)
+
+
+def curve_rows(runs: list[LoadedRun]) -> list[dict]:
+    """One row per (language, mode, relation, budget): what the same engine scores as its budget grows."""
+    engines = {run.engine for run in runs if run.engine}
+    if len(engines) > 1:
+        raise ValueError(f"a budget curve is one engine at several budgets; got {sorted(engines)}")
+    seen: dict[int | None, Path] = {}
+    for run in runs:
+        if run.budget in seen:
+            raise ValueError(f"{run.path} and {seen[run.budget]} are both at budget {budget_label(run.budget)}")
+        seen[run.budget] = run.path
+    rows = [{**row, "budget": run.budget} for run in runs for row in scip_rows(run.cells)]
+    rows.sort(key=lambda r: (r["language"], r["mode"], r["relation"], r["budget"] or 0))
+    return rows
+
+
+def paired_entry(run: Path, base: LoadedRun) -> dict:
+    head = load_run(str(run))
+    return {
+        "base": base.path.name,
+        "head": head.path.name,
+        "budgets": (base.budget, head.budget),
+        "result": paired.compare_runs(base.path, head.path),
+    }
 
 
 def completeness_rows(indexes: list[dict], commits: list[dict]) -> list[dict]:
@@ -211,12 +276,41 @@ SCIP_COLUMNS = [
     ("Truth", "truth"),
     ("Precision", "precision"),
     ("Recall", "recall"),
+    ("Affected", "truth_affected"),
+    ("Recall (affected)", "recall_affected"),
     ("Recall+cand.", "recall_with_candidates"),
     ("Abstention", "abstention_share"),
     ("FCN", "false_complete_negatives"),
+    ("Folded", "folded"),
+    ("False fold", "false_fold"),
     ("Weak/answer", "weak_per_answer"),
     ("Kind mism.", "kind_mismatches"),
 ]
+CURVE_COLUMNS = [
+    ("Language", "language"),
+    ("Mode", "mode"),
+    ("Relation", "relation"),
+    ("Budget", "budget_label"),
+    ("Truth", "truth"),
+    ("Recall", "recall"),
+    ("Precision", "precision"),
+    ("FCN", "false_complete_negatives"),
+    ("Abstention", "abstention_share"),
+]
+PAIRED_COLUMNS = [
+    ("Language", "language"),
+    ("Mode", "mode"),
+    ("Relation", "relation"),
+    ("Commits", "commits"),
+    ("Truth", "truth"),
+    ("Precision", "precision_text"),
+    ("Recall", "recall_text"),
+    ("Recall (affected)", "recall_affected_text"),
+    ("FCN", "fcn_text"),
+    ("False fold", "false_fold_head"),
+    ("Flag", "flag"),
+]
+SMALL_COLUMNS = [("From", "from"), ("To", "to"), ("Kind", "kind"), ("Commit", "commit"), ("Base", "base"), ("Head", "head")]
 ADJUDICATION_COLUMNS = [
     ("Language", "language"),
     ("Adjudicated", "total"),
@@ -258,6 +352,53 @@ HARNESS_RELATION_COLUMNS = [
 ]
 
 
+def _signed(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:+.3f}"
+
+
+def _change(metric: dict) -> str:
+    """`base → head, Δ [low, high]`: the point change with the interval the bootstrap put around it."""
+    interval = "" if metric["low"] is None else f" [{_signed(metric['low'])}, {_signed(metric['high'])}]"
+    ends = ("n/a" if metric[side] is None else str(metric[side]) for side in ("base", "head"))
+    return f"{' → '.join(ends)}, Δ{_signed(metric['delta'])}{interval}"
+
+
+def _flag(row: dict) -> str:
+    marks = [
+        f"{name} {row[name]['verdict'].upper()}" for name in ("precision", "recall", "recall_affected") if row[name]["verdict"]
+    ]
+    return ", ".join([*marks, *(["read rows"] if row["small"] else []), *(["TRUTH DIFFERS"] if row["truth_differs"] else [])])
+
+
+def render_paired(entry: dict) -> list[str]:
+    result = entry["result"]
+    parts = ["", f"## Paired bootstrap: {entry['head']} against {entry['base']}", ""]
+    parts.append(
+        f"Commits answered by both runs: impact {result['commits']['impact']}, symbol {result['commits']['symbol']}; dropped "
+        f"(answered by one run only) base {result['dropped']['base']}, head {result['dropped']['head']}. "
+        f"{paired.RESAMPLES} resamples over commits, seed {paired.SEED}, 95 % percentile interval; a regression is an interval "
+        f"wholly below 0, and needs {paired.MIN_COMMITS}+ commits. Groups are not corrected for multiple comparisons."
+    )
+    if entry["budgets"][0] != entry["budgets"][1]:
+        parts += ["", f"**The runs used different budgets** (base {entry['budgets'][0]}, head {entry['budgets'][1]})."]
+    rows = [
+        {**row, "precision_text": _change(row["precision"]), "recall_text": _change(row["recall"]),
+            "recall_affected_text": _change(row["recall_affected"]),
+         "fcn_text": f"{row['fcn_base']} → {row['fcn_head']}", "flag": _flag(row)}
+        for row in result["rows"]
+    ]  # fmt: skip
+    parts += ["", table_of(PAIRED_COLUMNS, rows, "No paired cells."), ""]
+    parts.append(f"Regressions: {'; '.join(result['regressions']) or 'none'}.")
+    if result["small"]:
+        parts += ["", f"### Relations with truth under {paired.SMALL_TRUTH}, row by row", ""]
+        groups: dict[tuple, list[dict]] = defaultdict(list)
+        for item in result["small"]:
+            groups[(item["language"], item["mode"], item["kind"])].append(item)
+        for (language, mode, kind), items in groups.items():
+            parts += [f"**{language} {mode} {kind}** ({len(items)} rows)", "", table_of(SMALL_COLUMNS, items, ""), ""]
+    return parts
+
+
 def table_of(columns: list[tuple[str, str]], rows: list[dict], empty: str) -> str:
     if not rows:
         return empty
@@ -271,6 +412,11 @@ def render(report: dict) -> str:
         parts += ["", "## SCIP truth with the adjudicated overrides", ""]
         parts += [table_of(SCIP_COLUMNS, report["scip_adjudicated"], "No scored cells.")]
         parts += ["", "### SCIP against the adjudicated set", "", table_of(ADJUDICATION_COLUMNS, report["adjudication"], "")]
+    if report.get("curve"):
+        rows = [{**row, "budget_label": budget_label(row["budget"])} for row in report["curve"]]
+        parts += ["", "## Budget curve (one engine, several budgets)", "", table_of(CURVE_COLUMNS, rows, "")]
+    for entry in report.get("paired") or []:
+        parts += render_paired(entry)
     parts += ["", "## Index completeness", "", table_of(COMPLETENESS_COLUMNS, report["index_completeness"], "No indexes.")]
     parts += ["", f"Changed definitions with no SCIP symbol (not scored): {report['unmapped_definitions']}."]
     if report.get("filtered_references"):
@@ -303,6 +449,8 @@ def build(
     faults: Path | None,
     bench: Path | None,
     adjudicated: Path | None = None,
+    curve: list[LoadedRun] | None = None,
+    against: list[LoadedRun] | None = None,
 ) -> dict:
     def optional(name: str) -> list[dict]:
         path = run / name
@@ -318,6 +466,8 @@ def build(
         "metamorphic": outcome_summary(read_records(metamorphic)) if metamorphic else None,
         "faults": outcome_summary(read_records(faults)) if faults else None,
         "bench": json.loads(bench.read_text(encoding="utf-8")) if bench else None,
+        "curve": curve_rows(curve) if curve else None,
+        "paired": [paired_entry(run, other) for other in against or []],
         "scip_adjudicated": None,
         "adjudication": None,
     }
@@ -343,9 +493,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--faults", type=Path)
     parser.add_argument("--bench", type=Path)
     parser.add_argument("--adjudicated", type=Path, default=ROOT / "adjudicated", help="evidence-backed verdicts over SCIP truth")
+    parser.add_argument(
+        "--curve",
+        action="append",
+        type=load_run,
+        metavar="DIR[@BUDGET]",
+        help="a measure run of one engine at one budget (repeatable): adds the budget -> recall curve",
+    )
+    parser.add_argument(
+        "--against",
+        action="append",
+        type=load_run,
+        metavar="DIR[@BUDGET]",
+        help="a measure run on the same commits as --run (repeatable): adds the paired bootstrap of --run against it",
+    )
     parser.add_argument("--out", type=Path, help="directory for report.md and report.json (default: --run)")
     options = parser.parse_args(argv)
-    report = build(options.run, options.harness, options.metamorphic, options.faults, options.bench, options.adjudicated)
+    report = build(
+        options.run,
+        options.harness,
+        options.metamorphic,
+        options.faults,
+        options.bench,
+        options.adjudicated,
+        options.curve,
+        options.against,
+    )
     out = options.out or options.run
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

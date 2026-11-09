@@ -11,6 +11,7 @@ import hashlib
 from functools import cache
 
 import tree_sitter_go
+import tree_sitter_java
 import tree_sitter_javascript
 import tree_sitter_kotlin
 import tree_sitter_python
@@ -28,6 +29,7 @@ GRAMMARS = {
     "javascript": tree_sitter_javascript.language,
     "rust": tree_sitter_rust.language,
     "go": tree_sitter_go.language,
+    "java": tree_sitter_java.language,
     "kotlin": tree_sitter_kotlin.language,
 }
 FUNCTION_VALUES = {"arrow_function", "function_expression", "function", "generator_function"}
@@ -76,6 +78,114 @@ def kids(node: Node, named: bool = False) -> list[Node]:
     return out
 
 
+def _named_as_a_value(node: Node, name: str, source: bytes, script: bool = False) -> bool:
+    """`name` occurs under `node` other than as the callee of a call: `inner` escapes, `inner()` only runs."""
+    call = "call_expression" if script else "call"
+    names = ("identifier", "shorthand_property_identifier") if script else ("identifier",)
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        parent = current.parent
+        is_callee = parent is not None and parent.type == call and parent.child_by_field_name("function") == current
+        if (
+            current.type in names
+            and not is_callee
+            and source[current.start_byte : current.end_byte].decode("utf-8", "replace") == name
+        ):
+            return True
+        stack.extend(kids(current))
+    return False
+
+
+def python_escapes(function: Node, name: str, source: bytes) -> bool:
+    """A name defined inside a Python function leaves it when the function returns or yields it, or assigns it to an
+    attribute or an item (`self.cb = cb`). Passing it as an argument, decorating with it or calling it does not."""
+    stack = [function.child_by_field_name("body")]
+    while stack:
+        node = stack.pop()
+        if node is None or node.type in ("function_definition", "class_definition", "decorated_definition", "lambda"):
+            continue  # what happens inside a nested definition is that definition's own business
+        if node.type in ("return_statement", "yield") and _named_as_a_value(node, name, source):
+            return True
+        if node.type in ("assignment", "augmented_assignment"):
+            left, right = node.child_by_field_name("left"), node.child_by_field_name("right")
+            if (
+                left is not None
+                and right is not None
+                and left.type in ("attribute", "subscript")
+                and _named_as_a_value(right, name, source)
+            ):
+                return True
+        stack.extend(kids(node, True))
+    return False
+
+
+SCRIPT_FUNCTIONS = {
+    "function_declaration",
+    "generator_function_declaration",
+    "function_expression",
+    "arrow_function",
+    "method_definition",
+    "function",
+}
+
+
+def script_function_of(name: Node) -> Node | None:
+    """The function a TypeScript definition's name names: a declarator's value, or the declaration around it."""
+    node: Node | None = name
+    while node is not None:
+        parent = node.parent
+        if parent is not None and parent.type == "variable_declarator" and _same(parent.child_by_field_name("name"), node):
+            return unwrapped(parent.child_by_field_name("value"))
+        if node.type in SCRIPT_FUNCTIONS:
+            return node
+        node = parent
+    return None
+
+
+def script_escapes(function: Node, name: str, source: bytes) -> bool:
+    """A name defined inside a TypeScript or JavaScript function leaves it when the function returns it, or stores it as a
+    member of something (`got.paginate = paginateEach`). Calling it or passing it as an argument does not."""
+    stack = [function.child_by_field_name("body")]
+    while stack:
+        node = stack.pop()
+        if node is None or node.type in SCRIPT_FUNCTIONS or node.type in ("class_declaration", "class"):
+            continue  # what happens inside a nested definition is that definition's own business
+        if node.type == "return_statement" and _named_as_a_value(node, name, source, script=True):
+            return True
+        if node.type == "assignment_expression":
+            left, right = node.child_by_field_name("left"), node.child_by_field_name("right")
+            if (
+                left is not None
+                and right is not None
+                and left.type == "member_expression"
+                and _named_as_a_value(right, name, source, script=True)
+            ):
+                return True
+        stack.extend(kids(node, True))
+    return False
+
+
+def comment_only_lines(root: Node, source: bytes) -> set[int]:
+    """1-based lines holding nothing but comment (and whitespace): a doc comment's every line counts."""
+    lines = source.split(b"\n")
+    found: set[int] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type not in COMMENT_TYPES:
+            stack.extend(kids(node))
+            continue
+        (first, first_col), (last, last_col) = node.start_point, node.end_point
+        for row in range(first, last + 1):
+            line = lines[row] if row < len(lines) else b""
+            before = line[:first_col] if row == first else b""
+            after = line[last_col:] if row == last else b""
+            if not before.strip() and not after.strip():
+                found.add(row + 1)
+    return found
+
+
 def tokens(node: Node, source: bytes, blank_at: int = -1) -> list[bytes]:
     """Leaf texts in order, comments left out; the leaf starting at byte `blank_at` is replaced by a placeholder."""
     out: list[bytes] = []
@@ -109,6 +219,16 @@ def _lines(node: Node) -> tuple[int, int]:
     return node.start_point.row + 1, last
 
 
+TRANSPARENT = {"parenthesized_expression", "as_expression", "satisfies_expression", "non_null_expression", "type_assertion"}
+
+
+def unwrapped(value: Node | None) -> Node | None:
+    """The expression under parentheses and type assertions: `((x) => x) as Fn` is the arrow function."""
+    while value is not None and value.type in TRANSPARENT:
+        value = next((c for c in kids(value, True) if c.type not in ("type_annotation", "type_arguments")), None)
+    return value
+
+
 class _Collector:
     def __init__(self, path: str, source: bytes) -> None:
         self.path = path
@@ -127,6 +247,7 @@ class _Collector:
         sig_nodes: list[Node | None],
         first_line: int | None = None,
         decorated: bool | None = None,
+        label: str | None = None,
     ) -> None:
         """Record a definition; `first_line` pulls the extent up over attributes and doc comments that precede it."""
         start, end = _lines(extent)
@@ -136,7 +257,7 @@ class _Collector:
             Definition(
                 path=self.path,
                 kind=kind,
-                name=self.text(name_node),
+                name=label or self.text(name_node),
                 container=container,
                 start=start,
                 end=end,
@@ -258,7 +379,7 @@ class _ScriptWalker(_Collector):
         declarators = [c for c in kids(node, True) if c.type == "variable_declarator"]
         for declarator in declarators:
             name = declarator.child_by_field_name("name")
-            value = declarator.child_by_field_name("value")
+            value = unwrapped(declarator.child_by_field_name("value"))
             if name is None or name.type != "identifier":
                 continue
             is_function = value is not None and value.type in FUNCTION_VALUES
@@ -278,7 +399,7 @@ class _ScriptWalker(_Collector):
         if assignment is None or assignment.type != "assignment_expression":
             return
         left = assignment.child_by_field_name("left")
-        right = assignment.child_by_field_name("right")
+        right = unwrapped(assignment.child_by_field_name("right"))
         if left is None or right is None or left.type != "member_expression" or right.type not in FUNCTION_VALUES:
             return
         prop = left.child_by_field_name("property")
@@ -310,18 +431,134 @@ def reference_kind(root: Node, start: tuple[int, int], end: tuple[int, int], is_
     """The syntactic relation of the identifier at `start`..`end` (0-based row, byte column) to what it names.
 
     SCIP marks no call: a callee position is `calls` (`instantiates` for a class), an argument or an assigned
-    value is `passes_as_value`, a re-export clause is `reexports`, anything else `reads`.
+    value is `passes_as_value`, a re-export clause is `reexports`, anything else `reads`; an occurrence inside an
+    import statement is `imports` (R8).
     """
+    return ruled_kind(root, start, end, is_class, grammar)[0]
+
+
+def ruled_kind(
+    root: Node, start: tuple[int, int], end: tuple[int, int], is_class: bool, grammar: str
+) -> tuple[str, tuple[str, ...]]:
+    """`reference_kind` and the rulings that moved it off the plain syntactic reading, in the order they ran."""
     node: Node | None = root.named_descendant_for_point_range(start, end)
     if node is None:
-        return "reads"
+        return "reads", ()
     if grammar == "python":
-        return _python_kind(node, is_class)
-    if grammar in SCRIPT_GRAMMARS:
-        return _script_kind(node, is_class)
-    from syntax_compiled import REFERENCE_KINDS
+        kind = _python_kind(node, is_class)
+    elif grammar in SCRIPT_GRAMMARS:
+        kind = _script_kind(node, is_class)
+    else:
+        from syntax_compiled import REFERENCE_KINDS
 
-    return REFERENCE_KINDS[grammar](node, is_class)
+        kind = REFERENCE_KINDS[grammar](node, is_class)
+        replaced = _compiled_type_use(node, kind, grammar)
+        return (replaced, ("R9",)) if replaced else (kind, ())
+    moved: list[str] = []
+    for ruling, override in RULINGS:
+        replaced = override(node, kind, grammar)
+        if replaced is not None and replaced != kind:
+            kind = replaced
+            moved.append(ruling)
+    return kind, tuple(moved)
+
+
+IMPORT_STATEMENTS = {
+    "python": {"import_statement", "import_from_statement", "future_import_statement"},
+    "script": {"import_statement"},
+}
+
+
+def _within(node: Node, types: set[str]) -> bool:
+    current: Node | None = node
+    while current is not None:
+        if current.type in types:
+            return True
+        current = current.parent
+    return False
+
+
+def _imports(node: Node, kind: str, grammar: str) -> str | None:
+    """R8: a name inside an import statement is imported, never read."""
+    return "imports" if _within(node, IMPORT_STATEMENTS["python" if grammar == "python" else "script"]) else None
+
+
+QUALIFIED_NAMES = {"member_expression", "nested_identifier", "nested_type_identifier"}
+
+
+def _type_use(node: Node, kind: str, grammar: str) -> str | None:
+    """R9: an annotation, a `typeof` in a type, a type assertion or a type argument names a type, it does not read a value."""
+    if kind in ("imports", "reexports"):
+        return None
+    if grammar == "python":
+        return "type_use" if _within(node, {"type"}) else None
+    if node.type == "type_identifier":
+        return "type_use"
+    current: Node | None = node
+    while current is not None and (current is node or current.type in QUALIFIED_NAMES):
+        current = current.parent
+        if current is not None and current.type == "type_query":
+            return "type_use"
+    return None
+
+
+def _property_key(node: Node, kind: str, grammar: str) -> str | None:
+    """R16: the key of an object literal names the member it sets; a shorthand `{ x }` only reads `x`."""
+    parent = node.parent
+    if grammar == "python" or node.type != "property_identifier" or parent is None or parent.type != "pair":
+        return None
+    in_literal = parent.parent is not None and parent.parent.type == "object"
+    return "writes" if in_literal and _same(parent.child_by_field_name("key"), node) else None
+
+
+def _compiled_type_use(node: Node, kind: str, grammar: str) -> str | None:
+    """R9 for Rust (a `type_identifier` read) and Kotlin (a name inside a `user_type`)."""
+    if kind != "reads":
+        return None
+    if grammar in ("rust", "java"):
+        return "type_use" if node.type == "type_identifier" else None
+    return "type_use" if grammar == "kotlin" and _within(node, {"user_type"}) else None
+
+
+COMMONJS_EXPORTS = {"exports", "module.exports"}
+
+
+def _text(node: Node | None) -> str:
+    return "" if node is None else node.text.decode("utf-8", "replace")
+
+
+def _commonjs_target(left: Node | None) -> bool:
+    """`exports.x`, `module.exports.x` or `module.exports`: the left side of an assignment that publishes."""
+    if left is None or left.type != "member_expression":
+        return False
+    holder, prop = left.child_by_field_name("object"), left.child_by_field_name("property")
+    return _text(holder) in COMMONJS_EXPORTS or (_text(holder) == "module" and _text(prop) == "exports")
+
+
+def _export(node: Node, kind: str, grammar: str) -> str | None:
+    """R19: an export statement naming a definition of its own module is that module's export of it, not a read."""
+    parent = node.parent
+    if grammar == "python" or kind not in ("reads", "passes_as_value") or parent is None:
+        return None
+    if parent.type == "export_specifier" and _same(parent.child_by_field_name("name"), node):
+        return "reexports"
+    if parent.type == "export_statement" and _same(parent.child_by_field_name("value"), node):
+        return "reexports"
+    if _same(parent.child_by_field_name("property"), node) and parent.type == "member_expression":
+        owner = parent.parent  # `exports.x = x`: the name on the left is the export's own
+        if owner is not None and owner.type == "assignment_expression" and _same(owner.child_by_field_name("left"), parent):
+            return "reexports" if _commonjs_target(parent) else None
+    if parent.type == "assignment_expression" and _same(parent.child_by_field_name("right"), node):
+        return "reexports" if _commonjs_target(parent.child_by_field_name("left")) else None
+    literal = parent.parent if parent.type == "pair" and _same(parent.child_by_field_name("value"), node) else None
+    literal = parent if node.type == "shorthand_property_identifier" else literal
+    owner = None if literal is None or literal.type != "object" else literal.parent
+    if owner is not None and owner.type == "assignment_expression" and _same(owner.child_by_field_name("right"), literal):
+        return "reexports" if _text(owner.child_by_field_name("left")) == "module.exports" else None
+    return None
+
+
+RULINGS = (("R8", _imports), ("R9", _type_use), ("R16", _property_key), ("R19", _export))
 
 
 def _same(a: Node | None, b: Node) -> bool:

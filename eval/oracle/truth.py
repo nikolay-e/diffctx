@@ -11,6 +11,7 @@ from model import MODULE, Definition, Relation, innermost
 from scipindex import ROLE_IMPORT, ROLE_WRITE, Document, Index, Occurrence, byte_column
 
 TREE_CACHE = 64
+CLASS_KINDS = {7, 49}  # scip.proto SymbolInformation.Kind: Class, Struct
 
 
 def _scope(symbol: str, path: str) -> str:
@@ -31,7 +32,15 @@ class Snapshot:
         self._trees: OrderedDict[str, syntax.Tree | None] = OrderedDict()
         self._implementers: dict[str, list[tuple[str, str]]] | None = None
         self._occurrences: dict[str, list[tuple[Document, Occurrence]]] | None = None
+        self._kinds: dict[str, int] | None = None
         self.filters = Filters(self)
+
+    def is_class_symbol(self, symbol: str) -> bool:
+        """A class by the index: scip-typescript says Class or Struct, scip-python says nothing and marks types with `#`."""
+        if self._kinds is None:
+            self._kinds = {s.symbol: s.kind for d in self.index.documents for s in d.symbols}
+        kind = self._kinds.get(symbol, 0)
+        return kind in CLASS_KINDS or (kind == 0 and symbol.endswith("#"))
 
     def references(self, symbol: str, path: str) -> list[tuple[Document, Occurrence]]:
         """Every non-definition occurrence of `symbol` (a local symbol only within `path`), from one pass over the index."""
@@ -50,10 +59,83 @@ class Snapshot:
             self._sources[path] = file.read_bytes() if file.is_file() and not file.is_symlink() else b""
         return self._sources[path]
 
+    def inert_lines(self, path: str) -> set[int]:
+        """1-based numbers of the lines of `path` that hold nothing but whitespace or comment."""
+        source = self.source(path)
+        found = {n for n, line in enumerate(source.split(b"\n"), 1) if not line.strip()}
+        tree = self.parsed(path)
+        return found if tree is None else found | syntax.comment_only_lines(tree.root_node, source)
+
     def definitions(self, path: str) -> list[Definition]:
+        """The definitions of `path` that are not local to a function body: a local belongs to its enclosing definition (R18)."""
         if path not in self._definitions:
-            self._definitions[path] = syntax.definitions(path, self.source(path))
+            found = syntax.definitions(path, self.source(path))
+            self._definitions[path] = [d for d in found if not self._is_local(d, found)]
         return self._definitions[path]
+
+    def _is_local(self, definition: Definition, siblings: list[Definition]) -> bool:
+        symbols = self.symbols_of(definition)
+        script = syntax.grammar_for(definition.path) in syntax.SCRIPT_GRAMMARS
+        if symbols and all(symbol.startswith("local ") for symbol in symbols):
+            return not script or not self._leaves_its_function(definition, siblings)
+        return definition.path.endswith(".py") and self._inside_a_function(definition, siblings)
+
+    def _enclosing_function(self, definition: Definition, siblings: list[Definition]) -> tuple[Definition, Definition] | None:
+        """The outermost function the definition is nested in, and the definition of it that holds the one asked about."""
+        if not definition.container:
+            return None
+        chain = [
+            next(
+                (d for d in siblings if d.container == definition.container[: n - 1] and d.name == definition.container[n - 1]),
+                None,
+            )
+            for n in range(1, len(definition.container) + 1)
+        ]
+        outer = next((i for i, d in enumerate(chain) if d is not None and d.kind in ("function", "method")), None)
+        if outer is None or chain[outer] is None:
+            return None
+        return chain[outer], (chain[outer + 1] if outer + 1 < len(chain) else definition)
+
+    def _leaves_its_function(self, definition: Definition, siblings: list[Definition]) -> bool:
+        """A local TypeScript function or member assignment the enclosing function returns or stores outward is a
+        definition of its own, whatever the index says of its symbol: the edits inside it are not the function's."""
+        found = self._enclosing_function(definition, siblings)
+        tree = self.parsed(definition.path)
+        if found is None or tree is None or found[1] is None:
+            return False
+        function, top = found
+        named = tree.root_node.named_descendant_for_point_range(
+            (function.name_row, function.name_col), (function.name_row, function.name_col + 1)
+        )
+        node = None if named is None else syntax.script_function_of(named)
+        member = tree.root_node.named_descendant_for_point_range((top.name_row, top.name_col), (top.name_row, top.name_col + 1))
+        subject = top.name
+        if member is not None and member.parent is not None and member.parent.type == "member_expression":
+            root = member.parent  # `got.extend = ...` is the enclosing function's `got` handed on
+            while (
+                root.child_by_field_name("object") is not None and root.child_by_field_name("object").type == "member_expression"
+            ):
+                root = root.child_by_field_name("object")
+            holder = root.child_by_field_name("object")
+            subject = top.name if holder is None else holder.text.decode("utf-8", "replace")
+        return node is not None and syntax.script_escapes(node, subject, self.source(definition.path))
+
+    def _inside_a_function(self, definition: Definition, siblings: list[Definition]) -> bool:
+        """A Python definition nested in a function that does not leave it, whatever the index calls its symbol (R18).
+
+        scip-python names a nested function with a full descriptor and not `local N`; the syntax decides instead.
+        """
+        found = self._enclosing_function(definition, siblings)
+        tree = self.parsed(definition.path)
+        if found is None or tree is None:
+            return False
+        function, top = found
+        node = tree.root_node.named_descendant_for_point_range(
+            (function.name_row, function.name_col), (function.name_row, function.name_col + 1)
+        )
+        while node is not None and node.type != "function_definition":
+            node = node.parent
+        return node is not None and top is not None and not syntax.python_escapes(node, top.name, self.source(definition.path))
 
     def parsed(self, path: str) -> syntax.Tree | None:
         if path in self._trees:
@@ -135,9 +217,11 @@ def relations_to(snapshot: Snapshot, target: Definition) -> list[Relation]:
     found: set[Relation] = set()
     for symbol, only in wanted.items():
         for doc, occ in snapshot.references(symbol, target.path):
-            relation = _relation(snapshot, doc, occ, target, only == "instantiates")
+            relation = _relation(snapshot, doc, occ, target, only == "instantiates", snapshot.is_class_symbol(symbol))
             if relation is not None and (only is None or relation.kind == only):
                 found.add(relation)
+            if only is None:
+                found.update(_through_aliases(snapshot, doc, occ, target))
     for path, symbol in _implementing(snapshot, wanted):
         implementer = snapshot.definition_of_symbol(path, symbol)
         if implementer is not None and implementer.key != target.key:
@@ -145,12 +229,59 @@ def relations_to(snapshot: Snapshot, target: Definition) -> list[Relation]:
     return sorted(found, key=lambda r: (r.from_key, r.site, r.kind))
 
 
+def _destructured_binding(snapshot: Snapshot, doc: Document, occ: Occurrence) -> Occurrence | None:
+    """The definition occurrence of the name `const {m} = X` or `const {m: alias} = X` binds, when `occ` is that
+    pattern's `m`: the member the pattern takes, read off the syntax."""
+    tree = snapshot.parsed(doc.path)
+    if tree is None or syntax.grammar_for(doc.path) not in syntax.SCRIPT_GRAMMARS:
+        return None
+    start, end_row, end = snapshot.position(doc, occ)
+    node = tree.root_node.named_descendant_for_point_range((occ.line, start), (end_row, end))
+    if node is None or node.parent is None:
+        return None
+    pattern, bound = node.parent, node
+    if node.type == "property_identifier" and pattern.type == "pair_pattern":
+        bound = pattern.child_by_field_name("value")
+        pattern = pattern.parent
+        if bound is not None and bound.type == "assignment_pattern":
+            bound = bound.child_by_field_name("left")
+    elif node.type not in ("shorthand_property_identifier_pattern", "object_assignment_pattern"):
+        return None
+    holder = None if pattern is None else pattern.parent
+    if pattern is None or pattern.type != "object_pattern" or holder is None or holder.type != "variable_declarator":
+        return None
+    if bound is None:
+        return None
+    row, col = bound.start_point
+    return next((o for o in doc.occurrences if o.is_definition and o.line == row and snapshot.position(doc, o)[0] == col), None)
+
+
+def _through_aliases(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition) -> list[Relation]:
+    """A call through a name destructured from the member's owner, `const {m} = X; m(...)`: SCIP binds it to the local
+    constant, so the uses of the constant are uses of the member the pattern took."""
+    binding = _destructured_binding(snapshot, doc, occ)
+    if binding is None:
+        return []
+    found = []
+    for user_doc, user in snapshot.references(binding.symbol, doc.path):
+        line = user.line + 1
+        caller = snapshot.enclosing(user_doc.path, line)
+        if caller is not None and caller.key == target.key:
+            continue
+        from_key = caller.key if caller is not None else f"{user_doc.path}::{MODULE}"
+        kind, moved = _kind(snapshot, user_doc, user, target, False)
+        found.append(Relation(from_key, target.key, kind, line, moved=(*moved, "alias")))
+    return found
+
+
 def _implementing(snapshot: Snapshot, wanted: dict[str, str | None]) -> list[tuple[str, str]]:
     table = snapshot.implementers()
     return [pair for symbol, only in wanted.items() if only is None for pair in table.get(symbol, [])]
 
 
-def _relation(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition, names_class: bool) -> Relation | None:
+def _relation(
+    snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition, names_class: bool, indexed_class: bool
+) -> Relation | None:
     line = occ.line + 1
     caller = snapshot.enclosing(doc.path, line)
     if caller is not None and caller.key == target.key:
@@ -158,20 +289,25 @@ def _relation(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Defini
     if snapshot.filters.rejects(doc, occ, target, caller):
         return None
     from_key = caller.key if caller is not None else f"{doc.path}::{MODULE}"
-    return Relation(from_key, target.key, _kind(snapshot, doc, occ, target, names_class), line)
+    kind, moved = _kind(snapshot, doc, occ, target, names_class)
+    if kind == "calls" and indexed_class:
+        kind, moved = "instantiates", (*moved, "R10")  # the callee is a class by the index, whatever the AST made of its target
+    return Relation(from_key, target.key, kind, line, moved=moved)
 
 
-def _kind(snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition, names_class: bool) -> str:
+def _kind(
+    snapshot: Snapshot, doc: Document, occ: Occurrence, target: Definition, names_class: bool
+) -> tuple[str, tuple[str, ...]]:
     if occ.roles & ROLE_IMPORT:
-        return "imports"
+        return "imports", ()
     if occ.roles & ROLE_WRITE:
-        return "writes"
+        return "writes", ()
     tree = snapshot.parsed(doc.path)
     grammar = syntax.grammar_for(doc.path)
     if tree is None or grammar is None:
-        return "reads"
+        return "reads", ()
     start, end_row, end = snapshot.position(doc, occ)
-    return syntax.reference_kind(
+    return syntax.ruled_kind(
         tree.root_node,
         (occ.line, start),
         (end_row, end),

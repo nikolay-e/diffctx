@@ -15,6 +15,7 @@ from gitrepo import FileChange, Hunk
 from model import Definition, grammar_for, innermost
 
 DefinitionsOf = Callable[[str], list[Definition]]
+InertLinesOf = Callable[[str], set[int]]
 
 
 @dataclass(frozen=True)
@@ -34,25 +35,34 @@ class ChangedDefinition:
         return "head" if self.head is not None else "base"
 
 
-def _touched(defs: list[Definition], lines: range, boundary: int | None) -> list[Definition]:
-    """Definitions holding a changed line; `boundary` is the pure-deletion point on head: the gap between two lines."""
+def _contains_definitions(defs: list[Definition], outer: Definition) -> bool:
+    return any(d is not outer and outer.start <= d.start and d.end <= outer.end for d in defs)
+
+
+def _touched(defs: list[Definition], lines: range, boundary: int | None, inert: set[int]) -> list[Definition]:
+    """Definitions holding a changed line; `boundary` is the pure-deletion point on head: the gap between two lines.
+
+    A blank or comment-only line that falls directly in a definition holding others touches nothing: the blank
+    line and the doc comment of an added or removed member are not a change of the class around it. Nor does a
+    pure deletion there; the base side names what was deleted (R12).
+    """
     if boundary is not None:
         inside = [d for d in defs if d.start <= boundary and d.end >= boundary + 1]
         found = innermost(inside, boundary)
-        return [found] if found else []
+        return [found] if found and not _contains_definitions(defs, found) else []
     candidates = [d for d in defs if lines and d.start <= lines[-1] and d.end >= lines[0]]
     seen: dict[tuple[str, int, int], Definition] = {}
     for line in lines:
         d = innermost(candidates, line)
-        if d is not None:
+        if d is not None and not (line in inert and _contains_definitions(defs, d)):
             seen[(d.path, d.start, d.end)] = d
     return list(seen.values())
 
 
-def _head_touched(defs: list[Definition], hunk: Hunk) -> list[Definition]:
+def _head_touched(defs: list[Definition], hunk: Hunk, inert: set[int]) -> list[Definition]:
     if hunk.new_count > 0:
-        return _touched(defs, hunk.new_lines, None)
-    return _touched(defs, range(0), hunk.new_start)
+        return _touched(defs, hunk.new_lines, None, inert)
+    return _touched(defs, range(0), hunk.new_start, inert)
 
 
 def _identity_index(defs: list[Definition]) -> dict[tuple[str, tuple[str, ...], str], list[Definition]]:
@@ -66,7 +76,13 @@ def _nth(candidates: list[Definition], ordinal: int) -> Definition:
     return candidates[min(ordinal, len(candidates) - 1)]
 
 
-def changed_definitions(changes: list[FileChange], base_defs: DefinitionsOf, head_defs: DefinitionsOf) -> list[ChangedDefinition]:
+def changed_definitions(
+    changes: list[FileChange],
+    base_defs: DefinitionsOf,
+    head_defs: DefinitionsOf,
+    base_inert: InertLinesOf,
+    head_inert: InertLinesOf,
+) -> list[ChangedDefinition]:
     code = [c for c in changes if grammar_for(c.new_path or c.old_path or "") is not None]
     head_all: list[Definition] = []
     base_all: list[Definition] = []
@@ -77,16 +93,18 @@ def changed_definitions(changes: list[FileChange], base_defs: DefinitionsOf, hea
     for change in code:
         if change.new_path:
             defs = head_defs(change.new_path)
+            inert = head_inert(change.new_path)
             head_all += defs
             for hunk in change.hunks:
-                for d in _head_touched(defs, hunk):
+                for d in _head_touched(defs, hunk, inert):
                     touched_head[(d.path, d.start, d.end)] = d
         if change.old_path:
             defs = base_defs(change.old_path)
+            inert = base_inert(change.old_path)
             base_all += defs
             for hunk in change.hunks:
                 if hunk.old_count > 0:
-                    for d in _touched(defs, hunk.old_lines, None):
+                    for d in _touched(defs, hunk.old_lines, None, inert):
                         touched_base[(d.path, d.start, d.end)] = d
     head_index = _identity_index(head_all)
     base_index = _identity_index(base_all)

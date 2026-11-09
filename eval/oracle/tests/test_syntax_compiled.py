@@ -203,6 +203,9 @@ def test_kotlin_definitions_cover_classes_members_companions_and_extensions():
         ("a.rs", "fn f() { let s = Shop { n: 0 }; }", "Shop", True, "instantiates"),
         ("a.rs", "fn f() { let x = total; }", "total", False, "passes_as_value"),
         ("a.rs", "use crate::walk::Worker;", "Worker", False, "imports"),
+        ("a.rs", "fn f(w: Worker) {}", "Worker", False, "type_use"),
+        ("a.rs", "fn f() -> Worker { todo!() }", "Worker", False, "type_use"),
+        ("a.rs", "struct S { w: Worker }", "Worker", False, "type_use"),
         ("a.go", "package a\nfunc f() { helper(1) }", "helper", False, "calls"),
         ("a.go", "package a\nfunc f() { util.Go(1) }", "Go", False, "calls"),
         ("a.go", "package a\nfunc f() { x := &Shop{} }", "Shop", True, "instantiates"),
@@ -215,6 +218,20 @@ def test_kotlin_definitions_cover_classes_members_companions_and_extensions():
         ("a.kt", "fun f() {\n    run(::total)\n}", "total", False, "passes_as_value"),
         ("a.kt", "fun f() {\n    val x = total\n}", "total", False, "passes_as_value"),
         ("a.kt", "import a.b.Shop", "Shop", False, "imports"),
+        ("A.java", "class A { void f() { foo(1); } }", "foo", False, "calls"),
+        ("A.java", "class A { void f() { o.foo(1); } }", "foo", False, "calls"),
+        ("A.java", "class A { Object f() { return new Shop(1); } }", "Shop", True, "instantiates"),
+        ("A.java", "class A { Object f() { return new Shop<>(1); } }", "Shop", True, "instantiates"),
+        ("A.java", "import a.b.Shop;", "Shop", False, "imports"),
+        ("A.java", "class A { void f(Shop s) {} }", "Shop", False, "type_use"),
+        ("A.java", "class A extends Shop {}", "Shop", False, "type_use"),
+        ("A.java", "class A { void f() { run(total); } }", "total", False, "passes_as_value"),
+        ("A.java", "class A { Object r = A::total; }", "total", False, "passes_as_value"),
+        ("A.java", "class A { int x = total; }", "total", False, "passes_as_value"),
+        ("A.java", "class A { int f() { return o.total + 1; } }", "total", False, "reads"),
+        ("a.kt", "fun f(s: Shop) {\n}", "Shop", False, "type_use"),
+        ("a.kt", "class A : Shop()", "Shop", False, "type_use"),
+        ("a.kt", "fun f() {\n    val s: List<Shop> = x\n}", "Shop", False, "type_use"),
     ],
 )
 def test_compiled_language_reference_kinds(path, text, needle, is_class, expected):
@@ -226,3 +243,56 @@ def test_compiled_language_reference_kinds(path, text, needle, is_class, expecte
     kind = syntax.reference_kind(tree.root_node, (line, col), (line, col + len(needle)), is_class, syntax.grammar_for(path))
 
     assert kind == expected
+
+
+JAVA = """package p;
+
+import java.util.List;
+
+/** doc */
+@Deprecated
+public class A<T> extends B implements C {
+    private int x = 1, y;
+
+    public A(int a) {
+        this.x = a;
+    }
+
+    public <U> List<U> run(String s, int... r) throws E {
+        Runnable local = new Runnable() { public void run() {} };
+        return foo(s);
+    }
+
+    enum K { ONE, TWO; void f() {} }
+
+    interface I { void g(); }
+}
+
+record R(int a) {}
+"""
+
+
+def test_java_definitions_are_types_members_constructors_fields_and_enum_constants():
+    found = {d.key: (d.kind, d.decorated) for d in syntax.definitions("A.java", JAVA.encode())}
+
+    assert found == {
+        "A.java::A": ("class", True),
+        "A.java::A.x": ("property", False),
+        "A.java::A.y": ("property", False),
+        "A.java::A.constructor": ("method", False),
+        "A.java::A.run": ("method", False),
+        "A.java::A.K": ("enum", False),
+        "A.java::A.K.ONE": ("variant", False),
+        "A.java::A.K.TWO": ("variant", False),
+        "A.java::A.K.f": ("method", False),
+        "A.java::A.I": ("interface", False),
+        "A.java::A.I.g": ("method", False),
+        "A.java::R": ("class", False),
+    }
+
+
+def test_a_java_definition_starts_at_its_doc_comment_and_a_method_body_holds_no_definition():
+    defs = {d.key: d for d in syntax.definitions("A.java", JAVA.encode())}
+
+    assert defs["A.java::A"].start == 5 and defs["A.java::A"].name == "A"
+    assert not any(key.startswith("A.java::A.run.") for key in defs)
