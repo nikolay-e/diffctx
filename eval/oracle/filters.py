@@ -11,6 +11,10 @@ A reference is dropped, and counted by filter, when the site cannot be the relat
   other reference. A wrapper and the function it calls share a name, and a test calling the wrapper through a
   package was attributed to the function two hops away (click's `get_pager_file`).
 
+- fnexpr: the caller is a definition by assignment (`res.json = function json() {}`, whose extent is the whole
+  statement) and the site lies outside the function that is assigned: it is the assignment target, a use by the
+  module, which SCIP attributes to the function (R17; 7 of express's rows in the blind sample).
+
 Imports are never filtered, and only the two script languages are: the other indexers have no adjudicated errors.
 """
 
@@ -22,6 +26,7 @@ from typing import TYPE_CHECKING
 
 from model import Definition, grammar_for
 from scipindex import ROLE_IMPORT, Document, Occurrence, parse_symbol
+from syntax import FUNCTION_VALUES, SCRIPT_GRAMMARS
 
 if TYPE_CHECKING:
     from truth import Snapshot
@@ -65,6 +70,7 @@ class Filters:
             ("name", self._wrong_name(doc, text, target)),
             ("shadow", self._shadowed(doc, occ, text, caller, grammar or "")),
             ("homonym", self._homonym_without_path(doc, occ, target)),
+            ("fnexpr", self._outside_assigned_function(doc, occ, caller, grammar or "")),
         ):
             if failed:
                 self.dropped[reason] += 1
@@ -105,6 +111,24 @@ class Filters:
         lines = self.snapshot.source(doc.path).decode("utf-8", "replace").split("\n")
         before = "\n".join(lines[caller.start - 1 : occ.line])
         return any(re.search(pattern, before) for pattern in _bound(text, grammar))
+
+    def _outside_assigned_function(self, doc: Document, occ: Occurrence, caller: Definition | None, grammar: str) -> bool:
+        if caller is None or grammar not in SCRIPT_GRAMMARS:
+            return False
+        tree = self.snapshot.parsed(doc.path)
+        if tree is None:
+            return False
+        name = tree.root_node.named_descendant_for_point_range(
+            (caller.name_row, caller.name_col), (caller.name_row, caller.name_col + 1)
+        )
+        target = name.parent.parent if name is not None and name.parent is not None else None
+        if target is None or target.type != "assignment_expression" or name.parent.type != "member_expression":
+            return False
+        value = target.child_by_field_name("right")
+        if value is None or value.type not in FUNCTION_VALUES:
+            return False
+        site = (occ.line, self.snapshot.position(doc, occ)[0])
+        return not value.start_point <= site < value.end_point
 
     def _homonym_without_path(self, doc: Document, occ: Occurrence, target: Definition) -> bool:
         if target.container or doc.path == target.path:

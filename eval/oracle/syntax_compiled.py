@@ -251,7 +251,85 @@ class KotlinWalker(_Collector):
             self.add(node, label, "variable", container, [], first_line=leading_line(node))
 
 
-WALKERS: dict[str, type[_Collector]] = {"rust": RustWalker, "go": GoWalker, "kotlin": KotlinWalker}
+JAVA_TYPES = {
+    "class_declaration": "class",
+    "record_declaration": "class",
+    "interface_declaration": "interface",
+    "annotation_type_declaration": "interface",
+    "enum_declaration": "enum",
+}
+JAVA_HERITAGE = ("type_parameters", "superclass", "interfaces", "permits", "parameters")
+JAVA_CONSTRUCTORS = {"constructor_declaration", "compact_constructor_declaration"}
+
+
+class JavaWalker(_Collector):
+    """Types, methods, constructors (named `constructor`, as the TypeScript and Kotlin ones), fields and enum constants;
+    method bodies are not entered, so local and anonymous classes are no definitions."""
+
+    def run(self, root: Node) -> None:
+        for child in kids(root, True):
+            self.visit(child, ())
+
+    def visit(self, node: Node, container: tuple[str, ...]) -> None:
+        kind = node.type
+        if kind in JAVA_TYPES:
+            self.type_like(node, container)
+        elif kind == "method_declaration":
+            self.member(node, container, "method", None, fields(node, "type_parameters", "type", "parameters"))
+        elif kind in JAVA_CONSTRUCTORS:
+            self.member(node, container, "method", "constructor", fields(node, "parameters"))
+        elif kind == "field_declaration":
+            for declarator in named_fields(node, "declarator"):
+                name = declarator.child_by_field_name("name")
+                if name is not None:
+                    self.add(
+                        node,
+                        name,
+                        "property",
+                        container,
+                        fields(node, "type"),
+                        first_line=leading_line(node),
+                        decorated=self.annotated(node),
+                    )
+        elif kind == "enum_constant":
+            name = node.child_by_field_name("name")
+            if name is not None:
+                self.add(node, name, "variant", container, [], first_line=leading_line(node))
+        else:
+            for child in kids(node, True):
+                self.visit(child, container)
+
+    def annotated(self, node: Node) -> bool:
+        modifiers = next((c for c in kids(node, True) if c.type == "modifiers"), None)
+        return modifiers is not None and any(c.type in ("marker_annotation", "annotation") for c in kids(modifiers, True))
+
+    def member(self, node: Node, container: tuple[str, ...], kind: str, label: str | None, signature: list[Node | None]) -> None:
+        name = node.child_by_field_name("name")
+        if name is not None:
+            self.add(
+                node, name, kind, container, signature, first_line=leading_line(node), decorated=self.annotated(node), label=label
+            )
+
+    def type_like(self, node: Node, container: tuple[str, ...]) -> None:
+        name = node.child_by_field_name("name")
+        if name is None:
+            return
+        self.add(
+            node,
+            name,
+            JAVA_TYPES[node.type],
+            container,
+            fields(node, *JAVA_HERITAGE),
+            first_line=leading_line(node),
+            decorated=self.annotated(node),
+        )
+        inner = (*container, self.text(name))
+        body = node.child_by_field_name("body")
+        for member in kids(body, True) if body is not None else ():
+            self.visit(member, inner)
+
+
+WALKERS: dict[str, type[_Collector]] = {"rust": RustWalker, "go": GoWalker, "kotlin": KotlinWalker, "java": JavaWalker}
 
 
 def _ancestor(node: Node, kind: str) -> bool:
@@ -346,4 +424,37 @@ def _kotlin_kind(node: Node, is_class: bool) -> str:
     return "reads"
 
 
-REFERENCE_KINDS: dict[str, Callable[[Node, bool], str]] = {"rust": _rust_kind, "go": _go_kind, "kotlin": _kotlin_kind}
+def _java_kind(node: Node, is_class: bool) -> str:
+    while node.parent is not None and (
+        (node.parent.type == "field_access" and _same(node.parent.child_by_field_name("field"), node))
+        or (node.parent.type == "scoped_identifier" and _same(node.parent.child_by_field_name("name"), node))
+        or (
+            node.parent.type == "generic_type"
+            and node.parent.parent is not None
+            and node.parent.parent.type == "object_creation_expression"
+        )
+    ):
+        node = node.parent
+    parent = node.parent
+    if parent is None:
+        return "reads"
+    if _ancestor(parent, "import_declaration"):
+        return "imports"
+    if parent.type == "method_invocation" and _same(parent.child_by_field_name("name"), node):
+        return "calls"
+    if parent.type == "object_creation_expression" and _same(parent.child_by_field_name("type"), node):
+        return "instantiates"
+    if parent.type in ("method_reference", "argument_list"):
+        return "passes_as_value"
+    value_of = {"variable_declarator": "value", "assignment_expression": "right"}
+    if parent.type in value_of and _same(parent.child_by_field_name(value_of[parent.type]), node):
+        return "passes_as_value"
+    return "reads"
+
+
+REFERENCE_KINDS: dict[str, Callable[[Node, bool], str]] = {
+    "rust": _rust_kind,
+    "go": _go_kind,
+    "kotlin": _kotlin_kind,
+    "java": _java_kind,
+}

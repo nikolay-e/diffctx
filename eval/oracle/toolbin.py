@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import shutil
 import tarfile
@@ -9,9 +10,9 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from corpus import ROOT, Tool
+from corpus import CACHE, Tool
 
-BIN = ROOT / "cache" / "bin"
+BIN = CACHE / "bin"
 
 
 def tool_path(tool: Tool) -> Path:
@@ -40,7 +41,13 @@ def install_tool(tool: Tool) -> Path:
 
 
 def _place(tool: Tool, payload: Path, scratch: Path, target: Path) -> None:
-    with tarfile.open(payload) as tar:
-        tar.extractall(scratch / "out", filter="data")
-    unpacked = next(p for p in (scratch / "out").rglob(tool.name) if p.is_file())
-    shutil.move(str(unpacked), target)
+    if tool.archive == "file":
+        shutil.copyfile(payload, target)
+    elif tool.archive == "gz":
+        with gzip.open(payload, "rb") as source, target.open("wb") as sink:
+            shutil.copyfileobj(source, sink)
+    else:
+        with tarfile.open(payload) as tar:
+            tar.extractall(scratch / "out", filter="data")
+        unpacked = next(p for p in (scratch / "out").rglob(tool.name) if p.is_file())
+        shutil.move(str(unpacked), target)
