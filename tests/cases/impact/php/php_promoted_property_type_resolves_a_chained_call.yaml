@@ -1,0 +1,73 @@
+name: php_promoted_property_type_resolves_a_chained_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- promoted-property
+repo:
+  initial_files:
+    src/Service/Greeter.php: |
+      <?php
+      namespace App\Service;
+
+      class Greeter
+      {
+          public function hello(string $name): string
+          {
+              return "hi $name";
+          }
+      }
+    src/Http/Controller.php: |
+      <?php
+      namespace App\Http;
+
+      use App\Service\Greeter;
+
+      class Controller
+      {
+          public function __construct(private Greeter $greeter)
+          {
+          }
+
+          public function index(): string
+          {
+              return $this->greeter->hello('x');
+          }
+      }
+    src/Other/Salute.php: |
+      <?php
+      namespace App\Other;
+
+      class Salute
+      {
+          public function hello(): string
+          {
+              return "salut";
+          }
+      }
+  changed_files:
+    src/Service/Greeter.php: |
+      <?php
+      namespace App\Service;
+
+      class Greeter
+      {
+          public function hello(string $name): string
+          {
+              return "hello $name";
+          }
+      }
+  commit_message: Change promoted property type resolves a chained call
+expect:
+  changed:
+  - src/Service/Greeter.php::Greeter.hello
+  relations:
+  - from: src/Http/Controller.php::Controller.index
+    to: src/Service/Greeter.php::Greeter.hello
+    kind: calls
+    resolution: resolved
+    site: 14
+  decoys:
+    src/Service/Greeter.php::Greeter.hello:
+    - src/Other/Salute.php

@@ -4,9 +4,9 @@ A case builds a real git repository, runs the shipped binary on it and
 compares its JSON answer with a set of typed relations. The harness is
 `crates/diffctx-native/tests/yaml_cases.rs` with `tests/common/oracle/`; the
 cases sit in `tests/cases/impact/<language>/` and
-`tests/cases/symbol/<language>/`. `<language>` is one of `python`,
-`typescript` (JS included), `rust`, `kotlin`, `java`, `swift`, `go`, `shell`,
-`config`, `web`, `sql`, `other`.
+`tests/cases/symbol/<language>/`. `<language>` is one of `python`, `typescript`
+(JS included), `rust`, `kotlin`, `java`, `php`, `c`, `cpp`, `swift`, `go`,
+`shell`, `config`, `terraform`, `dockerfile`, `web`, `sql`, `other`.
 
 A case's trial name is `<mode>/<language>/<file stem>`; its stratum is
 `<mode>/<language>`, so `DIFFCTX_YAML_CASES_LIMIT` keeps every language alive.
@@ -76,9 +76,12 @@ expect:
   tested_by: {shop/checkout.py: tests/test_checkout.py}
   untested: [total]
   not_untested: [run]
+  entry_tested: [list_reviews]        # an entry role (route, command) names a test that reaches it
+  entry_not_tested: [archive]         # one that names none
   stale: [ops.md]
   not_stale: [README.md]
   named_by: [Dockerfile]
+  mention_class: {Dockerfile: command}  # the place a path is named from: code, config, command, prose, data, ignore_list
   not_named_by: [notes/transcript.md]
   contracts: [api/schema.py]
   not_contracts: [tests/test_api.py]
@@ -160,6 +163,11 @@ Everything is optional; an absent field asserts nothing.
 - `stale`, `named_by`, `contracts` and their `not_` forms are membership of
   paths in the answer's `stale_references`, `named_by` and `contracts`; for
   exact sets use `relations`.
+- `mention_class` reads the `class` of the row of `stale_references` or `named_by`
+  that names the path; `named_by` lists `code`, `config` and `command` only.
+- `entry_tested` / `entry_not_tested` read the entry role of a definition no
+  caller lists (`entry_unlisted`, or `changed[].entry`): whether the role says
+  `reachable from tests:`.
 - `untested` / `not_untested` read `changed[].untested` and the answer's
   untested lists. A definition the answer does not list at all is not
   "untested".

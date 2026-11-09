@@ -930,6 +930,53 @@ fn declared_type(signature: &str) -> Option<String> {
     (!written.is_empty()).then_some(written)
 }
 
+/// The first name of the qualifier of a write that is a key of an object literal
+/// handed to a call (`<arg0>` for the first argument), the callee's path after it.
+const ARGUMENT: &str = "<arg";
+
+/// The type written for the `index`th parameter of a signature (`( a : T , b : U )`
+/// or a function type `: ( a : T ) => U`): a name, as written, without its type
+/// arguments; none for a pattern, a literal type or a parameter with no type.
+fn parameter_type(signature: &str, index: usize) -> Option<String> {
+    let tokens: Vec<&str> = signature.split_whitespace().collect();
+    let open = tokens.iter().position(|t| *t == "(")?;
+    let mut depth = 0usize;
+    let mut parameters: Vec<Vec<&str>> = vec![Vec::new()];
+    for token in &tokens[open..] {
+        match *token {
+            "(" | "{" | "[" | "<" => {
+                depth += 1;
+                if depth > 1 {
+                    parameters.last_mut()?.push(*token);
+                }
+            }
+            ")" | "}" | "]" | ">" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    break;
+                }
+                parameters.last_mut()?.push(*token);
+            }
+            "," if depth == 1 => parameters.push(Vec::new()),
+            _ => parameters.last_mut()?.push(*token),
+        }
+    }
+    let parameter = parameters.get(index)?;
+    let colon = parameter.iter().position(|t| *t == ":")?;
+    let mut written = String::new();
+    for token in &parameter[colon + 1..] {
+        let name = token
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '$'));
+        if name || *token == "." {
+            written.push_str(token);
+        } else {
+            break;
+        }
+    }
+    (!written.is_empty()).then_some(written)
+}
+
 fn is_abstract(signature: Option<&str>) -> bool {
     signature.is_some_and(|s| s.split_whitespace().any(|t| t == "abstract"))
 }
@@ -2508,7 +2555,11 @@ impl<'a> Engine<'a> {
         }
         let mut seen = HashSet::new();
         ids.retain(|id| seen.insert(*id));
-        Some(ids)
+        // A property holding a function, which nothing replaces, is announced by
+        // its type and run by the object that holds it: a call of it is a call of
+        // the declaration. A method of an interface is announced for classes to
+        // implement, and stays a candidate where it stands alone.
+        (ids.len() > 1 || rec.def.kind == DefKind::Method).then_some(ids)
     }
 
     /// The files the file imports names or modules from, and the files those
@@ -2889,6 +2940,12 @@ impl<'a> Engine<'a> {
         if let (true, Receiver::Typed(written)) = (r.qualifier.is_empty(), &r.receiver) {
             return self.literal_key(f, r, written.as_str());
         }
+        if r.qualifier
+            .first()
+            .is_some_and(|marker| marker.as_str().starts_with(ARGUMENT))
+        {
+            return self.argument_key(f, r);
+        }
         let (base, kind) = self.base_entity(f, r, depth);
         let via_module = matches!(base, Entity::Module(_));
         match self.member(f, &base, &r.name) {
@@ -2924,8 +2981,15 @@ impl<'a> Engine<'a> {
     /// declared as. A type the repository does not hold, or one no member of
     /// which has the name, claims nothing and is no unknown.
     fn literal_key(&self, f: usize, r: &Ref, written: &str) -> Outcome {
-        match self.type_name_entity(f, &r.enclosing, written) {
-            Entity::Instance(class) => match self.class_member(class, &r.name, false, false) {
+        self.member_of_type(self.type_name_entity(f, &r.enclosing, written), &r.name)
+    }
+
+    /// The member `name` of the type an entity stands for: an instance of a class
+    /// or interface of the repository has it or has not; a type the repository
+    /// does not hold claims nothing.
+    fn member_of_type(&self, typed: Entity, name: &Name) -> Outcome {
+        match typed {
+            Entity::Instance(class) => match self.class_member(class, name, false, false) {
                 Lookup::Found {
                     entity,
                     through,
@@ -2946,6 +3010,44 @@ impl<'a> Engine<'a> {
             },
             Entity::External => Outcome::Unresolved(UnresolvedReason::External),
             _ => Outcome::Unresolved(UnresolvedReason::Builtin),
+        }
+    }
+
+    /// The key of an object literal handed to a call as one argument: a member of
+    /// the type the callee declares for that parameter. A callee the code does not
+    /// type, or one whose parameter is written no way a name can be read from,
+    /// leaves the write unresolved and unknown: it may be a member of any type,
+    /// and the answer says so.
+    fn argument_key(&self, f: usize, r: &Ref) -> Outcome {
+        let untyped = Outcome::Unresolved(UnresolvedReason::UntypedRead);
+        let Some((marker, callee)) = r.qualifier.split_first() else {
+            return untyped;
+        };
+        let digits = marker
+            .as_str()
+            .strip_prefix(ARGUMENT)
+            .and_then(|rest| rest.strip_suffix('>'))
+            .unwrap_or("");
+        let Ok(index) = digits.parse::<usize>() else {
+            return untyped;
+        };
+        match self.path_entity(f, &r.enclosing, callee, 0) {
+            Entity::External => Outcome::Unresolved(UnresolvedReason::External),
+            Entity::Builtin => Outcome::Unresolved(UnresolvedReason::Builtin),
+            Entity::Def(id) => {
+                let rec = &self.ix.defs[id];
+                let Some(written) = rec
+                    .def
+                    .signature
+                    .as_deref()
+                    .and_then(|signature| parameter_type(signature, index))
+                else {
+                    return untyped;
+                };
+                let scope = self.container_scope(rec);
+                self.member_of_type(self.type_name_entity(rec.file, &scope, &written), &r.name)
+            }
+            _ => untyped,
         }
     }
 

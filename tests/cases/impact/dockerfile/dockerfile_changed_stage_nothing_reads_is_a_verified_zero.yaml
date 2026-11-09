@@ -1,0 +1,26 @@
+name: dockerfile_changed_stage_nothing_reads_is_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- absence-claim
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS tools
+      RUN echo a
+
+      FROM alpine:3.20 AS final
+      CMD ["true"]
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS tools
+      RUN echo b
+
+      FROM alpine:3.20 AS final
+      CMD ["true"]
+  commit_message: Change changed stage nothing reads is a verified zero
+expect:
+  callers:
+    tools: []

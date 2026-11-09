@@ -64,6 +64,12 @@ pub enum Loss {
         path: RepoPath,
         lines: Vec<(u32, u32)>,
     },
+    /// The pinned grammar reports these lines as errors, and a newer release of
+    /// it reads them: the file is not malformed, the grammar is out of date.
+    GrammarOutdated {
+        path: RepoPath,
+        lines: Vec<(u32, u32)>,
+    },
     /// No extractor for the file's language.
     Unsupported {
         path: RepoPath,
@@ -93,6 +99,7 @@ impl Loss {
             Self::NotAnalysed { .. } => "not_analysed",
             Self::ManifestUnread { .. } => "manifest_unread",
             Self::ParseError { .. } => "parse_error",
+            Self::GrammarOutdated { .. } => "grammar_outdated",
             Self::Unsupported { .. } => "unsupported",
             Self::Deadline { .. } => "deadline",
             Self::ExtractorFailed { .. } => "extractor_failed",
@@ -109,6 +116,7 @@ impl Loss {
             | Self::NotAnalysed { path, .. }
             | Self::ManifestUnread { path, .. }
             | Self::ParseError { path, .. }
+            | Self::GrammarOutdated { path, .. }
             | Self::Unsupported { path }
             | Self::ExtractorFailed { path }
             | Self::AmbiguousMatch { path } => Some(path),
@@ -128,12 +136,27 @@ impl Loss {
             Self::NotAnalysed { reason, .. } => Self::NotAnalysed { path, reason },
             Self::ManifestUnread { reason, .. } => Self::ManifestUnread { path, reason },
             Self::ParseError { lines, .. } => Self::ParseError { path, lines },
+            Self::GrammarOutdated { lines, .. } => Self::GrammarOutdated { path, lines },
             Self::Unsupported { .. } => Self::Unsupported { path },
             Self::ExtractorFailed { .. } => Self::ExtractorFailed { path },
             Self::AmbiguousMatch { .. } => Self::AmbiguousMatch { path },
             other @ (Self::Withheld { .. } | Self::Deadline { .. }) => other,
         }
     }
+}
+
+fn spans(lines: &[(u32, u32)]) -> String {
+    lines
+        .iter()
+        .map(|(from, to)| {
+            if from == to {
+                from.to_string()
+            } else {
+                format!("{from}-{to}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl fmt::Display for Loss {
@@ -154,18 +177,13 @@ impl fmt::Display for Loss {
             }
             Self::ManifestUnread { path, reason } => write!(f, "{path}: {reason}"),
             Self::ParseError { path, lines } => {
-                let spans: Vec<String> = lines
-                    .iter()
-                    .map(|(from, to)| {
-                        if from == to {
-                            from.to_string()
-                        } else {
-                            format!("{from}-{to}")
-                        }
-                    })
-                    .collect();
-                write!(f, "{path}: parse errors at lines {}", spans.join(", "))
+                write!(f, "{path}: parse errors at lines {}", spans(lines))
             }
+            Self::GrammarOutdated { path, lines } => write!(
+                f,
+                "{path}: the pinned grammar reads lines {} as errors and a newer release reads them",
+                spans(lines)
+            ),
             Self::Unsupported { path } => write!(f, "{path}: no extractor for its language"),
             Self::Deadline { stage } => write!(f, "the run stopped in the {stage:?} stage"),
             Self::ExtractorFailed { path } => write!(f, "{path}: the extractor failed"),

@@ -336,10 +336,24 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
         callers(&doc, path, "toDto"),
         [
             format!("{svc}::details resolved"),
-            format!("{svc}::viaInterface candidate"),
             format!("{svc}::viaLocal resolved"),
             format!("{svc}::viaThis resolved"),
         ]
+    );
+    // The call through the interface is a `Dispatch` candidate of the resolver;
+    // the fold table folds a candidate of a body-only change into a count, which
+    // still names it.
+    let folded = changed(&doc, path, "toDto")["folded"].as_array().unwrap();
+    assert_eq!(folded.len(), 1, "{folded:?}");
+    assert_eq!(folded[0]["rule"], "untyped-receiver");
+    assert_eq!(folded[0]["count"], 1);
+    assert_eq!(folded[0]["exact"], true);
+    assert!(
+        folded[0]["examples"][0]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("{svc}::viaInterface")),
+        "{folded:?}"
     );
     let details = changed(&doc, path, "toDto")["callers"]
         .as_array()

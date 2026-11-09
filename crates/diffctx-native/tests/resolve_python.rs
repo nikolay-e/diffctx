@@ -351,6 +351,29 @@ fn owner(scope: &Scope) -> Option<&LocalKey> {
     }
 }
 
+/// Whether a node written `Class.member` names the member of that class: the
+/// bare name `Node::covers` compares is no tell between `Base.x` and `Sub.x`, and
+/// a use that lands on the one is not a use of the other. A node with no
+/// container, or a definition at module level under one, is judged by the bare
+/// name alone.
+fn in_the_class_the_node_names(node: &Node, local: &LocalKey) -> bool {
+    let Some(symbol) = node
+        .symbol
+        .as_deref()
+        .filter(|_| !local.container.is_empty())
+    else {
+        return true;
+    };
+    let segments: Vec<&str> = symbol.split(['.', ':']).filter(|s| !s.is_empty()).collect();
+    match segments.len().checked_sub(2).map(|at| segments[at]) {
+        Some(container) => local
+            .container
+            .last()
+            .is_some_and(|c| c.as_str() == container),
+        None => true,
+    }
+}
+
 /// The definitions a node names in the head, and those only the base has.
 fn definitions_of<'f>(fixture: &'f Fixture, node: &Node) -> Vec<(&'f PythonResolver, DefKey)> {
     let named = |resolver: &'f PythonResolver| -> Vec<DefKey> {
@@ -361,7 +384,7 @@ fn definitions_of<'f>(fixture: &'f Fixture, node: &Node) -> Vec<(&'f PythonResol
                 node.covers(&Node {
                     path: d.file.to_string(),
                     symbol: Some(d.key.local.name.to_string()),
-                })
+                }) && in_the_class_the_node_names(node, &d.key.local)
             })
             .map(|d| d.key.clone())
             .collect()
@@ -1078,6 +1101,93 @@ fn self_super_and_overrides_follow_the_bases() {
         .collect();
     assert_eq!(overrides.len(), 1, "{overrides:#?}");
     assert_eq!(fx.lands(overrides[0]), "shapes.py::Base.run");
+}
+
+/// Every binding of `name` on `line` of `file`, imports apart, as the lines
+/// `lands` writes, sorted.
+fn all_at(fx: &Fixture, file: &str, name: &str, line: u32) -> Vec<String> {
+    let mut lands: Vec<String> = fx
+        .head
+        .bindings()
+        .iter()
+        .filter(|b| {
+            b.file.as_str() == file
+                && b.name.as_str() == name
+                && b.site.lines.0 == line
+                && !matches!(b.relation, Relation::Imports | Relation::Reexports)
+        })
+        .map(|b| fx.lands(b))
+        .collect();
+    lands.sort();
+    lands
+}
+
+/// A base class that reads `self.x` reads, in a subclass that defines `x`, the
+/// subclass's: found on the class itself it is resolved, and any subclass that
+/// replaces it is a possible reader's target. The verdict of a changed subclass
+/// attribute then has a reader and is not claimed unused (rich `956bfa5f`: the
+/// `highlights` of `ReprHighlighter`, read by `RegexHighlighter.highlight`).
+#[test]
+fn a_base_class_read_through_self_may_reach_every_subclass_definition() {
+    let fx = snapshot(&[(
+        "hl.py",
+        "class Base:\n    highlights = []\n\n    def run(self):\n        for h in self.highlights:\n            print(h)\n        return self.render()\n\n    def render(self):\n        return 1\n\n\nclass Child(Base):\n    highlights = [\"a\"]\n\n    def render(self):\n        return 2\n\n\nclass Grandchild(Child):\n    highlights = [\"b\"]\n\n\nclass Other:\n    highlights = [\"c\"]\n",
+    )]);
+    // Never resolved to a subclass, and never to a class that is no subclass.
+    assert_eq!(
+        all_at(&fx, "hl.py", "highlights", 5),
+        [
+            "candidate(Dispatch) hl.py::Child.highlights, hl.py::Grandchild.highlights",
+            "hl.py::Base.highlights",
+        ]
+    );
+    assert_eq!(
+        all_at(&fx, "hl.py", "render", 7),
+        [
+            "candidate(Dispatch) hl.py::Child.render",
+            "hl.py::Base.render"
+        ]
+    );
+    let candidates: Vec<&Binding> = fx
+        .head
+        .bindings()
+        .iter()
+        .filter(|b| {
+            matches!(
+                b.resolution,
+                Resolution::Candidate {
+                    reason: CandidateReason::Dispatch,
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(candidates.len(), 2, "{candidates:#?}");
+}
+
+/// `cls.x` in a class method is the same read, and a write through `self` is
+/// no read of any subclass.
+#[test]
+fn a_classmethod_read_and_a_write_through_the_receiver() {
+    let fx = snapshot(&[(
+        "k.py",
+        "class Maker:\n    kind = \"x\"\n\n    @classmethod\n    def make(cls):\n        return cls.kind\n\n    def reset(self):\n        self.kind = \"z\"\n\n\nclass SubMaker(Maker):\n    kind = \"y\"\n",
+    )]);
+    assert_eq!(
+        all_at(&fx, "k.py", "kind", 6),
+        [
+            "candidate(Dispatch) k.py::SubMaker.kind",
+            "k.py::Maker.kind"
+        ]
+    );
+    let writes: Vec<String> = fx
+        .head
+        .bindings()
+        .iter()
+        .filter(|b| b.relation == Relation::Writes)
+        .map(|b| fx.lands(b))
+        .collect();
+    assert!(writes.iter().all(|w| !w.contains("Dispatch")), "{writes:?}");
 }
 
 /// A call through an untyped receiver is a candidate within a package and

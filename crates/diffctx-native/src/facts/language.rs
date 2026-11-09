@@ -15,6 +15,27 @@ pub enum Language {
     Kotlin,
     Go,
     Java,
+    Php,
+    C,
+    Cpp,
+    /// YAML read as configuration data: objects, the references between them,
+    /// the places they name.
+    Config,
+    /// A Helm chart's template (`templates/**.yaml`, `*.tpl`): YAML around Go
+    /// template actions, read around them. Named templates and the values it
+    /// reads are its facts.
+    HelmTemplate,
+    /// A Helm values file (`values.yaml`, `values-prod.yaml`): the keys it sets.
+    HelmValues,
+    Terraform,
+    /// A Dockerfile: its stages, the places and variables its instructions name.
+    Dockerfile,
+    /// A shell script. The bash grammar reads `sh` and `bash`; a script whose
+    /// shebang names another shell is unread, with a loss that says so.
+    Shell,
+    /// A script for a shell the bash grammar does not read (zsh, ksh, fish),
+    /// by its extension or its shebang: no facts, and a loss that says so.
+    ShellUnread,
 }
 
 /// How far into a file the shebang line is looked for.
@@ -23,11 +44,27 @@ const SHEBANG_BYTES: usize = 256;
 impl Language {
     /// By the file name's extension.
     pub fn from_path(path: &RepoPath) -> Option<Self> {
+        let name = path.file_name().to_ascii_lowercase();
+        if matches!(name.as_str(), "dockerfile" | "containerfile")
+            || name.starts_with("dockerfile.")
+            || name.starts_with("containerfile.")
+            || name.ends_with(".dockerfile")
+            || name.ends_with(".containerfile")
+        {
+            return Some(Self::Dockerfile);
+        }
         let (stem, extension) = path.file_name().rsplit_once('.')?;
         if stem.is_empty() {
             return None;
         }
-        Some(match extension.to_ascii_lowercase().as_str() {
+        let extension = extension.to_ascii_lowercase();
+        if is_helm_template(path.as_str(), &extension) {
+            return Some(Self::HelmTemplate);
+        }
+        if matches!(extension.as_str(), "yaml" | "yml") && is_values_stem(stem) {
+            return Some(Self::HelmValues);
+        }
+        Some(match extension.as_str() {
             "py" | "pyi" => Self::Python,
             "js" | "jsx" | "mjs" | "cjs" => Self::JavaScript,
             "ts" | "tsx" | "mts" | "cts" => Self::TypeScript,
@@ -35,8 +72,23 @@ impl Language {
             "kt" | "kts" => Self::Kotlin,
             "go" => Self::Go,
             "java" => Self::Java,
+            "php" | "phtml" | "php3" | "php4" | "php5" | "php7" | "phps" => Self::Php,
+            "c" | "h" => Self::C,
+            "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "c++" | "h++" | "ipp" | "tpp" => {
+                Self::Cpp
+            }
+            "yaml" | "yml" => Self::Config,
+            "tf" | "tfvars" => Self::Terraform,
+            "sh" | "bash" | "dash" => Self::Shell,
+            "zsh" | "ksh" | "fish" => Self::ShellUnread,
             _ => return None,
         })
+    }
+
+    /// The languages the configuration family reads: objects, their references,
+    /// and what a chart's templates and values say.
+    pub const fn is_config_family(self) -> bool {
+        matches!(self, Self::Config | Self::HelmTemplate | Self::HelmValues)
     }
 
     /// Whether the file name carries no extension, which leaves its language to
@@ -77,6 +129,8 @@ impl Language {
         match interpreter {
             "node" | "nodejs" | "bun" | "deno" => Some(Self::JavaScript),
             "ts-node" | "tsx" => Some(Self::TypeScript),
+            "bash" | "sh" | "dash" | "ash" => Some(Self::Shell),
+            "zsh" | "ksh" | "fish" => Some(Self::ShellUnread),
             _ => None,
         }
     }
@@ -90,8 +144,41 @@ impl Language {
             Self::Kotlin => "kotlin",
             Self::Go => "go",
             Self::Java => "java",
+            Self::Php => "php",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Config => "config",
+            Self::HelmTemplate => "helm-template",
+            Self::HelmValues => "helm-values",
+            Self::Terraform => "terraform",
+            Self::Dockerfile => "dockerfile",
+            Self::Shell => "shell",
+            Self::ShellUnread => "shell-unread",
         }
     }
+}
+
+/// A file of a chart's `templates/` directory that is YAML or a named template,
+/// or a `_*.tpl` anywhere.
+fn is_helm_template(path: &str, extension: &str) -> bool {
+    let in_templates = path.split('/').rev().skip(1).any(|dir| dir == "templates");
+    match extension {
+        "yaml" | "yml" => in_templates,
+        "tpl" => in_templates || path.rsplit('/').next().is_some_and(|n| n.starts_with('_')),
+        _ => false,
+    }
+}
+
+/// `values`, `values-prod`, `values.prod`, `prod-values`, `prod.values`.
+fn is_values_stem(stem: &str) -> bool {
+    let lower = stem.to_ascii_lowercase();
+    lower == "values"
+        || lower.starts_with("values-")
+        || lower.starts_with("values.")
+        || lower.starts_with("values_")
+        || lower.ends_with("-values")
+        || lower.ends_with(".values")
+        || lower.ends_with("_values")
 }
 
 fn basename(word: &str) -> &str {

@@ -1,0 +1,21 @@
+name: ts_default_export_that_changes_only_its_form_is_one_export
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, contracts, rule-i]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number): number {
+        return x * y;
+      }
+  commit_message: "rate: a named function declaration"
+# The module's default export is still a function with the same parameters and
+# return type: the facts see `default` removed and `mono` added, the surface did not
+# move. No export is removed, none is added.
+expect:
+  removed: []
+  not_contracts: [src/rate.ts]

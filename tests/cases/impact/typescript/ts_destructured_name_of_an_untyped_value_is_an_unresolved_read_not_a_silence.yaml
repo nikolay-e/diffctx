@@ -1,0 +1,32 @@
+name: ts_destructured_name_of_an_untyped_value_is_an_unresolved_read_not_a_silence
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- typescript
+- destructuring
+- gap
+repo:
+  initial_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: number;
+      }
+    src/u.ts: |
+      export const viaInferred = ({attempt}) => attempt + 1;
+  changed_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: bigint;
+      }
+  commit_message: ts destructured name of an untyped value is an unresolved read not a silence
+expect:
+  callers:
+    attempt: []
+  unknowns:
+    attempt: unresolved_reads
+  coverage:
+    src/t.ts::Retry.attempt:
+      reads: partial
+  no_negative_claims: true
+  never_empty: true

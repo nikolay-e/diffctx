@@ -355,6 +355,22 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
             ));
         }
     }
+    for name in &expect.entry_tested {
+        let node = Node::target(name);
+        if !answer.entry_tested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is not reported as an entry a test reaches"
+            ));
+        }
+    }
+    for name in &expect.entry_not_tested {
+        let node = Node::target(name);
+        if !answer.entry_not_tested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is not reported as an entry no test reaches"
+            ));
+        }
+    }
     for path in &expect.stale {
         if !answer.stale.contains(path) {
             failures.push(format!("`{path}` is not listed as a stale reference"));
@@ -368,6 +384,19 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
     for path in &expect.named_by {
         if !answer.named_by.contains(path) {
             failures.push(format!("`{path}` is not listed as naming a changed file"));
+        }
+    }
+    for (path, class) in &expect.mention_class {
+        let found: Vec<&str> = answer
+            .mention_classes
+            .iter()
+            .filter(|(p, _)| p == path)
+            .map(|(_, c)| c.as_str())
+            .collect();
+        if !found.contains(&class.as_str()) {
+            failures.push(format!(
+                "`{path}` names the change from a place of class `{class}`; the answer says {found:?}"
+            ));
         }
     }
     for path in &expect.not_named_by {

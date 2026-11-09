@@ -130,26 +130,21 @@ impact/python/py_flask_route_helper_is_reached_by_the_test_that_posts_to_it  # f
 # Other languages (W1-C), triaged at integration 1.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
 impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open
-impact/go/go_body_only_change_reaches_callers  # synthetic open
+impact/go/go_new_with_an_expression_parses  # gh#690 open: tree-sitter-go 0.25 reads `new(` as a type argument list, so Go 1.26 `new(42)` is a parse error and the file is honestly analysed in part; waits on a grammar that parses it
 impact/other/dart_changed_method_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/elixir_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/lua_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
-impact/java/java_enum_method_called_through_a_constant  # gh#424 open
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
 symbol/other/erlang_symbol_type_alias_is_a_definition  # gh#616 open
 symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
 impact/swift/swift_executable_target_is_reached_by_tests_through_its_product  # gh#535 open
-impact/go/go_changed_package_constant_reaches_its_readers  # gh#605 open
-impact/go/go_new_with_an_expression_parses  # gh#690 open
 symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
 impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
 impact/config/config_bare_filename_resolves_to_the_file_beside_it  # gh#670 open
 impact/config/config_deleted_path_is_not_named_by_a_shared_module_name  # gh#660 open
 impact/config/config_glob_now_selects_an_added_path  # gh#522 open
-impact/config/config_helm_values_key_is_read_by_a_template  # fj#128 open
 impact/config/config_image_digest_pin_names_the_manifest  # fj#128 open
-impact/config/config_k8s_object_names_are_references  # gh#352 open
 impact/config/config_kustomize_inclusion_entry_for_a_content_edit  # gh#564 open
 impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
 impact/config/config_pure_rename_is_no_changed_contract  # gh#593 open

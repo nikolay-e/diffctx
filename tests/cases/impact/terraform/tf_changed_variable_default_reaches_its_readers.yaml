@@ -1,0 +1,79 @@
+name: tf_changed_variable_default_reaches_its_readers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- body-only
+- no-fold
+- smoke
+repo:
+  initial_files:
+    main.tf: |
+      variable "region" {
+        default = "eu"
+      }
+
+      locals {
+        prefix = "${var.region}-app"
+      }
+
+      resource "terraform_data" "region" {
+        input = local.prefix
+      }
+
+      output "bucket" {
+        value = var.region
+      }
+    terraform.tfvars: |
+      region = "ap"
+    modules/net/main.tf: |
+      variable "region" {}
+
+      output "region" {
+        value = var.region
+      }
+  changed_files:
+    main.tf: |
+      variable "region" {
+        default = "us"
+      }
+
+      locals {
+        prefix = "${var.region}-app"
+      }
+
+      resource "terraform_data" "region" {
+        input = local.prefix
+      }
+
+      output "bucket" {
+        value = var.region
+      }
+  commit_message: 'main: default region us'
+expect:
+  changed:
+  - main.tf::var.region
+  relations:
+  - from: main.tf::local.prefix
+    to: main.tf::var.region
+    kind: reads
+    resolution: resolved
+    site: 6
+  - from: main.tf::output.bucket
+    to: main.tf::var.region
+    kind: reads
+    resolution: resolved
+    site: 14
+  - from: terraform.tfvars
+    to: main.tf::var.region
+    kind: writes
+    resolution: resolved
+    site: 1
+  exact: true
+  decoys:
+    main.tf::var.region:
+    - modules/net/main.tf
+  coverage:
+    main.tf::var.region:
+      reads: complete

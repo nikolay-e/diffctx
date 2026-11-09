@@ -29,7 +29,22 @@ pub fn locate(
             .package_of(path)
             .map(|package| package.name)
             .unwrap_or_else(|| stem(inside(root, path)).to_string()),
-        Language::JavaScript | Language::TypeScript => stem(inside(root, path)).to_string(),
+        Language::JavaScript
+        | Language::TypeScript
+        | Language::Php
+        | Language::Config
+        | Language::HelmTemplate
+        | Language::HelmValues
+        | Language::Shell
+        | Language::ShellUnread => stem(inside(root, path)).to_string(),
+        // A header and its source share a stem and both define the name.
+        Language::C | Language::Cpp => inside(root, path).to_string(),
+        // A module is a directory, whatever manifest or lockfile the project has.
+        Language::Terraform => path
+            .rsplit_once('/')
+            .map_or(String::new(), |(directory, _)| directory.to_string()),
+        // `Dockerfile.dev` and `Dockerfile.prod` share a stem.
+        Language::Dockerfile => inside(root, path).to_string(),
     };
     (ProjectId::new(root), ModulePath::new(module))
 }

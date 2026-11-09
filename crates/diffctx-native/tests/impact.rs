@@ -5769,6 +5769,146 @@ fn a_body_only_change_folds_the_module_own_export_of_the_function() {
     }
 }
 
+/// A constructor function the module exports with `module.exports = Layer`, whose
+/// prototype the module fills, is a definition like any: a change of its body
+/// leaves the export as it was, and the writes of the prototype stay the readers
+/// they are.
+#[test]
+fn a_body_only_change_of_an_exported_constructor_function_folds_its_export() {
+    let before = "var parse = require('path-to-regexp')\n\nmodule.exports = Layer\n\nfunction Layer (path, fn) {\n  if (!(this instanceof Layer)) {\n    return new Layer(path, fn)\n  }\n  this.handle = fn\n  this.name = fn.name || '<anonymous>'\n}\n\nLayer.prototype.handle_error = function handle_error (error, req) {\n  return this.handle(error, req)\n}\n";
+    let after = before.replace("'<anonymous>'", "'<anon>'");
+    let tmp = repo(
+        &[
+            ("layer.js", before),
+            (
+                "router.js",
+                "var Layer = require('./layer')\nexports.make = function () { return new Layer('/', function () {}) }\n",
+            ),
+        ],
+        &[("layer.js", after.as_str())],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "Layer")["folded"][0];
+    assert_eq!(folded["rule"], "imports-a-body", "{doc:#}");
+    assert_eq!(folded["kind"], "reexports", "{doc:#}");
+    assert_eq!(folded["count"], 1, "{doc:#}");
+}
+
+/// A module that exports `Route` and also reads it: a body-only change folds the
+/// export row and lists the read. Rows of different relation kinds from one
+/// caller (`<module>`) are never one row, so the fold of the one is never the
+/// fold of the other.
+#[test]
+fn a_body_only_change_folds_the_export_and_lists_the_modules_own_read_of_it() {
+    let before = "module.exports = Route\n\nfunction Route (path) {\n  this.path = path\n  this.stack = []\n}\n\nvar ctor = Route\n\nRoute.prototype.dispatch = function dispatch () {\n  return new ctor(this.path)\n}\n";
+    let after = before.replace("this.stack = []", "this.stack = [path]");
+    let tmp = repo(&[("route.js", before)], &[("route.js", after.as_str())]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let folded = &row(&doc, "Route")["folded"];
+    assert_eq!(folded.as_array().map(Vec::len), Some(1), "{doc:#}");
+    assert_eq!(folded[0]["rule"], "imports-a-body", "{doc:#}");
+    assert_eq!(folded[0]["kind"], "reexports", "{doc:#}");
+    assert_eq!(folded[0]["count"], 1, "{doc:#}");
+    assert!(
+        callers_of(&doc, "Route").contains(&"route.js"),
+        "the read stays listed: {doc:#}"
+    );
+    let unfolded = impact_unfolded(tmp.path());
+    let listed = row(&unfolded, "Route")["callers"]
+        .as_array()
+        .expect("callers");
+    let marked: Vec<&serde_json::Value> = listed
+        .iter()
+        .filter(|c| c.get("folded_by").is_some_and(|f| !f.is_null()))
+        .collect();
+    assert_eq!(marked.len(), 1, "{unfolded:#}");
+    assert_eq!(marked[0]["relation"], "reexports", "{unfolded:#}");
+    assert!(
+        listed.iter().any(|c| {
+            c["relation"] != "reexports" && c.get("folded_by").is_none_or(|f| f.is_null())
+        }),
+        "a row that is not the export is listed unfolded: {unfolded:#}"
+    );
+}
+
+/// An added helper that a changed, tested function calls from a local variable's
+/// initialiser (`const ok = a && this.passes()`) is reached by the test through
+/// that function: the use belongs to the function, not to the variable, so the
+/// helper is named untested nowhere (R14': it names no user of its own range).
+#[test]
+fn an_added_helper_used_in_a_local_of_a_tested_changed_function_is_tested_through_it() {
+    let tmp = repo(
+        &[
+            (
+                "src/manager.ts",
+                "export class Manager {\n  private level = 0;\n  submit(correct: boolean, streak: number): number {\n    const promote = correct && streak >= 3;\n    if (promote) {\n      this.level = this.level + 1;\n    }\n    return this.level;\n  }\n}\n",
+            ),
+            (
+                "tests/manager.test.ts",
+                "import { Manager } from '../src/manager';\n\nit('promotes after three', () => {\n  const m = new Manager();\n  expect(m.submit(true, 3)).toBe(1);\n});\n",
+            ),
+        ],
+        &[(
+            "src/manager.ts",
+            "export class Manager {\n  private level = 0;\n  private passes(): boolean { return this.level < 4; }\n  submit(correct: boolean, streak: number): number {\n    const promote = correct && streak >= 3 && this.passes();\n    if (promote) {\n      this.level = this.level + 1;\n    }\n    return this.level;\n  }\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        doc["untested_definitions"].as_u64().unwrap_or(0),
+        0,
+        "{doc:#}"
+    );
+    assert!(
+        !doc.to_string().contains("manager.ts::passes"),
+        "nothing names the added helper: {doc:#}"
+    );
+}
+
+/// A member an interface inherits, written through a type assertion on the
+/// receiver (`(options as Opts).pagination = …`, `Opts extends Base`): the
+/// write is a use of `Base.pagination` by the function, which a test calls. The
+/// receiver is `Opts`, not what `options` was declared as, and the member is
+/// found on the `extends` chain.
+#[test]
+fn a_member_written_through_an_assertion_on_an_inherited_interface_has_its_user() {
+    let tmp = repo(
+        &[
+            (
+                "src/types.ts",
+                "export interface Base {\n  pagination?: { limit: number };\n}\nexport interface Opts extends Base {\n  other?: string;\n}\nexport interface Norm {\n  pagination?: { limit: number };\n  other?: string;\n}\n",
+            ),
+            (
+                "src/use.ts",
+                "import {Opts, Norm} from './types';\nexport function normalize(options: Norm, defaults?: Norm) {\n  if (defaults) {\n    (options as Opts).pagination = {...defaults.pagination};\n  }\n  return options;\n}\n",
+            ),
+            (
+                "test/use.test.ts",
+                "import {normalize} from '../src/use';\nexport function t() {\n  return normalize({});\n}\n",
+            ),
+        ],
+        &[(
+            "src/types.ts",
+            "export interface Base {\n  pagination?: { limit: number; stack?: boolean };\n}\nexport interface Opts extends Base {\n  other?: string;\n}\nexport interface Norm {\n  pagination?: { limit: number };\n  other?: string;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let users: Vec<&str> = doc["changed"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| {
+            c["symbol"]
+                .as_str()
+                .is_some_and(|s| s == "pagination" || s.ends_with(".pagination"))
+                && c["path"] == "src/types.ts"
+        })
+        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .filter_map(|c| c["path"].as_str())
+        .collect();
+    assert!(users.contains(&"src/use.ts"), "{users:?}: {doc:#}");
+}
+
 /// R19: a removal leaves the export dangling, which breaks the module at load,
 /// so the export is listed, never folded.
 #[test]
@@ -5962,6 +6102,200 @@ fn an_interface_change_folds_nothing() {
         )],
     );
     nothing_folds(&impact(tmp.path(), "HEAD~1..HEAD"));
+}
+
+/// A removed interface that an unchanged file still imports and annotates with is
+/// a break: the file is listed with it, and "nothing references it" never stands
+/// over a search that saw no type use (a removed type has only those).
+#[test]
+fn a_removed_interface_an_unchanged_file_still_imports_is_not_unreferenced() {
+    let tmp = repo(
+        &[
+            (
+                "src/types.ts",
+                "export interface Response {\n  body: string;\n}\nexport type Kind = 'a' | 'b';\n",
+            ),
+            (
+                "src/use.ts",
+                "import {Response} from './types';\nexport function parse(r: Response): string {\n  return r.body;\n}\n",
+            ),
+        ],
+        &[("src/types.ts", "export type Kind = 'a' | 'b';\n")],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("nothing references it"), "{md}");
+    assert!(md.contains("referenced from src/use.ts"), "{md}");
+}
+
+/// The same break in every family with type uses or imports: a type removed from
+/// the file that defined it, still named by a file nobody changed, is never
+/// "nothing references it". One repository per family, one run, every family that
+/// slipped named in the failure.
+#[test]
+fn a_removed_type_still_named_at_the_head_is_not_unreferenced_in_any_family() {
+    struct Case {
+        family: &'static str,
+        base: &'static [(&'static str, &'static str)],
+        changed: &'static [(&'static str, &'static str)],
+        user: &'static str,
+    }
+    let cases = [
+        Case {
+            family: "python",
+            base: &[
+                (
+                    "models.py",
+                    "class Response:\n    body = \"\"\n\n\nKind = \"a\"\n",
+                ),
+                (
+                    "use.py",
+                    "from models import Response\n\n\ndef parse(r: Response) -> str:\n    return r.body\n",
+                ),
+            ],
+            changed: &[("models.py", "Kind = \"a\"\n")],
+            user: "use.py",
+        },
+        Case {
+            family: "rust",
+            base: &[
+                (
+                    "Cargo.toml",
+                    "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                ),
+                ("src/lib.rs", "pub mod types;\npub mod user;\n"),
+                (
+                    "src/types.rs",
+                    "pub struct Response {\n    pub body: String,\n}\n\npub struct Kind;\n",
+                ),
+                (
+                    "src/user.rs",
+                    "use crate::types::Response;\n\npub fn parse(r: &Response) -> usize {\n    r.body.len()\n}\n",
+                ),
+            ],
+            changed: &[("src/types.rs", "pub struct Kind;\n")],
+            user: "src/user.rs",
+        },
+        Case {
+            family: "java",
+            base: &[
+                (
+                    "src/main/java/app/Response.java",
+                    "package app;\n\nclass Response {\n    String body;\n}\n\nclass Kind {\n}\n",
+                ),
+                (
+                    "src/main/java/app/User.java",
+                    "package app;\n\npublic class User {\n    String parse(Response r) {\n        return r.body;\n    }\n}\n",
+                ),
+            ],
+            changed: &[(
+                "src/main/java/app/Response.java",
+                "package app;\n\nclass Kind {\n}\n",
+            )],
+            user: "src/main/java/app/User.java",
+        },
+        Case {
+            family: "kotlin",
+            base: &[
+                (
+                    "src/Models.kt",
+                    "package app\n\nclass Response(val body: String)\n\nclass Kind\n",
+                ),
+                (
+                    "src/User.kt",
+                    "package app\n\nfun parse(r: Response): String = r.body\n",
+                ),
+            ],
+            changed: &[("src/Models.kt", "package app\n\nclass Kind\n")],
+            user: "src/User.kt",
+        },
+        Case {
+            family: "go",
+            base: &[
+                ("go.mod", "module example.com/app\n\ngo 1.21\n"),
+                (
+                    "models.go",
+                    "package app\n\ntype Response struct {\n\tBody string\n}\n\ntype Kind int\n",
+                ),
+                (
+                    "user.go",
+                    "package app\n\nfunc Parse(r Response) string {\n\treturn r.Body\n}\n",
+                ),
+            ],
+            changed: &[("models.go", "package app\n\ntype Kind int\n")],
+            user: "user.go",
+        },
+        Case {
+            family: "php",
+            base: &[
+                (
+                    "src/Models.php",
+                    "<?php\nnamespace App;\n\nclass Response\n{\n    public string $body = '';\n}\n\nclass Kind\n{\n}\n",
+                ),
+                (
+                    "src/User.php",
+                    "<?php\nnamespace App;\n\nfunction parse(Response $r): string\n{\n    return $r->body;\n}\n",
+                ),
+            ],
+            changed: &[(
+                "src/Models.php",
+                "<?php\nnamespace App;\n\nclass Kind\n{\n}\n",
+            )],
+            user: "src/User.php",
+        },
+        Case {
+            family: "c",
+            base: &[
+                (
+                    "models.h",
+                    "struct Response {\n  const char *body;\n};\n\nstruct Kind {\n  int a;\n};\n",
+                ),
+                (
+                    "user.c",
+                    "#include \"models.h\"\n\nconst char *parse(struct Response *r) {\n  return r->body;\n}\n",
+                ),
+            ],
+            changed: &[("models.h", "struct Kind {\n  int a;\n};\n")],
+            user: "user.c",
+        },
+    ];
+    let mut slipped = Vec::new();
+    for case in cases {
+        let tmp = repo(case.base, case.changed);
+        let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+        if md.contains("nothing references it")
+            || !md.contains(&format!("referenced from {}", case.user))
+        {
+            slipped.push(format!("{}:\n{md}", case.family));
+        }
+    }
+    assert!(slipped.is_empty(), "{}", slipped.join("\n"));
+}
+
+/// A use inside a nested function that leaves its factory (`got.extend = …` in a
+/// factory returning `got`) belongs to that definition, not to the factory around
+/// it: the factory is changed here, and a changed definition is no caller outside
+/// the diff.
+#[test]
+fn a_use_in_a_nested_definition_is_not_named_by_the_changed_factory_around_it() {
+    let tmp = repo(
+        &[
+            (
+                "src/create.ts",
+                "export const isOk = (v: number): boolean => v > 0;\n\nexport const create = (defaults: {a: number}) => {\n  const got = (url: string) => url + defaults.a;\n  got.extend = (n: number) => {\n    if (isOk(n)) {\n      return create({a: defaults.a + n});\n    }\n    return got;\n  };\n  return got;\n};\n",
+            ),
+            (
+                "test/c.test.ts",
+                "import {create} from '../src/create';\nexport function t() {\n  return create({a: 1});\n}\n",
+            ),
+        ],
+        &[(
+            "src/create.ts",
+            "export const isOk = (v: number): boolean => v >= 0;\n\nexport const create = (defaults: {a: number}) => {\n  const got = (url: string) => url + defaults.a;\n  got.extend = (n: number) => {\n    if (isOk(n)) {\n      return create({a: defaults.a + n});\n    }\n    return got;\n  };\n  Object.freeze(defaults);\n  return got;\n};\n",
+        )],
+    );
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("called from src/create.ts::create"), "{md}");
+    assert!(md.contains("src/create.ts::extend"), "{md}");
 }
 
 /// A pydantic model's field annotation is run by the framework: a type use there
@@ -6529,5 +6863,42 @@ fn a_computed_import_leaves_a_deleted_module_unproven() {
             "- deleted module pkg/schema.py: 10 definition(s), no importer found; imports computed at run time are not read"
         ),
         "{md}"
+    );
+}
+
+/// The module's default export is one export across a change of form: `export
+/// default (…) => …` made a named `export default function`, with the same
+/// parameters and return type, is no export removed and no export added. A
+/// parameter added to it is a contract.
+#[test]
+fn a_default_export_that_changes_only_its_form_is_one_export() {
+    let tmp = support::repo_steps(&[
+        &[(
+            "src/rate.ts",
+            "export default (x: number, y: number): number => x * y;\n",
+        )],
+        &[(
+            "src/rate.ts",
+            "export default function mono(x: number, y: number): number {\n  return x * y;\n}\n",
+        )],
+        &[(
+            "src/rate.ts",
+            "export default function mono(x: number, y: number, z: number): number {\n  return x * y * z;\n}\n",
+        )],
+    ]);
+    let reshaped = impact(tmp.path(), "HEAD~2..HEAD~1");
+    assert_eq!(
+        contract_symbols(&reshaped),
+        Vec::<String>::new(),
+        "{reshaped:#}"
+    );
+    assert!(
+        !changed_symbols(&reshaped).contains(&"default".to_string()),
+        "the default export was not removed: {reshaped:#}"
+    );
+    let widened = impact(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        contract_symbols(&widened).contains(&"public_api mono".to_string()),
+        "{widened:#}"
     );
 }

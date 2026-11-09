@@ -1,0 +1,39 @@
+name: tf_removed_variable_leaves_its_readers_naming_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- removal
+repo:
+  initial_files:
+    variables.tf: |
+      variable "zone" {
+        default = "a"
+      }
+
+      variable "keep" {
+        default = "k"
+      }
+    outputs.tf: |
+      output "z" {
+        value = var.zone
+      }
+  changed_files:
+    variables.tf: |
+      variable "keep" {
+        default = "k"
+      }
+  commit_message: tf removed variable leaves its readers naming it
+expect:
+  changed:
+  - variables.tf::var.zone
+  relations:
+  - from: outputs.tf::output.z
+    to: variables.tf::var.zone
+    kind: reads
+    resolution: resolved
+    site: 2
+  exact: true
+  removed:
+  - zone

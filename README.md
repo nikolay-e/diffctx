@@ -96,7 +96,7 @@ not model.
 | Tier | Languages | What an answer promises |
 | --- | --- | --- |
 | 1 | Python, TypeScript/JavaScript, Rust, Kotlin | Definitions, callers and the tests that reach them, resolved: the languages the engine is being made exact for |
-| 2 | Go, Java, Swift, SQL, shell, YAML/k8s/Helm/Argo, HTML/Astro | Candidates, each marked with its evidence; exact answers follow Tier 1 |
+| 2 | Go, Java, PHP, C, C++, Swift, SQL, shell, YAML/k8s/Helm/Argo, Terraform, Dockerfile, HTML/Astro | Candidates, each marked with its evidence; exact answers follow Tier 1 |
 | 3 | Every other language | Not modelled: the answer says so, names the files that mention the name, and never claims that nothing calls or reaches it |
 
 ## How it compares

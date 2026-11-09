@@ -1,0 +1,67 @@
+name: ts_object_literal_of_a_known_type_writes_the_members_of_that_type
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- typescript
+- object-literal
+- interface-member
+repo:
+  initial_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: number;
+        call: (n: number) => number;
+      }
+    src/u.ts: |
+      import type {Retry} from './t';
+
+      export const viaReturn = (): Retry => ({attempt: 1, call: n => n});
+      const typed: Retry = {attempt: 2, call: n => n};
+      export function takes(r: Retry): number { return r.call(1); }
+      export const viaArgument = takes({attempt: 3, call: n => n});
+  changed_files:
+    src/t.ts: |
+      export interface Retry {
+        attempt: bigint;
+        call: (n: bigint) => bigint;
+      }
+  commit_message: ts object literal of a known type writes the members of that type
+expect:
+  relations:
+  - from: src/u.ts::viaReturn
+    to: src/t.ts::Retry.attempt
+    kind: writes
+    resolution: resolved
+    site: 3
+  - from: src/u.ts::typed
+    to: src/t.ts::Retry.attempt
+    kind: writes
+    resolution: resolved
+    site: 4
+  - from: src/u.ts::viaArgument
+    to: src/t.ts::Retry.attempt
+    kind: writes
+    resolution: resolved
+    site: 6
+  - from: src/u.ts::viaReturn
+    to: src/t.ts::Retry.call
+    kind: writes
+    resolution: resolved
+    site: 3
+  - from: src/u.ts::typed
+    to: src/t.ts::Retry.call
+    kind: writes
+    resolution: resolved
+    site: 4
+  - from: src/u.ts::viaArgument
+    to: src/t.ts::Retry.call
+    kind: writes
+    resolution: resolved
+    site: 6
+  - from: src/u.ts::takes
+    to: src/t.ts::Retry.call
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: true

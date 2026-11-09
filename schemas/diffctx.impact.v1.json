@@ -320,13 +320,52 @@
         "kind": {
           "description": "`deleted`, or `renamed to <new path>`.",
           "type": "string"
+        },
+        "class": {
+          "$ref": "#/$defs/Class"
         }
       },
       "required": [
         "path",
         "line",
         "target",
-        "kind"
+        "kind",
+        "class"
+      ]
+    },
+    "Class": {
+      "description": "The kind of place a path is mentioned in.",
+      "oneOf": [
+        {
+          "description": "A string or an identifier of a source file.",
+          "type": "string",
+          "const": "code"
+        },
+        {
+          "description": "A value of a structured config.",
+          "type": "string",
+          "const": "config"
+        },
+        {
+          "description": "A line that starts a program.",
+          "type": "string",
+          "const": "command"
+        },
+        {
+          "description": "A document, a patch, a comment, a sentence.",
+          "type": "string",
+          "const": "prose"
+        },
+        {
+          "description": "Rows of data, a log, a file no tool reads.",
+          "type": "string",
+          "const": "data"
+        },
+        {
+          "description": "An ignore or attribute file: it selects paths and reads none.",
+          "type": "string",
+          "const": "ignore_list"
+        }
       ]
     },
     "DeletedModule": {
@@ -373,12 +412,16 @@
             "string",
             "null"
           ]
+        },
+        "class": {
+          "$ref": "#/$defs/Class"
         }
       },
       "required": [
         "path",
         "line",
-        "target"
+        "target",
+        "class"
       ]
     },
     "KeySearch": {

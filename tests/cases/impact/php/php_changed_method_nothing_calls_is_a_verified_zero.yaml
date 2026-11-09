@@ -1,10 +1,10 @@
-name: php_changed_method_nothing_calls_is_not_modelled
+name: php_changed_method_nothing_calls_is_a_verified_zero
 mode: impact
 source: synthetic
 issue_state: closed
 tags:
-- tier3
 - php
+- absence-claim
 repo:
   initial_files:
     src/Greeter.php: |
@@ -15,6 +15,15 @@ repo:
           public function hello(string $name): string
           {
               return "hi $name";
+          }
+      }
+    tests/OtherTest.php: |
+      <?php
+
+      class OtherTest
+      {
+          public function testNothing(): void
+          {
           }
       }
   changed_files:
@@ -28,11 +37,9 @@ repo:
               return "hello $name";
           }
       }
-  commit_message: Change php changed method nothing calls is not modelled
+  commit_message: Change php changed method nothing calls is a verified zero
 expect:
   changed:
   - src/Greeter.php::Greeter.hello
-  unknowns:
-    hello: not_modelled
-  discloses: true
-  no_negative_claims: true
+  callers:
+    hello: []

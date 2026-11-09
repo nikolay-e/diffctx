@@ -50,7 +50,6 @@ pub(crate) mod utility;
 
 // Output.
 pub mod artifact;
-pub mod go_bindings;
 pub mod hook;
 pub mod impact;
 pub mod kotlin_bindings;

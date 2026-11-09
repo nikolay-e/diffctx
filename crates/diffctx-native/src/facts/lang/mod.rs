@@ -9,16 +9,37 @@ use crate::facts::extractor::{Extractor, Registry};
 use crate::facts::hash::Hasher;
 use crate::facts::language::Language;
 
+pub mod c;
+pub mod config;
+pub mod dockerfile;
+pub mod go;
+pub mod helm;
+pub mod java;
 pub mod kotlin;
+pub mod php;
 pub mod python;
 pub mod rust;
+pub mod shell;
+pub mod terraform;
 pub mod typescript;
 
 fn shipped() -> Vec<Arc<dyn Extractor>> {
     let mut all: Vec<Arc<dyn Extractor>> = vec![
         Arc::new(python::PythonExtractor),
+        Arc::new(java::JavaExtractor),
+        Arc::new(go::GoExtractor),
         Arc::new(kotlin::KotlinExtractor),
         Arc::new(rust::RustExtractor),
+        Arc::new(php::PhpExtractor),
+        Arc::new(c::CExtractor),
+        Arc::new(c::CppExtractor),
+        Arc::new(config::ConfigExtractor),
+        Arc::new(helm::HelmTemplateExtractor),
+        Arc::new(helm::HelmValuesExtractor),
+        Arc::new(terraform::TerraformExtractor),
+        Arc::new(dockerfile::DockerfileExtractor),
+        Arc::new(shell::ShellExtractor),
+        Arc::new(shell::UnreadShellExtractor),
     ];
     all.extend(typescript::extractors());
     all
@@ -33,7 +54,7 @@ pub fn builtin() -> Registry {
     registry
 }
 
-static DIGESTS: [OnceLock<u64>; 7] = [const { OnceLock::new() }; 7];
+static DIGESTS: [OnceLock<u64>; 17] = [const { OnceLock::new() }; 17];
 
 const fn slot(language: Language) -> usize {
     match language {
@@ -44,6 +65,16 @@ const fn slot(language: Language) -> usize {
         Language::Kotlin => 4,
         Language::Go => 5,
         Language::Java => 6,
+        Language::Php => 7,
+        Language::C => 8,
+        Language::Cpp => 9,
+        Language::Config => 10,
+        Language::HelmTemplate => 11,
+        Language::HelmValues => 12,
+        Language::Terraform => 13,
+        Language::Dockerfile => 14,
+        Language::Shell => 15,
+        Language::ShellUnread => 16,
     }
 }
 
@@ -111,6 +142,20 @@ fn grammars(language: Language) -> Vec<tree_sitter::Language> {
         Language::Go => found.push(tree_sitter::Language::new(tree_sitter_go::LANGUAGE)),
         #[cfg(feature = "tree-sitter-java")]
         Language::Java => found.push(tree_sitter::Language::new(tree_sitter_java::LANGUAGE)),
+        #[cfg(feature = "tree-sitter-cpp")]
+        Language::Cpp => found.push(tree_sitter::Language::new(tree_sitter_cpp::LANGUAGE)),
+        #[cfg(feature = "tree-sitter-c")]
+        Language::C => found.push(tree_sitter::Language::new(tree_sitter_c::LANGUAGE)),
+        #[cfg(feature = "tree-sitter-php")]
+        Language::Php => found.push(tree_sitter::Language::new(tree_sitter_php::LANGUAGE_PHP)),
+        #[cfg(feature = "tree-sitter-bash")]
+        Language::Shell => found.push(tree_sitter::Language::new(tree_sitter_bash::LANGUAGE)),
+        #[cfg(feature = "tree-sitter-yaml")]
+        Language::Config | Language::HelmTemplate | Language::HelmValues => {
+            found.push(tree_sitter::Language::new(tree_sitter_yaml::LANGUAGE));
+        }
+        #[cfg(feature = "tree-sitter-hcl")]
+        Language::Terraform => found.push(tree_sitter::Language::new(tree_sitter_hcl::LANGUAGE)),
         _ => {}
     }
     found

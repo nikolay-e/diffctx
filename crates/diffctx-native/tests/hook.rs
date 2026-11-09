@@ -1309,6 +1309,60 @@ fn a_search_on_a_clean_tree_is_answered_as_symbol_would() {
     assert_eq!(search("git log --oneline | grep restock").stdout, "");
 }
 
+/// Forgejo #113: a search whose analysis the hook's ceiling cuts says so, by
+/// name, and does not use the name up: silence read as a quiet analysis, and
+/// the next search of the name never tried again. The ceiling is spent before
+/// the analysis starts, as when an engine does not return in time.
+#[test]
+fn a_search_the_ceiling_cuts_is_said_by_name_and_tried_again() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let cut = [("DIFFCTX_TEST_HOOK_CEILING_EXPIRED", Path::new("1"))];
+    let search = |env: &[(&str, &Path)], query: &str| {
+        hook_in_env(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            env,
+            &search_payload(repo, "Bash", query),
+        )
+    };
+    // A name the pending change edits.
+    let edited = context_of(&search(&cut, r"rg -n 'def total\(' shop/"));
+    assert!(
+        edited.contains("`total`") && edited.contains("ran past the hook's deadline"),
+        "{edited}"
+    );
+    assert!(edited.contains("--symbol total"), "{edited}");
+    let answered = context_of(&search(&[], r"rg -n 'def total\(' shop/"));
+    assert!(answered.contains("shop/checkout.py::charge"), "{answered}");
+    // A name it does not.
+    let other = context_of(&search(&cut, "grep -rn restock ."));
+    assert!(
+        other.contains("lookup of `restock`") && other.contains("ran past the hook's deadline"),
+        "{other}"
+    );
+    let answered = context_of(&search(&[], "grep -rn restock ."));
+    assert!(answered.contains("shop/shelf.py::refill"), "{answered}");
+    let log = hook_log(cache.path());
+    let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
+    assert_eq!(outcomes, ["timeout", "shown", "timeout", "shown"], "{log}");
+    // A commit's review the ceiling cuts names what it changes.
+    let commit = context_of(&line_in(
+        "s2",
+        repo,
+        cache.path(),
+        &cut,
+        "git commit -qam vat",
+    ));
+    assert!(
+        commit.contains("ran past the hook's deadline") && commit.contains("shop/pricing.py"),
+        "{commit}"
+    );
+}
+
 /// R2, Forgejo #114: a lookup of a name no file defines but a config and a
 /// script spell gets one line saying so, once per name; a name nothing spells
 /// stays silent (the grep that led here printed the lines already).
@@ -3772,6 +3826,10 @@ fn a_search_matching_no_definition_or_use_builds_no_answer() {
         used.stdout
     );
     assert!(phases.contains("impact.setup"), "{phases}");
+    // The parts of a phase are reported beside it, outside its sum: which
+    // resolver the setup opened, and the work of the callers' loop.
+    assert!(phases.contains("resolver.open.head:Python"), "{phases}");
+    assert!(phases.contains("impact.setup.cells"), "{phases}");
 }
 
 /// #676: a newline ends a statement as `;` does, so a grep on a later line of

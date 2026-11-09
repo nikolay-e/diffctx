@@ -1,0 +1,48 @@
+name: cpp_namespace_qualified_call_and_a_using_directive_bind
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- namespace
+- using
+repo:
+  initial_files:
+    src/geo.hpp: |
+      namespace geo {
+      int dist(int a, int b) { return a - b + 0; }
+      }
+    src/use.cpp: |
+      #include "geo.hpp"
+
+      int f()
+      {
+          return geo::dist(1, 2);
+      }
+
+      using namespace geo;
+
+      int g()
+      {
+          return dist(3, 4);
+      }
+  changed_files:
+    src/geo.hpp: |
+      namespace geo {
+      int dist(int a, int b) { return a - b + 1; }
+      }
+  commit_message: Change namespace qualified call and a using directive bind
+expect:
+  changed:
+  - src/geo.hpp::geo.dist
+  relations:
+  - from: src/use.cpp::f
+    to: src/geo.hpp::geo.dist
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: src/use.cpp::g
+    to: src/geo.hpp::geo.dist
+    kind: calls
+    resolution: resolved
+    site: 12

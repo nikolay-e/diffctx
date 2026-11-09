@@ -1,0 +1,132 @@
+# .github/workflows/grammar-bump.yml
+name: grammar-bump
+
+# Moves the tree-sitter grammars of crates/diffctx-native to their latest
+# releases and says what that buys: the corpus gate on the new grammars, and the
+# blobs a newer grammar reads that the pinned one did not
+# (crates/diffctx-native/src/facts/grammar_witnesses.txt, which is how a parse error
+# is named `grammar_outdated`).
+#
+# Triggered by the label `grammars:bump` on a pull_request of this repository.
+# There is no schedule: before 2.0.0 neither schedule nor workflow_dispatch can
+# fire (T23, both need the default branch's copy and main stays frozen), so the
+# trigger a maintainer has is the label; `workflow_dispatch` is declared for later,
+# as in oracle.yml, and runs the same jobs on the branch it is given.
+#
+# The build executes third-party build scripts of the newest crates, so it holds a
+# read-only token that is not persisted. It hands a patch of three paths to a
+# second job that builds nothing and holds the write token.
+
+'on':
+  pull_request:
+    types: [labeled]
+  workflow_dispatch: {}
+
+concurrency:
+  group: grammar-bump-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    name: Bump and measure
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.label.name == 'grammars:bump'
+          && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Read the files with the pinned grammars
+        run: |
+          cargo build --release --locked --example grammar_scan
+          target/release/examples/grammar_scan . > "$RUNNER_TEMP/base.txt"
+
+      - name: Move the grammars
+        run: python3 scripts/bump_grammars.py bump | tee "$RUNNER_TEMP/bump.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read the files with the newest grammars
+        run: |
+          cargo build --release --example grammar_scan
+          target/release/examples/grammar_scan . > "$RUNNER_TEMP/head.txt"
+          python3 scripts/bump_grammars.py witnesses "$RUNNER_TEMP/base.txt" "$RUNNER_TEMP/head.txt"
+
+      - name: Facts and corpus on the newest grammars
+        id: gate
+        continue-on-error: true
+        run: cargo test --release --test 'facts_*' --test yaml_cases
+
+      - name: Say how the gate went
+        if: ${{ !cancelled() }}
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Facts and corpus on the newest grammars: ${{ steps.gate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Patch of what moved
+        id: patch
+        run: |
+          git diff -- Cargo.lock crates/diffctx-native/Cargo.toml \
+            crates/diffctx-native/src/facts/grammar_witnesses.txt > "$RUNNER_TEMP/grammar-bump.patch"
+          if [ -s "$RUNNER_TEMP/grammar-bump.patch" ] && [ "${{ steps.gate.outcome }}" = success ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: grammar-bump
+          path: ${{ runner.temp }}/grammar-bump.patch
+          if-no-files-found: ignore
+
+  commit:
+    name: Commit the patch to the branch
+    needs: bump
+    if: needs.bump.outputs.changed == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: grammar-bump
+          path: ${{ runner.temp }}
+
+      - name: Apply only the three paths and push
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git apply --index \
+            --include=Cargo.lock \
+            --include=crates/diffctx-native/Cargo.toml \
+            --include=crates/diffctx-native/src/facts/grammar_witnesses.txt \
+            "$RUNNER_TEMP/grammar-bump.patch"
+          git -c user.name=github-actions[bot] \
+              -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+              commit -m "chore: move the tree-sitter grammars to their latest releases"
+          git push origin "HEAD:$HEAD_REF"

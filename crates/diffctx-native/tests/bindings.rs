@@ -754,7 +754,8 @@ const LEDGER_GO_CHANGED: &str = "package billing\n\n// Total doubles n.\nfunc To
 /// #506: a Go package is its directory and an import binds it by path. The
 /// decoys spell the changed names without reaching them: a same-named
 /// function and method of another package, a struct field, a local, a
-/// string, a method of another type in the same package.
+/// string, a method of another type in the same package (called on a value
+/// of that stated type, which is not a candidate for this one).
 #[test]
 fn go_callers_bind_through_the_package_and_the_stated_type() {
     let tmp = repo(
@@ -816,10 +817,11 @@ fn go_callers_bind_through_the_package_and_the_stated_type() {
         vec!["billing/report.go::Close", "cmd/app/main.go::main"],
         "{doc}"
     );
-    // A value nothing types may be a Ledger; a stated Audit may embed one.
+    // A value nothing types may be a Ledger. A stated Audit is an Audit: it embeds
+    // no Ledger, so its call is Audit's own method and no candidate of this one.
     assert_eq!(
         callers(&doc, "Reconcile", "candidate"),
-        vec!["billing/audit.go::Check", "cmd/jobs/run.go::nightly"],
+        vec!["cmd/jobs/run.go::nightly"],
         "{doc}"
     );
 }
@@ -881,7 +883,9 @@ fn removed_go_package_constants_name_the_readers_they_break() {
         .filter(|c| c["kind"] == "removed_api")
         .filter_map(|c| c["symbol"].as_str())
         .collect();
-    assert_eq!(removed, vec!["Backoff", "MaxRetries"], "{doc}");
+    // Every cell lists what it removed by file and the line it had at the base
+    // (`decide.rs`), not by name or by reader count.
+    assert_eq!(removed, vec!["MaxRetries", "Backoff"], "{doc}");
     assert!(
         !doc["changed"]
             .as_array()

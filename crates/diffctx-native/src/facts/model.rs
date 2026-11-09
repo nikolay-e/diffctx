@@ -5,8 +5,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::facts::config::{ConfigRef, ConfigUse, Labels, Release, Selector, SourcePointer};
 use crate::facts::ids::{ModulePath, Name, ProjectId, Span, TypeName};
 use crate::facts::language::Language;
+use crate::facts::shell::ShellPath;
 use crate::snapshot::{Loss, RepoPath, Stage};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
@@ -180,6 +182,10 @@ pub enum ImportKind {
     Dynamic,
     Require,
     SideEffect,
+    /// `use function a\f;`: the name enters the function namespace only.
+    FunctionOnly,
+    /// `use const a\C;`: the name enters the constant namespace only.
+    ConstOnly,
 }
 
 /// What an import takes of a whole module, each state a variant of its own: a
@@ -257,6 +263,12 @@ pub enum EntryKind {
     Command,
     /// A served route or handler registered with a framework.
     Route,
+    /// A job a framework's scheduler starts (`@Scheduled`, `@scheduled_job`).
+    Scheduled,
+    /// A tool an agent protocol server exposes (`@mcp.tool()`).
+    Tool,
+    /// A pytest fixture, injected into a test by the name of its parameter.
+    Fixture,
 }
 
 /// Where execution can begin from outside the code.
@@ -266,6 +278,22 @@ pub struct EntryPoint {
     pub kind: EntryKind,
     /// The definition that is the entry; `Module` for a guard's top-level code.
     pub target: Scope,
+    /// The framework that enters it, when one does: a language's own entry
+    /// (`main`, a test attribute, a script guard) has none.
+    pub framework: Option<Framework>,
+}
+
+/// What a framework's rule says about an entry it makes: who calls the
+/// definition, and under which key. `label` is read by `kind`: a route's path, a
+/// scheduled job's expression, a command's, tool's or fixture's name; `None`
+/// where the source does not state it (an annotation read by name alone).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Framework {
+    pub name: Name,
+    /// A route's HTTP method, upper case; `None` for another kind, and for a
+    /// route registered for any method.
+    pub verb: Option<Name>,
+    pub label: Option<String>,
 }
 
 /// An import whose module the code computes: `importlib.import_module(name)`,
@@ -331,6 +359,20 @@ pub enum Fact {
     ConfigKey(ConfigKey),
     LocalBinding(Local),
     ComputedImport(ComputedImport),
+    /// A field of a configuration object that names another object.
+    ConfigRef(ConfigRef),
+    /// A label selector of a configuration object.
+    ConfigSelector(Selector),
+    /// The pairs of a label definition of a configuration object.
+    ConfigLabels(Labels),
+    /// A place a configuration file names, of the repository or outside it.
+    ConfigPointer(SourcePointer),
+    /// A value or a named template a Helm template's action uses.
+    ConfigUse(ConfigUse),
+    /// A release of a chart, with the values files it gives it.
+    ConfigRelease(Release),
+    /// A file a shell script sources or a script it runs, by the path it spells.
+    ShellPath(ShellPath),
 }
 
 impl Fact {
@@ -349,6 +391,13 @@ impl Fact {
             Self::ConfigKey(key) => &key.site,
             Self::LocalBinding(local) => &local.site,
             Self::ComputedImport(computed) => &computed.site,
+            Self::ConfigRef(reference) => &reference.site,
+            Self::ConfigSelector(selector) => &selector.site,
+            Self::ConfigLabels(labels) => &labels.site,
+            Self::ConfigPointer(pointer) => &pointer.site,
+            Self::ConfigUse(used) => &used.site,
+            Self::ConfigRelease(release) => &release.site,
+            Self::ShellPath(path) => &path.site,
         }
     }
 
@@ -364,6 +413,13 @@ impl Fact {
             Self::PathMention(_) => 6,
             Self::ConfigKey(_) => 7,
             Self::ComputedImport(_) => 8,
+            Self::ConfigRef(_) => 9,
+            Self::ConfigSelector(_) => 10,
+            Self::ConfigLabels(_) => 11,
+            Self::ConfigPointer(_) => 12,
+            Self::ConfigUse(_) => 13,
+            Self::ConfigRelease(_) => 14,
+            Self::ShellPath(_) => 15,
         }
     }
 }
@@ -478,6 +534,9 @@ pub struct FileFacts {
     pub project: ProjectId,
     pub module: ModulePath,
     pub blob: Arc<BlobFacts>,
+    /// The blob's parse errors are ones a newer release of the grammar does not
+    /// have (`facts::grammar`): they are named so, not as a malformed file.
+    pub outdated_grammar: bool,
 }
 
 impl FileFacts {
@@ -504,6 +563,12 @@ impl FileFacts {
             .losses
             .iter()
             .cloned()
+            .map(|loss| match loss {
+                Loss::ParseError { path, lines } if self.outdated_grammar => {
+                    Loss::GrammarOutdated { path, lines }
+                }
+                other => other,
+            })
             .map(|loss| loss.at(&self.path))
             .collect()
     }

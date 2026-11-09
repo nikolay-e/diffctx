@@ -225,18 +225,26 @@ impl Flat {
     /// The end of the type that starts at `from`: the first top-level ` = `,
     /// ` by `, ` where ` or the end.
     fn type_end(&self, from: usize) -> usize {
-        let mut at = from;
-        while at < self.top.len() {
-            let rest: String = self.top[at..].iter().collect();
-            if self.top[at] == '='
-                || (self.top[at].is_whitespace()
-                    && (rest.trim_start().starts_with("by ")
-                        || rest.trim_start().starts_with("where ")
-                        || rest.trim_start().starts_with("= ")))
-            {
+        // `next` is the first non-blank at or after `at`, found once for a run
+        // of blanks: a header's brackets are blanked, so its runs are long.
+        let mut next = from;
+        for at in from..self.top.len() {
+            if self.top[at] == '=' {
                 return at;
             }
-            at += 1;
+            if self.top[at].is_whitespace() {
+                next = next.max(at);
+                while next < self.top.len() && self.top[next].is_whitespace() {
+                    next += 1;
+                }
+                let rest = &self.top[next..];
+                if rest.starts_with(&['b', 'y', ' '])
+                    || rest.starts_with(&['w', 'h', 'e', 'r', 'e', ' '])
+                    || rest.starts_with(&['=', ' '])
+                {
+                    return at;
+                }
+            }
         }
         self.top.len()
     }

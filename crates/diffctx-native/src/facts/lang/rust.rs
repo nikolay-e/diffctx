@@ -613,12 +613,14 @@ impl<'t> Walker<'t> {
                 site: span(node),
                 kind: EntryKind::Test,
                 target: Scope::Def(key.clone()),
+                framework: None,
             }));
         } else if name == "main" && cx.container.is_empty() {
             self.facts.push(Fact::EntryPoint(EntryPoint {
                 site: span(node),
                 kind: EntryKind::Main,
                 target: Scope::Def(key.clone()),
+                framework: None,
             }));
         }
         if let Some(tr) = &cx.impl_trait {

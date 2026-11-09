@@ -59,6 +59,10 @@ repo:
 expect:
   changed:
   - src/main/java/h/A.java::A.handle
-  unknowns:
-    handle: overridable
+  relations:
+  - from: src/main/java/h/Dispatcher.java::Dispatcher.dispatch
+    to: src/main/java/h/A.java::A.handle
+    kind: calls
+    resolution: candidate
+    site: 5
   never_empty: true

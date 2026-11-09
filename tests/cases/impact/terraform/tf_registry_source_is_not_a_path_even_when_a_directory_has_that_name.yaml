@@ -1,0 +1,42 @@
+name: tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- module
+- external-source
+- decoy
+repo:
+  initial_files:
+    main.tf: |
+      module "reg" {
+        source = "hashicorp/consul/aws"
+      }
+
+      output "x" {
+        value = module.reg.addr
+      }
+    hashicorp/consul/aws/main.tf: |
+      output "addr" {
+        value = "a"
+      }
+  changed_files:
+    hashicorp/consul/aws/main.tf: |
+      output "addr" {
+        value = "b"
+      }
+  commit_message: tf registry source is not a path even when a directory has that name
+expect:
+  changed:
+  - hashicorp/consul/aws/main.tf::output.addr
+  relations: []
+  callers:
+    addr: []
+  exact: true
+  decoys:
+    hashicorp/consul/aws/main.tf::output.addr:
+    - main.tf
+  coverage:
+    hashicorp/consul/aws/main.tf::output.addr:
+      reads: partial

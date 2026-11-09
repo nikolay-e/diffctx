@@ -5,6 +5,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use crate::facts::blob::blob_oid;
 use crate::facts::cache::{CacheKey, FactsCache, SCHEMA};
+use crate::facts::grammar;
 use crate::facts::language::Language;
 use crate::facts::model::{BlobFacts, FileFacts};
 use crate::facts::module;
@@ -97,11 +98,15 @@ pub fn facts_of(
         }
     };
     let (project, module) = module::locate(&ctx.workspace, language, path.as_str());
+    let outdated_grammar = !facts.losses.is_empty()
+        && facts.parse_error_lines().is_some()
+        && grammar::newer_grammar_reads(language, &key.blob);
     Ok(Some(FileFacts {
         path: path.clone(),
         project,
         module,
         blob: facts,
+        outdated_grammar,
     }))
 }
 

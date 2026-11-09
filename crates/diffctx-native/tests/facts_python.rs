@@ -935,7 +935,13 @@ fn a_script_without_extension_reads_as_python() {
             "{head}"
         );
     }
-    assert_eq!(Language::detect(&bin, b"#!/bin/sh\n"), None);
+    // A shell shebang makes the file shell, since the shell has facts of its own;
+    // an interpreter no extractor reads makes it nothing.
+    assert_eq!(
+        Language::detect(&bin, b"#!/bin/sh\n"),
+        Some(Language::Shell)
+    );
+    assert_eq!(Language::detect(&bin, b"#!/usr/bin/perl\n"), None);
     let only = extract("#!/usr/bin/env python3\n");
     assert!(only.facts.is_empty() && only.losses.is_empty());
 

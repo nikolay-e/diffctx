@@ -1,0 +1,42 @@
+name: shell_script_that_defines_the_name_itself_is_no_caller_of_the_library_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- shell
+- decoy
+- shadow
+repo:
+  initial_files:
+    lib.sh: |
+      f() {
+        echo one
+      }
+    a.sh: |
+      . ./lib.sh
+      f() {
+        echo mine
+      }
+      f
+    b.sh: |
+      . ./lib.sh
+      f
+  changed_files:
+    lib.sh: |
+      f() {
+        echo two
+      }
+  commit_message: Change shell script that defines the name itself is no caller of the library function
+expect:
+  changed:
+  - lib.sh::f
+  relations:
+  - from: b.sh
+    to: lib.sh::f
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    lib.sh::f:
+    - a.sh

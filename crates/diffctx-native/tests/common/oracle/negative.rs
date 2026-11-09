@@ -438,6 +438,34 @@ fn a5_a_collection_read_reaches_only_its_collection() -> Result<(), Failed> {
     ])
 }
 
+/// A symbol where a contract's file belongs matches nothing, so a `not_contracts` entry
+/// like it asserts nothing: the load refuses it, and accepts the file's path.
+fn a_contract_entry_that_is_no_file_fails_the_load() -> Result<(), Failed> {
+    let with = |key: &str, entry: &str| {
+        format!(
+            "mode: impact\nsource: synthetic\nrepo:\n  changed_files: {{src/rate.ts: x}}\nexpect:\n  {key}: [{entry}]\n"
+        )
+    };
+    for key in ["contracts", "not_contracts"] {
+        let by_name = case::parse(&with(key, "mono"), "negative", Mode::Impact);
+        if !by_name
+            .as_ref()
+            .is_err_and(|e| e.contains("no file of the case"))
+        {
+            return Err(Failed::from(format!(
+                "`{key}: [mono]` should fail the load, got {:?}",
+                by_name.map(|_| ())
+            )));
+        }
+        if let Err(refused) = case::parse(&with(key, "src/rate.ts"), "negative", Mode::Impact) {
+            return Err(Failed::from(format!(
+                "`{key}: [src/rate.ts]` should load, got {refused}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// A partial answer's zero is a claim whichever way it says callers were left out.
 fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
     let said =
@@ -452,7 +480,7 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
 }
 
 pub fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 10] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 11] = [
         (
             "a1_test_file_stands_for_its_function",
             a1_test_file_stands_for_its_function,
@@ -482,6 +510,10 @@ pub fn trials() -> Vec<Trial> {
         (
             "a_static_reexport_is_a_resolved_reexports_relation",
             a_static_reexport_is_a_resolved_reexports_relation,
+        ),
+        (
+            "a_contract_entry_that_is_no_file_fails_the_load",
+            a_contract_entry_that_is_no_file_fails_the_load,
         ),
         (
             "a_zero_beside_not_determined_is_a_claim",

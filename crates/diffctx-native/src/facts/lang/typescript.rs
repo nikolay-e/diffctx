@@ -15,6 +15,7 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
 
+use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind,
     Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref,
@@ -297,6 +298,7 @@ fn extract(dialect: Dialect, text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.deadline();
     }
     blob.facts = facts;
+    framework::derive(&mut blob);
     blob.in_source_order();
     blob
 }
@@ -534,6 +536,62 @@ fn unwrapped_once(node: Node<'_>) -> Node<'_> {
     } else {
         node
     }
+}
+
+/// The first name of the qualifier of a write that is a key of an object literal
+/// handed to a call: `<arg0>` is the first argument, and the callee's path
+/// follows it.
+const ARGUMENT: &str = "<arg";
+
+/// The qualifier of a read of a name an object pattern takes of a value nothing
+/// types.
+const UNTYPED_SOURCE: &str = "<untyped>";
+
+/// The object literals a function returns directly: its expression body, and the
+/// `return` statements of its own block, not of the functions inside it.
+fn returned_objects(function: Node<'_>) -> Vec<Node<'_>> {
+    let Some(body) = field(function, "body") else {
+        return Vec::new();
+    };
+    if body.kind() != "statement_block" {
+        return returned_object(body).into_iter().collect();
+    }
+    let mut found = Vec::new();
+    let mut stack = vec![body];
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            "return_statement" => found.extend(first_named(node).and_then(returned_object)),
+            "function_declaration"
+            | "generator_function_declaration"
+            | "function_expression"
+            | "generator_function"
+            | "arrow_function"
+            | "class_declaration"
+            | "class"
+            | "method_definition" => {}
+            _ => stack.extend(kids(node).into_iter().filter(|c| c.is_named())),
+        }
+    }
+    found
+}
+
+/// Whether a value is the `require` or `import` of a module: what an object
+/// pattern takes of it is an import binding, not a member read.
+fn is_import_value(src: &str, node: Node<'_>) -> bool {
+    let mut current = node;
+    while matches!(
+        current.kind(),
+        "await_expression" | "parenthesized_expression" | "as_expression" | "non_null_expression"
+    ) {
+        match first_named(current) {
+            Some(inner) => current = inner,
+            None => return false,
+        }
+    }
+    current.kind() == "call_expression"
+        && field(current, "function").is_some_and(|f| {
+            f.kind() == "import" || (f.kind() == "identifier" && text(src, f) == "require")
+        })
 }
 
 fn declared_type(
@@ -2798,7 +2856,48 @@ enum Root {
     Super,
     CallResult(Vec<Name>),
     New(TypeName),
+    /// A receiver that is a type assertion, `(x as T)` or `<T>x`: it has the
+    /// type asserted, whatever `x` was declared as.
+    Asserted(TypeName),
     Other,
+}
+
+/// What a type assertion says of its value's type.
+enum Assertion {
+    /// A type the syntax names: `Options`, `ns.Options`, `Options | null`.
+    Named(TypeName),
+    /// `as const`: the value keeps its type.
+    Const,
+    /// A type no name stands for (`any`, a literal type, an intersection): the
+    /// value is no longer the type it was declared as, and has no named one.
+    Unnamed,
+}
+
+/// The assertion `node` makes (`x as T`, `<T>x`) and the value it asserts about.
+fn assertion<'t>(src: &str, node: Node<'t>) -> (Assertion, Option<Node<'t>>) {
+    let named: Vec<Node<'t>> = kids(node)
+        .into_iter()
+        .filter(|child| child.is_named() && child.kind() != "comment")
+        .collect();
+    let (value, written) = if node.kind() == "type_assertion" {
+        (
+            named.last().copied().filter(|_| named.len() > 1),
+            named.first().copied().and_then(first_named),
+        )
+    } else {
+        (
+            named.first().copied(),
+            named.last().copied().filter(|_| named.len() > 1),
+        )
+    };
+    let kind = match written {
+        None => Assertion::Const,
+        Some(written) => match type_name(src, written) {
+            Some(name) => Assertion::Named(name),
+            None => Assertion::Unnamed,
+        },
+    };
+    (kind, value)
 }
 
 struct Chain<'t> {
@@ -3121,6 +3220,20 @@ impl<'t> Walker<'t> {
                         }
                     }
                 }
+                "as_expression" | "type_assertion" if path.is_empty() => {
+                    let (kind, value) = assertion(self.src, current);
+                    match (kind, value) {
+                        (Assertion::Named(name), _) => {
+                            inner = Some(current);
+                            break Root::Asserted(name);
+                        }
+                        (Assertion::Const, Some(next)) => current = next,
+                        _ => {
+                            inner = Some(current);
+                            break Root::Other;
+                        }
+                    }
+                }
                 "parenthesized_expression"
                 | "non_null_expression"
                 | "as_expression"
@@ -3182,6 +3295,7 @@ impl<'t> Walker<'t> {
             }
             Root::CallResult(callee) => (path, Receiver::CallResult(callee)),
             Root::New(class) => (path, Receiver::New(class)),
+            Root::Asserted(name) => (path, Receiver::Typed(name)),
             Root::Other => (path, Receiver::Unknown),
         };
         Chain {
@@ -3258,6 +3372,19 @@ impl<'t> Walker<'t> {
         }
         if arguments.kind() == "arguments" {
             if !arguments_done {
+                let callee = path_of(self.src, function);
+                if !callee.is_empty() {
+                    let mut index = 0;
+                    for argument in kids(arguments) {
+                        if !argument.is_named() || argument.kind() == "comment" {
+                            continue;
+                        }
+                        if let Some(object) = returned_object(argument) {
+                            self.argument_keys(object, index, &callee);
+                        }
+                        index += 1;
+                    }
+                }
                 let id = self.callee_id(path_of(self.src, function));
                 for argument in kids(arguments) {
                     if argument.is_named() && argument.kind() != "comment" {
@@ -3675,6 +3802,13 @@ impl<'t> Walker<'t> {
             self.local(name, LocalKind::Closure);
         }
         let has_body = field(node, "body").is_some();
+        // The object a function declared `: T` returns is a `T`: its keys write
+        // the members of `T`.
+        if let Some(returned) = field(node, "return_type").and_then(|t| type_name(self.src, t)) {
+            for object in returned_objects(node) {
+                self.literal_keys(object, &returned);
+            }
+        }
         let mut frame = TypeFrame::default();
         let mut children: Vec<(Node<'t>, Ctx)> = Vec::new();
         if let Some(parameters) = field(node, "parameters") {
@@ -3721,10 +3855,11 @@ impl<'t> Walker<'t> {
                     .or_else(|| field(parameter, "name"))
                     .filter(|_| bind);
                 if let Some(pattern) = pattern {
-                    let annotated = (pattern.kind() == "identifier")
-                        .then(|| field(parameter, "type"))
-                        .flatten()
-                        .and_then(|t| type_name(self.src, t));
+                    let written = field(parameter, "type").and_then(|t| type_name(self.src, t));
+                    if pattern.kind() == "object_pattern" {
+                        self.destructured(pattern, written.clone());
+                    }
+                    let annotated = written.filter(|_| pattern.kind() == "identifier");
                     self.bind_parameter(pattern, annotated, frame, children);
                 }
                 for name in ["type", "value"] {
@@ -3736,6 +3871,9 @@ impl<'t> Walker<'t> {
                     }
                 }
             } else if bind {
+                if parameter.kind() == "object_pattern" {
+                    self.destructured(parameter, None);
+                }
                 self.bind_parameter(parameter, None, frame, children);
             }
         }
@@ -3821,6 +3959,16 @@ impl<'t> Walker<'t> {
                 value,
                 is_const_declaration(node.parent()),
             );
+            if name.kind() == "object_pattern"
+                && !value.is_some_and(|v| is_import_value(self.src, v))
+            {
+                let typed = tname.clone().or_else(|| {
+                    value
+                        .filter(|v| v.kind() == "identifier")
+                        .and_then(|v| self.lookup(self.t(v)))
+                });
+                self.destructured(name, typed);
+            }
             for bound in pattern_bounds(name) {
                 match bound {
                     Bound::Ident(ident) if !module_level => {
@@ -3856,21 +4004,31 @@ impl<'t> Walker<'t> {
         self.push_children(children);
     }
 
+    /// The key of an entry of an object literal: a `key: value` pair, a shorthand
+    /// `{ key }` or a method `key() {}`; a computed key and a spread name none.
+    fn entry_key(&self, entry: Node<'t>) -> Option<(Node<'t>, String)> {
+        let key = match entry.kind() {
+            "pair" => field(entry, "key")?,
+            "shorthand_property_identifier" => entry,
+            "method_definition" => field(entry, "name")?,
+            _ => return None,
+        };
+        match key.kind() {
+            "property_identifier" | "shorthand_property_identifier" => {
+                Some((key, self.t(key).to_string()))
+            }
+            "string" => Some((key, strip_quotes(self.t(key)).to_string())),
+            _ => None,
+        }
+    }
+
     /// The keys of an object literal the code types (`const o: Options = {…}`,
-    /// `{…} as Options`) write the members of that type of the same name; a
-    /// computed key and a spread name none.
+    /// `{…} as Options`, the object a function declared `: Options` returns)
+    /// write the members of that type of the same name.
     fn literal_keys(&mut self, object: Node<'t>, typed: &TypeName) {
         for entry in kids(object) {
-            if entry.kind() != "pair" {
+            let Some((key, name)) = self.entry_key(entry) else {
                 continue;
-            }
-            let Some(key) = field(entry, "key") else {
-                continue;
-            };
-            let name = match key.kind() {
-                "property_identifier" => self.t(key).to_string(),
-                "string" => strip_quotes(self.t(key)).to_string(),
-                _ => continue,
             };
             self.reference(
                 key,
@@ -3879,6 +4037,62 @@ impl<'t> Walker<'t> {
                 Receiver::Typed(typed.clone()),
                 UseKind::Write,
             );
+        }
+    }
+
+    /// The keys of an object literal handed to a call as its `index`th argument:
+    /// members of the type the callee declares for that parameter, which only
+    /// the resolver, who can find the callee, reads. Until it does, the key is a
+    /// write through a value nothing types.
+    fn argument_keys(&mut self, object: Node<'t>, index: usize, callee: &[Name]) {
+        let mut qualifier = vec![Name::from(format!("{ARGUMENT}{index}>"))];
+        qualifier.extend_from_slice(callee);
+        for entry in kids(object) {
+            if let Some((key, name)) = self.entry_key(entry) {
+                self.reference(
+                    key,
+                    &name,
+                    qualifier.clone(),
+                    Receiver::Unknown,
+                    UseKind::Write,
+                );
+            }
+        }
+    }
+
+    /// What an object pattern takes of a value: each name is a read of the member
+    /// of that name of the type the code states for the value, or, when it states
+    /// none, of a value nothing types, which the resolver leaves as an unresolved
+    /// read and never drops.
+    fn destructured(&mut self, pattern: Node<'t>, typed: Option<TypeName>) {
+        for entry in kids(pattern) {
+            let name_node = match entry.kind() {
+                "shorthand_property_identifier_pattern" => Some(entry),
+                "object_assignment_pattern" => field(entry, "left")
+                    .filter(|l| l.kind() == "shorthand_property_identifier_pattern"),
+                "pair_pattern" => {
+                    // What the member holds is typed by the member's own type,
+                    // which only the resolver can follow: the names inside it are
+                    // read through a value nothing types.
+                    if let Some(inner) =
+                        field(entry, "value").filter(|v| v.kind() == "object_pattern")
+                    {
+                        self.destructured(inner, None);
+                    }
+                    field(entry, "key")
+                        .filter(|k| matches!(k.kind(), "property_identifier" | "string"))
+                }
+                _ => None,
+            };
+            let Some(node) = name_node else {
+                continue;
+            };
+            let name = strip_quotes(self.t(node)).to_string();
+            let (receiver, qualifier) = match &typed {
+                Some(t) => (Receiver::Typed(t.clone()), Vec::new()),
+                None => (Receiver::Unknown, vec![Name::from(UNTYPED_SOURCE)]),
+            };
+            self.reference(node, &name, qualifier, receiver, UseKind::Read);
         }
     }
 

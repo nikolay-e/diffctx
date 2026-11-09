@@ -1,0 +1,67 @@
+name: tf_changed_local_reaches_its_readers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- body-only
+repo:
+  initial_files:
+    main.tf: |
+      variable "a" {
+        default = "v"
+      }
+
+      locals {
+        a = "x"
+        b = "${local.a}-b"
+      }
+
+      output "o" {
+        value = local.b
+      }
+
+      resource "terraform_data" "r" {
+        input = local.a
+      }
+    other.tf: |
+      output "q" {
+        value = var.a
+      }
+  changed_files:
+    main.tf: |
+      variable "a" {
+        default = "v"
+      }
+
+      locals {
+        a = "y"
+        b = "${local.a}-b"
+      }
+
+      output "o" {
+        value = local.b
+      }
+
+      resource "terraform_data" "r" {
+        input = local.a
+      }
+  commit_message: tf changed local reaches its readers
+expect:
+  changed:
+  - main.tf::local.a
+  relations:
+  - from: main.tf::local.b
+    to: main.tf::local.a
+    kind: reads
+    resolution: resolved
+    site: 7
+  - from: main.tf::terraform_data.r
+    to: main.tf::local.a
+    kind: reads
+    resolution: resolved
+    site: 15
+  exact: true
+  decoys:
+    main.tf::local.a:
+    - other.tf
