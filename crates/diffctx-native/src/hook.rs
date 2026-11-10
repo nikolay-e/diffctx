@@ -207,10 +207,42 @@ fn git_out(root: &Path, args: &[&str]) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-fn first_reachable(root: &Path, revs: &[&str]) -> Option<String> {
-    revs.iter()
-        .find(|r| git_out(root, &["rev-parse", "--verify", "--quiet", r]).is_some())
-        .map(|r| r.to_string())
+/// A read whose refusal says nothing on stderr, or that a ref does not
+/// exist (`rev-parse --verify --quiet` of an absent ref, `merge-base` of a
+/// ref nothing resolves or of unrelated histories), is git's "no": `None`.
+/// Any other failure is a failure the review cannot go on past.
+fn git_checked(root: &Path, args: &[&str]) -> Result<Option<String>, Silence> {
+    match crate::git::run_git(root, args) {
+        Ok(out) => Ok(Some(out.trim().to_string()).filter(|s| !s.is_empty())),
+        Err(e) if names_no_such_ref(&e.to_string()) => Ok(None),
+        Err(_) => Err("error:git"),
+    }
+}
+
+/// What git says when a ref the line names is not in the repository: an
+/// absence (#416), not a refusal to read. No stderr at all is the `--quiet`
+/// spelling of the same answer.
+fn names_no_such_ref(message: &str) -> bool {
+    message.ends_with("failed: unknown error")
+        || [
+            "unknown revision",
+            "bad revision",
+            "ambiguous argument",
+            "Not a valid object name",
+            "needed a single revision",
+            "Needed a single revision",
+        ]
+        .iter()
+        .any(|words| message.contains(words))
+}
+
+fn first_reachable(root: &Path, revs: &[&str]) -> Result<Option<String>, Silence> {
+    for rev in revs {
+        if git_checked(root, &["rev-parse", "--verify", "--quiet", rev])?.is_some() {
+            return Ok(Some(rev.to_string()));
+        }
+    }
+    Ok(None)
 }
 
 /// The index captured as a tree against `base`, or against the snapshot's
@@ -250,42 +282,47 @@ fn resolve_dir(cwd: &Path, dir: Option<&str>) -> PathBuf {
 }
 
 /// The range a trigger read before git runs is about. `cwd` is where the
-/// agent ran the line; a landed record carries its own range.
-fn range_for(root: &Path, trigger: &Trigger) -> Option<String> {
-    Some(match trigger {
+/// agent ran the line; a landed record carries its own range. A ref nothing
+/// here resolves is `no-range` (`unresolved-ref` for a pull request, #416:
+/// never replaced by the current branch); a read git refused is `error:git`.
+fn range_for(root: &Path, trigger: &Trigger) -> Result<String, Silence> {
+    Ok(match trigger {
         Trigger::Inspect {
             staged,
             own: Some(own),
-        } if !own.others.is_empty() => own_range(root, *staged, &own.files)?,
+        } if !own.others.is_empty() => own_range(root, *staged, &own.files).ok_or("error:git")?,
         Trigger::Inspect { staged: false, .. } => "HEAD".to_string(),
-        Trigger::Inspect { staged: true, .. } => staged_range(root, None)?,
+        Trigger::Inspect { staged: true, .. } => staged_range(root, None).ok_or("error:git")?,
         Trigger::Commit { amend, .. } => {
             let base = if *amend {
-                Some(git_out(
-                    root,
-                    &["rev-parse", "--verify", "--quiet", "HEAD~1"],
-                )?)
+                Some(
+                    git_checked(root, &["rev-parse", "--verify", "--quiet", "HEAD~1"])?
+                        .ok_or("no-range")?,
+                )
             } else {
                 None
             };
-            staged_range(root, base.as_deref())?
+            staged_range(root, base.as_deref()).ok_or("error:git")?
         }
         Trigger::PullRequest { base, head } => {
             // `--head` opens the PR from the branch as pushed.
             let head = match head {
                 Some(h) => {
                     first_reachable(root, &[format!("refs/remotes/origin/{h}").as_str(), h])?
+                        .ok_or("unresolved-ref")?
                 }
                 None => "HEAD".to_string(),
             };
             let base = match base {
                 Some(b) => format!("refs/remotes/origin/{b}"),
-                None => first_reachable(root, &["origin/HEAD", "origin/main", "origin/master"])?,
+                None => first_reachable(root, &["origin/HEAD", "origin/main", "origin/master"])?
+                    .ok_or("unresolved-ref")?,
             };
-            let merge_base = git_out(root, &["merge-base", &base, &head])?;
+            let merge_base =
+                git_checked(root, &["merge-base", &base, &head])?.ok_or("unresolved-ref")?;
             format!("{merge_base}..{head}")
         }
-        Trigger::Landed { .. } => return None,
+        Trigger::Landed { .. } => return Err("no-range"),
     })
 }
 
@@ -1030,9 +1067,10 @@ impl Fnv {
 /// mode and blob id it ends at — content-addressed, so every spelling of one
 /// snapshot shares it: the worktree with an untracked file, the index after
 /// `git add -A`, the commit that records it. Any byte of the change, its
-/// base or the analyser changing makes a new one. `None` when the range
-/// changes nothing.
-pub fn result_identity(root: &Path, range: &str) -> Option<String> {
+/// base or the analyser changing makes a new one. `Ok(None)` when the range
+/// changes nothing; a read git refused is an error, never "nothing": an
+/// unknown set of files changed.
+pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silence> {
     let (base, head) = match crate::git::split_diff_range(range) {
         (Some(b), h) => (b, h),
         _ => (range.to_string(), None),
@@ -1041,7 +1079,7 @@ pub fn result_identity(root: &Path, range: &str) -> Option<String> {
     if head.is_none() {
         let untracked =
             crate::git::run_git_z(root, &["ls-files", "-o", "--exclude-standard", "-z"])
-                .unwrap_or_default();
+                .map_err(|_| "error:git")?;
         entries.extend(
             untracked
                 .into_iter()
@@ -1049,7 +1087,7 @@ pub fn result_identity(root: &Path, range: &str) -> Option<String> {
         );
     }
     if entries.is_empty() {
-        return None;
+        return Ok(None);
     }
     hash_working_tree_blobs(root, &mut entries);
     entries.sort();
@@ -1066,7 +1104,7 @@ pub fn result_identity(root: &Path, range: &str) -> Option<String> {
             .feed(mode.as_bytes())
             .feed(oid.as_bytes());
     }
-    Some(format!("{:016x}", h.0))
+    Ok(Some(format!("{:016x}", h.0)))
 }
 
 /// `(path, mode, blob id)` of every path `base..head` changes (`head` absent:
@@ -1076,28 +1114,27 @@ fn changed_blobs(
     root: &Path,
     base: &str,
     head: Option<&str>,
-) -> Option<Vec<(String, String, String)>> {
+) -> Result<Vec<(String, String, String)>, Silence> {
     let mut args = vec!["diff", "--raw", "-z", "--no-abbrev", "--no-renames", base];
     args.extend(head);
     args.push("--");
-    let raw = crate::git::run_git_z(root, &args).ok()?;
-    Some(
-        raw.chunks(2)
-            .filter_map(|pair| {
-                let [meta, path] = pair else { return None };
-                let fields: Vec<&str> = meta.trim_start_matches(':').split(' ').collect();
-                let [_, mode, _, oid, status] = fields.as_slice() else {
-                    return None;
-                };
-                let oid = if status.starts_with('D') {
-                    "deleted"
-                } else {
-                    oid
-                };
-                Some((path.clone(), (*mode).to_string(), oid.to_string()))
-            })
-            .collect(),
-    )
+    let raw = crate::git::run_git_z(root, &args).map_err(|_| "error:git")?;
+    Ok(raw
+        .chunks(2)
+        .filter_map(|pair| {
+            let [meta, path] = pair else { return None };
+            let fields: Vec<&str> = meta.trim_start_matches(':').split(' ').collect();
+            let [_, mode, _, oid, status] = fields.as_slice() else {
+                return None;
+            };
+            let oid = if status.starts_with('D') {
+                "deleted"
+            } else {
+                oid
+            };
+            Some((path.clone(), (*mode).to_string(), oid.to_string()))
+        })
+        .collect())
 }
 
 /// Fills the blob ids the working tree leaves open (zeros, untracked files)
@@ -1303,7 +1340,7 @@ pub fn mark_range_reviewed(root: &Path, range: &str, output: &crate::impact::Imp
     if std::env::var_os("DIFFCTX_NO_MARKER").is_some() {
         return;
     }
-    if let Some(identity) = result_identity(root, range) {
+    if let Ok(Some(identity)) = result_identity(root, range) {
         // An empty answer is stored empty, as the hook's own path does: the
         // reminder then has no callers to point back at.
         let rendered = if output.empty {
@@ -1378,14 +1415,39 @@ fn payload_cwd(payload: &serde_json::Value) -> Option<PathBuf> {
 /// A relative directory on the command line is relative to where the agent
 /// ran it, which the payload names; this process's cwd is a guess.
 fn repo_root(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
+    crate::git::find_toplevel(&root_dir(payload, dir)?)
+}
+
+fn root_dir(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
     let dir = resolve_dir(&payload_cwd(payload)?, dir);
     // A search names a file as often as a directory.
-    let dir = if dir.is_file() {
+    Some(if dir.is_file() {
         dir.parent()?.to_path_buf()
     } else {
         dir
+    })
+}
+
+/// `repo_root` for a review: a directory that is no repository is `None`, a
+/// `rev-parse` git refused for any other reason is a failure, not "not git".
+fn repo_root_checked(
+    payload: &serde_json::Value,
+    dir: Option<&str>,
+) -> Result<Option<PathBuf>, Silence> {
+    let Some(dir) = root_dir(payload, dir) else {
+        return Ok(None);
     };
-    crate::git::find_toplevel(&dir)
+    match crate::git::run_git(&dir, &["rev-parse", "--show-toplevel"]) {
+        Ok(out) => {
+            let top = out.trim();
+            Ok((!top.is_empty()).then(|| {
+                dunce::canonicalize(top).unwrap_or_else(|_| Path::new(top).components().collect())
+            }))
+        }
+        Err(crate::git::GitError::NotARepo(_) | crate::git::GitError::Io(_)) => Ok(None),
+        Err(e) if e.to_string().contains("not a git repository") => Ok(None),
+        Err(_) => Err("error:git"),
+    }
 }
 
 fn prepare(
@@ -1405,18 +1467,12 @@ fn prepare(
         Intent::Inspect { staged } => Trigger::Inspect { staged, own: None },
     };
     trace.verb = Some(verb_of(&trigger));
-    let root = repo_root(payload, None).ok_or("not-git")?;
+    let root = repo_root_checked(payload, None)?.ok_or("not-git")?;
     trace.root = Some(root.clone());
     if let Trigger::Inspect { staged, own } = &mut trigger {
         *own = own_changes(&root, payload, *staged)?;
     }
-    // A PR without a range names a ref nothing here resolves: said so,
-    // never replaced by the current branch (#416).
-    let unresolved = match trigger {
-        Trigger::PullRequest { .. } => "unresolved-ref",
-        _ => "no-range",
-    };
-    let range = range_for(&root, &trigger).ok_or(unresolved)?;
+    let range = range_for(&root, &trigger)?;
     prepared(root, range, None, trigger, trace)
 }
 
@@ -1696,7 +1752,7 @@ fn prepared(
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
     trace.range = Some(range.clone());
-    let identity = result_identity(&root, &range).ok_or("clean")?;
+    let identity = result_identity(&root, &range)?.ok_or("clean")?;
     let session = trace.session.as_deref();
     let key = session_key(&format!("id-{identity}"), session);
     let shown =
@@ -1730,7 +1786,7 @@ fn own_changes(
     payload: &serde_json::Value,
     staged: bool,
 ) -> Result<Option<Owned>, Silence> {
-    let changed = changed_paths(root, staged);
+    let changed = changed_paths(root, staged)?;
     if changed.is_empty() {
         return Err("clean");
     }
@@ -1765,19 +1821,20 @@ fn own_changes(
 }
 
 /// Every path the inspected snapshot changes: the index against `HEAD`, or
-/// the working tree with its untracked files.
-fn changed_paths(root: &Path, staged: bool) -> Vec<String> {
+/// the working tree with its untracked files. A listing git refused is an
+/// error, not a smaller change.
+fn changed_paths(root: &Path, staged: bool) -> Result<Vec<String>, Silence> {
     let args: &[&str] = if staged {
         &["diff", "--cached", "--name-only", "-z", "--no-renames"]
     } else {
         &["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]
     };
-    let mut paths = crate::git::run_git_z(root, args).unwrap_or_default();
+    let mut paths = crate::git::run_git_z(root, args).map_err(|_| "error:git")?;
     if !staged {
         let untracked = ["ls-files", "-o", "--exclude-standard", "-z"];
-        paths.extend(crate::git::run_git_z(root, &untracked).unwrap_or_default());
+        paths.extend(crate::git::run_git_z(root, &untracked).map_err(|_| "error:git")?);
     }
-    paths
+    Ok(paths)
 }
 
 /// What a session wrote, by its transcripts and by the calls the hook
@@ -2339,8 +2396,12 @@ fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
 /// A review the time ran out on says so and names what it may have left:
 /// the range's files with no caller listed, which is either no caller found
 /// or the run stopping before it reached them. `paths` are the range's,
-/// read before the review began.
-fn stopped_note(output: &crate::impact::ImpactOutput, range: &str, paths: &[String]) -> String {
+/// read before the review began, `None` when git refused that listing.
+fn stopped_note(
+    output: &crate::impact::ImpactOutput,
+    range: &str,
+    paths: Option<&[String]>,
+) -> String {
     if !output
         .limits
         .contains(&crate::resource::LimitReason::Deadline)
@@ -2367,6 +2428,11 @@ fn stopped_note(output: &crate::impact::ImpactOutput, range: &str, paths: &[Stri
         .filter(|c| !crate::impact::is_unfinished(c))
         .map(|c| c.path.as_str())
         .collect();
+    let Some(paths) = paths else {
+        return format!(
+            "diffctx stopped at the hook's budget before it finished {range}. Its changed files could not be listed, so which of them the run left unreached is unknown. `diffctx <repo> --diff {range} --mode impact` runs the review to the end.\n"
+        );
+    };
     let unlisted: Vec<String> = paths
         .iter()
         .filter(|p| !listed.contains(p.as_str()))
@@ -2394,7 +2460,7 @@ fn impact_context(
     range: &str,
     spec: Option<snap::RangeSpec>,
     secs: u64,
-    paths: &[String],
+    paths: Option<&[String]>,
 ) -> Result<Answer, Silence> {
     let mut output = run_impact(root, range, spec, secs)?;
     let hedge = match trigger {
@@ -2800,7 +2866,12 @@ fn search_answer(
         return Err("other-tree");
     }
     let scope = search_scope(payload, search, &root);
-    let identity = result_identity(&root, "HEAD");
+    // A pending change git would not read leaves unknown which names it
+    // edits: said, never answered as if nothing were edited.
+    let (identity, unread) = match result_identity(&root, "HEAD") {
+        Ok(identity) => (identity, false),
+        Err(_) => (None, true),
+    };
     let edited = identity
         .as_ref()
         .map(|_| edited_definitions(&root, None))
@@ -2808,6 +2879,12 @@ fn search_answer(
     let (edited, others): (Vec<String>, Vec<String>) =
         names.into_iter().partition(|n| edited.contains(n));
     let mut answers = Vec::new();
+    if unread {
+        answers.push(
+            "diffctx could not read the pending change (git refused a read): which of the searched names it edits is unknown, and the answers here are of HEAD as committed."
+                .to_string(),
+        );
+    }
     let mut silence = "seen";
     // A name no searched file defines or calls is no lookup worth a build.
     let spelled = named_in_scope(&root, &scope, &others);
@@ -3111,10 +3188,11 @@ fn within_budget<T: Send + 'static>(
 
 /// The files a range changes, read before its review begins: past the
 /// ceiling the hook's own git calls are refused, and a review cut short must
-/// still name what it may have left.
-fn range_paths(root: &Path, range: &str) -> Vec<String> {
+/// still name what it may have left. `None` when git refused the listing:
+/// the files are unknown, which is not an empty list.
+fn range_paths(root: &Path, range: &str) -> Option<Vec<String>> {
     let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
-    crate::git::run_git_z(root, &args).unwrap_or_default()
+    crate::git::run_git_z(root, &args).ok()
 }
 
 /// The hook's whole decision on one stdin payload. An answer is marked
@@ -3265,6 +3343,14 @@ fn review(
         // The inspected files may be the edits of a Bash call the hook could
         // not bracket: said, never guessed from a file's time.
         Err("unbracketed") => return Ok(not_attributed(event, trace)),
+        // A read git refused is no clean change: said, with what is known.
+        Err(why @ "error:git") => {
+            let range = trace
+                .range
+                .clone()
+                .unwrap_or_else(|| "the pending change".into());
+            return Ok(not_reviewed(event, &range, why, Some(&[]), trace));
+        }
         Err(why) => return Err(why),
     };
     let mut answers = Vec::new();
@@ -3388,7 +3474,7 @@ fn answer(
                 event,
                 &prepared.range,
                 "retry-exhausted",
-                &[],
+                Some(&[]),
                 trace,
             ));
         }
@@ -3410,7 +3496,7 @@ fn answer(
     let named = paths.clone();
     let recorded = !matches!(trigger, Trigger::Inspect { .. });
     let answer = within_budget(started, move |secs| {
-        impact_context(event, &trigger, &root, &range, spec, secs, &named)
+        impact_context(event, &trigger, &root, &range, spec, secs, named.as_deref())
     });
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
@@ -3426,7 +3512,11 @@ fn answer(
         }
         // A change that was not reviewed is said so, and which files it
         // changes: silence there reads as a clean review (#612, #613).
-        Err(why) if recorded => return Ok(not_reviewed(event, &reviewed, why, &paths, trace)),
+        // An inspection too says so when git or the engine failed: only a
+        // limit it stopped at (a timeout) stays silent there.
+        Err(why) if recorded || why.starts_with("error:") => {
+            return Ok(not_reviewed(event, &reviewed, why, paths.as_deref(), trace));
+        }
         Err(_) => return answer.map(|_| String::new()),
     }
     // A partial answer keeps its attempt: it is retried, but not forever.
@@ -3491,7 +3581,7 @@ fn not_reviewed(
     event: Event,
     range: &str,
     why: Silence,
-    paths: &[String],
+    paths: Option<&[String]>,
     trace: &mut Trace,
 ) -> String {
     trace.noted = Some(why);
@@ -3503,14 +3593,14 @@ fn not_reviewed(
         "error:range" => "the range could not be resolved (exit 2 on the command line)",
         _ => "the review failed",
     };
-    let unread = if paths.is_empty() {
-        String::new()
-    } else {
-        format!(
+    let unread = match paths {
+        None => " Its changed files could not be listed.".to_string(),
+        Some([]) => String::new(),
+        Some(paths) => format!(
             " It changes {} file(s), none of them reviewed: {}.",
             paths.len(),
             some_of(paths)
-        )
+        ),
     };
     hook_json(
         event,
@@ -3536,7 +3626,7 @@ fn not_attributed(event: Event, trace: &mut Trace) -> String {
 fn not_analysed(event: Event, why: Silence, trace: &mut Trace) -> String {
     trace.noted = Some(why);
     let because = match why {
-        "error:git" => "git refused a read of the repository's refs or reflogs",
+        "error:git" => "git refused a read of the repository (its refs, reflogs or changed files)",
         "error:record" => "what it was about to do could not be recorded for the review after it",
         _ => "git's record of it could not be read",
     };

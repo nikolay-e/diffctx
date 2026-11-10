@@ -494,6 +494,37 @@ fn tests_and_main_are_entry_points() {
     );
 }
 
+/// A stray `}` and `{` park the items after them under one error node. The
+/// attribute before `keep` is still its attribute, so it is a test entry
+/// point, and only the stray tokens' lines are unread. Red on the base: the
+/// error node was read as an expression, which drops the attributes and
+/// docs of the items inside it, while the loss claimed them read.
+#[test]
+fn an_item_under_an_error_node_keeps_its_attributes() {
+    let blob = extract(
+        "fn a() {\n    one();\n}\n} {\n\n#[test]\nfn keep() {\n    helper();\n}\n\nfn tail() {\n    other();\n}\n",
+    );
+    let entries: Vec<(EntryKind, String)> = blob
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::EntryPoint(e) => Some((e.kind, scope(&e.target))),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(entries, [(EntryKind::Test, "def:keep".to_string())]);
+    assert!(blob.defs().any(|d| key(&d.local) == "tail"));
+    let unread: Vec<&[(u32, u32)]> = blob
+        .losses
+        .iter()
+        .filter_map(|l| match l {
+            Loss::ParseError { lines, .. } => Some(lines.as_slice()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unread, [&[(4, 4)][..]], "only the stray tokens are unread");
+}
+
 #[test]
 fn a_member_is_left_out_of_its_containers_hashes() {
     let one = extract("struct S { a: u8, b: u8 }\n");

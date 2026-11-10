@@ -23,15 +23,24 @@ pub struct Candidate<'a> {
 const MAX_DEPTH: usize = 24;
 
 /// The candidates of an object's node, in source order, leaving out the fields
-/// at `typed` (the sites of references a row already named).
-pub fn candidates<'a>(object: &'a Node, typed: &[Range<u32>]) -> Vec<Candidate<'a>> {
+/// at `typed` (the sites of references a row already named), and whether the
+/// walk stopped at the depth cut: what lies below it was not read.
+pub fn candidates<'a>(object: &'a Node, typed: &[Range<u32>]) -> (Vec<Candidate<'a>>, bool) {
     let mut found = Vec::new();
-    walk(object, typed, 0, &mut found);
-    found
+    let mut cut = false;
+    walk(object, typed, 0, &mut found, &mut cut);
+    (found, cut)
 }
 
-fn walk<'a>(node: &'a Node, typed: &[Range<u32>], depth: usize, found: &mut Vec<Candidate<'a>>) {
+fn walk<'a>(
+    node: &'a Node,
+    typed: &[Range<u32>],
+    depth: usize,
+    found: &mut Vec<Candidate<'a>>,
+    cut: &mut bool,
+) {
     if depth > MAX_DEPTH {
+        *cut = true;
         return;
     }
     match &node.value {
@@ -54,13 +63,13 @@ fn walk<'a>(node: &'a Node, typed: &[Range<u32>], depth: usize, found: &mut Vec<
                     Some(name) if !typed.contains(&name.span.bytes) && !name.templated => {
                         found.push(Candidate { field: key, name });
                     }
-                    _ => walk(&entry.value, typed, depth + 1, found),
+                    _ => walk(&entry.value, typed, depth + 1, found, cut),
                 }
             }
         }
         Value::Seq(items) => {
             for item in items {
-                walk(item, typed, depth + 1, found);
+                walk(item, typed, depth + 1, found, cut);
             }
         }
         Value::Null | Value::Scalar(_) => {}

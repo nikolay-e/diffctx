@@ -1,0 +1,40 @@
+name: ts_block_scoped_const_is_no_definition_called_from_a_sibling_block
+mode: impact
+source: gh#716
+issue_state: open
+tags:
+- typescript
+- javascript
+- block-scope
+- decoy
+repo:
+  initial_files:
+    test.mjs: |
+      const ok = (name, cond) => console.log(cond ? "PASS" : "FAIL", name);
+      const top = { tag: "top" };
+      {
+        const s = { value: 1 };
+        ok("first block", s.value === 1);
+      }
+      {
+        const s = { value: 2 };
+        ok("second block", s.value === 2);
+      }
+      ok("top", top.tag === "top");
+  changed_files:
+    test.mjs: |
+      const ok = (name, cond) => console.log(cond ? "PASS" : "FAIL", name);
+      const top = { tag: "top" };
+      {
+        const s = { value: 1 };
+        ok("first block", s.value === 1);
+      }
+      {
+        const s = { value: 3 };
+        ok("second block", s.value === 3);
+      }
+      ok("top", top.tag === "top");
+  commit_message: Change the second block
+expect:
+  callers:
+    s: []

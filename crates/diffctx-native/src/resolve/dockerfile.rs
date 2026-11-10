@@ -38,6 +38,7 @@ pub struct DockerfileResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
 }
 
 struct StageRec {
@@ -72,6 +73,7 @@ impl DockerfileResolver {
         let listing = cache.listing(reader)?;
         let mut files: Vec<FileFacts> = Vec::new();
         let mut losses = Vec::new();
+        let mut read_paths = Vec::new();
         for entry in &listing.entries {
             if Language::from_path(&entry.path) != Some(Language::Dockerfile) {
                 continue;
@@ -84,6 +86,7 @@ impl DockerfileResolver {
             }
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 losses.extend(file.losses());
+                read_paths.push(entry.path.clone());
                 files.push(file);
             }
         }
@@ -149,6 +152,7 @@ impl DockerfileResolver {
             bindings,
             by_target,
             losses,
+            read: read_paths,
         })
     }
 
@@ -172,6 +176,11 @@ impl DockerfileResolver {
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 }
 

@@ -256,6 +256,29 @@ fn a_parse_error_is_a_loss_and_the_rest_is_read() {
     assert!(blob.defs().any(|d| key(&d.local) == "var.a"));
 }
 
+/// A stray `}` makes the grammar park the blocks before it under an error
+/// node that sits beside the file's body, not in it. The two whole blocks
+/// are the file's, and only the stray object (9-11) is unread. Red on the
+/// base: the walk read only the body, so both blocks vanished while the loss
+/// counted them as read.
+#[test]
+fn a_block_under_an_error_node_is_read_and_only_the_rest_is_unread() {
+    let blob = extract(
+        "variable \"region\" {\n  type = string\n}\n\nresource \"aws_vpc\" \"main\" {\n  cidr_block = var.cidr\n}\n\nmodule \"net\" }  {\n  source = \"./net\"\n}\n",
+    );
+    def(&blob, "var.region");
+    def(&blob, "aws_vpc.main");
+    let unread: Vec<&[(u32, u32)]> = blob
+        .losses
+        .iter()
+        .filter_map(|l| match l {
+            Loss::ParseError { lines, .. } => Some(lines.as_slice()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unread, [&[(9, 11)][..]]);
+}
+
 #[test]
 fn an_expired_budget_is_a_deadline_loss() {
     let budget = RunBudget {

@@ -34,7 +34,7 @@ use crate::facts::shell::{PathHead, PathUse};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, UseKind, expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's shell scripts.
 pub struct ShellResolver {
@@ -42,6 +42,7 @@ pub struct ShellResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
     unknown_sources: usize,
     unread: usize,
 }
@@ -301,6 +302,7 @@ impl ShellResolver {
         let listing = cache.listing(reader)?;
         let mut files: Vec<FileFacts> = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         let mut unread = 0;
         for entry in &listing.entries {
             let language = Language::from_path(&entry.path);
@@ -327,6 +329,7 @@ impl ShellResolver {
                     unread += 1;
                 }
                 losses.extend(file_losses);
+                read.push(entry.path.clone());
                 files.push(file);
             }
         }
@@ -516,6 +519,7 @@ impl ShellResolver {
             bindings,
             by_target,
             losses,
+            read,
             unknown_sources: unknown_files.len(),
             unread,
         })
@@ -541,6 +545,11 @@ impl ShellResolver {
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 
     /// The scripts that source a path nothing settles (`source "$CONFIG"`): what

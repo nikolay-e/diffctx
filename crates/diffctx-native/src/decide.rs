@@ -16,17 +16,20 @@
 //! part.
 //!
 //! An absence is never a default. [`Complete`] is the witness that the search for
-//! a definition's uses left nothing unread; only this module makes one (the cell's
-//! own search, [`Coverages::searched`] and [`Coverage::scope`]), from the gaps the
-//! search found, and an absence claim ([`Claim::Absent`]) or an exact
-//! count ([`Count::Exact`]) holds it. Every other outcome names its [`Gap`]. A
-//! failed read is an `Err` or a gap here, never an empty value: the lint that
-//! says so is denied in this module.
+//! a definition's uses left nothing unread, and [`Coverage::close`] is the one place
+//! that makes it: from the gaps the search found and, for a definition, from an
+//! [`Account`] of every file of its interaction group ([`Group`]), each one read
+//! by the cell without a loss, or spelling none of the names a use could carry.
+//! An absence claim ([`Claim::Absent`]) or an exact count ([`Count::Exact`]) holds
+//! the witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
+//! or a gap here, never an empty value: the lint that says so is denied in this
+//! module.
 
 #![deny(clippy::disallowed_methods)]
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -46,9 +49,10 @@ use crate::resolve::{
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
-    self, Admission, AdmissionPolicy, AnalysisContext, ChangeKind, Loss, RangeSpec, RepoPath,
-    RunBudget, Side, SideTag, WorkspaceModel,
+    self, Admission, AdmissionPolicy, AnalysisContext, ChangeKind, Loss, NotAnalysedReason,
+    RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
+use crate::tokens::{GroupTokens, Names, TokenIndex};
 
 /// Uses of a name that left, or moved, listed one by one up to this many; past
 /// it the name is too common to say which lines were meant.
@@ -71,7 +75,7 @@ const NO_RELEASE: &str = "no_release";
 const CASE_FOLD: &str = "case_fold";
 
 /// The languages one resolver reads: a cell answers for one family.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Family {
     Python,
     TypeScript,
@@ -148,11 +152,77 @@ impl Family {
         // A YAML file is the configuration cell's only where it holds objects
         // (`Cell::owns` reads that off the resolver): the rest of the YAML of a
         // repository (workflows, compose files, values) is read by other paths.
-        if self == Self::Config {
-            return false;
-        }
+        self != Self::Config && self.by_extension(path)
+    }
+
+    fn by_extension(self, path: &str) -> bool {
         RepoPath::new(path)
             .is_ok_and(|p| Language::from_path(&p).is_some_and(|language| self.has(language)))
+    }
+
+    /// The files that can name this family's definitions: the languages that
+    /// call into each other share a group (Kotlin and Java, C and C++, the web's
+    /// scripts and the markup that embeds them), any other family stands alone.
+    pub const fn group(self) -> Group {
+        match self {
+            Self::Kotlin | Self::Java => Group::Jvm,
+            Self::C => Group::Native,
+            Self::TypeScript => Group::Web,
+            Self::Python
+            | Self::Rust
+            | Self::Go
+            | Self::Php
+            | Self::Config
+            | Self::Terraform
+            | Self::Dockerfile
+            | Self::Shell => Group::Family(self),
+        }
+    }
+}
+
+/// The files whose uses can name a definition: its interaction group. Membership
+/// is by extension, so the languages no cell reads (Scala, Groovy, Objective-C,
+/// Vue, Svelte, HTML, Astro, Swift, SQL, ...) are in their group and are
+/// accounted for like any file of it, never left out of scope.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Group {
+    Family(Family),
+    /// Java, Kotlin, Scala and Groovy: they call each other.
+    Jvm,
+    /// C, C++ and Objective-C: they bridge and link.
+    Native,
+    /// The scripts of the web and the markup and components that embed them.
+    Web,
+    /// A language no family reads, alone in its group (its name as the language
+    /// table spells it).
+    Language(&'static str),
+}
+
+impl Group {
+    /// The group a file belongs to by its extension; none for a file of no known
+    /// language.
+    pub fn of_path(path: &str) -> Option<Self> {
+        if let Ok(repo) = RepoPath::new(path) {
+            if let Some(language) = Language::from_path(&repo) {
+                return Family::ALL
+                    .into_iter()
+                    .find(|family| family.has(language))
+                    .map(Family::group);
+            }
+        }
+        if path.to_ascii_lowercase().ends_with(".astro") {
+            return Some(Self::Web);
+        }
+        crate::languages::get_language_for_file(path).map(|language| match language {
+            "java" | "kotlin" | "scala" | "groovy" => Self::Jvm,
+            "c" | "cpp" | "objectivec" => Self::Native,
+            "typescript" | "tsx" | "javascript" | "jsx" | "html" | "vue" | "svelte" => Self::Web,
+            other => Self::Language(other),
+        })
+    }
+
+    pub fn has_path(self, path: &str) -> bool {
+        Self::of_path(path) == Some(self)
     }
 }
 
@@ -273,6 +343,24 @@ impl Resolver {
         }
     }
 
+    /// The files the resolver read.
+    fn read_paths(&self) -> &[RepoPath] {
+        match self {
+            Self::Python(r) => r.read_paths(),
+            Self::TypeScript(r) => r.read_paths(),
+            Self::Rust(r) => r.read_paths(),
+            Self::Kotlin(r) => r.read_paths(),
+            Self::Java(r) => r.read_paths(),
+            Self::Go(r) => r.read_paths(),
+            Self::Php(r) => r.read_paths(),
+            Self::C(r) => r.read_paths(),
+            Self::Config(r) => r.read_paths(),
+            Self::Terraform(r) => r.read_paths(),
+            Self::Dockerfile(r) => r.read_paths(),
+            Self::Shell(r) => r.read_paths(),
+        }
+    }
+
     fn losses(&self) -> &[Loss] {
         match self {
             Self::Python(r) => r.losses(),
@@ -300,10 +388,10 @@ impl Resolver {
 }
 
 /// The witness that the search for a definition's uses covered everything that
-/// could name it. It has no public field and no `Default`, and `Coverage::of`,
-/// which makes it, is private to this module: the cell's search, `searched` and
-/// `scope` are the only call sites, so an absence or an exact count cannot be
-/// written without the coverage computation having found no gap.
+/// could name it. It has no public field and no `Default`, and `Coverage::close`
+/// is the one place that makes it, so an absence or an exact count cannot be
+/// written without the coverage computation having found no gap and, for a
+/// definition, every file of its group accounted for.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Complete(());
 
@@ -323,8 +411,10 @@ pub enum Gap {
     /// The run is limited to pathspecs, and `files` outside them could name the
     /// definition: their uses were left out.
     OutsideScope { files: usize },
-    /// Files that spell the name were not analysed whole.
-    Unread { files: usize },
+    /// `files` of the definition's interaction group could neither be bound by
+    /// the cell nor ruled out by the names they spell: a file the cell did not
+    /// read, or read with a loss, that spells one of the names.
+    Unaccounted { reason: Reason, files: usize },
     /// Files the run withheld by ignore rules were not read.
     Withheld { files: usize },
     /// Changed code in `files` lies outside every tracked definition (a
@@ -381,8 +471,11 @@ impl std::fmt::Display for Gap {
                     "{files} file(s) outside the run's pathspecs were left out"
                 )
             }
-            Self::Unread { files } => {
-                write!(f, "{files} file(s) naming it were not analysed whole")
+            Self::Unaccounted { reason, files } => {
+                write!(
+                    f,
+                    "{files} file(s) of its interaction group not read: {reason}"
+                )
             }
             Self::Withheld { files } => write!(f, "{files} file(s) withheld by ignore rules"),
             Self::Untracked { files } => write!(
@@ -420,6 +513,419 @@ impl std::fmt::Display for Gap {
     }
 }
 
+/// Why a file of a definition's interaction group is not accounted for.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum Reason {
+    ReadFailed,
+    Changed,
+    TooLarge,
+    NotRead,
+    Unparsed,
+    NoExtractor,
+    Failed,
+    Ambiguous,
+    Manifest,
+    /// The file is of the group, spells a name, and no cell binds names to this
+    /// definition's language.
+    OtherLanguage,
+    /// The definition is in no group, or its group holds no file.
+    NoGroup,
+}
+
+impl Reason {
+    /// Whether a file left unaccounted for this reason is listed by name in the
+    /// answer: one that was lost or not read is, one only in a language no cell
+    /// binds is counted in the gap and never listed as a use.
+    pub const fn lists_the_file(self) -> bool {
+        !matches!(self, Self::OtherLanguage | Self::NoGroup)
+    }
+
+    /// How an unanalysed-file row of the answer states the reason: its own
+    /// strings, so that neither schema moves.
+    pub const fn row_reason(self) -> &'static str {
+        match self {
+            Self::ReadFailed | Self::Changed | Self::NotRead | Self::Manifest => "unreadable",
+            Self::TooLarge => "too_large",
+            Self::Unparsed | Self::Failed | Self::Ambiguous => "parse_failed",
+            Self::NoExtractor => "no_grammar",
+            Self::OtherLanguage | Self::NoGroup => "not_traced",
+        }
+    }
+}
+
+impl std::fmt::Display for Reason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ReadFailed => "a read failed",
+            Self::Changed => "changed on disk after the listing",
+            Self::TooLarge => "over the size cap",
+            Self::NotRead => "listed, not read as source",
+            Self::Unparsed => "parse errors",
+            Self::NoExtractor => "no extractor for its language",
+            Self::Failed => "the extractor failed",
+            Self::Ambiguous => "a changed definition has more than one counterpart",
+            Self::Manifest => "a manifest above it could not be read",
+            Self::OtherLanguage => "in a language no cell binds to this definition",
+            Self::NoGroup => "in no group of languages",
+        })
+    }
+}
+
+/// What a loss does to an answer: leaves one file unaccounted, the files under a
+/// directory, or the whole run.
+pub enum Effect {
+    File(Reason),
+    Subtree(Reason, String),
+    Run(Gap),
+    /// A manifest of an ecosystem the workspace model does not read by design
+    /// (`composer.json`, `Gemfile`): it lost no file, and the cell of its language
+    /// reads what it needs of it itself.
+    ByDesign,
+}
+
+/// How the workspace model words a manifest it does not read by design.
+const NOT_READ_BY_DESIGN: &str = "this model does not read";
+
+/// The one reading of a loss. A new variant of `Loss` does not compile until it
+/// is decided here.
+pub fn effect_of(loss: &Loss) -> Effect {
+    match loss {
+        Loss::ReadFailed { .. } => Effect::File(Reason::ReadFailed),
+        Loss::SnapshotChanged { .. } => Effect::File(Reason::Changed),
+        Loss::TooLarge { .. } => Effect::File(Reason::TooLarge),
+        Loss::NotAnalysed { reason, .. } => Effect::File(match reason {
+            NotAnalysedReason::Oversize => Reason::TooLarge,
+            NotAnalysedReason::Symlink
+            | NotAnalysedReason::Submodule
+            | NotAnalysedReason::Untracked
+            | NotAnalysedReason::Unaddressable => Reason::NotRead,
+        }),
+        Loss::ParseError { .. } | Loss::GrammarOutdated { .. } => Effect::File(Reason::Unparsed),
+        Loss::Unsupported { .. } => Effect::File(Reason::NoExtractor),
+        Loss::ExtractorFailed { .. } => Effect::File(Reason::Failed),
+        Loss::AmbiguousMatch { .. } => Effect::File(Reason::Ambiguous),
+        Loss::ManifestUnread { reason, .. } if reason.ends_with(NOT_READ_BY_DESIGN) => {
+            Effect::ByDesign
+        }
+        Loss::ManifestUnread { path, .. } => {
+            Effect::Subtree(Reason::Manifest, path.parent().unwrap_or("").to_string())
+        }
+        Loss::Deadline { .. } => Effect::Run(Gap::Stopped {
+            reasons: vec![LimitReason::Deadline],
+        }),
+        Loss::Withheld { count } => Effect::Run(Gap::Withheld { files: *count }),
+    }
+}
+
+/// The reasons that leave a search a lower bound: a read that failed or a
+/// deadline.
+fn stopped_by(losses: &[Loss]) -> Vec<LimitReason> {
+    let mut out = Vec::new();
+    for loss in losses {
+        let reasons = match effect_of(loss) {
+            Effect::Run(Gap::Stopped { reasons }) => reasons,
+            Effect::File(Reason::ReadFailed) => vec![LimitReason::ReadFailed],
+            _ => continue,
+        };
+        for reason in reasons {
+            if !out.contains(&reason) {
+                out.push(reason);
+            }
+        }
+    }
+    out
+}
+
+/// What a set of losses does, by where it lands.
+#[derive(Default)]
+struct Losses {
+    files: HashMap<String, Reason>,
+    subtrees: Vec<(String, Reason)>,
+    run: Vec<Gap>,
+}
+
+impl Losses {
+    fn of<'a>(losses: impl IntoIterator<Item = &'a Loss>) -> Self {
+        let mut out = Self::default();
+        for loss in losses {
+            match effect_of(loss) {
+                Effect::File(reason) => {
+                    if let Some(path) = loss.path() {
+                        out.files.entry(path.as_str().to_string()).or_insert(reason);
+                    }
+                }
+                Effect::Subtree(reason, dir) => out.subtrees.push((dir, reason)),
+                Effect::Run(gap) => {
+                    if !out.run.contains(&gap) {
+                        out.run.push(gap);
+                    }
+                }
+                Effect::ByDesign => {}
+            }
+        }
+        out
+    }
+
+    /// Why a loss about `file` leaves it unaccounted: the first one's reason.
+    fn about(&self, file: &str) -> Option<Reason> {
+        self.files.get(file).copied().or_else(|| {
+            self.subtrees
+                .iter()
+                .find(|(dir, _)| {
+                    dir.is_empty()
+                        || file
+                            .strip_prefix(dir.as_str())
+                            .is_some_and(|rest| rest.starts_with('/'))
+                })
+                .map(|(_, reason)| *reason)
+        })
+    }
+}
+
+/// What a cell read of its group's files, at the side or sides a question needs.
+struct Bound<'a> {
+    family: Family,
+    /// The paths the head resolver read.
+    read: &'a HashSet<String>,
+    /// What the base resolver read and what the base lists, when the definition's
+    /// old name is asked for too: such a file is bound only if both sides read it.
+    /// A file the base does not hold has nothing to read there.
+    base: Option<(&'a HashSet<String>, &'a HashSet<String>)>,
+    scope: &'a [String],
+    /// Files the head resolver read that no extension puts in the group (a script
+    /// named by its shebang).
+    outside: &'a [String],
+}
+
+impl Bound<'_> {
+    fn reads(&self, file: &str) -> bool {
+        within_scope(self.scope, file)
+            && self.read.contains(file)
+            && self
+                .base
+                .is_none_or(|(read, listed)| read.contains(file) || !listed.contains(file))
+    }
+}
+
+/// What one file of a group is to a definition's absence.
+enum Status {
+    /// Read by the cell without a loss: its resolver answers for it.
+    Bound,
+    /// Tokenised, and none of the names a use could carry occurs in it: it cannot
+    /// change the answer.
+    NameAbsent,
+    /// Everything else.
+    Unaccounted(Reason),
+}
+
+/// The status of `file`. `spelled` says whether a name occurs in it: `None` when
+/// the file was not tokenised. A loss about the file, of any kind and however
+/// small, takes it out of `Bound`, and a file that spells a name and is not bound
+/// is unaccounted for, never absent.
+fn status(
+    file: &str,
+    spelled: Option<bool>,
+    bound: Option<&Bound<'_>>,
+    losses: &[&Losses],
+) -> Status {
+    let loss = losses.iter().find_map(|l| l.about(file));
+    if loss.is_none() && bound.is_some_and(|b| b.reads(file)) {
+        return Status::Bound;
+    }
+    if spelled == Some(false) {
+        return Status::NameAbsent;
+    }
+    Status::Unaccounted(loss.unwrap_or_else(|| match (spelled, bound) {
+        (Some(_), Some(b)) if b.family.by_extension(file) => Reason::NotRead,
+        (Some(_), _) => Reason::OtherLanguage,
+        (None, _) => Reason::NotRead,
+    }))
+}
+
+/// Every file of one interaction group, accounted for against one definition: the
+/// files that are bound or name none of its names are the proof of an absence, and
+/// the rest are what stands in its way, with their reasons.
+#[derive(Clone, Debug)]
+pub struct Account {
+    /// The files of the group.
+    group_files: usize,
+    /// The files that are neither, by reason.
+    unaccounted: Vec<(Reason, Vec<RepoPath>)>,
+    /// What the losses did to the run as a whole (a deadline, withheld files).
+    run: Vec<Gap>,
+}
+
+impl Account {
+    /// An account that cannot be made: nothing of the group was read.
+    fn blocked(reason: Reason, file: &str) -> Self {
+        Self {
+            group_files: 0,
+            unaccounted: vec![(reason, RepoPath::new(file).into_iter().collect())],
+            run: Vec::new(),
+        }
+    }
+
+    /// The files the account could not place, by reason.
+    pub fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
+        &self.unaccounted
+    }
+
+    /// The first thing that stands in the way of an absence, when anything does.
+    pub fn first_gap(&self) -> Option<Gap> {
+        self.gaps().into_iter().next()
+    }
+
+    fn gaps(&self) -> Vec<Gap> {
+        let mut gaps: Vec<Gap> = self
+            .unaccounted
+            .iter()
+            .map(|(reason, files)| Gap::Unaccounted {
+                reason: *reason,
+                files: files.len(),
+            })
+            .collect();
+        // A group of no file proves nothing: the guard that keeps an empty group
+        // (a registry that lost a family) from reading as a clean absence.
+        if self.group_files == 0 && self.unaccounted.is_empty() {
+            gaps.push(Gap::Unaccounted {
+                reason: Reason::NoGroup,
+                files: 0,
+            });
+        }
+        gaps.extend(self.run.iter().cloned());
+        gaps
+    }
+}
+
+/// Accounts for the files of `tokens`' group against `names`. Only the files that
+/// spell a name and the files that could not be tokenised are looked at: the rest
+/// are bound or absent by subtraction. `reach` says which files could name the
+/// definition at all (a function local to another is named only in its own file):
+/// the others are neither.
+fn account_of(
+    tokens: &GroupTokens,
+    names: &Names,
+    losses: &[&Losses],
+    bound: Option<&Bound<'_>>,
+    reach: &dyn Fn(&str) -> bool,
+) -> Account {
+    let unread = tokens.unread();
+    let mut candidates = tokens.spelling(names);
+    candidates.extend_from_slice(unread);
+    candidates.sort_unstable();
+    let mut by_reason: BTreeMap<Reason, Vec<RepoPath>> = BTreeMap::new();
+    for at in candidates {
+        let file = &tokens.files()[at as usize];
+        if !reach(file.as_str()) {
+            continue;
+        }
+        let spelled = unread.binary_search(&at).is_err().then_some(true);
+        if let Status::Unaccounted(reason) = status(file.as_str(), spelled, bound, losses) {
+            by_reason.entry(reason).or_default().push(file.clone());
+        }
+    }
+    // The group's own count is the guard: files the cell read outside it (a
+    // script named by its shebang) can add to what is unaccounted, never make a
+    // group that holds no file of its own look populated.
+    let group_files = tokens.files().len();
+    if let Some(bound) = bound {
+        for file in bound.outside {
+            let Ok(path) = RepoPath::new(file) else {
+                continue;
+            };
+            if !reach(file) {
+                continue;
+            }
+            if let Status::Unaccounted(reason) = status(file, None, Some(bound), losses) {
+                by_reason.entry(reason).or_default().push(path);
+            }
+        }
+    }
+    // The paths the run withheld are a count and name no file, so they stay what
+    // the run's scope says (`Coverage::close(Run)`, every claim of absence holds
+    // it too): a gap of every definition would hide which of them has callers.
+    let mut run: Vec<Gap> = Vec::new();
+    for layer in losses {
+        for gap in &layer.run {
+            if !matches!(gap, Gap::Withheld { .. }) && !run.contains(gap) {
+                run.push(gap.clone());
+            }
+        }
+    }
+    Account {
+        group_files,
+        unaccounted: by_reason.into_iter().collect(),
+        run,
+    }
+}
+
+/// Whether the grammar reads `path` with errors: the one loss of a file no cell
+/// reads that can be told from outside.
+fn parses_with_errors(ctx: &AnalysisContext, path: &RepoPath) -> bool {
+    crate::parsers::unanalysed_reason(path.as_str(), true, || match ctx.head.read(path) {
+        Ok(Some(bytes)) => Some(bytes.to_vec()),
+        _ => None,
+    })
+    .is_some_and(|(reason, _)| matches!(reason, "parse_partial" | "parse_failed" | "parse_timeout"))
+}
+
+/// The account of a definition in a language no cell reads, made to say what that
+/// means: the definition's own file is never bound, so no absence is claimed; the
+/// files that spell a name are counted, and the ones whose grammar reads them with
+/// errors are the ones named, as lost.
+fn unowned(mut account: Account, ctx: &AnalysisContext, file: &str) -> Account {
+    if let Ok(own) = RepoPath::new(file) {
+        if !account
+            .unaccounted
+            .iter()
+            .any(|(_, files)| files.contains(&own))
+        {
+            match account
+                .unaccounted
+                .iter_mut()
+                .find(|(reason, _)| *reason == Reason::OtherLanguage)
+            {
+                Some((_, files)) => files.push(own),
+                None => account.unaccounted.push((Reason::OtherLanguage, vec![own])),
+            }
+        }
+    }
+    let mut broken: Vec<RepoPath> = Vec::new();
+    for (reason, files) in &mut account.unaccounted {
+        if *reason != Reason::OtherLanguage {
+            continue;
+        }
+        let (lost, kept): (Vec<RepoPath>, Vec<RepoPath>) = std::mem::take(files)
+            .into_iter()
+            .partition(|path| !crate::facts::expired(&ctx.run) && parses_with_errors(ctx, path));
+        *files = kept;
+        broken.extend(lost);
+    }
+    if !broken.is_empty() {
+        match account
+            .unaccounted
+            .iter_mut()
+            .find(|(reason, _)| *reason == Reason::Unparsed)
+        {
+            Some((_, files)) => files.extend(broken),
+            None => account.unaccounted.push((Reason::Unparsed, broken)),
+        }
+    }
+    account.unaccounted.retain(|(_, files)| !files.is_empty());
+    account.unaccounted.sort_by_key(|(reason, _)| *reason);
+    account
+}
+
+/// What a coverage rests on besides the gaps the search found.
+#[derive(Clone, Copy)]
+pub enum Evidence<'a> {
+    /// The files of a definition's interaction group, each accounted for.
+    Group(&'a Account),
+    /// No group: the run's own limits, the files it withheld, code it left
+    /// untraced.
+    Run,
+}
+
 /// What the search for a definition's uses covered.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Coverage {
@@ -428,8 +934,18 @@ pub enum Coverage {
 }
 
 impl Coverage {
-    /// The coverage computation: complete exactly when the search found no gap.
-    fn of(gaps: Vec<Gap>) -> Self {
+    /// The one place a `Complete` is made: the search found no gap, and, for a
+    /// definition, its group has a file and every file of it is bound or spells
+    /// none of the names (the account's gaps join the search's own, so that a
+    /// partial coverage always says what stood in the way).
+    pub fn close(evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self {
+        if let Evidence::Group(account) = evidence {
+            for gap in account.gaps() {
+                if !gaps.contains(&gap) {
+                    gaps.push(gap);
+                }
+            }
+        }
         if gaps.is_empty() {
             Self::Complete(Complete(()))
         } else {
@@ -440,34 +956,6 @@ impl Coverage {
     /// A search that is incomplete for one reason it already knows.
     pub fn partial(gap: Gap) -> Self {
         Self::Partial(vec![gap])
-    }
-
-    /// The search for one relation's uses outside the cell: the cell's own
-    /// coverage of it when the cell answered, the stop that cut the search short
-    /// or a route nothing traces when the answer names one, and the files that
-    /// spell the name but were not analysed whole.
-    fn searching(
-        cell: Option<Self>,
-        stopped: Option<&[LimitReason]>,
-        not_traced: bool,
-        unread_files: usize,
-    ) -> Self {
-        let mut gaps: Vec<Gap> = cell.map_or_else(Vec::new, |c| c.gaps().to_vec());
-        if gaps.is_empty() {
-            if let Some(reasons) = stopped {
-                gaps.push(Gap::Stopped {
-                    reasons: reasons.to_vec(),
-                });
-            } else if not_traced {
-                gaps.push(Gap::NotTraced);
-            }
-        }
-        if unread_files > 0 {
-            gaps.push(Gap::Unread {
-                files: unread_files,
-            });
-        }
-        Self::of(gaps)
     }
 
     /// Both coverages at once: complete only when each is, and then the witness
@@ -485,25 +973,6 @@ impl Coverage {
                 Self::Partial(gaps)
             }
         }
-    }
-
-    /// What the run as a whole covered: a limit that can have lost a caller,
-    /// files withheld by ignore rules, and files with changed code no tracked
-    /// definition holds.
-    pub fn scope(limits: &[LimitReason], withheld: usize, untracked: usize) -> Self {
-        let mut gaps = Vec::new();
-        if !limits.is_empty() {
-            gaps.push(Gap::Stopped {
-                reasons: limits.to_vec(),
-            });
-        }
-        if withheld > 0 {
-            gaps.push(Gap::Withheld { files: withheld });
-        }
-        if untracked > 0 {
-            gaps.push(Gap::Untracked { files: untracked });
-        }
-        Self::of(gaps)
     }
 
     /// The same coverage with one more gap, when there is one. A complete
@@ -588,17 +1057,21 @@ impl Coverages {
         }
     }
 
-    /// The search for one definition's uses outside the cell, each relation
-    /// group starting from the cell's coverage of it (see `Coverage::searching`).
-    pub fn searched(
-        cell: Option<&Verdict>,
-        stopped: Option<&[LimitReason]>,
-        not_traced: bool,
-        unread_files: usize,
-    ) -> Self {
+    /// The coverage of a definition no cell answers for: its group's account and
+    /// the gaps the answer knows, closed the one way every coverage is.
+    pub fn unowned(evidence: Evidence<'_>, gaps: Vec<Gap>) -> Self {
         Self {
-            calls: Coverage::searching(cell.map(Verdict::calls), stopped, not_traced, unread_files),
-            reads: Coverage::searching(cell.map(Verdict::reads), stopped, not_traced, unread_files),
+            calls: Coverage::close(evidence, gaps.clone()),
+            reads: Coverage::close(evidence, gaps),
+        }
+    }
+
+    /// The same coverages with one more gap, when there is one.
+    #[must_use]
+    pub fn with(self, gap: Option<Gap>) -> Self {
+        Self {
+            calls: self.calls.with(gap.clone()),
+            reads: self.reads.with(gap),
         }
     }
 
@@ -673,6 +1146,7 @@ pub struct Use {
 pub struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
+    account: Account,
 }
 
 impl Verdict {
@@ -691,6 +1165,21 @@ impl Verdict {
 
     pub fn also_changed(&self) -> impl Iterator<Item = &Use> {
         self.uses.iter().filter(|u| u.also_changed)
+    }
+
+    /// Whether every gap of the search is a file of the group it could not place:
+    /// nothing else stands in the way of what a file outside code says of it.
+    pub fn gaps_are_only_unaccounted(&self) -> bool {
+        self.coverage()
+            .gaps()
+            .iter()
+            .all(|gap| matches!(gap, Gap::Unaccounted { .. }))
+    }
+
+    /// The files of the definition's interaction group the search could not
+    /// place, by reason.
+    pub fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
+        self.account.unaccounted()
     }
 
     /// What covered the search of one relation of use.
@@ -968,6 +1457,20 @@ pub struct Cell {
     /// The run's pathspecs: the cell reads the files inside them alone, as the
     /// fragments do. Empty for the whole repository.
     scope: Vec<String>,
+    /// What every cell of the run asks whether a file spells a name.
+    tokens: Arc<TokenIndex>,
+    /// The paths the head resolver read.
+    read: HashSet<String>,
+    /// Of those, the ones no extension puts in the family's group.
+    outside_group: Vec<String>,
+    /// The paths the base resolver read, once a removed or moved name asks.
+    base_read: OnceCell<HashSet<String>>,
+    /// The paths the base lists.
+    base_listed: OnceCell<Option<HashSet<String>>>,
+    /// What the run lost that does not change while the cell answers: its own
+    /// losses, the manifests it could not read, the files its listing set aside.
+    /// `None` when the listing cannot be had again.
+    fixed: OnceCell<Option<Losses>>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -1011,22 +1514,6 @@ fn loads_lazily(b: &Binding) -> bool {
     b.relation == Relation::Imports
         && matches!(&b.resolution, Resolution::Resolved { evidence, .. }
             if evidence.kind == EvidenceKind::DynamicImport)
-}
-
-/// The losses that leave a search a lower bound: a read that failed or a deadline.
-fn stops_in(losses: &[Loss]) -> Vec<LimitReason> {
-    let mut out = Vec::new();
-    for loss in losses {
-        let reason = match loss {
-            Loss::Deadline { .. } => LimitReason::Deadline,
-            Loss::ReadFailed { .. } => LimitReason::ReadFailed,
-            _ => continue,
-        };
-        if !out.contains(&reason) {
-            out.push(reason);
-        }
-    }
-    out
 }
 
 /// Whether `file` is inside the run's pathspecs (all of the repository when
@@ -1119,10 +1606,24 @@ impl Cell {
         state: &ScoredState,
         range: Option<&str>,
         symbol: bool,
+        tokens: Arc<TokenIndex>,
     ) -> Result<Self> {
         let ctx = context(state, range, symbol)?;
         let cache = FactsCache::user();
         let head = Resolver::open(family, &ctx, SideTag::Head, &cache)?;
+        tokens.bind(&ctx, &cache)?;
+        let read: HashSet<String> = head
+            .read_paths()
+            .iter()
+            .map(|path| path.as_str().to_string())
+            .collect();
+        let group = family.group();
+        let mut outside_group: Vec<String> = read
+            .iter()
+            .filter(|path| !group.has_path(path))
+            .cloned()
+            .collect();
+        outside_group.sort();
         let mut cell = Self {
             family,
             ctx,
@@ -1146,6 +1647,12 @@ impl Cell {
             reaches: HashSet::new(),
             losses: Vec::new(),
             scope: state.scope.clone(),
+            tokens,
+            read,
+            outside_group,
+            base_read: OnceCell::new(),
+            base_listed: OnceCell::new(),
+            fixed: OnceCell::new(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
         // definitions on are no hunks, and a use inside one is a caller.
@@ -1165,7 +1672,29 @@ impl Cell {
         if !symbol {
             cell.read_changes()?;
         }
+        if let Some(loss) = cell.injected_loss() {
+            cell.losses.push(loss);
+        }
         Ok(cell)
+    }
+
+    /// The loss the test knob `DIFFCTX_TEST_LOSS` puts on the n-th file, by path,
+    /// of the cell's group.
+    fn injected_loss(&self) -> Option<Loss> {
+        let (kind, at) = crate::resource::test_loss()?;
+        let group = self.family.group();
+        let Ok(listing) = self.cache.listing(&self.ctx.head) else {
+            return None;
+        };
+        let path = listing
+            .entries
+            .iter()
+            .map(|entry| &entry.path)
+            .filter(|path| group.has_path(path.as_str()))
+            .nth(at)?;
+        Loss::samples(path)
+            .into_iter()
+            .find(|loss| loss.kind() == kind.as_str())
     }
 
     fn index(&mut self) {
@@ -2092,7 +2621,7 @@ impl Cell {
     /// a deadline. Files it read in part are said by the answer's own
     /// unanalysed list.
     pub fn stops(&self) -> Vec<LimitReason> {
-        stops_in(&self.losses)
+        stopped_by(&self.losses)
     }
 
     /// The runs of changed lines in the family's files that no tracked definition
@@ -2174,19 +2703,78 @@ impl Cell {
         matches!(self.family, Family::Config | Family::Dockerfile)
     }
 
-    /// Whether the resolver read the file whole: its definitions and uses are
-    /// the cell's, whatever the fragments made of it. A file the grammar read
-    /// only in part has uses the cell never saw, so it stays a name's unread
-    /// namer.
-    pub fn read(&self, rel: &str) -> bool {
-        self.files.contains(rel)
-            && !self.losses.iter().any(|loss| {
-                matches!(
-                    loss,
-                    Loss::ParseError { path, .. } | Loss::GrammarOutdated { path, .. }
-                        if path.as_str() == rel
-                )
+    /// Whether the cell read the file without a loss: its definitions and uses
+    /// are the cell's, and the file is bound in the sense of `status`. A file the
+    /// grammar read only in part, or lost any other way, has uses the cell never
+    /// saw.
+    pub fn is_bound(&self, rel: &str) -> bool {
+        let bound = Bound {
+            family: self.family,
+            read: &self.read,
+            base: None,
+            scope: &self.scope,
+            outside: &self.outside_group,
+        };
+        bound.reads(rel) && self.loss_about(rel).is_none()
+    }
+
+    /// The files of the cell's group that spell `name` (or could not be tokenised)
+    /// and were lost, with why: where a name asked for may be defined though no
+    /// definition of it was read.
+    pub fn lost_namers(&self, name: &str) -> Vec<(RepoPath, Reason)> {
+        let tokens = self.tokens.group(self.family.group());
+        let mut at = tokens.spelling(&Names::new([name]));
+        at.extend_from_slice(tokens.unread());
+        at.sort_unstable();
+        at.into_iter()
+            .map(|at| &tokens.files()[at as usize])
+            .filter_map(|file| {
+                self.loss_about(file.as_str())
+                    .map(|reason| (file.clone(), reason))
             })
+            .collect()
+    }
+
+    /// Why a loss leaves `rel` unread, when one does. A listing that cannot be had
+    /// again leaves every file lost.
+    pub fn loss_about(&self, rel: &str) -> Option<Reason> {
+        let Some(fixed) = self.fixed_losses() else {
+            return Some(Reason::NotRead);
+        };
+        fixed
+            .about(rel)
+            .or_else(|| self.moving_losses(None).about(rel))
+    }
+
+    /// What the run lost that stays what it is while the cell answers.
+    fn fixed_losses(&self) -> Option<&Losses> {
+        self.fixed
+            .get_or_init(|| {
+                let Ok(listing) = self.cache.listing(&self.ctx.head) else {
+                    return None;
+                };
+                Some(Losses::of(
+                    self.losses
+                        .iter()
+                        .chain(self.ctx.workspace.losses())
+                        .chain(listing.losses().iter()),
+                ))
+            })
+            .as_ref()
+    }
+
+    /// What the run lost that grows as it reads: the reads of either snapshot
+    /// that failed, and the base resolver's losses when a name it held is asked
+    /// for.
+    fn moving_losses(&self, base: Option<&Resolver>) -> Losses {
+        let reads = self.ctx.head.losses();
+        let before = self.ctx.base.losses();
+        Losses::of(
+            reads
+                .iter()
+                .chain(before.iter())
+                .chain(base.map_or(&[][..], Resolver::losses)),
+        )
     }
 
     /// The definition of a queried name or a fragment at these lines, as the
@@ -2372,9 +2960,12 @@ impl Cell {
                 u.folded = fold::rule(basis, u.relation, candidate, runtime);
             }
         }
+        let (by_relation, account) =
+            self.coverage(changed, lead, per, base_gap.into_iter().collect());
         Verdict {
             uses,
-            by_relation: self.coverage(changed, lead, per, base_gap.into_iter().collect()),
+            by_relation,
+            account,
         }
     }
 
@@ -2465,15 +3056,16 @@ impl Cell {
 
     /// What covered the search of each relation of use: the gaps of every
     /// relation (`lead`, `tail`), the one a relation has of its own (`per`), the
-    /// files outside the run's pathspecs that could name the definition, and a read
-    /// the cell lost. The one place the cell makes a `Complete`.
+    /// files outside the run's pathspecs that could name the definition, a read
+    /// the cell lost, and the account of the files of its interaction group.
+    /// `Coverage::close` makes the `Complete`, and so the cell never does.
     fn coverage(
         &self,
         changed: &Changed,
         lead: Vec<Gap>,
         per: Vec<(Relation, Gap)>,
         tail: Vec<Gap>,
-    ) -> [(Relation, Coverage); 6] {
+    ) -> ([(Relation, Coverage); 6], Account) {
         let mut tail = tail;
         let outside = self
             .outside
@@ -2559,17 +3151,11 @@ impl Cell {
                 });
             }
         }
-        // A script that sources a path nothing settles may source any name; one
-        // the bash grammar does not read may call or define any.
+        // A script that sources a path nothing settles may source any name.
         if let Resolver::Shell(shell) = &self.head {
             if shell.unknown_sources() > 0 {
                 tail.push(Gap::SourceFlag {
                     files: shell.unknown_sources(),
-                });
-            }
-            if shell.unread_scripts() > 0 {
-                tail.push(Gap::Unread {
-                    files: shell.unread_scripts(),
                 });
             }
         }
@@ -2577,7 +3163,8 @@ impl Cell {
         if !reasons.is_empty() {
             tail.push(Gap::Stopped { reasons });
         }
-        USES.map(|relation| {
+        let account = self.account(changed);
+        let by_relation = USES.map(|relation| {
             let mut gaps = lead.clone();
             gaps.extend(
                 per.iter()
@@ -2585,8 +3172,250 @@ impl Cell {
                     .map(|(_, gap)| gap.clone()),
             );
             gaps.extend(tail.iter().cloned());
-            (relation, Coverage::of(gaps))
-        })
+            (relation, Coverage::close(Evidence::Group(&account), gaps))
+        });
+        (by_relation, account)
+    }
+
+    /// Every file of the definition's interaction group, accounted for against the
+    /// names a use of it could carry: bound (read by this cell without a loss, at
+    /// both sides for a name that left), without any of the names, or neither. A
+    /// removed definition and a queried name are accounted for the same way: the
+    /// names are what the head's files can still spell.
+    pub fn account(&self, changed: &Changed) -> Account {
+        let Some(fixed) = self.fixed_losses() else {
+            return Account::blocked(Reason::NotRead, &changed.file);
+        };
+        // A name that left or moved is still spelled by head files the base side
+        // read as uses of it: only a file read at both sides is bound.
+        // A base side that could not be resolved is `Gap::BaseUnresolved` already.
+        let base = if changed.stale.is_empty() {
+            None
+        } else {
+            self.base().into_iter().next()
+        };
+        let base_side = match base {
+            Some(base) => {
+                let Some(listed) = self.base_listed() else {
+                    return Account::blocked(Reason::NotRead, &changed.file);
+                };
+                let read = self.base_read.get_or_init(|| {
+                    base.read_paths()
+                        .iter()
+                        .map(|path| path.as_str().to_string())
+                        .collect()
+                });
+                Some((read, listed))
+            }
+            None => None,
+        };
+        let moving = self.moving_losses(base);
+        let names = self.reference_names(changed);
+        let names = Names::new(names.iter().map(String::as_str));
+        let bound = Bound {
+            family: self.family,
+            read: &self.read,
+            base: base_side,
+            scope: &self.scope,
+            outside: &self.outside_group,
+        };
+        let (local, own) = (changed.local, changed.file.as_str());
+        account_of(
+            &self.tokens.group(self.family.group()),
+            &names,
+            &[fixed, &moving],
+            Some(&bound),
+            &|file: &str| within_scope(&self.scope, file) && (!local || file == own),
+        )
+    }
+
+    /// The paths the base snapshot lists, by name; `None` when it cannot be
+    /// listed.
+    fn base_listed(&self) -> Option<&HashSet<String>> {
+        self.base_listed
+            .get_or_init(|| {
+                let Ok(listing) = self.cache.listing(&self.ctx.base) else {
+                    return None;
+                };
+                Some(
+                    listing
+                        .entries
+                        .iter()
+                        .map(|entry| &entry.path)
+                        .chain(listing.not_analysed.iter().map(|(path, _)| path))
+                        .map(|path| path.as_str().to_string())
+                        .collect(),
+                )
+            })
+            .as_ref()
+    }
+
+    /// The account of a group this cell does not answer for, against `names`: its
+    /// files can be told from the ones that spell none of them, and no file of it
+    /// is bound.
+    fn account_unowned(
+        &self,
+        group: Group,
+        names: &[String],
+        reach: &dyn Fn(&str) -> bool,
+    ) -> Account {
+        let Some(fixed) = self.fixed_losses() else {
+            return Account::blocked(Reason::NotRead, "");
+        };
+        let moving = self.moving_losses(None);
+        account_of(
+            &self.tokens.group(group),
+            &Names::new(names.iter().map(String::as_str)),
+            &[fixed, &moving],
+            None,
+            &|file: &str| within_scope(&self.scope, file) && reach(file),
+        )
+    }
+
+    /// The names a use of the definition could carry in a file of its group: its
+    /// own, the ones it had (`stale`), the script or module it is, and what the
+    /// neighbouring languages of the group make of it. No length or frequency
+    /// floor applies: a short or common name makes a large gap with a count, never
+    /// a silent pass. A superset is safe; its cost is hedge share.
+    fn reference_names(&self, changed: &Changed) -> Vec<String> {
+        let mut own: Vec<String> = vec![changed.name.clone()];
+        own.extend(
+            changed
+                .subjects
+                .iter()
+                .map(|s| s.key.local.name.as_str().to_string()),
+        );
+        own.extend(
+            changed
+                .stale
+                .iter()
+                .map(|key| key.local.name.as_str().to_string()),
+        );
+        let mut names = own.clone();
+        let stem = Path::new(&changed.file)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(str::to_string);
+        if changed.name == changed.file {
+            names.extend(stem.clone());
+        }
+        match self.family.group() {
+            Group::Jvm => self.jvm_names(changed, &own, stem.as_deref(), &mut names),
+            Group::Native => {
+                // `A::m` is called as `m`, and a selector `a:b:` by each keyword.
+                for name in &own {
+                    names.extend(
+                        name.split(':')
+                            .filter(|part| !part.is_empty())
+                            .map(str::to_string),
+                    );
+                }
+            }
+            Group::Web => {
+                // A default export is imported under any name: only the module's
+                // own (the directory's for an `index`) is written.
+                if own.iter().any(|name| name == "default") {
+                    let module = if stem.as_deref() == Some("index") {
+                        Path::new(&changed.file)
+                            .parent()
+                            .and_then(Path::file_name)
+                            .and_then(|dir| dir.to_str())
+                            .map(str::to_string)
+                    } else {
+                        stem
+                    };
+                    names.extend(module);
+                }
+            }
+            Group::Family(_) | Group::Language(_) => {}
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// What Kotlin and Java make of each other's names: a property is read as
+    /// `getX`, `setX`, `isX` and an accessor as the property; a top-level
+    /// declaration of `F.kt` is a member of `FKt`; the members of an `object` are
+    /// reached through `INSTANCE` and `Companion`.
+    fn jvm_names(
+        &self,
+        changed: &Changed,
+        own: &[String],
+        stem: Option<&str>,
+        out: &mut Vec<String>,
+    ) {
+        let capitalised = |name: &str| -> String {
+            let mut chars = name.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect(),
+                None => String::new(),
+            }
+        };
+        let decapitalised = |name: &str| -> String {
+            let mut chars = name.chars();
+            match chars.next() {
+                Some(first) => first.to_lowercase().chain(chars).collect(),
+                None => String::new(),
+            }
+        };
+        let property = matches!(
+            changed.kind,
+            DefKind::Property | DefKind::Field | DefKind::Variable | DefKind::Constant
+        );
+        for name in own {
+            if property {
+                let up = capitalised(name);
+                out.extend(["get", "set", "is"].map(|prefix| format!("{prefix}{up}")));
+            }
+            for prefix in ["get", "set", "is"] {
+                if let Some(rest) = name
+                    .strip_prefix(prefix)
+                    .filter(|rest| rest.chars().next().is_some_and(char::is_uppercase))
+                {
+                    // `getX` is the property `x`, and a Kotlin `isFoo` has `setFoo`.
+                    out.push(decapitalised(rest));
+                    if prefix == "is" {
+                        out.push(format!("set{rest}"));
+                    }
+                }
+            }
+        }
+        let top_level = changed
+            .subjects
+            .iter()
+            .all(|s| s.key.local.container.is_empty());
+        if top_level && (changed.file.ends_with(".kt") || changed.file.ends_with(".kts")) {
+            out.extend(stem.map(|stem| format!("{}Kt", capitalised(stem))));
+        }
+        for subject in &changed.subjects {
+            let Some((holder, outer)) = subject.key.local.container.split_last() else {
+                continue;
+            };
+            let in_object = self
+                .defs_by_file
+                .get(changed.file.as_str())
+                .into_iter()
+                .flatten()
+                .map(|at| &self.head.definitions()[*at])
+                .any(|d| {
+                    d.kind == DefKind::Object
+                        && d.key.local.container.as_slice() == outer
+                        && &d.key.local.name == holder
+                });
+            if in_object {
+                out.push("INSTANCE".to_string());
+                out.push("Companion".to_string());
+                out.extend(
+                    subject
+                        .key
+                        .local
+                        .container
+                        .iter()
+                        .map(|name| name.as_str().to_string()),
+                );
+            }
+        }
     }
 
     /// The trait a Rust definition belongs to: the one it implements, or the one
@@ -2621,7 +3450,7 @@ impl Cell {
             Ok(base) => base,
             Err(gap) => return (Vec::new(), Some(gap)),
         };
-        let reasons = stops_in(base.losses());
+        let reasons = stopped_by(base.losses());
         let gap = (!reasons.is_empty()).then_some(Gap::Stopped { reasons });
         // How sure the base was of each: a call through an interface-typed
         // receiver reached the definition as a candidate, and the line that
@@ -2833,23 +3662,35 @@ fn dynamic_reaches(relation: Relation, kind: DefKind) -> bool {
     }
 }
 
+/// The head a run with no cell at all reads the files of a group from.
+struct Bare {
+    ctx: AnalysisContext,
+    fixed: Losses,
+}
+
 /// The cells of one run: one per family of languages the answer is about.
 pub struct Cells {
     cells: Vec<Cell>,
     /// Families whose files could not be resolved: their definitions are
     /// undetermined, never answered by the paths the cells replaced.
     lost: Vec<Family>,
+    /// Token to files, built once per run for every cell and every group.
+    tokens: Arc<TokenIndex>,
+    range: Option<String>,
+    symbol: bool,
+    bare: OnceCell<Option<Bare>>,
 }
 
 impl Cells {
     pub fn open(state: &ScoredState, range: Option<&str>, symbol: bool) -> Self {
+        let tokens = Arc::new(TokenIndex::default());
         let mut cells = Vec::new();
         let mut lost = Vec::new();
         for family in Family::ALL
             .into_iter()
             .filter(|f| Cell::concerns(*f, state, symbol))
         {
-            match Cell::open(family, state, range, symbol) {
+            match Cell::open(family, state, range, symbol, Arc::clone(&tokens)) {
                 Ok(cell) => {
                     for stop in cell.stops() {
                         state.run.note(stop);
@@ -2866,11 +3707,92 @@ impl Cells {
                 }
             }
         }
-        Self { cells, lost }
+        Self {
+            cells,
+            lost,
+            tokens,
+            range: range.map(str::to_string),
+            symbol,
+            bare: OnceCell::new(),
+        }
+    }
+
+    /// The head of a run that opened no cell, read for the accounts of the
+    /// definitions no cell owns; `None` when it cannot be read.
+    fn bare(&self, state: &ScoredState) -> Option<&Bare> {
+        self.bare
+            .get_or_init(|| {
+                let Ok(ctx) = context(state, self.range.as_deref(), self.symbol) else {
+                    return None;
+                };
+                let cache = FactsCache::user();
+                if self.tokens.bind(&ctx, &cache).is_err() {
+                    return None;
+                }
+                let Ok(listing) = cache.listing(&ctx.head) else {
+                    return None;
+                };
+                let fixed =
+                    Losses::of(ctx.workspace.losses().iter().chain(listing.losses().iter()));
+                Some(Bare { ctx, fixed })
+            })
+            .as_ref()
+    }
+
+    /// The files of `group` and what they spell, when the head can be read.
+    pub fn group_tokens(&self, state: &ScoredState, group: Group) -> Option<Arc<GroupTokens>> {
+        if self.cells.is_empty() {
+            self.bare(state)?;
+        }
+        Some(self.tokens.group(group))
+    }
+
+    /// The account of a definition in `file` that no cell answers for: the files
+    /// of its group that spell `names`, none of them bound. A file of no group has
+    /// none to account for, and says so.
+    pub fn account_without_cell(
+        &self,
+        state: &ScoredState,
+        file: &str,
+        names: &[String],
+        reach: &dyn Fn(&str) -> bool,
+    ) -> Account {
+        let Some(group) = Group::of_path(file) else {
+            return Account::blocked(Reason::NoGroup, file);
+        };
+        if let Some(cell) = self.cells.first() {
+            return unowned(cell.account_unowned(group, names, reach), &cell.ctx, file);
+        }
+        let Some(bare) = self.bare(state) else {
+            return Account::blocked(Reason::NotRead, file);
+        };
+        let moving = Losses::of(
+            bare.ctx
+                .head
+                .losses()
+                .iter()
+                .chain(bare.ctx.base.losses().iter()),
+        );
+        let account = account_of(
+            &self.tokens.group(group),
+            &Names::new(names.iter().map(String::as_str)),
+            &[&bare.fixed, &moving],
+            None,
+            &|file: &str| within_scope(&state.scope, file) && reach(file),
+        );
+        unowned(account, &bare.ctx, file)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Cell> {
         self.cells.iter()
+    }
+
+    /// The cell whose family's group holds `rel`, whether or not it has a
+    /// definition or a use in it: the one that read the file or lost it.
+    pub fn reading(&self, rel: &str) -> Option<&Cell> {
+        self.cells
+            .iter()
+            .find(|cell| cell.family.group().has_path(rel))
     }
 
     /// The cell that answers for `rel`.
@@ -2942,6 +3864,60 @@ fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
         }
         None => {
             by_key.insert(first.key.clone(), changed);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_belongs_to_the_group_of_its_extension() {
+        let groups = [
+            ("a.kt", Group::Jvm),
+            ("A.java", Group::Jvm),
+            ("A.scala", Group::Jvm),
+            ("a.groovy", Group::Jvm),
+            ("a.c", Group::Native),
+            ("a.cpp", Group::Native),
+            ("a.m", Group::Native),
+            ("a.ts", Group::Web),
+            ("a.js", Group::Web),
+            ("a.vue", Group::Web),
+            ("a.svelte", Group::Web),
+            ("a.html", Group::Web),
+            ("a.astro", Group::Web),
+            ("a.py", Group::Family(Family::Python)),
+            ("a.rs", Group::Family(Family::Rust)),
+            ("values.yaml", Group::Family(Family::Config)),
+            ("main.tf", Group::Family(Family::Terraform)),
+            ("Dockerfile", Group::Family(Family::Dockerfile)),
+            ("a.sh", Group::Family(Family::Shell)),
+            ("a.swift", Group::Language("swift")),
+            ("a.rb", Group::Language("ruby")),
+        ];
+        for (path, group) in groups {
+            assert_eq!(Group::of_path(path), Some(group), "{path}");
+            assert!(group.has_path(path), "{path}");
+        }
+        assert_eq!(Group::of_path("LICENSE"), None);
+    }
+
+    #[test]
+    fn a_family_stands_in_the_group_it_names() {
+        for family in Family::ALL {
+            let group = family.group();
+            assert!(
+                matches!(group, Group::Family(f) if f == family)
+                    || matches!(
+                        (group, family),
+                        (Group::Jvm, Family::Kotlin | Family::Java)
+                            | (Group::Native, Family::C)
+                            | (Group::Web, Family::TypeScript)
+                    ),
+                "{family:?}"
+            );
         }
     }
 }

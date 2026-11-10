@@ -1,0 +1,73 @@
+name: config_scheduler_unit_running_a_changed_script_by_its_installed_basename_is_named
+mode: impact
+source: gh#709
+issue_state: open
+tags:
+- config
+- plist
+- shell
+- named-by
+- decoy
+repo:
+  initial_files:
+    tools/backup: |
+      #!/usr/bin/env bash
+      check_repo() { restic check; }
+      run_backup() { restic backup "$HOME"; }
+
+      case "${1:-run}" in
+        run) run_backup ;;
+        verify) check_repo ;;
+      esac
+    tools/prune: |
+      #!/usr/bin/env bash
+      echo pruning
+    launchd/com.example.backup-verify.plist: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <plist version="1.0">
+      <dict>
+        <key>Label</key>
+        <string>com.example.backup-verify</string>
+        <key>ProgramArguments</key>
+        <array>
+          <string>/Users/me/.local/bin/backup</string>
+          <string>verify</string>
+        </array>
+        <key>StartCalendarInterval</key>
+        <dict><key>Day</key><integer>1</integer></dict>
+      </dict>
+      </plist>
+    launchd/com.example.prune.plist: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <plist version="1.0">
+      <dict>
+        <key>Label</key>
+        <string>com.example.prune</string>
+        <key>ProgramArguments</key>
+        <array>
+          <string>/Users/me/.local/bin/prune</string>
+          <string>run</string>
+        </array>
+      </dict>
+      </plist>
+    README.md: |
+      # backup
+
+      launchd runs `backup verify` monthly.
+  changed_files:
+    tools/backup: |
+      #!/usr/bin/env bash
+      check_repo() { restic check; }
+      run_backup() { restic backup "$HOME"; }
+
+      case "${1:-run}" in
+        run) run_backup ;;
+        verify) check_repo && echo verified ;;
+      esac
+  worktree: true
+  commit_message: Say when a verify pass succeeds
+expect:
+  named_by:
+  - launchd/com.example.backup-verify.plist
+  not_named_by:
+  - launchd/com.example.prune.plist

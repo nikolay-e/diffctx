@@ -150,16 +150,62 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     blob
 }
 
-/// The line ranges the parse could not read, merged.
+/// The nodes whose named children the walk reads as statements, an error
+/// node among them (`Walker::statements`).
+fn is_statement_container(kind: &str) -> bool {
+    matches!(kind, "program" | "compound_statement")
+}
+
+/// A declaration the walk reads whole when the grammar parked it in an error
+/// node.
+fn is_read(kind: &str) -> bool {
+    matches!(
+        kind,
+        "comment"
+            | "php_tag"
+            | "text"
+            | "text_interpolation"
+            | "namespace_definition"
+            | "namespace_use_declaration"
+            | "function_definition"
+            | "class_declaration"
+            | "interface_declaration"
+            | "trait_declaration"
+            | "enum_declaration"
+            | "const_declaration"
+    )
+}
+
+/// The line ranges the parse could not read, merged. An error node among a
+/// file's statements is read by the walk (`through_errors`): the
+/// declarations it holds whole are left out, and its stray tokens, and any
+/// declaration that has an error of its own, are what stays unread. An error
+/// node anywhere else (inside an expression, say) is unread whole.
 fn error_lines(root: Node) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
+    let mut stack = vec![(root, true)];
+    while let Some((node, among_statements)) = stack.pop() {
         let mut cursor = node.walk();
-        if node.is_error() || node.is_missing() {
+        if node.is_error() && among_statements {
+            if node.child_count() == 0 {
+                ranges.push(lines_of(node));
+            }
+            for child in node.children(&mut cursor) {
+                if child.is_error() {
+                    stack.push((child, true));
+                } else if child.is_missing()
+                    || child.has_error()
+                    || !child.is_named()
+                    || !is_read(child.kind())
+                {
+                    ranges.push(lines_of(child));
+                }
+            }
+        } else if node.is_error() || node.is_missing() {
             ranges.push(lines_of(node));
         } else if node.has_error() {
-            stack.extend(node.children(&mut cursor));
+            let among = is_statement_container(node.kind());
+            stack.extend(node.children(&mut cursor).map(|c| (c, among)));
         }
     }
     ranges.sort_unstable();
@@ -337,6 +383,23 @@ impl<'t> Walker<'t> {
         node.named_children(&mut cursor).collect()
     }
 
+    /// The named children of a statement container in source order, those the
+    /// grammar parked under an error node included: a stray token leaves the
+    /// declarations around it whole inside the error, and their docs and
+    /// container are still theirs.
+    fn through_errors(parent: Node<'t>) -> Vec<Node<'t>> {
+        let mut out = Vec::new();
+        let mut stack: Vec<Node<'t>> = Self::named_children(parent).into_iter().rev().collect();
+        while let Some(node) = stack.pop() {
+            if node.is_error() {
+                stack.extend(Self::named_children(node).into_iter().rev());
+            } else {
+                out.push(node);
+            }
+        }
+        out
+    }
+
     // ---- statements and declarations
 
     /// The children of a container (file, block, class body), each with the doc
@@ -345,7 +408,7 @@ impl<'t> Walker<'t> {
         if !self.deeper(depth) {
             return;
         }
-        let children = Self::named_children(parent);
+        let children = Self::through_errors(parent);
         let mut doc: Option<&'t str> = None;
         for (at, child) in children.iter().enumerate() {
             if child.kind() == "comment" {

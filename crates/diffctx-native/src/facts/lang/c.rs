@@ -56,7 +56,7 @@
 //! - Hashes are FNV-1a over the definition's own parts: members that are
 //!   definitions themselves are left out of their container's.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
@@ -182,14 +182,14 @@ fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
     };
     let root = tree.root_node();
     if root.has_error() {
-        blob.parse_error(error_lines(root));
+        blob.parse_error(error_lines(root, cpp));
     }
     let mut walker = Walker::new(text, budget, cpp);
     walker.run(root);
     if walker.halted {
         blob.deadline();
     }
-    if walker.too_deep {
+    if walker.too_deep.get() {
         blob.losses.push(Loss::ExtractorFailed { path: unbound() });
     }
     blob.facts = std::mem::take(&mut walker.facts);
@@ -197,15 +197,78 @@ fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
     blob
 }
 
-fn error_lines(root: Node) -> Vec<(u32, u32)> {
+/// The nodes whose named children the walk reads as items, an error node
+/// among them: `Walker::items` and the loops over a block's members.
+fn is_item_container(kind: &str) -> bool {
+    matches!(
+        kind,
+        "translation_unit"
+            | "preproc_if"
+            | "preproc_ifdef"
+            | "preproc_else"
+            | "preproc_elif"
+            | "preproc_elifdef"
+            | "declaration_list"
+            | "field_declaration_list"
+            | "template_declaration"
+    )
+}
+
+/// An item the walk reads whole when the grammar parked it in an error node.
+fn is_read(kind: &str, cpp: bool) -> bool {
+    matches!(
+        kind,
+        "comment"
+            | "preproc_include"
+            | "preproc_def"
+            | "preproc_function_def"
+            | "preproc_if"
+            | "preproc_ifdef"
+            | "function_definition"
+            | "declaration"
+            | "type_definition"
+            | "namespace_definition"
+            | "template_declaration"
+            | "using_declaration"
+            | "alias_declaration"
+            | "class_specifier"
+            | "struct_specifier"
+            | "union_specifier"
+            | "enum_specifier"
+            | "linkage_specification"
+    ) || (cpp && kind == "field_declaration")
+}
+
+/// The line ranges the parse could not read, merged. An error node among a
+/// file's items is read by the walk (`through_errors`): the items it holds
+/// whole are left out and its stray tokens, and any item that has an error
+/// of its own, are what stays unread. An error node anywhere else (inside a
+/// body, say) is unread whole.
+fn error_lines(root: Node, cpp: bool) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
+    let mut stack = vec![(root, true)];
+    while let Some((node, among_items)) = stack.pop() {
         let mut cursor = node.walk();
-        if node.is_error() || node.is_missing() {
+        if node.is_error() && among_items {
+            if node.child_count() == 0 {
+                ranges.push(lines_of(node));
+            }
+            for child in node.children(&mut cursor) {
+                if child.is_error() {
+                    stack.push((child, true));
+                } else if child.is_missing()
+                    || child.has_error()
+                    || !child.is_named()
+                    || !is_read(child.kind(), cpp)
+                {
+                    ranges.push(lines_of(child));
+                }
+            }
+        } else if node.is_error() || node.is_missing() {
             ranges.push(lines_of(node));
         } else if node.has_error() {
-            stack.extend(node.children(&mut cursor));
+            let among = is_item_container(node.kind());
+            stack.extend(node.children(&mut cursor).map(|c| (c, among)));
         }
     }
     ranges.sort_unstable();
@@ -291,7 +354,7 @@ struct Declared<'t> {
     scope: Vec<String>,
 }
 
-fn declared<'t>(declarator: Node<'t>, bytes: &[u8]) -> Option<Declared<'t>> {
+fn declared<'t>(declarator: Node<'t>, bytes: &[u8], too_deep: &Cell<bool>) -> Option<Declared<'t>> {
     let mut node = declarator;
     let mut function: Option<Node<'t>> = None;
     let mut pointer = false;
@@ -300,6 +363,7 @@ fn declared<'t>(declarator: Node<'t>, bytes: &[u8]) -> Option<Declared<'t>> {
     loop {
         depth += 1;
         if depth > 32 {
+            too_deep.set(true);
             return None;
         }
         match node.kind() {
@@ -354,7 +418,9 @@ struct Walker<'t> {
     budget: &'t RunBudget,
     ticks: usize,
     halted: bool,
-    too_deep: bool,
+    /// A cut of depth, set also by the declarator chain a free function
+    /// follows.
+    too_deep: Cell<bool>,
     facts: Vec<Fact>,
     twins: HashMap<LocalKey, u16>,
     /// The functions this file defines: a prototype of one is a twin.
@@ -373,7 +439,7 @@ impl<'t> Walker<'t> {
             budget,
             ticks: 0,
             halted: false,
-            too_deep: false,
+            too_deep: Cell::new(false),
             facts: Vec::new(),
             twins: HashMap::new(),
             defined_here: HashSet::new(),
@@ -390,7 +456,7 @@ impl<'t> Walker<'t> {
                     "function_definition" => {
                         if let Some(d) = child
                             .child_by_field_name("declarator")
-                            .and_then(|d| declared(d, self.bytes))
+                            .and_then(|d| declared(d, self.bytes, &self.too_deep))
                         {
                             let name = self.text(d.name).to_string();
                             let full = if d.scope.is_empty() {
@@ -409,7 +475,8 @@ impl<'t> Walker<'t> {
                     | "linkage_specification"
                     | "namespace_definition"
                     | "template_declaration"
-                    | "declaration_list" => {
+                    | "declaration_list"
+                    | "ERROR" => {
                         stack.push(child);
                     }
                     _ => {}
@@ -437,7 +504,7 @@ impl<'t> Walker<'t> {
 
     fn deeper(&mut self, depth: u16) -> bool {
         if depth > MAX_DEPTH {
-            self.too_deep = true;
+            self.too_deep.set(true);
             return false;
         }
         self.tick()
@@ -451,6 +518,23 @@ impl<'t> Walker<'t> {
     fn named_children(node: Node<'t>) -> Vec<Node<'t>> {
         let mut cursor = node.walk();
         node.named_children(&mut cursor).collect()
+    }
+
+    /// The named children of an item container in source order, those the
+    /// grammar parked under an error node included: a stray token leaves the
+    /// items around it whole inside the error, and their docs and container
+    /// are still theirs.
+    fn through_errors(parent: Node<'t>) -> Vec<Node<'t>> {
+        let mut out = Vec::new();
+        let mut stack: Vec<Node<'t>> = Self::named_children(parent).into_iter().rev().collect();
+        while let Some(node) = stack.pop() {
+            if node.is_error() {
+                stack.extend(Self::named_children(node).into_iter().rev());
+            } else {
+                out.push(node);
+            }
+        }
+        out
     }
 
     // ---- locals
@@ -481,7 +565,7 @@ impl<'t> Walker<'t> {
             return;
         }
         let mut doc: Option<&'t str> = None;
-        for child in Self::named_children(parent) {
+        for child in Self::through_errors(parent) {
             if child.kind() == "comment" {
                 doc = Some(self.text(child));
                 continue;
@@ -575,7 +659,7 @@ impl<'t> Walker<'t> {
         });
         let mut inner = cx.clone();
         inner.template = header.map(|h| format!("template {h}"));
-        for child in Self::named_children(node) {
+        for child in Self::through_errors(node) {
             if matches!(child.kind(), "template_parameter_list" | "comment") {
                 continue;
             }
@@ -713,7 +797,7 @@ impl<'t> Walker<'t> {
             Visibility::Private
         });
         let mut doc: Option<&'t str> = None;
-        for member in Self::named_children(body) {
+        for member in Self::through_errors(body) {
             match member.kind() {
                 "comment" => doc = Some(self.text(member)),
                 "access_specifier" => {
@@ -811,7 +895,7 @@ impl<'t> Walker<'t> {
                 })
             };
             let mut doc = None;
-            for child in Self::named_children(current) {
+            for child in Self::through_errors(current) {
                 if skip.contains(&child.id()) {
                     continue;
                 }
@@ -990,7 +1074,7 @@ impl<'t> Walker<'t> {
     fn function(&mut self, node: Node<'t>, cx: &Cx, doc: Option<&'t str>, depth: u16) {
         let Some(declarator) = node
             .child_by_field_name("declarator")
-            .and_then(|d| declared(d, self.bytes))
+            .and_then(|d| declared(d, self.bytes, &self.too_deep))
         else {
             return;
         };
@@ -1093,7 +1177,7 @@ impl<'t> Walker<'t> {
             let named = ty.and_then(|t| self.type_name(t));
             if let Some(d) = parameter
                 .child_by_field_name("declarator")
-                .and_then(|d| declared(d, self.bytes))
+                .and_then(|d| declared(d, self.bytes, &self.too_deep))
             {
                 let ty = if d.pointer { None } else { named };
                 self.bind(d.name, cx, LocalKind::Parameter, ty);
@@ -1167,7 +1251,7 @@ impl<'t> Walker<'t> {
             .collect();
         let declarators_len = declarators.len();
         for declarator in declarators {
-            let Some(d) = declared(declarator, self.bytes) else {
+            let Some(d) = declared(declarator, self.bytes, &self.too_deep) else {
                 continue;
             };
             let visibility = self.visibility_of(cx, is_static);
@@ -1295,7 +1379,7 @@ impl<'t> Walker<'t> {
                     self.expr(value, cx, depth + 1);
                 }
             }
-            if let Some(d) = declared(declarator, self.bytes) {
+            if let Some(d) = declared(declarator, self.bytes, &self.too_deep) {
                 let local = if d.function.is_some() && !d.pointer {
                     None
                 } else if d.pointer {
@@ -1328,13 +1412,13 @@ impl<'t> Walker<'t> {
             .collect();
         let first_name = declarators
             .first()
-            .and_then(|d| declared(*d, self.bytes))
+            .and_then(|d| declared(*d, self.bytes, &self.too_deep))
             .map(|d| self.text(d.name).to_string());
         if let Some(ty) = ty {
             self.type_specifier(ty, first_name.as_deref(), cx, doc, depth);
         }
         for declarator in declarators {
-            let Some(d) = declared(declarator, self.bytes) else {
+            let Some(d) = declared(declarator, self.bytes, &self.too_deep) else {
                 continue;
             };
             let name = self.text(d.name).to_string();
@@ -1520,7 +1604,7 @@ impl<'t> Walker<'t> {
                         .children_by_field_name("declarator", &mut cursor)
                         .collect();
                     for declarator in declarators {
-                        let Some(d) = declared(declarator, self.bytes) else {
+                        let Some(d) = declared(declarator, self.bytes, &self.too_deep) else {
                             continue;
                         };
                         let signature = {

@@ -1,0 +1,45 @@
+name: go_function_after_a_stray_top_level_token_still_names_its_call
+mode: impact
+source: fj#164
+issue_state: open
+tags: [go, parse-error, top-level-error]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+      	return len(items)
+      }
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      )
+
+      func Charge(items []int) int {
+      	return pricing.Total(items)
+      }
+  changed_files:
+    pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+      	return len(items) * 2
+      }
+  commit_message: "pricing: double the count"
+expect:
+  changed: [pricing/pricing.go::Total]
+  relations:
+    - from: checkout/checkout.go::Charge
+      to: pricing/pricing.go::Total
+      kind: calls
+      resolution: resolved
+  exact: false
+  never_empty: true
+  no_negative_claims: true

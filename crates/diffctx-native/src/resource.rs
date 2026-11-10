@@ -63,6 +63,19 @@ pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFa
     crate::snapshot::ReadFault::parse(&std::env::var(TEST_READ_FAULT_ENV).ok()?)
 }
 
+/// Test hook: `<kind>:<n>` gives the n-th file, by path, of each cell's
+/// interaction group one loss of that kind (`Loss::kind`, `Loss::samples`), as if
+/// the run had lost it, so that a sweep can put every variant of `Loss` on every
+/// family in turn. Semantic — it changes the artifact.
+pub const TEST_LOSS_ENV: &str = "DIFFCTX_TEST_LOSS";
+
+/// The kind and the place `TEST_LOSS_ENV` names; a malformed knob names none.
+pub(crate) fn test_loss() -> Option<(String, usize)> {
+    let spec = std::env::var(TEST_LOSS_ENV).ok()?;
+    let (kind, at) = spec.rsplit_once(':')?;
+    Some((kind.to_string(), at.parse().ok()?))
+}
+
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest
 /// bound memory, which the wall clock alone never did — 38M edge
 /// contributions took 11 GB before a single one was deduplicated (#196).
