@@ -1,0 +1,29 @@
+name: web_deleted_page_is_not_named_by_its_stem_as_an_english_word
+mode: impact
+source: fj#63
+issue_state: closed
+tags: [web, astro, stale-reference, stem-as-word, decoy]
+repo:
+  initial_files:
+    src/pages/about.astro: |
+      ---
+      const title = "About";
+      ---
+      <h1>{title}</h1>
+    src/pages/index.astro: |
+      <h1>Home</h1>
+    src/components/Nav.astro: |
+      ---
+      import About from '../pages/about.astro';
+      ---
+      <nav><About /></nav>
+    src/content/post.md: |
+      Tell me about your project. Talk about your brand.
+    docs/QA.md: |
+      The review is about the layout, and the file the PR is about.
+  deleted_files:
+    - src/pages/about.astro
+  commit_message: "pages: drop the about page"
+expect:
+  stale: [src/components/Nav.astro]
+  not_stale: [src/content/post.md, docs/QA.md]

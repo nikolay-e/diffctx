@@ -20,6 +20,7 @@
 //! The file is read as plain YAML. A Helm template is not: its reading has parse
 //! errors, and the facts around them are still given.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -50,19 +51,20 @@ impl Extractor for ConfigExtractor {
             text,
             budget,
             Options::default(),
-            |reading, source| facts_of_reading(reading, source, false),
+            |reading, source, cut| facts_of_reading(reading, source, false, cut),
         )
     }
 }
 
 /// The blob of a YAML file read with `options`: its facts from `facts`, and
-/// every way the read stopped short as a loss.
+/// every way the read stopped short as a loss, those `facts` sets its cut
+/// flag for included.
 pub(super) fn blob_of(
     language: Language,
     text: &[u8],
     budget: &RunBudget,
     options: Options,
-    facts: impl FnOnce(&config::Reading, &str) -> Vec<Fact>,
+    facts: impl FnOnce(&config::Reading, &str, &Cell<bool>) -> Vec<Fact>,
 ) -> BlobFacts {
     let reading = config::read(Dialect::Yaml, text, options, budget);
     let mut blob = BlobFacts::new(language);
@@ -84,7 +86,12 @@ pub(super) fn blob_of(
         }
     }
     let source = std::str::from_utf8(text).unwrap_or("");
-    blob.facts = facts(&reading, source);
+    let cut = Cell::new(false);
+    blob.facts = facts(&reading, source, &cut);
+    let failed = |l: &Loss| matches!(l, Loss::ExtractorFailed { .. });
+    if cut.get() && !blob.losses.iter().any(failed) {
+        blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+    }
     blob.in_source_order();
     blob
 }
@@ -97,6 +104,7 @@ pub(super) fn facts_of_reading(
     reading: &config::Reading,
     source: &str,
     rendered: bool,
+    cut: &Cell<bool>,
 ) -> Vec<Fact> {
     let mut facts = Vec::new();
     let mut earlier: HashMap<ObjectId, u16> = HashMap::new();
@@ -130,7 +138,11 @@ pub(super) fn facts_of_reading(
         let typed = config::extract(&found, &enclosing, k8s::references());
         let sites: Vec<Range<u32>> = typed.iter().map(|r| r.site.bytes.clone()).collect();
         facts.extend(typed.into_iter().map(Fact::ConfigRef));
-        for candidate in candidates(found.node, &sites) {
+        let (named, stopped) = candidates(found.node, &sites);
+        if stopped {
+            cut.set(true);
+        }
+        for candidate in named {
             let Some(name) = candidate.name.as_str() else {
                 continue;
             };

@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, Visibility,
 };
-use _diffctx::snapshot::RunBudget;
+use _diffctx::snapshot::{Loss, RunBudget};
 
 fn c(source: &str) -> BlobFacts {
     CExtractor.extract(source.as_bytes(), &RunBudget::default())
@@ -282,4 +282,47 @@ fn main_is_an_entry_point() {
         })
         .collect();
     assert_eq!(mains, ["main"]);
+}
+
+fn parse_error_lines(facts: &BlobFacts) -> Vec<Vec<(u32, u32)>> {
+    facts
+        .losses
+        .iter()
+        .filter_map(|l| match l {
+            Loss::ParseError { lines, .. } => Some(lines.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A missing `}` and a broken signature make the grammar replace the whole
+/// file with an error node. `keep`, whole inside it, is read with its doc
+/// comment, and only the lines of what the walk could not read are the
+/// parse error: the stray tokens of `helper` (1-2) and the broken `tail`
+/// (9-11). Red on the base: the error node was unread whole, lines 1-11.
+#[test]
+fn an_item_under_an_error_node_is_read_and_only_the_rest_is_unread() {
+    let facts = c(
+        "int helper(int x) {\n    return x + 1;\n\n/* Keeps the count. */\nint keep(void) {\n    return helper(1);\n}\n\nint tail( { int x) {\n    return other(x);\n}\n",
+    );
+    def_named(&facts, "keep");
+    assert_eq!(parse_error_lines(&facts), [[(1, 2), (9, 11)]]);
+}
+
+/// A declarator chain the walk gives up on (past 32 links) is a loss, not a
+/// declaration quietly left out. Red on the base: `declared` returned `None`
+/// and the file lost `x` with no loss.
+#[test]
+fn a_declarator_chain_past_the_cut_is_a_loss() {
+    let deep = c(&format!("int {}x;\n", "*".repeat(40)));
+    assert!(
+        deep.losses
+            .iter()
+            .any(|l| matches!(l, Loss::ExtractorFailed { .. })),
+        "{:?}",
+        deep.losses
+    );
+    let shallow = c(&format!("int {}x;\n", "*".repeat(20)));
+    def_named(&shallow, "x");
+    assert!(shallow.losses.is_empty(), "{:?}", shallow.losses);
 }

@@ -311,11 +311,12 @@ fn calls_inside_compound_commands_are_callers() {
     );
 }
 
-/// #521: tree-sitter-bash breaks on an escaped quote in `"${VAR:=…}"`, and
-/// every name the script spelled became a hedge. The broken span is local:
-/// a name in an `echo` argument after it was read; one inside it was not.
+/// #521: tree-sitter-bash breaks on an escaped quote in `"${VAR:=…}"`. By the
+/// plan (Rev 17 phase 1: any loss takes a file out of "bound") a broken file
+/// that spells the name is hedged, wherever on its lines the name stands; a
+/// broken file that does not spell it, and a file that parses, are not.
 #[test]
-fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
+fn a_broken_file_is_hedged_when_it_spells_the_name_and_not_otherwise() {
     let tmp = repo_steps(&[
         &[
             ("lib.sh", "helper() {\n  echo one\n}\n"),
@@ -331,6 +332,10 @@ fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
                 "c.sh",
                 "#!/bin/bash\n: \"${SEL:=a[x=\\\"t\\\"], helper[y=\\\"u\\\"]}\"\n",
             ),
+            (
+                "d.sh",
+                "#!/bin/bash\n: \"${SEL:=input[type=\\\"text\\\"], input[type=\\\"email\\\"]}\"\necho \"$SEL\"\n",
+            ),
         ],
         &[("lib.sh", "helper() {\n  echo two\n}\n")],
     ]);
@@ -339,7 +344,7 @@ fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
         .as_array()
         .map(|m| m.iter().filter_map(|f| f["path"].as_str()).collect())
         .unwrap_or_default();
-    assert_eq!(missed, ["c.sh"], "{out:#}");
+    assert_eq!(missed, ["a.sh", "c.sh"], "{out:#}");
 }
 
 const V1: &str = "CREATE SCHEMA lib;\n\nCREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER\nLANGUAGE plpgsql AS $$\nDECLARE\n  n INTEGER;\nBEGIN\n  UPDATE books SET refreshed = now() WHERE album = target_album;\n  GET DIAGNOSTICS n = ROW_COUNT;\n  RETURN n;\nEND;\n$$;\n";

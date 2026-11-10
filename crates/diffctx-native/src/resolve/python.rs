@@ -45,6 +45,7 @@ pub struct PythonResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
 }
 
 impl PythonResolver {
@@ -57,6 +58,7 @@ impl PythonResolver {
         let listing = cache.listing(reader)?;
         let mut files = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         for entry in &listing.entries {
             let language = Language::from_path(&entry.path);
             let python = language == Some(Language::Python)
@@ -73,6 +75,7 @@ impl PythonResolver {
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 if file.language() == Language::Python {
                     losses.extend(file.losses());
+                    read.push(entry.path.clone());
                     files.push(file);
                 }
             }
@@ -96,6 +99,7 @@ impl PythonResolver {
             bindings,
             by_target,
             losses,
+            read,
         })
     }
 
@@ -123,6 +127,11 @@ impl PythonResolver {
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 }
 

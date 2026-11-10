@@ -137,30 +137,53 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     blob
 }
 
-/// A construct the grammar read whole, whatever lies around it.
+/// A construct the walk reads, wherever the grammar put it.
 fn is_whole(kind: &str) -> bool {
     matches!(kind, "block" | "attribute" | "comment")
 }
 
-/// The line ranges the parse could not read, merged; an error node that
-/// swallows a whole file is narrowed to its stray tokens.
+/// The line ranges the parse could not read, merged. An error node among a
+/// file's items is read by the walk (`through_errors`): the blocks and
+/// attributes it holds whole are left out, and its stray tokens, with
+/// whatever else sits among the items, are what stays unread. An error node
+/// inside a block is unread whole.
 fn error_lines(root: Node) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
+    let mut stack = vec![(root, true)];
+    while let Some((node, among_items)) = stack.pop() {
         let mut cursor = node.walk();
-        if node.is_error() {
+        if node.is_error() && among_items {
+            if node.child_count() == 0 {
+                ranges.push(lines_of(node));
+            }
             for child in node.children(&mut cursor) {
-                if child.is_error() || child.is_missing() || !is_whole(child.kind()) {
+                if child.is_error() {
+                    stack.push((child, true));
+                } else if child.is_missing() || !is_whole(child.kind()) {
                     ranges.push(lines_of(child));
                 } else if child.has_error() {
-                    stack.push(child);
+                    stack.push((child, false));
                 }
             }
-        } else if node.is_missing() {
+        } else if node.is_error() || node.is_missing() {
             ranges.push(lines_of(node));
         } else if node.has_error() {
-            stack.extend(node.children(&mut cursor));
+            // A file holds bodies and a body holds blocks and attributes: what
+            // else sits there was not read.
+            let level = among_items && matches!(node.kind(), "config_file" | "body");
+            for child in node.children(&mut cursor) {
+                let stray = level
+                    && child.is_named()
+                    && !child.is_error()
+                    && !child.is_missing()
+                    && child.kind() != "body"
+                    && !is_whole(child.kind());
+                if stray {
+                    ranges.push(lines_of(child));
+                } else {
+                    stack.push((child, level));
+                }
+            }
         }
     }
     ranges.sort_unstable();
@@ -196,6 +219,23 @@ fn span(node: Node) -> Span {
 fn children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).collect()
+}
+
+/// The named children of a file or body in source order, those the grammar
+/// parked under an error node included: a stray token leaves the blocks
+/// around it whole inside the error, and their definitions and uses are
+/// still the file's.
+fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Node<'t>> = children(parent).into_iter().rev().collect();
+    while let Some(node) = stack.pop() {
+        if node.is_error() {
+            stack.extend(children(node).into_iter().rev());
+        } else {
+            out.push(node);
+        }
+    }
+    out
 }
 
 /// What a walk of an expression carries: who owns the references and which names
@@ -258,11 +298,13 @@ impl<'t> Walker<'t> {
             scope: Scope::Module,
             bound: Vec::new(),
         };
-        for body in children(root) {
-            if body.kind() != "body" {
-                continue;
-            }
-            for item in children(body) {
+        for part in through_errors(root) {
+            let items = if part.kind() == "body" {
+                through_errors(part)
+            } else {
+                vec![part]
+            };
+            for item in items {
                 if !self.deeper(1) {
                     return;
                 }

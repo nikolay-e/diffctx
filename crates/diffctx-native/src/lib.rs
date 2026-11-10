@@ -24,6 +24,7 @@ pub(crate) mod languages;
 pub(crate) mod parsers;
 pub(crate) mod signatures;
 pub(crate) mod testfiles;
+pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;

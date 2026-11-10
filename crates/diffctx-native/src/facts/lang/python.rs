@@ -25,7 +25,7 @@
 //!   body's tree (node kinds, nesting, leaf text; no comments, no docstring),
 //!   `text_hash` over its bytes, `doc_hash` over the docstring's words.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -119,7 +119,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     if walker.halted {
         blob.deadline();
     }
-    if walker.too_deep {
+    if walker.too_deep.get() {
         blob.losses.push(Loss::ExtractorFailed { path: unbound() });
     }
     blob.facts = std::mem::take(&mut walker.facts);
@@ -494,7 +494,9 @@ struct Walker<'t> {
     budget: &'t RunBudget,
     ticks: usize,
     halted: bool,
-    too_deep: bool,
+    /// A cut of depth; a `Cell` so that the path evaluator, which only reads
+    /// the walker, can state its own.
+    too_deep: Cell<bool>,
     facts: Vec<Fact>,
     keys: HashMap<usize, Known>,
     vars: HashMap<usize, Known>,
@@ -513,7 +515,7 @@ impl<'t> Walker<'t> {
             budget,
             ticks: 0,
             halted: false,
-            too_deep: false,
+            too_deep: Cell::new(false),
             facts: Vec::new(),
             keys: HashMap::new(),
             vars: HashMap::new(),
@@ -1067,7 +1069,7 @@ impl<'t> Walker<'t> {
             return;
         }
         if depth > MAX_DEPTH {
-            self.too_deep = true;
+            self.too_deep.set(true);
             return;
         }
         match node.kind() {
@@ -1201,7 +1203,11 @@ impl<'t> Walker<'t> {
         out: &mut Vec<Cand>,
         depth: u16,
     ) {
-        if !self.tick() || depth > MAX_DEPTH {
+        if !self.tick() {
+            return;
+        }
+        if depth > MAX_DEPTH {
+            self.too_deep.set(true);
             return;
         }
         match node.kind() {
@@ -1358,7 +1364,11 @@ impl<'t> Walker<'t> {
     /// material. Any other module-level statement stays code outside every
     /// definition.
     fn scan_mutations(&mut self, node: Node<'t>, depth: u16) {
-        if depth > MAX_DEPTH || !self.tick() {
+        if !self.tick() {
+            return;
+        }
+        if depth > MAX_DEPTH {
+            self.too_deep.set(true);
             return;
         }
         match node.kind() {
@@ -1756,7 +1766,7 @@ impl<'t> Walker<'t> {
             return;
         }
         if depth > MAX_DEPTH {
-            self.too_deep = true;
+            self.too_deep.set(true);
             return;
         }
         let d = depth + 1;
@@ -2520,7 +2530,7 @@ impl<'t> Walker<'t> {
             return;
         }
         if depth > MAX_DEPTH {
-            self.too_deep = true;
+            self.too_deep.set(true);
             return;
         }
         let d = depth + 1;
@@ -2575,7 +2585,7 @@ impl<'t> Walker<'t> {
         let Some(&argument) = argument else {
             return;
         };
-        if let Some(text) = self.path_text(argument, 0) {
+        if let Some(text) = self.path_text(argument, 0, &[]) {
             self.facts.push(Fact::PathMention(PathMention {
                 site: span(argument),
                 enclosing: cx.scope.clone(),
@@ -2587,11 +2597,12 @@ impl<'t> Walker<'t> {
     /// The path an expression builds, `__file__` standing for the file: a
     /// `Path(__file__).parent / "src"` is `__file__/../src`. `None` for
     /// anything the syntax cannot evaluate.
-    fn path_text(&self, node: Node<'t>, depth: u8) -> Option<String> {
+    fn path_text(&self, node: Node<'t>, depth: u8, via: &[&'t str]) -> Option<String> {
         if depth > 8 {
+            self.too_deep.set(true);
             return None;
         }
-        let go = |n: Node<'t>| self.path_text(n, depth + 1);
+        let go = |n: Node<'t>| self.path_text(n, depth + 1, via);
         let join = |base: String, segment: &str| {
             if segment.starts_with('/') {
                 segment.to_string()
@@ -2602,7 +2613,13 @@ impl<'t> Walker<'t> {
         match node.kind() {
             "identifier" => match self.text(node) {
                 "__file__" => Some("__file__".to_string()),
-                name => go(*self.module_values.get(name)?),
+                // A name that holds an expression of itself is no path, not a
+                // chain too deep to follow.
+                name if via.contains(&name) => None,
+                name => {
+                    let through: Vec<&'t str> = via.iter().copied().chain([name]).collect();
+                    self.path_text(*self.module_values.get(name)?, depth + 1, &through)
+                }
             },
             "parenthesized_expression" => go(node.named_child(0)?),
             "string" => self.plain_string(node),

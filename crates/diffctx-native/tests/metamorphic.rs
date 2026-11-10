@@ -17,6 +17,21 @@
 // The seventh transformation of the plan, a failing git read, is the sweep in
 // git_faults.rs, which fails each git call of a run in turn.
 //
+// The second half of the file is the absence accounting (arch migration,
+// phase 1): a seed for each of the twelve families of the registry, one
+// changed definition with one known caller (support/families.rs). A
+// transformation hides the caller from the extractor or the resolver, and the
+// answer then names the link or names a gap: `empty: true` is a claim that
+// nothing calls the definition and is never made over a caller. Every family
+// also keeps a control with no caller anywhere, which has to stay a clean
+// absence, so that an answer that hedges everything does not pass.
+//
+//   deep_call_10, deep_call_300, deep_call_2000   the call a leaf of a left spine
+//   syntax_error_near_declaration, syntax_error_near_call
+//   caller_over_the_size_cap, caller_in_a_neighbour_language
+//   one_letter_name (alone, with a broken and with an oversize caller)
+//   absence_control, absence_control_with_a_broken_unrelated_file
+//
 // Expected answers come from reading the generated files. The properties
 // compare two answers of the engine and need no oracle; `seed_names_its_callers`
 // is the one absolute check that the plain seed is understood at all.
@@ -43,6 +58,10 @@ use support::answer::{
     changed_rows, difference, disclosure, relations, removed_rows, section_sizes,
 };
 use support::diffctx;
+use support::families::{
+    self, Break, Family, Neighbour, Planted, Query, Shape, discloses, names_link, queries,
+    says_empty,
+};
 use support::seeds::{Edit, Knobs, Lang, RANGE, Seed, seed};
 
 const DEFAULT_CASES: u32 = 4;
@@ -646,6 +665,276 @@ fn known_red_names_a_property_and_an_issue() {
         assert!(
             issue.starts_with("gh#") || issue.starts_with("fj#"),
             "{id}: {issue} is not gh#N or fj#N"
+        );
+    }
+}
+
+// ---- absence accounting: a seed per family (arch migration, phase 1) ----
+
+// The answer to every question about a seed that has a caller: the link is
+// named or a gap is, and the change is never said to reach nothing.
+fn link_or_gap(family: Family, shape: &Shape, id: &str) {
+    check_once(id, "arch/p1 fj#113", || {
+        let planted = Planted::new(families::with_caller(family, shape));
+        let caller = planted.repo.caller.clone().expect("a seed has a caller");
+        for query in queries(family) {
+            let doc = planted.ask(query, &[])?;
+            if says_empty(&doc) {
+                return Err(format!(
+                    "{query:?}: the answer says the change reaches nothing, and {caller} calls the definition"
+                ));
+            }
+            if !names_link(&doc, &caller) && !discloses(&doc) {
+                return Err(format!(
+                    "{query:?}: the answer names neither the link to {caller} nor a gap\n{doc:#}"
+                ));
+            }
+        }
+        Ok(())
+    });
+}
+
+// The control: nothing calls the definition, in any file, so the answer is a
+// clean absence: no limit, no unanalysed file, no search that says it was
+// partial, and for the families that say it so, `empty`.
+fn clean_absence(family: Family, broken_unrelated: bool, id: &str) {
+    check_once(id, "arch/p1", || {
+        let planted = Planted::new(families::control(family, broken_unrelated));
+        for query in queries(family) {
+            let doc = planted.ask(query, &[])?;
+            if discloses(&doc) {
+                return Err(format!(
+                    "{query:?}: a definition nothing calls got a gap, which hedges everything\n{doc:#}"
+                ));
+            }
+            if query == Query::Impact && family.proves_empty() && !says_empty(&doc) {
+                return Err(format!(
+                    "{query:?}: a definition nothing calls is not stated as reaching nothing\n{doc:#}"
+                ));
+            }
+        }
+        Ok(())
+    });
+}
+
+fn deep_call(family: Family, depth: usize) {
+    let shape = Shape {
+        depth,
+        ..Shape::default()
+    };
+    let id = format!("deep_call_{depth}/{}", family.label());
+    link_or_gap(family, &shape, &id);
+}
+
+fn syntax_error(family: Family, near: Break) {
+    let property = match near {
+        Break::Declaration => "syntax_error_near_declaration",
+        Break::Call => "syntax_error_near_call",
+    };
+    let shape = Shape {
+        broken: Some(near),
+        ..Shape::default()
+    };
+    link_or_gap(family, &shape, &format!("{property}/{}", family.label()));
+}
+
+fn over_the_size_cap(family: Family) {
+    let shape = Shape {
+        oversize: true,
+        ..Shape::default()
+    };
+    let id = format!("caller_over_the_size_cap/{}", family.label());
+    link_or_gap(family, &shape, &id);
+}
+
+fn in_a_neighbour(family: Family, neighbour: Neighbour) {
+    let shape = Shape {
+        neighbour: Some(neighbour),
+        ..Shape::default()
+    };
+    let id = format!(
+        "caller_in_a_neighbour_language/{}_{}",
+        family.label(),
+        neighbour.label()
+    );
+    link_or_gap(family, &shape, &id);
+}
+
+// A package, module or directory named by one letter, alone and with a caller
+// no extractor reads whole.
+fn one_letter(family: Family, broken: Option<Break>, oversize: bool) {
+    let shape = Shape {
+        one_letter: true,
+        broken,
+        oversize,
+        ..Shape::default()
+    };
+    let property = match (broken, oversize) {
+        (Some(_), _) => "one_letter_name_and_a_broken_caller",
+        (None, true) => "one_letter_name_and_an_oversize_caller",
+        (None, false) => "one_letter_name",
+    };
+    link_or_gap(family, &shape, &format!("{property}/{}", family.label()));
+}
+
+// One test per family under `module`, each calling `$call` with its family.
+macro_rules! family_tests {
+    ($module:ident, $call:expr, [$($test:ident: $family:ident),+ $(,)?]) => {
+        mod $module {
+            use super::Family;
+
+            $(
+                #[test]
+                fn $test() {
+                    ($call)(Family::$family);
+                }
+            )+
+        }
+    };
+}
+
+macro_rules! every_family {
+    ($module:ident, $call:expr) => {
+        family_tests!(
+            $module,
+            $call,
+            [
+                python: Python,
+                typescript: TypeScript,
+                rust: Rust,
+                kotlin: Kotlin,
+                java: Java,
+                go: Go,
+                php: Php,
+                c: C,
+                config: Config,
+                terraform: Terraform,
+                dockerfile: Dockerfile,
+                shell: Shell,
+            ]
+        );
+    };
+}
+
+// A Dockerfile stage is read by a stage of the same file: nothing nests.
+macro_rules! every_nesting_family {
+    ($module:ident, $call:expr) => {
+        family_tests!(
+            $module,
+            $call,
+            [
+                python: Python,
+                typescript: TypeScript,
+                rust: Rust,
+                kotlin: Kotlin,
+                java: Java,
+                go: Go,
+                php: Php,
+                c: C,
+                config: Config,
+                terraform: Terraform,
+                shell: Shell,
+            ]
+        );
+    };
+}
+
+every_nesting_family!(deep_call_10, |family| super::deep_call(family, 10));
+every_nesting_family!(deep_call_300, |family| super::deep_call(family, 300));
+every_nesting_family!(deep_call_2000, |family| super::deep_call(family, 2000));
+every_family!(syntax_error_near_declaration, |family| {
+    super::syntax_error(family, super::Break::Declaration)
+});
+every_family!(syntax_error_near_call, |family| {
+    super::syntax_error(family, super::Break::Call)
+});
+every_family!(caller_over_the_size_cap, |family| {
+    super::over_the_size_cap(family)
+});
+every_family!(one_letter_name, |family| {
+    super::one_letter(family, None, false)
+});
+every_family!(one_letter_name_and_a_broken_caller, |family| {
+    super::one_letter(family, Some(super::Break::Call), false)
+});
+every_family!(one_letter_name_and_an_oversize_caller, |family| {
+    super::one_letter(family, None, true)
+});
+every_family!(absence_control, |family: super::Family| {
+    super::clean_absence(
+        family,
+        false,
+        &format!("absence_control/{}", family.label()),
+    )
+});
+every_family!(
+    absence_control_with_a_broken_unrelated_file,
+    |family: super::Family| {
+        super::clean_absence(
+            family,
+            true,
+            &format!(
+                "absence_control_with_a_broken_unrelated_file/{}",
+                family.label()
+            ),
+        )
+    }
+);
+
+macro_rules! neighbours {
+    ($($test:ident: $family:ident, $neighbour:ident;)+) => {
+        mod caller_in_a_neighbour_language {
+            use super::{Family, Neighbour};
+
+            $(
+                #[test]
+                fn $test() {
+                    super::in_a_neighbour(Family::$family, Neighbour::$neighbour);
+                }
+            )+
+        }
+    };
+}
+
+neighbours! {
+    kotlin_java: Kotlin, Java;
+    kotlin_scala: Kotlin, Scala;
+    java_kotlin: Java, Kotlin;
+    java_groovy: Java, Groovy;
+    c_cpp: C, Cpp;
+    c_cpp_definition: C, CppDefinition;
+    typescript_js: TypeScript, Js;
+    typescript_vue: TypeScript, Vue;
+    typescript_svelte: TypeScript, Svelte;
+    typescript_html: TypeScript, Html;
+    typescript_astro: TypeScript, Astro;
+}
+
+// Every family has a seed whose caller is a file of the repository and whose
+// change touches the definition, and a control without a caller.
+#[test]
+fn every_family_has_a_seed_with_a_caller_and_a_control_without() {
+    for family in Family::ALL {
+        let plain = families::with_caller(family, &Shape::default());
+        let caller = plain.caller.as_deref().expect("a caller");
+        assert!(
+            plain.base.contains_key(caller),
+            "{}: the caller {caller} is not a file of the seed",
+            family.label()
+        );
+        assert!(
+            plain.change.contains_key(&plain.definition),
+            "{}: the change does not touch {}",
+            family.label(),
+            plain.definition
+        );
+        let control = families::control(family, false);
+        assert!(control.caller.is_none(), "{}", family.label());
+        assert!(
+            control.change.contains_key(&control.definition),
+            "{}: the control's change does not touch {}",
+            family.label(),
+            control.definition
         );
     }
 }

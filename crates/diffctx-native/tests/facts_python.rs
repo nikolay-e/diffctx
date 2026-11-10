@@ -610,6 +610,29 @@ fn sys_path_edits_name_the_path_they_add() {
     }
 }
 
+/// A path chain longer than the evaluator follows is a loss, not a path
+/// mention quietly left out. Red on the base: the depth cut returned `None`,
+/// the same answer as for an expression that is no path. A name that holds an
+/// expression of itself is no path either, but no cut.
+#[test]
+fn a_path_chain_past_the_cut_is_a_loss_and_a_self_reference_is_not() {
+    let deep = extract(&format!(
+        "sys.path.append(Path(__file__){})\n",
+        ".parent".repeat(12)
+    ));
+    assert!(
+        deep.losses
+            .iter()
+            .any(|l| matches!(l, Loss::ExtractorFailed { .. })),
+        "{:?}",
+        deep.losses
+    );
+    let shallow = extract("sys.path.append(Path(__file__).parent.parent)\n");
+    assert!(shallow.losses.is_empty(), "{:?}", shallow.losses);
+    let selfish = extract("HERE = HERE / \"x\"\nsys.path.append(HERE)\n");
+    assert!(selfish.losses.is_empty(), "{:?}", selfish.losses);
+}
+
 #[test]
 fn a_docstring_is_a_doc_hash_and_not_part_of_the_body() {
     let plain = extract("def f():\n    \"\"\"Compute the\n    total.\"\"\"\n    return 1\n");

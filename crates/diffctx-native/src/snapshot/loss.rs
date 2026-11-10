@@ -145,6 +145,75 @@ impl Loss {
     }
 }
 
+impl Loss {
+    /// One loss of every variant, `path` the file it is about (a variant that
+    /// names no path ignores it): what the test knob `DIFFCTX_TEST_LOSS` injects
+    /// and the loss sweep walks, so that the list of variants is the enum's own.
+    /// `index` is an exhaustive match: a new variant does not compile until it
+    /// has a place here, and the sample at that place.
+    pub fn samples(path: &RepoPath) -> Vec<Self> {
+        let at = || path.clone();
+        let samples = vec![
+            Self::ReadFailed {
+                path: at(),
+                side: SideTag::Head,
+            },
+            Self::SnapshotChanged { path: at() },
+            Self::TooLarge {
+                path: at(),
+                size: 1,
+            },
+            Self::Withheld { count: 1 },
+            Self::NotAnalysed {
+                path: at(),
+                reason: NotAnalysedReason::Untracked,
+            },
+            Self::ManifestUnread {
+                path: at(),
+                reason: "injected".to_string(),
+            },
+            Self::ParseError {
+                path: at(),
+                lines: vec![(1, 1)],
+            },
+            Self::GrammarOutdated {
+                path: at(),
+                lines: vec![(1, 1)],
+            },
+            Self::Unsupported { path: at() },
+            Self::Deadline {
+                stage: Stage::Search,
+            },
+            Self::ExtractorFailed { path: at() },
+            Self::AmbiguousMatch { path: at() },
+        ];
+        debug_assert!(
+            samples
+                .iter()
+                .enumerate()
+                .all(|(place, sample)| sample.index() == place)
+        );
+        samples
+    }
+
+    fn index(&self) -> usize {
+        match self {
+            Self::ReadFailed { .. } => 0,
+            Self::SnapshotChanged { .. } => 1,
+            Self::TooLarge { .. } => 2,
+            Self::Withheld { .. } => 3,
+            Self::NotAnalysed { .. } => 4,
+            Self::ManifestUnread { .. } => 5,
+            Self::ParseError { .. } => 6,
+            Self::GrammarOutdated { .. } => 7,
+            Self::Unsupported { .. } => 8,
+            Self::Deadline { .. } => 9,
+            Self::ExtractorFailed { .. } => 10,
+            Self::AmbiguousMatch { .. } => 11,
+        }
+    }
+}
+
 fn spans(lines: &[(u32, u32)]) -> String {
     lines
         .iter()

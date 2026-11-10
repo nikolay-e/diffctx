@@ -3923,3 +3923,208 @@ fn a_log_line_names_the_call_and_the_repositories_that_landed() {
         "the version stays last: {log}"
     );
 }
+
+/// A `git` ahead of the real one on `PATH` that refuses every call spelling
+/// `arg` as an argument and runs the rest: one read of git's fails while
+/// the repository stays whole. Returns the `PATH` to run the hook with.
+#[cfg(unix)]
+fn path_refusing(dir: &Path, arg: &str) -> std::ffi::OsString {
+    use std::os::unix::fs::PermissionsExt as _;
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("locate git");
+    let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+    let bin = dir.join("refusing-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let shim = bin.join("git");
+    std::fs::write(
+        &shim,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = '{arg}' ]; then echo 'fatal: simulated refusal' >&2; exit 128; fi\ndone\nexec '{real}' \"$@\"\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    std::env::join_paths(paths).unwrap()
+}
+
+/// A `git diff --raw` that fails says nothing about which files changed:
+/// the commit it was asked to review is said to be unread, never "changes
+/// no file". On the base the failed read was `None`, which `prepared` took
+/// for "nothing changed" and printed as an empty commit.
+#[cfg(unix)]
+#[test]
+fn a_commit_whose_raw_diff_git_refused_is_not_called_empty() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = line_in("s1", repo, cache.path(), &env, "git commit -qam vat");
+    let context = context_of(&h);
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
+    assert!(context.contains("git refused a read"), "{context}");
+    assert!(!context.contains("changes no file"), "{context}");
+}
+
+/// The gate's `PreToolUse` on a commit whose diff git refused answers that
+/// the change was not reviewed, instead of the silence that lets it run as
+/// if it were clean (the base returned `Err("clean")`, an empty stdout).
+#[cfg(unix)]
+#[test]
+fn a_gated_commit_whose_raw_diff_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// An inspection whose list of changed paths git refused has no changed
+/// file to look at: it is said to be unreviewed, not "clean" (on the base
+/// the failed listing was an empty one, and the run ended in silence).
+#[cfg(unix)]
+#[test]
+fn an_inspection_whose_path_listing_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--name-only");
+    let env = [("PATH", Path::new(&path))];
+    let diff = in_session("s1", &payload_for("PostToolUse", repo, "git diff"));
+    let h = hook_in_env(repo, cache.path(), "posttooluse", &[], &env, &diff);
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// A review that failed names the files it changes; when git refused that
+/// listing too it says the files could not be listed, never an empty list
+/// (the base left the sentence out, which read as a change with no file).
+#[cfg(unix)]
+#[test]
+fn a_failed_review_says_when_its_changed_files_could_not_be_listed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "--name-only");
+    let env = [
+        ("PATH", Path::new(&path)),
+        ("DIFFCTX_EVAL_STRICT", Path::new("1")),
+        ("DIFFCTX_NOT_A_SETTING", Path::new("1")),
+    ];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(
+        context.contains("Its changed files could not be listed"),
+        "{context}"
+    );
+    assert!(!context.contains("It changes"), "{context}");
+}
+
+/// A search answered while git refused the read of the pending change says
+/// so: which names the change edits is unknown (on the base the failed
+/// identity was "nothing changed", and the search was answered as if no name
+/// were edited).
+#[cfg(unix)]
+#[test]
+fn a_search_whose_pending_change_git_refused_says_it_could_not_read_it() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &env,
+        &search_payload(repo, "Bash", "grep -rn 'total(' shop/"),
+    );
+    let context = context_of(&h);
+    assert!(
+        context.contains("could not read the pending change"),
+        "{context}"
+    );
+}
+
+/// The engine's own probe of the repository (`rev-parse --git-dir`) refused
+/// on an inspection: the change is said to be unreviewed. On the base only a
+/// commit, push or pull request said so; an inspection whose review failed
+/// printed nothing, which reads as a clean one.
+#[cfg(unix)]
+#[test]
+fn an_inspection_whose_engine_read_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--git-dir");
+    let env = [("PATH", Path::new(&path))];
+    let diff = in_session("s1", &payload_for("PostToolUse", repo, "git diff"));
+    let h = hook_in_env(repo, cache.path(), "posttooluse", &[], &env, &diff);
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// An amend whose `HEAD~1` git refused to resolve is a failed read, not a
+/// commit with no parent: said, instead of the silence that means "no
+/// range". On the base both answers were `None`.
+#[cfg(unix)]
+#[test]
+fn an_amend_whose_parent_git_refused_to_resolve_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "HEAD~1");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit --amend -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}

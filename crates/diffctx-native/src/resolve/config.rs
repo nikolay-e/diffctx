@@ -63,6 +63,7 @@ pub struct ConfigResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
     external: usize,
     templated: usize,
     unbound: usize,
@@ -95,6 +96,7 @@ impl ConfigResolver {
         let listing = cache.listing(reader)?;
         let mut files: Vec<FileFacts> = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         for entry in &listing.entries {
             if !Language::from_path(&entry.path).is_some_and(Language::is_config_family) {
                 continue;
@@ -107,6 +109,7 @@ impl ConfigResolver {
             }
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 losses.extend(file.losses());
+                read.push(entry.path.clone());
                 files.push(file);
             }
         }
@@ -243,6 +246,7 @@ impl ConfigResolver {
             bindings,
             by_target,
             losses,
+            read,
             external,
             templated,
             unbound: chart.unbound_values,
@@ -289,6 +293,11 @@ impl ConfigResolver {
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 }
 

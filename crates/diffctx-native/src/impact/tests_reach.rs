@@ -14,7 +14,6 @@
 
 use std::cell::RefCell;
 use std::path::Path;
-use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -23,9 +22,10 @@ use crate::facts::EntryKind;
 use super::mentions::{Naming, commented, naming, starts_a_program};
 use super::{
     Cells, EdgeCategory, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState,
-    base_symbol, cell_caller, code_text, lang, lifted_caller, names_module, names_word,
-    read_or_note, rel, same_runtime,
+    base_symbol, cell_caller, lang, lifted_caller, names_word, read_or_note, rel,
 };
+use crate::decide::Group;
+use crate::tokens::Names;
 
 /// How a test runs code that no use of its own reaches: `file` as the fragments
 /// spell it, `symbol` the one function of the file that runs (none: the whole
@@ -45,6 +45,7 @@ struct Up<'a> {
 }
 
 pub(super) struct TestsReach<'a> {
+    state: &'a ScoredState,
     cells: &'a Cells,
     /// The fragments of each file, by the path the answer prints.
     by_rel: FxHashMap<String, Vec<&'a Fragment>>,
@@ -57,8 +58,8 @@ pub(super) struct TestsReach<'a> {
     /// Functions outside test files an attribute marks as tests: a Rust
     /// `#[test]` in an inline `mod tests` (#528).
     inline_tests: FxHashSet<&'a FragmentId>,
-    /// Test files the size cap kept out, with their code.
-    unread: Vec<(String, Arc<str>)>,
+    /// Test files the size cap kept out.
+    unread: Vec<String>,
     /// Entries a test runs: binaries (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`:
     /// #391, #678), console scripts, scripts spelled by their path.
     runs: Vec<Run>,
@@ -136,8 +137,7 @@ impl<'a> TestsReach<'a> {
                 crate::testfiles::is_test_path(Path::new(f.path())) || inline_tests.contains(&f.id)
             })
             .collect();
-        let source = state.run.source();
-        let too_large: Vec<String> = state
+        let unread: Vec<String> = state
             .run
             .limited_files()
             .into_iter()
@@ -146,15 +146,6 @@ impl<'a> TestsReach<'a> {
                     && crate::testfiles::is_test_path(Path::new(&f.path))
             })
             .map(|f| f.path)
-            .collect();
-        let unread = state
-            .run
-            .bounded(too_large)
-            .filter_map(|path| {
-                let bytes = source.read_bytes(&state.root_dir.join(&path))?;
-                let code = code_text(&path, &String::from_utf8_lossy(&bytes));
-                Some((path, code))
-            })
             .collect();
         let spelled: FxHashMap<&str, &str> = rel_of
             .iter()
@@ -169,6 +160,7 @@ impl<'a> TestsReach<'a> {
             && runs.is_empty()
             && repo_holds_test_file(state);
         Self {
+            state,
             cells,
             by_rel,
             rel_of,
@@ -189,20 +181,21 @@ impl<'a> TestsReach<'a> {
             || self.repo_tests
     }
 
+    /// A test file the size cap kept out that spells the caller's name, among the
+    /// files of the caller's own group.
     pub(super) fn unread_naming(&self, caller: &Fragment, own: &str) -> Option<String> {
-        let name = caller
-            .symbol_name
-            .as_deref()
-            .map(base_symbol)
-            .filter(|s| s.len() >= 3)?;
+        let name = caller.symbol_name.as_deref().map(base_symbol)?;
+        let group = Group::of_path(own)?;
+        let tokens = self.cells.group_tokens(self.state, group)?;
+        let names = Names::new([name]);
         self.unread
             .iter()
-            .find(|(path, text)| {
-                same_runtime(path, own)
-                    && names_word(text, name)
-                    && names_module(path, own, |w| names_word(text, w))
+            .find(|path| {
+                group.has_path(path)
+                    && tokens.spells(path, &names) == Some(true)
+                    && !self.cells.of(path).is_some_and(|cell| cell.is_bound(path))
             })
-            .map(|(path, _)| path.clone())
+            .cloned()
     }
 
     pub(super) fn is_test(&self, f: &Fragment) -> bool {

@@ -780,11 +780,17 @@ fn cases_root() -> PathBuf {
 /// The TypeScript and JavaScript cases the resolver cannot answer yet, each with
 /// the reason. The list is held both ways: a listed case that turns green fails
 /// the run, as does a red case that is not listed.
-const RED: &[(&str, &str)] = &[(
-    "impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts",
-    "gh#602: a classic script's global is bound by the page that loads the scripts in order; \
+const RED: &[(&str, &str)] = &[
+    (
+        "impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts",
+        "gh#602: a classic script's global is bound by the page that loads the scripts in order; \
          the facts carry nothing of HTML, and a bare name no file binds is `NoBinding`",
-)];
+    ),
+    (
+        "impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it",
+        "gh#304: open ticket; the case asserts what the engine does not yet answer",
+    ),
+];
 
 #[test]
 fn the_typescript_corpus_is_answered_as_the_list_says() {

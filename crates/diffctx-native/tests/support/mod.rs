@@ -6,6 +6,8 @@
 #![allow(dead_code)]
 
 pub mod answer;
+pub mod fake_git;
+pub mod families;
 pub mod seeds;
 
 use std::collections::BTreeSet;

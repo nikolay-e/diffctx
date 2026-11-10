@@ -1,0 +1,46 @@
+name: config_bare_basename_built_into_a_path_is_no_reference_to_the_changed_file
+mode: impact
+source: fj#152
+issue_state: open
+tags: [config, named-by, basename, decoy, monorepo]
+repo:
+  initial_files:
+    recorder/Info.plist: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <plist version="1.0">
+      <dict>
+        <key>CFBundleName</key>
+        <string>Recorder</string>
+      </dict>
+      </plist>
+    recorder/main.py: |
+      def main():
+          return 0
+    tests/test_apps.py: |
+      import plistlib
+
+
+      def read_bundle(app):
+          path = f"/Applications/{app}.app/Contents/Info.plist"
+          with open(path, "rb") as handle:
+              return plistlib.load(handle)
+
+
+      def test_bundle_name():
+          assert read_bundle("Other")["CFBundleName"]
+    scripts/build.sh: |
+      #!/bin/sh
+      cp recorder/Info.plist build/Info.plist
+  changed_files:
+    recorder/Info.plist: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <plist version="1.0">
+      <dict>
+        <key>CFBundleName</key>
+        <string>Recorder 2</string>
+      </dict>
+      </plist>
+  commit_message: "recorder: rename the bundle"
+expect:
+  named_by: [scripts/build.sh]
+  not_named_by: [tests/test_apps.py]

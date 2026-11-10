@@ -452,12 +452,12 @@ fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
     );
 }
 
-/// #537: a file whose parse broke on one line was read everywhere else: a
-/// name it spells elsewhere is found like any other and puts no hedge on
-/// the definition; a name spelled on the broken line keeps it, whatever of
-/// the call the parse recovered.
+/// #537: a file whose parse broke on one line. By the plan (Rev 17 phase 1:
+/// any loss takes a file out of "bound") a broken file that spells the name is
+/// hedged whichever line broke, and a broken file that does not spell it is
+/// not; the callers the parse recovered are still named.
 #[test]
-fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
+fn a_partial_parse_hedges_the_files_that_spell_the_name_and_not_the_others() {
     let tmp = repo(
         &[
             ("api.swift", "func load() -> Int {\n    return 1\n}\n"),
@@ -468,6 +468,10 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
             (
                 "Broken.swift",
                 "func other() -> Int {\n    let w = load(1 +)\n    return w\n}\n",
+            ),
+            (
+                "Aside.swift",
+                "func aside(_ rate: Double) -> Double {\n    let s = (rate +)\n    return s\n}\n",
             ),
         ],
         &[("api.swift", "func load() -> Int {\n    return 2\n}\n")],
@@ -480,7 +484,9 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
         .iter()
         .map(|f| f["path"].as_str().unwrap())
         .collect();
-    assert_eq!(missed, ["Broken.swift"]);
+    assert!(missed.contains(&"Broken.swift"), "{missed:?}");
+    assert!(missed.contains(&"Panel.swift"), "{missed:?}");
+    assert!(!missed.contains(&"Aside.swift"), "{missed:?}");
     assert_eq!(
         callers(&doc, "api.swift", "load"),
         [

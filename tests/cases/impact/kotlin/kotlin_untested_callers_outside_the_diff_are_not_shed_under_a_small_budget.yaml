@@ -1,0 +1,369 @@
+name: kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
+mode: impact
+source: gh#629
+issue_state: open
+tags:
+- kotlin
+- budget
+- shedding
+query:
+  args: ["--budget", "600"]
+repo:
+  initial_files:
+    src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt: |
+      package shop
+
+      object Playlist {
+          fun render(n: Int): String = "#EXTM3U\n" + n
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber0.kt: |
+      package shop
+
+      class ConsumerNumber0 {
+          fun runTheConsumer(): String = Playlist.render(0)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber0Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber0Test {
+          @Test
+          fun runs() {
+              ConsumerNumber0().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber1.kt: |
+      package shop
+
+      class ConsumerNumber1 {
+          fun runTheConsumer(): String = Playlist.render(1)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber1Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber1Test {
+          @Test
+          fun runs() {
+              ConsumerNumber1().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber2.kt: |
+      package shop
+
+      class ConsumerNumber2 {
+          fun runTheConsumer(): String = Playlist.render(2)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber2Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber2Test {
+          @Test
+          fun runs() {
+              ConsumerNumber2().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber3.kt: |
+      package shop
+
+      class ConsumerNumber3 {
+          fun runTheConsumer(): String = Playlist.render(3)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber3Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber3Test {
+          @Test
+          fun runs() {
+              ConsumerNumber3().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber4.kt: |
+      package shop
+
+      class ConsumerNumber4 {
+          fun runTheConsumer(): String = Playlist.render(4)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber4Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber4Test {
+          @Test
+          fun runs() {
+              ConsumerNumber4().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber5.kt: |
+      package shop
+
+      class ConsumerNumber5 {
+          fun runTheConsumer(): String = Playlist.render(5)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber5Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber5Test {
+          @Test
+          fun runs() {
+              ConsumerNumber5().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber6.kt: |
+      package shop
+
+      class ConsumerNumber6 {
+          fun runTheConsumer(): String = Playlist.render(6)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber6Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber6Test {
+          @Test
+          fun runs() {
+              ConsumerNumber6().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber7.kt: |
+      package shop
+
+      class ConsumerNumber7 {
+          fun runTheConsumer(): String = Playlist.render(7)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber7Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber7Test {
+          @Test
+          fun runs() {
+              ConsumerNumber7().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber8.kt: |
+      package shop
+
+      class ConsumerNumber8 {
+          fun runTheConsumer(): String = Playlist.render(8)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber8Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber8Test {
+          @Test
+          fun runs() {
+              ConsumerNumber8().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber9.kt: |
+      package shop
+
+      class ConsumerNumber9 {
+          fun runTheConsumer(): String = Playlist.render(9)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber9Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber9Test {
+          @Test
+          fun runs() {
+              ConsumerNumber9().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber10.kt: |
+      package shop
+
+      class ConsumerNumber10 {
+          fun runTheConsumer(): String = Playlist.render(10)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber10Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber10Test {
+          @Test
+          fun runs() {
+              ConsumerNumber10().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/ConsumerNumber11.kt: |
+      package shop
+
+      class ConsumerNumber11 {
+          fun runTheConsumer(): String = Playlist.render(11)
+      }
+    src/test/kotlin/dev/example/streaming/ConsumerNumber11Test.kt: |
+      package shop
+
+      import kotlin.test.Test
+
+      class ConsumerNumber11Test {
+          @Test
+          fun runs() {
+              ConsumerNumber11().runTheConsumer()
+          }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader0.kt: |
+      package shop
+
+      class UntestedReader0 {
+          fun readIt(): String = Playlist.render(0)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader1.kt: |
+      package shop
+
+      class UntestedReader1 {
+          fun readIt(): String = Playlist.render(1)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader2.kt: |
+      package shop
+
+      class UntestedReader2 {
+          fun readIt(): String = Playlist.render(2)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader3.kt: |
+      package shop
+
+      class UntestedReader3 {
+          fun readIt(): String = Playlist.render(3)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader4.kt: |
+      package shop
+
+      class UntestedReader4 {
+          fun readIt(): String = Playlist.render(4)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader5.kt: |
+      package shop
+
+      class UntestedReader5 {
+          fun readIt(): String = Playlist.render(5)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader6.kt: |
+      package shop
+
+      class UntestedReader6 {
+          fun readIt(): String = Playlist.render(6)
+      }
+    src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader7.kt: |
+      package shop
+
+      class UntestedReader7 {
+          fun readIt(): String = Playlist.render(7)
+      }
+  changed_files:
+    src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt: |
+      package shop
+
+      class Section(val lines: String, val longest: Long)
+
+      object Playlist {
+          fun render(n: Int): String = document(listOf(section(n)))
+
+          fun section(n: Int): Section = Section("#EXTINF:" + n, n.toLong())
+
+          fun document(s: List<Section>): String = "#EXTM3U\n" + s.joinToString("") { it.lines }
+      }
+    src/main/kotlin/dev/example/streaming/adapters/shared/LabController.kt: |
+      package shop
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      class LabController {
+          fun helper0(x: Int): Int = x + LIMIT0
+
+          fun helper1(x: Int): Int = x + LIMIT1
+
+          fun helper2(x: Int): Int = x + LIMIT2
+
+          fun helper3(x: Int): Int = x + LIMIT3
+
+          fun helper4(x: Int): Int = x + LIMIT4
+
+          fun helper5(x: Int): Int = x + LIMIT5
+
+          @GetMapping("/lab/queue")
+          fun queue(): String =
+              Playlist.document(
+                  listOf(
+                      Playlist.section(helper0(1)),
+                      Playlist.section(helper1(1)),
+                      Playlist.section(helper2(1)),
+                      Playlist.section(helper3(1)),
+                      Playlist.section(helper4(1)),
+                      Playlist.section(helper5(1)),
+                  ),
+              )
+
+          companion object {
+              const val LIMIT0 = 0
+              const val LIMIT1 = 1
+              const val LIMIT2 = 2
+              const val LIMIT3 = 3
+              const val LIMIT4 = 4
+              const val LIMIT5 = 5
+          }
+      }
+  commit_message: Refactor the shared playlist renderer and add a lab controller
+expect:
+  relations:
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader0.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader1.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader2.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader3.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader4.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader5.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader6.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/dev/example/streaming/adapters/other/UntestedReader7.kt::readIt
+    to: src/main/kotlin/dev/example/streaming/adapters/shared/Playlist.kt::render
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: false

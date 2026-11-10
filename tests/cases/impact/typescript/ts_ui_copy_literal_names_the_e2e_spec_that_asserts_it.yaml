@@ -1,0 +1,73 @@
+name: ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
+mode: impact
+source: gh#304
+issue_state: open
+tags:
+- typescript
+- literal-channel
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    src/SaveIndicator.tsx: |
+      export function SaveIndicator({ kind, done, total }: { kind: string; done: number; total: number }) {
+        return (
+          <p data-testid="save-indicator">
+            {kind} · {done} of {total}
+          </p>
+        );
+      }
+    src/LibraryPage.tsx: |
+      import { SaveIndicator } from './SaveIndicator';
+
+      export function LibraryPage() {
+        return <SaveIndicator kind="favorite" done={1} total={3} />;
+      }
+    src/Player.tsx: |
+      export function Player() {
+        return <p>Now playing</p>;
+      }
+    tests/e2e/indicator.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('shows the favorites progress', async ({ page }) => {
+        await page.goto('/library');
+        await expect(page.getByTestId('save-indicator')).toHaveText(/^Saving favorites · \d of 3/);
+      });
+    tests/e2e/player.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('shows the player', async ({ page }) => {
+        await page.goto('/player');
+        await expect(page.getByText('Now playing')).toBeVisible();
+      });
+  changed_files:
+    src/SaveIndicator.tsx: |
+      const LABELS: Record<string, string> = {
+        audiobook: 'Saving your book in progress',
+        favorite: 'Saving favorites',
+        'listening-cache': 'Caching recently played',
+      };
+
+      export function SaveIndicator({ kind, done, total }: { kind: string; done: number; total: number }) {
+        return (
+          <p data-testid="save-indicator">
+            {LABELS[kind]} · {done} of {total}
+          </p>
+        );
+      }
+  commit_message: Show a label for what is being saved
+expect:
+  relations:
+  - from: src/LibraryPage.tsx::LibraryPage
+    to: src/SaveIndicator.tsx::SaveIndicator
+    kind: calls
+    resolution: resolved
+  exact: false
+  tested_by:
+    src/SaveIndicator.tsx: tests/e2e/indicator.spec.ts
+  not_untested:
+  - SaveIndicator
+  decoys:
+    src/SaveIndicator.tsx:
+    - tests/e2e/player.spec.ts

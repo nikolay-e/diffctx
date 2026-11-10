@@ -133,6 +133,7 @@ pub struct RustResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
     /// Files of a library crate that a module path declared `pub` from the
     /// crate's root leads to.
     public: HashSet<String>,
@@ -151,6 +152,7 @@ impl RustResolver {
         let listing = cache.listing(reader)?;
         let mut files = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         for entry in &listing.entries {
             if Language::from_path(&entry.path) != Some(Language::Rust) {
                 continue;
@@ -164,6 +166,7 @@ impl RustResolver {
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 if file.language() == Language::Rust {
                     losses.extend(file.losses());
+                    read.push(entry.path.clone());
                     files.push(file);
                 }
             }
@@ -202,6 +205,7 @@ impl RustResolver {
             bindings,
             by_target,
             losses,
+            read,
             public,
             owners,
         })
@@ -231,6 +235,11 @@ impl RustResolver {
     /// read, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 
     /// Whether the file is a module of a library crate that every `mod` from

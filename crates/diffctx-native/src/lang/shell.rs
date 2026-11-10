@@ -1,6 +1,5 @@
 //! Shell, for what the shell cell does not read: the names a script defines that
-//! a pattern over its lines does not see, and whether a script whose parse broke
-//! spells a name where it broke.
+//! a pattern over its lines does not see.
 //!
 //! The calls, reads and writes of a script and the files it sources are the facts
 //! layer's (`facts::lang::shell`, `resolve::shell`); this model answers no
@@ -8,7 +7,6 @@
 
 use std::cell::RefCell;
 use std::path::Path;
-use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 use tree_sitter::Node;
@@ -20,8 +18,6 @@ use crate::source::Source;
 #[derive(Default)]
 struct ShellFacts {
     functions: Vec<String>,
-    /// Text the grammar could not read: a call there is not seen.
-    unread: Vec<String>,
 }
 
 fn read(text: &str) -> Option<ShellFacts> {
@@ -34,7 +30,6 @@ fn read(text: &str) -> Option<ShellFacts> {
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
         match node.kind() {
-            "ERROR" => facts.unread.push(text_of(node).to_string()),
             "function_definition" => {
                 if let Some(name) = node.child_by_field_name("name") {
                     facts.functions.push(text_of(name).to_string());
@@ -71,7 +66,6 @@ pub(super) fn function_names(path: &str, text: &str) -> Vec<String> {
 pub(super) struct ShellModel<'a> {
     root: &'a Path,
     source: &'a Source,
-    facts: RefCell<FxHashMap<String, Option<Rc<ShellFacts>>>>,
     scripts: RefCell<FxHashMap<String, bool>>,
 }
 
@@ -80,24 +74,8 @@ impl<'a> ShellModel<'a> {
         Self {
             root,
             source,
-            facts: RefCell::default(),
             scripts: RefCell::default(),
         }
-    }
-
-    fn facts(&self, rel: &str) -> Option<Rc<ShellFacts>> {
-        if let Some(known) = self.facts.borrow().get(rel) {
-            return known.clone();
-        }
-        let read = self
-            .source
-            .read_to_string(&self.root.join(rel))
-            .and_then(|text| read(&text))
-            .map(Rc::new);
-        self.facts
-            .borrow_mut()
-            .insert(rel.to_string(), read.clone());
-        read
     }
 }
 
@@ -131,16 +109,5 @@ impl LanguageFacts for ShellModel<'_> {
 
     fn reaches_file(&self, _test: &str, _caller: &str) -> bool {
         false
-    }
-
-    fn names_unread(&self, path: &str, name: &str) -> Option<bool> {
-        let facts = self.facts(path)?;
-        let part = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-');
-        Some(facts.unread.iter().any(|text| {
-            text.match_indices(name).any(|(at, _)| {
-                !text[..at].chars().next_back().is_some_and(part)
-                    && !text[at + name.len()..].chars().next().is_some_and(part)
-            })
-        }))
     }
 }

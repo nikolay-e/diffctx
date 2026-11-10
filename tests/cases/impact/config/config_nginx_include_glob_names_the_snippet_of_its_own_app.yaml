@@ -1,0 +1,71 @@
+name: config_nginx_include_glob_names_the_snippet_of_its_own_app
+mode: impact
+source: gh#309
+issue_state: open
+tags:
+- config
+- nginx
+- glob
+- monorepo
+- decoy
+repo:
+  initial_files:
+    apps/web/nginx.conf: |
+      events {}
+
+      http {
+          include snippets/*.conf;
+
+          server {
+              listen 80;
+              location / {
+                  try_files $uri /index.html;
+              }
+          }
+      }
+    apps/web/snippets/cache.conf: |
+      map "$status:$uri" $cache_control {
+          default "no-store";
+          "~^200:/assets/" "public, max-age=31536000";
+      }
+    apps/web/snippets/security.conf: |
+      add_header X-Content-Type-Options nosniff;
+    apps/web/snippets-disabled/legacy.conf: |
+      add_header X-Legacy 1;
+    apps/web/snippets/NOTES.txt: |
+      Included by nginx.conf.
+    apps/admin/nginx.conf: |
+      events {}
+
+      http {
+          include snippets/*.conf;
+
+          server {
+              listen 8080;
+          }
+      }
+    apps/admin/snippets/cache.conf: |
+      map "$status:$uri" $cache_control {
+          default "no-store";
+      }
+  changed_files:
+    apps/web/snippets/cache.conf: |
+      map "$status:$uri" $cache_control {
+          default "no-store";
+          "~^200:/assets/" "public, max-age=31536000";
+          "~^404:/assets/" "no-store";
+      }
+  commit_message: Never cache a missing asset
+expect:
+  relations:
+  - from: apps/web/nginx.conf
+    to: apps/web/snippets/cache.conf
+    kind: configures
+    resolution: resolved
+    site: 4
+  exact: true
+  decoys:
+    apps/web/snippets/cache.conf:
+    - apps/admin/nginx.conf
+    - apps/admin/snippets/cache.conf
+    - apps/web/snippets-disabled/legacy.conf

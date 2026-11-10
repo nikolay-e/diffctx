@@ -13,6 +13,7 @@ use crate::facts::{EntryKind, framework};
 use crate::graph::EdgeCategory;
 use crate::lang::{self, At, LanguageFacts, Registry, UseSite};
 use crate::pipeline::ScoredState;
+use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
 mod mentions;
@@ -657,23 +658,40 @@ pub(crate) fn is_omitted(s: &ChangedSymbol) -> bool {
 }
 
 /// What the search for one definition's callers did not cover: the cell's own
-/// gaps, the reasons the answer names for it (`unresolved`) and the files that
-/// spell it but were not analysed whole (`missed_in`). The one place that
-/// decides whether an absence may be claimed for it.
+/// gaps (which carry the account of the files of its interaction group), or, for
+/// a definition no cell answers for, the account of that group, the reasons the
+/// answer names for it (`unresolved`) and the `outside` files that name it beyond
+/// the group (a script that embeds its code, a file outside code). The one place
+/// that decides whether an absence may be claimed for it.
 fn search_coverage(
     verdict: Option<&decide::Verdict>,
+    account: Option<&decide::Account>,
     unresolved: Option<&Unknown>,
-    missed_in: &[UnanalysedFile],
+    outside: usize,
 ) -> decide::Coverages {
     // What the cell's own gaps said is already in its coverage: only a reason it
     // did not give is a route nothing traces.
     let explained = verdict.is_some_and(|v| v.gap().is_some());
-    let (stopped, not_traced) = match unresolved {
-        Some(Unknown::Unfinished { stops }) => (Some(stops.as_slice()), false),
-        Some(_) => (None, !explained),
-        None => (None, false),
+    let own_gap = match unresolved {
+        Some(Unknown::Unfinished { stops }) if !explained => Some(decide::Gap::Stopped {
+            reasons: stops.clone(),
+        }),
+        Some(Unknown::Unfinished { .. }) | None => None,
+        Some(_) => (!explained).then_some(decide::Gap::NotTraced),
     };
-    decide::Coverages::searched(verdict, stopped, not_traced, missed_in.len())
+    let named_outside = (outside > 0).then_some(decide::Gap::Unaccounted {
+        reason: decide::Reason::OtherLanguage,
+        files: outside,
+    });
+    match verdict {
+        Some(verdict) => decide::Coverages::of_verdict(verdict)
+            .with(own_gap)
+            .with(named_outside),
+        None => decide::Coverages::unowned(
+            account.map_or(decide::Evidence::Run, decide::Evidence::Group),
+            own_gap.into_iter().chain(named_outside).collect(),
+        ),
+    }
 }
 
 /// What the run as a whole did not cover: a stop or limit that can have lost a
@@ -684,7 +702,21 @@ fn scope_coverage(output: &ImpactOutput) -> decide::Coverage {
         .iter()
         .filter(|f| f.reason == OUTSIDE_DEFINITIONS)
         .count();
-    decide::Coverage::scope(&output.limits, output.withheld_files, untracked)
+    let mut gaps = Vec::new();
+    if !output.limits.is_empty() {
+        gaps.push(decide::Gap::Stopped {
+            reasons: output.limits.clone(),
+        });
+    }
+    if output.withheld_files > 0 {
+        gaps.push(decide::Gap::Withheld {
+            files: output.withheld_files,
+        });
+    }
+    if untracked > 0 {
+        gaps.push(decide::Gap::Untracked { files: untracked });
+    }
+    decide::Coverage::close(decide::Evidence::Run, gaps)
 }
 
 /// A definition the answer lists as one nothing calls: only a complete search
@@ -962,12 +994,31 @@ const PACKAGE_SCOPED_EXTENSIONS: &[&str] = &[
     "swift", "dart",
 ];
 
-/// What impact knows of each file in view: the identifiers of all its
-/// fragments (an import sits outside the calling fragment) and the
-/// fragments themselves, for the import lines.
+/// What impact knows of each file in view: its fragments, for the import lines,
+/// and, through the run's token index, what the whole file spells (an import sits
+/// outside the calling fragment).
 struct Files<'a> {
-    identifiers: FxHashMap<&'a str, FxHashSet<&'a str>>,
     fragments: FxHashMap<&'a str, Vec<&'a Fragment>>,
+    cells: &'a Cells,
+    state: &'a ScoredState,
+}
+
+impl Files<'_> {
+    /// Whether the file spells one of `words` anywhere. A file the index did not
+    /// read, or one of no group, is not known to spell none: it counts as
+    /// spelling them.
+    fn spells(&self, path: &str, words: &[&str]) -> bool {
+        let shown = rel(self.state, path);
+        let Some(group) = decide::Group::of_path(&shown) else {
+            return true;
+        };
+        let Some(tokens) = self.cells.group_tokens(self.state, group) else {
+            return true;
+        };
+        tokens
+            .spells(&shown, &Names::new(words.iter().copied()))
+            .unwrap_or(true)
+    }
 }
 
 /// A caller that never names the changed file's module and lives in another
@@ -986,9 +1037,7 @@ fn references_module(
     if caller_path == changed {
         return true;
     }
-    let empty = FxHashSet::default();
     // The import sits at the top of the file, outside the calling fragment.
-    let file_words = files.identifiers.get(caller.path()).unwrap_or(&empty);
     let ext = caller_path
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
@@ -1001,11 +1050,6 @@ fn references_module(
         return true;
     };
     let stem = stem.to_lowercase();
-    if stem.len() < 2 {
-        // Identifiers are indexed from two characters; a one-letter module
-        // cannot be told apart from anything, so nothing is dropped on it.
-        return true;
-    }
     // A shell `lib.sh` is sourced by its own name, not its directory (#497).
     let sourced_by_name = changed.extension().is_some_and(|e| {
         matches!(
@@ -1032,9 +1076,9 @@ fn references_module(
                     "src" | "lib" | "app" | "bin" | "tests" | "test" | "pkg" | "internal"
                 )
             });
-        return dir.is_some_and(|d| file_words.contains(d.as_str()));
+        return dir.is_some_and(|d| files.spells(caller.path(), &[d.as_str()]));
     }
-    file_words.contains(stem.as_str())
+    files.spells(caller.path(), &[stem.as_str()])
         || symbol.is_some_and(|s| imported_from_package(changed, files, caller.path(), s))
 }
 
@@ -1278,8 +1322,6 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
     out
 }
 
-/// Files in view, other than the definition's own, that spell `name` but
-/// whose definitions were not all read: a caller there is not seen.
 /// Where a name is spelled outside the code impact traces: config, data,
 /// templates, markup, and, for a module's name, another runtime's scripts
 /// (`python -m controls.foo_check` in a CronWorkflow). A changed definition
@@ -1460,144 +1502,84 @@ impl UntracedNamers {
     }
 }
 
-/// Whether a file could import `own`'s definitions: it sits in its
-/// directory or below (a package's own files, a Rust child module), or
-/// spells its module's stem or directory (`billing/years`, the Go package
-/// `billing`). One that only spells the name calls another of that name: an
-/// over-cap file of another package was a hedge on an unexported function
-/// it could never reach (#591, #599).
-fn names_module(path: &str, own: &str, spells: impl Fn(&str) -> bool) -> bool {
-    let (path, own) = (Path::new(path), Path::new(own));
-    own.parent().is_none_or(|dir| path.starts_with(dir))
-        || [own.file_stem(), own.parent().and_then(Path::file_name)]
-            .into_iter()
-            .flatten()
-            .any(|w| spells(&w.to_string_lossy()))
-}
-
-/// A file the fragments set aside for its size, which the facts layer read
-/// whole: a use of the name in it was seen, or is reported as unresolved. A
-/// tree that broke is read in part, and its hedge stays.
-fn read_whole_by_a_cell(cells: &Cells, f: &UnanalysedFile) -> bool {
-    f.reason == "too_large" && cells.of(&f.path).is_some_and(|cell| cell.read(&f.path))
-}
-
-fn missed_namers(
-    state: &ScoredState,
-    files: &Files,
-    registry: &Registry,
-    name: &str,
-    own: &str,
-) -> Vec<UnanalysedFile> {
-    let source = state.run.source();
-    // Identifiers are stored lowercased: compared as written, a camelCase
-    // name never matched and its unparsed namers went unsaid.
-    let word = name.to_lowercase();
-    let mut out: Vec<UnanalysedFile> = state
-        .run
-        .bounded(&files.identifiers)
-        // A file of another runtime cannot call the name, read or not: a
-        // shell script that broke the parse is no hedge on a JS function
-        // (#521).
-        .filter(|(path, words)| {
-            **path != own
-                && words.contains(word.as_str())
-                && same_runtime(path, own)
-                && names_module(path, own, |w| words.contains(w.to_lowercase().as_str()))
-        })
-        .filter_map(|(path, _)| {
-            let rel_path = rel(state, path);
-            let has_definition = files
-                .fragments
-                .get(path)
-                .is_some_and(|frags| frags.iter().any(|f| f.kind.is_definition_kind()));
-            let (reason, lines) =
-                crate::parsers::unanalysed_reason(&rel_path, has_definition, || {
-                    source.read_bytes(Path::new(path))
-                })?;
-            // A tree broken on some lines read the rest: a use of the name
-            // there was seen, and only one where it broke can be lost (#537).
-            if reason == "parse_partial"
-                && source.read_bytes(Path::new(path)).is_some_and(|bytes| {
-                    let text = String::from_utf8_lossy(&bytes);
-                    !crate::parsers::spelled_where_broken(&rel_path, &text, name)
-                })
-            {
-                return None;
-            }
-            // A model that reads past a broken line says whether the name is
-            // where it could not read: an `echo` argument is no hedge (#521).
-            if registry
-                .for_path(&rel_path)
-                .and_then(|m| m.names_unread(&rel_path, name))
-                == Some(false)
-            {
-                return None;
-            }
-            Some(UnanalysedFile {
-                language: crate::languages::get_language_for_file(&rel_path),
-                path: rel_path,
-                reason,
-                lines,
-            })
+/// The scripts that run code of the definition's own runtime embedded in them
+/// (`python - <<EOF`, `node -e '…'`) and name it there. Nothing reads that code:
+/// a script whose embedded code names the definition is said, not left out (#427).
+/// The candidates are the shell scripts that spell the name at all.
+fn missed_namers(state: &ScoredState, cells: &Cells, name: &str, own: &str) -> Vec<UnanalysedFile> {
+    let runtime = runtime_of(own);
+    if !matches!(runtime.as_str(), "python" | "js") {
+        return Vec::new();
+    }
+    let Some(scripts) = cells.group_tokens(state, decide::Group::Family(decide::Family::Shell))
+    else {
+        return Vec::new();
+    };
+    let own = rel(state, own);
+    let candidates: Vec<String> = scripts
+        .spelling(&Names::new([name]))
+        .into_iter()
+        .map(|at| scripts.files()[at as usize].as_str().to_string())
+        .filter(|path| {
+            *path != own && crate::languages::get_language_for_file(path) == Some("bash")
         })
         .collect();
-    // Code of the name's own runtime embedded in a shell script (`python -
-    // <<EOF`, `node -e '…'`) runs it, and nothing reads that code: a script
-    // whose embedded code names it is said, not left out (#427).
-    let runtime = runtime_of(own);
-    for path in state.run.bounded(files.identifiers.keys()) {
-        if *path == own
-            || crate::languages::get_language_for_file(path) != Some("bash")
-            || !files.identifiers[path].contains(word.as_str())
-        {
-            continue;
-        }
+    let source = state.run.source();
+    let mut out: Vec<UnanalysedFile> = Vec::new();
+    for path in state.run.bounded(candidates) {
         let Some(line) = source
-            .read_to_string(Path::new(path))
+            .read_to_string(&state.root_dir.join(&path))
             .and_then(|text| embedded_naming(&text, &runtime, name))
         else {
             continue;
         };
         out.push(UnanalysedFile {
             language: Some("bash"),
-            path: rel(state, path),
+            path,
             reason: "embedded_code",
             lines: vec![line],
         });
     }
-    // A file over the size cap was never read into view, yet it may call the
-    // name like any other: it is said, not left out (#484). The run keeps
-    // the files the cap kept out.
-    let in_view: FxHashSet<String> = out.iter().map(|f| f.path.clone()).collect();
-    let too_large: Vec<String> = state
-        .run
-        .limited_files()
-        .into_iter()
-        .filter(|f| f.reason == crate::resource::LimitReason::FileTooLarge)
-        .map(|f| f.path)
-        .filter(|p| {
-            !in_view.contains(p) && rel(state, own) != *p && is_code_file(p) && same_runtime(p, own)
+    out
+}
+
+/// The most files of a definition's group the account could not place that are
+/// listed in `missed_in`: the gap carries the count, the rows are a sample.
+const MAX_UNACCOUNTED_ROWS: usize = 20;
+
+/// The files of an interaction group the account could not place, as the answer's
+/// rows: by path, the first few. A file that is only of a language no cell binds is
+/// in the gap's count and not listed: a row says the file was named and not read.
+fn unaccounted_rows(
+    unaccounted: &[(decide::Reason, Vec<crate::snapshot::RepoPath>)],
+) -> Vec<UnanalysedFile> {
+    let mut rows: Vec<UnanalysedFile> = unaccounted
+        .iter()
+        .filter(|(reason, _)| reason.lists_the_file())
+        .flat_map(|(reason, files)| {
+            files.iter().map(move |file| UnanalysedFile {
+                language: crate::languages::get_language_for_file(file.as_str()),
+                path: file.as_str().to_string(),
+                reason: reason.row_reason(),
+                lines: Vec::new(),
+            })
         })
         .collect();
-    for path in state.run.bounded(too_large) {
-        let Some(bytes) = source.read_bytes(&state.root_dir.join(&path)) else {
-            continue;
-        };
-        let text = String::from_utf8_lossy(&bytes);
-        if names_word(&text, name)
-            && names_module(&path, &rel(state, own), |w| names_word(&text, w))
-        {
-            out.push(UnanalysedFile {
-                language: crate::languages::get_language_for_file(&path),
-                path,
-                reason: "too_large",
-                lines: Vec::new(),
-            });
-        }
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
+    rows.truncate(MAX_UNACCOUNTED_ROWS);
+    rows
+}
+
+/// The names a use of a definition the fragments hold could carry: its own, and the
+/// last part of a qualified one (a method is called as `m`, not `A.m`).
+fn names_of(symbol: &str) -> Vec<String> {
+    let name = base_symbol(symbol);
+    let last = name.rsplit(['.', ':']).next().unwrap_or(name);
+    let mut names = vec![name.to_string()];
+    if last != name {
+        names.push(last.to_string());
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    out
+    names
 }
 
 /// The runtime a language runs in, for the languages that call across
@@ -2838,7 +2820,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         unresolved: verdict.gap().map(|gap| cell_unknown(&gap, &def.name)),
         untested: false,
         compatible_callers: 0,
-        missed_in: Vec::new(),
+        missed_in: unaccounted_rows(verdict.unaccounted()),
         also_changed,
         possibly_also_changed,
         callers_omitted: 0,
@@ -2970,15 +2952,10 @@ pub fn build_impact(
     // a `Display` and an `Error` impl is one definition, not three.
     let mut definitions: FxHashMap<(&str, String), usize> = FxHashMap::default();
     let mut defined_in: FxHashSet<(String, &str)> = FxHashSet::default();
-    let mut file_identifiers: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
     let mut file_fragments: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
     let indexing = crate::profile::detail("impact.setup.files", "");
     for f in &state.all_fragments {
         file_fragments.entry(f.path()).or_default().push(f);
-        file_identifiers
-            .entry(f.path())
-            .or_default()
-            .extend(f.identifiers.iter().map(String::as_str));
         if let Some(name) = f
             .symbol_name
             .as_deref()
@@ -2991,8 +2968,9 @@ pub fn build_impact(
     }
     drop(indexing);
     let files = Files {
-        identifiers: file_identifiers,
         fragments: file_fragments,
+        cells: &cells,
+        state,
     };
     let source = state.run.source();
     let registering = crate::profile::detail("impact.setup.registry", "");
@@ -3227,6 +3205,9 @@ pub fn build_impact(
     let mut cell_apart: Vec<decide::Changed> = Vec::new();
     let mut cell_removed: Vec<decide::Changed> = Vec::new();
     let mut cell_untracked: Vec<&Fragment> = Vec::new();
+    // A queried name in a file its cell lost (a syntax error, a read): the
+    // definition is not in the facts, and the file's loss is the answer.
+    let mut cell_unread: Vec<(&Fragment, decide::Reason)> = Vec::new();
     for cell in cells.iter() {
         let mut entries: Vec<decide::Changed> = Vec::new();
         if query.is_some() {
@@ -3240,6 +3221,11 @@ pub fn build_impact(
                 // left out: an empty answer would read as "no callers".
                 if defined.is_empty() && is_module_block_binding(core, file_of(core)) {
                     cell_untracked.push(core);
+                } else if defined.is_empty() {
+                    if let Some(reason) = cell.loss_about(&rel(state, core.path())) {
+                        let core: &Fragment = core;
+                        cell_unread.push((core, reason));
+                    }
                 }
                 entries.extend(defined);
             }
@@ -4187,31 +4173,72 @@ pub fn build_impact(
         let model_def = registry
             .for_path(core.path())
             .and_then(|m| Some((m, definition(m, core)?)));
-        let mut missed_in: Vec<UnanalysedFile> = symbol
-            .map(|s| missed_namers(state, &files, &registry, s, core.path()))
+        let names_it = |file: &str| model_def.is_none_or(|(m, def)| m.names_from(def, file));
+        // The files of the definition's interaction group the account could not
+        // place: the cell's own for its definitions, the group's by extension for
+        // the rest, none of them bound. A file outside code has no group.
+        // A fragment of a file a cell reads is the cell's to answer for: its own
+        // definitions carry the account.
+        let account = if verdict.is_none()
+            && is_code_file(core.path())
+            && cells.of(&rel(state, core.path())).is_none()
+        {
+            Some(cells.account_without_cell(
+                state,
+                &rel(state, core.path()),
+                &symbol.map(names_of).unwrap_or_default(),
+                &names_it,
+            ))
+        } else {
+            None
+        };
+        let mut missed_in: Vec<UnanalysedFile> = match (&verdict, &account) {
+            (Some(verdict), _) => unaccounted_rows(verdict.unaccounted()),
+            (None, Some(account)) => unaccounted_rows(account.unaccounted()),
+            (None, None) => Vec::new(),
+        };
+        // A script of the definition's runtime embedded in a shell script names it
+        // beyond the group, and so does a file outside code that spells it.
+        let embedded: Vec<UnanalysedFile> = symbol
+            .map(|s| missed_namers(state, &cells, base_symbol(s), core.path()))
             .unwrap_or_default()
             .into_iter()
-            .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
-            .filter(|f| !read_whole_by_a_cell(&cells, f))
+            .filter(|f| names_it(&f.path))
             .collect();
+        let mut outside = embedded.len();
+        missed_in.extend(embedded);
         if callers.is_empty()
             && compatible_callers == 0
-            && unresolved.is_none()
+            && (unresolved.is_none()
+                || verdict
+                    .as_ref()
+                    .is_some_and(decide::Verdict::gaps_are_only_unaccounted))
             && missed_in.is_empty()
         {
             missed_in = untraced
                 .of(core)
                 .into_iter()
-                .filter(|f| model_def.is_none_or(|(m, def)| m.names_from(def, &f.path)))
-                .filter(|f| !read_whole_by_a_cell(&cells, f))
+                .filter(|f| names_it(&f.path))
                 .collect();
+            outside += missed_in.len();
         }
-        // A function defined inside another is named only there (#546).
-        if py.is_some_and(|def| def.local) {
-            let own = rel(state, core.path());
-            missed_in.retain(|f| f.path == own);
-        }
-        let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), &missed_in);
+        let coverage = search_coverage(
+            verdict.as_ref(),
+            account.as_ref(),
+            unresolved.as_ref(),
+            outside,
+        );
+        // A definition no cell reads is never one nothing calls: the files of its
+        // group that spell the name are counted in a gap, and the answer says so
+        // even where no file of it is listed.
+        let unresolved = unresolved.or_else(|| {
+            account
+                .as_ref()
+                .and_then(decide::Account::first_gap)
+                .map(|gap| Unknown::Uncovered {
+                    why: gap.to_string(),
+                })
+        });
         // Nothing said of a definition needs every relation of it known.
         if let Some(complete) = coverage.all().witness().filter(|_| {
             callers.is_empty()
@@ -4305,6 +4332,68 @@ pub fn build_impact(
             folded: Vec::new(),
             new_parameters: Vec::new(),
             coverage: decide::Coverages::partial(decide::Gap::NotTraced),
+        });
+    }
+    // A name asked for that no cell read a definition of, in a group whose file
+    // was lost where the name is spelled: the loss is the answer, not an empty one.
+    if let Some(asked) = query.filter(|_| {
+        cell_defs.is_empty()
+            && cell_apart.is_empty()
+            && cell_removed.is_empty()
+            && cell_unread.is_empty()
+            && cores.is_empty()
+    }) {
+        let name = asked.rsplit(':').next().unwrap_or(asked);
+        for (path, reason) in cells.iter().flat_map(|cell| cell.lost_namers(name)) {
+            let gap = decide::Gap::Unaccounted { reason, files: 1 };
+            changed.push(ChangedSymbol {
+                path: path.as_str().to_string(),
+                symbol: Some(name.to_string()),
+                lines: String::new(),
+                kind: "function".to_string(),
+                commits: 0,
+                callers: Vec::new(),
+                entry: None,
+                unresolved: Some(Unknown::Uncovered {
+                    why: gap.to_string(),
+                }),
+                untested: false,
+                compatible_callers: 0,
+                missed_in: Vec::new(),
+                also_changed: Vec::new(),
+                possibly_also_changed: Vec::new(),
+                callers_omitted: 0,
+                omitted: Vec::new(),
+                folded: Vec::new(),
+                new_parameters: Vec::new(),
+                coverage: decide::Coverages::partial(gap),
+            });
+        }
+    }
+    for (core, reason) in cell_unread {
+        let name = core.symbol_name.as_deref().map_or("", base_symbol);
+        let gap = decide::Gap::Unaccounted { reason, files: 1 };
+        changed.push(ChangedSymbol {
+            path: rel(state, core.path()),
+            symbol: Some(name.to_string()),
+            lines: lines_of(&core.id),
+            kind: format!("{:?}", core.kind).to_lowercase(),
+            commits: 0,
+            callers: Vec::new(),
+            entry: None,
+            unresolved: Some(Unknown::Uncovered {
+                why: gap.to_string(),
+            }),
+            untested: false,
+            compatible_callers: 0,
+            missed_in: Vec::new(),
+            also_changed: Vec::new(),
+            possibly_also_changed: Vec::new(),
+            callers_omitted: 0,
+            omitted: Vec::new(),
+            folded: Vec::new(),
+            new_parameters: Vec::new(),
+            coverage: decide::Coverages::partial(gap),
         });
     }
     for entry in &cell_apart {
@@ -4537,7 +4626,7 @@ pub fn build_impact(
     } else {
         (Vec::new(), 0)
     };
-    let (mut unanalysed, cell_read_configs, consumed_outside) = if query.is_none() {
+    let (mut unanalysed, cell_read_configs, consumed_outside, lost_configs) = if query.is_none() {
         // A file the run did not analyse whole has its own reason, which already
         // says its effect is unknown: it is never listed twice. The rest come
         // first, so that the cap on the list keeps them.
@@ -4550,7 +4639,7 @@ pub fn build_impact(
             .iter()
             .filter(|f| {
                 f.reason == "content_untraced"
-                    && cells.of(&f.path).is_some_and(|cell| cell.read(&f.path))
+                    && cells.of(&f.path).is_some_and(|cell| cell.is_bound(&f.path))
             })
             .map(|f| f.path.clone())
             .collect();
@@ -4568,14 +4657,30 @@ pub fn build_impact(
             .cloned()
             .collect();
         others.retain(|f| !cell_read.contains(&f.path));
+        // A file its cell lost, in part or whole, is not made traced by the key
+        // search that still runs for it: its loss is what the answer says of it.
+        let mut lost_configs: Vec<String> = Vec::new();
+        for f in &mut others {
+            let lost = (f.reason == "content_untraced")
+                .then(|| {
+                    cells
+                        .reading(&f.path)
+                        .and_then(|cell| cell.loss_about(&f.path))
+                })
+                .flatten();
+            if let Some(reason) = lost {
+                f.reason = reason.row_reason();
+                lost_configs.push(f.path.clone());
+            }
+        }
         let mut all: Vec<UnanalysedFile> = outside_definitions(&cells)
             .into_iter()
             .filter(|o| !others.iter().any(|f| f.path == o.path))
             .collect();
         all.extend(others);
-        (all, cell_read, consumed_outside)
+        (all, cell_read, consumed_outside, lost_configs)
     } else {
-        (Vec::new(), Vec::new(), Vec::new())
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     };
     let mut named_by = named_by;
     let mut named_by_omitted = named_by_omitted;
@@ -4585,9 +4690,12 @@ pub fn build_impact(
             .filter(|f| f.reason == "content_untraced")
             .map(|f| f.path.clone())
             .chain(cell_read_configs)
+            .chain(lost_configs.iter().cloned())
             .collect();
         let (refs, omitted, searches, unsearched) = key_references(state, &untraced, analysed);
-        unanalysed.retain(|f| !searches.iter().any(|k| k.path == f.path));
+        unanalysed.retain(|f| {
+            lost_configs.contains(&f.path) || !searches.iter().any(|k| k.path == f.path)
+        });
         named_by.extend(refs);
         named_by_omitted += omitted;
         (searches, unsearched)
@@ -5931,8 +6039,10 @@ fn reaches_nothing(output: &ImpactOutput) -> bool {
 /// files it could not analyse.
 fn unread_scope(output: &ImpactOutput) -> decide::Coverage {
     let unanalysed = output.unanalysed_files.len() + output.unanalysed_files_omitted;
-    scope_coverage(output)
-        .with((unanalysed > 0).then_some(decide::Gap::Unread { files: unanalysed }))
+    scope_coverage(output).with((unanalysed > 0).then_some(decide::Gap::Unaccounted {
+        reason: decide::Reason::NotRead,
+        files: unanalysed,
+    }))
 }
 
 /// A symbol listed for its changed callers alone: nothing outside the diff

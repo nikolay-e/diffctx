@@ -163,30 +163,50 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     blob
 }
 
-/// A construct the grammar read whole, whatever lies around it.
-fn is_whole(kind: &str) -> bool {
-    kind.ends_with("_declaration") || kind == "comment"
+/// A construct the walk of the file reads, wherever the grammar put it: the
+/// kinds `Walker::run` acts on, and the comments that carry docs.
+fn is_read(kind: &str) -> bool {
+    matches!(
+        kind,
+        "comment"
+            | "package_clause"
+            | "import_declaration"
+            | "function_declaration"
+            | "method_declaration"
+            | "type_declaration"
+            | "const_declaration"
+            | "var_declaration"
+    )
 }
 
-/// The line ranges the parse could not read, merged; an error node that
-/// swallows a whole file is narrowed to its stray tokens.
+/// The line ranges the parse could not read, merged. An error node among a
+/// file's declarations is read by the walk (`top_level`): the constructs it
+/// holds whole are left out, and its stray tokens, and any construct that has
+/// an error of its own, are what stays unread. An error node inside a body is
+/// unread whole.
 fn error_lines(root: Node) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
+    let mut stack = vec![(root, true)];
+    while let Some((node, among_declarations)) = stack.pop() {
         let mut cursor = node.walk();
-        if node.is_error() {
+        if node.is_error() && among_declarations {
+            if node.child_count() == 0 {
+                ranges.push(lines_of(node));
+            }
             for child in node.children(&mut cursor) {
-                if child.is_error() || child.is_missing() || !is_whole(child.kind()) {
+                if child.is_error() {
+                    stack.push((child, true));
+                } else if child.is_missing() || !is_read(child.kind()) {
                     ranges.push(lines_of(child));
                 } else if child.has_error() {
-                    stack.push(child);
+                    stack.push((child, false));
                 }
             }
-        } else if node.is_missing() {
+        } else if node.is_error() || node.is_missing() {
             ranges.push(lines_of(node));
         } else if node.has_error() {
-            stack.extend(node.children(&mut cursor));
+            let among = among_declarations && node.kind() == "source_file";
+            stack.extend(node.children(&mut cursor).map(|c| (c, among)));
         }
     }
     ranges.sort_unstable();
@@ -222,6 +242,22 @@ fn span(node: Node) -> Span {
 fn children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).collect()
+}
+
+/// The file's constructs in source order, with the ones the grammar parked
+/// under an error node: a stray token after a function leaves the function
+/// whole inside the error, and its definition and uses are still the file's.
+fn top_level<'t>(root: Node<'t>) -> Vec<Node<'t>> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Node<'t>> = children(root).into_iter().rev().collect();
+    while let Some(node) = stack.pop() {
+        if node.is_error() {
+            stack.extend(children(node).into_iter().rev());
+        } else {
+            out.push(node);
+        }
+    }
+    out
 }
 
 /// A type a local is known by: a named type (the path as written, no `*`, no
@@ -326,7 +362,7 @@ impl<'t> Walker<'t> {
             scope: Scope::Module,
         };
         let mut docs: Vec<&'t str> = Vec::new();
-        for child in children(root) {
+        for child in top_level(root) {
             if !self.deeper(1) {
                 return;
             }
