@@ -630,9 +630,19 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     let section = "Named in code outside the diff (a textual match, not a resolved binding):";
     let (head, text) = md.split_once(section).unwrap_or_else(|| panic!("{md}"));
     assert!(head.contains("1 caller(s) outside the diff"), "{md}");
+    // Plan (Rev 17 stream 5, phase 1): a language without a cell never claims a
+    // complete set, so its definition carries the account's gap.
+    let rates = json["changed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["path"] == "src/Rates.cs")
+        .unwrap_or_else(|| panic!("{json}"));
     assert!(
-        head.contains("1 caller(s) outside the diff, 2 named only textually (not resolved)"),
-        "{md}"
+        rates["unresolved"]
+            .as_str()
+            .is_some_and(|u| u.contains("interaction group")),
+        "{json}"
     );
     for row in ["ops/run.sh.j2", "src/Invoice.cs:"] {
         assert!(text.contains(row), "{row}: {md}");
@@ -1902,9 +1912,16 @@ fn a_verdict_needs_a_model() {
         )],
     );
     let doc = impact_json(linked.path());
+    // Plan (Rev 17 stream 5, phase 1): a definition in a language without a cell
+    // carries the account's gap, which names the interaction group.
     assert!(
-        doc["changed"][0]["unresolved"].is_null()
-            && doc["changed"][0]["callers"][0]["path"] == "src/Report.cs",
+        doc["changed"][0]["unresolved"]
+            .as_str()
+            .is_some_and(|u| u.contains("interaction group")),
+        "a definition without a cell carries the account's gap: {doc:#}"
+    );
+    assert!(
+        doc["changed"][0]["callers"][0]["path"] == "src/Report.cs",
         "a caller the graph links is still found: {doc:#}"
     );
 }

@@ -19,12 +19,18 @@
 //! from their own repository, however they spell the way to it, and what is
 //! red is a repository the call does not start in (T21, fj#127).
 //!
+//! The git-failure family at the end fails each git call a review makes, in
+//! turn, through the `FAKE_GIT` shim of `git_faults.rs`: what the agent is
+//! shown is a review or says in words that there was none.
+//!
 //! `DIFFCTX_HOOK_PROPERTY_CASES` (default 6 lines per family and bash),
 //! `DIFFCTX_HOOK_PROPERTY_SEED` (a number; `random` for the nightly run),
 //! `DIFFCTX_HOOK_BIN` (a binary other than the one cargo built).
 
 #![cfg(unix)]
 
+#[path = "support/fake_git.rs"]
+mod fake_git;
 #[path = "support/hook/mod.rs"]
 mod hook;
 
@@ -484,4 +490,290 @@ fn scripts_elsewhere() -> BoxedStrategy<Line> {
             script_line(cwd, repo, wrapper)
         })
         .boxed()
+}
+
+// ---- every git call of a review, failed in turn (arch migration, phase 1) ----
+
+/// What the agent does before the hook is asked to review it.
+#[derive(Clone, Copy, Debug)]
+enum Scenario {
+    /// A staged change, committed: `PreToolUse`, the commit, `PostToolUse`.
+    Commit,
+    /// A commit made earlier, pushed: `PreToolUse`, the push, `PostToolUse`.
+    Push,
+    /// A pending change the agent looks at with `git diff`: `PostToolUse`.
+    Inspect,
+}
+
+/// The two events of a line, as the hook is driven with them.
+const PRE: usize = 0;
+const POST: usize = 1;
+
+fn real_git() -> String {
+    let out = std::process::Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("HARNESS: locate git");
+    String::from_utf8(out.stdout)
+        .expect("HARNESS: git path")
+        .trim()
+        .to_string()
+}
+
+fn line_payload(
+    world: &hook::world::World,
+    kind: &str,
+    cwd: &std::path::Path,
+    command: &str,
+) -> String {
+    let mut payload = serde_json::json!({
+        "session_id": "prop-session",
+        "transcript_path": world.root().join("transcript.jsonl"),
+        "cwd": cwd,
+        "permission_mode": "default",
+        "hook_event_name": kind,
+        "tool_name": "Bash",
+        "tool_input": { "command": command, "description": "property case" },
+        "tool_use_id": "toolu_1",
+    });
+    if kind == "PostToolUse" {
+        payload["tool_response"] = serde_json::json!({ "stdout": "", "stderr": "", "interrupted": false, "isImage": false });
+    }
+    payload.to_string()
+}
+
+/// One hook event with the n-th git call it makes failing (`fail` none: a
+/// clean run), and what it printed for the agent. The count of the calls it
+/// made comes with it.
+fn event_with_failing_git(
+    world: &hook::world::World,
+    event: &str,
+    cwd: &std::path::Path,
+    stdin: &str,
+    fail: Option<usize>,
+) -> (String, usize) {
+    use std::io::Write as _;
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::process::Stdio;
+    let bin = world.root().join("bin");
+    std::fs::create_dir_all(&bin).expect("HARNESS: mkdir");
+    let shim = bin.join("git");
+    if !shim.exists() {
+        std::fs::write(&shim, fake_git::FAKE_GIT).expect("HARNESS: write the shim");
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+            .expect("HARNESS: chmod the shim");
+    }
+    let slots = world.root().join(format!("slots-{event}"));
+    std::fs::create_dir_all(&slots).expect("HARNESS: mkdir");
+    std::fs::write(slots.join("next"), "0\n").expect("HARNESS: write");
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let mut command = world.command(hook::drive::hook_bin());
+    command
+        .args(["hook", event])
+        .current_dir(cwd)
+        .env("PATH", path)
+        .env("REAL_GIT", real_git())
+        .env("FAKE_GIT_MODE", "none")
+        .env("FAKE_GIT_CALLS", world.root().join("calls"))
+        .env("FAKE_GIT_PIDS", world.root().join("pids"))
+        .env("FAKE_GIT_SLOTS", &slots)
+        .env(
+            "FAKE_GIT_FAIL_INDEX",
+            fail.map_or_else(|| "none".to_string(), |n| n.to_string()),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().expect("HARNESS: spawn the hook");
+    child
+        .stdin
+        .take()
+        .expect("HARNESS: hook stdin")
+        .write_all(stdin.as_bytes())
+        .expect("HARNESS: feed the hook");
+    let out = child
+        .wait_with_output()
+        .expect("HARNESS: wait for the hook");
+    let doc: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or(serde_json::Value::Null);
+    let printed = ["additionalContext", "permissionDecisionReason"]
+        .iter()
+        .filter_map(|key| doc["hookSpecificOutput"][*key].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let calls = std::fs::read_to_string(slots.join("calls"))
+        .unwrap_or_default()
+        .lines()
+        .count();
+    (printed, calls)
+}
+
+/// The scenario in a fresh world, with the `n`-th git call of one event
+/// failing; what the agent was shown, and the git calls each event made.
+fn scenario_under(kind: Scenario, struck: Option<(usize, usize)>) -> (String, [usize; 2]) {
+    let world = hook::world::World::new();
+    let work = world.path(Repo::A);
+    std::fs::write(
+        work.join("tracked.py"),
+        "def total(items):\n    return sum(items) * 2\n",
+    )
+    .expect("HARNESS: write");
+    let fail = |event: usize| struck.filter(|(at, _)| *at == event).map(|(_, n)| n);
+    let mut shown = Vec::new();
+    let mut calls = [0usize; 2];
+    let mut event =
+        |world: &hook::world::World, which: usize, name: &str, line: &str, hook_event: &str| {
+            let (printed, made) = event_with_failing_git(
+                world,
+                name,
+                &work,
+                &line_payload(world, hook_event, &work, line),
+                fail(which),
+            );
+            shown.push(printed);
+            calls[which] = made;
+        };
+    match kind {
+        Scenario::Commit => {
+            world.git(&work, &["add", "tracked.py"]);
+            event(
+                &world,
+                PRE,
+                "pretooluse",
+                "git commit -qm wide",
+                "PreToolUse",
+            );
+            world.git(&work, &["commit", "-q", "-m", "wide"]);
+            event(
+                &world,
+                POST,
+                "posttooluse",
+                "git commit -qm wide",
+                "PostToolUse",
+            );
+        }
+        Scenario::Push => {
+            world.git(&work, &["add", "tracked.py"]);
+            world.git(&work, &["commit", "-q", "-m", "wide"]);
+            event(
+                &world,
+                PRE,
+                "pretooluse",
+                "git push -q origin main",
+                "PreToolUse",
+            );
+            world.git(&work, &["push", "-q", "origin", "main"]);
+            event(
+                &world,
+                POST,
+                "posttooluse",
+                "git push -q origin main",
+                "PostToolUse",
+            );
+        }
+        Scenario::Inspect => {
+            event(&world, POST, "posttooluse", "git diff", "PostToolUse");
+        }
+    }
+    (shown.join("\n"), calls)
+}
+
+/// What the agent was shown is a review of the change, or says in words that
+/// there was none. Never nothing, and never that the change reaches nothing
+/// or touches no file.
+fn a_review_or_not_reviewed(printed: &str) -> Result<(), String> {
+    if printed.trim().is_empty() {
+        return Err("[silent] nothing was printed".to_string());
+    }
+    for clean in ["reaches nothing outside the diff", "changes no file"] {
+        if printed.contains(clean) {
+            return Err(format!("[clean] the output says `{clean}`:\n{printed}"));
+        }
+    }
+    let said = [
+        "did not review",
+        "did not analyse",
+        "(partial: read_failed",
+        "(partial: deadline",
+    ]
+    .iter()
+    .any(|words| printed.contains(words));
+    if !said && !printed.contains("charge") {
+        return Err(format!(
+            "[unnamed] neither the review's callers nor a reason were printed:\n{printed}"
+        ));
+    }
+    Ok(())
+}
+
+/// Each git call the hook makes for the scenario, failed in turn.
+fn git_failure_sweep(kind: Scenario) {
+    let (clean, calls) = scenario_under(kind, None);
+    assert!(
+        clean.contains("charge"),
+        "{kind:?}: the clean run is not a review, so the sweep measures nothing:\n{clean}"
+    );
+    assert!(
+        calls.iter().sum::<usize>() > 0,
+        "{kind:?}: the shim saw no git call"
+    );
+    let struck: Vec<(usize, usize)> = [PRE, POST]
+        .into_iter()
+        .flat_map(|event| (0..calls[event]).map(move |n| (event, n)))
+        .collect();
+    let width = std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 6));
+    let mut broken = Vec::new();
+    for batch in struck.chunks(width) {
+        let verdicts: Vec<Result<(), String>> = std::thread::scope(|scope| {
+            let runs: Vec<_> = batch
+                .iter()
+                .map(|at| {
+                    let at = *at;
+                    scope.spawn(move || {
+                        let (printed, _) = scenario_under(kind, Some(at));
+                        a_review_or_not_reviewed(&printed)
+                    })
+                })
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().expect("a sweep run"))
+                .collect()
+        });
+        for (at, verdict) in batch.iter().zip(verdicts) {
+            if let Err(why) = verdict {
+                let event = if at.0 == PRE {
+                    "PreToolUse"
+                } else {
+                    "PostToolUse"
+                };
+                broken.push(format!("git call {} of {event}: {why}", at.1));
+            }
+        }
+    }
+    assert!(
+        broken.is_empty(),
+        "{kind:?}: {} of {} failed git calls left an output that is neither a review nor `not reviewed`\n{}",
+        broken.len(),
+        struck.len(),
+        broken.join("\n")
+    );
+}
+
+#[test]
+fn a_commit_whose_every_git_call_fails_in_turn_is_reviewed_or_not_reviewed() {
+    git_failure_sweep(Scenario::Commit);
+}
+
+#[test]
+fn a_push_whose_every_git_call_fails_in_turn_is_reviewed_or_not_reviewed() {
+    git_failure_sweep(Scenario::Push);
+}
+
+#[test]
+fn an_inspection_whose_every_git_call_fails_in_turn_is_reviewed_or_not_reviewed() {
+    git_failure_sweep(Scenario::Inspect);
 }

@@ -1,0 +1,106 @@
+name: py_deleted_module_with_an_importer_names_that_importer_as_stale
+mode: impact
+source: fj#151
+issue_state: open
+tags: [python, removed-definition, deleted-module, stale-reference]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/schema.py: |
+      from pydantic import BaseModel
+
+
+      class Model0(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model1(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model2(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model3(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model4(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model5(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model6(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model7(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model8(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+
+
+      class Model9(BaseModel):
+          type: str
+          name: str
+          code: int
+          error: str
+          message: str
+    pkg/service.py: |
+      from pkg.schema import Model0
+
+
+      def run(payload):
+          return Model0(**payload)
+    pkg/other.py: |
+      def helper():
+          return 1
+  deleted_files:
+    - pkg/schema.py
+  commit_message: "pkg: drop the schema module"
+expect:
+  removed: [Model0, Model9]
+  stale: [pkg/service.py]
+  not_stale: [pkg/other.py]

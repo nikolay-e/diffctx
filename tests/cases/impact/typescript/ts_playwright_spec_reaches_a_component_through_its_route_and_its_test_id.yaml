@@ -1,0 +1,83 @@
+name: ts_playwright_spec_reaches_a_component_through_its_route_and_its_test_id
+mode: impact
+source: gh#461
+issue_state: open
+tags:
+- typescript
+- react
+- playwright
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    src/app/App.tsx: |
+      import { lazy } from 'react';
+      import { Route, Routes } from 'react-router-dom';
+
+      const AlbumsPage = lazy(() => import('../pages/AlbumsPage'));
+      const SearchPage = lazy(() => import('../pages/SearchPage'));
+
+      export function App() {
+        return (
+          <Routes>
+            <Route path="/albums" element={<AlbumsPage />} />
+            <Route path="/search" element={<SearchPage />} />
+          </Routes>
+        );
+      }
+    src/pages/AlbumsPage.tsx: |
+      export default function AlbumsPage() {
+        return <h1>Albums</h1>;
+      }
+    src/pages/SearchPage.tsx: |
+      import { SongInfoSheet } from '../components/SongInfoSheet';
+
+      export default function SearchPage() {
+        return (
+          <main>
+            <h1>Search</h1>
+            <SongInfoSheet open />
+          </main>
+        );
+      }
+    src/components/SongInfoSheet.tsx: |
+      export function SongInfoSheet({ open }: { open: boolean }) {
+        return open ? <aside data-testid="song-info-sheet">Info</aside> : null;
+      }
+    tests/e2e/albums.mocked.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('lists the albums', async ({ page }) => {
+        await page.goto('/albums');
+        await expect(page.getByRole('heading', { name: 'Albums' })).toBeVisible();
+      });
+    tests/e2e/song-info.mocked.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('opens the song info sheet', async ({ page }) => {
+        await page.goto('/search');
+        await expect(page.getByTestId('song-info-sheet')).toBeVisible();
+      });
+  changed_files:
+    src/pages/AlbumsPage.tsx: |
+      export default function AlbumsPage() {
+        return <h1>All albums</h1>;
+      }
+    src/components/SongInfoSheet.tsx: |
+      export function SongInfoSheet({ open }: { open: boolean }) {
+        return open ? <aside data-testid="song-info-sheet">Song info</aside> : null;
+      }
+  commit_message: Reword the albums heading and the song info sheet
+expect:
+  exact: false
+  tested_by:
+    src/pages/AlbumsPage.tsx: tests/e2e/albums.mocked.spec.ts
+    src/components/SongInfoSheet.tsx: tests/e2e/song-info.mocked.spec.ts
+  not_untested:
+  - AlbumsPage
+  - SongInfoSheet
+  decoys:
+    src/pages/AlbumsPage.tsx:
+    - tests/e2e/song-info.mocked.spec.ts
+    src/components/SongInfoSheet.tsx:
+    - tests/e2e/albums.mocked.spec.ts

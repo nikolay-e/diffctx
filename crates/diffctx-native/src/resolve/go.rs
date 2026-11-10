@@ -72,6 +72,7 @@ pub struct GoResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
     /// Files of a package another module can import: not under `internal/`, not
     /// a program's `main`.
     public: HashSet<String>,
@@ -87,6 +88,7 @@ impl GoResolver {
         let listing = cache.listing(reader)?;
         let mut files = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         for entry in &listing.entries {
             if Language::from_path(&entry.path) != Some(Language::Go) {
                 continue;
@@ -100,6 +102,7 @@ impl GoResolver {
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 if file.language() == Language::Go {
                     losses.extend(file.losses());
+                    read.push(entry.path.clone());
                     files.push(file);
                 }
             }
@@ -130,6 +133,7 @@ impl GoResolver {
             bindings,
             by_target,
             losses,
+            read,
             public,
         })
     }
@@ -158,6 +162,11 @@ impl GoResolver {
     /// read, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 
     /// Whether the file is in a package other modules can import: what a removal

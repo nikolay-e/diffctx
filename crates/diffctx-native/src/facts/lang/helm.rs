@@ -13,6 +13,7 @@
 //!   key above it, and a reader of `image` and a reader of `image.tag` are each
 //!   reached by the edits that concern them.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use crate::facts::config::{self, ConfigUse, Node, Options, Templating, Value};
@@ -39,8 +40,8 @@ impl Extractor for HelmTemplateExtractor {
             Options {
                 templating: Templating::Go,
             },
-            |reading, source| {
-                let mut facts = facts_of_reading(reading, source, true);
+            |reading, source, cut| {
+                let mut facts = facts_of_reading(reading, source, true, cut);
                 facts.extend(template_facts(reading, source));
                 facts
             },
@@ -103,10 +104,10 @@ impl Extractor for HelmValuesExtractor {
             text,
             budget,
             Options::default(),
-            |reading, source| {
+            |reading, source, cut| {
                 let mut facts = Vec::new();
                 if let Some(root) = reading.documents.first() {
-                    walk(root, &mut Vec::new(), source, &mut facts);
+                    walk(root, &mut Vec::new(), source, &mut facts, cut);
                 }
                 facts
             },
@@ -117,7 +118,7 @@ impl Extractor for HelmValuesExtractor {
 /// Keys of a values file are followed this deep.
 const MAX_KEY_DEPTH: usize = 12;
 
-fn walk(node: &Node, path: &mut Vec<Name>, source: &str, facts: &mut Vec<Fact>) {
+fn walk(node: &Node, path: &mut Vec<Name>, source: &str, facts: &mut Vec<Fact>, cut: &Cell<bool>) {
     for entry in node.entries() {
         if entry.key.text == "<<" {
             continue;
@@ -142,10 +143,14 @@ fn walk(node: &Node, path: &mut Vec<Name>, source: &str, facts: &mut Vec<Fact>) 
             doc_hash: None,
             span,
         }));
-        if path.len() < MAX_KEY_DEPTH && matches!(entry.value.value, Value::Map(_)) {
-            path.push(Name::new(entry.key.text.clone()));
-            walk(&entry.value, path, source, facts);
-            path.pop();
+        if matches!(entry.value.value, Value::Map(_)) {
+            if path.len() < MAX_KEY_DEPTH {
+                path.push(Name::new(entry.key.text.clone()));
+                walk(&entry.value, path, source, facts, cut);
+                path.pop();
+            } else {
+                cut.set(true);
+            }
         }
     }
 }

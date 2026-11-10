@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, Visibility,
 };
-use _diffctx::snapshot::RunBudget;
+use _diffctx::snapshot::{Loss, RunBudget};
 
 fn php(source: &str) -> BlobFacts {
     PhpExtractor.extract(source.as_bytes(), &RunBudget::default())
@@ -399,4 +399,26 @@ fn a_call_written_through_properties_names_the_path() {
             "Call call-result Svc.make [] in f"
         ]
     );
+}
+
+/// A mistyped keyword makes the grammar park the declarations after it
+/// under an error node. `tail`, whole inside it, is read, and only the
+/// lines of the stray tokens and of the block the broken `keep` left behind
+/// (3-6) are the parse error. Red on the base: the error node was unread
+/// whole, lines 3-12.
+#[test]
+fn a_declaration_under_an_error_node_is_read_and_only_the_rest_is_unread() {
+    let facts = php(
+        "<?php\n\nfunct { ion keep()\n{\n    return helper(1);\n}\n\n/** Tail docs. */\nfunction tail($x)\n{\n    return other($x);\n}\n",
+    );
+    def_named(&facts, "tail");
+    let unread: Vec<Vec<(u32, u32)>> = facts
+        .losses
+        .iter()
+        .filter_map(|l| match l {
+            Loss::ParseError { lines, .. } => Some(lines.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unread, [[(3, 6)]]);
 }

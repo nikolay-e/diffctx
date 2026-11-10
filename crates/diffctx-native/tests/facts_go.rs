@@ -486,6 +486,34 @@ fn a_parse_error_is_a_loss_and_the_rest_is_read() {
     assert!(blob.defs().any(|d| key(&d.local) == "Good"));
 }
 
+/// A stray token after a function makes the grammar wrap the whole function
+/// in an error node. The definition and the call inside it are still the
+/// file's; only the stray token's line is unread. Red on the base: the walk
+/// read the root's direct children, so `Keep` and its call vanished while the
+/// loss claimed nothing about them.
+#[test]
+fn a_function_the_grammar_parked_under_an_error_node_is_read() {
+    let blob =
+        extract("package p\n\nfunc Keep() {\n\tHelper()\n} $\n\nfunc Tail() {\n\tOther()\n}\n");
+    assert!(
+        blob.defs().any(|d| key(&d.local) == "Keep"),
+        "{:?}",
+        blob.losses
+    );
+    assert!(blob.defs().any(|d| key(&d.local) == "Tail"));
+    let names: Vec<&str> = refs(&blob).iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["Helper", "Other"]);
+    let unread: Vec<&[(u32, u32)]> = blob
+        .losses
+        .iter()
+        .filter_map(|l| match l {
+            Loss::ParseError { lines, .. } => Some(lines.as_slice()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unread, [&[(5, 5)][..]], "only the stray token is unread");
+}
+
 #[test]
 fn an_expired_budget_is_a_deadline_loss() {
     let budget = RunBudget {

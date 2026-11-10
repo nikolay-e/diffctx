@@ -367,3 +367,32 @@ fn a_file_with_no_object_has_no_definition_and_a_template_has_a_parse_error() {
         template.losses
     );
 }
+
+fn nested_under_spec(levels: usize) -> String {
+    let mut text = String::from("apiVersion: v1\nkind: Service\nmetadata:\n  name: api\nspec:\n");
+    for level in 0..levels {
+        text.push_str(&format!("{}l{level}:\n", "  ".repeat(level + 1)));
+    }
+    text.push_str(&format!(
+        "{}storageClassName: fast\n",
+        "  ".repeat(levels + 1)
+    ));
+    text
+}
+
+/// A reference candidate below the depth the candidate walk follows is a
+/// loss, not a field quietly left out. Red on the base: the walk returned at
+/// its cut and the file carried no loss.
+#[test]
+fn a_candidate_field_below_the_walks_depth_is_a_loss() {
+    let deep = extract(&nested_under_spec(30));
+    assert!(
+        deep.losses
+            .iter()
+            .any(|l| matches!(l, Loss::ExtractorFailed { .. })),
+        "{:?}",
+        deep.losses
+    );
+    let shallow = extract(&nested_under_spec(5));
+    assert!(shallow.losses.is_empty(), "{:?}", shallow.losses);
+}

@@ -77,6 +77,7 @@ pub struct CResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
 }
 
 impl CResolver {
@@ -89,6 +90,7 @@ impl CResolver {
         let listing = cache.listing(reader)?;
         let mut files = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         let mut commands: Vec<Bytes> = Vec::new();
         for entry in &listing.entries {
             if entry.path.file_name() == "compile_commands.json" {
@@ -116,6 +118,7 @@ impl CResolver {
             }
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 losses.extend(file.losses());
+                read.push(entry.path.clone());
                 files.push(file);
             }
         }
@@ -140,6 +143,7 @@ impl CResolver {
             bindings,
             by_target,
             losses,
+            read,
         })
     }
 
@@ -167,6 +171,11 @@ impl CResolver {
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 }
 

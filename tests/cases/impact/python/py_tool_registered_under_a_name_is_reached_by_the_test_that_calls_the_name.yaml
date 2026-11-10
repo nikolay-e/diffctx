@@ -1,0 +1,61 @@
+name: py_tool_registered_under_a_name_is_reached_by_the_test_that_calls_the_name
+mode: impact
+source: fj#108
+issue_state: open
+tags: [python, mcp-tool, registration-by-name, tests-reach, decoy]
+repo:
+  initial_files:
+    registry.py: |
+      TOOLS = {}
+
+
+      def tool(name, mutating=False):
+          def register(fn):
+              TOOLS[name] = (fn, mutating)
+              return fn
+
+          return register
+
+
+      def call_tool(name, args):
+          return TOOLS[name][0](**args)
+    tools.py: |
+      from registry import tool
+
+
+      def list_reviews():
+          return []
+
+
+      def archive():
+          return []
+
+
+      tool("list_reviews", mutating=False)(list_reviews)
+      tool("archive", mutating=True)(archive)
+    tests/test_tools.py: |
+      import tools
+      from registry import call_tool
+
+
+      def test_list_reviews():
+          assert call_tool("list_reviews", {}) == []
+  changed_files:
+    tools.py: |
+      from registry import tool
+
+
+      def list_reviews():
+          return [1]
+
+
+      def archive():
+          return [2]
+
+
+      tool("list_reviews", mutating=False)(list_reviews)
+      tool("archive", mutating=True)(archive)
+  commit_message: "tools: return a row"
+expect:
+  not_untested: [list_reviews]
+  untested: [archive]

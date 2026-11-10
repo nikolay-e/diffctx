@@ -1,0 +1,42 @@
+name: py_module_name_is_a_definition_and_its_importers_are_resolved
+mode: symbol
+source: gh#710
+issue_state: open
+tags: [python, module, imports, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/report_tools.py: |
+      def helper():
+          return 1
+    pkg/main.py: |
+      from pkg import report_tools
+
+
+      def run():
+          return report_tools.helper()
+    pkg/other_tools.py: |
+      def helper():
+          return 2
+    pkg/other_main.py: |
+      from pkg import other_tools
+
+
+      def run():
+          return other_tools.helper()
+    tests/test_report.py: |
+      from pkg import report_tools
+
+
+      def test_helper():
+          assert report_tools.helper() == 1
+query:
+  symbol: report_tools
+expect:
+  definitions: [pkg/report_tools.py]
+  relations:
+    - {from: pkg/main.py, to: pkg/report_tools.py, kind: imports, resolution: resolved, site: 1}
+  exact: false
+  tested_by: {pkg/report_tools.py: tests/test_report.py}
+  decoys:
+    pkg/report_tools.py: [pkg/other_main.py, pkg/other_tools.py]

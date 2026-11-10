@@ -29,6 +29,7 @@ pub struct TerraformResolver {
     bindings: Vec<Binding>,
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
+    read: Vec<RepoPath>,
     /// Module calls whose source is outside the repository.
     external: usize,
 }
@@ -43,6 +44,7 @@ impl TerraformResolver {
         let listing = cache.listing(reader)?;
         let mut files = Vec::new();
         let mut losses = Vec::new();
+        let mut read = Vec::new();
         for entry in &listing.entries {
             if Language::from_path(&entry.path) != Some(Language::Terraform) {
                 continue;
@@ -56,6 +58,7 @@ impl TerraformResolver {
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
                 if file.language() == Language::Terraform {
                     losses.extend(file.losses());
+                    read.push(entry.path.clone());
                     files.push(file);
                 }
             }
@@ -73,6 +76,7 @@ impl TerraformResolver {
             bindings,
             by_target,
             losses,
+            read,
             external,
         })
     }
@@ -98,6 +102,11 @@ impl TerraformResolver {
 
     pub fn losses(&self) -> &[Loss] {
         &self.losses
+    }
+
+    /// The files the resolver read: what an absence may rest on.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        &self.read
     }
 
     /// How many module calls name a source outside the repository: what they

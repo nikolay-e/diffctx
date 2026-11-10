@@ -137,16 +137,22 @@ fn is_whole(kind: &str) -> bool {
     kind.ends_with("_item") || kind.ends_with("_declaration") || kind.ends_with("comment")
 }
 
-/// The line ranges the parse could not read, merged; an error node that
-/// swallows a whole file is narrowed to its stray tokens.
+/// The line ranges the parse could not read, merged: the items an error node
+/// holds are read by the walk (`items`) and left out, its stray tokens are
+/// what stays unread.
 fn error_lines(root: Node) -> Vec<(u32, u32)> {
     let mut ranges = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         let mut cursor = node.walk();
         if node.is_error() {
+            if node.child_count() == 0 {
+                ranges.push(lines_of(node));
+            }
             for child in node.children(&mut cursor) {
-                if child.is_error() || child.is_missing() || !is_whole(child.kind()) {
+                if child.is_error() {
+                    stack.push(child);
+                } else if child.is_missing() || !is_whole(child.kind()) {
                     ranges.push(lines_of(child));
                 } else if child.has_error() {
                     stack.push(child);
@@ -168,6 +174,28 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
     }
     merged.truncate(ERROR_RANGES_KEPT);
     merged
+}
+
+/// The named children of an item container in source order, those the
+/// grammar parked under an error node included: a stray token leaves the
+/// items around it whole inside the error, and their attributes, docs and
+/// container are still theirs.
+fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Node<'t>> = named_children(parent).into_iter().rev().collect();
+    while let Some(node) = stack.pop() {
+        if node.is_error() {
+            stack.extend(named_children(node).into_iter().rev());
+        } else {
+            out.push(node);
+        }
+    }
+    out
+}
+
+fn named_children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor).collect()
 }
 
 fn lines_of(node: Node) -> (u32, u32) {
@@ -326,9 +354,7 @@ impl<'t> Walker<'t> {
         }
         let mut attrs: Vec<String> = Vec::new();
         let mut docs: Vec<&'t str> = Vec::new();
-        let mut cursor = parent.walk();
-        let children: Vec<Node<'t>> = parent.named_children(&mut cursor).collect();
-        for child in children {
+        for child in through_errors(parent) {
             match child.kind() {
                 "attribute_item" => {
                     attrs.push(self.text(child).to_string());

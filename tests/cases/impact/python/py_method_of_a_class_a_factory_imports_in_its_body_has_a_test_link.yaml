@@ -1,0 +1,50 @@
+name: py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link
+mode: impact
+source: gh#717
+issue_state: open
+tags:
+- python
+- factory
+- local-import
+- tests-reach
+repo:
+  initial_files:
+    pkg/__init__.py: ''
+    pkg/transport/__init__.py: ''
+    pkg/factory.py: |
+      def build(kind: str):
+          if kind == "x":
+              from pkg.transport.x import XMessenger
+
+              return XMessenger()
+          raise ValueError(kind)
+    pkg/transport/x.py: |
+      class XMessenger:
+          def poll(self) -> int:
+              return 1
+    tests/test_x.py: |
+      from pkg.factory import build
+
+
+      def test_build_polls():
+          assert build("x").poll() == 1
+  changed_files:
+    pkg/transport/x.py: |
+      class XMessenger:
+          def poll(self) -> int:
+              return 2
+  commit_message: Change what poll returns
+expect:
+  changed:
+  - pkg/transport/x.py::poll
+  relations:
+  - from: tests/test_x.py::test_build_polls
+    to: pkg/transport/x.py::poll
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: false
+  tested_by:
+    pkg/transport/x.py: tests/test_x.py
+  not_untested:
+  - poll

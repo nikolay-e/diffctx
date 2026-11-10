@@ -510,12 +510,6 @@ pub trait LanguageFacts {
     fn binds(&self, _importer: &str, _text: &str, _name: &str, _from: &str) -> Option<bool> {
         None
     }
-    /// Whether `path`, whose parse broke, spells `name` where the grammar
-    /// could not read it: a call there is not seen. A name only in the
-    /// lines it read was resolved like any other.
-    fn names_unread(&self, _path: &str, _name: &str) -> Option<bool> {
-        None
-    }
 }
 
 pub struct Registry<'a> {

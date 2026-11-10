@@ -5,7 +5,7 @@ use _diffctx::facts::config::{ConfigUse, UseOf};
 use _diffctx::facts::lang::config::ConfigExtractor;
 use _diffctx::facts::lang::helm::{HelmTemplateExtractor, HelmValuesExtractor};
 use _diffctx::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, Scope};
-use _diffctx::snapshot::{RepoPath, RunBudget};
+use _diffctx::snapshot::{Loss, RepoPath, RunBudget};
 
 fn language_of(path: &str) -> Option<Language> {
     Language::from_path(&RepoPath::new(path).expect("a path"))
@@ -263,4 +263,30 @@ spec:
     );
     assert_eq!(argo[0].values.len(), 1);
     assert!(argo[0].values_from_chart);
+}
+
+fn nested_values(levels: usize) -> String {
+    let mut text = String::new();
+    for level in 0..levels {
+        text.push_str(&format!("{}k{level}:\n", "  ".repeat(level)));
+    }
+    text.push_str(&format!("{}leaf: 1\n", "  ".repeat(levels)));
+    text
+}
+
+/// Keys of a values file below the depth the walk follows are a loss, not a
+/// shorter list of definitions. Red on the base: the walk stopped at its cut
+/// and the file carried no loss.
+#[test]
+fn values_keys_below_the_walks_depth_are_a_loss() {
+    let deep = values(&nested_values(14));
+    assert!(
+        deep.losses
+            .iter()
+            .any(|l| matches!(l, Loss::ExtractorFailed { .. })),
+        "{:?}",
+        deep.losses
+    );
+    let shallow = values(&nested_values(5));
+    assert!(shallow.losses.is_empty(), "{:?}", shallow.losses);
 }

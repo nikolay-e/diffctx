@@ -742,6 +742,18 @@ const RED: &[(&str, &str)] = &[
         "gh#401: a fixture is used by naming it as a parameter; that is a framework model \
          (wave 7), not a binding the code states",
     ),
+    (
+        "impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace",
+        "fj#151: open ticket; the case asserts what the engine does not yet answer",
+    ),
+    (
+        "impact/python/py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link",
+        "gh#717: open ticket; the case asserts what the engine does not yet answer",
+    ),
+    (
+        "symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved",
+        "gh#710: open ticket; the case asserts what the engine does not yet answer",
+    ),
 ];
 
 #[test]
