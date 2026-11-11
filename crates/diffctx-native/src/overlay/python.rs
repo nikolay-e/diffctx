@@ -1,6 +1,6 @@
-//! What a Python file's syntax states: its declarations, with the class and
-//! function they sit in, and the paths it puts on `sys.path`. A
-//! name a module or a class body assigns (`TABLE: dict = {…}`, `valued_at:
+//! What a Python file's syntax declares: with the class and function they sit
+//! in, the names a module or a class body assigns, which the fragmenter does not
+//! cut. A name a module or a class body assigns (`TABLE: dict = {…}`, `valued_at:
 //! Mapped[str] = …`) is declared there like a `def`, and read elsewhere.
 
 use std::rc::Rc;
@@ -12,20 +12,9 @@ use tree_sitter::Node;
 
 use super::{DeclKind, Declaration};
 
-/// One step of a path an expression builds from `__file__`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Step {
-    Up,
-    Down(String),
-}
-
 #[derive(Debug, Default)]
-pub struct PythonFacts {
-    /// What each `sys.path.insert(…)` or `sys.path.append(…)` adds, as steps
-    /// from the file itself; `None` for an expression the syntax cannot
-    /// evaluate.
-    pub sys_path: Vec<Option<Vec<Step>>>,
-    pub declarations: Vec<Declaration>,
+pub(super) struct PythonFacts {
+    pub(super) declarations: Vec<Declaration>,
 }
 
 const CACHE_LIMIT: usize = 8192;
@@ -46,7 +35,7 @@ fn key(content: &str) -> u64 {
     clippy::disallowed_methods,
     reason = "a poisoned cache lock is a miss: the blob is parsed again"
 )]
-pub fn facts(content: &str) -> Option<Arc<PythonFacts>> {
+pub(super) fn facts(content: &str) -> Option<Arc<PythonFacts>> {
     let key = key(content);
     if let Some(hit) = CACHE.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Some(hit);
@@ -64,8 +53,6 @@ pub fn facts(content: &str) -> Option<Arc<PythonFacts>> {
 
 fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
     let mut facts = PythonFacts::default();
-    let mut bound: FxHashMap<String, Node> = FxHashMap::default();
-    let mut added: Vec<Node> = Vec::new();
     // `self.x = …` in a method: (class, x, lines), the first of each pair
     // declaring it unless the class body or a method already does.
     let mut attributes: Vec<(String, String, (u32, u32))> = Vec::new();
@@ -112,13 +99,6 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
             "expression_statement" if scope.is_none() => {
                 if let Some(left) = assigned_target(&node) {
                     declare(left, DeclKind::Assignment, lines_of(node));
-                    if let Some(right) = node
-                        .named_child(0)
-                        .and_then(|a| a.child_by_field_name("right"))
-                        .filter(|_| class.is_none())
-                    {
-                        bound.insert(text(left, bytes).to_string(), right);
-                    }
                 }
             }
             "expression_statement" => {
@@ -131,17 +111,6 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
                         text(attribute, bytes).to_string(),
                         lines_of(node),
                     ));
-                }
-            }
-            "call" => {
-                let function = node.child_by_field_name("function");
-                let at = match function.map(|f| text(f, bytes)) {
-                    Some("sys.path.insert") => Some(1),
-                    Some("sys.path.append") => Some(0),
-                    _ => None,
-                };
-                if let Some(arg) = at.and_then(|i| arguments(node).into_iter().nth(i)) {
-                    added.push(arg);
                 }
             }
             _ => {}
@@ -166,10 +135,6 @@ fn extract(root: Node, bytes: &[u8]) -> PythonFacts {
             });
         }
     }
-    facts.sys_path = added
-        .into_iter()
-        .map(|arg| steps(arg, bytes, &bound, 0))
-        .collect();
     facts
 }
 
@@ -216,123 +181,6 @@ fn assigned_attribute<'a>(node: &Node<'a>) -> Option<(Node<'a>, Node<'a>)> {
         .child_by_field_name("object")
         .filter(|o| o.kind() == "identifier")?;
     Some((object, left.child_by_field_name("attribute")?))
-}
-
-fn arguments(call: Node) -> Vec<Node> {
-    let Some(args) = call.child_by_field_name("arguments") else {
-        return Vec::new();
-    };
-    let mut cursor = args.walk();
-    args.named_children(&mut cursor)
-        .filter(|a| a.kind() != "comment")
-        .collect()
-}
-
-/// The path `node` builds from `__file__`: `Path(__file__).resolve().parent
-/// / "src"`, `os.path.join(os.path.dirname(__file__), "..")`, a module-level
-/// name bound to one. `None` for anything else.
-fn steps(
-    node: Node,
-    bytes: &[u8],
-    bound: &FxHashMap<String, Node>,
-    depth: u8,
-) -> Option<Vec<Step>> {
-    if depth > 8 {
-        return None;
-    }
-    let inner = |n: Node| steps(n, bytes, bound, depth + 1);
-    let up = |n: Node, by: usize| {
-        let mut s = inner(n)?;
-        s.extend(std::iter::repeat_n(Step::Up, by));
-        Some(s)
-    };
-    match node.kind() {
-        "identifier" => match text(node, bytes) {
-            "__file__" => Some(Vec::new()),
-            name => inner(*bound.get(name)?),
-        },
-        "parenthesized_expression" => inner(node.named_child(0)?),
-        "attribute" => {
-            let attribute = text(node.child_by_field_name("attribute")?, bytes);
-            (attribute == "parent").then_some(())?;
-            up(node.child_by_field_name("object")?, 1)
-        }
-        "subscript" => {
-            let value = node.child_by_field_name("value")?;
-            #[allow(
-                clippy::disallowed_methods,
-                reason = "a subscript that is not an integer is not `parents[n]`, so the expression is no parent path"
-            )]
-            let n: usize = text(node.child_by_field_name("subscript")?, bytes)
-                .parse()
-                .ok()?;
-            let parents = value.kind() == "attribute"
-                && text(value.child_by_field_name("attribute")?, bytes) == "parents";
-            parents.then_some(())?;
-            up(value.child_by_field_name("object")?, n + 1)
-        }
-        "binary_operator" => {
-            (text(node.child_by_field_name("operator")?, bytes) == "/").then_some(())?;
-            let mut s = inner(node.child_by_field_name("left")?)?;
-            s.extend(segments(node.child_by_field_name("right")?, bytes)?);
-            Some(s)
-        }
-        "call" => {
-            let function = node.child_by_field_name("function")?;
-            let args = arguments(node);
-            match text(function, bytes) {
-                "Path" | "pathlib.Path" | "str" | "os.fspath" | "os.path.abspath"
-                | "os.path.realpath" | "os.path.normpath" => inner(*args.first()?),
-                "os.path.dirname" => up(*args.first()?, 1),
-                "os.path.join" => {
-                    let (first, rest) = args.split_first()?;
-                    let mut s = inner(*first)?;
-                    for a in rest {
-                        s.extend(segments(*a, bytes)?);
-                    }
-                    Some(s)
-                }
-                _ => {
-                    let method = function
-                        .child_by_field_name("attribute")
-                        .map(|a| text(a, bytes));
-                    (matches!(method, Some("resolve" | "absolute")) && args.is_empty())
-                        .then_some(())?;
-                    inner(function.child_by_field_name("object")?)
-                }
-            }
-        }
-        _ => None,
-    }
-}
-
-/// A plain string literal as path steps: `"../src"`.
-fn segments(node: Node, bytes: &[u8]) -> Option<Vec<Step>> {
-    if node.kind() != "string" {
-        return None;
-    }
-    let mut cursor = node.walk();
-    let mut content = String::new();
-    for part in node.named_children(&mut cursor) {
-        match part.kind() {
-            "string_content" => content.push_str(text(part, bytes)),
-            "string_start" | "string_end" => {}
-            _ => return None,
-        }
-    }
-    Some(
-        content
-            .split('/')
-            .filter(|p| !p.is_empty() && *p != ".")
-            .map(|p| {
-                if p == ".." {
-                    Step::Up
-                } else {
-                    Step::Down(p.to_string())
-                }
-            })
-            .collect(),
-    )
 }
 
 fn text<'b>(node: Node, bytes: &'b [u8]) -> &'b str {

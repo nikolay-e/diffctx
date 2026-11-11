@@ -74,7 +74,9 @@ pub(super) fn module_is_public(source: &Source, path: &str) -> bool {
         {
             dir
         } else {
-            dir.join(parent.file_stem().unwrap_or_default())
+            parent
+                .file_stem()
+                .map_or(dir.clone(), |stem| dir.join(stem))
         };
         let flat = base.join(format!("{seg}.rs"));
         parent = if read(&flat).is_some() {
@@ -136,12 +138,14 @@ fn marked_test(func: Node, bytes: &[u8]) -> bool {
     while let Some(p) = prev {
         match p.kind() {
             "attribute_item" => {
-                let path = p
+                let is_test = p
                     .named_child(0)
                     .and_then(|a| a.named_child(0))
-                    .and_then(|n| n.utf8_text(bytes).ok())
-                    .unwrap_or("");
-                if path.rsplit("::").next() == Some("test") {
+                    .is_some_and(|n| {
+                        n.utf8_text(bytes)
+                            .is_ok_and(|path| path.rsplit("::").next() == Some("test"))
+                    });
+                if is_test {
                     return true;
                 }
             }
