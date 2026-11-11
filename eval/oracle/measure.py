@@ -29,7 +29,7 @@ from corpus import Corpus, Repo, load_corpus
 from delta import Delta, classify
 from folding import mark_folding
 from indexing import CACHE, index_snapshot
-from model import UNCAPPED_BUDGET, Definition, Relation
+from model import UNCAPPED_BUDGET, Definition, Relation, without_span
 from sampling import sample_commits
 from scipindex import read_index
 from stale import pairing, renamed_answer, still_named
@@ -323,7 +323,7 @@ def _score_changed(
         paired = pairing(prepared.head, prepared.base, target, list(answer.targets))
         if paired is not None:
             answer = renamed_answer(answer, paired[1], paired[0])
-        names = {target.name, *({paired[0].rpartition("::")[2].split(".")[-1]} if paired else set())}
+        names = {target.name, *({without_span(paired[0]).rpartition("::")[2].split(".")[-1]} if paired else set())}
         relations = still_named(relations, prepared.head, prepared.changed, names)
     relations = mark_folding(relations, _delta(prepared, item, counts), snapshot)
     counts["scored"] += 1

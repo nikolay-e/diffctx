@@ -415,3 +415,12 @@ def test_an_edge_from_a_document_outside_the_repository_is_not_truth(tmp_path: P
 
     assert found and all(not r.from_key.startswith("..") for r in found)
     assert snapshot.documents.keys() == {"shop/pricing.py", "shop/checkout.py"}
+
+
+def test_overloads_of_one_file_have_keys_of_their_own(tmp_path: Path):
+    (tmp_path / "A.java").write_text("class A {\n  void f(int a) {}\n  void f(String a) {}\n  void g() {}\n}\n")
+    snapshot = Snapshot(tmp_path, Index(), "java")
+
+    keys = [d.key for d in snapshot.definitions("A.java") if d.kind == "method"]
+
+    assert keys == ["A.java::A.f@2-2", "A.java::A.f@3-3", "A.java::A.g"]

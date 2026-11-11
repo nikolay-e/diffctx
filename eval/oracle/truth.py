@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 import syntax
 from filters import Filters
-from model import MODULE, Definition, Relation, innermost
+from model import MODULE, Definition, Relation, innermost, mark_overloads
 from scipindex import ROLE_IMPORT, ROLE_WRITE, Document, Index, Occurrence, byte_column
 
 TREE_CACHE = 64
@@ -77,7 +77,7 @@ class Snapshot:
         """The definitions of `path` that are not local to a function body: a local belongs to its enclosing definition (R18)."""
         if path not in self._definitions:
             found = syntax.definitions(path, self.source(path))
-            self._definitions[path] = [d for d in found if not self._is_local(d, found)]
+            self._definitions[path] = mark_overloads([d for d in found if not self._is_local(d, found)])
         return self._definitions[path]
 
     def _is_local(self, definition: Definition, siblings: list[Definition]) -> bool:
