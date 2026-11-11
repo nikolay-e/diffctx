@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import OrderedDict, defaultdict
 from pathlib import Path, PurePosixPath
 
@@ -11,6 +12,10 @@ from model import MODULE, Definition, Relation, innermost, mark_overloads
 from scipindex import ROLE_IMPORT, ROLE_WRITE, Document, Index, Occurrence, byte_column
 
 TREE_CACHE = 64
+# `rust-analyzer cargo shop 1.0.0 shop/impl#[`Raw<'_>`][Executor]run().`: the package, the type and the trait named by an impl's member
+RUST_IMPL_MEMBER = re.compile(
+    r"^(?P<package>(?:\S+ ){3}\S+) (?:\S*/)?impl#\[(?:`[^`]*`|[^\]]*)\]\[(?P<trait>[^\]<]+)[^\]]*\](?P<member>.+)$"
+)
 CLASS_KINDS = {7, 49}  # scip.proto SymbolInformation.Kind: Class, Struct
 
 
@@ -38,6 +43,7 @@ class Snapshot:
         self._definitions: dict[str, list[Definition]] = {}
         self._trees: OrderedDict[str, syntax.Tree | None] = OrderedDict()
         self._implementers: dict[str, list[tuple[str, str]]] | None = None
+        self._rust_members: dict[tuple[str, str], set[str]] | None = None
         self._occurrences: dict[str, list[tuple[Document, Occurrence]]] | None = None
         self._kinds: dict[str, int] | None = None
         self.filters = Filters(self)
@@ -184,8 +190,36 @@ class Snapshot:
                 for info in doc.symbols:
                     for related in info.implements:
                         found[related].append((doc.path, info.symbol))
+            for symbol, path in self._rust_impl_members():
+                for related in self._trait_members(symbol):
+                    found[related].append((path, symbol))
             self._implementers = found
         return self._implementers
+
+    def _rust_impl_members(self) -> list[tuple[str, str]]:
+        """rust-analyzer emits no implementation relationship; the name of an impl's member carries the trait it implements."""
+        return [
+            (info.symbol, doc.path)
+            for doc in self.index.documents
+            for info in doc.symbols
+            if info.symbol.startswith("rust-analyzer ") and RUST_IMPL_MEMBER.match(info.symbol)
+        ]
+
+    def _trait_members(self, impl_member: str) -> list[str]:
+        """The trait's own member, when the index defines exactly one by that trait and member name in the package."""
+        matched = RUST_IMPL_MEMBER.match(impl_member)
+        if matched is None:
+            return []
+        if self._rust_members is None:
+            table: dict[tuple[str, str], set[str]] = defaultdict(set)
+            for doc in self.index.documents:
+                for occ in doc.occurrences:
+                    if occ.is_definition and occ.symbol.startswith("rust-analyzer ") and "impl#" not in occ.symbol:
+                        *package, descriptor = occ.symbol.split(" ", 4)
+                        table[(" ".join(package), descriptor.rpartition("/")[2])].add(occ.symbol)
+            self._rust_members = table
+        found = self._rust_members.get((matched["package"], f"{matched['trait']}#{matched['member']}"), set())
+        return list(found) if len(found) == 1 else []
 
     def definition_of_symbol(self, path: str, symbol: str) -> Definition | None:
         doc = self.documents.get(path)
