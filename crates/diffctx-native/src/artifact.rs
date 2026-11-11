@@ -101,13 +101,31 @@ pub fn fit(pack: &mut DiffContextOutput, format: Format) -> String {
     }
     crate::fit::shed_to_fit(pack, cap, &measure);
     // The least the artifact can say may outgrow the budget: said, not cut into.
-    let least = measure(&*pack);
+    let mut least = measure(&*pack);
+    if least > cap && pack.fragments.is_empty() {
+        // Whoever cut it, the run or this fit, the least is one document: what the
+        // run counted before it stopped is not part of what the budget buys.
+        unmeasured_resources(pack);
+        least = measure(&*pack);
+    }
     if least > cap {
         if let Some(fit) = pack.fit.as_mut() {
             fit.least = Some(least);
         }
     }
     declare_exempt(pack, exempt, format)
+}
+
+/// The coverage of a document with nothing left to show, in the one form a cut
+/// made here gives it: its limits as they are, its resources counted by nobody.
+fn unmeasured_resources(pack: &mut DiffContextOutput) {
+    let Some(coverage) = pack.coverage.as_mut() else {
+        return;
+    };
+    coverage.resources = ResourceUsage::default();
+    if !coverage.unknown.iter().any(|u| u == "resources") {
+        coverage.unknown.push("resources".to_string());
+    }
 }
 
 fn declare_exempt(pack: &mut DiffContextOutput, exempt: u32, format: Format) -> String {

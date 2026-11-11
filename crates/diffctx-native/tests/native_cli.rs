@@ -1153,7 +1153,7 @@ fn a_larger_budget_never_shows_less_of_the_change() {
     let mut shown = Vec::new();
     // The JSON document is charged for its own framing, so the tightest budget
     // that still leaves room for a fragment is above what the text formats need.
-    for budget in ["900", "1200", "1500", "2000", "3000"] {
+    for budget in ["700", "900", "1200", "1500", "2000", "3000"] {
         let out = run(
             tmp.path(),
             &[

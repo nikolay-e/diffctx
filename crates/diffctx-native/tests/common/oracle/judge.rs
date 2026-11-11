@@ -451,7 +451,8 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
 }
 
 /// The text form must say what the JSON says: the header's count of callers
-/// is the number of resolved caller rows (word matches are no callers), and a
+/// is the number of resolved caller rows and the calls counted beside them (word
+/// matches are no callers), and a
 /// "called from" or "referenced from" line needs a resolved row behind it.
 fn check_text(answer: &Answer, failures: &mut Vec<String>) {
     let Some(markdown) = answer.markdown.as_deref() else {
@@ -461,7 +462,8 @@ fn check_text(answer: &Answer, failures: &mut Vec<String>) {
         .caller_rows
         .iter()
         .filter(|(_, evidence)| evidence == "resolved")
-        .count();
+        .count()
+        + usize::try_from(answer.counted_not_listed).unwrap_or(usize::MAX);
     let header = markdown.lines().next().unwrap_or("");
     if let Some(at) = header.find(" caller(s) outside the diff") {
         let digits: String = header[..at]
