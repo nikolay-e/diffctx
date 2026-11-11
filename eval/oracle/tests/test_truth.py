@@ -403,3 +403,15 @@ def test_a_function_under_parentheses_and_a_type_assertion_is_still_a_function(t
 
     assert defs == {"f.ts::create": "function", "f.ts::create.got": "function", "f.ts::create.paginate": "function"}
     assert snapshot.enclosing("f.ts", 4).key == "f.ts::create.paginate"  # the assigned generator holds its own lines
+
+
+def test_an_edge_from_a_document_outside_the_repository_is_not_truth(tmp_path: Path):
+    generated_main = "../../../go/build/dc/0123abcd-d"
+    snapshot = build(tmp_path)
+    snapshot.index.documents.append(Document(generated_main, 1, [occurrence((3, 4, 3, 9), TOTAL)], []))
+    snapshot = Snapshot(tmp_path, snapshot.index, "python")
+
+    found = relations_to(snapshot, target(snapshot, "shop/pricing.py::total"))
+
+    assert found and all(not r.from_key.startswith("..") for r in found)
+    assert snapshot.documents.keys() == {"shop/pricing.py", "shop/checkout.py"}

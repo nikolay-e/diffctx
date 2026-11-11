@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import syntax
 from filters import Filters
@@ -19,11 +19,18 @@ def _scope(symbol: str, path: str) -> str:
     return f"{path}\0{symbol}" if symbol.startswith("local ") else symbol
 
 
+def _inside_repository(path: str) -> bool:
+    return not PurePosixPath(path).is_absolute() and ".." not in PurePosixPath(path).parts
+
+
 class Snapshot:
     """One indexed commit: its tree on disk, its index, and the definitions its files hold."""
 
     def __init__(self, tree: Path, index: Index, language: str) -> None:
         self.tree = tree
+        # A document outside the repository (the Go build cache's generated test main is indexed as `../../go/build/..`)
+        # is no source file of it: an edge from there is not truth.
+        index.documents = [d for d in index.documents if _inside_repository(d.path)]
         self.index = index
         self.language = language
         self.documents: dict[str, Document] = {d.path: d for d in index.documents}
