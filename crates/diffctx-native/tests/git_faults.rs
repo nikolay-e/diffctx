@@ -425,6 +425,39 @@ fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
     }
 }
 
+/// The reads that title a range, count its commits and find its work tree are
+/// the run's own: git refusing one ends the run in git's own words (exit 3),
+/// where a missing title, a count of zero or the checkout's own path would
+/// have read as a change with no history. Each target is the argument only
+/// that call carries.
+#[test]
+fn a_refused_range_read_is_an_error_not_a_range_with_no_history() {
+    for (target, subcommand) in [
+        ("--format=%B%x1e", "log"),
+        ("--format=%s%n%b", "log"),
+        ("--count", "rev-list"),
+        ("--show-toplevel", "rev-parse"),
+    ] {
+        let fx = fixture();
+        for (mode, out) in [
+            ("pack", fx.pack(target, "fail", &[])),
+            ("impact", fx.impact(target, "fail")),
+        ] {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(
+                out.status.code(),
+                Some(3),
+                "{target} {mode}: stderr={stderr} stdout={}",
+                String::from_utf8_lossy(&out.stdout)
+            );
+            assert!(
+                stderr.contains(subcommand) && stderr.contains("simulated failure"),
+                "{target} {mode}: {stderr}"
+            );
+        }
+    }
+}
+
 /// An untracked listing the deadline cut short leaves an answer that names
 /// the deadline: `empty`, or a coverage claiming completeness, would vouch
 /// for a change the run never saw. `--full` has no partial form, so there

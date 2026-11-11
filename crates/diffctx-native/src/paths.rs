@@ -108,34 +108,7 @@ impl Containment {
     }
 }
 
-/// Containment for a repo-relative name that need not exist on disk — what `git ls-files`,
-/// `git diff --name-only` and the deleted-file query hand back. Purely
-/// lexical: it normalises `.` and `..` against the root and asks whether the
-/// result is still under it, touching no filesystem, so a deleted path and a
-/// bare clone's tracked files answer the same as a present one.
-///
-/// It cannot see a symlink — that is not its job. A working-tree name that
-/// passes here and is then READ goes through `Containment` at the point of
-/// the read.
-pub(crate) fn contains_lexically(relative: &Path) -> bool {
-    use std::path::Component;
-
-    let mut depth: i32 = 0;
-    for component in relative.components() {
-        match component {
-            Component::Prefix(_) | Component::RootDir => return false,
-            Component::ParentDir => {
-                depth -= 1;
-                if depth < 0 {
-                    return false;
-                }
-            }
-            Component::CurDir => {}
-            Component::Normal(_) => depth += 1,
-        }
-    }
-    true
-}
+pub(crate) use crate::snapshot::contains_lexically;
 
 #[cfg(test)]
 mod tests {

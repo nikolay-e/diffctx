@@ -1230,7 +1230,7 @@ impl UntracedNamers {
             return Self::default();
         }
         let head = diff_range
-            .map(crate::git::split_diff_range)
+            .map(crate::snapshot::split_diff_range)
             .and_then(|(_, head)| head);
         let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
         let changed: FxHashSet<String> = state
@@ -1240,7 +1240,7 @@ impl UntracedNamers {
             .collect();
         let grepped = read_or_note(
             state,
-            crate::git::grep_lines(
+            crate::grep::grep_lines(
                 &state.root_dir,
                 &state.run.source(),
                 &needles,
@@ -1618,7 +1618,7 @@ fn is_schema_file(path: &str) -> bool {
 /// The revision a change is measured against: the left side of a range, a
 /// lone revision itself, HEAD for the working tree.
 fn base_revision(diff_range: Option<&str>) -> String {
-    match diff_range.map(crate::git::split_diff_range) {
+    match diff_range.map(crate::snapshot::split_diff_range) {
         Some((Some(base), _)) => base,
         _ => diff_range.unwrap_or("HEAD").to_string(),
     }
@@ -1685,7 +1685,7 @@ impl<'a> BaseTexts<'a> {
     }
 
     /// `Ok(None)`: the base has no such file.
-    fn read(&self, rel_path: &str) -> crate::git::Result<Option<std::rc::Rc<str>>> {
+    fn read(&self, rel_path: &str) -> crate::snapshot::Result<Option<std::rc::Rc<str>>> {
         if let Some(text) = self.texts.borrow().get(rel_path) {
             return Ok(Some(text.clone()));
         }
@@ -1727,7 +1727,7 @@ fn commit_bounds(diff_range: Option<&str>) -> Option<(String, String)> {
     if range == "HEAD" {
         return None;
     }
-    match crate::git::split_diff_range(range) {
+    match crate::snapshot::split_diff_range(range) {
         (Some(base), Some(head)) => Some((base, head)),
         (None, None) => Some((range.to_string(), "HEAD".to_string())),
         _ => None,
@@ -1742,7 +1742,7 @@ fn commits_touching(state: &ScoredState, base: &str, head: &str, frag: &Fragment
     let rel_path = rel(state, frag.path());
     let span = format!("{},{}:{}", frag.id.start_line, frag.id.end_line, rel_path);
     let range = format!("{base}..{head}");
-    let Ok(out) = crate::git::run_git(
+    let Ok(out) = crate::snapshot::run_git(
         &state.root_dir,
         &["log", "--format=%H", "--no-patch", "-L", &span, &range],
     ) else {
@@ -4328,7 +4328,7 @@ pub fn build_impact(
             defined.entry(n.as_str()).or_default().insert(rel(state, p));
         }
         let head_rev = analysed
-            .map(crate::git::split_diff_range)
+            .map(crate::snapshot::split_diff_range)
             .and_then(|(_, head)| head);
         let binds_to = |file: &str, text: &str, name: &str, old: &str| {
             registry
@@ -4659,7 +4659,7 @@ pub fn build_impact(
 /// A read the answer depends on, or nothing with the run marked: a failed
 /// `git grep` read as no match turned callers and stale references into a
 /// clean zero with exit 0.
-fn read_or_note<T: Default>(state: &ScoredState, read: crate::git::Result<T>) -> T {
+fn read_or_note<T: Default>(state: &ScoredState, read: crate::snapshot::Result<T>) -> T {
     read.unwrap_or_else(|e| {
         tracing::warn!("impact: a git read failed ({e}); its answer is unknown");
         state.run.note(crate::resource::LimitReason::ReadFailed);
@@ -4765,7 +4765,7 @@ fn removed_by_models(
     // counted each withheld data file that spells it.
     let grepped = read_or_note(
         state,
-        crate::git::grep_code_words(
+        crate::grep::grep_code_words(
             &state.root_dir,
             &state.run.source(),
             &names,
@@ -5029,7 +5029,7 @@ fn removed_definitions(
     let mut hits_of: FxHashMap<&str, Vec<(String, u32, String)>> = FxHashMap::default();
     let grepped = read_or_note(
         state,
-        crate::git::grep_code_words(
+        crate::grep::grep_code_words(
             &state.root_dir,
             &state.run.source(),
             &names,
@@ -5587,11 +5587,11 @@ fn key_references(
         return (Vec::new(), 0, Vec::new(), unsearched);
     }
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
@@ -5741,11 +5741,11 @@ fn read_by_collection(
         return (Vec::new(), 0);
     }
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines_matching(
+        crate::grep::grep_lines_matching(
             &state.root_dir,
             &state.run.source(),
             r"(getCollection|getEntry|getEntries|getEntryBySlug|getDataEntryById)[[:space:]]*\(",
@@ -6348,7 +6348,7 @@ fn range_label(range: Option<&str>, index_tree: Option<&str>) -> String {
     match (range, index_tree) {
         // `A..T` names a tree its caller built — the hook's set of edited
         // files — which is no more the index than any other tree (#463).
-        (Some(r), Some(tree)) if !crate::git::is_staged_keyword(r) => {
+        (Some(r), Some(tree)) if !crate::snapshot::is_staged_keyword(r) => {
             format!("the snapshot tree {}", &tree[..tree.len().min(10)])
         }
         (_, Some(tree)) => format!(

@@ -3,7 +3,7 @@
 //! `git.rs`; the thread-local run limits became an explicit [`Exec`] carried by
 //! whoever asks, so a reader used from a worker thread keeps its run's limits.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
@@ -18,6 +18,10 @@ use crate::snapshot::loss::SideTag;
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 const CATFILE_TERMINATION_SECONDS: u64 = 2;
+/// The exit status of every git `fatal:`: a usage error, a missing revision, an
+/// unreadable config, no repository. One status for all of them, so it says
+/// that git refused, never which question it refused.
+pub const FATAL_STATUS: i32 = 128;
 
 thread_local! {
     static GIT_TIMEOUT_SECS: Cell<u64> = const { Cell::new(DEFAULT_TIMEOUT_SECONDS) };
@@ -31,6 +35,29 @@ thread_local! {
 /// it is built.
 pub fn set_git_timeout(secs: u64) {
     GIT_TIMEOUT_SECS.with(|c| c.set(secs));
+}
+
+thread_local! {
+    static AMBIENT: RefCell<RunBudget> = const {
+        RefCell::new(RunBudget { deadline: None, cancel: None, read_fault: None })
+    };
+}
+
+/// Publishes a run's limits to this thread until the guard drops: every git
+/// child the engine's questions start here ([`run_git`](crate::snapshot::run_git)
+/// and its kin) is bounded by them, as a reader is by the budget it was built with.
+pub fn enter_run(budget: RunBudget) -> RunScope {
+    RunScope(AMBIENT.with(|a| a.replace(budget)))
+}
+
+/// Restores the limits of the run that was current before [`enter_run`].
+pub struct RunScope(RunBudget);
+
+impl Drop for RunScope {
+    fn drop(&mut self) {
+        let before = std::mem::take(&mut self.0);
+        AMBIENT.with(|a| *a.borrow_mut() = before);
+    }
 }
 
 /// What a run lets a git child spend, beyond the per-call ceiling: the run's
@@ -143,6 +170,11 @@ impl Exec {
         Self::with_budget(RunBudget::default())
     }
 
+    /// Bounded by the limits of the run on this thread, none outside a run.
+    pub(crate) fn current() -> Self {
+        Self::with_budget(AMBIENT.with(|a| a.borrow().clone()))
+    }
+
     pub(crate) fn with_budget(budget: RunBudget) -> Self {
         Self {
             timeout_secs: GIT_TIMEOUT_SECS.with(Cell::get),
@@ -177,22 +209,8 @@ impl Exec {
     /// Runs a prepared git command (from [`git_command`]) to completion under
     /// the run's limits. A non-zero exit is an error unless its code is in
     /// `accept`; `label` names the call in the message.
-    pub(crate) fn finish(
-        &self,
-        mut cmd: Command,
-        root: &Path,
-        label: &[&str],
-        accept: &[i32],
-    ) -> Result<Output> {
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        let child = cmd.spawn().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                SnapshotError::Git("git is not installed or not in PATH".into())
-            } else {
-                SnapshotError::Io(e)
-            }
-        })?;
-        let output = supervise(child, &self.limits())?;
+    pub(crate) fn finish(&self, cmd: Command, label: &[&str], accept: &[i32]) -> Result<Output> {
+        let output = self.output(cmd)?;
         let ok = output.status.success()
             || output
                 .status
@@ -201,14 +219,47 @@ impl Exec {
         if ok {
             Ok(output)
         } else {
-            Err(self.failure(root, label, &String::from_utf8_lossy(&output.stderr)))
+            Err(refusal(label, &output))
+        }
+    }
+
+    /// A prepared command run to completion under the run's limits, whatever
+    /// its exit status: the caller reads the status.
+    pub(crate) fn output(&self, mut cmd: Command) -> Result<Output> {
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                SnapshotError::Git("git is not installed or not in PATH".into())
+            } else {
+                SnapshotError::Io(e)
+            }
+        })?;
+        supervise(child, &self.limits())
+    }
+
+    /// `finish` for a command that reads `input` on its stdin.
+    pub(crate) fn feed(&self, mut cmd: Command, label: &[&str], input: Vec<u8>) -> Result<Output> {
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd.spawn().map_err(SnapshotError::Io)?;
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            SnapshotError::Git(format!("git {}: no stdin", label.first().unwrap_or(&"")))
+        })?;
+        let writer = std::thread::spawn(move || stdin.write_all(&input));
+        let output = supervise(child, &self.limits())?;
+        let _ = writer.join();
+        if output.status.success() {
+            Ok(output)
+        } else {
+            Err(refusal(label, &output))
         }
     }
 
     pub(crate) fn bytes(&self, root: &Path, args: &[&str]) -> Result<Vec<u8>> {
         let mut cmd = git_command(root);
         cmd.args(args);
-        self.finish(cmd, root, args, &[]).map(|out| out.stdout)
+        self.finish(cmd, args, &[]).map(|out| out.stdout)
     }
 
     pub(crate) fn text(&self, root: &Path, args: &[&str]) -> Result<String> {
@@ -226,32 +277,34 @@ impl Exec {
             .collect())
     }
 
-    fn failure(&self, root: &Path, args: &[&str], stderr: &str) -> SnapshotError {
-        let subcommand = args
-            .iter()
-            .find(|a| !a.starts_with('-'))
-            .copied()
-            .unwrap_or("command");
-        let reason = stderr
-            .lines()
-            .map(str::trim)
-            .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
-            .or_else(|| stderr.lines().map(str::trim).find(|l| !l.is_empty()))
-            .unwrap_or("unknown error");
-        if reason.contains("unknown revision") && self.is_shallow(root) {
-            return SnapshotError::Git(format!(
-                "git {subcommand} failed: {reason} (this is a shallow clone, so the revision may \
-                 simply be missing: run 'git fetch --deepen=1' or check out with fetch-depth: 0)"
-            ));
-        }
-        SnapshotError::Git(format!("git {subcommand} failed: {reason}"))
-    }
-
-    /// The one situation in which "unknown revision" is not a typo but a
+    /// The one situation in which an unknown revision is not a typo but a
     /// missing history. A failed probe is "no": it only decorates a message.
     pub(crate) fn is_shallow(&self, root: &Path) -> bool {
         self.text(root, &["rev-parse", "--is-shallow-repository"])
             .is_ok_and(|out| out.trim() == "true")
+    }
+}
+
+/// The error of a git child that exited non-zero: its status, and its own
+/// line for a person to read.
+pub(crate) fn refusal(args: &[&str], output: &Output) -> SnapshotError {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let subcommand = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .copied()
+        .unwrap_or("command");
+    let reason = stderr
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+        .or_else(|| stderr.lines().map(str::trim).find(|l| !l.is_empty()))
+        .unwrap_or("unknown error")
+        .to_string();
+    SnapshotError::GitRefused {
+        subcommand: subcommand.to_string(),
+        status: output.status.code(),
+        reason,
     }
 }
 
@@ -277,7 +330,7 @@ pub const REPO_LOCATING_ENV: [&str; 7] = [
     clippy::disallowed_methods,
     reason = "this module is the one door that starts git"
 )]
-pub(crate) fn git_command(root: &Path) -> Command {
+pub fn git_command(root: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(root)
@@ -287,6 +340,11 @@ pub(crate) fn git_command(root: &Path) -> Command {
         // A partial clone lazily fetches blobs, and a fetch that wants a
         // credential would block on the terminal for the whole timeout.
         .env("GIT_TERMINAL_PROMPT", "0")
+        // git translates its messages and its `fatal:` prefix: a person reads
+        // them, nothing here branches on them, and a child run in the C locale
+        // answers the same way on every machine.
+        .env("LC_ALL", "C")
+        .env_remove("LANGUAGE")
         // `GIT_DIFF_OPTS` overrides `--unified`: a `-u3` in a user's shell
         // changed which fragment counted as the core (#263).
         .env_remove("GIT_DIFF_OPTS");
@@ -681,5 +739,91 @@ impl CatBatch {
 impl Drop for CatBatch {
     fn drop(&mut self) {
         self.close();
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a test starts the child it supervises"
+)]
+mod tests {
+    use super::*;
+
+    fn within(timeout: Duration) -> Limits {
+        Limits {
+            deadline: Instant::now() + timeout,
+            cancel: None,
+            timeout_secs: 0,
+        }
+    }
+
+    #[test]
+    fn wait_with_timeout_kills_long_running_child_and_returns_promptly() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+
+        let start = std::time::Instant::now();
+        let result = supervise(child, &within(Duration::from_millis(200)));
+        let elapsed = start.elapsed();
+
+        assert!(
+            matches!(result, Err(SnapshotError::Timeout(_))),
+            "expected Timeout error, got {result:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "supervise should return promptly, took {elapsed:?}"
+        );
+
+        // The child must actually be reaped, not orphaned: `kill -0` on a
+        // reaped pid fails once the OS releases it. Retry briefly since the
+        // OS may hold a zombie slot for a moment after the kill.
+        let mut still_alive = true;
+        for _ in 0..20 {
+            let status = Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("spawn kill -0");
+            if !status.success() {
+                still_alive = false;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!still_alive, "child pid {pid} was not reaped after timeout");
+    }
+
+    #[test]
+    fn a_zero_ceiling_times_out_even_when_the_child_has_already_exited() {
+        let child = Command::new("true")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn true");
+        std::thread::sleep(Duration::from_millis(100));
+        let result = supervise(child, &within(Duration::ZERO));
+        assert!(
+            matches!(result, Err(SnapshotError::Timeout(_))),
+            "a zero ceiling must not depend on who finishes first, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn wait_with_timeout_does_not_penalize_fast_commands() {
+        let child = Command::new("true")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn true");
+        let result = supervise(child, &within(Duration::from_secs(5)));
+        assert!(matches!(result, Ok(ref out) if out.status.success()));
     }
 }

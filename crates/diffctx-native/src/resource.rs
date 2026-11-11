@@ -649,7 +649,12 @@ impl RunContext {
     pub fn enter(&self) -> ScopedContext {
         let prev = CURRENT.with(|c| c.replace(Some(self.clone())));
         SELF_REPORTED.with(|r| r.set(0));
-        ScopedContext { prev }
+        let git = crate::snapshot::enter_run(crate::snapshot::RunBudget {
+            deadline: self.inner.io_expires_at,
+            cancel: Some(self.inner.cancel.clone()),
+            read_fault: None,
+        });
+        ScopedContext { prev, _git: git }
     }
 
     /// Charges a finished builder's total minus what its own loops already
@@ -681,6 +686,9 @@ thread_local! {
 
 pub struct ScopedContext {
     prev: Option<RunContext>,
+    /// The run's limits as the git children of this thread see them, put back
+    /// with the context.
+    _git: crate::snapshot::RunScope,
 }
 
 impl Drop for ScopedContext {
@@ -752,10 +760,11 @@ pub fn note_current(reason: LimitReason) {
 /// What a failed git read leaves the answer missing, as a limit: out of time
 /// or cancelled is the deadline, an oversized blob its size, anything else a
 /// read that failed.
-pub fn reason_for(e: &crate::git::GitError) -> LimitReason {
+pub fn reason_for(e: &crate::snapshot::SnapshotError) -> LimitReason {
+    use crate::snapshot::SnapshotError as E;
     match e {
-        crate::git::GitError::Timeout(_) | crate::git::GitError::Cancelled => LimitReason::Deadline,
-        crate::git::GitError::BlobTooLarge { .. } => LimitReason::FileTooLarge,
+        E::Timeout(_) | E::Cancelled => LimitReason::Deadline,
+        E::TooLarge { .. } => LimitReason::FileTooLarge,
         _ => LimitReason::ReadFailed,
     }
 }
@@ -821,12 +830,6 @@ pub fn with_source<T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> 
     }
     let _restore = Restore(prev);
     f()
-}
-
-/// What bounds a git child started now: the run's I/O deadline and its
-/// cancellation. `None` outside a run.
-pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
-    with_current(|ctx| (ctx.inner.io_expires_at, ctx.inner.cancel.clone()))
 }
 
 /// Where history ends for the current run: the same `--diff A..B` must see

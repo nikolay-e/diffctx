@@ -20,16 +20,17 @@ use crate::discovery::{
     ReverseReferenceDiscovery, TestFileDiscovery,
 };
 use crate::fragmentation::process_files_for_fragments;
-use crate::git;
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
 use crate::scoring::{ScoringResult, create_scoring_strategy};
 use crate::signatures::generate_signature_variants;
+use crate::snapshot;
 use crate::source::{Admitted, Source, Why};
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId};
 use crate::utility::InformationNeed;
+use crate::{diff_parse, grep};
 
 /// Per-instance heavy-phase outputs cached for reuse across many
 /// (`tau`, `core_budget_fraction`) selection cells. The selection /
@@ -436,11 +437,12 @@ pub(crate) fn collect_hunks_with_untracked(
     source: &Source,
     run: Option<&crate::resource::RunContext>,
 ) -> Result<(Vec<crate::types::DiffHunk>, Vec<PathBuf>)> {
-    let mut hunks = git::parse_diff(root_dir, diff_range, pathspec)?;
+    let mut hunks = diff_parse::parse_diff(root_dir, diff_range, pathspec)?;
     if !is_working_tree_diff {
         return Ok((hunks, Vec::new()));
     }
-    let mut untracked_files = unless_cut_short(run, git::get_untracked_files(root_dir, pathspec))?;
+    let mut untracked_files =
+        unless_cut_short(run, diff_parse::get_untracked_files(root_dir, pathspec))?;
     // The untracked scan is the one path that READS a working-tree name
     // before anything else has vetted it, so containment is re-asked here in
     // its canonicalising form: `evil -> /etc/shadow` is lexically inside the
@@ -478,13 +480,13 @@ pub(crate) fn collect_hunks_with_untracked(
 /// no partial form). Swallowed, either one read as "nothing changed" (#408).
 fn unless_cut_short<T: Default>(
     run: Option<&crate::resource::RunContext>,
-    answer: git::Result<T>,
+    answer: snapshot::Result<T>,
 ) -> Result<T> {
     match (answer, run) {
         (Ok(answer), _) => Ok(answer),
         (Err(e), Some(run)) if e.is_interruption() => {
             run.note(match e {
-                git::GitError::Cancelled => crate::resource::LimitReason::Cancelled,
+                snapshot::SnapshotError::Cancelled => crate::resource::LimitReason::Cancelled,
                 _ => crate::resource::LimitReason::Deadline,
             });
             Ok(T::default())
@@ -556,7 +558,7 @@ fn ignore_disclosure(
 /// old name. Their bodies exist only at the base, so none of them is the
 /// change's content; `--full` once showed a deleted file's old body as
 /// changed (#409).
-fn gone_at_head(root_dir: &Path, names: &git::DiffNames) -> FxHashSet<PathBuf> {
+fn gone_at_head(root_dir: &Path, names: &diff_parse::DiffNames) -> FxHashSet<PathBuf> {
     names
         .deleted
         .iter()
@@ -577,7 +579,7 @@ fn hunkless_changed_files(
     untracked_files: Vec<PathBuf>,
     run: Option<&crate::resource::RunContext>,
 ) -> Result<Vec<PathBuf>> {
-    let names = unless_cut_short(run, git::diff_names(root_dir, diff_range, pathspec))?;
+    let names = unless_cut_short(run, diff_parse::diff_names(root_dir, diff_range, pathspec))?;
     let excluded = gone_at_head(root_dir, &names);
     let mut changed = names.changed;
     changed.extend(untracked_files);
@@ -595,7 +597,7 @@ fn hunkless_changed_files(
 fn resolve_change_set(
     root_dir: &Path,
     diff_range: Option<&str>,
-    staged: Option<&git::StagedSnapshot>,
+    staged: Option<&snapshot::StagedSnapshot>,
     pathspec: &[String],
     is_working_tree_diff: bool,
     run: &crate::resource::RunContext,
@@ -664,9 +666,9 @@ fn resolve_change_set(
         });
     }
 
-    let diff_text = git::get_diff_text(root_dir, diff_range, pathspec)?;
+    let diff_text = diff_parse::get_diff_text(root_dir, diff_range, pathspec)?;
 
-    let names = git::diff_names(root_dir, diff_range, pathspec)?;
+    let names = diff_parse::diff_names(root_dir, diff_range, pathspec)?;
     let mut changed_files = names.changed.clone();
     changed_files.extend(untracked_files.iter().cloned());
     if changed_files.is_empty() {
@@ -694,7 +696,7 @@ fn resolve_change_set(
         .collect();
 
     let (base_rev, head_rev) = diff_range
-        .map(git::split_diff_range)
+        .map(snapshot::split_diff_range)
         .unwrap_or((None, None));
     // A staged snapshot's head is a tree: it has content and no history. Its
     // commits are none, and the history channels anchor on the commit it
@@ -704,15 +706,17 @@ fn resolve_change_set(
         Some(s) => (None, s.head.clone()),
         None => (head_rev.clone(), head_rev),
     };
-    let commit_message = head_rev
-        .as_deref()
-        .and_then(|h| git::get_commit_message(root_dir, h).ok())
-        .and_then(|m| {
-            m.lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .map(str::to_string)
-        });
+    // A message git could not read is the run's error, or its deadline when
+    // that is what cut the read: never a change with no title.
+    let commit_message = match head_rev.as_deref() {
+        Some(h) => unless_cut_short(Some(run), snapshot::commit_message(root_dir, h))?,
+        None => String::new(),
+    };
+    let commit_message = commit_message
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(str::to_string);
 
     // `A..B` names both ends; a bare `X` diffs X against the working tree,
     // whose commits are `X..HEAD`. Every commit of the range travels whole
@@ -723,20 +727,22 @@ fn resolve_change_set(
         (None, None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
         _ => None,
     };
-    let commit_count = subject_range
-        .as_ref()
-        .map_or(0, |(base, head)| git::commit_count(root_dir, base, head));
-    let commit_messages = subject_range
-        .map(|(base, head)| {
-            git::commit_messages(
-                root_dir,
-                &base,
-                &head,
-                MAX_COMMIT_MESSAGES,
-                MAX_COMMIT_MESSAGE_CHARS,
-            )
-        })
-        .unwrap_or_default();
+    let (commit_count, commit_messages) = match subject_range {
+        Some((base, head)) => (
+            unless_cut_short(Some(run), snapshot::commit_count(root_dir, &base, &head))?,
+            unless_cut_short(
+                Some(run),
+                snapshot::commit_messages(
+                    root_dir,
+                    &base,
+                    &head,
+                    MAX_COMMIT_MESSAGES,
+                    MAX_COMMIT_MESSAGE_CHARS,
+                ),
+            )?,
+        ),
+        None => (0, Vec::new()),
+    };
 
     let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
@@ -1113,7 +1119,7 @@ fn resolve_symbol_change_set(
         }
         None => scope.to_vec(),
     };
-    let named = git::grep_files_with_word(root_dir, &run.source(), name, &pathspec)?;
+    let named = grep::grep_files_with_word(root_dir, &run.source(), name, &pathspec)?;
     let withheld = named.withheld;
     let mut files = named.rows;
     files.retain(|f| !is_lockfile_path(f));
@@ -1122,7 +1128,7 @@ fn resolve_symbol_change_set(
         // The files that spell a declaration of the name go first, so the
         // cap drops callers, never the definition the answer starts from.
         let declaring: FxHashSet<PathBuf> =
-            git::grep_files_with_declaration(root_dir, &run.source(), name, &pathspec)
+            grep::grep_files_with_declaration(root_dir, &run.source(), name, &pathspec)
                 .map(|g| g.rows)
                 .unwrap_or_default()
                 .into_iter()
@@ -1246,7 +1252,7 @@ fn resolve_symbol_change_set(
         // `Cart.total` names an owner's definition: the word `total` spelled
         // elsewhere is no answer to it.
         let named = (segments.len() == 1 && !files.is_empty())
-            .then(|| git::grep_word_first_lines(root_dir, &run.source(), name, &pathspec).ok())
+            .then(|| grep::grep_word_first_lines(root_dir, &run.source(), name, &pathspec).ok())
             .flatten()
             .and_then(|found| {
                 let lines = found
@@ -1342,7 +1348,7 @@ fn resolve_scope(root_dir: &Path, paths: &[String]) -> Result<(PathBuf, Vec<Stri
                 canon
                     .strip_prefix(&repo_root)
                     .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
-                    .map_err(|_| git::GitError::InvalidPath(p.clone()))?
+                    .map_err(|_| snapshot::SnapshotError::InvalidPath(p.clone()))?
             } else {
                 crate::paths::to_posix_display(std::borrow::Cow::Borrowed(p.as_str()))
             };
@@ -1352,7 +1358,7 @@ fn resolve_scope(root_dir: &Path, paths: &[String]) -> Result<(PathBuf, Vec<Stri
             }
             scope.push(rel);
         }
-        git::validate_pathspec(&scope)?;
+        snapshot::validate_pathspec(&scope)?;
         return Ok((repo_root, scope));
     }
     let subtree = requested
@@ -1415,7 +1421,7 @@ fn resolve_anchor(
     scope: &[String],
     run: &crate::resource::RunContext,
     t_entry: Instant,
-) -> Result<(Option<String>, Option<git::StagedSnapshot>, ChangeSet)> {
+) -> Result<(Option<String>, Option<snapshot::StagedSnapshot>, ChangeSet)> {
     let opened = match anchor {
         Anchor::Diff(diff_range) => crate::source::Analysis::open(root_dir, diff_range, run),
         Anchor::Range(range) => crate::source::Analysis::open_range(root_dir, range, run),
@@ -1480,7 +1486,7 @@ pub fn compute_scored_state_anchored(
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
     crate::tokenizer::warm();
-    git::set_git_timeout(timeout);
+    snapshot::set_git_timeout(timeout);
     let run = crate::resource::RunContext::for_run(timeout);
     let _in_run = run.enter();
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
@@ -1603,7 +1609,7 @@ pub fn compute_scored_state_anchored(
         &root_dir,
         diff_range,
         crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
-    );
+    )?;
 
     let mut expansion_concepts: FxHashSet<String> =
         crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
@@ -1616,9 +1622,10 @@ pub fn compute_scored_state_anchored(
         let mut signal: Vec<String> = commit_messages.clone();
         if signal.is_empty() {
             if let Some(ref h) = head_rev {
-                if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
-                    signal.push(commit_msg);
-                }
+                signal.push(unless_cut_short(
+                    Some(&run),
+                    snapshot::commit_message(&root_dir, h),
+                )?);
             }
         }
         for text in &signal {
@@ -2637,6 +2644,12 @@ pub(crate) fn is_withheld(root_dir: &Path, source: &Source, path: &Path) -> bool
     !is_admitted(root_dir, source, path)
 }
 
+/// Whether `path` is inside a repository, asked of git once per run: `Err`
+/// when git could not answer, which is no verdict on the directory.
+fn is_git_repo(path: &Path) -> snapshot::Result<bool> {
+    crate::resource::memoized("is_git_repo", path, || snapshot::is_git_repo(path))
+}
+
 /// Which of `rel_paths` (repo-root-relative) the engine withholds — the
 /// question the MCP fetch used to answer with a different engine (#228). A
 /// directory that is no repository has no ignore rules to read, and the
@@ -2646,7 +2659,7 @@ pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
     let run = crate::resource::RunContext::unbounded();
     match crate::source::Analysis::at_working_tree(root_dir, &run) {
         Ok(analysis) => analysis.head().withheld_among(rel_paths),
-        Err(_) if !git::is_git_repo(root_dir).unwrap_or(true) => rel_paths
+        Err(_) if !is_git_repo(root_dir).unwrap_or(true) => rel_paths
             .iter()
             .filter(|rel| crate::source::is_secret_path(Path::new(rel)))
             .cloned()
@@ -2673,11 +2686,11 @@ pub fn raw_diff_text(
     paths: &[String],
     timeout: u64,
 ) -> Result<(String, crate::sanitize::Redactions)> {
-    git::set_git_timeout(timeout);
+    snapshot::set_git_timeout(timeout);
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     let run = crate::resource::RunContext::for_run(timeout);
     let analysis = crate::source::Analysis::open(&root_dir, diff_range, &run)?;
-    let diff_text = git::get_diff_text(&root_dir, analysis.range(), &scope)?;
+    let diff_text = diff_parse::get_diff_text(&root_dir, analysis.range(), &scope)?;
     let mut disclosable = keep_disclosable_sections(&root_dir, &analysis.head(), &diff_text);
     let redactions = crate::sanitize::sanitize_in_place(&mut disclosable);
     Ok((disclosable, redactions))
@@ -2742,7 +2755,7 @@ fn section_path(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
     let mut old_path: Option<PathBuf> = None;
     let mut new_path: Option<PathBuf> = None;
     for line in section.iter().take_while(|line| !line.starts_with("@@")) {
-        match git::parse_path_line(line, root_dir) {
+        match diff_parse::parse_path_line(line, root_dir) {
             ("new", path) => new_path = path,
             ("old", path) => old_path = path,
             _ => {}
@@ -2763,14 +2776,14 @@ fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
         .iter()
         .find_map(|line| line.strip_prefix("rename to "))
     {
-        return git::resolve_in_repo(root_dir, &git::unquote_c_style(quoted.trim()));
+        return diff_parse::resolve_in_repo(root_dir, &diff_parse::unquote_c_style(quoted.trim()));
     }
     let rest = section.first()?.strip_prefix("diff --git ")?;
     let rel_path = rest.get("a/".len()..rest.find(" b/")?)?;
     if rest != format!("a/{rel_path} b/{rel_path}") {
         return None;
     }
-    git::resolve_in_repo(root_dir, rel_path)
+    diff_parse::resolve_in_repo(root_dir, rel_path)
 }
 
 fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
@@ -2778,10 +2791,11 @@ fn resolve_repo_root(root_dir: &Path) -> Result<PathBuf> {
         tracing::debug!("canonicalize failed for '{}': {}", root_dir.display(), e);
         root_dir.to_path_buf()
     });
-    if !git::is_git_repo(&root_dir)? {
-        return Err(git::GitError::NotARepo(root_dir).into());
+    if !is_git_repo(&root_dir)? {
+        return Err(snapshot::SnapshotError::NotARepo(root_dir).into());
     }
-    Ok(git::find_toplevel(&root_dir).unwrap_or(root_dir))
+    // A repository with no work tree (a bare one) is read from where it was named.
+    Ok(snapshot::find_toplevel(&root_dir)?.unwrap_or(root_dir))
 }
 
 /// What `--full` removed from its own answer, carried to whichever of the four
@@ -2802,7 +2816,7 @@ fn full_empty_output(
     let (deleted, renamed) = deletion_rename_displays(
         root_dir,
         source,
-        &git::diff_names(root_dir, diff_range, pathspec)?,
+        &diff_parse::diff_names(root_dir, diff_range, pathspec)?,
     );
     let mut output = empty_output(root_dir);
     output.range = crate::answer::envelope::range_of(diff_range, None, 0, Vec::new());
@@ -2851,7 +2865,7 @@ fn build_diff_context_full(
     no_content: bool,
     timeout: u64,
 ) -> Result<DiffContextOutput> {
-    git::set_git_timeout(timeout);
+    snapshot::set_git_timeout(timeout);
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     // Reading the changed files is bounded like every other run: a deadline
     // that cuts it is named, not reported as files over the size cap (#439).
@@ -2904,7 +2918,7 @@ fn build_diff_context_full(
         )?;
         return full_empty_output(&root_dir, &source, diff_range, &scope, &listed, &withheld);
     }
-    let names = git::diff_names(&root_dir, diff_range, &scope)?;
+    let names = diff_parse::diff_names(&root_dir, diff_range, &scope)?;
     let mut changed_files = names.changed.clone();
     changed_files.extend(untracked_files);
     let gone = gone_at_head(&root_dir, &names);
@@ -2913,7 +2927,7 @@ fn build_diff_context_full(
     if changed_files.is_empty() {
         return full_empty_output(&root_dir, &source, diff_range, &scope, &[], &withheld);
     }
-    let head_rev = diff_range.and_then(|range| git::split_diff_range(range).1);
+    let head_rev = diff_range.and_then(|range| snapshot::split_diff_range(range).1);
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let _in_run = run.enter();
     let mut all_fragments = crate::fragmentation::fragment_files(
@@ -2931,15 +2945,15 @@ fn build_diff_context_full(
     changed_files.sort();
     let core_ids = identify_core_fragments(&hunks, &all_fragments);
     let selected = select_full_mode(&all_fragments, &changed_files);
-    let commit_message = head_rev
-        .as_deref()
-        .and_then(|h| git::get_commit_message(&root_dir, h).ok())
-        .and_then(|m| {
-            m.lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .map(str::to_string)
-        });
+    let commit_message = match head_rev.as_deref() {
+        Some(h) => unless_cut_short(Some(&run), snapshot::commit_message(&root_dir, h))?,
+        None => String::new(),
+    };
+    let commit_message = commit_message
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(str::to_string);
     let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, &source, &names);
     let change = render::ChangeSummary {
         range_spec: diff_range.map(str::to_string),
@@ -2980,7 +2994,7 @@ fn build_diff_context_full(
 fn deletion_rename_displays(
     root_dir: &Path,
     source: &Source,
-    names: &git::DiffNames,
+    names: &diff_parse::DiffNames,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut deleted: Vec<String> = names
         .deleted
@@ -3014,9 +3028,12 @@ fn empty_scored_state_with_changes(
     timeout: u64,
     run: crate::resource::RunContext,
 ) -> Result<ScoredState> {
-    let names = unless_cut_short(Some(&run), git::diff_names(&root_dir, diff_range, pathspec))?;
+    let names = unless_cut_short(
+        Some(&run),
+        diff_parse::diff_names(&root_dir, diff_range, pathspec),
+    )?;
     let (deleted, renamed) = deletion_rename_displays(&root_dir, &run.source(), &names);
-    let mut state = empty_scored_state(root_dir, diff_range, timeout, run);
+    let mut state = empty_scored_state(root_dir, diff_range, timeout, run)?;
     state.deleted_files = deleted;
     state.renamed_files = renamed;
     state.envelope_tokens = envelope_tokens_of(&state);
@@ -3028,14 +3045,14 @@ fn empty_scored_state(
     diff_range: Option<&str>,
     timeout: u64,
     run: crate::resource::RunContext,
-) -> ScoredState {
+) -> Result<ScoredState> {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
     let provenance = crate::run_provenance::RunProvenance::new(
         &root_dir,
         diff_range,
         crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
-    );
-    ScoredState {
+    )?;
+    Ok(ScoredState {
         commit_count: 0,
         root_dir,
         config,
@@ -3074,7 +3091,7 @@ fn empty_scored_state(
         hunk_texts: Vec::new(),
         changed_lines: FxHashMap::default(),
         scope: Vec::new(),
-    }
+    })
 }
 
 fn empty_output(root_dir: &Path) -> DiffContextOutput {
@@ -3212,8 +3229,8 @@ mod tests {
 
     /// The raw-diff bundle decides which sections it may disclose by resolving
     /// each `diff --git` header against the repo root. That guard used to be a
-    /// second, independent copy of the one in `git::parse_path_line`, carrying
-    /// the same lexical-prefix hole; both now share `git::resolve_in_repo`, so
+    /// second, independent copy of the one in `diff_parse::parse_path_line`, carrying
+    /// the same lexical-prefix hole; both now share `diff_parse::resolve_in_repo`, so
     /// this pins that a section naming a path outside the root is dropped
     /// rather than bundled.
     #[test]

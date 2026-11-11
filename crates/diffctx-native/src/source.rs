@@ -14,29 +14,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::snapshot as snap;
 
-use crate::git::{self, GitError};
 use crate::resource::{LimitReason, RunNotes};
-
-/// The failure of a snapshot call as the engine already names git failures,
-/// so an interruption stays an interruption and a usage error keeps its exit
-/// code.
-fn lift(e: snap::SnapshotError) -> GitError {
-    use snap::SnapshotError as E;
-    match e {
-        E::Cancelled => GitError::Cancelled,
-        E::Timeout(secs) => GitError::Timeout(secs),
-        E::NotARepo(path) => GitError::NotARepo(path),
-        E::InvalidRange(m) => GitError::InvalidRange(m),
-        E::InvalidDuration(m) => GitError::InvalidDuration(m),
-        E::InvalidPath(m) => GitError::InvalidPath(m),
-        E::Io(e) => GitError::Io(e),
-        E::TooLarge { path, size } => GitError::BlobTooLarge {
-            size: usize::try_from(size).unwrap_or(usize::MAX),
-            spec: path,
-        },
-        other => GitError::CommandFailed(other.to_string()),
-    }
-}
 
 /// Why a path is not shown, as far as the engine tells the reasons apart.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -110,11 +88,11 @@ pub(crate) fn in_scope(root: &Path, path: &Path, scope: &[String]) -> bool {
 
 /// The staged index is a tree like any other once captured: the range runs
 /// from `base` to that tree and nothing reads the index again.
-fn index_as_tree(repo: &snap::RepoRoot, range: snap::RangeSpec) -> git::Result<snap::RangeSpec> {
+fn index_as_tree(repo: &snap::RepoRoot, range: snap::RangeSpec) -> snap::Result<snap::RangeSpec> {
     match range {
         snap::RangeSpec::Staged { base } => Ok(snap::RangeSpec::Review {
             base,
-            head: snap::index_tree(repo).map_err(lift)?,
+            head: snap::index_tree(repo)?,
         }),
         other => Ok(other),
     }
@@ -136,7 +114,7 @@ pub struct Analysis {
     range: Option<String>,
     /// A tree-ended range (the staged index, or `A..<tree>`): content and no
     /// history.
-    staged: Option<git::StagedSnapshot>,
+    staged: Option<snap::StagedSnapshot>,
     working_tree_diff: bool,
     /// The revision `git grep` reads for the head side; `None` for the
     /// working tree.
@@ -154,10 +132,10 @@ impl Analysis {
         root_dir: &Path,
         spec: Option<&str>,
         run: &crate::resource::RunContext,
-    ) -> git::Result<Arc<Self>> {
-        let repo = snap::open(root_dir).map_err(lift)?;
+    ) -> snap::Result<Arc<Self>> {
+        let repo = snap::open(root_dir)?;
         let spec = spec.map(str::trim);
-        let range = snap::resolve(&repo, spec.unwrap_or("HEAD")).map_err(lift)?;
+        let range = snap::resolve(&repo, spec.unwrap_or("HEAD"))?;
         let range = index_as_tree(&repo, range)?;
         Self::build(root_dir, repo, range, spec, run)
     }
@@ -169,8 +147,8 @@ impl Analysis {
         root_dir: &Path,
         range: snap::RangeSpec,
         run: &crate::resource::RunContext,
-    ) -> git::Result<Arc<Self>> {
-        let repo = snap::open(root_dir).map_err(lift)?;
+    ) -> snap::Result<Arc<Self>> {
+        let repo = snap::open(root_dir)?;
         let base_text = match &range {
             snap::RangeSpec::WorkingTree { base } => Some(base.to_string()),
             _ => None,
@@ -184,8 +162,8 @@ impl Analysis {
     pub fn at_working_tree(
         root_dir: &Path,
         run: &crate::resource::RunContext,
-    ) -> git::Result<Arc<Self>> {
-        let repo = snap::open(root_dir).map_err(lift)?;
+    ) -> snap::Result<Arc<Self>> {
+        let repo = snap::open(root_dir)?;
         let range = snap::RangeSpec::At(snap::Side::WorkingTree);
         Self::build(root_dir, repo, range, None, run)
     }
@@ -196,22 +174,22 @@ impl Analysis {
         range: snap::RangeSpec,
         spec: Option<&str>,
         run: &crate::resource::RunContext,
-    ) -> git::Result<Arc<Self>> {
+    ) -> snap::Result<Arc<Self>> {
         let (range_text, staged, working_tree_diff, head_revision) = match &range {
             snap::RangeSpec::Rewritten { old, new } => {
                 // A force-push changed the remote by the delta between two
                 // tips that share no history: the new tip stands as its
                 // tree, and a range name would read `merge-base..new`
                 // (gh#596).
-                let tree = git::run_git(
+                let tree = snap::run_git(
                     root_dir,
                     &["rev-parse", "--verify", &format!("{new}^{{tree}}")],
                 )?
                 .trim()
                 .to_string();
                 let base = old.to_string();
-                let staged = git::StagedSnapshot {
-                    head: git::rev_oid(root_dir, &base),
+                let staged = snap::StagedSnapshot {
+                    head: snap::rev_oid(root_dir, &base)?,
                     tree: tree.clone(),
                     base: base.clone(),
                 };
@@ -229,11 +207,11 @@ impl Analysis {
             } => {
                 let (base, head) = (base.to_string(), head.to_string());
                 let text = format!("{base}..{head}");
-                if git::rev_oid(root_dir, &head).is_some() {
+                if snap::rev_oid(root_dir, &head)?.is_some() {
                     (Some(text), None, false, Some(head))
                 } else {
-                    let staged = git::StagedSnapshot {
-                        head: git::rev_oid(root_dir, &base),
+                    let staged = snap::StagedSnapshot {
+                        head: snap::rev_oid(root_dir, &base)?,
                         base,
                         tree: head.clone(),
                     };
@@ -243,7 +221,7 @@ impl Analysis {
             snap::RangeSpec::WorkingTree { .. } => {
                 let text = match spec {
                     Some(spec) => Some(
-                        git::duration_base(root_dir, spec)?.unwrap_or_else(|| spec.to_string()),
+                        snap::duration_base(root_dir, spec)?.unwrap_or_else(|| spec.to_string()),
                     ),
                     None => None,
                 };
@@ -257,7 +235,7 @@ impl Analysis {
             cancel: Some(cancel),
             read_fault: crate::resource::test_read_fault(),
         };
-        let ctx = snap::AnalysisContext::new(repo, range, budget).map_err(lift)?;
+        let ctx = snap::AnalysisContext::new(repo, range, budget)?;
         Ok(Arc::new(Self {
             ctx,
             root: root_dir.to_path_buf(),
@@ -274,7 +252,7 @@ impl Analysis {
         self.range.as_deref()
     }
 
-    pub fn staged(&self) -> Option<&git::StagedSnapshot> {
+    pub fn staged(&self) -> Option<&snap::StagedSnapshot> {
         self.staged.as_ref()
     }
 
@@ -311,12 +289,12 @@ impl Analysis {
         }
     }
 
-    fn listing(&self, end: End) -> git::Result<Arc<Listing>> {
+    fn listing(&self, end: End) -> snap::Result<Arc<Listing>> {
         let cell = &self.listings[usize::from(end == End::Base)];
         if let Some(listing) = cell.get() {
             return Ok(listing.clone());
         }
-        let listed = self.reader(end).list().map_err(lift)?;
+        let listed = self.reader(end).list()?;
         let blob = |p: &snap::RepoPath| crate::paths::repo_join(&self.root, &p.to_string());
         let listing = Arc::new(Listing {
             blobs: listed
@@ -422,7 +400,7 @@ impl Source {
     /// when the read failed — out of time, cancelled, too large, a broken
     /// pipe. Taken for an absent file, a failed read dropped imports and
     /// callers with no word in the answer (#408).
-    pub fn read(&self, abs_path: &Path) -> git::Result<Option<Vec<u8>>> {
+    pub fn read(&self, abs_path: &Path) -> snap::Result<Option<Vec<u8>>> {
         let Some((analysis, end)) = &self.view else {
             return Ok(None);
         };
@@ -433,7 +411,6 @@ impl Source {
             .reader(*end)
             .read(&path)
             .map(|bytes| bytes.map(|b| b[..].to_vec()))
-            .map_err(lift)
     }
 
     /// `read`, with a failure noted on the run and read as no file.
@@ -450,7 +427,7 @@ impl Source {
     /// The file as text with invalid sequences replaced, for the readers
     /// that parse a side and would rather see mojibake than nothing:
     /// `Ok(None)` when the side has no such file.
-    pub fn read_lossy(&self, abs_path: &Path) -> git::Result<Option<String>> {
+    pub fn read_lossy(&self, abs_path: &Path) -> snap::Result<Option<String>> {
         Ok(self
             .read(abs_path)?
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
@@ -470,14 +447,14 @@ impl Source {
         match analysis.reader(*end).resolve_link(&path) {
             Ok(target) => target.map(|t| t.to_string()),
             Err(e) => {
-                self.note(crate::resource::reason_for(&lift(e)));
+                self.note(crate::resource::reason_for(&e));
                 None
             }
         }
     }
 
     /// Every admitted blob of this side, once per run.
-    pub fn list(&self) -> git::Result<Arc<Listing>> {
+    pub fn list(&self) -> snap::Result<Arc<Listing>> {
         match &self.view {
             Some((analysis, end)) => analysis.listing(*end),
             None => Ok(Arc::new(Listing {
@@ -491,7 +468,7 @@ impl Source {
 
     /// Every file of this side, repo-relative, the over-sized ones included:
     /// a failed listing is an error, never an empty side (#443).
-    pub fn list_paths(&self, root: &Path) -> git::Result<Vec<String>> {
+    pub fn list_paths(&self, root: &Path) -> snap::Result<Vec<String>> {
         let listing = self.list()?;
         Ok(listing
             .blobs
@@ -513,7 +490,7 @@ impl Source {
             // A decision that could not be made is a withheld path, and the
             // run says it could not read.
             Err(e) => {
-                self.note(crate::resource::reason_for(&lift(e)));
+                self.note(crate::resource::reason_for(&e));
                 Some(snap::Decision::Withhold(
                     snap::WithholdReason::DiffctxPolicy,
                 ))
@@ -566,7 +543,7 @@ impl Source {
         match analysis.reader(*end).withheld_among(&paths) {
             Ok(found) => withheld.extend(found.iter().map(ToString::to_string)),
             Err(e) => {
-                self.note(crate::resource::reason_for(&lift(e)));
+                self.note(crate::resource::reason_for(&e));
                 return rels.to_vec();
             }
         }
@@ -605,7 +582,7 @@ mod tests {
     use super::*;
 
     fn git(dir: &Path, args: &[&str]) {
-        let status = git::git_command(dir).args(args).status().expect("run git");
+        let status = snap::git_command(dir).args(args).status().expect("run git");
         assert!(status.success(), "git {args:?} failed");
     }
 
@@ -653,7 +630,7 @@ mod tests {
     }
 
     fn oid_of(root: &Path, rev: &str) -> snap::Oid {
-        let out = git::run_git(root, &["rev-parse", rev]).expect("rev-parse");
+        let out = snap::run_git(root, &["rev-parse", rev]).expect("rev-parse");
         snap::Oid::parse(out.trim()).expect("object id")
     }
 

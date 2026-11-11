@@ -562,6 +562,55 @@ fn a_broken_git_config_surfaces_gits_own_fatal_line() {
     assert!(!stderr.contains("not a git repository"), "{stderr}");
 }
 
+/// Which directories are no repository is decided without reading git's
+/// words: a git that refuses in German still names a plain directory "not a
+/// git repository" and still exits 3.
+#[cfg(unix)]
+#[test]
+fn a_plain_directory_is_named_so_when_git_speaks_another_language() {
+    let plain = TempDir::new().expect("tempdir");
+    let tools = TempDir::new().expect("tempdir");
+    let path = support::path_with_translated_git(tools.path());
+    let out = diffctx()
+        .current_dir(plain.path())
+        .env("PATH", &path)
+        .args([".", "--diff", "HEAD"])
+        .output()
+        .expect("run diffctx");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(3), "{stderr}");
+    assert!(stderr.contains("not a git repository"), "{stderr}");
+    assert!(!stderr.contains("Schwerwiegend"), "{stderr}");
+}
+
+/// A bare repository has no work tree and is read from where it was named,
+/// the same in any language git speaks.
+#[cfg(unix)]
+#[test]
+fn a_bare_repository_is_read_from_where_it_was_named_when_git_speaks_another_language() {
+    let tmp = code_change_repo();
+    let parent = TempDir::new().expect("tempdir");
+    let bare = parent.path().join("bare.git");
+    git(
+        tmp.path(),
+        &["clone", "-q", "--bare", ".", bare.to_str().expect("utf-8")],
+    );
+    let args = [bare.to_str().expect("utf-8"), "--diff", "HEAD~1..HEAD"];
+    let english = run(parent.path(), &args);
+    let tools = TempDir::new().expect("tempdir");
+    let path = support::path_with_translated_git(tools.path());
+    let translated = diffctx()
+        .current_dir(parent.path())
+        .env("PATH", &path)
+        .args(args)
+        .output()
+        .expect("run diffctx");
+    let stderr = String::from_utf8_lossy(&translated.stderr);
+    assert!(!stderr.contains("Schwerwiegend"), "{stderr}");
+    assert_eq!(translated.status.code(), english.status.code(), "{stderr}");
+    assert_eq!(translated.stdout, english.stdout);
+}
+
 /// The known-bad probe for the resource contract: a contribution cap the
 /// smallest graph exceeds must yield a valid artifact that names the limit,
 /// not an error and not a silent full result.

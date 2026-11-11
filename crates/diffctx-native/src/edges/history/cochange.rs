@@ -18,7 +18,7 @@ impl CochangeEdgeBuilder {
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
         let head = crate::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
         let limit = format!("-n{}", COCHANGE.commits_limit);
-        let stdout = crate::git::run_git(
+        let stdout = crate::snapshot::run_git(
             repo_root,
             &[
                 "log",
