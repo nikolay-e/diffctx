@@ -138,7 +138,11 @@ impl Fixture {
     }
 
     fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
-        let timeout = TIMEOUT_SECS.to_string();
+        self.pack_within(target, mode, extra, TIMEOUT_SECS)
+    }
+
+    fn pack_within(&self, target: &str, mode: &str, extra: &[&str], secs: u64) -> Output {
+        let timeout = secs.to_string();
         let mut args = vec![
             ".",
             "--diff",
@@ -331,7 +335,7 @@ fn assert_error_or_named_loss(mode: &str) {
     let clean = fx.impact_within("none", "none", ANSWER_TIMEOUT_SECS);
     let truth = Query::Impact.claims(&json(&clean));
     assert!(!truth.is_empty(), "the clean run claimed nothing");
-    let out = fx.impact("cat-file", mode);
+    let out = fx.impact_within("cat-file", mode, ANSWER_TIMEOUT_SECS);
     verdict(Query::Impact, &truth, &out).unwrap_or_else(|why| panic!("{mode}: {why}"));
     fx.assert_no_survivors();
 }
@@ -440,9 +444,18 @@ fn untracked_change() -> Fixture {
 fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
     let fx = untracked_change();
     for (mode, out) in [
-        ("pack", fx.pack("--others", "fail", &[])),
-        ("full", fx.pack("--others", "fail", &["--full"])),
-        ("impact", fx.impact("--others", "fail")),
+        (
+            "pack",
+            fx.pack_within("--others", "fail", &[], ANSWER_TIMEOUT_SECS),
+        ),
+        (
+            "full",
+            fx.pack_within("--others", "fail", &["--full"], ANSWER_TIMEOUT_SECS),
+        ),
+        (
+            "impact",
+            fx.impact_within("--others", "fail", ANSWER_TIMEOUT_SECS),
+        ),
     ] {
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(
@@ -473,8 +486,14 @@ fn a_refused_range_read_is_an_error_not_a_range_with_no_history() {
     ] {
         let fx = fixture();
         for (mode, out) in [
-            ("pack", fx.pack(target, "fail", &[])),
-            ("impact", fx.impact(target, "fail")),
+            (
+                "pack",
+                fx.pack_within(target, "fail", &[], ANSWER_TIMEOUT_SECS),
+            ),
+            (
+                "impact",
+                fx.impact_within(target, "fail", ANSWER_TIMEOUT_SECS),
+            ),
         ] {
             let stderr = String::from_utf8_lossy(&out.stderr);
             assert_eq!(
@@ -564,9 +583,9 @@ fn a_policy_git_refused_to_read_still_withholds() {
     for mode in ["impact", "pack"] {
         let fx = withheld_change();
         let out = if mode == "impact" {
-            fx.impact("ls-tree", "fail")
+            fx.impact_within("ls-tree", "fail", ANSWER_TIMEOUT_SECS)
         } else {
-            fx.pack("ls-tree", "fail", &[])
+            fx.pack_within("ls-tree", "fail", &[], ANSWER_TIMEOUT_SECS)
         };
         assert_eq!(out.status.code(), Some(3), "{mode}");
         let published = String::from_utf8_lossy(&out.stdout);
@@ -676,7 +695,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
     verbs.dedup();
     assert!(verbs.iter().any(|v| v == "grep"), "{verbs:?}");
     for verb in &verbs {
-        let out = fx.impact(verb, "fail");
+        let out = fx.impact_within(verb, "fail", ANSWER_TIMEOUT_SECS);
         if !out.status.success() {
             continue;
         }
