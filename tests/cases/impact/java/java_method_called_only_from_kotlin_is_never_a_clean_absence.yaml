@@ -29,6 +29,12 @@ repo:
   commit_message: "pricing: round up by one"
 expect:
   changed: [src/main/java/shop/Pricing.java::Pricing.roundedTotal]
+  relations:
+  - from: src/main/kotlin/shop/Checkout.kt::charge
+    to: src/main/java/shop/Pricing.java::Pricing.roundedTotal
+    kind: calls
+    resolution: resolved
+    site: 3
   exact: false
   never_empty: true
   no_negative_claims: true

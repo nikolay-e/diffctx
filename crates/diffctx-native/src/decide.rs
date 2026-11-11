@@ -1731,8 +1731,12 @@ impl Cell {
                 continue;
             }
             // A configuration file that only names places (a Kustomize file) is
-            // not the cell's: it holds no object a use could land on.
-            if !(self.family == Family::Config && b.relation == Relation::Imports) {
+            // not the cell's: it holds no object a use could land on. A JVM cell
+            // reads the neighbouring language's files for their uses of its own
+            // definitions, and answers for none of them.
+            if !(self.family == Family::Config && b.relation == Relation::Imports)
+                && (self.family.group() != Group::Jvm || self.family.has_path(file))
+            {
                 self.files.insert(file.to_string());
             }
             if (self.family == Family::Rust

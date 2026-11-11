@@ -1027,3 +1027,82 @@ fn a_module_reaches_another_through_a_declared_dependency() {
         "unresolved(OutsideProject)"
     );
 }
+
+/// Java reads Kotlin under the names the compiler gives it: a top-level function
+/// and property are members of `PricingKt` (`@JvmName` renames one), a property is
+/// its accessors, an `object` is reached through `INSTANCE`, a companion through
+/// `Companion`, and `@JvmStatic` makes a static member (of the class around a
+/// companion too). Each call is a link to the Kotlin definition.
+#[test]
+fn java_calls_kotlin_under_the_names_the_compiler_gives_it() {
+    let kotlin = "package shop\n\nfun total(items: List<Int>): Int = items.sum()\n\nval RATE: Int = 3\n\nvar mode: String = \"a\"\n\n@JvmName(\"rounded\")\nfun round(n: Int): Int = n\n\nobject Tax {\n    fun rate(): Int = 1\n    @JvmStatic fun flat(): Int = 2\n}\n\nclass Cart {\n    companion object {\n        @JvmStatic fun make(): Cart = Cart()\n        fun empty(): Cart = Cart()\n    }\n}\n";
+    let java = "package shop;\n\npublic class Checkout {\n    public int charge(java.util.List<Integer> items) {\n        int a = PricingKt.total(items);\n        int b = PricingKt.getRATE();\n        PricingKt.setMode(\"b\");\n        String m = PricingKt.getMode();\n        int r = PricingKt.rounded(1);\n        int c = Tax.INSTANCE.rate();\n        int d = Tax.flat();\n        Cart e = Cart.Companion.empty();\n        Cart f = Cart.make();\n        return a;\n    }\n}\n";
+    let fx = snapshot(&[
+        ("src/main/kotlin/shop/Pricing.kt", kotlin),
+        ("src/main/java/shop/Checkout.java", java),
+    ]);
+    let (call, kt) = (
+        "src/main/java/shop/Checkout.java",
+        "src/main/kotlin/shop/Pricing.kt",
+    );
+    let expected = [
+        ("total", 5, "total"),
+        ("getRATE", 6, "RATE"),
+        ("setMode", 7, "mode"),
+        ("getMode", 8, "mode"),
+        ("rounded", 9, "round"),
+        ("rate", 10, "Tax.rate"),
+        ("flat", 11, "Tax.flat"),
+        ("empty", 12, "Cart.Companion.empty"),
+        ("make", 13, "Cart.Companion.make"),
+    ];
+    for (name, line, lands) in expected {
+        assert_eq!(
+            fx.lands_at(call, name, line),
+            format!("{kt}::{lands}"),
+            "{name} at line {line}"
+        );
+    }
+}
+
+/// A Kotlin definition used only by Java is no unused one: the resolver of the
+/// Kotlin cell holds the Java file's call among the references to it.
+#[test]
+fn a_kotlin_definition_has_its_java_callers() {
+    let fx = snapshot(&[
+        (
+            "src/main/kotlin/shop/Pricing.kt",
+            "package shop\n\nfun total(items: List<Int>): Int = items.sum()\n",
+        ),
+        (
+            "src/main/java/shop/Checkout.java",
+            "package shop;\n\npublic class Checkout {\n    public int charge(java.util.List<Integer> items) {\n        return PricingKt.total(items);\n    }\n}\n",
+        ),
+    ]);
+    let total = fx
+        .head
+        .definitions()
+        .iter()
+        .find(|d| d.key.local.name.as_str() == "total")
+        .expect("the Kotlin definition");
+    let callers: Vec<(String, Relation)> = fx
+        .head
+        .references_to(&total.key)
+        .iter()
+        .map(|b| (b.file.to_string(), b.relation))
+        .collect();
+    assert_eq!(
+        callers,
+        [(
+            "src/main/java/shop/Checkout.java".to_string(),
+            Relation::Calls
+        )]
+    );
+    assert!(
+        fx.head
+            .read_paths()
+            .iter()
+            .any(|p| p.as_str() == "src/main/java/shop/Checkout.java"),
+        "the Java file is read by the Kotlin resolver"
+    );
+}
