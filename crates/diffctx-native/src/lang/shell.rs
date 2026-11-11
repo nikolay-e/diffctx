@@ -2,18 +2,11 @@
 //! a pattern over its lines does not see.
 //!
 //! The calls, reads and writes of a script and the files it sources are the facts
-//! layer's (`facts::lang::shell`, `resolve::shell`); this model answers no
-//! relation of its own.
+//! layer's (`facts::lang::shell`, `resolve::shell`).
 
-use std::cell::RefCell;
 use std::path::Path;
 
-use rustc_hash::FxHashMap;
 use tree_sitter::Node;
-
-use super::{At, DefId, LanguageFacts, Relation, UseSite};
-use crate::bindings::Finding;
-use crate::source::Source;
 
 #[derive(Default)]
 struct ShellFacts {
@@ -55,59 +48,15 @@ fn by_shebang(path: &str, text: &str) -> bool {
     crate::languages::sniff_language(path, text) == Some("bash")
 }
 
+/// Whether `path`, whose text is `text`, is a script.
+fn is_script(path: &str, text: &str) -> bool {
+    by_path(path).unwrap_or_else(|| by_shebang(path, text))
+}
+
 /// The functions a script defines, when `path` is one.
 pub(super) fn function_names(path: &str, text: &str) -> Vec<String> {
-    if !by_path(path).unwrap_or_else(|| by_shebang(path, text)) {
+    if !is_script(path, text) {
         return Vec::new();
     }
     read(text).map_or_else(Vec::new, |f| f.functions)
-}
-
-pub(super) struct ShellModel<'a> {
-    root: &'a Path,
-    source: &'a Source,
-    scripts: RefCell<FxHashMap<String, bool>>,
-}
-
-impl<'a> ShellModel<'a> {
-    pub(super) fn new(root: &'a Path, source: &'a Source) -> Self {
-        Self {
-            root,
-            source,
-            scripts: RefCell::default(),
-        }
-    }
-}
-
-impl LanguageFacts for ShellModel<'_> {
-    fn modelled(&self) -> &'static [Relation] {
-        &[]
-    }
-
-    fn covers(&self, path: &str) -> bool {
-        if let Some(known) = by_path(path) {
-            return known;
-        }
-        if let Some(known) = self.scripts.borrow().get(path) {
-            return *known;
-        }
-        let script = self
-            .source
-            .read_to_string(&self.root.join(path))
-            .is_some_and(|text| by_shebang(path, &text));
-        self.scripts.borrow_mut().insert(path.to_string(), script);
-        script
-    }
-
-    fn definition(&self, _at: &At) -> Option<DefId> {
-        None
-    }
-
-    fn classify(&self, _site: &UseSite, _def: DefId) -> Option<Finding> {
-        None
-    }
-
-    fn reaches_file(&self, _test: &str, _caller: &str) -> bool {
-        false
-    }
 }

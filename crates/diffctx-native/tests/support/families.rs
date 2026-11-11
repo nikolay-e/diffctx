@@ -1,4 +1,4 @@
-// Seed repositories for the twelve families of the engine's registry: one
+// Seed repositories for the fourteen families of the engine's registry: one
 // changed definition, one known caller and a control with no caller anywhere,
 // built from a shape so a transformation is a difference between two shapes.
 // The expected link comes from reading the generated files, never from
@@ -33,10 +33,12 @@ pub enum Family {
     Terraform,
     Dockerfile,
     Shell,
+    Swift,
+    Sql,
 }
 
 impl Family {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::Python,
         Self::TypeScript,
         Self::Rust,
@@ -49,6 +51,8 @@ impl Family {
         Self::Terraform,
         Self::Dockerfile,
         Self::Shell,
+        Self::Swift,
+        Self::Sql,
     ];
 
     pub fn label(self) -> &'static str {
@@ -65,6 +69,8 @@ impl Family {
             Self::Terraform => "terraform",
             Self::Dockerfile => "dockerfile",
             Self::Shell => "shell",
+            Self::Swift => "swift",
+            Self::Sql => "sql",
         }
     }
 
@@ -97,6 +103,8 @@ impl Family {
             Self::Terraform => &[".tf"],
             Self::Dockerfile => &["Dockerfile"],
             Self::Shell => &[".sh"],
+            Self::Swift => &[".swift"],
+            Self::Sql => &[".sql"],
         }
     }
 }
@@ -368,6 +376,53 @@ fn kotlin(s: &Shape) -> Parts {
         comment: "//",
         garbage: "    ))) ((( @@@\n",
         declaration_marker: "fun total",
+    }
+}
+
+fn swift(s: &Shape) -> Parts {
+    let target = if s.one_letter { "A" } else { "Shop" };
+    let call = chain("Pricing.total(items)", s.depth, " + 1");
+    Parts {
+        manifests: vec![(
+            "Package.swift",
+            "// swift-tools-version:5.9\nimport PackageDescription\n\nlet package = Package(\n    name: \"Fixture\",\n    targets: [.target(name: \"Shop\")]\n)\n",
+        )],
+        unrelated: vec![pair(
+            "Sources/Shop/Util.swift",
+            "func helper(_ x: Int) -> Int {\n    return x\n}\n",
+        )],
+        definition: format!("Sources/{target}/Pricing.swift"),
+        base: "enum Pricing {\n    static func total(_ items: [Int]) -> Int {\n        return items.reduce(0, +)\n    }\n}\n".into(),
+        head: "enum Pricing {\n    static func total(_ items: [Int]) -> Int {\n        return items.reduce(0, +) * 2\n    }\n}\n".into(),
+        symbol: "total",
+        caller: format!("Sources/{target}/Checkout.swift"),
+        caller_text: format!(
+            "func charge(_ items: [Int]) -> Int {{\n@CALL@\n    let result = {call}\n    return result\n}}\n"
+        ),
+        comment: "//",
+        garbage: "    ))) ((( @@@\n",
+        declaration_marker: "static func total",
+    }
+}
+
+fn sql(s: &Shape) -> Parts {
+    let dir = if s.one_letter { "a" } else { "db" };
+    let call = chain("refresh_book(cart)", s.depth, " + 1");
+    Parts {
+        manifests: vec![],
+        unrelated: vec![pair(
+            &format!("{dir}/V9__util.sql"),
+            "CREATE FUNCTION helper(x int) RETURNS int\nLANGUAGE sql AS $$\n  SELECT x\n$$;\n",
+        )],
+        definition: format!("{dir}/V1__fn.sql"),
+        base: "CREATE FUNCTION refresh_book(items int) RETURNS int\nLANGUAGE sql AS $$\n  SELECT items\n$$;\n".into(),
+        head: "CREATE FUNCTION refresh_book(items int) RETURNS int\nLANGUAGE sql AS $$\n  SELECT items * 2\n$$;\n".into(),
+        symbol: "refresh_book",
+        caller: format!("{dir}/V2__use.sql"),
+        caller_text: format!("SELECT 1;\n@CALL@\nSELECT {call};\n"),
+        comment: "--",
+        garbage: "))) ((( @@@\n",
+        declaration_marker: "CREATE FUNCTION",
     }
 }
 
@@ -645,6 +700,8 @@ fn parts(family: Family, shape: &Shape) -> Parts {
         Family::Terraform => terraform(shape),
         Family::Dockerfile => dockerfile(shape),
         Family::Shell => shell(shape),
+        Family::Swift => swift(shape),
+        Family::Sql => sql(shape),
     }
 }
 

@@ -14,12 +14,15 @@ pub mod config;
 pub mod dockerfile;
 pub mod go;
 pub mod helm;
+pub mod html;
 pub mod java;
 pub mod kotlin;
 pub mod php;
 pub mod python;
 pub mod rust;
 pub mod shell;
+pub mod sql;
+pub mod swift;
 pub mod terraform;
 pub mod typescript;
 
@@ -40,6 +43,10 @@ fn shipped() -> Vec<Arc<dyn Extractor>> {
         Arc::new(dockerfile::DockerfileExtractor),
         Arc::new(shell::ShellExtractor),
         Arc::new(shell::UnreadShellExtractor),
+        Arc::new(html::HtmlExtractor),
+        Arc::new(html::AstroExtractor),
+        Arc::new(swift::SwiftExtractor),
+        Arc::new(sql::SqlExtractor),
     ];
     all.extend(typescript::extractors());
     all
@@ -54,7 +61,7 @@ pub fn builtin() -> Registry {
     registry
 }
 
-static DIGESTS: [OnceLock<u64>; 17] = [const { OnceLock::new() }; 17];
+static DIGESTS: [OnceLock<u64>; 21] = [const { OnceLock::new() }; 17];
 
 const fn slot(language: Language) -> usize {
     match language {
@@ -75,6 +82,10 @@ const fn slot(language: Language) -> usize {
         Language::Dockerfile => 14,
         Language::Shell => 15,
         Language::ShellUnread => 16,
+        Language::Html => 17,
+        Language::Astro => 18,
+        Language::Swift => 19,
+        Language::Sql => 20,
     }
 }
 
@@ -115,7 +126,10 @@ fn grammars(language: Language) -> Vec<tree_sitter::Language> {
     let mut found: Vec<tree_sitter::Language> = Vec::new();
     // The JavaScript and TypeScript extractors share their grammars (JSX in
     // `.tsx`, plain script in `.ts`), so either is outdated when one is.
-    if matches!(language, Language::JavaScript | Language::TypeScript) {
+    if matches!(
+        language,
+        Language::JavaScript | Language::TypeScript | Language::Html | Language::Astro
+    ) {
         #[cfg(feature = "tree-sitter-javascript")]
         found.push(tree_sitter::Language::new(tree_sitter_javascript::LANGUAGE));
         #[cfg(feature = "tree-sitter-typescript")]
@@ -148,6 +162,8 @@ fn grammars(language: Language) -> Vec<tree_sitter::Language> {
         Language::C => found.push(tree_sitter::Language::new(tree_sitter_c::LANGUAGE)),
         #[cfg(feature = "tree-sitter-php")]
         Language::Php => found.push(tree_sitter::Language::new(tree_sitter_php::LANGUAGE_PHP)),
+        #[cfg(feature = "tree-sitter-swift")]
+        Language::Swift => found.push(tree_sitter::Language::new(tree_sitter_swift::LANGUAGE)),
         #[cfg(feature = "tree-sitter-bash")]
         Language::Shell => found.push(tree_sitter::Language::new(tree_sitter_bash::LANGUAGE)),
         #[cfg(feature = "tree-sitter-yaml")]

@@ -60,6 +60,15 @@ pub struct TypeScriptResolver {
     read: Vec<RepoPath>,
 }
 
+/// The languages the resolver reads: the scripts of a page or an Astro
+/// component are its own, read in place (`facts::lang::html`).
+fn reads(language: Language) -> bool {
+    matches!(
+        language,
+        Language::JavaScript | Language::TypeScript | Language::Html | Language::Astro
+    )
+}
+
 impl TypeScriptResolver {
     /// Resolves every TypeScript and JavaScript file of `side`, found by
     /// extension or shebang.
@@ -74,7 +83,7 @@ impl TypeScriptResolver {
         let mut read = Vec::new();
         for entry in &listing.entries {
             let language = Language::from_path(&entry.path);
-            let script = matches!(language, Some(Language::JavaScript | Language::TypeScript))
+            let script = language.is_some_and(reads)
                 || (language.is_none() && Language::needs_shebang(&entry.path));
             if !script {
                 continue;
@@ -86,7 +95,7 @@ impl TypeScriptResolver {
                 break;
             }
             if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if matches!(file.language(), Language::JavaScript | Language::TypeScript) {
+                if reads(file.language()) {
                     losses.extend(file.losses());
                     read.push(entry.path.clone());
                     files.push(file);
@@ -97,10 +106,7 @@ impl TypeScriptResolver {
         // import of the link reaches the definitions there (#372).
         let mut links: HashMap<String, String> = HashMap::new();
         for (path, reason) in &listing.not_analysed {
-            let script = matches!(
-                Language::from_path(path),
-                Some(Language::JavaScript | Language::TypeScript)
-            );
+            let script = Language::from_path(path).is_some_and(reads);
             if *reason == NotAnalysedReason::Symlink && script {
                 if let Some(target) = reader.resolve_link(path)? {
                     links.insert(path.as_str().to_string(), target.as_str().to_string());

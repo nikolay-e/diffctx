@@ -12,10 +12,8 @@
 //! the declaration is rejected. Compiler-grade typing is out of reach here:
 //! a receiver typed by inference is unresolved, never guessed.
 //!
-//! Swift reads through the same model (#526): its facts take Kotlin's shape. A
-//! Swift package is the SwiftPM target a file sits in, and a member an
-//! `extension` adds is owned by the type it extends. Java has its own resolver
-//! (`resolve::java`).
+//! Java has its own resolver (`resolve::java`), and Swift reads through `resolve::kotlin`'s
+//! Swift dialect.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -39,7 +37,7 @@ const MAX_PROJECT_HOPS: usize = 6;
 const MAX_TYPING_DEPTH: usize = 4;
 
 pub fn is_kotlin(path: &str) -> bool {
-    has_extension(path, Dialect::Kotlin.extensions())
+    has_extension(path, EXTENSIONS)
 }
 
 fn has_extension(path: &str, extensions: &[&str]) -> bool {
@@ -48,41 +46,11 @@ fn has_extension(path: &str, extensions: &[&str]) -> bool {
         .is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)))
 }
 
-/// The SwiftPM target a file belongs to: the directory under `Sources/` or
-/// `Tests/` that holds it. A file outside that layout, an Xcode target's,
-/// is in the one unnamed module.
-fn swift_module(rel: &str) -> Option<String> {
-    let parts: Vec<&str> = rel.split('/').collect();
-    parts
-        .windows(3)
-        .find(|w| w[0] == "Sources" || w[0] == "Tests")
-        .map(|w| w[1].to_string())
-}
+/// The extensions of the language.
+const EXTENSIONS: &[&str] = &["kt", "kts"];
 
-/// The language a resolver reads.
-enum Dialect {
-    Kotlin,
-    /// The modules the repository declares: an import of any other one
-    /// cannot bring one of its names.
-    Swift(FxHashSet<String>),
-}
-
-impl Dialect {
-    fn extensions(&self) -> &'static [&'static str] {
-        match self {
-            Self::Kotlin => &["kt", "kts"],
-            Self::Swift(_) => &["swift"],
-        }
-    }
-
-    /// The keywords a type declaration starts with.
-    fn type_keywords(&self) -> &'static [&'static str] {
-        match self {
-            Self::Kotlin => &["class", "interface", "object", "typealias"],
-            Self::Swift(_) => &["class", "struct", "enum", "actor", "protocol", "typealias"],
-        }
-    }
-}
+/// The keywords a type declaration starts with.
+const TYPE_KEYWORDS: &[&str] = &["class", "interface", "object", "typealias"];
 
 /// A declaration and where it lives.
 #[derive(Clone, Debug)]
@@ -148,7 +116,6 @@ impl Walk {
 pub struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
-    dialect: Dialect,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
     /// Facts of the base side, by (revision, path): asked for once per
     /// changed definition.
@@ -161,28 +128,9 @@ pub struct KotlinResolver<'a> {
 
 impl<'a> KotlinResolver<'a> {
     pub fn new(root: &'a Path, source: &'a Source) -> Self {
-        Self::with(root, source, Dialect::Kotlin)
-    }
-
-    /// A resolver of the Swift files among `files`.
-    pub fn swift<'f>(
-        root: &'a Path,
-        source: &'a Source,
-        files: impl IntoIterator<Item = &'f String>,
-    ) -> Self {
-        let modules = files
-            .into_iter()
-            .filter(|f| has_extension(f, &["swift"]))
-            .filter_map(|f| swift_module(f))
-            .collect();
-        Self::with(root, source, Dialect::Swift(modules))
-    }
-
-    fn with(root: &'a Path, source: &'a Source, dialect: Dialect) -> Self {
         Self {
             root,
             source,
-            dialect,
             facts: RefCell::default(),
             facts_at: RefCell::default(),
             type_files: RefCell::default(),
@@ -201,7 +149,7 @@ impl<'a> KotlinResolver<'a> {
             .source
             .read_bytes(&self.root.join(rel))
             .and_then(|b| String::from_utf8(b).ok())
-            .and_then(|text| self.parse(rel, &text));
+            .and_then(|text| crate::facts::kotlin::facts(&text));
         self.facts
             .borrow_mut()
             .insert(rel.to_string(), read.clone());
@@ -233,28 +181,14 @@ impl<'a> KotlinResolver<'a> {
             .read_lossy(&self.root.join(rel))
             .ok()
             .flatten()
-            .and_then(|text| self.parse(rel, &text));
+            .and_then(|text| crate::facts::kotlin::facts(&text));
         self.facts_at.borrow_mut().insert(key, read.clone());
         read
     }
 
-    fn parse(&self, rel: &str, text: &str) -> Option<Arc<KotlinFacts>> {
-        match self.dialect {
-            Dialect::Kotlin => crate::facts::kotlin::facts(text),
-            Dialect::Swift(_) => crate::facts::swift::facts(text).map(|mut f| {
-                f.package = swift_module(rel);
-                Arc::new(f)
-            }),
-        }
-    }
-
-    fn is_swift(&self) -> bool {
-        matches!(self.dialect, Dialect::Swift(_))
-    }
-
     /// Whether `path` is a file of this resolver's language.
     pub fn covers(&self, path: &str) -> bool {
-        has_extension(path, self.dialect.extensions())
+        has_extension(path, EXTENSIONS)
     }
 
     /// The lines of `rel` where a use could reach `def` by spelling: its
@@ -356,9 +290,6 @@ impl<'a> KotlinResolver<'a> {
     fn visibility_rejects(&self, rel: &str, def: &KDef) -> Option<Evidence> {
         match def.decl.effective {
             Some(Visibility::Private) if rel != def.path => Some(Evidence::Rejected),
-            // A Swift module reaches another one's names through an import
-            // alone, which `@testable` opens to `internal` ones.
-            Some(Visibility::Internal) if self.is_swift() => None,
             Some(Visibility::Internal) => {
                 let same = self.project_of(rel) == self.project_of(&def.path);
                 (!same).then_some(Evidence::Rejected)
@@ -428,10 +359,6 @@ impl<'a> KotlinResolver<'a> {
             .iter()
             .filter(|i| i.wildcard)
             .map(|i| i.path.as_str())
-            .filter(|m| match &self.dialect {
-                Dialect::Swift(modules) => modules.contains(*m),
-                Dialect::Kotlin => true,
-            })
             .collect();
         match def.package.as_deref() {
             Some(pkg) if wildcards.contains(&pkg) => {
@@ -538,12 +465,8 @@ impl<'a> KotlinResolver<'a> {
                 return Evidence::Resolved;
             }
         }
-        // A call through a supertype the owner implements may dispatch here:
-        // a Swift protocol's requirement is met without `override`.
-        if self.is_subtype(&owner, &actual, 0)
-            && (def.decl.is_override
-                || (self.is_swift() && self.member_of(&actual, &def.decl.name, 0).is_some()))
-        {
+        // A call through a supertype the owner implements may dispatch here.
+        if self.is_subtype(&owner, &actual, 0) && def.decl.is_override {
             return Evidence::Candidate("dispatch");
         }
         Evidence::Rejected
@@ -1022,13 +945,8 @@ impl<'a> KotlinResolver<'a> {
         if self.type_files.borrow().is_empty() {
             let mut index: FxHashMap<String, Vec<String>> = FxHashMap::default();
             let rev = self.source.revision().map(str::to_string);
-            let keywords = self.dialect.type_keywords();
-            let globs: Vec<String> = self
-                .dialect
-                .extensions()
-                .iter()
-                .map(|e| format!("*.{e}"))
-                .collect();
+            let keywords = TYPE_KEYWORDS;
+            let globs: Vec<String> = EXTENSIONS.iter().map(|e| format!("*.{e}")).collect();
             let declared = crate::grep::grep_lines_matching(
                 self.root,
                 self.source,

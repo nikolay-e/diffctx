@@ -1,12 +1,9 @@
-//! The language models impact resolves references through, behind one
-//! interface (#506). The core asks for a definition and how a site relates
-//! to it, and never names a model's own types: a definition is a handle the
-//! model hands out and takes back. A language joins by implementing
-//! `LanguageFacts` and registering in `Registry::for_analysis`.
+//! What the answer states of a language beyond the cells: the tier table the README
+//! reproduces, the relation kinds the case schema names, the cells made precise, and
+//! the definitions a run lays over the fragments (the overlay) with the names a file
+//! defines that a pattern over its lines does not see.
 
 mod bound;
-pub(crate) use bound::is_page;
-mod kotlin;
 pub(crate) mod rust;
 mod shell;
 mod sql;
@@ -16,7 +13,7 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
-use crate::bindings::{self, Finding, Lang};
+use crate::bindings::{self, Lang};
 use crate::facts::Declaration;
 use crate::source::Source;
 use crate::types::{Fragment, FragmentId, FragmentKind};
@@ -155,25 +152,11 @@ pub fn stated_owner(path: &str, line: u32, owner: &str, source: &Source) -> Opti
     Some(sql::schema_at(&text, line).as_deref() == Some(&owner.to_lowercase()))
 }
 
-/// What a model can answer about a definition and its uses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Relation {
-    /// Which sites reference or call the definition.
-    Callers,
-    /// Every line of a file where a use could reach it, read off the syntax
-    /// rather than waiting for a graph edge.
-    Uses,
-    /// Definitions the range removed, read off the facts at the base.
-    Removals,
-    /// Whether a file still binds a name from another file.
-    Imports,
-}
-
 /// How far an answer about a language is promised (T5). Tier 1 is the
 /// declared set whose definitions, callers and test reach are being made
-/// precise. Tier 2 is read by a model of the registry or by another graph and
-/// answers with candidates. Every other language is Tier 3: not modelled, and
-/// no answer about it claims an absence.
+/// precise. Tier 2 is read by a cell or by the ranking graph and answers with
+/// candidates. Every other language is Tier 3: not modelled, and no answer about
+/// it claims an absence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
     One,
@@ -280,58 +263,8 @@ impl RelationKind {
     }
 }
 
-/// What the engine promises for one (language, relation) cell (T16).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "read by the oracle harness once lib.rs re-exports the cells"
-)]
-pub enum CellState {
-    /// The oracle gates pass and no older path answers for the cell.
-    Precise,
-    /// Candidates, labelled as candidates.
-    Heuristic,
-    /// A named unknown, never a zero.
-    None,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "read by the oracle harness once lib.rs re-exports the cells"
-)]
-pub struct Cell {
-    /// A directory name of the corpus: `python`, `typescript`, `rust`, ...
-    pub language: &'static str,
-    pub relation: RelationKind,
-    pub state: CellState,
-}
-
-/// The corpus languages, each with a path its files carry, which is how the
-/// registry finds the model that reads them.
-const CELL_LANGUAGES: &[(&str, &str)] = &[
-    ("python", "x.py"),
-    ("typescript", "x.ts"),
-    ("rust", "x.rs"),
-    ("kotlin", "X.kt"),
-    ("java", "X.java"),
-    ("php", "X.php"),
-    ("c", "x.c"),
-    ("cpp", "x.cpp"),
-    ("swift", "X.swift"),
-    ("go", "x.go"),
-    ("terraform", "main.tf"),
-    ("shell", "x.sh"),
-    ("sql", "x.sql"),
-    ("config", "x.yaml"),
-    ("dockerfile", "Dockerfile"),
-    ("web", "x.html"),
-    ("other", "x.rb"),
-];
-
 /// Cells a decision has made `Precise`: the oracle gate passes and the
-/// replaced path is deleted. None yet; a cell joins this list in the change
-/// that deletes its old path.
+/// replaced path is deleted. None yet.
 const PRECISE: &[(&str, RelationKind)] = &[];
 
 /// Whether the cell is `Precise`: a caller row states its `kind` for exactly
@@ -397,229 +330,25 @@ fn stated_kind_by(
     precise(cell_language(path), kind.name()).then_some(kind.name())
 }
 
-/// The kinds a model answering `relation` finds. The engine reports one
-/// "called from" family and does not say which kind it found, so a model
-/// that answers callers answers every kind a caller can be.
-fn kinds_of(language: &str, relation: Relation) -> &'static [RelationKind] {
-    use RelationKind::{Calls, Executes, Instantiates, PassesAsValue, Reads};
-    match relation {
-        Relation::Callers if language == "shell" => &[Calls, Executes],
-        Relation::Callers => &[Calls, Reads, Instantiates, PassesAsValue],
-        Relation::Imports => &[RelationKind::Imports],
-        Relation::Uses | Relation::Removals => &[],
-    }
-}
-
-/// The relations the facts layer's resolvers answer (`decide.rs`), which no
-/// model of this registry reads callers for: Python's, TypeScript's with
-/// JavaScript's, Rust's, Kotlin's, Java's, Go's, PHP's, C's, C++'s, Terraform's, a
-/// Dockerfile's and the configuration family's.
-fn answered_by_facts(language: &str, relation: RelationKind) -> bool {
-    use RelationKind::{
-        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, TestsReach,
-        TypeUse, Writes,
-    };
-    (language == "config" && relation == Reads)
-        // Terraform's cell reads a name (`var.x`, `module.m.out`) and writes a
-        // variable (a module's argument, a variable file's assignment): nothing
-        // else of the relations exists there yet.
-        || (language == "terraform" && matches!(relation, Reads | Writes))
-        || (language == "dockerfile" && matches!(relation, Reads | Imports))
-        || (language == "shell"
-            && matches!(relation, Calls | Reads | Writes | Imports | TestsReach))
-        || (matches!(
-            language,
-            "python" | "typescript" | "rust" | "kotlin" | "java" | "go" | "php" | "c" | "cpp"
-        ) && matches!(
-            relation,
-            Calls
-                | Reads
-                | Writes
-                | Instantiates
-                | PassesAsValue
-                | TypeUse
-                | Overrides
-                | Imports
-                | Reexports
-                | TestsReach
-        ))
-}
-
-/// A definition one model resolved, as that model's own handle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct DefId(u32);
-
-/// A fragment as a model sees it: its repo-relative path and the fragments
-/// of its file, which hold its owner and scope.
-pub struct At<'a> {
-    pub path: &'a str,
-    pub frag: &'a Fragment,
-    pub file: &'a [&'a Fragment],
-}
-
-/// Where a use sits: whole lines, and the fragment around them when there
-/// is one (a line a text search found has none).
-pub struct UseSite<'a> {
-    pub path: &'a str,
-    pub lines: (u32, u32),
-    pub frag: Option<(&'a Fragment, &'a [&'a Fragment])>,
-}
-
-/// A definition the range removed, as the base's facts state it.
-pub struct RemovedDef {
-    pub def: DefId,
-    pub path: String,
-    pub name: String,
-    pub lines: (u32, u32),
-    pub public: bool,
-}
-
-/// Every method that answers `None` means this model does not resolve that
-/// relation, and `modelled` does not list it: the caller treats the
-/// relation as not modelled for the language, never as nothing found.
-pub trait LanguageFacts {
-    fn modelled(&self) -> &'static [Relation];
-    fn covers(&self, path: &str) -> bool;
-    fn definition(&self, at: &At) -> Option<DefId>;
-    fn classify(&self, site: &UseSite, def: DefId) -> Option<Finding>;
-    /// Whether a test file reaches a caller's file.
-    fn reaches_file(&self, test: &str, caller: &str) -> bool;
-    fn use_lines(&self, _path: &str, _def: DefId) -> Option<Vec<u32>> {
-        None
-    }
-    /// Whether code in `path` can name the definition at all: a function
-    /// local to another is named only inside it (#546), a private item only
-    /// where its language's visibility reaches (#599).
-    fn names_from(&self, _def: DefId, _path: &str) -> bool {
-        true
-    }
-    fn annotations(&self, _def: DefId) -> Option<Vec<String>> {
-        None
-    }
-    /// The trait a member implements or declares, whose calls may arrive
-    /// through a dispatch no model follows.
-    fn dispatched(&self, _def: DefId) -> Option<String> {
-        None
-    }
-    /// `pairs` are (path at the base, path at the head or `None` when
-    /// deleted) of every file the range changed.
-    fn removed(&self, _base: &str, _pairs: &[(String, Option<String>)]) -> Option<Vec<RemovedDef>> {
-        None
-    }
-    /// Whether `importer`, whose text is `text`, binds `name` from `from`.
-    fn binds(&self, _importer: &str, _text: &str, _name: &str, _from: &str) -> Option<bool> {
-        None
-    }
-}
-
-pub struct Registry<'a> {
-    models: Vec<Box<dyn LanguageFacts + 'a>>,
-}
-
-impl<'a> Registry<'a> {
-    /// The models of one analysis. `files` is every path an import may
-    /// name, deleted and renamed-away ones included.
-    pub fn for_analysis(
-        root: &'a Path,
-        source: &'a Source,
-        files: rustc_hash::FxHashSet<String>,
-    ) -> Self {
-        let mut models = bound::models(root, source, files.clone());
-        models.push(Box::new(shell::ShellModel::new(root, source)));
-        models.push(Box::new(kotlin::KotlinModel::swift(root, source, &files)));
-        models.push(Box::new(sql::SqlModel::new(root, source)));
-        Self { models }
-    }
-
-    pub fn for_path(&self, path: &str) -> Option<&(dyn LanguageFacts + 'a)> {
-        self.models
-            .iter()
-            .find(|m| m.covers(path))
-            .map(AsRef::as_ref)
-    }
-
-    /// The model both files belong to: a reference resolves within one.
-    pub fn for_pair(&self, a: &str, b: &str) -> Option<&(dyn LanguageFacts + 'a)> {
-        self.for_path(a).filter(|m| m.covers(b))
-    }
-
-    pub fn models(&self) -> impl Iterator<Item = &(dyn LanguageFacts + 'a)> {
-        self.models.iter().map(AsRef::as_ref)
-    }
-
-    /// Whether the model of `path` answers `relation`.
-    pub fn answers(&self, path: &str, relation: Relation) -> bool {
-        self.for_path(path)
-            .is_some_and(|m| m.modelled().contains(&relation))
-    }
-
-    /// The tier of `path`: its language's row of `TIERS`, and at least Tier 2
-    /// for a file a model of this registry reads, so a model that joins the
-    /// registry cannot leave its language "not modelled".
-    #[allow(
-        dead_code,
-        reason = "read by this module's tests until a door states it"
-    )]
-    pub fn tier(&self, path: &str) -> Tier {
-        let language = crate::languages::get_language_for_file(path);
-        let extension = Path::new(path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        let listed = TIERS
-            .iter()
-            .find(|(_, _, names)| {
-                names
-                    .iter()
-                    .any(|n| Some(*n) == language || n.eq_ignore_ascii_case(extension))
-            })
-            .map_or(Tier::Three, |(tier, _, _)| *tier);
-        if listed == Tier::Three && self.for_path(path).is_some() {
-            Tier::Two
-        } else {
-            listed
-        }
-    }
-
-    /// Every (language, relation) cell, each in the one state the models of
-    /// this registry make true: `Heuristic` where a model answers the
-    /// relation or the engine names paths, `None` where nothing reads it.
-    #[allow(
-        dead_code,
-        reason = "read by the oracle harness once lib.rs re-exports the cells"
-    )]
-    pub fn cells(&self) -> Vec<Cell> {
-        CELL_LANGUAGES
-            .iter()
-            .flat_map(|&(language, sample)| {
-                RelationKind::ALL.iter().map(move |&relation| Cell {
-                    language,
-                    relation,
-                    state: self.state(language, sample, relation),
-                })
-            })
-            .collect()
-    }
-
-    fn state(&self, language: &str, sample: &str, relation: RelationKind) -> CellState {
-        if is_precise(language, relation.name()) {
-            return CellState::Precise;
-        }
-        let answered = relation == RelationKind::ReferencesPath
-            || answered_by_facts(language, relation)
-            || self.for_path(sample).is_some_and(|model| {
-                relation == RelationKind::TestsReach
-                    || model
-                        .modelled()
-                        .iter()
-                        .any(|r| kinds_of(language, *r).contains(&relation))
-            });
-        if answered {
-            CellState::Heuristic
-        } else {
-            CellState::None
-        }
-    }
+/// The tier of `path`: its language's row of `TIERS`; Tier 3 when none names it.
+#[allow(
+    dead_code,
+    reason = "read by this module's tests until a door states it"
+)]
+pub fn tier_of(path: &str) -> Tier {
+    let language = crate::languages::get_language_for_file(path);
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    TIERS
+        .iter()
+        .find(|(_, _, names)| {
+            names
+                .iter()
+                .any(|n| Some(*n) == language || n.eq_ignore_ascii_case(extension))
+        })
+        .map_or(Tier::Three, |(tier, _, _)| *tier)
 }
 
 #[cfg(test)]
@@ -653,11 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn a_path_is_tiered_by_its_language_and_by_the_models_that_read_it() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let source = Source::empty();
-        let registry =
-            Registry::for_analysis(root.path(), &source, rustc_hash::FxHashSet::default());
+    fn a_path_is_tiered_by_its_language() {
         let expected = [
             ("app/main.py", Tier::One),
             ("web/index.ts", Tier::One),
@@ -680,66 +405,8 @@ mod tests {
             ("src/Users.scala", Tier::Three),
         ];
         for (path, tier) in expected {
-            assert_eq!(registry.tier(path), tier, "{path}");
+            assert_eq!(tier_of(path), tier, "{path}");
         }
-    }
-
-    #[test]
-    fn every_cell_is_stated_once_and_none_is_precise_yet() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let source = Source::empty();
-        let registry =
-            Registry::for_analysis(root.path(), &source, rustc_hash::FxHashSet::default());
-        let cells = registry.cells();
-        assert_eq!(cells.len(), CELL_LANGUAGES.len() * RelationKind::ALL.len());
-        assert!(cells.iter().all(|c| c.state != CellState::Precise));
-        let state = |language: &str, relation: RelationKind| {
-            cells
-                .iter()
-                .find(|c| c.language == language && c.relation == relation)
-                .map(|c| c.state)
-        };
-        for language in [
-            "python",
-            "typescript",
-            "rust",
-            "kotlin",
-            "java",
-            "go",
-            "php",
-            "c",
-            "cpp",
-        ] {
-            assert_eq!(
-                state(language, RelationKind::Calls),
-                Some(CellState::Heuristic),
-                "{language} calls"
-            );
-        }
-        for (language, _) in CELL_LANGUAGES {
-            assert_eq!(
-                state(language, RelationKind::ReferencesPath),
-                Some(CellState::Heuristic),
-                "{language} references_path"
-            );
-        }
-        assert_eq!(
-            state("typescript", RelationKind::TypeUse),
-            Some(CellState::Heuristic)
-        );
-        assert_eq!(
-            state("rust", RelationKind::TypeUse),
-            Some(CellState::Heuristic)
-        );
-        assert_eq!(state("other", RelationKind::Calls), Some(CellState::None));
-        assert_eq!(
-            state("rust", RelationKind::Writes),
-            Some(CellState::Heuristic)
-        );
-        assert_eq!(
-            state("go", RelationKind::Writes),
-            Some(CellState::Heuristic)
-        );
     }
 
     #[test]
@@ -800,44 +467,5 @@ mod tests {
             .map(|(_, label, _)| *label)
             .collect();
         assert_eq!(one, ["Python", "TypeScript/JavaScript", "Rust", "Kotlin"]);
-    }
-}
-
-/// Definitions a model handed out, interned so asking twice for the same
-/// one returns the same handle.
-struct Table<K, V> {
-    keys: std::cell::RefCell<rustc_hash::FxHashMap<K, DefId>>,
-    values: std::cell::RefCell<Vec<std::rc::Rc<V>>>,
-}
-
-impl<K: std::hash::Hash + Eq, V> Table<K, V> {
-    fn new() -> Self {
-        Self {
-            keys: Default::default(),
-            values: Default::default(),
-        }
-    }
-
-    fn intern(&self, key: K, make: impl FnOnce() -> Option<V>) -> Option<DefId> {
-        if let Some(id) = self.keys.borrow().get(&key) {
-            return Some(*id);
-        }
-        let value = make()?;
-        let mut values = self.values.borrow_mut();
-        let id = DefId(u32::try_from(values.len()).ok()?);
-        values.push(std::rc::Rc::new(value));
-        self.keys.borrow_mut().insert(key, id);
-        Some(id)
-    }
-
-    fn push(&self, value: V) -> Option<DefId> {
-        let mut values = self.values.borrow_mut();
-        let id = DefId(u32::try_from(values.len()).ok()?);
-        values.push(std::rc::Rc::new(value));
-        Some(id)
-    }
-
-    fn get(&self, id: DefId) -> std::rc::Rc<V> {
-        self.values.borrow()[id.0 as usize].clone()
     }
 }
