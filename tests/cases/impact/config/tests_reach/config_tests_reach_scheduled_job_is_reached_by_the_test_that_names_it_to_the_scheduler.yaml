@@ -1,0 +1,48 @@
+name: config_tests_reach_scheduled_job_is_reached_by_the_test_that_names_it_to_the_scheduler
+mode: impact
+source: synthetic
+tags: [python, apscheduler, scheduled-job, tests-reach, framework-registration, decoy]
+repo:
+  initial_files:
+    jobs.py: |
+      from apscheduler.schedulers.background import BackgroundScheduler
+
+      scheduler = BackgroundScheduler()
+
+
+      @scheduler.scheduled_job("cron", hour=1, id="nightly_digest")
+      def nightly_digest():
+          return "digest"
+
+
+      @scheduler.scheduled_job("interval", minutes=5, id="refresh_cache")
+      def refresh_cache():
+          return "cache"
+    tests/test_jobs.py: |
+      from jobs import scheduler
+
+
+      def test_the_digest_is_scheduled():
+          assert scheduler.get_job("nightly_digest") is not None
+    tests/test_labels.py: |
+      def test_label_is_echoed():
+          assert str("refresh_cache") == "refresh_cache"
+  changed_files:
+    jobs.py: |
+      from apscheduler.schedulers.background import BackgroundScheduler
+
+      scheduler = BackgroundScheduler()
+
+
+      @scheduler.scheduled_job("cron", hour=1, id="nightly_digest")
+      def nightly_digest():
+          return "digest v2"
+
+
+      @scheduler.scheduled_job("interval", minutes=5, id="refresh_cache")
+      def refresh_cache():
+          return "cache v2"
+  commit_message: "jobs: new payloads"
+expect:
+  entry_tested: [nightly_digest]
+  entry_not_tested: [refresh_cache]
