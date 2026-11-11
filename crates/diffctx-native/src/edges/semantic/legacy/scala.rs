@@ -5,19 +5,32 @@
 use rustc_hash::FxHashSet;
 use tree_sitter::Node;
 
-use super::{ImportFact, LanguageFacts};
+/// One import clause: `prefix.{selectors}` plus whether it ends in a wildcard.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ImportFact {
+    pub prefix: String,
+    pub selectors: Vec<String>,
+    pub wildcard: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScalaFacts {
+    pub package: Option<String>,
+    pub imports: Vec<ImportFact>,
+    pub inherits: FxHashSet<String>,
+}
 
 /// `None` when the grammar is unavailable, the parse timed out, or the text
 /// does not parse cleanly — a fragment cut mid-scope, a file mid-edit. The
 /// caller keeps its regex reader for exactly those inputs.
-pub fn facts(content: &str) -> Option<LanguageFacts> {
+pub fn facts(content: &str) -> Option<ScalaFacts> {
     let tree = crate::parsers::parse_tree("scala", content)?;
     let root = tree.root_node();
     if root.has_error() {
         return None;
     }
     let bytes = content.as_bytes();
-    let mut facts = LanguageFacts::default();
+    let mut facts = ScalaFacts::default();
     let mut package_parts: Vec<String> = Vec::new();
     let mut package_open = true;
     let mut cursor = root.walk();

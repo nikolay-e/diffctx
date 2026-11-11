@@ -9,7 +9,7 @@ use tree_sitter::Node;
 
 use crate::source::Source;
 
-pub fn is_rust(path: &str) -> bool {
+pub(super) fn is_rust(path: &str) -> bool {
     Path::new(path)
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("rs"))
@@ -19,7 +19,7 @@ pub fn is_rust(path: &str) -> bool {
 /// root: `pub fn` in a `pub(crate) mod` is crate-internal (#359). A binary
 /// crate exports nothing. Read off the snapshot, never the disk (an
 /// uncommitted `mod.rs` -> `m.rs` move flipped a commit's verdict).
-pub fn module_is_public(source: &Source, path: &str) -> bool {
+pub(super) fn module_is_public(source: &Source, path: &str) -> bool {
     if !is_rust(path) {
         return true;
     }
@@ -108,7 +108,7 @@ fn without_attributes(line: &str) -> &str {
 /// The lines of the functions in `text` an attribute marks as tests:
 /// `#[test]`, `#[tokio::test]` — an inline unit test is a test like any in
 /// `tests/` (#528).
-pub fn test_functions(text: &str) -> Vec<(u32, u32)> {
+pub(super) fn test_functions(text: &str) -> Vec<(u32, u32)> {
     let Some(tree) = crate::parsers::parse_tree("rust", text) else {
         return Vec::new();
     };

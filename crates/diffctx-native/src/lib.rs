@@ -57,9 +57,7 @@ pub mod artifact;
 pub mod delivery;
 pub mod hook;
 pub mod impact;
-pub mod kotlin_bindings;
 pub(crate) mod lang;
-pub use lang::{RelationKind, is_precise};
 pub mod locate;
 pub mod render;
 
@@ -79,6 +77,8 @@ pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
 pub(crate) mod types;
+mod vocabulary;
+pub use vocabulary::{RelationKind, is_precise};
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.
 #[cfg(feature = "python")]

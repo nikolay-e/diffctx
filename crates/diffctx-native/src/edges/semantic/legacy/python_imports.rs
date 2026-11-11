@@ -3,8 +3,20 @@
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustc_hash::FxHashMap;
 
-use super::{FileBindings, Target};
+/// What a local name is bound to by an import: a whole module, or one name
+/// a module exports.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    Module(String),
+    Member { module: String, name: String },
+}
+
+#[derive(Debug, Default)]
+pub struct FileBindings {
+    pub names: FxHashMap<String, Target>,
+}
 
 static PY_IMPORT: Lazy<Regex> = Lazy::new(|| Regex::new(r"^import\s+(.+)$").unwrap());
 static PY_FROM: Lazy<Regex> =
@@ -72,10 +84,7 @@ pub fn python_bindings(text: &str) -> FileBindings {
 fn bind_from_item(b: &mut FileBindings, module: &str, item: &str) {
     let words: Vec<&str> = item.split_whitespace().collect();
     let (name, local) = match words.as_slice() {
-        ["*"] => {
-            b.star_from.push(module.to_string());
-            return;
-        }
+        ["*"] => return,
         [name] => (*name, *name),
         [name, "as", local] => (*name, *local),
         _ => return,

@@ -12,24 +12,24 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::answer::{Answer, RenderCtx};
-use crate::bindings::{self, Evidence, Finding, Relation};
 use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells};
 use crate::facts::{EntryKind, framework};
 use crate::graph::EdgeCategory;
-use crate::lang;
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
+use crate::vocabulary;
 
 mod keys;
 mod mentions;
+mod rust;
 mod tests_reach;
 mod text;
 pub use mentions::Class as MentionClass;
 use mentions::{
-    class_of, commented, has_data_extension, is_config_file, is_data, named_by_path, selects_paths,
-    stale_references,
+    class_of, commented, has_data_extension, is_config_file, is_data, is_import_line,
+    named_by_path, reads_imports, selects_paths, stale_references,
 };
 use tests_reach::TestsReach;
 use text::render;
@@ -1622,15 +1622,6 @@ fn is_schema_file(path: &str) -> bool {
             .any(|part| SCHEMA_FILE_STEMS.contains(&part))
 }
 
-/// The revision a change is measured against: the left side of a range, a
-/// lone revision itself, HEAD for the working tree.
-fn base_revision(diff_range: Option<&str>) -> String {
-    match diff_range.map(crate::snapshot::split_diff_range) {
-        Some((Some(base), _)) => base,
-        _ => diff_range.unwrap_or("HEAD").to_string(),
-    }
-}
-
 /// A fragment without its decorators. The decorator belongs to the fragment
 /// (Python `@app.route(…, methods={"GET"})`, a TS `@Component({…})`) but not
 /// to the declaration: `export` comes after it, and a `{` in it would end the
@@ -2507,34 +2498,59 @@ fn lifted_caller<'a>(frags: &[&'a Fragment], source: &'a Fragment) -> &'a Fragme
 /// ranked against each other, the cap deals the rows out among them.
 const FINDING_WEIGHT: f64 = 1.0;
 
-fn cell_finding(u: &decide::Use) -> Finding {
+/// What the cell states of the uses one caller makes of a changed definition.
+#[derive(Clone)]
+struct Reach {
+    standing: decide::Standing,
+    relation: &'static str,
+    kind: Option<vocabulary::RelationKind>,
+    /// The rule of the folding table that says the change cannot have affected
+    /// the use, the relation kind it is counted under, and how many definitions
+    /// share the name a candidate may be.
+    fold: Option<(&'static str, &'static str, usize)>,
+    lines: Vec<u32>,
+}
+
+impl Reach {
+    fn evidence(&self) -> &'static str {
+        match self.standing {
+            decide::Standing::Resolved => "resolved",
+            decide::Standing::Candidate(_) => "candidate",
+        }
+    }
+
+    fn reason(&self) -> Option<&'static str> {
+        match self.standing {
+            decide::Standing::Candidate(reason) => Some(reason),
+            decide::Standing::Resolved => None,
+        }
+    }
+
+    /// The kind a row built from this states for a caller in `path`: the
+    /// use's own, for a precise (language, relation) cell only. A use resolves
+    /// within one language, so the caller's file names the cell of the
+    /// definition it reaches.
+    fn stated_kind(&self, path: &str) -> Option<&'static str> {
+        self.kind
+            .and_then(|kind| vocabulary::stated_kind_of(path, kind))
+    }
+}
+
+fn reach_of(u: &decide::Use) -> Reach {
     use crate::resolve::Relation as Uses;
-    Finding {
-        evidence: match u.standing {
-            decide::Standing::Resolved => Evidence::Resolved,
-            decide::Standing::Candidate(reason) => Evidence::Candidate(reason),
-        },
+    Reach {
+        standing: u.standing,
         relation: match u.relation {
-            Uses::Calls | Uses::Instantiates => Relation::Call,
-            Uses::Overrides => Relation::Implementation,
-            _ => Relation::Reference,
+            Uses::Calls | Uses::Instantiates => "call",
+            Uses::Overrides => "implementation",
+            _ => "reference",
         },
-        kind: Some(lang::kind_of_use(u.relation)),
+        kind: Some(vocabulary::kind_of_use(u.relation)),
         fold: u
             .folded
             .map(|rule| (rule.name(), u.relation.name(), u.sharing)),
         lines: vec![u.line],
     }
-}
-
-/// The kind a row built from `finding` states for a caller in `path`: the
-/// use's own, for a precise (language, relation) cell only. A use resolves
-/// within one language, so the caller's file names the cell of the definition
-/// it reaches.
-fn stated_kind(path: &str, finding: &Finding) -> Option<&'static str> {
-    finding
-        .kind
-        .and_then(|kind| lang::stated_kind_of(path, kind))
 }
 
 /// What the answer says of a gap in the resolver's reach: a name on more lines
@@ -2572,7 +2588,7 @@ const REEXPORT: &str = "reexport";
 /// A caller row as the resolver gave it, for a line no fragment owns: a
 /// script the fragmenter did not cut, or a file past its fragment cap.
 fn cell_row(u: &decide::Use) -> Caller {
-    let finding = cell_finding(u);
+    let reach = reach_of(u);
     let reexport = u.relation == crate::resolve::Relation::Reexports;
     let caller = match &u.scope {
         crate::facts::Scope::Def(local) => Some(local.name.as_str().to_string()),
@@ -2588,26 +2604,18 @@ fn cell_row(u: &decide::Use) -> Caller {
         file_tested: false,
         registered_by: None,
         unread_test: None,
-        evidence: match finding.evidence {
-            _ if reexport => REEXPORT,
-            Evidence::Resolved => "resolved",
-            _ => "candidate",
+        evidence: if reexport { REEXPORT } else { reach.evidence() },
+        reason: reach.reason().filter(|_| !reexport),
+        relation: if reexport {
+            "reexports"
+        } else {
+            reach.relation
         },
-        reason: match finding.evidence {
-            Evidence::Candidate(r) if !reexport => Some(r),
-            _ => None,
-        },
-        relation: match finding.relation {
-            _ if reexport => "reexports",
-            Relation::Reference => "reference",
-            Relation::Implementation => "implementation",
-            Relation::Call => "call",
-        },
-        kind: stated_kind(&u.file, &finding),
-        folded_by: finding.fold.map(|(rule, _, _)| rule),
-        fold_kind: finding.fold.map(|(_, kind, _)| kind),
-        fold_share: finding.fold.map_or(0, |(_, _, share)| share),
-        sites: finding.lines,
+        kind: reach.stated_kind(&u.file),
+        folded_by: reach.fold.map(|(rule, _, _)| rule),
+        fold_kind: reach.fold.map(|(_, kind, _)| kind),
+        fold_share: reach.fold.map_or(0, |(_, _, share)| share),
+        sites: reach.lines,
     }
 }
 
@@ -2767,7 +2775,6 @@ pub fn build_impact(
 
     let analysed = state.analysed_range.as_deref().or(diff_range);
     let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
-    let base = base_revision(analysed);
     let base_texts = BaseTexts::new(&state.root_dir, state.run.source().base());
 
     let mut changed: Vec<ChangedSymbol> = Vec::new();
@@ -3154,7 +3161,7 @@ pub fn build_impact(
                         > MAX_DEFINITIONS
                 })
                 .unwrap_or(false);
-        let mut sources: Vec<(&Fragment, f64, Option<Finding>)> = Vec::new();
+        let mut sources: Vec<(&Fragment, f64, Option<Reach>)> = Vec::new();
         // Why a linked fragment is not listed, per core, under RUST_LOG=debug:
         // the precision filters are the part of this view that field reports
         // question first.
@@ -3169,7 +3176,7 @@ pub fn build_impact(
         let mut linked: FxHashSet<FragmentId> = FxHashSet::default();
         // Whether a fragment that reaches the core is a caller, and with
         // what evidence; the reason it is not, otherwise.
-        let judge = |frag: &Fragment| -> Result<Option<Finding>, &'static str> {
+        let judge = |frag: &Fragment| -> Result<Option<Reach>, &'static str> {
             // A file that defines the same name calls its own.
             let shadowed = frag.path() != core.path()
                 && symbol.is_some_and(|s| defined_in.contains(&(s.to_string(), frag.path())));
@@ -3377,8 +3384,7 @@ pub fn build_impact(
                 ));
                 continue;
             }
-            let finding = cell_finding(u);
-            sources.push((frag, FINDING_WEIGHT, Some(finding)));
+            sources.push((frag, FINDING_WEIGHT, Some(reach_of(u))));
         }
         also_changed.sort();
         also_changed.dedup();
@@ -3411,9 +3417,9 @@ pub fn build_impact(
                 sources.push((
                     frag,
                     weight,
-                    Some(Finding {
-                        evidence: Evidence::Resolved,
-                        relation: Relation::Reference,
+                    Some(Reach {
+                        standing: decide::Standing::Resolved,
+                        relation: "reference",
                         kind: None,
                         fold: None,
                         lines: vec![line],
@@ -3431,15 +3437,15 @@ pub fn build_impact(
             source.0 = lifted_caller(file_of(source.0), source.0);
         }
         // Two lines lifted into one function are one caller with both sites.
-        let mut lifted: Vec<(&Fragment, f64, Option<Finding>)> = Vec::with_capacity(sources.len());
+        let mut lifted: Vec<(&Fragment, f64, Option<Reach>)> = Vec::with_capacity(sources.len());
         for (frag, weight, found) in sources {
             match lifted.iter_mut().find(|(f, _, _)| f.id == frag.id) {
                 Some((_, w, known)) => {
                     *w = w.max(weight);
                     match (known.as_mut(), found) {
                         (Some(k), Some(f)) => {
-                            if f.evidence == Evidence::Resolved {
-                                k.evidence = Evidence::Resolved;
+                            if f.standing == decide::Standing::Resolved {
+                                k.standing = decide::Standing::Resolved;
                             }
                             // Two rows of different fold stay as listed as the
                             // one the table does not fold.
@@ -3487,18 +3493,18 @@ pub fn build_impact(
         }
         let weights: FxHashMap<&FragmentId, f64> =
             sources.iter().map(|(f, w, _)| (&f.id, *w)).collect();
-        let findings: FxHashMap<&FragmentId, Finding> = sources
+        let findings: FxHashMap<&FragmentId, Reach> = sources
             .iter()
             .filter_map(|(f, _, finding)| finding.clone().map(|x| (&f.id, x)))
             .collect();
         // A fragment that reads the definition one way and calls it another
         // has a row for each kind the cell states; with no kind stated it is
         // one row, as the finding above says.
-        let mut other_kinds: FxHashMap<&FragmentId, Vec<(&'static str, Finding)>> =
+        let mut other_kinds: FxHashMap<&FragmentId, Vec<(&'static str, Reach)>> =
             FxHashMap::default();
         for (frag, _, finding) in &sources {
             let Some((finding, kind)) = finding.as_ref().and_then(|finding| {
-                Some((finding, stated_kind(&rel(state, frag.path()), finding)?))
+                Some((finding, finding.stated_kind(&rel(state, frag.path()))?))
             }) else {
                 continue;
             };
@@ -3542,21 +3548,10 @@ pub fn build_impact(
                     registered_by,
                     tested_by: tested.as_ref().map(|(p, _)| rel(state, p)),
                     tested_via: tested.and_then(|(_, via)| via),
-                    evidence: match found.map(|f| f.evidence) {
-                        Some(Evidence::Resolved) => "resolved",
-                        Some(_) => "candidate",
-                        None => "name",
-                    },
-                    reason: found.and_then(|f| match f.evidence {
-                        Evidence::Candidate(r) => Some(r),
-                        _ => None,
-                    }),
-                    relation: match found.map(|f| f.relation) {
-                        Some(Relation::Reference) => "reference",
-                        Some(Relation::Implementation) => "implementation",
-                        _ => "call",
-                    },
-                    kind: found.and_then(|f| stated_kind(&rel(state, frag.path()), f)),
+                    evidence: found.map_or("name", Reach::evidence),
+                    reason: found.and_then(Reach::reason),
+                    relation: found.map_or("call", |f| f.relation),
+                    kind: found.and_then(|f| f.stated_kind(&rel(state, frag.path()))),
                     folded_by: found.and_then(|f| f.fold).map(|(rule, _, _)| rule),
                     fold_kind: found.and_then(|f| f.fold).map(|(_, kind, _)| kind),
                     fold_share: found.and_then(|f| f.fold).map_or(0, |(_, _, share)| share),
@@ -3576,19 +3571,9 @@ pub fn build_impact(
                     .flatten()
                     .filter(|(kind, _)| Some(*kind) != row.kind)
                     .map(|(kind, finding)| Caller {
-                        evidence: match finding.evidence {
-                            Evidence::Resolved => "resolved",
-                            _ => "candidate",
-                        },
-                        reason: match finding.evidence {
-                            Evidence::Candidate(r) => Some(r),
-                            _ => None,
-                        },
-                        relation: match finding.relation {
-                            Relation::Reference => "reference",
-                            Relation::Implementation => "implementation",
-                            Relation::Call => "call",
-                        },
+                        evidence: finding.evidence(),
+                        reason: finding.reason(),
+                        relation: finding.relation,
                         kind: Some(*kind),
                         folded_by: finding.fold.map(|(rule, _, _)| rule),
                         fold_kind: finding.fold.map(|(_, kind, _)| kind),
@@ -3622,11 +3607,13 @@ pub fn build_impact(
         // moved, or its kind or signature changes: the facts layer says it for
         // its languages (Kotlin's cell also says which are public), the
         // declaration text for the rest.
-        let public_change = match py.filter(|c| crate::kotlin_bindings::is_kotlin(&c.file)) {
+        let public_change = match py
+            .filter(|c| crate::languages::get_language_for_file(&c.file) == Some("kotlin"))
+        {
             Some(changed) => changed.api,
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
-                    && lang::rust::module_is_public(&state.run.source(), core.path())
+                    && rust::module_is_public(&state.run.source(), core.path())
                     && py.map_or_else(
                         || signature_changed(state, &base_texts, core),
                         |def| def.api,
@@ -4645,8 +4632,7 @@ fn removed_definitions(
             // left, else at least from the same runtime. By name alone,
             // `subprocess.run`, another file's own `run`, a shell `die` and a
             // TypeScript `test.describe` were callers (#470, #471, #458).
-            let modelled =
-                bindings::lang_of(&path).is_some() && bindings::lang_of(&path_removed).is_some();
+            let modelled = reads_imports(&path) && reads_imports(&path_removed);
             // No model binds a name across files: of the files a removed
             // definition's language reads, only its own lines are known readers,
             // and a row no model checked is a word match (R1).
@@ -4663,7 +4649,7 @@ fn removed_definitions(
                 continue;
             }
             if let Some(at) = moved_to {
-                let reaches_new = if bindings::lang_of(&path).is_some() {
+                let reaches_new = if reads_imports(&path) {
                     true
                 } else {
                     at.iter().any(|f| qualified_by(&text, f)) && !qualified_by(&text, &path_removed)
@@ -4674,7 +4660,7 @@ fn removed_definitions(
             }
             let code = code_text(&path, &text);
             // The import is where the name was taken, not a use (#450).
-            if bindings::is_import_line(&code) {
+            if is_import_line(&code) {
                 continue;
             }
             let bytes = code.as_bytes();
