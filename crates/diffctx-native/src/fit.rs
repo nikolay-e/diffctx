@@ -6,6 +6,8 @@
 //! says how to measure them. Impact, locate and pack each cut in a loop of their
 //! own before, on three texts.
 
+#![deny(clippy::disallowed_methods)]
+
 /// A body that gives up its least needed content one step at a time.
 pub trait Shed: Clone {
     /// One step of shedding, least needed first; `false` once nothing more can go.

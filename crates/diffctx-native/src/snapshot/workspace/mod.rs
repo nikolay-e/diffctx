@@ -317,6 +317,14 @@ impl Draft {
         self.lose(path, why);
     }
 
+    /// A manifest of an ecosystem this model does not read by design
+    /// (`composer.json`, `Gemfile`, ...): the directory is a project root whose
+    /// dependencies are unknown. It lost no file, so it is no `Loss`: the cell
+    /// of its language reads what it needs of the manifest itself.
+    pub(crate) fn not_modelled(&mut self, root: &str, ecosystem: Ecosystem) {
+        self.project(root, ecosystem).unknown = true;
+    }
+
     /// A manifest, or a file a manifest's reading needed, that was not read
     /// as written: a named unknown.
     pub(crate) fn lose(&mut self, path: &str, reason: String) {
@@ -553,12 +561,7 @@ impl WorkspaceModel {
                 } else {
                     Ecosystem::Other
                 };
-                draft.unknown(
-                    dir_of(manifest),
-                    ecosystem,
-                    manifest,
-                    format!("{name} states dependencies this model does not read"),
-                );
+                draft.not_modelled(dir_of(manifest), ecosystem);
             }
         }
         let symlinks = source.symlinks().map_err(|cause| Error {
