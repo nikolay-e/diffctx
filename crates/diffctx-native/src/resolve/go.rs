@@ -900,6 +900,110 @@ impl Engine<'_> {
         }
     }
 
+    /// The members a chain passes through on its way to its last name are read:
+    /// `x.Request.URL` reads the field `Request`. Where nothing types the value
+    /// each is an untyped read like the last name; a type the repository does
+    /// not hold says nothing of ours. A member its type lacks is the line a
+    /// removal strands: it is bound to nothing, as the last name is.
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+        let (start, fields, evidence) = match &r.receiver {
+            Receiver::Typed(t) => (
+                self.type_of_text(f, t.as_str()),
+                &r.qualifier[..],
+                EvidenceKind::TypedReceiver,
+            ),
+            Receiver::CallResult(path) => (
+                self.call_result(f, path),
+                &r.qualifier[..],
+                EvidenceKind::FactoryReturn,
+            ),
+            Receiver::New(t) => (
+                self.type_of_text(f, t.as_str()),
+                &r.qualifier[..],
+                EvidenceKind::Constructed,
+            ),
+            Receiver::Unknown => (
+                Typed::Unknown,
+                r.qualifier.get(1..).unwrap_or(&[]),
+                EvidenceKind::SameScope,
+            ),
+            Receiver::None => match self.path_start(f, r) {
+                Some((start, fields)) => (start, fields, EvidenceKind::SameScope),
+                None => return Vec::new(),
+            },
+            Receiver::SelfType | Receiver::Module(_) => return Vec::new(),
+        };
+        let mut reads = Vec::new();
+        let mut at = start;
+        for (i, field) in fields.iter().enumerate() {
+            match at {
+                Typed::Def(t) | Typed::Dyn(t) => {
+                    let found = self.find_member(t, field.as_str(), 0);
+                    let Some(m) = found.filter(|m| self.ix.defs[*m].def.kind == DefKind::Field)
+                    else {
+                        if found.is_none() {
+                            reads.push((
+                                field.clone(),
+                                Resolution::Unresolved {
+                                    reason: UnresolvedReason::NoMember,
+                                },
+                            ));
+                        }
+                        break;
+                    };
+                    if self.reachable(f, m) {
+                        let inherited = self.ix.defs[m].def.local.container.first()
+                            != Some(&self.ix.defs[t].def.local.name);
+                        reads.push((
+                            field.clone(),
+                            Resolution::Resolved {
+                                target: self.ix.defs[m].key.clone(),
+                                evidence: Evidence::new(if inherited {
+                                    EvidenceKind::Inherited
+                                } else {
+                                    evidence
+                                }),
+                            },
+                        ));
+                    }
+                    at = self.value_type(m);
+                }
+                Typed::External => break,
+                Typed::Unknown => {
+                    reads.extend(fields[i..].iter().map(|name| {
+                        (
+                            name.clone(),
+                            Resolution::Unresolved {
+                                reason: UnresolvedReason::UntypedRead,
+                            },
+                        )
+                    }));
+                    break;
+                }
+            }
+        }
+        reads
+    }
+
+    /// The type a written path starts from, and the fields written after it: a
+    /// package-level variable (`config.Port`), or one of an imported package
+    /// (`cfg.Settings.Port`).
+    fn path_start<'r>(&self, f: usize, r: &'r Ref) -> Option<(Typed, &'r [Name])> {
+        let (head, rest) = r.qualifier.split_first()?;
+        if let Some(import) = self.import_named(f, head.as_str()) {
+            let Located::Package(p) = import.target else {
+                return None;
+            };
+            if import.barred {
+                return None;
+            }
+            let item = self.exported(p, rest.first()?.as_str(), Want::Any)?;
+            return Some((self.value_type(item), &rest[1..]));
+        }
+        let (item, _) = self.find_name(f, head.as_str(), Want::Any)?;
+        Some((self.value_type(item), rest))
+    }
+
     // ---- references
 
     fn relation_of(&self, kind: UseKind, target: Option<usize>) -> Relation {
@@ -978,6 +1082,17 @@ impl Engine<'_> {
             resolution,
             entry_guard: false,
         });
+        for (name, resolution) in self.chain_reads(f, r) {
+            out.push(Binding {
+                file: self.path_of(f).clone(),
+                site: r.site.clone(),
+                from: r.enclosing.clone(),
+                relation: Relation::Reads,
+                name,
+                resolution,
+                entry_guard: false,
+            });
+        }
     }
 
     fn outcome(&self, f: usize, r: &Ref) -> Outcome {
