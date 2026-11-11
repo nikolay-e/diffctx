@@ -3397,24 +3397,11 @@ pub fn build_impact(
         // that names it as a parameter — in its own file or under the
         // directory of the conftest that defines it (#401).
         if let Some(name) = symbol.filter(|_| is_pytest_fixture(core)) {
-            let scope = Path::new(core.path()).parent().map(Path::to_path_buf);
+            let path = rel(state, core.path());
             let listed: FxHashSet<FragmentId> =
                 sources.iter().map(|(f, _, _)| f.id.clone()).collect();
-            let users: Vec<(&Fragment, u32)> = files
-                .fragments
-                .iter()
-                .filter(|(path, _)| {
-                    **path == core.path()
-                        || (Path::new(core.path()).file_name() == Some("conftest.py".as_ref())
-                            && scope
-                                .as_ref()
-                                .is_some_and(|d| Path::new(path).starts_with(d)))
-                })
-                .flat_map(|(_, frags)| frags.iter().copied())
-                .filter(|f| f.id != core.id && !listed.contains(&f.id))
-                .filter_map(|f| names_parameter(f, base_symbol(name)).map(|line| (f, line)))
-                .collect();
-            for (frag, line) in users {
+            let users = tests.fixture_askers(cells.of(&path), &path, core, base_symbol(name));
+            for (frag, line) in users.into_iter().filter(|(f, _)| !listed.contains(&f.id)) {
                 if inside_the_diff(&frag.id) {
                     called_in_diff = true;
                     continue;
