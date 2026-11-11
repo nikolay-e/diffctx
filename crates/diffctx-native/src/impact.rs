@@ -1,3 +1,9 @@
+//! A failed read is a named limit or an `Err` in this module, never an empty
+//! value: the lint that says so is denied here and in its submodules. A lookup
+//! that finds nothing is spelled as the absence it is.
+
+#![deny(clippy::disallowed_methods)]
+
 use std::path::Path;
 use std::time::Instant;
 
@@ -490,7 +496,10 @@ pub(crate) fn stops_of(
 pub(crate) fn reason_names(reasons: &[crate::resource::LimitReason]) -> String {
     reasons
         .iter()
-        .filter_map(|r| serde_json::to_value(r).ok()?.as_str().map(str::to_string))
+        .map(|r| match serde_json::to_value(r) {
+            Ok(serde_json::Value::String(name)) => name,
+            _ => format!("{r:?}"),
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -726,10 +735,9 @@ fn names_word(text: &str, name: &str) -> bool {
 }
 
 fn is_code_file(path: &str) -> bool {
-    let ext = Path::new(path)
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let ext = Path::new(path).extension().map_or_else(String::new, |e| {
+        format!(".{}", e.to_string_lossy().to_lowercase())
+    });
     crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
 }
 
@@ -891,8 +899,7 @@ fn references_module(
     // The import sits at the top of the file, outside the calling fragment.
     let ext = caller_path
         .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+        .map_or_else(String::new, |e| e.to_string_lossy().to_lowercase());
     if caller_path.parent() == changed.parent() && PACKAGE_SCOPED_EXTENSIONS.contains(&ext.as_str())
     {
         return true;
@@ -1504,7 +1511,7 @@ fn embedded_naming(script: &str, runtime: &str, name: &str) -> Option<u32> {
             }
         });
         if inline || fed {
-            return u32::try_from(node.start_position().row + 1).ok();
+            return Some(u32::try_from(node.start_position().row + 1).unwrap_or(u32::MAX));
         }
     }
     None
@@ -1768,6 +1775,10 @@ pub(crate) const MAX_TEST_HOPS: usize = 2;
 /// with several call sites, not several callers, and so is a file's
 /// module-level code split into unnamed chunks (#349); distinct functions
 /// stay distinct, and so do evidence levels and stated kinds.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "`Caller.lines` is `a-b`, written by this module: a field that is no number has no call site to add"
+)]
 fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
     let mut merged: Vec<Caller> = Vec::new();
     for mut c in callers {
@@ -1877,9 +1888,8 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
     {
         return None;
     }
-    let supers = enclosing_class(core, file)
-        .map(|c| supertypes(&c.content, &ext))
-        .unwrap_or_default();
+    let supers =
+        enclosing_class(core, file).map_or_else(Vec::new, |c| supertypes(&c.content, &ext));
     let quoted = || format!("`{}`", supers[..supers.len().min(2)].join("`, `"));
     if words.iter().any(|w| matches!(*w, "@Override" | "override")) {
         return Some(if supers.is_empty() {
@@ -1909,8 +1919,7 @@ pub(crate) fn supertypes(class: &str, ext: &str) -> Vec<String> {
         header
             .split_once('(')
             .and_then(|(_, rest)| rest.rsplit_once(')'))
-            .map(|(bases, _)| bases.to_string())
-            .unwrap_or_default()
+            .map_or_else(String::new, |(bases, _)| bases.to_string())
     } else {
         // A primary constructor's `(x: Int)` holds colons of its own.
         let mut depth = 0usize;
@@ -1929,7 +1938,7 @@ pub(crate) fn supertypes(class: &str, ext: &str) -> Vec<String> {
             .iter()
             .filter_map(|k| flat.find(k).map(|i| i + k.len()))
             .min();
-        after.map(|i| flat[i..].to_string()).unwrap_or_default()
+        after.map_or_else(String::new, |i| flat[i..].to_string())
     };
     clause
         .split([',', ' ', '\n', '\t'])
@@ -3302,8 +3311,7 @@ pub fn build_impact(
                     files
                         .fragments
                         .get(frag.path())
-                        .map(|f| module_aliases(f, stem))
-                        .unwrap_or_default()
+                        .map_or_else(Vec::new, |f| module_aliases(f, stem))
                 };
                 let receiver = if member {
                     Receiver::Any
@@ -3430,7 +3438,7 @@ pub fn build_impact(
             // The definition's own file is no exception: a long function there
             // calling it is capped like any other (#547).
             if !ambiguous && !registry.answers(core.path(), lang::Relation::Uses) {
-                let word = symbol.map(str::to_lowercase).unwrap_or_default();
+                let word = symbol.map_or_else(String::new, str::to_lowercase);
                 let capped = &graph.cap_stats.capped_sources;
                 for frag in files
                     .fragments
@@ -3579,7 +3587,12 @@ pub fn build_impact(
                 Some((model, def))
                     if model.covers(path) && (py.is_none() || lang::is_page(path)) =>
                 {
-                    model.use_lines(&rel(state, path), def).unwrap_or_default()
+                    // A model with no lines for the file has no use to list.
+                    model
+                        .use_lines(&rel(state, path), def)
+                        .into_iter()
+                        .flatten()
+                        .collect()
                 }
                 _ => Vec::new(),
             }
@@ -4039,7 +4052,7 @@ pub fn build_impact(
             Some(cells.account_without_cell(
                 state,
                 &rel(state, core.path()),
-                &symbol.map(names_of).unwrap_or_default(),
+                &symbol.map_or_else(Vec::new, names_of),
                 &names_it,
             ))
         } else {
@@ -4053,8 +4066,9 @@ pub fn build_impact(
         // A script of the definition's runtime embedded in a shell script names it
         // beyond the group, and so does a file outside code that spells it.
         let embedded: Vec<UnanalysedFile> = symbol
-            .map(|s| missed_namers(state, &cells, base_symbol(s), core.path()))
-            .unwrap_or_default()
+            .map_or_else(Vec::new, |s| {
+                missed_namers(state, &cells, base_symbol(s), core.path())
+            })
             .into_iter()
             .filter(|f| names_it(&f.path))
             .collect();
@@ -4157,7 +4171,7 @@ pub fn build_impact(
             callers_omitted: 0,
             omitted: Vec::new(),
             folded: Vec::new(),
-            new_parameters: py.map(decide::Changed::new_parameters).unwrap_or_default(),
+            new_parameters: py.map_or_else(Vec::new, decide::Changed::new_parameters),
             coverage,
         });
     }
@@ -4747,8 +4761,8 @@ fn removed_by_models(
         .filter(|m| m.modelled().contains(&lang::Relation::Removals))
         .flat_map(|m| {
             m.removed(base, &pairs)
-                .unwrap_or_default()
                 .into_iter()
+                .flatten()
                 .map(move |r| (m, r))
         })
         .collect();
@@ -4965,13 +4979,16 @@ fn removed_definitions(
                 .source()
                 .base()
                 .read_lossy(&state.root_dir.join(old_path))
-                .map(Option::unwrap_or_default),
+                // A file with no text at the base is new there.
+                .map(|text| text.into_iter().collect::<String>()),
         );
+        // A read that failed is noted on the run by the source itself.
         let after = state
             .run
             .source()
             .read_to_string(&state.root_dir.join(&h.path))
-            .unwrap_or_default();
+            .into_iter()
+            .collect::<String>();
         let (Some(at_base), Some(at_head)) = (
             crate::parsers::declarations(old_path, &before),
             crate::parsers::declarations(&h.path, &after),
@@ -5056,7 +5073,11 @@ fn removed_definitions(
         if !state.run.check() {
             break;
         }
-        let hits = hits_of.remove(name.as_str()).unwrap_or_default();
+        let hits: Vec<_> = hits_of
+            .remove(name.as_str())
+            .into_iter()
+            .flatten()
+            .collect();
         let mut callers: Vec<Caller> = Vec::new();
         // A name on this many lines is a common word, not a reference to the
         // removed definition: tracing it by name lists noise and, on a
@@ -5079,8 +5100,7 @@ fn removed_definitions(
         let qualified_by = |text: &str, file: &str| {
             let stem = Path::new(file)
                 .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default();
+                .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
             text.contains(&format!("{stem}::{name}")) || text.contains(&format!("{stem}.{name}"))
         };
         for (path, line, text) in hits {
@@ -5653,7 +5673,7 @@ fn key_references(
             if !claimed.insert(key.as_str()) {
                 continue;
             }
-            let mut rows = by_key.get(*key).cloned().unwrap_or_default();
+            let mut rows = by_key.get(*key).map_or_else(Vec::new, |rows| rows.clone());
             rows.sort();
             for (path, line) in rows {
                 if !listed.insert((path.clone(), line)) {
@@ -5815,7 +5835,8 @@ fn read_by_collection(
 
 /// The answer as JSON: `diffctx.impact.v2`, built from the answer the builders made.
 fn v2_json(output: &ImpactOutput) -> String {
-    serde_json::to_string(&v2_of(output)).unwrap_or_default()
+    serde_json::to_string(&v2_of(output))
+        .unwrap_or_else(|e| format!(r#"{{"error":"the answer could not be serialized: {e}"}}"#))
 }
 
 /// The v2 document of an answer: what its text and its JSON both print.
