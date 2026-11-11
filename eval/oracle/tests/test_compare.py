@@ -420,3 +420,17 @@ def test_a_pair_is_folded_only_when_every_row_the_answer_has_for_it_is():
 
     assert (cell["folded"], cell["false_fold"], detail["folded_by"]) == (0, 0, None)  # a listed row answers for the pair
     assert (whole["folded"], row["folded_by"]) == (1, "imports-a-body")  # every row folded: the pair is
+
+
+def test_an_answer_with_no_entry_for_the_target_claims_no_absence():
+    found_nothing = parse_answer(
+        {"schema": "diffctx.impact.v1", "changed": [], "symbol": "total", "symbol_named": {"files": 1, "rows": []}}, RESOLVE
+    )
+    other_entry = parse_answer(
+        {"changed": [{"path": "shop/checkout.py", "symbol": "charge", "lines": "1-3", "kind": "function", "callers": []}]},
+        RESOLVE,
+    )
+
+    for found in (found_nothing, other_entry):
+        cells, _ = compare(TARGET, [relation("shop/checkout.py::charge")], found)
+        assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, False, False)
