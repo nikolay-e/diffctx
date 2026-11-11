@@ -1157,7 +1157,7 @@ fn resolve_symbol_change_set(
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
     let mut fragments =
         crate::fragmentation::process_files_for_fragments(&files, root_dir, &mut seen, true, run);
-    crate::lang::overlay_definitions(&mut fragments, &run.source());
+    crate::overlay::overlay_definitions(&mut fragments, &run.source());
     let indent = |f: &Fragment| {
         f.content
             .lines()
@@ -1185,24 +1185,44 @@ fn resolve_symbol_change_set(
                     .max_by_key(|c| c.start_line())
             })
     };
-    // Kotlin states its owners and receivers in the syntax facts: `Obj.f`,
+    // Kotlin states its owners and receivers in the facts: `Obj.f`,
     // `C.Companion.f` and an extension's `String.pad` are read there, not
-    // guessed from indentation.
+    // guessed from indentation. An extension's receiver is the last of its
+    // container, set apart by the `ImplOf` disambiguator.
     let kotlin_owned = |def: &Fragment, owner: &str| -> Option<bool> {
+        use crate::facts::lang::kotlin::KotlinExtractor;
+        use crate::facts::{Disambig, Extractor as _, Fact};
         if crate::languages::get_language_for_file(def.path()) != Some("kotlin") {
             return None;
         }
         let text = run.source().read_to_string(Path::new(def.path()))?;
-        let facts = crate::facts::kotlin::facts(&text)?;
-        let decl = facts.declaration_named(def.symbol_name.as_deref()?, def.start_line())?;
-        Some(
-            decl.owners.last().map(String::as_str) == Some(owner)
-                || decl.receiver.as_deref() == Some(owner),
-        )
+        let blob = KotlinExtractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default());
+        let (name, line) = (def.symbol_name.as_deref()?, def.start_line());
+        let decl = blob
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::Definition(d)
+                    if d.local.name.as_str() == name
+                        && d.span.lines.0 <= line
+                        && line <= d.span.lines.1 =>
+                {
+                    Some(d)
+                }
+                _ => None,
+            })
+            .min_by_key(|d| d.span.bytes.len())?;
+        let container = &decl.local.container;
+        let receiver = match &decl.local.disambig {
+            Some(Disambig::ImplOf(receiver)) => Some(receiver.as_str()),
+            _ => None,
+        };
+        let owners = &container[..container.len() - usize::from(receiver.is_some())];
+        Some(owners.last().map(|o| o.as_str()) == Some(owner) || receiver == Some(owner))
     };
     let owned_by = |def: &Fragment, owner: &str| {
         if let Some(owned) = kotlin_owned(def, owner).or_else(|| {
-            crate::lang::stated_owner(def.path(), def.start_line(), owner, &run.source())
+            crate::overlay::stated_owner(def.path(), def.start_line(), owner, &run.source())
         }) {
             return owned;
         }
@@ -1712,7 +1732,7 @@ pub fn compute_scored_state_anchored(
         &run,
     ));
     if reverse_references {
-        crate::lang::overlay_definitions(&mut all_fragments, &run.source());
+        crate::overlay::overlay_definitions(&mut all_fragments, &run.source());
     }
 
     let t_parse_discovered = Instant::now();

@@ -9,17 +9,18 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 
-use crate::facts::{DeclKind, Declaration};
+use super::{DeclKind, Declaration};
+use crate::types::FragmentKind;
 
 /// What one JS/TS file or page declares beyond what the fragmenter cuts.
 #[derive(Debug, Default)]
-pub(crate) struct JsFacts {
+pub(super) struct JsFacts {
     /// Functions, classes and methods with the class and the function they sit in
     /// (#554), and as assignments what the fragmenter does not cut.
-    pub(crate) declarations: Vec<Declaration>,
+    pub(super) declarations: Vec<Declaration>,
     /// A page's top-level script statements: in a `.js` file they are the
     /// fragmenter's gap chunks, in a page the script element holds them.
-    pub(crate) script_statements: Vec<(u32, u32)>,
+    pub(super) script_statements: Vec<(u32, u32)>,
 }
 
 fn grammar_of(path: &str) -> &'static str {
@@ -62,6 +63,13 @@ fn script_code<'t>(path: &str, text: &'t str) -> std::borrow::Cow<'t, str> {
     }
 }
 
+/// The owner of a property set on the global object (`self.x = …`): any
+/// script the realm loads reaches it by name, bare or through the global
+/// object, with no import to bind it (#426).
+pub(super) const GLOBAL_OWNER: &str = "<global>";
+
+const GLOBAL_OBJECTS: &[&str] = &["self", "globalThis", "window", "global"];
+
 const FACTS_LIMIT: usize = 8192;
 
 static FACTS: Lazy<std::sync::Mutex<FxHashMap<u64, Arc<JsFacts>>>> =
@@ -69,7 +77,7 @@ static FACTS: Lazy<std::sync::Mutex<FxHashMap<u64, Arc<JsFacts>>>> =
 
 /// The facts of one blob, parsed once per run whoever asks first. `None` when the
 /// grammar is not compiled in or the parse timed out.
-pub(crate) fn js_facts(path: &str, text: &str) -> Option<Arc<JsFacts>> {
+pub(super) fn js_facts(path: &str, text: &str) -> Option<Arc<JsFacts>> {
     use std::hash::{Hash, Hasher};
     let key = {
         let mut h = rustc_hash::FxHasher::default();
@@ -206,7 +214,7 @@ fn declared_member<'t>(
             .child_by_field_name("property")
             .filter(|p| p.kind() == "property_identifier")?;
         let class = match left.child_by_field_name("object")?.utf8_text(bytes).ok()? {
-            o if super::GLOBAL_OBJECTS.contains(&o) => Some(super::GLOBAL_OWNER.to_string()),
+            o if GLOBAL_OBJECTS.contains(&o) => Some(GLOBAL_OWNER.to_string()),
             "exports" | "module.exports" => None,
             _ => return None,
         };
@@ -271,4 +279,29 @@ fn lines_of(node: tree_sitter::Node) -> (u32, u32) {
         node.start_position().row as u32 + 1,
         node.end_position().row as u32 + 1,
     )
+}
+
+/// A JavaScript file's or a page's assignments the fragmenter does not cut
+/// — a property of the global object or of the module's exports (#426), an
+/// interface member, a class field (#488) — and a page's top-level script
+/// statements, so a call there is a caller at its own lines rather than
+/// the whole script element (#577).
+pub(super) fn declarations(
+    path: &str,
+    text: &str,
+) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
+    js_facts(path, text).map_or_else(Vec::new, |facts| {
+        facts
+            .declarations
+            .iter()
+            .filter(|d| d.kind == DeclKind::Assignment)
+            .map(|d| (Some(d.name.clone()), d.lines, FragmentKind::Property))
+            .chain(
+                facts
+                    .script_statements
+                    .iter()
+                    .map(|&lines| (None, lines, FragmentKind::Chunk)),
+            )
+            .collect()
+    })
 }

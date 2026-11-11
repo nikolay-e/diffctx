@@ -57,12 +57,11 @@ pub mod artifact;
 pub mod delivery;
 pub mod hook;
 pub mod impact;
-pub(crate) mod lang;
 pub mod locate;
+pub(crate) mod overlay;
 pub mod render;
 
 // Orchestration and shared configuration.
-pub(crate) mod bindings;
 pub mod config;
 pub mod effective_config;
 pub mod mode;

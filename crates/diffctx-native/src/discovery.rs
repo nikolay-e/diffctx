@@ -200,7 +200,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
                 .map(|c| {
                     definition_names(&c)
                         .into_iter()
-                        .chain(crate::lang::declared_names(&path.to_string_lossy(), &c))
+                        .chain(crate::overlay::declared_names(&path.to_string_lossy(), &c))
                         .filter(|n| n.len() >= MIN_REVERSE_NAME_LEN)
                         .map(|n| n.to_lowercase())
                         .collect()

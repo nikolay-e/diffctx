@@ -1,6 +1,5 @@
 //! Java facts from `tree-sitter-java`, in the shape of the Kotlin facts, so
-//! one binding model (`kotlin_bindings`) reads the JVM's two languages
-//! (#335).
+//! one extractor body reads the JVM's two languages (#335).
 //!
 //! An anonymous class is a type of its own, named for what it instantiates
 //! (`new Service`): its members are reached through that supertype, never by
