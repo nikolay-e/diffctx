@@ -1428,6 +1428,23 @@ fn unaccounted_rows(
     rows
 }
 
+/// The files of the definition's group that spell one of `names`, by path as the
+/// answer prints it: what the token index holds, whatever a builder linked. A file
+/// of no group, or a group the run could not read, has none.
+fn spelling_files(state: &ScoredState, cells: &Cells, file: &str, names: &[String]) -> Vec<String> {
+    let Some(tokens) =
+        decide::Group::of_path(file).and_then(|group| cells.group_tokens(state, group))
+    else {
+        return Vec::new();
+    };
+    let wanted = Names::new(names.iter().map(String::as_str));
+    tokens
+        .spelling(&wanted)
+        .into_iter()
+        .map(|at| tokens.files()[at as usize].as_str().to_string())
+        .collect()
+}
+
 /// The names a use of a definition the fragments hold could carry: its own, and the
 /// last part of a qualified one (a method is called as `m`, not `A.m`).
 fn names_of(symbol: &str) -> Vec<String> {
@@ -2679,7 +2696,6 @@ pub fn build_impact(
     deadline: Option<Instant>,
 ) -> ImpactOutput {
     let setup = crate::profile::phase("impact.setup");
-    let graph = &state.scoring_result.graph;
     // A signature variant as long as its fragment shares its id (a Kotlin
     // class header ending `) {`); the id names the fragment, not its stub.
     let mut by_id: FxHashMap<&FragmentId, &Fragment> = FxHashMap::default();
@@ -3170,10 +3186,6 @@ pub fn build_impact(
         // that passes is no caller outside the diff, but it makes the
         // definition live rather than one nothing calls (#441).
         let mut in_diff: FxHashSet<FragmentId> = FxHashSet::default();
-        // Every fragment with an edge into the core, kept or not: a capped
-        // fragment that names it without one is where the edge cap can have
-        // hidden a caller.
-        let mut linked: FxHashSet<FragmentId> = FxHashSet::default();
         // Whether a fragment that reaches the core is a caller, and with
         // what evidence; the reason it is not, otherwise.
         let judge = |frag: &Fragment| -> Result<Option<Reach>, &'static str> {
@@ -3225,112 +3237,45 @@ pub fn build_impact(
                 Ok(None)
             }
         };
-        // The ranking graph proposes callers of every definition but one of a
-        // cell's languages, whose callers the resolver names.
+        // A definition no cell reads has no resolved use to list: the files of
+        // its group that spell the name are the text level's answer, each
+        // fragment that names it in code a candidate and never a certainty. The
+        // account below says what the search could not read.
         if py.is_none() {
-            let _t = crate::profile::detail("impact.callers.graph", "");
-            graph.for_each_reverse_neighbor(&core.id, |src, weight| {
-                linked.insert(src.clone());
-                // A signature variant stands for its fragment: the caller is the
-                // whole definition, and its call sites sit in the body.
-                let src = by_id
-                    .get(src)
-                    .filter(|f| f.kind.is_signature())
-                    .and_then(|sig| {
-                        file_of(sig)
-                            .iter()
-                            .filter(|f| {
-                                !f.kind.is_signature()
-                                    && f.start_line() == sig.start_line()
-                                    && f.end_line() >= sig.end_line()
-                            })
-                            .min_by_key(|f| f.line_count())
-                    })
-                    .map_or(src, |f| &f.id);
-                if inside_the_diff(src) {
-                    in_diff.insert(src.clone());
-                }
-                // Ambiguity is across files: inside the definition's own file a
-                // name is that file's own, as a file defining the same name
-                // calls its own (#538).
-                let reason = if ambiguous && src.path != core.id.path {
-                    "ambiguous_name"
-                } else if within(src, core) {
-                    "own_body"
-                } else if let Some(frag) = by_id
-                    .get(src)
-                    .filter(|f| in_diff.contains(&f.id) && judge(f).is_ok())
-                {
-                    // A caller inside the diff is never listed: it decides only
-                    // whether the definition reads as called, and how the
-                    // ranking graph weighs the edge is no evidence there (#552).
-                    sources.push((frag, weight, None));
-                    return;
-                } else if graph.edge_category(src, &core.id) != Some(EdgeCategory::Semantic) {
-                    tracing::trace!(
-                        "impact {}: {} -> {:?} {:?} w={:.2} back={:.2}",
-                        symbol.unwrap_or("?"),
-                        rel(state, src.path.as_ref()),
-                        graph.edge_category(src, &core.id),
-                        (src.start_line, src.end_line),
-                        weight,
-                        graph.forward_edge_weight(&core.id, src).unwrap_or(0.0)
-                    );
-                    "not_semantic"
-                } else if !graph.is_forward(src, &core.id) {
-                    tracing::trace!(
-                        "impact {}: {} {:?} not forward w={:.2} back={:.2}",
-                        symbol.unwrap_or("?"),
-                        rel(state, src.path.as_ref()),
-                        (src.start_line, src.end_line),
-                        weight,
-                        graph.forward_edge_weight(&core.id, src).unwrap_or(0.0)
-                    );
-                    "not_forward"
-                } else {
-                    let Some(frag) = by_id.get(src) else {
-                        *dropped.entry("unknown_fragment").or_default() += 1;
-                        return;
-                    };
-                    match judge(frag) {
-                        Ok(found) => {
-                            sources.push((frag, weight, found));
-                            return;
-                        }
-                        Err(reason) => reason,
-                    }
-                };
-                *dropped.entry(reason).or_default() += 1;
-            });
-            // The per-node edge cap keeps a fragment's heaviest out-edges, so a
-            // caller that references many names can lose its edge to the changed
-            // definition, and the answer read "0 callers" (#446, Forgejo #68). A
-            // capped fragment naming the definition faces the same tests as an
-            // edge would have. The definition's own file is no exception: a long
-            // function there calling it is capped like any other (#547).
-            if !ambiguous {
-                let word = symbol.map_or_else(String::new, str::to_lowercase);
-                let capped = &graph.cap_stats.capped_sources;
-                for frag in files
+            let _t = crate::profile::detail("impact.callers.text", "");
+            let names = symbol.map_or_else(Vec::new, names_of);
+            for path in spelling_files(state, &cells, &rel(state, core.path()), &names) {
+                let Some(frags) = files
                     .fragments
-                    .values()
-                    .flat_map(|frags| frags.iter().copied())
-                    .filter(|f| {
-                        capped.contains(&f.id)
-                            && !linked.contains(&f.id)
-                            && !within(&f.id, core)
-                            && f.identifiers.contains(&word)
-                    })
-                {
-                    match judge(frag) {
-                        Ok(found) => {
-                            if inside_the_diff(&frag.id) {
-                                in_diff.insert(frag.id.clone());
-                            }
-                            sources.push((frag, 0.0, found));
-                        }
-                        Err(_) => {}
+                    .get(crate::paths::join_native(&state.root_dir, &path).as_str())
+                else {
+                    continue;
+                };
+                for &frag in frags.iter().filter(|f| !f.kind.is_signature()) {
+                    let src = &frag.id;
+                    if inside_the_diff(src) {
+                        in_diff.insert(src.clone());
                     }
+                    // Ambiguity is across files: inside the definition's own file a
+                    // name is that file's own, as a file defining the same name
+                    // calls its own (#538).
+                    let reason = if ambiguous && src.path != core.id.path {
+                        "ambiguous_name"
+                    } else if within(src, core) {
+                        "own_body"
+                    } else {
+                        match judge(frag) {
+                            // A caller inside the diff is dropped after the search:
+                            // it decides only whether the definition reads as
+                            // called (#552).
+                            Ok(found) => {
+                                sources.push((frag, 0.0, found));
+                                continue;
+                            }
+                            Err(reason) => reason,
+                        }
+                    };
+                    *dropped.entry(reason).or_default() += 1;
                 }
             }
         }
@@ -3414,10 +3359,9 @@ pub fn build_impact(
                     called_in_diff = true;
                     continue;
                 }
-                let weight = graph.forward_edge_weight(&frag.id, &core.id).unwrap_or(0.0);
                 sources.push((
                     frag,
-                    weight,
+                    FINDING_WEIGHT,
                     Some(Reach {
                         standing: decide::Standing::Resolved,
                         relation: "reference",
@@ -3720,14 +3664,14 @@ pub fn build_impact(
             })
             .or_else(|| route.clone().map(|via| Unknown::Overridable { via }))
             .or_else(|| {
-                (callers.is_empty() && py.is_none() && is_code_file(core.path())).then(|| {
-                    Unknown::NotModelled {
-                        language: if core_lang.is_empty() {
-                            "this language"
-                        } else {
-                            core_lang
-                        },
-                    }
+                // The rows a text search lists are no resolution: the gap stands
+                // beside them, and an empty list is never read as no caller.
+                (py.is_none() && is_code_file(core.path())).then(|| Unknown::NotModelled {
+                    language: if core_lang.is_empty() {
+                        "this language"
+                    } else {
+                        core_lang
+                    },
                 })
             });
         // An entry point is called by its runner or framework: the hedge for
@@ -4848,23 +4792,22 @@ fn changed_keys(state: &ScoredState, path: &str) -> Vec<String> {
 /// textual search cannot: spellings differ (`{id}` and `<int:id>`), and only
 /// compatible roles meet.
 fn typed_readers(state: &ScoredState, untraced: &[String]) -> Vec<(String, String, String, u32)> {
-    let mut rows: Vec<(String, String, String, u32)> =
-        crate::edges::config_edges::counterparts_of_change(
-            &state.all_fragments,
-            Some(state.root_dir.as_path()),
-            state.run.changed_lines(),
+    let mut rows: Vec<(String, String, String, u32)> = crate::keytable::counterparts_of_change(
+        &state.all_fragments,
+        Some(state.root_dir.as_path()),
+        state.run.changed_lines(),
+    )
+    .into_iter()
+    .map(|c| {
+        (
+            rel(state, &c.changed_path),
+            format!("{} {}", c.kind, c.key),
+            rel(state, &c.path),
+            c.line.max(1) as u32,
         )
-        .into_iter()
-        .map(|c| {
-            (
-                rel(state, &c.changed_path),
-                format!("{} {}", c.kind, c.key),
-                rel(state, &c.path),
-                c.line.max(1) as u32,
-            )
-        })
-        .filter(|(target, ..)| untraced.contains(target))
-        .collect();
+    })
+    .filter(|(target, ..)| untraced.contains(target))
+    .collect();
     rows.sort();
     rows.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1 && a.2 == b.2);
     rows

@@ -12,8 +12,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 
-use super::keys_extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, pattern};
-use super::keys_extract::{route_key, route_shape};
+use super::extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, pattern};
+use super::extract::{route_key, route_shape};
 
 fn record(key: String, role: Role, mechanism: &'static str, line: usize) -> RawRecord {
     RawRecord {

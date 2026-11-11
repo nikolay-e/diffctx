@@ -4,10 +4,7 @@ mod docker;
 mod generic;
 mod helm;
 mod keys;
-mod keys_extract;
 mod kubernetes;
-mod routes;
-mod tech;
 
 use super::base::EdgeBuilder;
 
@@ -31,5 +28,3 @@ pub(super) fn text_builders() -> Vec<Box<dyn EdgeBuilder>> {
         Box::new(keys::KeyTableEdgeBuilder),
     ]
 }
-
-pub(crate) use keys::{counterparts_of_change, typed_links};

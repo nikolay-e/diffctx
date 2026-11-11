@@ -12,8 +12,9 @@
 //! fixture's scope ([`TestsReach::fixture_users`]), the second off a test that names the
 //! job to the scheduler.
 //!
-//! The ranking graph answers for the files no cell reads, as `TestIndex` did for
-//! all of them; it goes with the graph's last reader. A claim that a definition
+//! For the files no cell reads, the files of the group that spell a name are the
+//! users, held to the same bar as a caller; only a test file the ranking graph
+//! linked to a source by its name (`by_path`) still comes from the graph. A claim that a definition
 //! has no test link is printed only where `any` says tests are in view.
 
 use std::cell::RefCell;
@@ -27,7 +28,7 @@ use super::mentions::{Naming, commented, naming, starts_a_program};
 use super::rust;
 use super::{
     Cells, EdgeCategory, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState,
-    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel,
+    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
 };
 use crate::decide::Group;
 use crate::tokens::Names;
@@ -266,13 +267,7 @@ impl<'a> TestsReach<'a> {
 
     /// One hop up the uses of `f`: a cell's resolved uses where a cell reads the
     /// file, the ranking graph's semantic edges, held to `link`, where none does.
-    fn up(
-        &self,
-        f: &'a Fragment,
-        state: &ScoredState,
-        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
-        link: &Link,
-    ) -> Up<'a> {
+    fn up(&self, f: &'a Fragment, state: &ScoredState, link: &Link) -> Up<'a> {
         let mut up = Up::default();
         if let Some((cell, shown)) = self.cell_of(f) {
             let Some(name) = f.symbol_name.as_deref().map(base_symbol) else {
@@ -296,20 +291,21 @@ impl<'a> TestsReach<'a> {
             }
             return up;
         }
-        let graph = &state.scoring_result.graph;
-        graph.for_each_reverse_neighbor(&f.id, |src, _| {
-            if graph.edge_category(src, &f.id) != Some(EdgeCategory::Semantic)
-                || !graph.is_forward(src, &f.id)
-            {
-                return;
+        let Some(name) = f.symbol_name.as_deref().map(base_symbol) else {
+            return up;
+        };
+        let Some(shown) = self.rel_of.get(f.path()) else {
+            return up;
+        };
+        // The files of the group that spell the name, for the files no cell reads:
+        // the text level's users, held to `link`.
+        for path in spelling_files(state, self.cells, shown, &[name.to_string()]) {
+            for user in self.by_rel.get(&path).into_iter().flatten().copied() {
+                if user.id != f.id && !user.kind.is_signature() && link(user, f) {
+                    up.fragments.push(user);
+                }
             }
-            let Some(user) = by_id.get(src).copied() else {
-                return;
-            };
-            if link(user, f) {
-                up.fragments.push(user);
-            }
-        });
+        }
         up
     }
 
@@ -446,7 +442,7 @@ impl<'a> TestsReach<'a> {
         for _ in 0..MAX_TEST_HOPS {
             let mut next = Vec::new();
             for &f in &frontier {
-                let up = self.up(f, state, by_id, link);
+                let up = self.up(f, state, link);
                 if let Some(test) = up.test {
                     return Some((test, None));
                 }
