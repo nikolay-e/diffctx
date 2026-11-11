@@ -51,7 +51,7 @@ pub struct Selection {
 }
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
-pub struct ProvenanceV1 {
+pub struct Provenance {
     pub schema: &'static str,
     pub engine: Engine,
     pub input: Input,
@@ -146,9 +146,9 @@ impl RunProvenance {
         }
     }
 
-    pub fn finish(&self, selection: Option<Selection>) -> ProvenanceV1 {
+    pub fn finish(&self, selection: Option<Selection>) -> Provenance {
         let full = full_record_requested();
-        ProvenanceV1 {
+        Provenance {
             schema: SCHEMA,
             engine: Engine {
                 name: "diffctx",

@@ -107,7 +107,7 @@ pub struct DiffContextOutput {
     /// harness, an empty tree). Held as the value it serializes to: the record
     /// names the engine by `&'static str`s no parser can give back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<crate::run_provenance::ProvenanceV1>")]
+    #[schemars(with = "Option<crate::run_provenance::Provenance>")]
     pub provenance: Option<serde_json::Value>,
     /// The patch itself, verbatim input and so not charged to `--budget`
     /// (`fit.exempt` says how much it is).
@@ -134,7 +134,7 @@ impl DiffContextOutput {
 }
 
 /// The record a pipeline run attaches as `provenance`.
-pub fn provenance_value(record: &crate::run_provenance::ProvenanceV1) -> serde_json::Value {
+pub fn provenance_value(record: &crate::run_provenance::Provenance) -> serde_json::Value {
     serde_json::to_value(record).unwrap_or(serde_json::Value::Null)
 }
 
