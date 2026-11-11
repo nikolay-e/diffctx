@@ -103,7 +103,7 @@ pub enum Family {
 }
 
 impl Family {
-    const ALL: [Self; 14] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::Python,
         Self::TypeScript,
         Self::Rust,
@@ -120,7 +120,7 @@ impl Family {
         Self::Sql,
     ];
 
-    fn has(self, language: Language) -> bool {
+    pub(crate) fn has(self, language: Language) -> bool {
         match self {
             Self::Python => language == Language::Python,
             Self::TypeScript => matches!(
@@ -142,7 +142,7 @@ impl Family {
         }
     }
 
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Python => "Python",
             Self::TypeScript => "TypeScript/JavaScript",
@@ -1502,7 +1502,21 @@ pub struct Cell {
 /// The context the cell reads: the range the run analysed, or one snapshot of
 /// the checkout for a symbol.
 fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<AnalysisContext> {
-    let repo = snapshot::open(&state.root_dir)?;
+    context_in(&state.root_dir, state.run.io_limits(), range, symbol)
+}
+
+/// `context` for a reader that holds no `ScoredState`: the root and the run's
+/// I/O limits.
+fn context_in(
+    root: &std::path::Path,
+    limits: (
+        Option<std::time::Instant>,
+        Arc<std::sync::atomic::AtomicBool>,
+    ),
+    range: Option<&str>,
+    symbol: bool,
+) -> Result<AnalysisContext> {
+    let repo = snapshot::open(root)?;
     let spec = if symbol {
         RangeSpec::At(Side::WorkingTree)
     } else {
@@ -1514,7 +1528,7 @@ fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Ana
             other => other,
         }
     };
-    let (deadline, cancel) = state.run.io_limits();
+    let (deadline, cancel) = limits;
     let budget = RunBudget {
         deadline,
         cancel: Some(cancel),
@@ -1532,6 +1546,49 @@ fn context(state: &ScoredState, range: Option<&str>, symbol: bool) -> Result<Ana
         budget,
         Arc::new(admission),
     )?)
+}
+
+/// What the ranking graph reads of one family's resolved head snapshot: the
+/// bindings and the definitions, as plain data. The resolver itself stays with
+/// the cell (the TypeScript one is not `Send`, so a run cannot hold one for
+/// every thread that builds edges).
+pub struct HeadFamily {
+    bindings: Vec<Binding>,
+    definitions: Vec<Definition>,
+}
+
+impl HeadFamily {
+    pub fn bindings(&self) -> &[Binding] {
+        &self.bindings
+    }
+
+    pub fn definitions(&self) -> &[Definition] {
+        &self.definitions
+    }
+}
+
+/// `family` resolved over the head snapshot of the run at `root`: the range the
+/// run analysed, `HEAD` and the working tree for a run with none. Opened once
+/// per run and family however many edge builders and discovery ask; the run's
+/// I/O deadline and cancellation are the current run's. A family that cannot be
+/// read is an `Err`, never kept: the caller notes it and draws no edge.
+pub fn open_head(
+    root: &std::path::Path,
+    range: Option<&str>,
+    family: Family,
+) -> Result<Arc<HeadFamily>> {
+    let key = std::path::PathBuf::from(format!("{}@{}", root.display(), range.unwrap_or("")));
+    crate::resource::memoized(family.name(), &key, || -> Result<Arc<HeadFamily>> {
+        let limits = crate::resource::current_io_limits()
+            .unwrap_or_else(|| (None, Arc::new(std::sync::atomic::AtomicBool::new(false))));
+        let ctx = context_in(root, limits, range, false)?;
+        let cache = FactsCache::user();
+        let resolver = Resolver::open(family, &ctx, SideTag::Head, &cache)?;
+        Ok(Arc::new(HeadFamily {
+            bindings: resolver.bindings().to_vec(),
+            definitions: resolver.definitions().to_vec(),
+        }))
+    })
 }
 
 /// An import that happens when the code runs, `lazy(() => import('./Card'))`:

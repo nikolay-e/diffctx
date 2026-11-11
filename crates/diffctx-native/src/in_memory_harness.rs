@@ -73,15 +73,74 @@ fn final_state_fragments(repo: &MemoryRepo) -> Vec<Fragment> {
     fragments
 }
 
+/// The final tree written to a temporary repository, so the cells that read a
+/// snapshot (the ranking graph's edges for the languages that have one) have one
+/// to read. Removed on drop. A repository that cannot be made leaves the harness
+/// as it was: no root, and no cell edges.
+struct TempTree {
+    root: PathBuf,
+}
+
+impl TempTree {
+    fn write(files: &FxHashMap<String, String>) -> Option<Self> {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "diffctx-memory-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).ok()?;
+        let tree = Self { root };
+        for (path, content) in files {
+            let at = tree.root.join(path);
+            std::fs::create_dir_all(at.parent()?).ok()?;
+            std::fs::write(at, content).ok()?;
+        }
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&tree.root)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .is_ok_and(|out| out.status.success())
+        };
+        (git(&["init", "-q"])
+            && git(&["add", "-A"])
+            && git(&[
+                "-c",
+                "user.name=memory",
+                "-c",
+                "user.email=memory@localhost",
+                "commit",
+                "-q",
+                "-m",
+                "tree",
+            ]))
+        .then_some(tree)
+    }
+}
+
+impl Drop for TempTree {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 /// Every cross-file edge `collect_capped_edges` keeps over the files of the
 /// repository after the change — the whole final tree, not the discovery
 /// universe of one run, so a link is measured whether or not a given diff
 /// would have admitted its endpoint. Selection is untouched.
 pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
     let fragments = final_state_fragments(repo);
+    let tree = TempTree::write(&merge_file_contents(
+        &repo.initial_files,
+        &repo.changed_files,
+    ));
     let capped = crate::edges::collect_capped_edges(
         &fragments,
-        None,
+        tree.as_ref().map(|t| t.root.as_path()),
         false,
         &crate::resource::RunContext::unbounded(),
     );
@@ -182,8 +241,10 @@ pub fn build_diff_context_in_memory(
         crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
             .into_iter()
             .collect();
+    let tree = TempTree::write(&all_files);
+    let tree_root = tree.as_ref().map(|t| t.root.clone());
     let discovery_ctx = crate::discovery::DiscoveryContext {
-        root_dir: PathBuf::from("."),
+        root_dir: tree_root.clone().unwrap_or_else(|| PathBuf::from(".")),
         changed_files: changed_file_paths.clone(),
         all_candidates: all_file_paths.clone(),
         diff_text: diff_text.clone(),
@@ -243,7 +304,7 @@ pub fn build_diff_context_in_memory(
         &hunks,
         &diff_text,
         &config,
-        None,
+        tree_root.as_deref(),
         &discovered_arc,
         &run,
     );
