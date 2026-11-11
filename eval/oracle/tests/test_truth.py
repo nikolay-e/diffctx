@@ -435,3 +435,26 @@ def test_a_method_in_the_body_of_an_enum_constant_is_its_own_definition(tmp_path
 
     assert inside is not None and inside.key == "State.java::State.Initial.process"
     assert snapshot.enclosing("State.java", 2).key == "State.java::State.Initial"
+
+
+TRAIT_RUN = "rust-analyzer cargo shop 1.0.0 shop/Executor#run()."
+RAW_RUN = "rust-analyzer cargo shop 1.0.0 shop/impl#[`Raw<'_>`][Executor]run()."
+RUST_SOURCE = "trait Executor {\n    fn run(&self) -> u32;\n}\n\nstruct Raw;\n\nimpl Executor for Raw {\n    fn run(&self) -> u32 { 1 }\n}\n"
+
+
+def test_a_rust_impl_member_overrides_the_trait_member_its_name_says(tmp_path: Path):
+    (tmp_path / "lib.rs").write_text(RUST_SOURCE)
+    lib = Document(
+        "lib.rs",
+        1,
+        [
+            occurrence(at(RUST_SOURCE, 1, "run"), TRAIT_RUN, ROLE_DEFINITION),
+            occurrence(at(RUST_SOURCE, 7, "run"), RAW_RUN, ROLE_DEFINITION),
+        ],
+        [SymbolInfo(TRAIT_RUN, 26), SymbolInfo(RAW_RUN, 26)],
+    )
+    snapshot = Snapshot(tmp_path, Index(documents=[lib]), "rust")
+
+    found = relations_to(snapshot, target(snapshot, "lib.rs::Executor.run"))
+
+    assert [(r.from_key, r.kind) for r in found] == [("lib.rs::Raw.run", "overrides")]
