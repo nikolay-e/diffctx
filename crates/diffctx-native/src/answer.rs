@@ -5,6 +5,11 @@
 //! prints is a field of [`Tally`], computed here from the leaves the document
 //! stores (rows, folds, the shed ledger), or a view of one list ([`Page`]):
 //! never a count taken where it is printed (gh#721).
+//!
+//! A failed read is never an empty value in this module or its children: the lint
+//! that says so is denied here.
+
+#![deny(clippy::disallowed_methods)]
 
 pub mod envelope;
 pub mod render;
@@ -136,7 +141,10 @@ impl Tally {
                 .map(|f| f.count.n)
                 .sum()
         };
-        let omitted: ShedRows = doc.omitted.as_ref().map(|o| o.shed).unwrap_or_default();
+        let omitted: ShedRows = doc
+            .omitted
+            .as_ref()
+            .map_or_else(ShedRows::default, |o| o.shed);
         let shed = |pick: fn(&ShedRows) -> usize| -> usize {
             defs.iter().map(|d| pick(&d.shed)).sum::<usize>() + pick(&omitted)
         };

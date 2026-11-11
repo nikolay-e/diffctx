@@ -611,10 +611,10 @@ fn statements(command: &str) -> Vec<Statement> {
                 continue;
             }
         }
+        // A word with no file name (`/`, `..`) names no program.
         let prog = Path::new(&ws[i])
             .file_name()
-            .map(|f| f.to_string_lossy().to_string())
-            .unwrap_or_default();
+            .map_or_else(String::new, |f| f.to_string_lossy().to_string());
         if matches!(ws[i].as_str(), "cd" | "pushd" | "popd") {
             // `cd -`, `cd` alone and `popd` go where the line does not say;
             // `--` and `-P`/`-L` only precede the directory (#405).

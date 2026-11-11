@@ -4,6 +4,8 @@
 //! line of its own, never dropped; a case the table does not name is listed.
 //! When unsure, nothing folds.
 
+#![deny(clippy::disallowed_methods)]
+
 use crate::facts::{DefKind, Language};
 use crate::resolve::Relation;
 

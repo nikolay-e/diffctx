@@ -7,6 +7,11 @@
 //! redactions, the share of the raw diff, and the ceiling a reply may not pass
 //! are decided here, once. A door that wants any of them different asks the
 //! engine, not itself.
+//!
+//! A failed read is never an empty value here: the lint that says so is denied
+//! in this module.
+
+#![deny(clippy::disallowed_methods)]
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -388,7 +393,7 @@ fn judge(
     let stopped: Vec<String> = limits
         .iter()
         .filter(|r| matches!(r, LimitReason::Deadline | LimitReason::Cancelled))
-        .filter_map(|r| serde_json::to_value(r).ok()?.as_str().map(str::to_string))
+        .map(|r| crate::impact::reason_names(std::slice::from_ref(r)))
         .collect();
     if !stopped.is_empty() {
         notes.push(Note::Warning(format!(
@@ -431,31 +436,54 @@ fn empty_diff_hint(request: &Request, changed_files: &[String]) -> String {
              or a '-diff' attribute); they are listed in inventory.changed",
             changed_files.len()
         ),
-        _ if diff_ref == "HEAD" && working_tree_is_clean(root) => {
-            "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
-        }
+        _ if diff_ref == "HEAD" => match working_tree_is_clean(root) {
+            Ok(true) => {
+                "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
+            }
+            Ok(false) => range_hint(diff_ref),
+            Err(_) => "git refused to read the working tree's status, so whether it matches HEAD is unknown; check with: git status".to_string(),
+        },
         _ if crate::snapshot::is_staged_keyword(diff_ref) => {
             "check the staged changes with: git diff --cached --stat".to_string()
         }
-        _ if is_duration_window(root, diff_ref) => {
-            format!("nothing changed in the last {diff_ref}; widen the window (e.g. --diff 7d)")
-        }
-        // `A..B` is read from the fork point, which is git's `A...B`.
-        _ if diff_ref.contains("..") && !diff_ref.contains("...") => format!(
-            "check the range with: git diff --stat {}",
-            diff_ref.replacen("..", "...", 1)
-        ),
-        _ => format!("check the range with: git diff --stat {diff_ref}"),
+        _ => match is_duration_window(root, diff_ref) {
+            Ok(true) => {
+                format!("nothing changed in the last {diff_ref}; widen the window (e.g. --diff 7d)")
+            }
+            Ok(false) => range_hint(diff_ref),
+            Err(_) => format!(
+                "git refused a read, so whether {diff_ref} is a time window is unknown; check the range with: git diff --stat {diff_ref}"
+            ),
+        },
     }
 }
 
-fn working_tree_is_clean(root: &Path) -> bool {
-    crate::snapshot::run_git(root, &["status", "--porcelain"])
-        .is_ok_and(|out| out.trim().is_empty())
+fn range_hint(diff_ref: &str) -> String {
+    // `A..B` is read from the fork point, which is git's `A...B`.
+    if diff_ref.contains("..") && !diff_ref.contains("...") {
+        format!(
+            "check the range with: git diff --stat {}",
+            diff_ref.replacen("..", "...", 1)
+        )
+    } else {
+        format!("check the range with: git diff --stat {diff_ref}")
+    }
 }
 
-fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
-    crate::snapshot::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
+fn working_tree_is_clean(root: &Path) -> Result<bool, crate::snapshot::SnapshotError> {
+    Ok(crate::snapshot::run_git(root, &["status", "--porcelain"])?
+        .trim()
+        .is_empty())
+}
+
+/// Whether `diff_ref` is a time window (`24h`); a spelling that only looks like
+/// one is no window, and a read git refused is an error.
+fn is_duration_window(root: &Path, diff_ref: &str) -> Result<bool, crate::snapshot::SnapshotError> {
+    match crate::snapshot::duration_base(root, diff_ref) {
+        Ok(base) => Ok(base.is_some()),
+        Err(crate::snapshot::SnapshotError::InvalidDuration(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// The summary a door prints on stderr: what the reader's context pays.

@@ -113,8 +113,8 @@ impl<'a> TestsReach<'a> {
             if f.kind == FragmentKind::Function && lang::rust::is_rust(f.path()) {
                 tests_at.entry(f.path()).or_insert_with(|| {
                     let text = state.run.source().read_to_string(Path::new(f.path()));
-                    text.map(|t| lang::rust::test_functions(&t))
-                        .unwrap_or_default()
+                    // A read that failed is noted on the run by the source itself.
+                    text.map_or_else(Vec::new, |t| lang::rust::test_functions(&t))
                 });
             }
         }
@@ -555,13 +555,12 @@ fn node_scripts(text: &str, dir: &str) -> Vec<Script> {
         Some(serde_json::Value::String(path)) => manifest
             .get("name")
             .and_then(|n| n.as_str())
-            .map(|name| {
+            .map_or_else(Vec::new, |name| {
                 vec![(
                     name.rsplit('/').next().unwrap_or(name).to_string(),
                     path.clone(),
                 )]
-            })
-            .unwrap_or_default(),
+            }),
         Some(serde_json::Value::Object(map)) => map
             .iter()
             .filter_map(|(name, path)| Some((name.clone(), path.as_str()?.to_string())))
@@ -752,6 +751,10 @@ enum Spelling {
 }
 
 impl Spelling {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "an escaped pattern the regex crate refuses leaves the route with no text reach: its caller is listed with no static test link, the cautious side"
+    )]
     fn of(kind: EntryKind, verb: Option<&str>, label: &str) -> Option<Self> {
         match kind {
             EntryKind::Route => {

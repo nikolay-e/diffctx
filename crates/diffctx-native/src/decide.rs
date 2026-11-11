@@ -580,14 +580,7 @@ pub enum Effect {
     File(Reason),
     Subtree(Reason, String),
     Run(Gap),
-    /// A manifest of an ecosystem the workspace model does not read by design
-    /// (`composer.json`, `Gemfile`): it lost no file, and the cell of its language
-    /// reads what it needs of it itself.
-    ByDesign,
 }
-
-/// How the workspace model words a manifest it does not read by design.
-const NOT_READ_BY_DESIGN: &str = "this model does not read";
 
 /// The one reading of a loss. A new variant of `Loss` does not compile until it
 /// is decided here.
@@ -607,9 +600,6 @@ pub fn effect_of(loss: &Loss) -> Effect {
         Loss::Unsupported { .. } => Effect::File(Reason::NoExtractor),
         Loss::ExtractorFailed { .. } => Effect::File(Reason::Failed),
         Loss::AmbiguousMatch { .. } => Effect::File(Reason::Ambiguous),
-        Loss::ManifestUnread { reason, .. } if reason.ends_with(NOT_READ_BY_DESIGN) => {
-            Effect::ByDesign
-        }
         Loss::ManifestUnread { path, .. } => {
             Effect::Subtree(Reason::Manifest, path.parent().unwrap_or("").to_string())
         }
@@ -663,7 +653,6 @@ impl Losses {
                         out.run.push(gap);
                     }
                 }
-                Effect::ByDesign => {}
             }
         }
         out

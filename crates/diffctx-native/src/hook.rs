@@ -21,6 +21,13 @@
 //! `git commit` records before it runs and denies once with the impact
 //! attached, so the retry passes. A commit line that stages for itself is
 //! asked to stage first instead.
+//!
+//! Nothing here turns a failed read into an empty value: the lint that says so
+//! is denied in this module. A failure is a named `Silence` the log records, an
+//! answer that says what it could not read, or a one-line `allow` that says why
+//! losing the value costs a repeated review and never a wrong answer.
+
+#![deny(clippy::disallowed_methods)]
 
 mod intent;
 
@@ -201,13 +208,6 @@ fn is_lookup_pattern(pattern: &str) -> bool {
     !bare.is_empty() && bare.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
-fn git_out(root: &Path, args: &[&str]) -> Option<String> {
-    snap::run_git(root, args)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
 /// A read git answers "no" to by exit status 1 (`rev-parse --verify --quiet`
 /// of an absent ref, `merge-base` of unrelated histories) is `None`: an
 /// absence (#416). Any other failure is one the review cannot go on past.
@@ -231,15 +231,15 @@ fn first_reachable(root: &Path, revs: &[&str]) -> Result<Option<String>, Silence
 /// own base (`HEAD`, the empty tree on an unborn branch). Captured from a
 /// copy: `write-tree` on the real index takes its lock from under a
 /// concurrent `git add`.
-fn staged_range(root: &Path, base: Option<&str>) -> Option<String> {
-    let staged = snap::capture_planned(root, &[]).ok()?;
-    Some(format!("{}..{}", base.unwrap_or(&staged.base), staged.tree))
+fn staged_range(root: &Path, base: Option<&str>) -> Result<String, Silence> {
+    let staged = snap::capture_planned(root, &[]).map_err(|_| "error:git")?;
+    Ok(format!("{}..{}", base.unwrap_or(&staged.base), staged.tree))
 }
 
 /// This session's files as they stand (as staged, for `--cached`) and every
 /// other path as `HEAD` has it: the pending change without the edits other
 /// sessions left in the same checkout, captured on a copy of the index.
-fn own_range(root: &Path, staged: bool, files: &[String]) -> Option<String> {
+fn own_range(root: &Path, staged: bool, files: &[String]) -> Result<String, Silence> {
     let step = |args: &[&str], magic: &str| -> snap::PlanStep {
         let paths = files.iter().map(|f| format!(":({magic}){f}"));
         let args = args.iter().map(|a| a.to_string()).chain(paths).collect();
@@ -250,8 +250,8 @@ fn own_range(root: &Path, staged: bool, files: &[String]) -> Option<String> {
         plan.push(step(&["add", "-A", "--"], "literal"));
     }
     plan.push(step(&["reset", "-q", "--", ":/"], "exclude,literal"));
-    let snapshot = snap::capture_planned(root, &plan).ok()?;
-    Some(format!("{}..{}", snapshot.base, snapshot.tree))
+    let snapshot = snap::capture_planned(root, &plan).map_err(|_| "error:git")?;
+    Ok(format!("{}..{}", snapshot.base, snapshot.tree))
 }
 
 /// A directory a search names, relative to the payload's `cwd`.
@@ -272,9 +272,9 @@ fn range_for(root: &Path, trigger: &Trigger) -> Result<String, Silence> {
         Trigger::Inspect {
             staged,
             own: Some(own),
-        } if !own.others.is_empty() => own_range(root, *staged, &own.files).ok_or("error:git")?,
+        } if !own.others.is_empty() => own_range(root, *staged, &own.files)?,
         Trigger::Inspect { staged: false, .. } => "HEAD".to_string(),
-        Trigger::Inspect { staged: true, .. } => staged_range(root, None).ok_or("error:git")?,
+        Trigger::Inspect { staged: true, .. } => staged_range(root, None)?,
         Trigger::Commit { amend, .. } => {
             let base = if *amend {
                 Some(
@@ -284,7 +284,7 @@ fn range_for(root: &Path, trigger: &Trigger) -> Result<String, Silence> {
             } else {
                 None
             };
-            staged_range(root, base.as_deref()).ok_or("error:git")?
+            staged_range(root, base.as_deref())?
         }
         Trigger::PullRequest { base, head } => {
             // `--head` opens the PR from the branch as pushed.
@@ -383,13 +383,27 @@ struct Record {
     at: u64,
 }
 
-/// How many bytes a reflog holds: how far it had run.
-fn log_len(path: &Path) -> u64 {
-    std::fs::metadata(path).map_or(0, |m| m.len())
+/// How many bytes a reflog holds: how far it had run. A log that does not
+/// exist holds none; one that cannot be stat'ed is a refusal, never length 0,
+/// which would count every earlier move as the call's.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "git's own log file, stat'ed to see it grow without a git call"
+)]
+fn log_len(path: &Path) -> Result<u64, Silence> {
+    match std::fs::metadata(path) {
+        Ok(meta) => Ok(meta.len()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(_) => Err("error:git"),
+    }
 }
 
 /// The git directory of a checked-out work tree: its `.git`, or the directory
 /// a linked work tree's `.git` file names.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a `.git` file that cannot be read falls through to asking git, which names its own failure"
+)]
 fn git_dir_of(work_tree: &Path) -> Option<PathBuf> {
     let dot_git = work_tree.join(".git");
     if dot_git.is_dir() {
@@ -407,21 +421,21 @@ fn git_dir_of(work_tree: &Path) -> Option<PathBuf> {
 /// The work tree's own `HEAD` reflog, the record of every move it made. Read
 /// off its `.git`: one git call per work tree is what made every Bash call
 /// pay for each linked work tree of a repository.
-fn head_log(work_tree: &Path) -> Option<PathBuf> {
-    git_dir_of(work_tree)
-        .map(|dir| dir.join("logs").join("HEAD"))
-        .or_else(|| {
-            git_out(
-                work_tree,
-                &[
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--git-path",
-                    "logs/HEAD",
-                ],
-            )
-            .map(PathBuf::from)
-        })
+fn head_log(work_tree: &Path) -> Result<PathBuf, Silence> {
+    if let Some(dir) = git_dir_of(work_tree) {
+        return Ok(dir.join("logs").join("HEAD"));
+    }
+    git_checked(
+        work_tree,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "logs/HEAD",
+        ],
+    )?
+    .map(PathBuf::from)
+    .ok_or("error:git")
 }
 
 /// Where a repository stands: its refs, and how far the reflogs that tell a
@@ -432,23 +446,24 @@ fn refs_of(repo: &snap::RepoRoot) -> Result<Before, Silence> {
     let tracking = refs
         .tracking
         .iter()
-        .map(|(remote, branch, oid)| {
+        .map(|(remote, branch, oid)| -> Result<Tracked, Silence> {
             let name = format!("refs/remotes/{}/{branch}", remote.0);
-            Tracked {
-                log: log_len(&repo.common_dir.join("logs").join(&name)),
+            Ok(Tracked {
+                log: log_len(&repo.common_dir.join("logs").join(&name))?,
                 remote: remote.0.clone(),
                 branch: branch.clone(),
                 oid: oid.to_string(),
                 name,
-            }
+            })
         })
-        .collect();
-    let log = head_log(&repo.work_tree).ok_or("error:git")?;
+        .collect::<Result<Vec<_>, Silence>>()?;
+    let log = head_log(&repo.work_tree)?;
     Ok(Before {
         root: repo.work_tree.clone(),
-        head: refs.head.map(|oid| oid.to_string()).unwrap_or_default(),
+        // An unborn branch has no commit: its head is empty.
+        head: refs.head.map_or_else(String::new, |oid| oid.to_string()),
         tracking,
-        head_cursor: log_len(&log),
+        head_cursor: log_len(&log)?,
         head_log: Some(log),
         common: Some(repo.common_dir.clone()),
     })
@@ -484,6 +499,10 @@ fn work_trees(home: &snap::RepoRoot) -> Result<Vec<(PathBuf, String)>, Silence> 
 }
 
 /// `HEAD`'s reflog entries since `before`, oldest first.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a log that cannot be stat'ed only skips the fast path: `reflog_since` below reads it"
+)]
 fn head_moves(before: &Before, repo: &snap::RepoRoot) -> Result<Vec<snap::ReflogEntry>, Silence> {
     // A log that has not grown holds no move: nothing to read and no git to
     // ask where it is.
@@ -605,7 +624,7 @@ fn landed(
         // A push that cannot tell what this call committed says nothing of
         // who made what it published.
         let unmade = match &entries {
-            Ok(entries) if !rewritten => unmade_commits(root, range, entries, session),
+            Ok(entries) if !rewritten => unmade_commits(root, range, entries, session)?,
             _ => Vec::new(),
         };
         published = match spec {
@@ -692,10 +711,10 @@ fn landed(
             // A commit with no parent, or none before the line, starts from
             // the empty tree.
             let parent = if amend {
-                git_out(
+                git_checked(
                     root,
                     &["rev-parse", "--verify", "--quiet", &format!("{new}~1")],
-                )
+                )?
             } else if before.head.is_empty() {
                 None
             } else {
@@ -758,16 +777,17 @@ fn claimed_by(oid: &str, session: &str) -> bool {
 /// its own: what a push over another session's held-back commit publishes
 /// unannounced (gh#669). The commits this call made are claimed here, so the
 /// next push does not read them as foreign. Nothing when the session is
-/// unknown or git cannot list the range: a warning needs its evidence.
+/// unknown: a warning needs its evidence. A range git cannot list is a
+/// refusal, not a push with nothing foreign in it.
 fn unmade_commits(
     root: &Path,
     range: &str,
     entries: &[snap::ReflogEntry],
     session: Option<&str>,
-) -> Vec<String> {
+) -> Result<Vec<String>, Silence> {
     let session = file_safe(session);
     if session.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let made: rustc_hash::FxHashSet<String> = entries
         .iter()
@@ -777,13 +797,14 @@ fn unmade_commits(
     for oid in &made {
         claim(oid, Some(session.as_str()));
     }
-    let Some(listing) = git_out(
+    let Some(listing) = git_checked(
         root,
         &["log", "-n", "500", "--format=%H %h %s", range, "--"],
-    ) else {
-        return Vec::new();
+    )?
+    else {
+        return Ok(Vec::new());
     };
-    listing
+    Ok(listing
         .lines()
         .filter_map(|line| {
             let (oid, rest) = line.split_once(' ')?;
@@ -793,7 +814,7 @@ fn unmade_commits(
                 format!("{short} '{subject}'")
             })
         })
-        .collect()
+        .collect())
 }
 
 /// What a line printed, as its `PostToolUse` carries it: git's report of
@@ -873,7 +894,7 @@ fn push_range(
             snap::RangeSpec::Pushed { old: from, new: to },
         ));
     }
-    let tree = git_out(
+    let tree = git_checked(
         &repo.work_tree,
         &[
             "rev-parse",
@@ -881,7 +902,7 @@ fn push_range(
             "--quiet",
             &format!("{new}^{{tree}}"),
         ],
-    )
+    )?
     .ok_or("error:git")?;
     Ok((
         format!("{old}..{tree}"),
@@ -889,11 +910,16 @@ fn push_range(
     ))
 }
 
-/// Whether one of `trees` has `branch` checked out.
-fn checked_out_in(trees: &[PathBuf], branch: &str) -> bool {
-    trees.iter().any(|tree| {
-        git_out(tree, &["symbolic-ref", "--quiet", "--short", "HEAD"]).as_deref() == Some(branch)
-    })
+/// Whether one of `trees` has `branch` checked out. A work tree the line
+/// removed has nothing checked out; a detached `HEAD` is git's quiet "no".
+fn checked_out_in(trees: &[PathBuf], branch: &str) -> Result<bool, Silence> {
+    for tree in trees.iter().filter(|tree| tree.is_dir()) {
+        let head = git_checked(tree, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+        if head.as_deref() == Some(branch) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The ranges this line pushed. What git printed for it is exact: no ref
@@ -924,7 +950,7 @@ fn pushed_ranges(
             // The reflog of a remote-tracking ref is shared by every work
             // tree and names none: a branch another work tree has checked
             // out was pushed from there, not by this call.
-            if checked_out_in(others, &moved.branch) {
+            if checked_out_in(others, &moved.branch)? {
                 continue;
             }
             if let Some(range) = first_push_since(repo, before, now, moved)? {
@@ -1008,14 +1034,14 @@ fn first_push_since(
     let mut args = vec!["rev-list", "--reverse", pushed.as_str(), "--not"];
     args.extend(others);
     // The oldest commit the remote did not have: its parent is the base.
-    let Some(oldest) = git_out(root, &args).and_then(|l| l.lines().next().map(str::to_string))
+    let Some(oldest) = git_checked(root, &args)?.and_then(|l| l.lines().next().map(str::to_string))
     else {
         return Ok(None);
     };
-    let parent = git_out(
+    let parent = git_checked(
         root,
         &["rev-parse", "--verify", "--quiet", &format!("{oldest}^")],
-    );
+    )?;
     let base = match parent.clone() {
         Some(parent) => parent,
         None => snap::empty_tree_id(root).map_err(|_| "error:git")?,
@@ -1088,7 +1114,8 @@ pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silen
     let checkout = snap::find_toplevel(root)
         .map_err(|_| "error:git")?
         .unwrap_or_else(|| root.to_path_buf());
-    let base = git_out(root, &["rev-parse", "--verify", "--quiet", &base]).unwrap_or_default();
+    let base =
+        git_checked(root, &["rev-parse", "--verify", "--quiet", &base])?.ok_or("error:git")?;
     let mut h = Fnv::new();
     h.feed(env!("CARGO_PKG_VERSION").as_bytes())
         .feed(checkout.to_string_lossy().as_bytes())
@@ -1136,6 +1163,10 @@ fn changed_blobs(
 /// repository, a moved submodule, an unreadable file — keeps an identity of
 /// its own: one such path used to fail the whole read, which every caller
 /// logs as "clean", and the hook went quiet on a real change.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "one batch `hash-object` git refuses leaves each path its own stat identity (above), which only costs a repeated review"
+)]
 fn hash_working_tree_blobs(root: &Path, entries: &mut [(String, String, String)]) {
     let open = |oid: &str| oid.is_empty() || oid.bytes().all(|b| b == b'0');
     let files: Vec<String> = entries
@@ -1155,9 +1186,13 @@ fn hash_working_tree_blobs(root: &Path, entries: &mut [(String, String, String)]
 }
 
 /// A checkout's commit for a repository inside this one, else size and mtime.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "an identity of its own: a path that cannot be stat'ed is `missing`, a time the platform does not give is 0; both only repeat a review"
+)]
 fn unhashable_identity(path: &Path) -> String {
     if path.is_dir() {
-        if let Some(head) = git_out(path, &["rev-parse", "--verify", "--quiet", "HEAD"]) {
+        if let Ok(Some(head)) = git_checked(path, &["rev-parse", "--verify", "--quiet", "HEAD"]) {
             return format!("head-{head}");
         }
     }
@@ -1177,6 +1212,10 @@ fn unhashable_identity(path: &Path) -> String {
 /// Where the hook keeps what it delivered and its log. A cache it cannot
 /// write disabled the dedupe and the retry cap without a word, and every
 /// commit reran the pipeline (#407): the temporary directory stands in.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "no `USER` (Windows) leaves the fallback directory unsuffixed"
+)]
 fn cache_root() -> Option<PathBuf> {
     let preferred = configured_cache_root();
     if let Some(dir) = preferred.as_ref().filter(|d| writable(d)) {
@@ -1220,6 +1259,10 @@ pub fn is_seen(key: &str) -> bool {
     is_seen_within(key, SEEN_TTL)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a marker that cannot be stat'ed is not seen: the review runs again, never silence"
+)]
 fn is_seen_within(key: &str, ttl: Duration) -> bool {
     let Some(path) = marker(key) else {
         return false;
@@ -1284,6 +1327,10 @@ fn unmark(key: &str) {
 /// rather than costing the deadline on every command.
 const MAX_ATTEMPTS: u32 = 2;
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a marker that is no number counts as no attempt: the review is tried again, never skipped"
+)]
 fn attempts(key: &str) -> u32 {
     seen_headline(key, SEEN_TTL)
         .and_then(|n| n.trim().parse().ok())
@@ -1321,10 +1368,15 @@ fn mark_delivered(key: &str, headline: &str, partial: bool) {
     mark_seen_with(key, &text);
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a marker that cannot be read is no marker: the review runs again, never an answer read as empty"
+)]
 fn seen_headline(key: &str, ttl: Duration) -> Option<String> {
-    is_seen_within(key, ttl)
-        .then(|| marker(key).and_then(|p| std::fs::read_to_string(p).ok()))
-        .map(Option::unwrap_or_default)
+    if !is_seen_within(key, ttl) {
+        return None;
+    }
+    std::fs::read_to_string(marker(key)?).ok()
 }
 
 /// A manual `--mode impact` run on a range counts as that range reviewed:
@@ -1344,7 +1396,7 @@ pub fn mark_range_reviewed(root: &Path, range: &str, output: &crate::impact::Imp
         };
         mark_delivered(
             &format!("id-{identity}"),
-            rendered.lines().next().unwrap_or_default(),
+            rendered.lines().next().unwrap_or(""),
             !output.limits.is_empty(),
         );
     }
@@ -1399,6 +1451,10 @@ fn verb_of(trigger: &Trigger) -> &'static str {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "no working directory is `not-git` to every caller, which names it"
+)]
 fn payload_cwd(payload: &serde_json::Value) -> Option<PathBuf> {
     payload["cwd"]
         .as_str()
@@ -1468,9 +1524,8 @@ fn prepare_landed(
 ) -> Result<Vec<Prepared>, Silence> {
     let _phase = crate::profile::phase("hook.prepare");
     let key = before_key(payload, command, trace.session.as_deref());
-    let record: Record = seen_headline(&key, SEEN_TTL)
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or("no-record")?;
+    let text = seen_headline(&key, SEEN_TTL).ok_or("no-record")?;
+    let record: Record = serde_json::from_str(&text).map_err(|_| "error:record")?;
     unmark(&key);
     let output = Output::of(payload);
     let found = landed_in(&record, false, &output, trace)?;
@@ -1539,12 +1594,12 @@ fn repos_before(home: &snap::RepoRoot) -> Result<Vec<Before>, Silence> {
         if work_tree == home.work_tree || !work_tree.is_dir() {
             continue;
         }
-        let log = head_log(&work_tree).ok_or("error:git")?;
+        let log = head_log(&work_tree)?;
         repos.push(Before {
             root: work_tree,
             head,
             tracking: Vec::new(),
-            head_cursor: log_len(&log),
+            head_cursor: log_len(&log)?,
             head_log: Some(log),
             common: Some(home.common_dir.clone()),
         });
@@ -1630,6 +1685,10 @@ fn pending_key(session: Option<&str>) -> String {
     session_key("pending", session)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a pending record this hook wrote and cannot parse is dropped: one background line goes unreviewed, no answer is wrong"
+)]
 fn pending(session: Option<&str>) -> Vec<Record> {
     seen_headline(&pending_key(session), PENDING_TTL)
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -1709,6 +1768,10 @@ fn pending_review(event: Event, session: Option<&str>, started: Instant) -> Opti
 
 /// Several answers of one event as one hook output: the last one's (a
 /// gate's decision stays), with every earlier one's context before its own.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "every answer is `hook_json`'s own output: one that carries no context adds none"
+)]
 fn joined(answers: Vec<String>) -> Option<String> {
     let mut answers = answers.into_iter().rev();
     let last = answers.next()?;
@@ -1922,6 +1985,10 @@ const MAX_BRACKETED_PATHS: usize = 20_000;
 /// file of it rewritten in place does not. Listing every untracked file
 /// instead cost about as much again as the rest of the call's recording on a
 /// work tree with thousands of them.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "None is a call that cannot be bracketed: `own_changes` counts it and the answer names it"
+)]
 fn dirty_stamps(root: &Path) -> Option<FxHashMap<String, u64>> {
     let status = snap::run_git_z(
         root,
@@ -1947,6 +2014,10 @@ fn dirty_stamps(root: &Path) -> Option<FxHashMap<String, u64>> {
     )
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "0 is the stamp of nothing there, and of a time the platform does not give"
+)]
 fn stamp(path: &Path) -> u64 {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return 0;
@@ -2001,6 +2072,10 @@ fn bracket_before(payload: &serde_json::Value, root: &Path) {
 /// and one that left the listing with a stamp moved (restored, deleted; not
 /// one a commit or `git add` merely stopped listing). Never an answer: a
 /// call that cannot be bracketed is counted as such.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a bracket that cannot be read leaves its call unbracketed: counted and named, never guessed"
+)]
 fn bracket_after(payload: &serde_json::Value) {
     let Some((session, id)) = bracket_ids(payload) else {
         return;
@@ -2052,6 +2127,10 @@ fn bracket_after(payload: &serde_json::Value) {
 }
 
 /// What the session's bracketed calls changed in `root`.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a ledger or line that cannot be read leaves its calls unbracketed: counted and named, never guessed"
+)]
 fn bracketed(session: Option<&str>, root: &Path) -> Bracketed {
     let mut ledger = Bracketed::default();
     let Some(text) = session
@@ -2086,14 +2165,24 @@ fn bracketed(session: Option<&str>, root: &Path) -> Bracketed {
 /// What this session and its subagents (`<transcript>/subagents/`) wrote,
 /// streamed line by line. `None` when the transcripts cannot be read whole
 /// within the budget.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "None is a transcript that cannot be read whole: the answer says it cannot tell this session's edits (`Inspect { own: None }`)"
+)]
 fn session_writes(transcript: &Path, ledger: Bracketed) -> Option<Writes> {
     use std::io::{BufRead as _, Read as _};
     let mut sources = vec![transcript.to_path_buf()];
-    if let Ok(dir) = std::fs::read_dir(transcript.with_extension("").join("subagents")) {
-        sources.extend(
-            dir.filter_map(|e| Some(e.ok()?.path()))
-                .filter(|p| p.extension().is_some_and(|x| x == "jsonl")),
-        );
+    match std::fs::read_dir(transcript.with_extension("").join("subagents")) {
+        Ok(dir) => {
+            for entry in dir {
+                let path = entry.ok()?.path();
+                if path.extension().is_some_and(|x| x == "jsonl") {
+                    sources.push(path);
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return None,
     }
     let mut left = TRANSCRIPT_BUDGET;
     let mut writes = Writes {
@@ -2140,6 +2229,10 @@ fn session_writes(transcript: &Path, ledger: Bracketed) -> Option<Writes> {
 
 /// A path as the filesystem resolves it (`/var` is `/private/var` on
 /// macOS), through its directory when the file itself is gone.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a path that cannot be resolved stays as written"
+)]
 fn canonical(path: &Path) -> PathBuf {
     dunce::canonicalize(path)
         .ok()
@@ -2340,13 +2433,29 @@ fn range_name(trigger: &Trigger, range: &str) -> Option<String> {
 /// The definitions this session's edits change that a file read as
 /// committed names in its pending text: no caller count of the answer
 /// covers that text, so for them a zero is no finding (#453).
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the pending text of files the review reads as committed; one that cannot be read is named in the hedge"
+)]
 fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
-    let names = edited_definitions(root, Some(&own.files));
+    let Ok(names) = edited_definitions(root, Some(&own.files)) else {
+        return Some(
+            "(callers may be missing: the names this session's edits change could not be read, so the changed files read as committed were not checked for them)"
+                .to_string(),
+        );
+    };
     let mut named = std::collections::BTreeSet::new();
     let mut naming = Vec::new();
+    let mut unread = Vec::new();
     for path in &own.others {
-        let Ok(text) = std::fs::read_to_string(root.join(path)) else {
-            continue;
+        let text = match std::fs::read_to_string(root.join(path)) {
+            Ok(text) => text,
+            // A file the change deleted names nothing.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                unread.push(path.clone());
+                continue;
+            }
         };
         let words: rustc_hash::FxHashSet<&str> = text
             .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
@@ -2360,14 +2469,23 @@ fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
             naming.push(path.clone());
         }
     }
-    (!named.is_empty()).then(|| {
-        format!(
-            "(callers may be missing: {} named in {} changed file(s) read as committed: {})",
+    let mut parts = Vec::new();
+    if !named.is_empty() {
+        parts.push(format!(
+            "{} named in {} changed file(s) read as committed: {}",
             named.into_iter().cloned().collect::<Vec<_>>().join(", "),
             naming.len(),
             some_of(&naming)
-        )
-    })
+        ));
+    }
+    if !unread.is_empty() {
+        parts.push(format!(
+            "{} changed file(s) read as committed could not be read: {}",
+            unread.len(),
+            some_of(&unread)
+        ));
+    }
+    (!parts.is_empty()).then(|| format!("(callers may be missing: {})", parts.join("; ")))
 }
 
 /// A review the time ran out on says so and names what it may have left:
@@ -2463,17 +2581,15 @@ fn impact_context(
     let check = what_to_check(&output, hedge.is_some());
     let stopped = stopped_note(&output, range, paths);
     let text = crate::impact::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
-    let headline = text.lines().next().unwrap_or_default().to_string();
+    let headline = text.lines().next().unwrap_or("").to_string();
     Ok(Reply {
         context: format!(
             "{} What it reaches outside the diff:\n{text}\n{stopped}{}{}",
             lead_of(event, trigger, range),
-            hedge.map(|h| format!("{h}\n")).unwrap_or_default(),
-            check
-                .map(|c| format!(
-                    "Check {c} before going on, or tell the user why they are unaffected."
-                ))
-                .unwrap_or_default(),
+            hedge.map_or_else(String::new, |h| format!("{h}\n")),
+            check.map_or_else(String::new, |c| format!(
+                "Check {c} before going on, or tell the user why they are unaffected."
+            )),
         ),
         headline,
         partial,
@@ -2594,10 +2710,9 @@ impl Scope {
         !self.0.is_empty()
             && self.0.iter().all(|p| {
                 let path = root.join(p);
-                let ext = path
-                    .extension()
-                    .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-                    .unwrap_or_default();
+                let ext = path.extension().map_or_else(String::new, |e| {
+                    format!(".{}", e.to_string_lossy().to_lowercase())
+                });
                 !p.is_empty()
                     && path.is_file()
                     && crate::config::extensions::DOC_EXTENSIONS.contains(ext.as_str())
@@ -2629,7 +2744,10 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
         .filter_map(|p| {
             let p = before_glob(&p);
             let p = dunce::canonicalize(&p).unwrap_or(p);
-            let rel = p.strip_prefix(&root).ok()?;
+            // A path outside the repository adds no prefix.
+            let Ok(rel) = p.strip_prefix(&root) else {
+                return None;
+            };
             Some(rel.to_string_lossy().replace('\\', "/"))
         })
         .collect();
@@ -2641,24 +2759,21 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
 /// working tree, the way impact names its changed symbols. Only the changed
 /// files are parsed, so a search for any other name stops here without
 /// running the pipeline.
-fn edited_definitions(root: &Path, within: Option<&[String]>) -> Vec<String> {
+fn edited_definitions(root: &Path, within: Option<&[String]>) -> Result<Vec<String>, Silence> {
     // The pending change as impact reads it, untracked files included: a
     // name defined only in a new file is still the change's (#448).
     let run = crate::resource::RunContext::unbounded();
-    let Ok(analysis) = crate::source::Analysis::at_working_tree(root, &run) else {
-        return Vec::new();
-    };
+    let analysis = crate::source::Analysis::at_working_tree(root, &run).map_err(|_| "error:git")?;
     run.set_source(analysis.head());
-    let Ok((mut hunks, _)) = crate::pipeline::collect_hunks_with_untracked(
+    let (mut hunks, _) = crate::pipeline::collect_hunks_with_untracked(
         root,
         Some("HEAD"),
         &[],
         true,
         &run.source(),
         None,
-    ) else {
-        return Vec::new();
-    };
+    )
+    .map_err(|_| "error:git")?;
     if let Some(files) = within {
         let top = canonical(root);
         let files: rustc_hash::FxHashSet<PathBuf> = files.iter().map(|f| top.join(f)).collect();
@@ -2698,7 +2813,7 @@ fn edited_definitions(root: &Path, within: Option<&[String]>) -> Vec<String> {
     }
     names.sort();
     names.dedup();
-    names
+    Ok(names)
 }
 
 /// The pending change's callers by symbol name, in the impact's own
@@ -2760,6 +2875,10 @@ fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
 /// building it to find out cost seconds a search (#667). `None` when a place
 /// is a directory, the whole repository, a file of a language the facts do not
 /// read or one that did not parse whole: the lookup decides.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a pre-filter: None sends every name to the full lookup, which reads through the snapshot"
+)]
 fn named_in_scope(
     root: &Path,
     scope: &Scope,
@@ -2837,14 +2956,17 @@ fn search_answer(
     let scope = search_scope(payload, search, &root);
     // A pending change git would not read leaves unknown which names it
     // edits: said, never answered as if nothing were edited.
-    let (identity, unread) = match result_identity(&root, "HEAD") {
+    let (identity, mut unread) = match result_identity(&root, "HEAD") {
         Ok(identity) => (identity, false),
         Err(_) => (None, true),
     };
-    let edited = identity
-        .as_ref()
-        .map(|_| edited_definitions(&root, None))
-        .unwrap_or_default();
+    let edited = match &identity {
+        Some(_) => edited_definitions(&root, None).unwrap_or_else(|_| {
+            unread = true;
+            Vec::new()
+        }),
+        None => Vec::new(),
+    };
     let (edited, others): (Vec<String>, Vec<String>) =
         names.into_iter().partition(|n| edited.contains(n));
     let mut answers = Vec::new();
@@ -2977,10 +3099,10 @@ fn symbol_answer(
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
-    // An unborn branch has no head: its key is the empty one.
+    // An unborn branch has no head: its key is its own.
     let head = snap::rev_oid(root, "HEAD")
         .map_err(|_| "error:git")?
-        .unwrap_or_default();
+        .unwrap_or_else(|| "unborn".to_string());
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("sym-{head}-{name}"), session.as_deref());
     let fresh: Vec<&String> = names
@@ -3162,6 +3284,10 @@ fn within_budget<T: Send + 'static>(
 /// ceiling the hook's own git calls are refused, and a review cut short must
 /// still name what it may have left. `None` when git refused the listing:
 /// the files are unknown, which is not an empty list.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "None is a listing git refused, which the answer says: \"Its changed files could not be listed.\""
+)]
 fn range_paths(root: &Path, range: &str) -> Option<Vec<String>> {
     let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
     snap::run_git_z(root, &args).ok()
@@ -3182,10 +3308,11 @@ fn decide(
     if !matches!(event, Event::PostToolUse { .. }) {
         return answer;
     }
-    let Some(note) = serde_json::from_str::<serde_json::Value>(stdin_json)
-        .ok()
-        .and_then(|payload| names_other_repositories(&payload))
-    else {
+    // A payload that does not parse is `review`'s `error:payload` already.
+    let Ok(payload) = serde_json::from_str::<serde_json::Value>(stdin_json) else {
+        return answer;
+    };
+    let Some(note) = names_other_repositories(&payload) else {
         return answer;
     };
     match answer {
@@ -3258,9 +3385,7 @@ fn review(
     if matches!(event, Event::PostToolUse { .. }) {
         bracket_after(&payload);
     }
-    let command = payload["tool_input"]["command"]
-        .as_str()
-        .unwrap_or_default();
+    let command = payload["tool_input"]["command"].as_str().unwrap_or("");
     let recording = !command.is_empty();
     let search = if matches!(event, Event::PostToolUse { .. }) {
         searched(&payload)
@@ -3302,7 +3427,7 @@ fn review(
     }
     let prepared = if matches!(event, Event::PostToolUse { .. }) && recording {
         match prepare_landed(&payload, command, trace) {
-            Err("no-record" | "nothing-landed") => match &search {
+            Err("no-record" | "error:record" | "nothing-landed") => match &search {
                 Some(search) => return answer_search(search, trace),
                 None => prepare(event, &payload, trace).map(|p| vec![p]),
             },
@@ -3347,10 +3472,9 @@ fn reviewed_key(oid: &str, session: Option<&str>) -> String {
 }
 
 /// The commits of `range`, newest first, up to the cap a review lists.
-fn commits_of(root: &Path, range: &str) -> Vec<String> {
-    git_out(root, &["rev-list", "-n", "500", range, "--"])
-        .map(|list| list.lines().map(str::to_string).collect())
-        .unwrap_or_default()
+fn commits_of(root: &Path, range: &str) -> Result<Vec<String>, Silence> {
+    Ok(git_checked(root, &["rev-list", "-n", "500", range, "--"])?
+        .map_or_else(Vec::new, |list| list.lines().map(str::to_string).collect()))
 }
 
 /// A review of what a call committed is complete: each commit of its range is
@@ -3360,7 +3484,12 @@ fn note_reviewed(landed: &Option<(PathBuf, String)>, trace: &Trace) {
     else {
         return;
     };
-    for oid in commits_of(root, range) {
+    // Commits git cannot list stay unmarked: a later push of them is reviewed
+    // again, which costs a repeat and hides nothing.
+    let Ok(commits) = commits_of(root, range) else {
+        return;
+    };
+    for oid in commits {
         mark_seen(&reviewed_key(&oid, trace.session.as_deref()));
     }
 }
@@ -3371,7 +3500,10 @@ fn pushes_only_reviewed(root: &Path, range: &str, session: Option<&str>) -> bool
     if file_safe(session).is_empty() {
         return false;
     }
-    let commits = commits_of(root, range);
+    // A push git cannot list is reviewed in full.
+    let Ok(commits) = commits_of(root, range) else {
+        return false;
+    };
     !commits.is_empty()
         && commits.len() < 500
         && commits
@@ -3634,6 +3766,10 @@ const LOG_NAME: &str = "hook-runs.log";
 /// audit can tell an old pin's answer from the current one (#524) without
 /// moving the fields before it. `call` joins a call's lines with the
 /// transcript; `roots` names every repository something landed in (M1).
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the hook's own log: a rotation or line that cannot be written leaves no line, as with a cache nobody can write"
+)]
 fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
     let Some(dir) = cache_root() else { return };
     let path = dir.join(LOG_NAME);
@@ -3677,6 +3813,10 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
 
 /// Markers in `seen/` are never read once their TTL has passed, so a
 /// long-lived cache otherwise grows without bound (#569).
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the hook's own markers: one that cannot be listed or stat'ed is kept until a later sweep"
+)]
 fn sweep_seen(seen: &Path) {
     let Ok(entries) = std::fs::read_dir(seen) else {
         return;
@@ -3717,6 +3857,8 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     };
     log_outcome(event, &trace, outcome, started.elapsed());
     let session = trace.session.as_deref();
+    // The `Err` is the silence reason `log_outcome` wrote just above.
+    #[allow(clippy::disallowed_methods, reason = "logged by `log_outcome` above")]
     let answer = match (answer.ok(), pending_review(event, session, started)) {
         (answer, None) => answer,
         (None, late) => late,
@@ -3731,6 +3873,10 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
 
 /// The sweep runs once a day on a stamp of its own. The log's rotation is no
 /// clock for it: it comes after tens of thousands of runs.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sweep's own stamp: one that cannot be stat'ed runs the sweep again"
+)]
 fn sweep_seen_daily(seen: &Path) {
     let stamp = seen.join(".swept");
     let fresh = std::fs::metadata(&stamp)
@@ -3751,6 +3897,10 @@ const UPGRADE_NOTICE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 /// since sits beside it in the plugin cache. Claude Code exports the plugin's
 /// root to its hooks (`CLAUDE_PLUGIN_ROOT`), so the wrapper forwards nothing;
 /// a newer `X.Y.Z` sibling is said once per session.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "advisory: a plugin cache that cannot be listed gives no upgrade notice"
+)]
 fn upgrade_notice(session: Option<&str>) -> Option<String> {
     let root = PathBuf::from(std::env::var_os("CLAUDE_PLUGIN_ROOT")?);
     let running = env!("CARGO_PKG_VERSION");
@@ -3775,6 +3925,10 @@ fn upgrade_notice(session: Option<&str>) -> Option<String> {
 /// Orders `X.Y.Z` releases and the development builds before them, in either
 /// spelling (`2.0.0.dev0`, `2.0.0-dev.0`), `+source` marks ignored: a dev build
 /// sorts after the previous release and before its own (#570).
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a directory name that is no number is no release: None says so"
+)]
 fn release_key(name: &str) -> Option<(u64, u64, u64, bool, u64)> {
     let name = name.split('+').next()?;
     let (base, dev) = match name.split_once("-dev").or_else(|| name.split_once(".dev")) {
@@ -3794,7 +3948,7 @@ fn with_notice(answer: &str, notice: &str) -> String {
         return answer.to_string();
     };
     let context = &mut doc["hookSpecificOutput"]["additionalContext"];
-    let rest = context.as_str().unwrap_or_default();
+    let rest = context.as_str().unwrap_or("");
     *context = serde_json::Value::String(format!("{notice}\n\n{rest}"));
     doc.to_string()
 }

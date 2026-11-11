@@ -434,7 +434,11 @@ fn a_manifest_the_model_cannot_read_leaves_dependencies_open() {
         !m.may_reference("b/y.py", "a/x.py"),
         "a readable project still cannot reach into a project it does not declare"
     );
-    assert_eq!(m.losses().len(), 4, "each unreadable manifest is named");
+    assert_eq!(
+        m.losses().len(),
+        2,
+        "each unreadable manifest is named; one read by design as not modelled (`setup.py`, `Gemfile`) lost nothing"
+    );
 }
 
 #[cfg(unix)]
