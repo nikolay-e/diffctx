@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Provenance is `diffctx.provenance.v2`: it drops `input.diff_range`, which
+  repeated `range.spec` (two more commit ids in every artifact); `base` and
+  `head` stay.
+
 - Untyped name matches (the config-to-code scan and the shared-identifier
   fallback) are one category, `key_match`, which replaces `config_generic`
   (still accepted wherever a category is typed). A name match between two

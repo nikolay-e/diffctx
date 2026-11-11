@@ -19,7 +19,7 @@ pub const BUILD_LABEL: &str = match option_env!("DIFFCTX_BUILD_SHA") {
     None => concat!(env!("CARGO_PKG_VERSION"), "+source"),
 };
 
-pub const SCHEMA: &str = "diffctx.provenance.v1";
+pub const SCHEMA: &str = "diffctx.provenance.v2";
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Engine {
@@ -31,8 +31,6 @@ pub struct Engine {
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Input {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub diff_range: Option<String>,
     /// Resolved object ids, so the record still names the input after the
     /// ref moves. `head` is absent when the right side of the diff is the
     /// working tree — a bare `--diff`, `--diff HEAD~2`, a duration window.
@@ -81,6 +79,9 @@ pub fn full_record_requested() -> bool {
 /// selection block is attached by whichever renderer spends the budget.
 #[derive(Clone, Debug)]
 pub struct RunProvenance {
+    /// The range as the run was asked: `range.spec` of the answer carries it,
+    /// so the record names the sides only, by id.
+    pub range: Option<String>,
     pub input: Input,
     pub effective_config: EffectiveConfigV1,
 }
@@ -115,8 +116,8 @@ impl RunProvenance {
             base_rev.as_deref().or(diff_range).unwrap_or("HEAD"),
         )?;
         Ok(Self {
+            range: diff_range.map(str::to_string),
             input: Input {
-                diff_range: diff_range.map(str::to_string),
                 base,
                 head,
                 working_tree,
@@ -135,8 +136,8 @@ impl RunProvenance {
             .map(crate::snapshot::split_diff_range)
             .unwrap_or((None, None));
         Self {
+            range: diff_range.map(str::to_string),
             input: Input {
-                diff_range: diff_range.map(str::to_string),
                 base: None,
                 head: None,
                 working_tree: head_rev.is_none(),

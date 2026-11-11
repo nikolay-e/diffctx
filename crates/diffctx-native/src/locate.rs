@@ -616,7 +616,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         range: envelope::range_of(
-            state.provenance.input.diff_range.as_deref(),
+            state.provenance.range.as_deref(),
             state.index_tree.as_deref(),
             state.commit_count,
             envelope::messages_of(commit_message, commit_messages),

@@ -2463,7 +2463,7 @@ pub fn select_with_params(
 
     let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
-        range_spec: state.provenance.input.diff_range.clone(),
+        range_spec: state.provenance.range.clone(),
         index_tree: state.index_tree.clone(),
         commit_count: state.commit_count,
         commit_message: state.commit_message.clone(),
@@ -3134,7 +3134,7 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
     output.range = crate::answer::envelope::range_of(
-        state.provenance.input.diff_range.as_deref(),
+        state.provenance.range.as_deref(),
         state.index_tree.as_deref(),
         state.commit_count,
         crate::answer::envelope::messages_of(
