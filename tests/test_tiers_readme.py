@@ -1,6 +1,6 @@
 """The README's language tiers are the registry's (T5): one table, two readers.
 
-The table lives in `crates/diffctx-native/src/lang/mod.rs`; a language that
+The table lives in `crates/diffctx-native/src/vocabulary.rs`; a language that
 moves tier there moves in the README in the same change.
 """
 
@@ -12,9 +12,9 @@ TIER_NAMES = {"One": 1, "Two": 2, "Three": 3}
 
 
 def _code_rows() -> dict[int, list[str]]:
-    source = (PROJECT_ROOT / "crates" / "diffctx-native" / "src" / "lang" / "mod.rs").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "crates" / "diffctx-native" / "src" / "vocabulary.rs").read_text(encoding="utf-8")
     table = re.search(r"pub const TIERS: &\[\(Tier, &str, &\[&str\]\)\] = &\[(.*?)\n\];", source, re.DOTALL)
-    assert table, "lang/mod.rs has no TIERS table"
+    assert table, "vocabulary.rs has no TIERS table"
     rows: dict[int, list[str]] = {}
     for tier, label in re.findall(r'\(\s*Tier::(One|Two|Three),\s*"([^"]+)",', table.group(1)):
         rows.setdefault(TIER_NAMES[tier], []).append(label)

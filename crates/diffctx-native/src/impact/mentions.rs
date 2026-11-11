@@ -405,6 +405,38 @@ pub(super) fn stale_references(
     (found, omitted)
 }
 
+/// An `import`, `from … import` or `export … from` line.
+pub(super) fn is_import_line(code: &str) -> bool {
+    let head = code.trim_start();
+    head.starts_with("import ")
+        || head.starts_with("from ")
+        || (head.starts_with("export ") && head.contains(" from "))
+}
+
+/// Whether the resolver binds a file's imports: a Python or a JavaScript,
+/// TypeScript or HTML file.
+pub(super) fn reads_imports(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "py" | "pyi"
+                    | "js"
+                    | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "mjs"
+                    | "cjs"
+                    | "mts"
+                    | "cts"
+                    | "html"
+                    | "htm"
+            )
+        })
+}
+
 /// `--flag path` in a shell line and `*p` in C are code, not comments.
 pub(super) fn commented(text: &str) -> bool {
     let t = text.trim_start();
@@ -586,7 +618,7 @@ pub(super) fn named_by_path(
         // so on every edit of it, a constant line that teaches the reader to
         // skip the block (#563, #564).
         if !class_of(&state.root_dir, &source, path, text, None).reads()
-            || crate::bindings::is_import_line(text)
+            || is_import_line(text)
             || written.contains(&(path.as_str(), text.trim()))
         {
             continue;

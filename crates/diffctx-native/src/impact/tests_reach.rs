@@ -24,9 +24,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::facts::EntryKind;
 
 use super::mentions::{Naming, commented, naming, starts_a_program};
+use super::rust;
 use super::{
     Cells, EdgeCategory, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState,
-    base_symbol, cell_caller, lang, lifted_caller, names_word, read_or_note, rel,
+    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel,
 };
 use crate::decide::Group;
 use crate::tokens::Names;
@@ -114,11 +115,11 @@ impl<'a> TestsReach<'a> {
         });
         let mut tests_at: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
         for f in &state.all_fragments {
-            if f.kind == FragmentKind::Function && lang::rust::is_rust(f.path()) {
+            if f.kind == FragmentKind::Function && rust::is_rust(f.path()) {
                 tests_at.entry(f.path()).or_insert_with(|| {
                     let text = state.run.source().read_to_string(Path::new(f.path()));
                     // A read that failed is noted on the run by the source itself.
-                    text.map_or_else(Vec::new, |t| lang::rust::test_functions(&t))
+                    text.map_or_else(Vec::new, |t| rust::test_functions(&t))
                 });
             }
         }
@@ -524,7 +525,7 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     let mut seen: FxHashSet<&str> = FxHashSet::default();
     for f in &state.all_fragments {
         let own = f.path();
-        if !seen.insert(own) || !lang::rust::is_rust(own) {
+        if !seen.insert(own) || !rust::is_rust(own) {
             continue;
         }
         let path = rel(state, own);

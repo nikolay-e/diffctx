@@ -1189,7 +1189,7 @@ fn resolve_symbol_change_set(
     // `C.Companion.f` and an extension's `String.pad` are read there, not
     // guessed from indentation.
     let kotlin_owned = |def: &Fragment, owner: &str| -> Option<bool> {
-        if !crate::kotlin_bindings::is_kotlin(def.path()) {
+        if crate::languages::get_language_for_file(def.path()) != Some("kotlin") {
             return None;
         }
         let text = run.source().read_to_string(Path::new(def.path()))?;

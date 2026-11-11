@@ -16,6 +16,7 @@ pub mod javascript;
 pub mod julia;
 pub mod jvm;
 pub mod latex;
+pub(in crate::edges) mod legacy;
 pub mod lua;
 pub mod nim;
 pub mod nix;

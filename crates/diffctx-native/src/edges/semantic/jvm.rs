@@ -201,9 +201,9 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
 /// three readers below (imports, package, inheritance) run in separate
 /// passes over the same fragments, and a parse per pass would triple the
 /// cost of the one seam that now parses inside an edge builder.
-fn scala_facts(content: &str) -> Option<crate::facts::LanguageFacts> {
+fn scala_facts(content: &str) -> Option<super::legacy::scala::ScalaFacts> {
     thread_local! {
-        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<crate::facts::LanguageFacts>>> =
+        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<super::legacy::scala::ScalaFacts>>> =
             std::cell::RefCell::new(FxHashMap::default());
     }
     let key = {
@@ -218,7 +218,7 @@ fn scala_facts(content: &str) -> Option<crate::facts::LanguageFacts> {
             memo.clear();
         }
         memo.entry(key)
-            .or_insert_with(|| crate::facts::scala::facts(content))
+            .or_insert_with(|| super::legacy::scala::facts(content))
             .clone()
     })
 }
@@ -788,14 +788,14 @@ impl EdgeBuilder for JVMEdgeBuilder {
             m
         };
         if let Some(root) = repo_root.filter(|_| !kotlin_defs.is_empty()) {
-            let resolver = crate::kotlin_bindings::KotlinResolver::new(root, &source);
+            let resolver = super::legacy::kotlin_bindings::KotlinResolver::new(root, &source);
             let rel = |p: &str| {
                 Path::new(p)
                     .strip_prefix(root)
                     .map(|r| r.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_else(|_| p.to_string())
             };
-            let mut defs_of: FxHashMap<&FragmentId, Option<crate::kotlin_bindings::KDef>> =
+            let mut defs_of: FxHashMap<&FragmentId, Option<super::legacy::kotlin_bindings::KDef>> =
                 FxHashMap::default();
             for jf in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
                 // One user fragment can cost seconds on a large Kotlin
@@ -839,7 +839,9 @@ impl EdgeBuilder for JVMEdgeBuilder {
                         };
                         if resolver
                             .classify(&user, (jf.start_line(), jf.end_line()), def)
-                            .is_some_and(|f| f.evidence == crate::bindings::Evidence::Resolved)
+                            .is_some_and(|f| {
+                                f.evidence == super::legacy::kotlin_bindings::Evidence::Resolved
+                            })
                         {
                             add_edge(&mut edges, &jf.id, &d.id, member_weight, reverse_factor);
                         }

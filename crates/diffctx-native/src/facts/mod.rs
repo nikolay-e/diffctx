@@ -28,7 +28,6 @@ pub mod config;
 pub mod java;
 pub mod kotlin;
 pub mod python;
-pub mod scala;
 pub mod shell;
 
 mod blob;
@@ -60,23 +59,6 @@ pub use model::{
     EntryPoint, Export, Fact, FileFacts, Framework, Import, ImportKind, Local, LocalKey, LocalKind,
     Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
 };
-
-use rustc_hash::FxHashSet;
-
-/// One import clause: `prefix.{selectors}` plus whether it ends in a wildcard.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ImportFact {
-    pub prefix: String,
-    pub selectors: Vec<String>,
-    pub wildcard: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct LanguageFacts {
-    pub package: Option<String>,
-    pub imports: Vec<ImportFact>,
-    pub inherits: FxHashSet<String>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclKind {
