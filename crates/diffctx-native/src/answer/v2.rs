@@ -1166,7 +1166,7 @@ impl ImpactV2 {
                             let (def, role) = split_role(text);
                             Entered {
                                 def: DefRef::parse(def),
-                                role: role.unwrap_or("").to_string(),
+                                role: role.as_deref().unwrap_or("").to_string(),
                             }
                         })
                         .collect(),

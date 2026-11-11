@@ -323,10 +323,9 @@ impl<'a> TestsReach<'a> {
         name: &str,
     ) -> (String, Vec<&'a Fragment>) {
         let asked = cell
-            .map(|cell| {
+            .map_or_else(Vec::new, |cell| {
                 cell.framework_entries_at(shown, name, (fixture.start_line(), fixture.end_line()))
             })
-            .unwrap_or_default()
             .into_iter()
             .find(|(kind, _)| *kind == EntryKind::Fixture)
             .and_then(|(_, framework)| framework.label)
@@ -1143,11 +1142,11 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
         return Vec::new();
     }
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
