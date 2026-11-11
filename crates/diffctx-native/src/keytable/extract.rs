@@ -8,9 +8,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashSet;
 
-use super::super::base::normalize_lexical;
 use super::tech::{kafka_property, property_keys};
 use crate::canon::canon_key;
+use crate::paths::normalize_lexical;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub(crate) enum Kind {

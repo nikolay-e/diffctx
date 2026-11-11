@@ -184,7 +184,7 @@ pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
         &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
     ));
     let _in_run = run.enter();
-    let mut links: Vec<TypedKeyLink> = crate::edges::config_edges::typed_links(&fragments, None)
+    let mut links: Vec<TypedKeyLink> = crate::keytable::typed_links(&fragments, None)
         .into_iter()
         .map(|l| TypedKeyLink {
             kind: l.kind,

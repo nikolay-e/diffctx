@@ -32,6 +32,7 @@ pub(crate) mod tokens;
 pub(crate) mod edges;
 pub mod facts;
 pub(crate) mod graph;
+pub(crate) mod keytable;
 pub(crate) mod provenance;
 pub mod resolve;
 
