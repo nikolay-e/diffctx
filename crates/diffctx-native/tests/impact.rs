@@ -6435,6 +6435,45 @@ fn impact_budget(repo: &Path, budget: u32) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).expect("impact JSON")
 }
 
+/// A changed caller whose body the fragmenter cut into chunks is named as the function
+/// the line belongs to, never as `run[N]`, the chunk that holds the call: the chunk is
+/// no definition, and the name misses the caller the answer means.
+#[test]
+fn a_changed_rust_caller_with_a_chunked_body_is_named_as_its_function() {
+    let run = |tag: u32| {
+        let statements: Vec<String> = (0..60)
+            .map(|i| match i {
+                40 => "    total += helper(total);".to_string(),
+                _ => format!("    total += {i};"),
+            })
+            .collect();
+        format!(
+            "pub fn run() -> u32 {{\n    let mut total = {tag};\n{}\n    total\n}}\n",
+            statements.join("\n")
+        )
+    };
+    let lib = |k: u32, tag: u32| {
+        format!(
+            "pub fn helper(x: u32) -> u32 {{\n    x + {k}\n}}\n\n{}",
+            run(tag)
+        )
+    };
+    let manifest = "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+    let tmp = repo(
+        &[("Cargo.toml", manifest), ("src/lib.rs", &lib(1, 0))],
+        &[("src/lib.rs", &lib(2, 1))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let helper = row(&doc, "helper");
+    let named: Vec<String> = helper["also_changed"]
+        .as_array()
+        .expect("also_changed")
+        .iter()
+        .filter_map(|r| r["symbol"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(named, ["run"], "{doc:#}");
+}
+
 /// A helper in a test file is a definition like any other: the tests the range
 /// changes use it, and the answer names it with them on the one line for what
 /// only the range's own changes use. The test function nothing calls stays silent.
