@@ -64,7 +64,7 @@
       "description": "Absent only for outputs no pipeline run produced (the in-memory\nharness, an empty tree). Held as the value it serializes to: the record\nnames the engine by `&'static str`s no parser can give back.",
       "anyOf": [
         {
-          "$ref": "#/$defs/ProvenanceV1"
+          "$ref": "#/$defs/Provenance"
         },
         {
           "type": "null"
@@ -498,7 +498,7 @@
         "categories"
       ]
     },
-    "ProvenanceV1": {
+    "Provenance": {
       "type": "object",
       "properties": {
         "schema": {

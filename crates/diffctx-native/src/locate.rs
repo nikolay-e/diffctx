@@ -36,7 +36,7 @@ pub struct LocateOutput {
     #[serde(default, skip_serializing_if = "Coverage::is_clean")]
     pub coverage: Coverage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
+    pub provenance: Option<crate::run_provenance::Provenance>,
     /// Ranked candidates the budget left behind. The count is always stated; the
     /// entries, without bodies, only when asked for (`--overflow`), and then they
     /// are charged to the budget like every other byte.
