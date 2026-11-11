@@ -30,6 +30,31 @@ pub fn diffctx() -> Command {
     cmd
 }
 
+/// The `PATH` that puts [`fake_git::TRANSLATED_GIT`] ahead of the real git.
+#[cfg(unix)]
+pub fn path_with_translated_git(dir: &Path) -> std::ffi::OsString {
+    use std::os::unix::fs::PermissionsExt as _;
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("locate git");
+    let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+    let bin = dir.join("translated-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let shim = bin.join("git");
+    std::fs::write(
+        &shim,
+        fake_git::TRANSLATED_GIT.replace("$REAL_GIT", &format!("'{real}'")),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    std::env::join_paths(paths).unwrap()
+}
+
 pub fn git(repo: &Path, args: &[&str]) {
     // Scrub the same vars git_command() scrubs: under `git commit -a` the
     // pre-commit hook runs with GIT_INDEX_FILE pointing at the MAIN repo's

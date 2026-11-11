@@ -9,7 +9,6 @@ use crate::candidate_files::normalize_path;
 use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::git;
 use crate::parsers::fragment_file;
 use crate::source::Source;
 use crate::tokenizer::count_tokens;
@@ -280,7 +279,7 @@ fn read_file_content(
         let bytes = match side.read(&abs_path) {
             Ok(Some(bytes)) => bytes,
             Ok(None) => continue,
-            Err(git::GitError::Cancelled) => {
+            Err(crate::snapshot::SnapshotError::Cancelled) => {
                 return FileRead::Lost(crate::resource::LimitReason::Cancelled);
             }
             Err(e) => return FileRead::Lost(crate::resource::reason_for(&e)),

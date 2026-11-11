@@ -220,7 +220,7 @@ fn stratified_sample(cases: Vec<DiscoveredCase>, target: usize) -> Vec<Discovere
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-    let out = _diffctx::git::git_command(repo)
+    let out = _diffctx::snapshot::git_command(repo)
         .args(args)
         .env("GIT_AUTHOR_NAME", "test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -250,7 +250,7 @@ fn write_files(repo: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn rev_parse_head(repo: &Path) -> Result<String, String> {
-    let out = _diffctx::git::git_command(repo)
+    let out = _diffctx::snapshot::git_command(repo)
         .args(["rev-parse", "HEAD"])
         .output()
         .map_err(|e| format!("spawn git: {e}"))?;

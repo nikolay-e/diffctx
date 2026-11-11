@@ -4,15 +4,26 @@ use std::path::PathBuf;
 pub enum SnapshotError {
     #[error("{0}")]
     Git(String),
+    /// git ran and refused. `status` is its exit status (`None`: a signal
+    /// ended it); `reason` is git's own line, for a person: nothing branches
+    /// on it, since git translates it.
+    #[error("git {subcommand} failed: {reason}")]
+    GitRefused {
+        subcommand: String,
+        status: Option<i32>,
+        reason: String,
+    },
     #[error("not a git repository: {0}")]
     NotARepo(PathBuf),
-    #[error("invalid range: {0}")]
+    #[error("invalid diff range: {0}")]
     InvalidRange(String),
     #[error(
         "invalid duration '{0}': a window is whole <number><unit> components such as 24h, 8d, 90min or 1h30m"
     )]
     InvalidDuration(String),
-    #[error("invalid path '{0}': paths stay inside the repository and carry no pathspec magic")]
+    #[error(
+        "invalid path '{0}': paths must stay inside the repository and carry no pathspec magic"
+    )]
     InvalidPath(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
@@ -43,6 +54,14 @@ impl SnapshotError {
             self,
             Self::InvalidRange(_) | Self::InvalidDuration(_) | Self::InvalidPath(_)
         )
+    }
+
+    /// git's exit status when it ran and refused; `None` for every other error.
+    pub const fn git_status(&self) -> Option<i32> {
+        match self {
+            Self::GitRefused { status, .. } => *status,
+            _ => None,
+        }
     }
 
     /// The run ran out of time or was withdrawn: what follows is partial,

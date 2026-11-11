@@ -41,3 +41,15 @@ case "$FAKE_GIT_MODE" in
 esac
 exec "$REAL_GIT" "$@"
 "#;
+
+// A `git` that runs the real one and says every refusal in another language:
+// the exit status and stdout are git's own, the stderr words are not English.
+// What the engine decides from git's words, this shim turns the wrong way.
+pub const TRANSLATED_GIT: &str = r#"#!/bin/sh
+err=$(mktemp)
+"$REAL_GIT" "$@" 2>"$err"
+status=$?
+if [ -s "$err" ]; then echo 'Schwerwiegend: übersetzte Meldung' >&2; fi
+rm -f "$err"
+exit $status
+"#;

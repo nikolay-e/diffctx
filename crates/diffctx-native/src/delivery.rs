@@ -434,7 +434,7 @@ fn empty_diff_hint(request: &Request, changed_files: &[String]) -> String {
         _ if diff_ref == "HEAD" && working_tree_is_clean(root) => {
             "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
         }
-        _ if crate::git::is_staged_keyword(diff_ref) => {
+        _ if crate::snapshot::is_staged_keyword(diff_ref) => {
             "check the staged changes with: git diff --cached --stat".to_string()
         }
         _ if is_duration_window(root, diff_ref) => {
@@ -450,11 +450,12 @@ fn empty_diff_hint(request: &Request, changed_files: &[String]) -> String {
 }
 
 fn working_tree_is_clean(root: &Path) -> bool {
-    crate::git::run_git(root, &["status", "--porcelain"]).is_ok_and(|out| out.trim().is_empty())
+    crate::snapshot::run_git(root, &["status", "--porcelain"])
+        .is_ok_and(|out| out.trim().is_empty())
 }
 
 fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
-    crate::git::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
+    crate::snapshot::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
 }
 
 /// The summary a door prints on stderr: what the reader's context pays.

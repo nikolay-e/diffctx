@@ -5,8 +5,9 @@
 //! change or disappear between releases without a semver signal.
 
 // Input: git plumbing and path handling.
+pub(crate) mod diff_parse;
 pub mod fit;
-pub mod git;
+pub(crate) mod grep;
 pub mod in_memory_harness;
 mod paths;
 pub mod snapshot;
