@@ -1,6 +1,6 @@
 //! Kotlin facts from the fwcd grammar (`brokk-tree-sitter-kotlin`), read once
-//! per blob and shared by the fragmenter, the JVM edge builder, `--symbol`
-//! and impact: the declared package, the imports with their aliases, every
+//! per blob and shared by the fragmenter, the JVM edge builder and the Kotlin,
+//! Java and Swift extractors: the declared package, the imports with their aliases, every
 //! top-level and member declaration with its owners, receiver, visibility,
 //! declared type, header and annotations, the supertypes each type names,
 //! every use site (call, property access, type use, callable reference) with

@@ -1,7 +1,10 @@
 //! The definitions a run lays over the fragments (the overlay) with the names a file
-//! defines that a pattern over its lines does not see.
+//! defines that a pattern over its lines does not see. It gives the fragmenter
+//! something to anchor the cells' definitions on; what a use reaches is the cells'
+//! (`decide.rs`), never read from here.
 
-mod bound;
+mod javascript;
+mod python;
 mod shell;
 mod sql;
 
@@ -10,19 +13,60 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
-use crate::bindings::{self, Lang};
-use crate::facts::Declaration;
 use crate::source::Source;
 use crate::types::{Fragment, FragmentId, FragmentKind};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reader {
+    Python,
+    Js,
+}
+
+fn reader_of(path: &str) -> Option<Reader> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)?;
+    match ext.as_str() {
+        "py" | "pyi" => Some(Reader::Python),
+        // A page's inline scripts are JavaScript (#420).
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "html" | "htm" => {
+            Some(Reader::Js)
+        }
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeclKind {
+    Function,
+    Class,
+    /// A name an assignment binds or a body states as a member — `TABLE =
+    /// …`, `self.x = …`, a field, an interface member: a declaration the
+    /// fragmenter does not cut on its own.
+    Assignment,
+}
+
+#[derive(Debug, Clone)]
+struct Declaration {
+    name: String,
+    kind: DeclKind,
+    /// Decorators included.
+    lines: (u32, u32),
+    /// The class whose body declares it: a method, a field.
+    class: Option<String>,
+    /// The function it is local to: only that function's lines reach it.
+    scope: Option<(u32, u32)>,
+}
 
 /// A file's declarations as `(name, lines, kind)`, read from its path and
 /// text: a page's code is its inline scripts.
 type Declarations = fn(&str, &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)>;
 
 fn declarations_of(path: &str) -> Option<Declarations> {
-    match bindings::lang_of(path) {
-        Some(Lang::Python) => Some(|_, text| python_assignments(text)),
-        Some(Lang::Js) => Some(bound::declarations),
+    match reader_of(path) {
+        Some(Reader::Python) => Some(|_, text| python_assignments(text)),
+        Some(Reader::Js) => Some(javascript::declarations),
         None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
         None => None,
     }
@@ -33,11 +77,11 @@ fn declarations_of(path: &str) -> Option<Declarations> {
 /// layer reports them as definitions, and the fragments they are anchored on
 /// have to exist.
 fn python_assignments(text: &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
-    crate::facts::python::facts(text).map_or_else(Vec::new, |facts| {
+    python::facts(text).map_or_else(Vec::new, |facts| {
         facts
             .declarations
             .iter()
-            .filter(|d| d.kind == crate::facts::DeclKind::Assignment)
+            .filter(|d| d.kind == DeclKind::Assignment)
             .map(|d| (Some(d.name.clone()), d.lines, FragmentKind::Property))
             .collect()
     })
@@ -118,17 +162,17 @@ pub fn declared_names(path: &str, text: &str) -> Vec<String> {
                 d.scope.is_none()
                     && d.class
                         .as_deref()
-                        .is_none_or(|c| c == bindings::GLOBAL_OWNER)
+                        .is_none_or(|c| c == javascript::GLOBAL_OWNER)
             })
             .map(|d| d.name.clone())
             .collect()
     };
-    match bindings::lang_of(path) {
-        Some(Lang::Python) => {
-            crate::facts::python::facts(text).map_or_else(Vec::new, |f| reachable(&f.declarations))
+    match reader_of(path) {
+        Some(Reader::Python) => {
+            python::facts(text).map_or_else(Vec::new, |f| reachable(&f.declarations))
         }
-        Some(Lang::Js) => {
-            bindings::js_facts(path, text).map_or_else(Vec::new, |f| reachable(&f.declarations))
+        Some(Reader::Js) => {
+            javascript::js_facts(path, text).map_or_else(Vec::new, |f| reachable(&f.declarations))
         }
         None if sql::is_sql(path) => sql::declarations(text)
             .into_iter()

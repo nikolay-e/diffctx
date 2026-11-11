@@ -1,9 +1,8 @@
 //! The facts layer reads a repository only through `crate::snapshot`: a path into
 //! any other module of the crate, or out of `facts` through `super::super`, makes
-//! the layering a convention instead of a fact. The four files of the first
-//! layer (`facts::java`, `kotlin`, `python`, `scala`) are the syntax
-//! facts the edge builders read today and parse through the facade; they are the
-//! layer this one replaces and are not held to it.
+//! the layering a convention instead of a fact. The two files of the syntax
+//! walk (`facts::java`, `kotlin`) parse through the fragmenter's facade; they are
+//! not held to it.
 
 use std::fs;
 use std::path::Path;
@@ -14,7 +13,7 @@ use walkdir::WalkDir;
 mod isolation_source;
 use isolation_source::without_comments;
 
-const FIRST_LAYER: [&str; 4] = ["java.rs", "kotlin.rs", "python.rs", "scala.rs"];
+const FIRST_LAYER: [&str; 2] = ["java.rs", "kotlin.rs"];
 
 /// What reaches out of `facts`; a file may climb `reach` modules with `super`.
 fn violations(source: &str, reach: usize) -> Vec<String> {
