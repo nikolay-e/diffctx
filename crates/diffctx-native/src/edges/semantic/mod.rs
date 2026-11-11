@@ -38,7 +38,19 @@ pub mod zig;
 
 use super::base::EdgeBuilder;
 
+/// The cells' builders for the groups drawn from them, then the text builders
+/// the cells did not replace (`CELL_EDGES`).
 pub fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
+    let mut builders = super::cells::builders();
+    builders.extend(
+        text_builders()
+            .into_iter()
+            .filter(|b| !super::cells::replaces(&b.knife_name())),
+    );
+    builders
+}
+
+pub(super) fn text_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![
         Box::new(python::PythonEdgeBuilder),
         Box::new(javascript::JavaScriptEdgeBuilder),

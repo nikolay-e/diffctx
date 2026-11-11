@@ -1,4 +1,5 @@
 pub mod base;
+pub mod cells;
 pub mod config_edges;
 pub mod document;
 pub mod history;
@@ -618,22 +619,22 @@ mod fallback_gate_tests {
 
     #[test]
     fn tags_edges_survive_only_where_dedicated_builders_came_back_empty() {
-        // a.c and c.c each include a header (a dedicated edge) and share an
-        // identifier, but nothing includes between them. Two .xyz files have
+        // a.rb and c.rb each require a sibling (a dedicated edge) and share an
+        // identifier, but nothing requires between them. Two .xyz files have
         // no dedicated builder at all and share the same identifier.
         let fragments = vec![
             frag(
-                "proj/a.c",
-                "#include \"bdep.h\"\nint zzcommonzz;\n",
+                "proj/a.rb",
+                "require_relative \"bdep\"\nzzcommonzz = 1\n",
                 &["zzcommonzz"],
             ),
-            frag("proj/bdep.h", "int bdecl(void);\n", &["bdecl"]),
+            frag("proj/bdep.rb", "def bdecl\nend\n", &["bdecl"]),
             frag(
-                "proj/c.c",
-                "#include \"ddep.h\"\nint zzcommonzz;\n",
+                "proj/c.rb",
+                "require_relative \"ddep\"\nzzcommonzz = 1\n",
                 &["zzcommonzz"],
             ),
-            frag("proj/ddep.h", "int ddecl(void);\n", &["ddecl"]),
+            frag("proj/ddep.rb", "def ddecl\nend\n", &["ddecl"]),
             frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
             frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
         ];
@@ -648,9 +649,45 @@ mod fallback_gate_tests {
             "fallback must still connect files no dedicated builder covers"
         );
         assert!(
-            !has_fallback_pair(&capped, "a.c", "c.c"),
+            !has_fallback_pair(&capped, "a.rb", "c.rb"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
         );
+    }
+
+    /// The files written to a temporary repository: the cells read a snapshot, so a
+    /// test of the languages they cover needs one. The fragments name the files by
+    /// their repository paths.
+    fn repository_of(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for (path, content) in files {
+            let at = dir.path().join(path);
+            std::fs::create_dir_all(at.parent().expect("a parent")).expect("a directory");
+            std::fs::write(at, content).expect("a file");
+        }
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .expect("git runs");
+            assert!(out.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        git(&["add", "-A"]);
+        git(&[
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@localhost",
+            "commit",
+            "-q",
+            "-m",
+            "tree",
+        ]);
+        dir
     }
 
     // Category matters: two files in one directory legitimately share a
@@ -777,10 +814,10 @@ mod fallback_gate_tests {
         );
     }
 
-    /// `proj/a.c` is dedicated (it includes a header) and shares one name with
+    /// `proj/a.rb` is dedicated (it requires a sibling) and shares one name with
     /// each other file, so that file alone decides whether its tags edge
-    /// stands. `.c`, `.proto` and shell are covered by the dedicated edges of
-    /// `a.c`, `s1.proto` and `bin/run`.
+    /// stands. `.rb`, `.proto` and shell are covered by the dedicated edges of
+    /// `a.rb`, `s1.proto` and `bin/run`.
     #[test]
     fn each_branch_of_the_gate_decides_the_pair_it_owns() {
         let unread = |path: &str, content: &str, idents: &[&str]| Fragment {
@@ -789,40 +826,45 @@ mod fallback_gate_tests {
         };
         let fragments = vec![
             frag(
-                "proj/a.c",
-                "#include \"bdep.h\"\n",
+                "proj/a.rb",
+                "require_relative \"bdep\"\n",
                 &["zzparsedzz", "zzunreadzz", "zzdeclzz", "zzscriptzz"],
             ),
-            frag("proj/bdep.h", "int bdecl(void);\n", &[]),
+            frag("proj/bdep.rb", "def bdecl\nend\n", &[]),
             frag("proj/s1.proto", "import \"s2.proto\";\n", &[]),
             frag("proj/s2.proto", "message Bar {}\n", &[]),
             frag("bin/run", "#!/bin/sh\n. ./lib/env.sh\n", &[]),
             frag("lib/env.sh", "export LEVEL=1\n", &[]),
-            frag("proj/e.c", "int zzparsedzz;\n", &["zzparsedzz"]),
-            unread("proj/f.c", "int zzunreadzz\n", &["zzunreadzz"]),
+            frag("proj/e.rb", "zzparsedzz = 1\n", &["zzparsedzz"]),
+            unread("proj/f.rb", "zzunreadzz = \n", &["zzunreadzz"]),
             frag("proj/g.proto", "message Foo {}\n", &["zzdeclzz"]),
             frag("bin/other", "#!/bin/sh\nzzscriptzz\n", &["zzscriptzz"]),
         ];
+        let written: Vec<(&str, &str)> = fragments
+            .iter()
+            .map(|f| (f.path(), f.content.as_ref()))
+            .collect();
+        let repository = repository_of(&written);
         let capped = collect_capped_edges(
             &fragments,
-            None,
+            Some(repository.path()),
             false,
             &crate::resource::RunContext::unbounded(),
         );
         assert!(
-            !has_fallback_pair(&capped, "proj/a.c", "proj/e.c"),
+            !has_fallback_pair(&capped, "proj/a.rb", "proj/e.rb"),
             "a parsed file of a covered language: no edge is its builder's answer (#286)"
         );
         assert!(
-            has_fallback_pair(&capped, "proj/a.c", "proj/f.c"),
+            has_fallback_pair(&capped, "proj/a.rb", "proj/f.rb"),
             "a file its parser could not read keeps the fallback"
         );
         assert!(
-            has_fallback_pair(&capped, "proj/a.c", "proj/g.proto"),
+            has_fallback_pair(&capped, "proj/a.rb", "proj/g.proto"),
             "a declarative file keeps the fallback in a covered language"
         );
         assert!(
-            !has_fallback_pair(&capped, "proj/a.c", "bin/other"),
+            !has_fallback_pair(&capped, "proj/a.rb", "bin/other"),
             "an extensionless script is the language its shebang names, covered by `bin/run`"
         );
     }
@@ -835,9 +877,10 @@ mod fallback_gate_tests {
             .iter()
             .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
             .collect();
+        let repository = repository_of(files);
         let capped = collect_capped_edges(
             &fragments,
-            None,
+            Some(repository.path()),
             false,
             &crate::resource::RunContext::unbounded(),
         );
@@ -907,7 +950,13 @@ mod knife_tests {
             names.len(),
             "duplicate knife names: {names:?}"
         );
-        for expected in ["python", "shell", "tags", "perl", "terraform"] {
+        for expected in [
+            "cells-python",
+            "cells-shell",
+            "tags",
+            "perl",
+            "cells-terraform",
+        ] {
             assert!(
                 names.iter().any(|n| n == expected),
                 "{expected} missing from {names:?}"
