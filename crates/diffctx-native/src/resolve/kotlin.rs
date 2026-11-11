@@ -25,16 +25,17 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
+use super::jvm::{self, Jvm};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
     UnresolvedReason,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, Name,
-    Receiver, Ref, Scope, UseKind, Visibility, expired, facts_of,
+    Receiver, Ref, Scope, UseKind, Visibility, expired,
 };
 use crate::snapshot::workspace::ProjectId;
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage, WorkspaceModel};
+use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, WorkspaceModel};
 
 /// A call through an untyped receiver is a candidate for at most this many
 /// members; past it the list says nothing a reader could use.
@@ -43,94 +44,54 @@ const MAX_CANDIDATES: usize = 24;
 /// values typed by one another.
 const MAX_DEPTH: usize = 6;
 
-/// The bindings of one snapshot's Kotlin files.
-pub struct KotlinResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
-}
+/// The bindings of one snapshot's Kotlin and Java files, for a Kotlin cell: the
+/// Kotlin definitions are its own, the Java files are read through the table of
+/// `resolve::jvm`.
+pub struct KotlinResolver(Jvm);
 
 impl KotlinResolver {
-    /// Resolves every Kotlin file of `side`.
+    /// Resolves every Kotlin and Java file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Kotlin) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
-        let engine = Engine::new(Index::build(files, &ctx.workspace), &ctx.workspace);
-        let (definitions, bindings, stopped) = engine.run(ctx);
-        if stopped {
-            losses.push(Loss::Deadline {
-                stage: Stage::Search,
-            });
-        }
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
-        Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
-        })
+        Jvm::open(ctx, side, cache, Language::Kotlin).map(Self)
     }
 
     pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
+        self.0.bindings()
     }
 
     pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
+        self.0.definitions()
     }
 
     /// The bindings that resolve to `key` or have it among their candidates.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
     pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
+        self.0.references_to(key)
     }
 
     /// What the answer is partial for: files the extractor could not fully read,
     /// reads that failed, a run cut short.
     pub fn losses(&self) -> &[Loss] {
-        &self.losses
+        self.0.losses()
     }
 
     /// The files the resolver read: what an absence may rest on.
     pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
+        self.0.read_paths()
     }
+}
+
+/// The definitions of `files` and what their references land on, the Java files
+/// read as the Kotlin engine reads its own.
+pub(super) fn solve(
+    ctx: &AnalysisContext,
+    files: &[FileFacts],
+    foreign: &[FileFacts],
+) -> (Vec<Definition>, Vec<Binding>, bool) {
+    if files.is_empty() {
+        return (Vec::new(), Vec::new(), false);
+    }
+    let index = Index::build(files.to_vec(), foreign.to_vec(), &ctx.workspace);
+    Engine::new(index, &ctx.workspace).run(ctx)
 }
 
 // ---- the header of a definition
@@ -410,6 +371,9 @@ struct FileRec {
     by_path: HashMap<Path, Vec<usize>>,
     /// Every name the file refers to.
     names: HashSet<Name>,
+    /// A Java file: its declarations are read as Kotlin's, its references are
+    /// the Java engine's.
+    foreign: bool,
 }
 
 #[derive(Default)]
@@ -462,13 +426,23 @@ fn is_value(kind: DefKind) -> bool {
 }
 
 impl Index {
-    fn build(files: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
+    fn build(files: Vec<FileFacts>, foreign: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
         let mut index = Self::default();
-        for facts in files {
+        let neighbours = foreign.into_iter().map(|facts| (facts, true));
+        for (facts, neighbour) in files
+            .into_iter()
+            .map(|facts| (facts, false))
+            .chain(neighbours)
+        {
             let at = index.files.len();
             let project = workspace.project_of(facts.path.as_str());
             let mut package = String::new();
             let blob = std::sync::Arc::clone(&facts.blob);
+            let projected = if neighbour {
+                jvm::java_as_kotlin(&facts)
+            } else {
+                Vec::new()
+            };
             let mut file = FileRec {
                 facts,
                 package: String::new(),
@@ -478,6 +452,7 @@ impl Index {
                 children: HashMap::new(),
                 by_path: HashMap::new(),
                 names: HashSet::new(),
+                foreign: neighbour,
             };
             for fact in &blob.facts {
                 match fact {
@@ -539,17 +514,23 @@ impl Index {
                 prefix.push_str(segment);
                 index.packages.insert(prefix.clone());
             }
-            for (fact_at, fact) in blob.facts.iter().enumerate() {
+            if neighbour {
+                for item in projected {
+                    index.add_def(at, &item.def, item.key, &package);
+                }
+                continue;
+            }
+            for fact in &blob.facts {
                 if let Fact::Definition(def) = fact {
-                    index.add_def(at, fact_at, def, &package);
+                    let key = index.files[at].facts.key(&def.local);
+                    index.add_def(at, def, key, &package);
                 }
             }
         }
         index
     }
 
-    fn add_def(&mut self, at: usize, _fact: usize, def: &Def, package: &str) {
-        let key = self.files[at].facts.key(&def.local);
+    fn add_def(&mut self, at: usize, def: &Def, key: DefKey, package: &str) {
         let mut path = def.local.container.clone();
         path.push(def.local.name.clone());
         let sig = parse_sig(def.kind, def.signature.as_deref().unwrap_or(""));
@@ -666,6 +647,9 @@ impl<'w> Engine<'w> {
         let mut bindings = Vec::new();
         let mut stopped = false;
         'files: for (f, file) in self.ix.files.iter().enumerate() {
+            if file.foreign {
+                continue;
+            }
             for fact in &file.facts.blob.facts {
                 if expired(&ctx.run) {
                     stopped = true;
@@ -683,6 +667,7 @@ impl<'w> Engine<'w> {
             .ix
             .defs
             .iter()
+            .filter(|rec| !self.ix.files[rec.file].foreign)
             .map(|rec| Definition {
                 file: self.ix.files[rec.file].facts.path.clone(),
                 key: rec.key.clone(),

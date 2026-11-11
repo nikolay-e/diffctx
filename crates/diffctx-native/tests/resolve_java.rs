@@ -971,3 +971,68 @@ fn private_and_package_private_stop_where_java_stops_them() {
     assert_eq!(fx.lands_at("q/B.java", "pkg", 7), "unresolved(NoMember)");
     assert_eq!(fx.lands_at("q/B.java", "secret", 8), "unresolved(NoMember)");
 }
+
+/// Kotlin reads Java as it reads its own: a static member is a member of the
+/// type, a getter `isX()` is the property, `getX()` and `setX(v)` are the property
+/// `x` read and written (a write is a use of the setter).
+#[test]
+fn kotlin_calls_java_statics_and_accessors() {
+    let java = "package shop;\n\npublic class Pricing {\n    public static int total(int[] items) {\n        return items.length;\n    }\n\n    public boolean isActive() {\n        return true;\n    }\n\n    public String getName() {\n        return \"p\";\n    }\n\n    public void setName(String name) {\n    }\n}\n";
+    let kotlin = "package shop\n\nfun charge(items: IntArray, p: Pricing): Int {\n    val t = Pricing.total(items)\n    val a = p.isActive\n    val n = p.name\n    p.name = \"x\"\n    return t\n}\n";
+    let fx = snapshot(&[
+        ("src/main/java/shop/Pricing.java", java),
+        ("src/main/kotlin/shop/Checkout.kt", kotlin),
+    ]);
+    let (call, jv) = (
+        "src/main/kotlin/shop/Checkout.kt",
+        "src/main/java/shop/Pricing.java",
+    );
+    let expected = [
+        ("total", 4, "Pricing.total"),
+        ("isActive", 5, "Pricing.isActive"),
+        ("name", 6, "Pricing.getName"),
+        ("name", 7, "Pricing.setName"),
+    ];
+    for (name, line, lands) in expected {
+        assert_eq!(
+            fx.lands_at(call, name, line),
+            format!("{jv}::{lands}"),
+            "{name} at line {line}"
+        );
+    }
+    assert_eq!(fx.at(call, "name", 7).relation, Relation::Writes);
+}
+
+/// A Java definition used only by Kotlin is no unused one.
+#[test]
+fn a_java_definition_has_its_kotlin_callers() {
+    let fx = snapshot(&[
+        (
+            "src/main/java/shop/Pricing.java",
+            "package shop;\n\npublic class Pricing {\n    public static int total(int[] items) {\n        return items.length;\n    }\n}\n",
+        ),
+        (
+            "src/main/kotlin/shop/Checkout.kt",
+            "package shop\n\nfun charge(items: IntArray): Int = Pricing.total(items)\n",
+        ),
+    ]);
+    let total = fx
+        .head
+        .definitions()
+        .iter()
+        .find(|d| d.key.local.name.as_str() == "total")
+        .expect("the Java definition");
+    let callers: Vec<(String, Relation)> = fx
+        .head
+        .references_to(&total.key)
+        .iter()
+        .map(|b| (b.file.to_string(), b.relation))
+        .collect();
+    assert_eq!(
+        callers,
+        [(
+            "src/main/kotlin/shop/Checkout.kt".to_string(),
+            Relation::Calls
+        )]
+    );
+}

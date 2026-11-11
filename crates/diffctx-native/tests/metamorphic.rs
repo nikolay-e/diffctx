@@ -674,6 +674,15 @@ fn known_red_names_a_property_and_an_issue() {
 // The answer to every question about a seed that has a caller: the link is
 // named or a gap is, and the change is never said to reach nothing.
 fn link_or_gap(family: Family, shape: &Shape, id: &str) {
+    answers(family, shape, id, false);
+}
+
+// The same question where the link exists: a gap no longer stands for it.
+fn link(family: Family, shape: &Shape, id: &str) {
+    answers(family, shape, id, true);
+}
+
+fn answers(family: Family, shape: &Shape, id: &str, link_only: bool) {
     check_once(id, "arch/p1 fj#113", || {
         let planted = Planted::new(families::with_caller(family, shape));
         let caller = planted.repo.caller.clone().expect("a seed has a caller");
@@ -684,7 +693,7 @@ fn link_or_gap(family: Family, shape: &Shape, id: &str) {
                     "{query:?}: the answer says the change reaches nothing, and {caller} calls the definition"
                 ));
             }
-            if !names_link(&doc, &caller) && !discloses(&doc) {
+            if !names_link(&doc, &caller) && (link_only || !discloses(&doc)) {
                 return Err(format!(
                     "{query:?}: the answer names neither the link to {caller} nor a gap\n{doc:#}"
                 ));
@@ -757,7 +766,17 @@ fn in_a_neighbour(family: Family, neighbour: Neighbour) {
         family.label(),
         neighbour.label()
     );
-    link_or_gap(family, &shape, &id);
+    // Kotlin and Java read each other's names (arch/p3 stream 1): the caller is a
+    // link, never only a gap.
+    let jvm = matches!(
+        (family, neighbour),
+        (Family::Kotlin, Neighbour::Java) | (Family::Java, Neighbour::Kotlin)
+    );
+    if jvm {
+        link(family, &shape, &id);
+    } else {
+        link_or_gap(family, &shape, &id);
+    }
 }
 
 // A package, module or directory named by one letter, alone and with a caller
