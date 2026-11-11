@@ -1,0 +1,77 @@
+name: config_tests_reach_fixture_used_by_a_fixture_a_test_asks_for_is_reached
+mode: impact
+source: synthetic
+tags: [python, pytest-fixture, tests-reach, framework-registration, decoy]
+repo:
+  initial_files:
+    conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def engine():
+          return {"url": "sqlite://"}
+
+
+      @pytest.fixture
+      def session(engine):
+          return {"engine": engine}
+
+
+      @pytest.fixture
+      def audit_trail(engine):
+          return {"engine": engine, "audit": True}
+
+
+      @pytest.fixture
+      def loose_session(engine):
+          return {"engine": engine, "loose": True}
+    tests/test_orders.py: |
+      def test_orders_are_listed(session):
+          assert session["engine"]
+    tests/test_audit.py: |
+      import pytest
+
+
+      @pytest.mark.usefixtures("audit_trail")
+      def test_audit_is_kept():
+          assert True
+    tests/test_misc.py: |
+      def test_arithmetic():
+          assert 1 + 1 == 2
+  changed_files:
+    conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def engine():
+          return {"url": "sqlite:///:memory:"}
+
+
+      @pytest.fixture
+      def session(engine):
+          return {"engine": engine}
+
+
+      @pytest.fixture
+      def audit_trail(engine):
+          return {"engine": engine, "audit": True}
+
+
+      @pytest.fixture
+      def loose_session(engine):
+          return {"engine": engine, "loose": True}
+  commit_message: "conftest: an in-memory engine"
+expect:
+  changed: [conftest.py::engine]
+  relations:
+    - {from: "conftest.py::session", to: "conftest.py::engine", kind: calls, resolution: resolved}
+    - {from: "conftest.py::audit_trail", to: "conftest.py::engine", kind: calls, resolution: resolved}
+    - {from: "conftest.py::loose_session", to: "conftest.py::engine", kind: calls, resolution: resolved}
+    - {from: "tests/test_orders.py", to: "conftest.py::session", kind: tests_reach, resolution: resolved}
+    - {from: "tests/test_audit.py", to: "conftest.py::audit_trail", kind: tests_reach, resolution: resolved}
+  not_untested: [engine]
+  decoys:
+    "conftest.py::engine": [tests/test_misc.py]
+    "conftest.py::loose_session": [tests/test_misc.py, tests/test_orders.py, tests/test_audit.py]

@@ -6,7 +6,11 @@
 //! ([`Cell::users`](crate::decide::Cell::users)); and it runs it: the built binary
 //! of a crate, the console script a manifest declares, a script spelled by its
 //! path on a command line. Nothing calls those, so each is a [`Run`] the test
-//! makes of one entry.
+//! makes of one entry; so is a string a changed definition holds and a test
+//! asserts (the literal channel). A pytest fixture is run by the tests and fixtures that ask for
+//! it by name, and a scheduled job by the scheduler: the first is read off the
+//! fixture's scope ([`TestsReach::fixture_users`]), the second off a test that names the
+//! job to the scheduler.
 //!
 //! The ranking graph answers for the files no cell reads, as `TestIndex` did for
 //! all of them; it goes with the graph's last reader. A claim that a definition
@@ -155,6 +159,7 @@ impl<'a> TestsReach<'a> {
         runs.extend(console_runs(state, diff_range, &spelled));
         runs.extend(script_runs(state, diff_range, &spelled));
         runs.extend(framework_runs(state, cells, diff_range));
+        runs.extend(literal_runs(state, diff_range));
         let repo_tests = test_fragments.is_empty()
             && by_path.is_empty()
             && runs.is_empty()
@@ -285,6 +290,9 @@ impl<'a> TestsReach<'a> {
                     None => {}
                 }
             }
+            if super::is_pytest_fixture(f) {
+                self.fixture_users(cell, shown, f, name, &mut up);
+            }
             return up;
         }
         let graph = &state.scoring_result.graph;
@@ -302,6 +310,110 @@ impl<'a> TestsReach<'a> {
             }
         });
         up
+    }
+
+    /// The fixture's name as its users ask for it, and the functions of its scope
+    /// that could: the fixture's file, or beneath the directory of a
+    /// `conftest.py` unless a nearer fixture of the same name overrides it.
+    fn fixture_scope(
+        &self,
+        cell: Option<&crate::decide::Cell>,
+        shown: &str,
+        fixture: &'a Fragment,
+        name: &str,
+    ) -> (String, Vec<&'a Fragment>) {
+        let asked = cell
+            .map(|cell| {
+                cell.framework_entries_at(shown, name, (fixture.start_line(), fixture.end_line()))
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(kind, _)| *kind == EntryKind::Fixture)
+            .and_then(|(_, framework)| framework.label)
+            .unwrap_or_else(|| name.to_string());
+        let own = Path::new(fixture.path());
+        let conftest = own.file_name().and_then(|n| n.to_str()) == Some("conftest.py");
+        let scope = own.parent().filter(|_| conftest);
+        let in_scope = |path: &str| match scope {
+            Some(dir) => Path::new(path).starts_with(dir),
+            None => path == fixture.path(),
+        };
+        let members: Vec<&'a Fragment> = self
+            .state
+            .all_fragments
+            .iter()
+            .filter(|f| f.id != fixture.id && in_scope(f.path()))
+            .collect();
+        let overriding: Vec<String> = members
+            .iter()
+            .filter(|f| {
+                f.symbol_name.as_deref().map(base_symbol) == Some(asked.as_str())
+                    && super::is_pytest_fixture(f)
+            })
+            .map(|f| f.path().to_string())
+            .collect();
+        let overridden = |path: &str| {
+            overriding.iter().any(|own| {
+                let own = Path::new(own);
+                let beneath = own
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .filter(|n| *n == "conftest.py")
+                    .and_then(|_| own.parent());
+                beneath.map_or_else(
+                    || Path::new(path) == own,
+                    |dir| Path::new(path).starts_with(dir),
+                )
+            })
+        };
+        let members = members
+            .into_iter()
+            .filter(|f| !overridden(f.path()))
+            .collect();
+        (asked, members)
+    }
+
+    /// The functions that ask for a pytest fixture, which no call names: by a
+    /// parameter (the line of the `def`) or by `usefixtures` (the line the
+    /// function starts at).
+    pub(super) fn fixture_askers(
+        &self,
+        cell: Option<&crate::decide::Cell>,
+        shown: &str,
+        fixture: &'a Fragment,
+        name: &str,
+    ) -> Vec<(&'a Fragment, u32)> {
+        let (asked, members) = self.fixture_scope(cell, shown, fixture, name);
+        members
+            .into_iter()
+            .filter_map(|f| asks_for(f, &asked).map(|line| (f, line)))
+            .collect()
+    }
+
+    /// What a fixture leads to one hop up: the functions that ask for it, and for
+    /// an autouse fixture a test of its scope.
+    fn fixture_users(
+        &self,
+        cell: &crate::decide::Cell,
+        shown: &str,
+        fixture: &'a Fragment,
+        name: &str,
+        up: &mut Up<'a>,
+    ) {
+        let (asked, members) = self.fixture_scope(Some(cell), shown, fixture, name);
+        if is_autouse(fixture) && up.test.is_none() {
+            up.test = members
+                .iter()
+                .filter(|f| self.is_test(f))
+                .map(|f| f.path())
+                .min()
+                .map(str::to_string);
+        }
+        up.fragments.extend(
+            members
+                .into_iter()
+                .filter(|f| asks_for(f, &asked).is_some()),
+        );
     }
 
     fn walk_up(
@@ -370,6 +482,29 @@ impl<'a> TestsReach<'a> {
         self.by_path.contains_key(caller.path())
             || self.test_fragments.iter().any(|t| reaches_file(t, caller))
     }
+}
+
+/// The lines of `f` before its own `def`: its decorators, however they wrap.
+fn declaration(f: &Fragment) -> impl Iterator<Item = &str> {
+    f.content.lines().take_while(|line| {
+        let line = line.trim_start();
+        !(line.starts_with("def ") || line.starts_with("async def "))
+    })
+}
+
+/// `@pytest.fixture(autouse=True)`: every test of the fixture's scope asks for it.
+fn is_autouse(fixture: &Fragment) -> bool {
+    declaration(fixture).any(|line| line.replace(' ', "").contains("autouse=True"))
+}
+
+/// The line at which `f` asks for the fixture `name`: its `def` when a parameter
+/// is the name, the function's first line for `@pytest.mark.usefixtures("name")`.
+fn asks_for(f: &Fragment, name: &str) -> Option<u32> {
+    super::names_parameter(f, name).or_else(|| {
+        declaration(f)
+            .any(|line| line.contains("usefixtures") && spelled_as_command(line, name))
+            .then(|| f.start_line())
+    })
 }
 
 /// Whether the tree the run reads holds any test file, linked or not.
@@ -743,11 +878,13 @@ fn script_runs(
 /// How a test spells the key of an entry a framework makes: the request of a
 /// route (a quoted path that ends in the route's, on a line that names its verb,
 /// the path's parameters open), the name of a command a program starts, the name
-/// of a tool.
+/// of a tool, the quoted name of a job on a line that speaks of schedulers.
 enum Spelling {
     Route(regex::Regex, Option<String>),
     Command(String),
     Tool(String),
+    /// A scheduled job, named to the scheduler by its function's name.
+    Job(String),
 }
 
 impl Spelling {
@@ -779,6 +916,7 @@ impl Spelling {
             }
             EntryKind::Command => Some(Self::Command(label.to_string())),
             EntryKind::Tool => Some(Self::Tool(label.to_string())),
+            EntryKind::Scheduled => Some(Self::Job(label.to_string())),
             _ => None,
         }
     }
@@ -795,6 +933,13 @@ impl Spelling {
             Self::Command(name) => starts_a_program(text) && spelled_as_command(text, name),
             Self::Tool(name) => {
                 spelled_as_command(text, name) && text.to_lowercase().contains("tool")
+            }
+            Self::Job(name) => {
+                let line = text.to_lowercase();
+                spelled_as_command(text, name)
+                    && ["job", "schedul", "cron"]
+                        .iter()
+                        .any(|word| line.contains(word))
             }
         }
     }
@@ -847,7 +992,14 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
         for (kind, framework) in
             cell.framework_entries_at(&shown, name, (f.start_line(), f.end_line()))
         {
-            let Some(label) = framework.label.filter(|l| !l.is_empty()) else {
+            // A job's key is its function: the expression it runs on says when,
+            // not which.
+            let key = if kind == EntryKind::Scheduled {
+                Some(name.to_string())
+            } else {
+                framework.label.clone().filter(|l| !l.is_empty())
+            };
+            let Some(label) = key else {
                 continue;
             };
             let needle = if kind == EntryKind::Route {
@@ -906,6 +1058,140 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
             Some(Run {
                 file: entry.file,
                 symbol: Some(entry.symbol),
+                test,
+            })
+        })
+        .collect()
+}
+
+/// The most strings of changed definitions one answer looks for in the tests.
+const MAX_LITERAL_NEEDLES: usize = 64;
+/// A string held by more files than this names no one of them: it is a word the
+/// project says everywhere.
+const MAX_LITERAL_FILES: usize = 3;
+
+/// A string worth looking for whole: long enough, with letters, and shaped like a
+/// code, a label or a sentence (`malformed_hlc`, `save-indicator`, `Saving
+/// favorites`) rather than one plain word; never an import path.
+fn distinctive(literal: &str) -> bool {
+    let letters = literal.chars().filter(|c| c.is_alphabetic()).count();
+    letters >= 4
+        && !(literal.starts_with("./") || literal.starts_with("../"))
+        && (literal.contains(['_', '-', ' ', '.', ':', '@'])
+            || literal.chars().any(|c| c.is_ascii_digit())
+            || literal
+                .chars()
+                .zip(literal.chars().skip(1))
+                .any(|(a, b)| a.is_ascii_lowercase() && b.is_ascii_uppercase()))
+}
+
+/// The tests that assert a string a changed definition holds: a test file that
+/// spells it, where no more than [`MAX_LITERAL_FILES`] files of the project do.
+/// The test reaches the definition the way it reaches one it runs, through what
+/// the code says rather than what it calls (an error code, a label), which no
+/// resolved use shows.
+fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
+    static STRING: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r#""([^"\\\n]{8,80})"|'([^'\\\n]{8,80})'"#).expect("string regex")
+    });
+    let changed: FxHashSet<String> = state
+        .changed_files
+        .iter()
+        .map(|p| rel(state, &p.to_string_lossy()))
+        .collect();
+    // (the file as fragments spell it, as the answer prints it, the symbol, its strings)
+    let mut held: Vec<(String, String, String, Vec<String>)> = Vec::new();
+    for f in &state.all_fragments {
+        let shown = rel(state, f.path());
+        if !changed.contains(&shown)
+            || !f.kind.is_definition_kind()
+            || crate::testfiles::is_test_path(Path::new(&shown))
+            || !super::is_code_file(&shown)
+        {
+            continue;
+        }
+        let Some(name) = f.symbol_name.as_deref().map(base_symbol) else {
+            continue;
+        };
+        let mut literals: Vec<String> = f
+            .content
+            .lines()
+            .filter(|line| !commented(line))
+            .flat_map(|line| {
+                STRING
+                    .captures_iter(line)
+                    .filter_map(|c| c.get(1).or_else(|| c.get(2)))
+                    .map(|m| m.as_str().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|literal| distinctive(literal))
+            .collect();
+        literals.sort();
+        literals.dedup();
+        if !literals.is_empty() {
+            held.push((f.path().to_string(), shown, name.to_string(), literals));
+        }
+    }
+    let mut needles: Vec<String> = held
+        .iter()
+        .flat_map(|(_, _, _, literals)| literals.iter().cloned())
+        .collect();
+    needles.sort();
+    needles.dedup();
+    needles.truncate(MAX_LITERAL_NEEDLES);
+    if needles.is_empty() {
+        return Vec::new();
+    }
+    let head = diff_range
+        .map(crate::git::split_diff_range)
+        .and_then(|(_, head)| head);
+    let grepped = read_or_note(
+        state,
+        crate::git::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            &needles,
+            head.as_deref(),
+        ),
+    );
+    let mut files_of: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
+    for (path, _, text) in &grepped.rows {
+        for needle in &needles {
+            if text.contains(needle.as_str()) {
+                files_of
+                    .entry(needle.as_str())
+                    .or_default()
+                    .insert(path.as_str());
+            }
+        }
+    }
+    held.into_iter()
+        .filter_map(|(file, shown, symbol, literals)| {
+            let shown = shown.as_str();
+            let test = literals
+                .iter()
+                .filter(|literal| {
+                    files_of
+                        .get(literal.as_str())
+                        .is_some_and(|files| files.len() <= MAX_LITERAL_FILES)
+                })
+                .flat_map(|literal| {
+                    grepped
+                        .rows
+                        .iter()
+                        .filter(move |(path, _, text)| {
+                            path != shown
+                                && crate::testfiles::is_test_path(Path::new(path))
+                                && !commented(text)
+                                && text.contains(literal.as_str())
+                        })
+                        .map(|(path, _, _)| path.as_str())
+                })
+                .min()?
+                .to_string();
+            Some(Run {
+                file,
+                symbol: Some(symbol),
                 test,
             })
         })
