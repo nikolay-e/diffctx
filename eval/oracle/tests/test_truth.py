@@ -424,3 +424,14 @@ def test_overloads_of_one_file_have_keys_of_their_own(tmp_path: Path):
     keys = [d.key for d in snapshot.definitions("A.java") if d.kind == "method"]
 
     assert keys == ["A.java::A.f@2-2", "A.java::A.f@3-3", "A.java::A.g"]
+
+
+def test_a_method_in_the_body_of_an_enum_constant_is_its_own_definition(tmp_path: Path):
+    source = "enum State {\n  Initial {\n    boolean process(int a) {\n      return a > 0;\n    }\n  },\n  Done;\n}\n"
+    (tmp_path / "State.java").write_text(source)
+    snapshot = Snapshot(tmp_path, Index(), "java")
+
+    inside = snapshot.enclosing("State.java", 4)
+
+    assert inside is not None and inside.key == "State.java::State.Initial.process"
+    assert snapshot.enclosing("State.java", 2).key == "State.java::State.Initial"
