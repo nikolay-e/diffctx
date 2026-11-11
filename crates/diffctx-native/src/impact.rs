@@ -22,6 +22,7 @@ use crate::pipeline::ScoredState;
 use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 
+mod keys;
 mod mentions;
 mod tests_reach;
 mod text;
@@ -4250,6 +4251,37 @@ pub fn build_impact(
         // says its effect is unknown: it is never listed twice. The rest come
         // first, so that the cap on the list keeps them.
         let mut others = unanalysed_files(state, &changed_files);
+        // A base side over the size cap is never parsed: its removals go unread,
+        // and the file is named at the path the answer reports (the head's, for
+        // a rename), whether it changed, was renamed or was deleted.
+        let old_path_of: FxHashMap<&str, &str> = state
+            .renamed_files
+            .iter()
+            .map(|(old, new)| (new.as_str(), old.as_str()))
+            .collect();
+        let sides = changed_files
+            .iter()
+            .map(|p| {
+                (
+                    old_path_of.get(p.as_str()).copied().unwrap_or(p.as_str()),
+                    p.as_str(),
+                )
+            })
+            .chain(state.deleted_files.iter().map(|p| (p.as_str(), p.as_str())));
+        for (old, new) in sides {
+            let over = |path: &str| {
+                cells.reading(path).and_then(|cell| cell.loss_about(path))
+                    == Some(decide::Reason::TooLarge)
+            };
+            if (over(old) || over(new)) && !others.iter().any(|f| f.path == new) {
+                others.push(UnanalysedFile {
+                    path: new.to_string(),
+                    language: crate::languages::get_language_for_file(new),
+                    reason: "too_large",
+                    lines: Vec::new(),
+                });
+            }
+        }
         // A changed file a cell read whole is traced: what it holds outside every
         // definition is `outside_definitions`, and nothing else of it is untraced.
         // What the code reads of its keys is no cell's answer yet: the key search
@@ -4311,7 +4343,9 @@ pub fn build_impact(
             .chain(cell_read_configs)
             .chain(lost_configs.iter().cloned())
             .collect();
-        let (refs, omitted, searches, unsearched) = key_references(state, &untraced, analysed);
+        let (refs, omitted, searches, unsearched, unread) =
+            key_references(state, &cells, &untraced);
+        unanalysed.extend(unread);
         unanalysed.retain(|f| {
             lost_configs.contains(&f.path) || !searches.iter().any(|k| k.path == f.path)
         });
@@ -4813,175 +4847,11 @@ fn changed_keys(state: &ScoredState, path: &str) -> Vec<String> {
         .filter(|h| h.path == path)
         .flat_map(|h| h.added.iter().chain(&h.removed))
         .filter(|l| !commented(l))
-        .flat_map(|l| key_words(l).chain(value_phrases(l)))
+        .flat_map(|l| keys::terms(l))
         .collect();
     keys.sort();
     keys.dedup();
     keys
-}
-
-/// A value that spells more than a word: a selector, a path, an address, an
-/// image. It is searched whole, so it has to be long enough, carry letters
-/// and a structure of its own, and start as a value does — `{"retries": 5}`
-/// is the file's own syntax, `Hello world` is prose.
-fn phrase_like(token: &str) -> bool {
-    token.chars().count() >= 8
-        && token
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '/' | '.' | '_'))
-        && token.chars().filter(|c| c.is_alphabetic()).count() >= 4
-        && token.chars().any(|c| {
-            matches!(
-                c,
-                '{' | '}' | '[' | ']' | '(' | ')' | '=' | '/' | ':' | '@' | '"' | '\''
-            )
-        })
-}
-
-/// Whether a search term is a value phrase and not a key word.
-fn is_phrase(term: &str) -> bool {
-    term.chars()
-        .any(|c| !(c.is_alphanumeric() || c == '_' || c == '-'))
-}
-
-/// The whitespace-separated pieces of a line, kept whole where whitespace
-/// belongs to the piece: inside a quoted string, and inside the brackets of
-/// a selector or a call (`up{job="a", pod="b"}`) — a bracket after a word
-/// character. A bracket after whitespace or another bracket is the file's own
-/// flow syntax and splits like any other text.
-fn split_tokens(text: &str) -> Vec<&str> {
-    let mut tokens = Vec::new();
-    let mut start: Option<usize> = None;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    let mut brackets: Vec<bool> = Vec::new();
-    let mut attached = 0usize;
-    let mut prev: Option<char> = None;
-    for (i, c) in text.char_indices() {
-        if quote.is_none() && c.is_whitespace() && attached == 0 {
-            if let Some(s) = start.take() {
-                tokens.push(&text[s..i]);
-            }
-            prev = None;
-            continue;
-        }
-        if start.is_none() {
-            start = Some(i);
-            if c == '\'' || c == '"' {
-                quote = Some(c);
-                prev = Some(c);
-                continue;
-            }
-        }
-        match quote {
-            Some(q) => {
-                if escaped {
-                    escaped = false;
-                } else if c == '\\' {
-                    escaped = true;
-                } else if c == q {
-                    quote = None;
-                }
-            }
-            None => match c {
-                '{' | '[' | '(' => {
-                    let on_word = prev.is_some_and(|p| p.is_alphanumeric() || p == '_');
-                    brackets.push(on_word);
-                    if on_word {
-                        attached += 1;
-                    }
-                }
-                '}' | ']' | ')' => {
-                    if brackets.pop() == Some(true) {
-                        attached = attached.saturating_sub(1);
-                    }
-                }
-                _ => {}
-            },
-        }
-        prev = Some(c);
-    }
-    if let Some(s) = start {
-        tokens.push(&text[s..]);
-    }
-    tokens
-}
-
-/// `token` without the flow syntax around it: the brackets of an enclosing
-/// list or mapping, the comma after it, the colon of a key.
-fn trim_flow(token: &str) -> &str {
-    let mut t = token.trim_start_matches(['[', '{']);
-    loop {
-        let cut = t.trim_end_matches([',', ';']);
-        let opens = cut.chars().filter(|c| matches!(c, '{' | '[' | '(')).count();
-        let closes = cut.chars().filter(|c| matches!(c, '}' | ']' | ')')).count();
-        if closes > opens && cut.ends_with(['}', ']', ')']) {
-            t = &cut[..cut.len() - 1];
-        } else {
-            return cut.strip_suffix(':').unwrap_or(cut);
-        }
-    }
-}
-
-/// The values a config line spells that are worth searching whole, found the
-/// same way on the changed side and on the reader's: `expr: 'up{job="a"} == 0'`
-/// gives `up{job="a"}`, `url=http://db:5432/app` gives `http://db:5432/app`.
-fn value_phrases(line: &str) -> Vec<String> {
-    fn collect(text: &str, depth: usize, out: &mut Vec<String>) {
-        for raw in split_tokens(text) {
-            let token = trim_flow(raw);
-            let inner = match token.chars().next() {
-                Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
-                    Some(&token[1..token.len() - 1])
-                }
-                _ => token.split_once('=').and_then(|(head, value)| {
-                    let key = !head.is_empty()
-                        && head
-                            .chars()
-                            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '-'));
-                    key.then_some(value)
-                }),
-            };
-            match inner {
-                Some(inner) if depth < 2 => collect(inner, depth + 1, out),
-                Some(_) => {}
-                None if phrase_like(token) => out.push(token.to_string()),
-                None => {}
-            }
-        }
-    }
-    let mut out = Vec::new();
-    collect(line.trim().trim_start_matches("- "), 0, &mut out);
-    out
-}
-
-fn key_words(text: &str) -> impl Iterator<Item = String> + '_ {
-    text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
-        .map(|w| w.trim_matches('-'))
-        .filter(|w| key_like(w))
-        .map(str::to_string)
-}
-
-/// Shaped like a key a reader spells back: joined words, a constant's
-/// capitals or one long word. `Hello` and `retries` are not.
-fn key_like(word: &str) -> bool {
-    let chars: Vec<char> = word.chars().collect();
-    if chars.len() < 4
-        || !chars.iter().any(|c| c.is_ascii_alphabetic())
-        || crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
-    {
-        return false;
-    }
-    let joined = (word.contains('_') || word.contains('-')) && chars.len() >= 6;
-    let camel = chars
-        .windows(2)
-        .any(|w| w[0].is_ascii_lowercase() && w[1].is_ascii_uppercase());
-    let constant = chars
-        .iter()
-        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_');
-    let long = chars.len() >= 8 && chars.iter().all(char::is_ascii_lowercase);
-    joined || camel || constant || long
 }
 
 /// The readers the typed key table finds for what the change rewrote in the
@@ -5029,11 +4899,17 @@ const MAX_KEY_NEEDLES: usize = 96;
 /// none of whose terms could be searched stays `content_untraced`.
 fn key_references(
     state: &ScoredState,
+    cells: &Cells,
     untraced: &[String],
-    diff_range: Option<&str>,
-) -> (Vec<PathReference>, usize, Vec<KeySearch>, usize) {
+) -> (
+    Vec<PathReference>,
+    usize,
+    Vec<KeySearch>,
+    usize,
+    Vec<UnanalysedFile>,
+) {
     if !state.run.check() {
-        return (Vec::new(), 0, Vec::new(), 0);
+        return (Vec::new(), 0, Vec::new(), 0, Vec::new());
     }
     let typed = typed_readers(state, untraced);
     let mut candidates: Vec<(usize, &String, Vec<String>, Vec<String>)> = untraced
@@ -5078,34 +4954,44 @@ fn key_references(
     let mut needles: Vec<String> = searched.into_iter().collect();
     needles.sort();
     if keys.is_empty() {
-        return (Vec::new(), 0, Vec::new(), unsearched);
+        return (Vec::new(), 0, Vec::new(), unsearched, Vec::new());
     }
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let spelled = cells.spelled_lines(state, &needles).unwrap_or_else(|e| {
+        tracing::warn!(
+            "impact: the head's files could not be searched ({e}); the answer is unknown"
+        );
+        state.run.note(crate::resource::LimitReason::ReadFailed);
+        decide::Spelled::default()
+    });
     let changed: FxHashSet<String> = state
         .changed_files
         .iter()
         .map(|p| rel(state, &p.to_string_lossy()))
         .collect();
     let source = state.run.source();
+    // A file that could not be read or tokenised may spell a key and nothing says
+    // it does not: the answer names it as unanalysed instead of staying silent.
+    let unread: Vec<UnanalysedFile> = spelled
+        .unread
+        .iter()
+        .filter(|path| {
+            !changed.contains(*path) && class_of(&state.root_dir, &source, path, "", None).reads()
+        })
+        .map(|path| UnanalysedFile {
+            path: path.clone(),
+            language: crate::languages::get_language_for_file(path),
+            reason: "too_large",
+            lines: Vec::new(),
+        })
+        .collect();
     let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
-    let phrases: Vec<&String> = needles.iter().filter(|n| is_phrase(n)).collect();
+    let phrases: Vec<&String> = needles.iter().filter(|n| keys::is_phrase(n)).collect();
     let mut by_key: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
-    for (path, line, text) in state.run.bounded(&grepped.rows) {
+    for (path, line, text) in state.run.bounded(&spelled.rows) {
         if changed.contains(path) || !class_of(&state.root_dir, &source, path, text, None).reads() {
             continue;
         }
-        let spelled = key_words(text)
+        let spelled = keys::key_words(text)
             .filter(|w| wanted.contains(w.as_str()))
             .chain(
                 phrases
@@ -5174,7 +5060,7 @@ fn key_references(
             named,
         });
     }
-    (refs, omitted, searches, unsearched)
+    (refs, omitted, searches, unsearched, unread)
 }
 
 /// Astro's content API: a page reads the entries of a collection by its
@@ -5324,15 +5210,21 @@ pub(crate) fn v2_of(output: &ImpactOutput) -> crate::answer::v2::ImpactV2 {
 /// is on what the reader receives, so it is measured on the delivered text.
 fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput) -> u32) {
     output.cap = cap;
+    // `empty` is what the text prints a short answer for: it holds for the answer
+    // each step measures, as it will for the one delivered.
+    output.empty = proves_empty(output);
     // What showing everything would take, to the next hundred tokens.
     output.needs = measure(output).div_ceil(100) * 100;
     crate::fit::shed_to_fit(output, cap, measure);
-    output.empty = proves_empty(output);
 }
 
 impl crate::fit::Shed for ImpactOutput {
     fn shed_one(&mut self) -> bool {
-        shed_one(self)
+        let shed = shed_one(self);
+        if shed {
+            self.empty = proves_empty(self);
+        }
+        shed
     }
 }
 
@@ -5836,25 +5728,6 @@ pub fn render_automatic(output: &mut ImpactOutput, cap: u32) -> String {
     render(output, true)
 }
 
-/// `HEAD` is what the hook and an omitted MCP `diff_ref` analyse: the
-/// uncommitted work, not the last commit. The staged changes name the index
-/// tree they were captured as. The JSON keeps the range as given (#347).
-fn range_label(range: Option<&str>, index_tree: Option<&str>) -> String {
-    match (range, index_tree) {
-        // `A..T` names a tree its caller built — the hook's set of edited
-        // files — which is no more the index than any other tree (#463).
-        (Some(r), Some(tree)) if !crate::snapshot::is_staged_keyword(r) => {
-            format!("the snapshot tree {}", &tree[..tree.len().min(10)])
-        }
-        (_, Some(tree)) => format!(
-            "staged changes (index tree {})",
-            &tree[..tree.len().min(10)]
-        ),
-        (None | Some("HEAD"), None) => "uncommitted changes".to_string(),
-        (Some(r), None) => r.to_string(),
-    }
-}
-
 fn label(path: &str, symbol: Option<&str>, lines: &str) -> String {
     match symbol {
         Some(s) => format!("{path}::{s} ({lines})"),
@@ -6080,17 +5953,6 @@ const MAX_CANDIDATES_SHOWN: usize = 3;
 
 /// Changed callers named per symbol before the rest are counted.
 const MAX_ALSO_CHANGED_SHOWN: usize = 3;
-
-/// The callers folded as not affected: every folded row but a candidate.
-pub(crate) fn folded_callers(output: &ImpactOutput) -> usize {
-    output
-        .changed
-        .iter()
-        .flat_map(|c| &c.folded)
-        .filter(|f| f.rule != "untyped-receiver")
-        .map(|f| f.count)
-        .sum()
-}
 
 /// Unlisted definitions shown by name before they are counted.
 pub(crate) const MAX_UNTESTED_NAMED: usize = 8;

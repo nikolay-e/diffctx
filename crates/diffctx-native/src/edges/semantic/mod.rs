@@ -38,15 +38,12 @@ pub mod zig;
 
 use super::base::EdgeBuilder;
 
-/// The cells' builders for the groups drawn from them, then the text builders
-/// the cells did not replace (`CELL_EDGES`).
+/// The cells' builders for the groups drawn from them (none by default), then
+/// the text builders, each narrowed to what the cells do not cover
+/// (`CELL_EDGES`).
 pub fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut builders = super::cells::builders();
-    builders.extend(
-        text_builders()
-            .into_iter()
-            .filter(|b| !super::cells::replaces(&b.knife_name())),
-    );
+    builders.extend(text_builders().into_iter().map(super::cells::beside));
     builders
 }
 

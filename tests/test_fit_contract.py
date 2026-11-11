@@ -104,9 +104,10 @@ def _mcp(repo, **arguments) -> str:
 
 
 # A JSON document carries its range, inventory and changes before any fragment, and the
-# budget is charged for all of it: below that framing no fragment fits, and the door
-# says so (exit 4) instead of delivering the cut it was asked for.
-_JSON_FRAMING_FLOOR = 1000
+# budget is charged for all of it: this fixture's empty document is 551 to 662 tokens, so
+# below about 700 no fragment fits, and the door says so (exit 4) instead of delivering the
+# cut it was asked for. 800 is the lowest budget that leaves room for one for every range.
+_JSON_FRAMING_FLOOR = 800
 
 
 def _json_leaves_room(fmt: str, budget: int, floor: int) -> None:

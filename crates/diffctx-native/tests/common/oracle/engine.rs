@@ -42,6 +42,10 @@ pub struct Answer {
     pub caller_rows: Vec<(String, String)>,
     /// Callers the engine shed to fit its cap; the text header counts them.
     pub truncated: u64,
+    /// Calls the answer states as a count, not as rows, which the text header
+    /// counts too: what a fold stands for, and the call sites a change that only
+    /// added defaulted fields leaves working.
+    pub counted_not_listed: u64,
     /// A limit, an unanalysed or withheld file, or a name no file defines.
     pub run_disclosure: bool,
     pub markdown: Option<String>,
@@ -472,6 +476,11 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
                 answer.entry_not_tested.push(definition.clone());
             }
         }
+        answer.counted_not_listed += items(definition_doc, "folded")
+            .iter()
+            .filter(|fold| text(fold, "rule") != Some("untyped-receiver"))
+            .map(|fold| count(&fold["count"], "n"))
+            .sum::<u64>();
         for row in items(definition_doc, "rows") {
             let standing = text(row, "standing").unwrap_or("");
             let class = text(row, "class").unwrap_or("call");

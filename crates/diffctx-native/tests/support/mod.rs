@@ -44,7 +44,7 @@ pub fn path_with_translated_git(dir: &Path) -> std::ffi::OsString {
     let shim = bin.join("git");
     std::fs::write(
         &shim,
-        fake_git::TRANSLATED_GIT.replace("$REAL_GIT", &format!("'{real}'")),
+        fake_git::TRANSLATED_GIT.replace("\"$REAL_GIT\"", &format!("'{real}'")),
     )
     .unwrap();
     std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();

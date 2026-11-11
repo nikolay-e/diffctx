@@ -125,6 +125,26 @@ impl RunProvenance {
         })
     }
 
+    /// The record of a run the deadline stopped before it could resolve a revision:
+    /// the range as asked, no id for either side, which says it was not read.
+    pub fn without_revisions(
+        diff_range: Option<&str>,
+        effective_config: crate::effective_config::EffectiveConfigV1,
+    ) -> Self {
+        let (_, head_rev) = diff_range
+            .map(crate::snapshot::split_diff_range)
+            .unwrap_or((None, None));
+        Self {
+            input: Input {
+                diff_range: diff_range.map(str::to_string),
+                base: None,
+                head: None,
+                working_tree: head_rev.is_none(),
+            },
+            effective_config,
+        }
+    }
+
     pub fn finish(&self, selection: Option<Selection>) -> ProvenanceV1 {
         let full = full_record_requested();
         ProvenanceV1 {

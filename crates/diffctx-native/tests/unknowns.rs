@@ -836,14 +836,24 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
             .as_array()
             .cloned()
             .unwrap_or_default();
+        // A page is read by the TypeScript cell now: a change outside its scripts
+        // is code outside any tracked definition, still named and never a zero.
+        let (reason, wording) = if *path == "web/index.html" {
+            (
+                "outside_definitions",
+                "changed code outside any tracked definition",
+            )
+        } else {
+            ("content_untraced", "not followed")
+        };
         assert!(
             listed
                 .iter()
-                .any(|f| f["path"] == *path && f["reason"] == "content_untraced"),
+                .any(|f| f["path"] == *path && f["reason"] == reason),
             "{path}: {json}"
         );
         let md = impact_markdown(tmp.path());
-        assert!(md.contains("not followed"), "{path}: {md}");
+        assert!(md.contains(wording), "{path}: {md}");
         assert!(!md.contains("No resolved static callers"), "{path}: {md}");
     }
 

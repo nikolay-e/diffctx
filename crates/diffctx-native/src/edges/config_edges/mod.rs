@@ -11,12 +11,12 @@ mod tech;
 
 use super::base::EdgeBuilder;
 
-/// The config builders the Dockerfile and configuration cells did not replace
-/// (`CELL_EDGES`).
+/// The config builders, each narrowed to what the Dockerfile and configuration
+/// cells do not cover when those are drawn (`CELL_EDGES`).
 pub fn get_config_builders() -> Vec<Box<dyn EdgeBuilder>> {
     text_builders()
         .into_iter()
-        .filter(|b| !super::cells::replaces(&b.knife_name()))
+        .map(super::cells::beside)
         .collect()
 }
 

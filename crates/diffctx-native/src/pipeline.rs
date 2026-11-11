@@ -235,6 +235,22 @@ pub fn build_diff_context_locate(
     };
     let _render = crate::profile::phase("render");
     let mut output = crate::locate::build_locate(&state, &outcome);
+    // The first item of every changed file stays whatever the budget: one too
+    // small for the selection to hold them is cut from the answer the selection
+    // would make, so the least it declares is the one every budget below it says.
+    if budget_tokens.is_some_and(|b| b > 0)
+        && !output
+            .coverage
+            .selection
+            .unrepresented_changed_files
+            .is_empty()
+    {
+        let mut whole = run_selection(&state, None, tau);
+        whole.effective_budget = outcome.effective_budget;
+        whole.budget_requested = outcome.budget_requested;
+        whole.selection_budget = outcome.selection_budget;
+        output = crate::locate::build_locate(&state, &whole);
+    }
     output.fit_to(outcome.effective_budget, include_overflow);
     Ok(output)
 }
@@ -3047,11 +3063,19 @@ fn empty_scored_state(
     run: crate::resource::RunContext,
 ) -> Result<ScoredState> {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
-    let provenance = crate::run_provenance::RunProvenance::new(
-        &root_dir,
-        diff_range,
-        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
-    )?;
+    let effective = crate::effective_config::EffectiveConfigV1::resolve(&config, timeout);
+    let provenance =
+        match crate::run_provenance::RunProvenance::new(&root_dir, diff_range, effective.clone()) {
+            Ok(provenance) => provenance,
+            // The deadline stopped the run before its revisions were read: the
+            // artifact is the partial one that names the limit, its record says no
+            // revision was resolved.
+            Err(e) if e.is_interruption() => {
+                run.note(crate::resource::reason_for(&e));
+                crate::run_provenance::RunProvenance::without_revisions(diff_range, effective)
+            }
+            Err(e) => return Err(e.into()),
+        };
     Ok(ScoredState {
         commit_count: 0,
         root_dir,

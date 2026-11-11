@@ -63,12 +63,107 @@ pub fn builders() -> Vec<Box<dyn EdgeBuilder>> {
         .collect()
 }
 
-/// Whether the old builder of this knife name is silenced: its group takes its
-/// edges from the cells.
-pub fn replaces(knife_name: &str) -> bool {
-    GROUPS
+/// An old text builder kept beside the cells of its group: it keeps every edge
+/// that has an end in a file no cell of the group covers (a Scala file next to
+/// Kotlin, a Vue file next to TypeScript) and every edge when no repository root
+/// is known, and drops the edges the cells draw between files they cover. Its
+/// discovery starts from the changed files the cells do not cover.
+struct Beside {
+    old: Box<dyn EdgeBuilder>,
+    families: &'static [Family],
+}
+
+impl Beside {
+    fn covers(&self, root: &Path, path: &str, scripts: &FxHashSet<String>) -> bool {
+        let rel = rel_of(root, path);
+        self.families.iter().any(|f| concerns(*f, &rel)) || scripts.contains(&rel)
+    }
+}
+
+/// `builder` as the cells leave it: unchanged when no group drawn from the cells
+/// replaces it, else narrowed to the files they do not cover.
+pub fn beside(builder: Box<dyn EdgeBuilder>) -> Box<dyn EdgeBuilder> {
+    let name = builder.knife_name();
+    match GROUPS
         .iter()
-        .any(|(group, _, old)| CELL_EDGES.draws(group) && old.contains(&knife_name))
+        .find(|(group, _, old)| CELL_EDGES.draws(group) && old.contains(&name.as_str()))
+    {
+        Some((_, families, _)) => Box::new(Beside {
+            old: builder,
+            families,
+        }),
+        None => builder,
+    }
+}
+
+impl EdgeBuilder for Beside {
+    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+        self.build_deciding(fragments, repo_root).0
+    }
+
+    fn build_deciding(
+        &self,
+        fragments: &[Fragment],
+        repo_root: Option<&Path>,
+    ) -> (EdgeDict, Vec<(String, String)>) {
+        let (mut edges, decided) = self.old.build_deciding(fragments, repo_root);
+        let Some(root) = repo_root else {
+            return (edges, decided);
+        };
+        let scripts: FxHashSet<String> = self
+            .families
+            .iter()
+            .flat_map(|family| CellEdgeBuilder { family: *family }.scripts(root, fragments))
+            .collect();
+        let mut covered: FxHashMap<Arc<str>, bool> = FxHashMap::default();
+        let mut is_covered = |path: &Arc<str>| {
+            *covered
+                .entry(Arc::clone(path))
+                .or_insert_with(|| self.covers(root, path, &scripts))
+        };
+        edges.retain(|(from, to), _| !(is_covered(&from.path) && is_covered(&to.path)));
+        (edges, decided)
+    }
+
+    fn discover_related_files(
+        &self,
+        changed: &[PathBuf],
+        candidates: &[PathBuf],
+        repo_root: Option<&Path>,
+        file_cache: Option<&FxHashMap<PathBuf, String>>,
+    ) -> Vec<PathBuf> {
+        let Some(root) = repo_root else {
+            return self
+                .old
+                .discover_related_files(changed, candidates, repo_root, file_cache);
+        };
+        let uncovered: Vec<PathBuf> = changed
+            .iter()
+            .filter(|p| !self.covers(root, &p.to_string_lossy(), &FxHashSet::default()))
+            .cloned()
+            .collect();
+        if uncovered.is_empty() {
+            return Vec::new();
+        }
+        self.old
+            .discover_related_files(&uncovered, candidates, repo_root, file_cache)
+    }
+
+    fn category_label(&self) -> Option<&str> {
+        self.old.category_label()
+    }
+
+    fn knife_name(&self) -> String {
+        self.old.knife_name()
+    }
+
+    fn is_fallback(&self) -> bool {
+        self.old.is_fallback()
+    }
+
+    fn is_key_table(&self) -> bool {
+        self.old.is_key_table()
+    }
 }
 
 pub struct CellEdgeBuilder {
@@ -89,7 +184,7 @@ fn is_typescript(rel: &str) -> bool {
 /// of this relation. `module` is a binding that lands on a whole file.
 fn weight(family: Family, rel: &str, relation: Relation, module: bool) -> (f64, f64) {
     use Relation::{
-        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, TypeUses, Writes,
+        Calls, Imports, Instantiates, Overrides, PassesAsValue, Reads, Reexports, Writes,
     };
     let imports = matches!(relation, Imports | Reexports);
     let uses = matches!(

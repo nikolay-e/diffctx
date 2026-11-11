@@ -185,7 +185,10 @@ pub const CELL_EDGE_GROUPS: [&str; 12] = [
 /// so one binary measures every variant.
 ///
 /// - `groups`: the groups drawn from cells (`DIFFCTX_CELL_EDGES`: `all`, `none`
-///   or a comma list of `CELL_EDGE_GROUPS`). `none` is the old builders' edges.
+///   or a comma list of `CELL_EDGE_GROUPS`). The default is `none`: the old
+///   builders' edges, until the measurement of phase 2 says a group is no worse
+///   drawn from cells. A drawn group narrows its old builder to the files the
+///   cell does not cover (`cells::beside`), it never silences it whole.
 /// - `candidates` (`DIFFCTX_CELL_EDGE_CANDIDATES`): a binding the cell narrowed to
 ///   several definitions draws an edge to each, worth the weight times
 ///   `candidate_factor` divided by their number, up to `max_candidates`.
@@ -242,8 +245,8 @@ impl CellEdgeWeights {
 fn parse_groups(raw: Option<&str>) -> Vec<String> {
     let all = || CELL_EDGE_GROUPS.iter().map(|g| (*g).to_string()).collect();
     match raw.map(|r| r.trim().to_ascii_lowercase()).as_deref() {
-        None | Some("" | "all") => all(),
-        Some("none" | "old") => Vec::new(),
+        Some("all") => all(),
+        None | Some("" | "none" | "old") => Vec::new(),
         Some(list) => list
             .split(',')
             .map(str::trim)
@@ -269,19 +272,19 @@ mod cell_edge_tests {
     }
 
     #[test]
-    fn every_group_draws_from_cells_and_the_inexact_edges_are_off_by_default() {
+    fn the_old_builders_draw_by_default_and_the_inexact_edges_are_off() {
         let w = weights(&[]);
-        assert!(CELL_EDGE_GROUPS.iter().all(|g| w.draws(g)));
+        assert!(CELL_EDGE_GROUPS.iter().all(|g| !w.draws(g)));
         assert!(!w.candidates && !w.unresolved);
         assert_eq!(w.resolved, 1.0);
     }
 
     #[test]
-    fn a_list_names_the_groups_and_none_gives_the_old_builders_back() {
+    fn a_list_names_the_groups_and_all_draws_every_one_from_cells() {
         let w = weights(&[("DIFFCTX_CELL_EDGES", "python, go, nonsense")]);
         assert!(w.draws("python") && w.draws("go") && !w.draws("rust"));
-        let old = weights(&[("DIFFCTX_CELL_EDGES", "none")]);
-        assert!(CELL_EDGE_GROUPS.iter().all(|g| !old.draws(g)));
+        let all = weights(&[("DIFFCTX_CELL_EDGES", "all")]);
+        assert!(CELL_EDGE_GROUPS.iter().all(|g| all.draws(g)));
     }
 
     #[test]

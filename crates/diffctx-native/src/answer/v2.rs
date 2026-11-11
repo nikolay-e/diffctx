@@ -312,7 +312,12 @@ impl Gap {
     pub fn severity(&self) -> u8 {
         match self {
             Self::Stopped { .. } => 0,
-            Self::Unaccounted { .. } => 1,
+            // A file that was lost or not read is a limit of the whole search; a file
+            // only of a language no cell binds is a generic "no model", and any more
+            // specific reason the answer has for the definition (an ambiguous name, a
+            // name too common to trace) comes before it.
+            Self::Unaccounted { reason, .. } if reason.lists_the_file() => 1,
+            Self::Unaccounted { .. } => 20,
             Self::Withheld { .. } => 2,
             Self::Capped => 3,
             Self::Unpaired { .. } => 4,

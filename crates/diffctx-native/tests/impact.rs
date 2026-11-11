@@ -4084,10 +4084,14 @@ fn shedding_drops_guesses_before_contracts_and_the_header_counts_all() {
     for budget in (100..=200).step_by(10) {
         let md = impact_budget_md(repo, &budget.to_string());
         let header = md.lines().next().unwrap_or("");
+        // The migration is a change outside any tracked definition, so the scope is
+        // not whole and a count of nothing is said as "no caller found", not as a
+        // zero: the twelve guesses are counted either way.
         assert!(
-            header.contains("0 caller(s) outside the diff, 12 possible"),
+            header.contains("outside the diff") && header.ends_with(", 12 possible"),
             "{budget}: {md}"
         );
+        assert!(!header.contains("unresolved"), "{budget}: {md}");
         if md.contains("possibly called from") {
             with_guess += 1;
             assert!(md.contains("migrations/0002_add.sql"), "{budget}: {md}");
@@ -4684,8 +4688,10 @@ fn a_cap_keeps_the_strongest_row_of_each_relation_a_symbol_has() {
     // Below the least the document can say the definition is shed whole and only
     // its ledger stays; from there up it is listed, and the cap bites until the
     // whole of it fits.
+    // The document is charged for its own framing: below 400 tokens here it holds
+    // one row, the strongest, and not one of each relation.
     let mut bitten = 0;
-    for budget in ["300", "400", "500", "600", "800", "1000"] {
+    for budget in ["400", "500", "600", "800", "1000"] {
         let out = diffctx()
             .current_dir(repo)
             .args([
@@ -5852,7 +5858,7 @@ fn a_body_only_change_of_an_exported_constructor_function_folds_its_export() {
     let folded = &row(&doc, "Layer")["folded"][0];
     assert_eq!(folded["rule"], "imports-a-body", "{doc:#}");
     assert_eq!(folded["kind"], "reexports", "{doc:#}");
-    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 1, "{doc:#}");
 }
 
 /// A module that exports `Route` and also reads it: a body-only change folds the
@@ -5869,7 +5875,7 @@ fn a_body_only_change_folds_the_export_and_lists_the_modules_own_read_of_it() {
     assert_eq!(folded.as_array().map(Vec::len), Some(1), "{doc:#}");
     assert_eq!(folded[0]["rule"], "imports-a-body", "{doc:#}");
     assert_eq!(folded[0]["kind"], "reexports", "{doc:#}");
-    assert_eq!(folded[0]["count"], 1, "{doc:#}");
+    assert_eq!(folded[0]["count"]["n"], 1, "{doc:#}");
     assert!(
         callers_of(&doc, "Route").contains(&"route.js"),
         "the read stays listed: {doc:#}"
