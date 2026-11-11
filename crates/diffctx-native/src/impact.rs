@@ -4041,11 +4041,17 @@ pub fn build_impact(
         // told, or alone (#699). A removed public definition is a contract that
         // moved, listed or not.
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
-            let sym = cell_symbol(
-                entry,
-                &cells.of(&entry.file)?.verdict(entry),
-                "removed".to_string(),
-            );
+            let verdict = cells.of(&entry.file)?.verdict(entry);
+            let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
+            // A removed override was reached through the member it overrode: the
+            // answer names that route, whatever else it could not tell.
+            if let Some(via) = verdict.overridden_via() {
+                if matches!(sym.unresolved, None | Some(Unknown::Uncovered { .. })) {
+                    sym.unresolved = Some(Unknown::Overridable {
+                        via: via.to_string(),
+                    });
+                }
+            }
             // Every removed definition of a cell language is reported, private ones
             // too: with the readers the head still has, or as one nothing references.
             listed_alone.insert((sym.path.clone(), entry.display_name()));

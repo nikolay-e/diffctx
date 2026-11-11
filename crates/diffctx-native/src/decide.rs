@@ -73,6 +73,7 @@ const NAME_SUFFIX: &str = "name_suffix";
 const LABEL_SELECTOR: &str = "label_selector";
 const NO_RELEASE: &str = "no_release";
 const CASE_FOLD: &str = "case_fold";
+const REBOUND: &str = "rebound";
 const SEARCH_PATH: &str = "search_path";
 
 /// The languages one resolver reads: a cell answers for one family.
@@ -501,6 +502,9 @@ impl std::fmt::Display for Gap {
                     "{files} file(s) outside the run's pathspecs were left out"
                 )
             }
+            Self::Unaccounted { reason, files: 0 } => {
+                write!(f, "no file of its interaction group was read: {reason}")
+            }
             Self::Unaccounted { reason, files } => {
                 write!(
                     f,
@@ -720,6 +724,15 @@ struct Bound<'a> {
 }
 
 impl Bound<'_> {
+    /// The files outside the group's extensions that the cell read as its own:
+    /// the scripts a shebang names.
+    fn scripts(&self) -> usize {
+        self.outside
+            .iter()
+            .filter(|file| RepoPath::new(file).is_ok_and(|path| Language::needs_shebang(&path)))
+            .count()
+    }
+
     fn reads(&self, file: &str) -> bool {
         within_scope(self.scope, file)
             && self.read.contains(file)
@@ -846,10 +859,11 @@ fn account_of(
             by_reason.entry(reason).or_default().push(file.clone());
         }
     }
-    // The group's own count is the guard: files the cell read outside it (a
-    // script named by its shebang) can add to what is unaccounted, never make a
-    // group that holds no file of its own look populated.
-    let group_files = tokens.files().len();
+    // The group's own count is the guard against an empty registry: a file the
+    // cell read outside it counts only when its language is its shebang's (an
+    // extensionless script), which no path can tell, so that a repository of
+    // scripts alone is a group of them.
+    let group_files = tokens.files().len() + bound.map_or(0, Bound::scripts);
     if let Some(bound) = bound {
         for file in bound.outside {
             let Ok(path) = RepoPath::new(file) else {
@@ -1169,9 +1183,16 @@ pub struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
     account: Account,
+    overridden: Option<String>,
 }
 
 impl Verdict {
+    /// The type a removed override was reached through, when it was one: what
+    /// called the member it overrode reached it, and no model traces that.
+    pub fn overridden_via(&self) -> Option<&str> {
+        self.overridden.as_deref()
+    }
+
     /// Callers outside the diff with a static chain to the definition.
     pub fn resolved(&self) -> impl Iterator<Item = &Use> {
         self.uses
@@ -3068,12 +3089,17 @@ impl Cell {
                 u.folded = fold::rule(basis, u.relation, candidate, runtime);
             }
         }
-        let (by_relation, account) =
-            self.coverage(changed, lead, per, base_gap.into_iter().collect());
+        let overridden = self.overridden_via(changed);
+        let mut tail: Vec<Gap> = base_gap.into_iter().collect();
+        if overridden.is_some() {
+            tail.push(Gap::NotTraced);
+        }
+        let (by_relation, account) = self.coverage(changed, lead, per, tail);
         Verdict {
             uses,
             by_relation,
             account,
+            overridden,
         }
     }
 
@@ -3546,6 +3572,39 @@ impl Cell {
             .map(|tr| tr.key.local.name.as_str().to_string())
     }
 
+    /// The type that declared the member a removed override overrode, as the base
+    /// side bound it: calls of that member reached the override, and at the head
+    /// nothing says they no longer do. `the supertype it overrides` when the base
+    /// could not name it (an external supertype).
+    fn overridden_via(&self, changed: &Changed) -> Option<String> {
+        if changed.how != How::Removed {
+            return None;
+        }
+        // An unresolved base is `stale_uses`'s `Gap::BaseUnresolved`, said once.
+        let Ok(base) = self.base() else {
+            return None;
+        };
+        let own = |b: &&Binding| {
+            b.relation == Relation::Overrides
+                && b.file.as_str() == changed.file
+                && changed
+                    .stale
+                    .iter()
+                    .any(|key| matches!(&b.from, Scope::Def(local) if *local == key.local))
+        };
+        let binding = base.bindings().iter().find(own)?;
+        Some(
+            binding
+                .targets()
+                .first()
+                .and_then(|target| target.local.container.last())
+                .map_or_else(
+                    || "the supertype it overrides".to_string(),
+                    |holder| format!("`{}`", holder.as_str()),
+                ),
+        )
+    }
+
     /// Uses at the head of a definition the range removed or moved away: lines
     /// the base resolved to it, which the head still spells and no longer lands.
     /// With them, the gap that kept the base side from saying all of it: it was
@@ -3585,26 +3644,56 @@ impl Cell {
                 }
             }
         }
+        // What the base bound each such name to, per file: a head line that lands
+        // on something else was a use of the definition that left and now means
+        // another (a re-export, an inherited or shadowing name), which is as
+        // stranded as one that lands on nothing.
+        let files: HashSet<&str> = named.keys().map(|(file, _)| file.as_str()).collect();
+        let mut had: HashMap<(&str, &Name), HashSet<&DefKey>> = HashMap::new();
+        for b in base.bindings() {
+            if files.contains(b.file.as_str()) {
+                had.entry((b.file.as_str(), &b.name))
+                    .or_default()
+                    .extend(b.targets());
+            }
+        }
         let mut out = Vec::new();
         for ((file, name), standing) in named {
-            let stranded: Vec<&Binding> = self
+            let had = had.get(&(file.as_str(), &name));
+            // A file whose own new lines spell the name moved its uses itself (an
+            // import of the replacement): they are the diff's work, not stranded.
+            let moved_by_range = self.added.get(&file).is_some_and(|lines| {
+                lines.iter().any(|(_, text)| {
+                    text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .any(|word| word == name.as_str())
+                })
+            });
+            let rebound = |h: &Binding| {
+                let targets = h.targets();
+                !moved_by_range
+                    && !targets.is_empty()
+                    && had.is_some_and(|had| targets.iter().all(|t| !had.contains(t)))
+            };
+            let stranded: Vec<(&Binding, bool)> = self
                 .bindings_by_file
                 .get(&file)
                 .into_iter()
                 .flatten()
                 .map(|at| &self.head.bindings()[*at])
-                .filter(|h| {
-                    h.name == name
-                        && strands(self.family, h.relation)
-                        && matches!(h.resolution, Resolution::Unresolved { .. })
+                .filter(|h| h.name == name && strands(self.family, h.relation))
+                .filter_map(|h| match h.resolution {
+                    Resolution::Unresolved { .. } => Some((h, false)),
+                    _ => rebound(h).then_some((h, true)),
                 })
                 .collect();
             // An import is a broken line too, but a file that still uses the name
             // has said so on the use: the import names it only when nothing else does.
-            let used = stranded.iter().any(|h| h.relation != Relation::Imports);
-            for h in stranded
+            let used = stranded
+                .iter()
+                .any(|(h, _)| h.relation != Relation::Imports);
+            for (h, rebound) in stranded
                 .into_iter()
-                .filter(|h| !used || h.relation != Relation::Imports)
+                .filter(|(h, _)| !used || h.relation != Relation::Imports)
             {
                 let line = h.site.lines.0;
                 out.push(Use {
@@ -3614,7 +3703,11 @@ impl Cell {
                     file: file.clone(),
                     line,
                     relation: h.relation,
-                    standing,
+                    standing: if rebound {
+                        Standing::Candidate(REBOUND)
+                    } else {
+                        standing
+                    },
                     scope: h.from.clone(),
                     folded: None,
                     sharing: 0,
@@ -4123,6 +4216,21 @@ mod tests {
             assert!(group.has_path(path), "{path}");
         }
         assert_eq!(Group::of_path("LICENSE"), None);
+    }
+
+    #[test]
+    fn a_gap_of_an_empty_group_counts_no_file() {
+        let gap = Gap::Unaccounted {
+            reason: Reason::NoGroup,
+            files: 0,
+        };
+        for said in [
+            gap.to_string(),
+            crate::answer::v2::Gap::of(&gap, "x").to_string(),
+        ] {
+            assert!(!said.contains("0 file"), "{said}");
+            assert!(said.contains("in no group of languages"), "{said}");
+        }
     }
 
     #[test]

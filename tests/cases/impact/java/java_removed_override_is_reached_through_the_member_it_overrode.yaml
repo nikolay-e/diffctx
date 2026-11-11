@@ -1,0 +1,54 @@
+name: java_removed_override_is_reached_through_the_member_it_overrode
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, removed-definition, absence-claim, override, dispatch]
+repo:
+  initial_files:
+    src/a/Notifying.java: |
+      package a;
+
+      import java.util.ArrayList;
+
+      public abstract class Notifying<E> extends ArrayList<E> {
+          public abstract void onContentsChanged();
+
+          @Override
+          public boolean add(E e) {
+              onContentsChanged();
+              return super.add(e);
+          }
+      }
+    src/a/Element.java: |
+      package a;
+
+      public class Element {
+          Object cache;
+
+          static final class NodeList extends Notifying<String> {
+              @Override
+              public void onContentsChanged() {
+                  System.out.println("changed");
+              }
+          }
+      }
+  changed_files:
+    src/a/Element.java: |
+      package a;
+
+      import java.util.ArrayList;
+
+      public class Element {
+          Object cache;
+
+          static final class NodeList extends ArrayList<String> {
+          }
+      }
+  commit_message: "element: the node list stops notifying"
+expect:
+  removed: [onContentsChanged]
+  coverage:
+    onContentsChanged: {calls: partial}
+  exact: false
+  never_empty: true
+  no_negative_claims: true
