@@ -31,6 +31,7 @@ mod dockerfile;
 mod go;
 mod index;
 mod java;
+mod jvm;
 mod kotlin;
 mod modules;
 mod php;
