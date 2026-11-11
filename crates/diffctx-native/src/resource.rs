@@ -823,6 +823,16 @@ pub fn current_source() -> crate::source::Source {
         .unwrap_or_else(crate::source::Source::empty)
 }
 
+/// A file's text: the caller's cache when it holds the file, else the run's source.
+pub fn read_file_cached(
+    path: &std::path::Path,
+    cache: Option<&rustc_hash::FxHashMap<std::path::PathBuf, String>>,
+) -> Option<String> {
+    cache
+        .and_then(|c| c.get(path).cloned())
+        .or_else(|| current_source().read_to_string(path))
+}
+
 /// Runs `f` with `source` published to this thread: for rayon workers the
 /// run's context is not published to.
 pub fn with_source<T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> T {

@@ -1,9 +1,5 @@
 use std::path::{Path, PathBuf};
 
-/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`,
-/// applied to config keys: document frequency above this is vocabulary.
-pub(crate) const MAX_FILES_PER_KEY: usize = 8;
-
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -11,6 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::canon::{KeyCache, canon_tokens, for_each_name_key};
 use crate::config::extensions::{CODE_EXTENSIONS, CONFIG_EXTENSIONS};
 use crate::config::weights::EDGE_WEIGHTS;
+use crate::keytable::MAX_FILES_PER_KEY;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;

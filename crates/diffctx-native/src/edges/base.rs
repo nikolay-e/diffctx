@@ -10,6 +10,9 @@ use crate::types::{Fragment, FragmentId};
 
 use super::EdgeDict;
 
+pub(crate) use crate::paths::{index_key_of, normalize_lexical};
+pub use crate::resource::read_file_cached;
+
 pub trait EdgeBuilder: Send + Sync {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict;
 
@@ -306,18 +309,6 @@ pub fn add_edges_from_ids(
     }
 }
 
-/// A fragment's path as `FragmentIndex` keys it: repo-relative, posix. In
-/// production fragment paths are absolute (`fragmentation.rs` stores what it
-/// was handed) and the index strips `repo_root`; a caller that derives a
-/// reference from a fragment's own path has to do the same, or its reference
-/// is absolute and matches nothing.
-pub fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
-    repo_root
-        .and_then(|root| Path::new(path).strip_prefix(root).ok())
-        .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
-        .unwrap_or_else(|| crate::paths::to_posix_display(path.into()))
-}
-
 pub fn link_by_name(
     src_id: &FragmentId,
     name: &str,
@@ -449,15 +440,6 @@ fn component_aligned(path: &str, reference: &str, interior_needle: &str) -> bool
     path.contains(interior_needle)
 }
 
-pub fn read_file_cached<'a>(
-    path: &Path,
-    cache: Option<&'a FxHashMap<PathBuf, String>>,
-) -> Option<String> {
-    cache
-        .and_then(|c| c.get(path).cloned())
-        .or_else(|| crate::resource::current_source().read_to_string(path))
-}
-
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
     if let Some(root) = repo_root {
         if let Ok(rel) = candidate.strip_prefix(root) {
@@ -533,22 +515,6 @@ impl FragmentIndex {
             .map(|(_, rep)| rep)
             .collect()
     }
-}
-
-/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
-/// above its start.
-pub fn normalize_lexical(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
 }
 
 /// Where an import that spells a path may land (Nix `import ../x.nix`, Nim
