@@ -61,7 +61,7 @@ pub fn builtin() -> Registry {
     registry
 }
 
-static DIGESTS: [OnceLock<u64>; 21] = [const { OnceLock::new() }; 17];
+static DIGESTS: [OnceLock<u64>; 21] = [const { OnceLock::new() }; 21];
 
 const fn slot(language: Language) -> usize {
     match language {

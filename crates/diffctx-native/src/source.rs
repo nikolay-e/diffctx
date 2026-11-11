@@ -384,6 +384,14 @@ impl Source {
         }
     }
 
+    /// The range of the analysis this source is a side of, as
+    /// [`Analysis::range`] gives it; `None` for a source of nothing.
+    pub fn range(&self) -> Option<&str> {
+        self.view
+            .as_ref()
+            .and_then(|(analysis, _)| analysis.range())
+    }
+
     pub(crate) fn report_to(&self, notes: RunNotes) {
         if let Some((analysis, _)) = &self.view {
             analysis.report_to(notes);

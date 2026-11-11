@@ -19,7 +19,7 @@ fn def<'a>(blob: &'a BlobFacts, name: &str) -> &'a Def {
         .unwrap_or_else(|| panic!("{name}"))
 }
 
-fn refs(blob: &BlobFacts, name: &str) -> Vec<&Ref> {
+fn refs<'a>(blob: &'a BlobFacts, name: &str) -> Vec<&'a Ref> {
     blob.facts
         .iter()
         .filter_map(|f| match f {
