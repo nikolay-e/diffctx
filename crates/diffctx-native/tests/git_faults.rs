@@ -241,12 +241,12 @@ fn json(out: &Output) -> serde_json::Value {
 }
 
 fn callers_of_total(doc: &serde_json::Value) -> Vec<String> {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "total")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .filter_map(|c| c["symbol"].as_str().map(str::to_string))
         .collect()
 }
@@ -260,7 +260,7 @@ fn assert_stall_is_bounded_and_disclosed(mode: &str) {
     // never a clean answer about callers it could not read.
     if out.status.success() {
         let doc = json(&out);
-        let limits = doc["limits"].to_string();
+        let limits = doc["coverage"]["limits"].to_string();
         assert!(
             limits.contains("deadline"),
             "{mode}: a stalled read must be disclosed, got {doc}"
@@ -435,15 +435,16 @@ fn a_stalled_untracked_scan_is_disclosed_as_partial() {
     let out = fx.impact("--others", "stall_before_read");
     let doc = json(&out);
     assert_eq!(doc["empty"], false, "{doc}");
-    assert!(doc["limits"].to_string().contains("deadline"), "{doc}");
+    assert!(
+        doc["coverage"]["limits"].to_string().contains("deadline"),
+        "{doc}"
+    );
 
     let out = fx.pack("--others", "stall_before_read", &[]);
     let doc = json(&out);
     assert_eq!(doc["coverage"]["status"], "partial", "{doc}");
     assert!(
-        doc["coverage"]["limit_reasons"]
-            .to_string()
-            .contains("deadline"),
+        doc["coverage"]["limits"].to_string().contains("deadline"),
         "{doc}"
     );
 
@@ -633,11 +634,8 @@ fn a_stalled_full_read_names_the_deadline() {
     assert!(!stderr.contains("over the size cap"), "{stderr}");
     let named = stderr.contains("deadline")
         || stderr.contains("timeout")
-        || serde_json::from_slice::<serde_json::Value>(&out.stdout).is_ok_and(|doc| {
-            doc["coverage"]["limit_reasons"]
-                .to_string()
-                .contains("deadline")
-        });
+        || serde_json::from_slice::<serde_json::Value>(&out.stdout)
+            .is_ok_and(|doc| doc["coverage"]["limits"].to_string().contains("deadline"));
     assert!(
         named,
         "stdout={} stderr={stderr}",
@@ -1002,15 +1000,15 @@ fn removed_method() -> Fixture {
 
 /// The row of the removed method, when the answer lists one.
 fn removed_run(doc: &serde_json::Value) -> Option<&serde_json::Value> {
-    doc["changed"]
+    doc["definitions"]
         .as_array()?
         .iter()
-        .find(|c| c["kind"] == "removed" && c["symbol"] == "run")
+        .find(|c| c["change"]["kind"] == "removed" && c["symbol"] == "run")
 }
 
 /// How many files the row names as still calling the method.
 fn callers_named(row: &serde_json::Value) -> usize {
-    row["callers"].as_array().map_or(0, |callers| {
+    row["rows"].as_array().map_or(0, |callers| {
         callers
             .iter()
             .filter(|c| c["path"].as_str().is_some_and(|p| p.starts_with("caller")))
@@ -1085,16 +1083,19 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
             let doc = json(&out);
             let disclosed = impact_disclosed(&doc);
             let row = removed_run(&doc);
-            let says_why = row.is_some_and(|r| r["unresolved"].is_string());
+            let says_why = row.is_some_and(|r| r["gaps"].as_array().is_some_and(|g| !g.is_empty()));
             let told = disclosed || says_why || row.is_some_and(|r| callers_named(r) == CALLERS);
             if !told {
                 broken.push(format!("base read {struck}: {doc}"));
             }
             named_by_the_cell |= !disclosed
                 && row.is_some_and(|r| {
-                    r["unresolved"]
-                        .as_str()
-                        .is_some_and(|u| u.contains("read_failed"))
+                    r["gaps"].as_array().is_some_and(|gaps| {
+                        gaps.iter().any(|g| {
+                            g["kind"] == "stopped"
+                                && g["reasons"] == serde_json::json!(["read_failed"])
+                        })
+                    })
                 });
             let md = run(&md_args, Some(struck));
             let md = String::from_utf8_lossy(&md.stdout);

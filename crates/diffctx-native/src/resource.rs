@@ -19,12 +19,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Why a run did not do everything it could have. One vocabulary for every
-/// phase; consumers read `coverage.limit_reasons` and never a per-subsystem
+/// phase; consumers read `coverage.limits` and never a per-subsystem
 /// boolean.
-#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitReason {
     FileTooLarge,
@@ -173,7 +175,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 /// What the run consumed, for the coverage block. Deterministic for a given
 /// input and configuration (counts, not clocks).
-#[derive(Serialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceUsage {
     pub source_bytes: u64,
     pub parsed_files: u64,
@@ -183,7 +185,7 @@ pub struct ResourceUsage {
 }
 
 /// A limit that touched one file, by its display path.
-#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LimitedFile {
     pub path: String,
     pub reason: LimitReason,
@@ -224,19 +226,19 @@ impl LimitReason {
 
 const MAX_LIMITED_FILES_LISTED: usize = 20;
 
-/// What a run's limits mean for the reader (#306). `limit_reasons` are the
+/// What a run's limits mean for the reader (#306). `limits` are the
 /// ones that can have cost this answer context: a run-wide stop, or a
 /// per-file limit on a file the answer is about (changed, or holding a
 /// selected fragment). Graph caps every repository trips, and a size cap on
 /// a lockfile nobody reads, go to `capped` and leave the status `complete`.
-#[derive(Serialize, JsonSchema, Clone, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct CoverageReport {
-    pub status: &'static str,
+    pub status: CoverageStatus,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limit_reasons: Vec<LimitReason>,
+    pub limits: Vec<LimitReason>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capped: Vec<LimitReason>,
-    /// The files behind the per-file reasons in `limit_reasons`.
+    /// The files behind the per-file reasons in `limits`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limited_files: Vec<LimitedFile>,
     pub resources: ResourceUsage,
@@ -245,7 +247,7 @@ pub struct CoverageReport {
     /// the raw diff — and its counts read 0 only because the schema requires
     /// numbers there (#550).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unknown: Vec<&'static str>,
+    pub unknown: Vec<String>,
     /// Files that were not UTF-8 and were decoded with replacement
     /// characters (`NonUtf8Content`): their symbols and identifiers may be
     /// truncated at the first non-ASCII byte.
@@ -253,7 +255,28 @@ pub struct CoverageReport {
     pub lossy_files: Vec<String>,
 }
 
-/// `limit_reasons`, `capped` and the relevant `limited_files` of a run, by
+/// How much of what the run was about it covered: `degraded` when a changed file
+/// has no witness in the answer, `partial` when a limit cost context, `complete`
+/// when only caps nothing needed were hit.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageStatus {
+    Complete,
+    Partial,
+    Degraded,
+}
+
+impl CoverageStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+/// `limits`, `capped` and the relevant `limited_files` of a run, by
 /// the rule on [`CoverageReport`]. `extra` are the selection's own reasons.
 pub fn classify_limits(
     ctx: &RunContext,
@@ -298,15 +321,15 @@ impl CoverageReport {
             return None;
         }
         let status = if limit_reasons.contains(&LimitReason::EvidenceBudgetExceeded) {
-            "degraded"
+            CoverageStatus::Degraded
         } else if limit_reasons.is_empty() {
-            "complete"
+            CoverageStatus::Complete
         } else {
-            "partial"
+            CoverageStatus::Partial
         };
         Some(Self {
             status,
-            limit_reasons,
+            limits: limit_reasons,
             capped,
             limited_files,
             resources: ctx.usage(),

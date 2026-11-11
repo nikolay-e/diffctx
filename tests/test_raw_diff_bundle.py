@@ -98,6 +98,8 @@ class TestRawDiffBundle:
         with_raw = json.loads(_run(repo, "-f", "json", "--with-raw-diff").stdout)
 
         with_raw.pop("raw_diff")
+        # What the patch weighs is stated beside the budget only when it is carried.
+        with_raw["fit"].pop("exempt")
         without.pop("latency", None)
         with_raw.pop("latency", None)
         assert with_raw == without

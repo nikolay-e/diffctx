@@ -208,7 +208,7 @@ def test_a_three_dot_range_reads_bodies_from_its_right_side(tmp_path: Path, diff
     start, end = (int(n) for n in fragment["lines"].split("-"))
     assert fragment["content"].rstrip("\n") == "\n".join(head_body.splitlines()[start - 1 : end])
     assert "return 2" in fragment["content"]
-    assert result["commit_messages"]
+    assert result["range"]["messages"]
 
     bodies = fetch_fragments(Path(repo.path), diff_ref, [f"a.py:{fragment['lines']}"], 1_000_000)
     assert "return 2" in bodies

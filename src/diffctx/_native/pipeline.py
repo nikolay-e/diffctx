@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 # Mirrors the pyo3 signature defaults by reading them, so this wrapper cannot
 # drift from the engine it wraps. Python always passes `scoring_mode`
@@ -76,6 +76,7 @@ def build_locate(
     scoring_mode: str = _DEFAULT_SCORING,
     timeout: int = _PIPELINE_TIMEOUT,
     paths: list[str] | None = None,
+    include_overflow: bool = False,
 ) -> str:
     from diffctx._diffctx import build_locate as _rust_locate
 
@@ -89,6 +90,7 @@ def build_locate(
             scoring_mode=scoring_mode,
             timeout=timeout,
             paths=paths or [],
+            include_overflow=include_overflow,
         )
     )
 
@@ -123,23 +125,11 @@ def build_impact(
     )
 
 
-def resolve_diff_range(root_dir: Path, diff_range: str) -> str:
-    from diffctx._diffctx import resolve_diff_range as _rust_resolve
-
-    return str(_rust_resolve(str(root_dir), diff_range))
-
-
 def get_raw_diff_text(root_dir: Path, diff_range: str, timeout: int = _PIPELINE_TIMEOUT) -> str:
-    return _raw_diff_with_redactions(root_dir, diff_range, timeout, None)[0]
-
-
-def _raw_diff_with_redactions(
-    root_dir: Path, diff_range: str, timeout: int, paths: list[str] | None
-) -> tuple[str, int, list[str]]:
     from diffctx._diffctx import get_raw_diff_text as _rust_raw_diff
 
-    text, count, categories = _rust_raw_diff(str(root_dir), diff_range, timeout=timeout, paths=paths or [])
-    return str(text), int(count), list(categories)
+    text, _, _ = _rust_raw_diff(str(root_dir), diff_range, timeout=timeout, paths=[])
+    return str(text)
 
 
 def build_diff_context(
@@ -163,12 +153,12 @@ def build_diff_context(
     #                            sanity bound in evaluation matrices)
     #   budget_tokens == 0:     no fragments at all (the change summary alone; recall floor)
     #   budget_tokens > 0:      explicit cap
-    effective_budget: int | None = _normalize_budget(budget_tokens)
-
+    # The raw patch is attached after selection has run, ahead of the fragments
+    # it explains, and its redactions are counted: all in the engine.
     result: dict[str, Any] = _rust_build(
         str(root_dir),
         diff_range,
-        budget_tokens=effective_budget,
+        budget_tokens=_normalize_budget(budget_tokens),
         alpha=alpha,
         tau=tau,
         no_content=no_content,
@@ -176,45 +166,67 @@ def build_diff_context(
         scoring_mode=scoring_mode,
         timeout=timeout,
         paths=paths or [],
+        with_raw_diff=with_raw_diff,
     )
-
-    # Attached after selection has already run, never before: the raw patch is
-    # additive output and must not perturb the selected fragments.
-    if with_raw_diff:
-        raw_diff, redacted, categories = _raw_diff_with_redactions(root_dir, diff_range, timeout, paths)
-        if redacted:
-            _count_raw_diff_redactions(result, redacted, categories)
-        if raw_diff:
-            return _with_raw_diff_ahead_of_fragments(result, raw_diff)
-
     return result
 
 
-# A secret on a removed line exists only in the patch; the document's
-# redaction count and coverage block must say so like any other redaction.
-def _count_raw_diff_redactions(result: dict[str, Any], count: int, categories: list[str]) -> None:
-    block = dict(result.get("redactions") or {"count": 0, "categories": []})
-    block["count"] = int(block.get("count", 0)) + count
-    block["categories"] = [*block.get("categories", []), *(c for c in categories if c not in block.get("categories", []))]
-    result["redactions"] = block
-    empty_usage = dict.fromkeys(("source_bytes", "parsed_files", "candidate_files", "edge_contributions", "final_edges"), 0)
-    fresh = {"status": "partial", "limit_reasons": [], "resources": empty_usage, "unknown": ["resources"]}
-    coverage = dict(result.get("coverage") or fresh)
-    reasons = list(coverage.get("limit_reasons") or [])
-    if "sanitization_redaction" not in reasons:
-        reasons.append("sanitization_redaction")
-    coverage["limit_reasons"] = reasons
-    result["coverage"] = coverage
+class Delivery(NamedTuple):
+    """What a door prints and exits with: decided by the engine, never by the door."""
+
+    text: str
+    notes: list[tuple[str, str]]
+    exit: int
+    listed: int
+    latency: dict[str, Any] | None
 
 
-# Readers consume the serialized output top-down, so the patch belongs above
-# the fragments it explains — including in JSON, where key order is the only
-# thing the writer preserves.
-def _with_raw_diff_ahead_of_fragments(result: dict[str, Any], raw_diff: str) -> dict[str, Any]:
-    ordered: dict[str, Any] = {}
-    for key, value in result.items():
-        if key in ("fragment_count", "fragments") and "raw_diff" not in ordered:
-            ordered["raw_diff"] = raw_diff
-        ordered[key] = value
-    ordered.setdefault("raw_diff", raw_diff)
-    return ordered
+def deliver(
+    root_dir: Path,
+    mode: str,
+    diff_range: str = "",
+    symbol: str | None = None,
+    paths: list[str] | None = None,
+    budget: int | None = None,
+    ceiling: int | None = None,
+    envelope: str = "",
+    format: str = "md",
+    unfold: bool = False,
+    alpha: float = _DEFAULT_ALPHA,
+    tau: float | None = None,
+    scoring_mode: str = _DEFAULT_SCORING,
+    timeout: int = _PIPELINE_TIMEOUT,
+    no_content: bool = False,
+    full: bool = False,
+    with_raw_diff: bool = False,
+    overflow: bool = False,
+) -> Delivery:
+    """One engine call for a diff question: the reply text, the stderr notes as
+    (kind, text) pairs (`warning` always said; `detail` and `figure` unless quiet),
+    the exit status, how many fragments or items the text lists, and telemetry.
+    `ceiling` is a hard cap on the reply, `envelope` included: a budget above it
+    is fitted to it, never refused."""
+    from diffctx._diffctx import deliver as _rust_deliver
+
+    return Delivery(
+        *_rust_deliver(
+            str(root_dir),
+            mode,
+            diff_range,
+            symbol=symbol,
+            paths=paths or [],
+            budget=budget,
+            ceiling=ceiling,
+            envelope=envelope,
+            format=format,
+            unfold=unfold,
+            alpha=alpha,
+            tau=tau,
+            scoring_mode=scoring_mode,
+            timeout=timeout,
+            no_content=no_content,
+            full=full,
+            with_raw_diff=with_raw_diff,
+            overflow=overflow,
+        )
+    )

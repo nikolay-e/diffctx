@@ -29,6 +29,11 @@ fn impact_env(repo: &Path, range: &str, env: &[(&str, &str)]) -> serde_json::Val
     serde_json::from_slice(&out.stdout).expect("impact JSON")
 }
 
+/// What a `{total, items}` listing holds and does not show.
+fn omitted_of(listing: &serde_json::Value) -> u64 {
+    listing["total"].as_u64().unwrap_or(0) - listing["items"].as_array().map_or(0, Vec::len) as u64
+}
+
 fn impact_markdown(repo: &Path, range: &str) -> String {
     let out = diffctx()
         .current_dir(repo)
@@ -80,14 +85,14 @@ fn repo_with_callers() -> TempDir {
 fn callers_outside_the_diff_are_listed_with_their_test_guard() {
     let tmp = repo_with_callers();
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    assert_eq!(doc["schema"], "diffctx.impact.v1");
+    assert_eq!(doc["schema"], "diffctx.impact.v2");
     assert_eq!(doc["empty"], false);
-    let changed = doc["changed"].as_array().expect("changed");
+    let changed = doc["definitions"].as_array().expect("changed");
     let total = changed
         .iter()
         .find(|c| c["symbol"] == "total")
         .expect("the changed function is listed");
-    let callers = total["callers"].as_array().expect("callers");
+    let callers = total["rows"].as_array().expect("callers");
     let by_symbol = |name: &str| {
         callers
             .iter()
@@ -96,11 +101,11 @@ fn callers_outside_the_diff_are_listed_with_their_test_guard() {
     };
     let charge = by_symbol("charge");
     assert_eq!(charge["path"], "shop/checkout.py");
-    assert_eq!(charge["tested_by"], "tests/test_checkout.py");
+    assert_eq!(charge["guard"]["test"], "tests/test_checkout.py");
     let summarize = by_symbol("summarize");
     assert_eq!(summarize["path"], "shop/report.py");
     assert!(
-        summarize.get("tested_by").is_none(),
+        summarize["guard"]["test"].is_null(),
         "nothing tests summarize: {summarize:?}"
     );
     assert!(
@@ -132,18 +137,18 @@ fn a_test_that_only_shares_the_callers_name_is_not_its_guard() {
     write(repo, "lib/core.py", "def core(v):\n    return v * 2\n");
     commit_all(repo, "core: doubles");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let changed = doc["changed"].as_array().expect("changed");
+    let changed = doc["definitions"].as_array().expect("changed");
     let core = changed
         .iter()
         .find(|c| c["symbol"] == "core")
         .expect("the changed function is listed");
-    let callers = core["callers"].as_array().expect("callers");
+    let callers = core["rows"].as_array().expect("callers");
     let render = callers
         .iter()
         .find(|c| c["symbol"] == "render")
         .unwrap_or_else(|| panic!("render calls core: {callers:?}"));
     assert!(
-        render.get("tested_by").is_none(),
+        render["guard"]["test"].is_null(),
         "a test that never imports tools/report.py is not its guard: {render:?}"
     );
 }
@@ -169,7 +174,7 @@ fn a_two_letter_module_keeps_its_callers() {
     );
     commit_all(repo, "db: strip");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let callers = doc["changed"][0]["callers"].as_array().expect("callers");
+    let callers = doc["definitions"][0]["rows"].as_array().expect("callers");
     assert!(
         callers.iter().any(|c| c["symbol"] == "main"),
         "src/app.py::main calls connect: {doc}"
@@ -207,14 +212,14 @@ fn a_deref_assignment_is_a_call_not_a_comment() {
     );
     commit_all(repo, "pricing: vat");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let total = doc["changed"]
+    let total = doc["definitions"]
         .as_array()
         .expect("changed")
         .iter()
         .find(|c| c["symbol"] == "total")
         .unwrap_or_else(|| panic!("total is listed: {doc}"));
     assert!(
-        total["callers"]
+        total["rows"]
             .as_array()
             .expect("callers")
             .iter()
@@ -235,11 +240,8 @@ fn a_wide_file_list_yields_to_the_callers() {
     commit_all(repo, "notes");
     let doc = impact(repo, "HEAD~2..HEAD");
     assert_eq!(doc["empty"], false);
-    assert!(
-        doc["changed_files_omitted"].as_u64().unwrap_or(0) > 0,
-        "{doc}"
-    );
-    let callers = doc["changed"][0]["callers"].as_array().expect("callers");
+    assert!(omitted_of(&doc["inventory"]["changed"]) > 0, "{doc}");
+    let callers = doc["definitions"][0]["rows"].as_array().expect("callers");
     assert!(callers.iter().any(|c| c["symbol"] == "charge"), "{doc}");
     let text = impact_markdown(repo, "HEAD~2..HEAD");
     assert!(text.contains("301 changed file(s)"), "{text}");
@@ -255,7 +257,10 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
         &[("DIFFCTX_MAX_CANDIDATE_FILES", "1")],
     );
     assert!(
-        !doc["limits"].as_array().expect("limits").is_empty(),
+        !doc["coverage"]["limits"]
+            .as_array()
+            .expect("limits")
+            .is_empty(),
         "{doc}"
     );
     assert_eq!(doc["empty"], false);
@@ -318,7 +323,7 @@ fn a_cap_every_repository_trips_does_not_make_an_empty_answer_speak() {
     );
     let doc = impact_env(repo, "HEAD~1..HEAD", &cap);
     assert_eq!(doc["empty"], true, "{doc}");
-    assert!(doc.get("limits").is_none(), "{doc}");
+    assert!(doc["coverage"].get("limits").is_none(), "{doc}");
 }
 
 /// #446: the contribution and total-byte caps drop edges or files wholesale
@@ -334,7 +339,7 @@ fn the_wholesale_caps_are_losses_the_answer_names() {
         let doc = impact_env(tmp.path(), "HEAD~1..HEAD", &[(env, "1")]);
         assert_eq!(doc["empty"], false, "{env}: {doc:#}");
         assert!(
-            doc["limits"]
+            doc["coverage"]["limits"]
                 .as_array()
                 .is_some_and(|l| l.iter().any(|r| r == reason)),
             "{env}: {doc:#}"
@@ -365,11 +370,11 @@ fn a_run_under_the_contribution_cap_lists_the_same_callers_each_time() {
         &[("core/compute.py", "def compute(x):\n    return x * 2\n")],
     );
     let listed = |doc: &serde_json::Value| -> Vec<String> {
-        let mut found: Vec<String> = doc["changed"]
+        let mut found: Vec<String> = doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
-            .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+            .flat_map(|c| c["rows"].as_array().into_iter().flatten())
             .filter_map(|c| c["path"].as_str().map(str::to_string))
             .collect();
         found.sort();
@@ -386,12 +391,15 @@ fn a_run_under_the_contribution_cap_lists_the_same_callers_each_time() {
             runs.into_iter().map(|r| r.join().unwrap()).collect()
         });
         let first = &runs[0];
-        fired |= first["limits"]
+        fired |= first["coverage"]["limits"]
             .as_array()
             .is_some_and(|l| l.iter().any(|r| r == "edge_contribution_limit"));
         for again in &runs[1..] {
             assert_eq!(listed(again), listed(first), "cap {cap}: {again:#}");
-            assert_eq!(again["limits"], first["limits"], "cap {cap}: {again:#}");
+            assert_eq!(
+                again["coverage"]["limits"], first["coverage"]["limits"],
+                "cap {cap}: {again:#}"
+            );
         }
     }
     assert!(fired, "no cap fired, so this measures nothing");
@@ -415,9 +423,8 @@ fn a_test_named_for_a_schema_is_not_a_schema_contract() {
     );
     commit_all(repo, "test");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let contracts = doc
-        .get("contracts")
-        .and_then(|c| c.as_array())
+    let contracts = doc["contracts"]["items"]
+        .as_array()
         .cloned()
         .unwrap_or_default();
     assert!(!contracts.iter().any(|c| c["kind"] == "schema"), "{doc}");
@@ -433,8 +440,8 @@ fn rails_schema_and_migrations_are_contracts_and_yarn_versions_are_not() {
             &files.iter().map(|(p, _, b)| (*p, *b)).collect::<Vec<_>>(),
         );
         let doc = impact(tmp.path(), "HEAD~1..HEAD");
-        doc.get("contracts")
-            .and_then(|c| c.as_array())
+        doc["contracts"]["items"]
+            .as_array()
             .map(|c| {
                 c.iter()
                     .filter(|c| c["kind"] == "schema")
@@ -503,17 +510,13 @@ fn a_changed_arrow_function_const_has_its_importers_as_callers() {
     );
     commit_all(repo, "clamp");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let clamp = doc["changed"]
+    let clamp = doc["definitions"]
         .as_array()
         .expect("changed")
         .iter()
         .find(|c| c["symbol"] == "clamp")
         .unwrap_or_else(|| panic!("clamp is a changed symbol: {doc}"));
-    assert_eq!(
-        clamp["callers"].as_array().expect("callers").len(),
-        3,
-        "{doc}"
-    );
+    assert_eq!(clamp["rows"].as_array().expect("callers").len(), 3, "{doc}");
 }
 
 #[test]
@@ -529,8 +532,8 @@ fn a_body_only_change_of_an_export_is_not_a_contract() {
     );
     commit_all(repo, "mono body");
     let contracts = |doc: &serde_json::Value| -> Vec<String> {
-        doc.get("contracts")
-            .and_then(|c| c.as_array())
+        doc["contracts"]["items"]
+            .as_array()
             .map(|a| {
                 a.iter()
                     .filter_map(|c| c["symbol"].as_str().map(str::to_string))
@@ -541,7 +544,7 @@ fn a_body_only_change_of_an_export_is_not_a_contract() {
     let body = impact(repo, "HEAD~1..HEAD");
     assert!(!contracts(&body).contains(&"mono".to_string()), "{body}");
     assert!(
-        body["changed"]
+        body["definitions"]
             .as_array()
             .expect("changed")
             .iter()
@@ -587,7 +590,7 @@ fn a_decorated_export_whose_signature_moved_is_a_contract() {
     );
     commit_all(repo, "panel: generic");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let contracts: Vec<&str> = doc["contracts"]
+    let contracts: Vec<&str> = doc["contracts"]["items"]
         .as_array()
         .unwrap_or_else(|| panic!("no contracts: {doc}"))
         .iter()
@@ -614,13 +617,13 @@ fn a_file_that_only_imports_the_symbol_is_not_a_caller() {
     );
     git(repo, &["commit", "-q", "-am", "vat again"]);
     let doc = impact(repo, "HEAD~1..HEAD");
-    let total = doc["changed"]
+    let total = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["symbol"] == "total")
         .expect("total listed");
-    let paths: Vec<&str> = total["callers"]
+    let paths: Vec<&str> = total["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -665,13 +668,13 @@ fn an_edit_inside_a_function_body_still_names_the_functions_callers() {
     );
     commit_all(repo, "vat");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let total = doc["changed"]
+    let total = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["symbol"] == "total")
         .unwrap_or_else(|| panic!("the function, not its inner let, is the changed symbol: {doc}"));
-    let callers: Vec<&str> = total["callers"]
+    let callers: Vec<&str> = total["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -712,7 +715,7 @@ fn a_change_nothing_depends_on_is_empty() {
     commit_all(repo, "docs");
     let doc = impact(repo, "HEAD~1..HEAD");
     assert_eq!(doc["empty"], true, "{doc}");
-    assert!(doc["changed"].as_array().unwrap().is_empty());
+    assert!(doc["definitions"].as_array().unwrap().is_empty());
     let text = impact_markdown(repo, "HEAD~1..HEAD");
     assert!(
         text.contains("No resolved static callers outside the diff in the analysed scope."),
@@ -731,8 +734,8 @@ fn a_symbol_edited_by_two_commits_of_the_range_says_so() {
     );
     commit_all(repo, "pricing: name the rate");
     let doc = impact(repo, "HEAD~2..HEAD");
-    assert_eq!(doc["commit_count"], 2);
-    let total = doc["changed"]
+    assert_eq!(doc["range"]["commits"], 2);
+    let total = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
@@ -759,10 +762,11 @@ fn the_working_tree_is_a_valid_range() {
         .expect("run diffctx");
     assert!(out.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(doc["range"], "HEAD");
+    assert_eq!(doc["range"]["kind"], "worktree");
+    assert_eq!(doc["range"]["spec"], "HEAD");
     assert_eq!(doc["empty"], false);
     assert!(
-        doc.get("commit_count").is_none(),
+        doc["range"].get("commits").is_none(),
         "no commits for a dirty tree"
     );
 }
@@ -800,8 +804,8 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
         "{} tokens",
         _diffctx::tokenizer::count_tokens(&json)
     );
-    assert!(doc["truncated"].as_u64().unwrap() > 0, "{doc}");
-    let listed = doc["changed"][0]["callers"].as_array().unwrap().len();
+    assert!(doc["summary"]["shed"].as_u64().unwrap() > 0, "{doc}");
+    let listed = doc["definitions"][0]["rows"].as_array().unwrap().len();
     assert!(listed > 5, "kept the strongest callers, not none: {listed}");
 }
 
@@ -855,12 +859,12 @@ fn strings_and_foreign_receivers_are_not_callers() {
 
     let doc = impact(repo, "HEAD~1..HEAD");
     let callers = |sym: &str| -> Vec<String> {
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .unwrap()
             .iter()
             .filter(|c| c["symbol"] == sym)
-            .flat_map(|c| c["callers"].as_array().unwrap().clone())
+            .flat_map(|c| c["rows"].as_array().unwrap().clone())
             .map(|c| {
                 format!(
                     "{}::{}",
@@ -985,11 +989,11 @@ fn a_deleted_file_still_named_elsewhere_is_reported() {
     commit_all(repo, "drop the script");
     let doc = impact(repo, "HEAD~1..HEAD");
     assert_eq!(
-        doc["deleted_files"],
+        doc["inventory"]["deleted"]["items"],
         serde_json::json!(["scripts/build_image.sh"]),
         "{doc:#}"
     );
-    let stale: Vec<String> = doc["stale_references"]
+    let stale: Vec<String> = doc["stale"]["items"]
         .as_array()
         .expect("stale references")
         .iter()
@@ -1087,7 +1091,7 @@ fn header(md: &str) -> &str {
 }
 
 fn changed_symbols(doc: &serde_json::Value) -> Vec<String> {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -1097,9 +1101,36 @@ fn changed_symbols(doc: &serde_json::Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The rows a shed ledger holds: `untested` is a part of them, not more.
+fn shed_total(ledger: &serde_json::Value) -> usize {
+    ["resolved", "candidate", "name"]
+        .iter()
+        .map(|k| ledger[k].as_u64().unwrap_or(0) as usize)
+        .sum()
+}
+
+/// The `path::symbol` of each definition in one `unlisted` list.
+fn unlisted_names(doc: &serde_json::Value, list: &str) -> Vec<String> {
+    doc["unlisted"][list]["items"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|d| {
+                    format!(
+                        "{}::{}",
+                        d["path"].as_str().unwrap_or(""),
+                        d["symbol"].as_str().unwrap_or("")
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn contract_symbols(doc: &serde_json::Value) -> Vec<String> {
-    doc.get("contracts")
-        .and_then(|c| c.as_array())
+    doc["contracts"]["items"]
+        .as_array()
         .map(|a| {
             a.iter()
                 .map(|c| {
@@ -1153,13 +1184,9 @@ fn a_changed_definition_no_test_reaches_is_counted() {
     // #398: what the header counts, the answer names.
     assert!(md.contains("  - shop/report.py::summarize ("), "{md}");
     let doc = impact(repo, "HEAD~1..HEAD");
-    assert_eq!(
-        doc["untested_unlisted"][0]
-            .as_str()
-            .map(|s| s.starts_with("shop/report.py::summarize")),
-        Some(true),
-        "{doc:#}"
-    );
+    let unlisted = &doc["unlisted"]["no_caller"]["items"][0];
+    assert_eq!(unlisted["path"], "shop/report.py", "{doc:#}");
+    assert_eq!(unlisted["symbol"], "summarize", "{doc:#}");
 }
 
 /// #441: a helper whose only caller is a definition the same diff changes is
@@ -1185,28 +1212,10 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
         &[("app/rates.py", &rates(3))],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let names = |key: &str| -> Vec<String> {
-        doc[key]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.split(" (").next().unwrap_or(s).to_string())
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    assert_eq!(
-        names("untested_unlisted"),
-        ["app/rates.py::quote"],
-        "{doc:#}"
-    );
-    assert_eq!(
-        names("untested_called_in_diff"),
-        ["app/rates.py::_scale"],
-        "{doc:#}"
-    );
-    assert_eq!(doc["untested_definitions"], 2, "{doc:#}");
+    let names = |key: &str| unlisted_names(&doc, key);
+    assert_eq!(names("no_caller"), ["app/rates.py::quote"], "{doc:#}");
+    assert_eq!(names("called_in_diff"), ["app/rates.py::_scale"], "{doc:#}");
+    assert_eq!(doc["tests"]["definitions_without_link"]["n"], 2, "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     let (before, inside) = md
         .split_once("Changed, called only from inside the diff, no static test link:")
@@ -1241,7 +1250,7 @@ fn a_python_caller_changed_in_the_range_is_named_apart_from_the_callers_outside_
         &[("app/rates.py", &rates(3))],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let changed = doc["changed"].as_array().expect("changed");
+    let changed = doc["definitions"].as_array().expect("changed");
     let find = |name: &str| {
         changed
             .iter()
@@ -1249,14 +1258,15 @@ fn a_python_caller_changed_in_the_range_is_named_apart_from_the_callers_outside_
             .unwrap_or_else(|| panic!("{name} missing from {doc:#}"))
     };
     let quote = find("quote");
-    assert_eq!(quote["callers"][0]["path"], "app/api.py", "{doc:#}");
-    assert_eq!(quote["callers"][0]["evidence"], "resolved", "{doc:#}");
+    assert_eq!(quote["rows"][0]["path"], "app/api.py", "{doc:#}");
+    assert_eq!(quote["rows"][0]["standing"], "resolved", "{doc:#}");
     let scale = find("_scale");
-    assert_eq!(scale["callers"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(scale["rows"], serde_json::json!([]), "{doc:#}");
     assert!(
-        scale["also_changed"][0]
+        scale["also_changed"][0]["path"]
             .as_str()
-            .is_some_and(|s| s.starts_with("app/rates.py::quote (")),
+            .zip(scale["also_changed"][0]["symbol"].as_str())
+            .is_some_and(|(p, s)| format!("{p}::{s}") == "app/rates.py::quote"),
         "{doc:#}"
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
@@ -1303,23 +1313,16 @@ fn a_python_absence_is_claimed_only_where_no_use_of_the_name_is_unplaced() {
         "{md}"
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let names = |key: &str| -> Vec<String> {
-        doc[key]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.split(" (").next().unwrap_or(s).to_string())
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    assert_eq!(names("untested_unlisted"), ["lib.py::lone"], "{doc:#}");
-    let helper = doc["changed"]
+    assert_eq!(
+        unlisted_names(&doc, "no_caller"),
+        ["lib.py::lone"],
+        "{doc:#}"
+    );
+    let helper = doc["definitions"]
         .as_array()
         .and_then(|c| c.iter().find(|c| c["symbol"] == "helper"))
         .unwrap_or_else(|| panic!("{doc:#}"));
-    assert!(helper.get("untested").is_none(), "{doc:#}");
+    assert!(helper.get("guard").is_none(), "{doc:#}");
 }
 
 /// The withhold policy holds at the read, so no output surface can name a
@@ -1382,7 +1385,7 @@ fn no_mode_names_a_withheld_file_that_references_the_change() {
     }
     let doc = impact(repo, "HEAD~1..HEAD");
     assert!(
-        doc["withheld_files"].as_u64().unwrap_or(0) >= 1,
+        doc["inventory"]["withheld"].as_u64().unwrap_or(0) >= 1,
         "the withheld referrers are counted: {doc:#}"
     );
 }
@@ -1414,12 +1417,12 @@ fn a_caller_the_edge_cap_cut_is_still_a_caller() {
     let changed = target(3);
     let tmp = repo(&initial, &[("app/target.py", &changed)]);
     let callers = |doc: &serde_json::Value| -> Vec<String> {
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
             .filter(|c| c["symbol"] == "target")
-            .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+            .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
             .map(|c| {
                 format!(
                     "{}::{}",
@@ -1466,8 +1469,14 @@ fn a_changed_file_over_the_size_cap_is_named_never_empty() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     assert_eq!(doc["empty"], false, "{doc:#}");
-    assert_eq!(doc["unanalysed_files"][0]["path"], "big.py", "{doc:#}");
-    assert_eq!(doc["unanalysed_files"][0]["reason"], "too_large", "{doc:#}");
+    assert_eq!(
+        doc["coverage"]["unanalysed"]["items"][0]["path"], "big.py",
+        "{doc:#}"
+    );
+    assert_eq!(
+        doc["coverage"]["unanalysed"]["items"][0]["reason"], "too_large",
+        "{doc:#}"
+    );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(!md.contains("No resolved static callers"), "{md}");
     assert!(md.contains("over the size cap"), "{md}");
@@ -1486,7 +1495,7 @@ fn over_the_size_cap(code: &str) -> String {
 /// not analysed rather than reading as "nothing removed, no callers".
 fn names_not_analysed(repo: &Path, path: &str) {
     let doc = impact(repo, "HEAD~1..HEAD");
-    let rows = doc["unanalysed_files"]
+    let rows = doc["coverage"]["unanalysed"]["items"]
         .as_array()
         .expect("unanalysed_files");
     assert!(
@@ -1552,13 +1561,15 @@ fn a_comment_only_edit_says_its_callers_were_not_traced() {
         )],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let layout: Vec<&str> = doc["layout_only"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|v| v.as_str())
-        .collect();
-    assert_eq!(layout, ["pay.py::load_x (1-4)"], "{doc:#}");
+    assert_eq!(
+        unlisted_names(&doc, "layout_only"),
+        ["pay.py::load_x"],
+        "{doc:#}"
+    );
+    assert_eq!(
+        doc["unlisted"]["layout_only"]["items"][0]["lines"], "1-4",
+        "{doc:#}"
+    );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(!md.contains("No resolved static callers"), "{md}");
     assert!(md.contains("callers not traced"), "{md}");
@@ -1615,7 +1626,7 @@ fn omitted_in(md: &str) -> u64 {
 fn markdown_is_fitted_on_markdown_and_keeps_its_contracts() {
     let tmp = wide_change();
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let json_shed = doc["truncated"].as_u64().unwrap_or(0);
+    let json_shed = doc["summary"]["shed"].as_u64().unwrap_or(0);
     assert!(json_shed > 0, "the fixture must pass the cap: {doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(omitted_in(&md) < json_shed, "{md}");
@@ -1659,9 +1670,10 @@ fn the_budget_sets_the_impact_cap() {
         .output()
         .expect("run diffctx");
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
-    assert!(doc.get("truncated").is_none(), "{doc:#}");
+    assert_eq!(doc["summary"]["shed"], 0, "{doc:#}");
+    assert!(doc.get("omitted").is_none(), "{doc:#}");
     assert_eq!(
-        doc["changed"][0]["callers"].as_array().map(Vec::len),
+        doc["definitions"][0]["rows"].as_array().map(Vec::len),
         Some(60),
         "{doc:#}"
     );
@@ -1690,21 +1702,25 @@ fn a_removed_name_too_common_to_trace_is_unresolved_not_listed() {
         .collect();
     let tmp = repo(&initial, &[("app/defs.py", "def keep():\n    return 1\n")]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed: Vec<&serde_json::Value> = doc["changed"]
+    let removed: Vec<&serde_json::Value> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "call")
         .collect();
     assert_eq!(removed.len(), 1, "{doc:#}");
-    assert!(
-        removed[0]["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("too common to trace")),
+    // 40 files of 20 lines each spell the name: more than can be told apart.
+    assert_eq!(
+        removed[0]["gaps"],
+        serde_json::json!([{"kind": "unlanded", "name": "call", "uses": 800}]),
+        "{doc:#}"
+    );
+    assert_eq!(
+        removed[0]["coverage"]["calls"]["complete"], false,
         "{doc:#}"
     );
     assert!(
-        removed[0]["callers"].as_array().is_none_or(Vec::is_empty),
+        removed[0]["rows"].as_array().is_none_or(Vec::is_empty),
         "{doc:#}"
     );
 }
@@ -1726,7 +1742,7 @@ fn a_lock_file_change_is_named_never_empty() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     assert_eq!(doc["empty"], false, "{doc:#}");
-    let locks: Vec<&str> = doc["lockfile_changes"]
+    let locks: Vec<&str> = doc["inventory"]["lockfiles"]["items"]
         .as_array()
         .into_iter()
         .flatten()
@@ -2033,11 +2049,11 @@ fn a_rust_call_still_naming_the_old_module_of_a_move_is_reported() {
         ],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed = doc["changed"]
+    let removed = doc["definitions"]
         .as_array()
         .and_then(|c| c.iter().find(|c| c["path"] == "src/old.rs"))
         .unwrap_or_else(|| panic!("{doc:#}"));
-    let callers: Vec<&str> = removed["callers"]
+    let callers: Vec<&str> = removed["rows"]
         .as_array()
         .map(|c| c.iter().filter_map(|c| c["path"].as_str()).collect())
         .unwrap_or_default();
@@ -2240,10 +2256,10 @@ fn each_removed_definition_of_a_deleted_module_keeps_its_own_callers() {
     commit_all(tmp.path(), "delete the module");
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let callers_of = |name: &str| -> Vec<String> {
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .and_then(|c| c.iter().find(|c| c["symbol"] == name))
-            .and_then(|c| c["callers"].as_array())
+            .and_then(|c| c["rows"].as_array())
             .map(|c| {
                 let mut paths: Vec<String> = c
                     .iter()
@@ -2278,13 +2294,13 @@ fn a_call_after_python_floor_division_is_a_caller() {
         )],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let changed = doc["changed"].as_array().expect("changed");
+    let changed = doc["definitions"].as_array().expect("changed");
     let page_size = changed
         .iter()
         .find(|c| c["symbol"] == "page_size")
         .unwrap_or_else(|| panic!("page_size missing: {doc:#}"));
     assert!(
-        page_size["callers"]
+        page_size["rows"]
             .as_array()
             .is_some_and(|c| c.iter().any(|c| c["symbol"] == "pages")),
         "{doc:#}"
@@ -2327,22 +2343,21 @@ fn a_type_with_trait_impls_is_one_definition_reached_by_its_users() {
         1,
         "{doc:#}"
     );
-    let changed = doc["changed"].as_array().expect("changed");
+    let changed = doc["definitions"].as_array().expect("changed");
     let entry = |name: &str| changed.iter().find(|c| c["symbol"] == name);
     let ty = entry("QueryError").expect("QueryError listed");
-    assert!(ty.get("unresolved").is_none(), "{doc:#}");
+    assert!(ty.get("gaps").is_none(), "{doc:#}");
     assert!(
-        ty["callers"]
+        ty["rows"]
             .as_array()
             .is_some_and(|c| c.iter().any(|c| c["path"] == "src/run.rs")),
         "{doc:#}"
     );
     for (method, tr) in [("fmt", "Display"), ("from", "From")] {
         let m = entry(method).expect("trait method listed");
-        assert!(
-            m["unresolved"]
-                .as_str()
-                .is_some_and(|u| u.starts_with(&format!("implements `{tr}`"))),
+        assert_eq!(
+            m["gaps"],
+            serde_json::json!([{"kind": "dispatched", "via": tr}]),
             "{doc:#}"
         );
     }
@@ -2609,7 +2624,7 @@ fn a_stale_reference_names_the_deleted_path_itself() {
     );
     commit_all(repo, "drop");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let mut stale: Vec<String> = doc["stale_references"]
+    let mut stale: Vec<String> = doc["stale"]["items"]
         .as_array()
         .cloned()
         .unwrap_or_default()
@@ -2868,7 +2883,7 @@ fn relative_references_to_a_moved_file_are_stale_and_foreign_ones_are_not() {
     );
     commit_all(repo, "move");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let mut stale: Vec<String> = doc["stale_references"]
+    let mut stale: Vec<String> = doc["stale"]["items"]
         .as_array()
         .cloned()
         .unwrap_or_default()
@@ -3047,13 +3062,13 @@ fn a_sibling_project_s_test_does_not_guard_a_caller() {
     // One project: the lexical link stands, so the probe below is not vacuous.
     // The word match is listed as text; its link stays in the JSON row.
     let tests_of_the_namer = |doc: &serde_json::Value| -> Vec<String> {
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .unwrap()
             .iter()
-            .flat_map(|c| c["callers"].as_array().unwrap())
-            .filter(|c| c["evidence"] == "name")
-            .filter_map(|c| c["tested_by"].as_str().map(str::to_string))
+            .flat_map(|c| c["rows"].as_array().unwrap())
+            .filter(|c| c["standing"] == "name")
+            .filter_map(|c| c["guard"]["test"].as_str().map(str::to_string))
             .collect()
     };
     let together = repo(&files(false), &change);
@@ -3241,7 +3256,7 @@ fn a_code_change_without_a_parse_is_not_analysed_not_an_all_clear() {
     commit_all(tmp.path(), "drop gone");
     let doc = impact(tmp.path(), "HEAD~2..HEAD");
     assert_eq!(doc["empty"], false, "{doc}");
-    let unanalysed: Vec<(String, String)> = doc["unanalysed_files"]
+    let unanalysed: Vec<(String, String)> = doc["coverage"]["unanalysed"]["items"]
         .as_array()
         .expect("unanalysed_files")
         .iter()
@@ -3316,7 +3331,10 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
         out.contains("2 file(s) naming it were read as text"),
         "{out}"
     );
-    assert!(out.contains("fortran: no grammar in this build"), "{out}");
+    assert!(
+        out.contains("2 fortran (no grammar in this build)"),
+        "{out}"
+    );
     assert!(
         out.contains("num/solver.f90:") && out.contains("num/use.f90:"),
         "{out}"
@@ -3439,7 +3457,7 @@ fn a_range_whose_base_moved_on_is_measured_from_the_fork() {
     for range in ["main..feature", "main...feature"] {
         let out = impact(repo, range);
         assert_eq!(
-            out["changed_files"],
+            out["inventory"]["changed"]["items"],
             serde_json::json!(["shop/pricing.py"]),
             "{range}: {out}"
         );
@@ -3453,7 +3471,7 @@ fn a_range_whose_base_moved_on_is_measured_from_the_fork() {
             assert!(out.status.success(), "{range} {mode:?}");
             let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("JSON");
             assert_eq!(
-                doc["changed_files"],
+                doc["inventory"]["changed"]["items"],
                 serde_json::json!(["shop/pricing.py"]),
                 "{range} {mode:?}: main's own commit is not the branch's change"
             );
@@ -3549,12 +3567,12 @@ fn untracked_files_are_named_apart_and_binaries_are_not_changes() {
     write(repo, "# Codex conversation", "notes from a chat\n");
     let out = impact(repo, "HEAD");
     assert_eq!(
-        out["changed_files"],
+        out["inventory"]["changed"]["items"],
         serde_json::json!(["README.md", "shop/pricing.py"]),
         "{out}"
     );
     assert_eq!(
-        out["untracked_files"],
+        out["inventory"]["untracked"]["items"],
         serde_json::json!(["# Codex conversation"]),
         "{out}"
     );
@@ -3574,7 +3592,7 @@ fn untracked_files_are_named_apart_and_binaries_are_not_changes() {
     git(repo, &["add", "shop/coupon.py"]);
     let out = impact(repo, "HEAD");
     assert!(
-        out["changed_files"]
+        out["inventory"]["changed"]["items"]
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("shop/coupon.py")),
@@ -3611,7 +3629,8 @@ fn a_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
     for expected in ["stale ops.md", "total <- shop/checkout.py"] {
         assert!(truth.iter().any(|c| c == expected), "{expected}: {truth:?}");
     }
-    let stopped = |doc: &serde_json::Value| doc["limits"].to_string().contains("deadline");
+    let stopped =
+        |doc: &serde_json::Value| doc["coverage"]["limits"].to_string().contains("deadline");
     let sweep = support::sweep_polls(
         |n| {
             impact_env(
@@ -3657,10 +3676,7 @@ fn a_stopped_run_reads_no_line_of_its_stale_reference_search() {
     git(repo, &["rm", "-q", "-r", "old"]);
     git(repo, &["commit", "-q", "-m", "drop old"]);
     let whole = impact(repo, "HEAD~1..HEAD");
-    let read = |doc: &serde_json::Value| {
-        doc["stale_references"].as_array().map_or(0, Vec::len) as u64
-            + doc["stale_references_omitted"].as_u64().unwrap_or(0)
-    };
+    let read = |doc: &serde_json::Value| doc["stale"]["total"].as_u64().unwrap_or(0);
     assert_eq!(read(&whole), 200, "{whole}");
     let stopped = impact_env(
         repo,
@@ -3668,7 +3684,9 @@ fn a_stopped_run_reads_no_line_of_its_stale_reference_search() {
         &[("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")],
     );
     assert!(
-        stopped["limits"].to_string().contains("deadline"),
+        stopped["coverage"]["limits"]
+            .to_string()
+            .contains("deadline"),
         "{stopped}"
     );
     assert_eq!(read(&stopped), 0, "a stopped run read on: {stopped}");
@@ -3724,12 +3742,12 @@ fn a_call_inside_an_interpolation_is_a_caller_and_a_string_is_not() {
     commit_all(repo, "change");
     let out = impact(repo, "HEAD~1..HEAD");
     let callers_of = |symbol: &str| -> Vec<String> {
-        out["changed"]
+        out["definitions"]
             .as_array()
             .unwrap()
             .iter()
             .filter(|c| c["symbol"] == symbol)
-            .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+            .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
             .map(|k| {
                 format!(
                     "{}::{}",
@@ -3789,11 +3807,11 @@ fn only_declarations_the_head_lost_are_removed_definitions() {
         ],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let mut removed: Vec<String> = doc["changed"]
+    let mut removed: Vec<String> = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["kind"] == "removed")
+        .filter(|c| c["change"]["kind"] == "removed")
         .map(|c| c["symbol"].as_str().unwrap().to_string())
         .collect();
     removed.sort();
@@ -3847,17 +3865,17 @@ fn a_removed_definition_is_called_only_from_code_that_can_reach_it() {
     git(tmp.path(), &["rm", "-q", "scripts/rotate-key.py"]);
     git(tmp.path(), &["commit", "-q", "--amend", "--no-edit"]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed: Vec<(String, Vec<String>)> = doc["changed"]
+    let removed: Vec<(String, Vec<String>)> = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         // Every removed definition is listed; the readers are the claim: one that
         // nothing reads has none.
-        .filter(|c| c["kind"] == "removed" && !c["callers"].as_array().unwrap().is_empty())
+        .filter(|c| c["change"]["kind"] == "removed" && !c["rows"].as_array().unwrap().is_empty())
         .map(|c| {
             (
                 c["symbol"].as_str().unwrap().to_string(),
-                c["callers"]
+                c["rows"]
                     .as_array()
                     .cloned()
                     .unwrap_or_default()
@@ -3906,12 +3924,12 @@ fn a_file_with_its_own_definition_of_the_name_is_no_caller_of_the_removed_one() 
         &[("src/a.rs", "pub fn keep() -> u8 {\n    1\n}\n")],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let callers: Vec<String> = doc["changed"]
+    let callers: Vec<String> = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["kind"] == "removed" && c["symbol"] == "helper")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .filter(|c| c["change"]["kind"] == "removed" && c["symbol"] == "helper")
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|k| k["path"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(callers, ["src/c.rs"], "{doc}");
@@ -3969,18 +3987,18 @@ fn callers_of_a_removed_definition_keep_their_test_links() {
     write(repo, "lib.py", "def kept():\n    return 2\n");
     commit_all(repo, "drop gone");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let callers: Vec<&serde_json::Value> = doc["changed"]
+    let callers: Vec<&serde_json::Value> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "gone")
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .collect();
     let tested = |path: &str| {
         callers
             .iter()
             .find(|c| c["path"] == path)
-            .map(|c| c["tested_by"].clone())
+            .map(|c| c["guard"]["test"].clone())
     };
     assert_eq!(tested("app.py"), Some("tests/test_app.py".into()), "{doc}");
     assert_eq!(
@@ -4017,7 +4035,7 @@ fn a_removed_pub_fn_of_a_private_module_is_no_api() {
     write(repo, "src/inner.rs", "pub fn stay() -> u8 {\n    2\n}\n");
     write(repo, "src/api.rs", "pub fn stay() -> u8 {\n    2\n}\n");
     commit_all(repo, "drop both");
-    let contracts = impact(repo, "HEAD~1..HEAD")["contracts"].to_string();
+    let contracts = impact(repo, "HEAD~1..HEAD")["contracts"]["items"].to_string();
     assert!(contracts.contains("src/api.rs"), "{contracts}");
     assert!(!contracts.contains("src/inner.rs"), "{contracts}");
 }
@@ -4117,51 +4135,40 @@ fn every_changed_class_appears_with_callers_or_as_an_omitted_stub() {
     }
     commit_all(repo, "change");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let changed = doc["changed"].as_array().expect("changed");
-    let (mut listed, mut named, mut entries) = (0, Vec::new(), 0);
+    let changed = doc["definitions"].as_array().expect("changed");
     for entry in changed {
-        if entry["symbol"].is_null() {
-            // The one entry that stands for every definition the cap shed.
-            entries += 1;
-            let note = entry["unresolved"].as_str().unwrap_or("");
-            assert!(
-                note.contains("changed definition(s) omitted: the answer cap; --budget "),
-                "{entry}"
-            );
-            let shed = entry["omitted"].as_array().expect("the shed definitions");
-            assert_eq!(
-                note.split_whitespace().next().and_then(|n| n.parse().ok()),
-                Some(shed.len()),
-                "the count is whole: {entry}"
-            );
-            for definition in shed {
-                assert_eq!(definition["callers_omitted"], 3, "{definition}");
-                named.push(definition["definition"].as_str().expect("name").to_string());
-            }
-            assert_eq!(entry["callers_omitted"], 3 * shed.len(), "{entry}");
-        } else {
-            assert!(
-                entry["callers"].as_array().is_some_and(|c| !c.is_empty()),
-                "a listed definition keeps its strongest caller: {entry}"
-            );
-            listed += 1;
-        }
+        assert!(
+            entry["rows"].as_array().is_some_and(|c| !c.is_empty()),
+            "a listed definition keeps its strongest caller: {entry}"
+        );
     }
-    assert_eq!(entries, 1, "{doc}");
-    assert_eq!(listed + named.len(), 40, "{doc}");
+    let listed = changed.len();
+    // The one `omitted` section stands for every definition the cap shed whole.
+    let omitted = &doc["omitted"];
+    let total = omitted["definitions"]["total"].as_u64().expect("the count") as usize;
+    assert_eq!(listed + total, 40, "the count is whole: {doc}");
     assert!(
-        !named.is_empty(),
+        total > 0,
         "the shape must overflow the cap to mean anything: {doc}"
     );
     assert!(
         listed >= 1,
         "individual stubs must not eat the budget: {doc}"
     );
+    assert!(omitted["needs"].as_u64().is_some_and(|n| n > 0), "{doc}");
+    let mut named = Vec::new();
+    for definition in omitted["definitions"]["items"].as_array().expect("names") {
+        assert_eq!(shed_total(&definition["shed"]), 3, "{definition}");
+        let def = &definition["def"];
+        named.push(format!("{}::{}", def["path"], def["symbol"]));
+    }
+    assert!(named.len() <= total, "{doc}");
+    assert_eq!(shed_total(&omitted["shed"]), 3 * total, "{omitted}");
     named.sort();
     named.dedup();
     assert_eq!(
-        listed + named.len(),
-        40,
+        named.len(),
+        omitted["definitions"]["items"].as_array().unwrap().len(),
         "a definition is named twice: {doc}"
     );
     let md = impact_markdown(repo, "HEAD~1..HEAD");
@@ -4195,12 +4202,12 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
     );
     commit_all(repo, "change");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let gone: Vec<&serde_json::Value> = doc["changed"]
+    let gone: Vec<&serde_json::Value> = doc["definitions"]
         .as_array()
         .expect("changed")
         .iter()
         .filter(|c| {
-            c["kind"] == "removed"
+            c["change"]["kind"] == "removed"
                 && c["symbol"]
                     .as_str()
                     .is_some_and(|s| s.rsplit('.').next() == Some("request"))
@@ -4209,9 +4216,9 @@ fn a_removed_field_with_an_ambiguous_counterpart_is_reported_as_not_determined()
     assert_eq!(gone.len(), 1, "{doc}");
     assert_eq!(gone[0]["lines"], "3-3", "{doc}");
     assert!(
-        gone[0]["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("more than one counterpart")),
+        gone[0]["gaps"].as_array().is_some_and(
+            |gaps| gaps.contains(&serde_json::json!({"kind": "unpaired", "name": "request"}))
+        ),
         "{doc}"
     );
 }
@@ -4258,15 +4265,15 @@ fn a_class_that_lost_its_constructor_lists_what_builds_and_overrides_it() {
     );
     commit_all(repo, "drop the constructor");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let mut paths: Vec<&str> = doc["changed"]
+    let mut paths: Vec<&str> = doc["definitions"]
         .as_array()
         .expect("changed")
         .iter()
         .filter(|c| {
             (c["symbol"] == "Decoder" && c["kind"] == "class")
-                || (c["symbol"] == "__init__" && c["kind"] == "removed")
+                || (c["symbol"] == "__init__" && c["change"]["kind"] == "removed")
         })
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .map(|c| c["path"].as_str().unwrap())
         .collect();
     paths.sort_unstable();
@@ -4315,12 +4322,12 @@ fn an_edited_constructor_reaches_instantiations_not_other_uses_of_its_class() {
     );
     commit_all(repo, "size is an int");
     let doc = impact(repo, "HEAD~1..HEAD");
-    let mut paths: Vec<&str> = doc["changed"]
+    let mut paths: Vec<&str> = doc["definitions"]
         .as_array()
         .expect("changed")
         .iter()
         .filter(|c| c["symbol"] == "Box" && c["kind"] == "class")
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .map(|c| c["path"].as_str().unwrap())
         .collect();
     paths.sort_unstable();
@@ -4362,7 +4369,7 @@ fn the_changes_own_record_of_a_deletion_is_no_stale_reference() {
         "def load():\n    return open(\"plugin/constraints.txt\").read()\n",
     );
     commit_all(repo, "drop the constraints");
-    let stale: Vec<String> = impact(repo, "HEAD~1..HEAD")["stale_references"]
+    let stale: Vec<String> = impact(repo, "HEAD~1..HEAD")["stale"]["items"]
         .as_array()
         .into_iter()
         .flatten()
@@ -4455,12 +4462,21 @@ fn an_answer_at_a_tight_budget_sheds_its_names_to_fit() {
         assert!(out.status.success());
         let text = String::from_utf8(out.stdout).expect("utf8");
         let tokens = _diffctx::tokenizer::count_tokens(&text);
+        let budget_tokens = budget.parse::<u32>().unwrap();
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("impact JSON");
+        // The least a document can say may outgrow a tight budget: it then states
+        // what it takes and cuts nothing more.
         assert!(
-            tokens <= budget.parse::<u32>().unwrap(),
+            tokens <= budget_tokens
+                || doc["fit"]["least"]
+                    .as_u64()
+                    .is_some_and(|least| least > u64::from(budget_tokens)),
             "{budget}: {tokens} tokens: {text}"
         );
-        let doc: serde_json::Value = serde_json::from_str(&text).expect("impact JSON");
-        assert_eq!(doc["untested_definitions"], 5, "{budget}: {doc:#}");
+        assert_eq!(
+            doc["tests"]["definitions_without_link"]["n"], 5,
+            "{budget}: {doc:#}"
+        );
     }
 }
 
@@ -4494,15 +4510,17 @@ fn a_module_of_thirty_thousand_definitions_keeps_its_caller() {
     commit_all(repo, "drop the generated modules");
     let doc = impact(repo, "HEAD~1..HEAD");
     assert!(
-        !doc["limits"].to_string().contains("read_failed"),
+        !doc["coverage"]["limits"]
+            .to_string()
+            .contains("read_failed"),
         "{}",
-        doc["limits"]
+        doc["coverage"]["limits"]
     );
-    let callers: Vec<String> = doc["changed"]
+    let callers: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| {
             format!(
                 "{}::{}",
@@ -4511,7 +4529,12 @@ fn a_module_of_thirty_thousand_definitions_keeps_its_caller() {
             )
         })
         .collect();
-    assert_eq!(callers, vec!["pkg/consumer.py::use"], "{}", doc["limits"]);
+    assert_eq!(
+        callers,
+        vec!["pkg/consumer.py::use"],
+        "{}",
+        doc["coverage"]["limits"]
+    );
 }
 
 /// A private Rust duplicate removed in favour of an imported shared one: its
@@ -4568,12 +4591,12 @@ fn a_removed_private_duplicate_has_no_callers_once_the_shared_one_is_imported() 
     commit_all(repo, "share absorb, drop gone");
     let doc = impact(repo, "HEAD~1..HEAD");
     let callers_of = |symbol: &str| -> Vec<String> {
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
             .filter(|c| c["symbol"] == symbol)
-            .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+            .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
             .map(|c| {
                 // The row of a removed definition names the line that still
                 // spells it; the caller's own span is a fragment's, and a removed
@@ -4658,7 +4681,11 @@ fn a_cap_keeps_the_strongest_row_of_each_relation_a_symbol_has() {
     commit_all(repo, "base");
     write(repo, "core.py", "def rate(x):\n    return x * 3\n");
     commit_all(repo, "change");
-    for budget in ["200", "300", "400"] {
+    // Below the least the document can say the definition is shed whole and only
+    // its ledger stays; from there up it is listed, and the cap bites until the
+    // whole of it fits.
+    let mut bitten = 0;
+    for budget in ["300", "400", "500", "600", "800", "1000"] {
         let out = diffctx()
             .current_dir(repo)
             .args([
@@ -4674,21 +4701,38 @@ fn a_cap_keeps_the_strongest_row_of_each_relation_a_symbol_has() {
             .expect("run diffctx");
         assert!(out.status.success());
         let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
-        let rate = doc["changed"]
+        let Some(rate) = doc["definitions"]
             .as_array()
             .unwrap()
             .iter()
             .find(|c| c["symbol"] == "rate")
-            .unwrap_or_else(|| panic!("{budget}: {doc:#}"));
-        let rows = rate["callers"].as_array().unwrap();
+        else {
+            assert_eq!(
+                shed_total(&doc["omitted"]["shed"]),
+                13,
+                "{budget}: a definition shed whole keeps its ledger: {doc:#}"
+            );
+            continue;
+        };
+        let rows = rate["rows"].as_array().unwrap();
         let paths: Vec<&str> = rows.iter().map(|c| c["path"].as_str().unwrap()).collect();
-        let shed = rate["callers_omitted"].as_u64().unwrap() as usize;
-        assert!(shed > 0, "the cap must bite at {budget}: {doc:#}");
+        let shed = shed_total(&rate["shed"]);
         assert_eq!(rows.len() + shed, 13, "{budget}: {doc:#}");
-        assert_eq!(doc["truncated"].as_u64(), Some(shed as u64), "{budget}");
-        assert!(paths.contains(&"call_1.py"), "{budget}: {paths:?}");
-        assert!(paths.contains(&"ref_1.py"), "{budget}: {paths:?}");
+        assert_eq!(
+            doc["summary"]["shed"].as_u64(),
+            Some(shed as u64),
+            "{budget}"
+        );
+        if shed > 0 {
+            bitten += 1;
+            assert!(paths.contains(&"call_1.py"), "{budget}: {paths:?}");
+            assert!(paths.contains(&"ref_1.py"), "{budget}: {paths:?}");
+        }
     }
+    assert!(
+        bitten > 0,
+        "no budget listed the definition with the cap biting"
+    );
 }
 
 /// #496: a Java method calling a sibling of its own class with no
@@ -4711,12 +4755,12 @@ fn an_unqualified_same_class_java_call_is_a_caller() {
         )],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let callers: Vec<String> = doc["changed"]
+    let callers: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "map")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| c["symbol"].as_str().unwrap_or("").to_string())
         .collect();
     assert_eq!(callers, vec!["toDto"], "{doc}");
@@ -4845,12 +4889,12 @@ fn a_local_closure_named_like_a_definition_is_no_caller() {
         &[("src/a.rs", &a.replace("    1\n", "    2\n"))],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let callers: Vec<String> = doc["changed"]
+    let callers: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "read")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| c["path"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(callers, vec!["src/c.rs"], "{doc}");
@@ -4873,17 +4917,17 @@ fn a_removed_function_is_not_linked_to_a_parameter_or_docstring_word() {
         &[("pkg/eval.py", &head_eval)],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed: Vec<(String, Vec<String>)> = doc["changed"]
+    let removed: Vec<(String, Vec<String>)> = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         // Every removed definition is listed; the readers are the claim: one that
         // nothing reads has none.
-        .filter(|c| c["kind"] == "removed" && !c["callers"].as_array().unwrap().is_empty())
+        .filter(|c| c["change"]["kind"] == "removed" && !c["rows"].as_array().unwrap().is_empty())
         .map(|c| {
             (
                 c["symbol"].as_str().unwrap().to_string(),
-                c["callers"]
+                c["rows"]
                     .as_array()
                     .cloned()
                     .unwrap_or_default()
@@ -4913,10 +4957,10 @@ fn a_removed_function_is_not_linked_to_a_parameter_or_docstring_word() {
 /// untracked.
 fn verdicts(doc: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
-        "changed": doc["changed"],
-        "untested_unlisted": doc["untested_unlisted"],
+        "changed": doc["definitions"],
+        "no_caller": doc["unlisted"]["no_caller"],
         "contracts": doc["contracts"],
-        "stale_references": doc["stale_references"],
+        "stale_references": doc["stale"]["items"],
     })
 }
 
@@ -4956,10 +5000,13 @@ fn untracked_work_reads_like_staged_work() {
     git(repo, &["add", "-A"]);
     let staged = impact(repo, "HEAD");
     assert_eq!(verdicts(&untracked), verdicts(&staged), "{untracked:#}");
-    let unlisted = untracked["untested_unlisted"].to_string();
-    assert!(!unlisted.contains("::get"), "{untracked:#}");
+    let unlisted = unlisted_names(&untracked, "no_caller");
     assert!(
-        untracked["stale_references"]
+        !unlisted.iter().any(|d| d.ends_with("::get")),
+        "{untracked:#}"
+    );
+    assert!(
+        untracked["stale"]["items"]
             .to_string()
             .contains("run_untracked.sh"),
         "{untracked:#}"
@@ -4983,11 +5030,17 @@ fn an_over_cap_file_outside_code_leaves_the_answer_whole() {
     write(repo, "capture.har", &capture);
     let doc = impact(repo, "HEAD");
     assert!(
-        doc["limits"].as_array().is_none_or(Vec::is_empty),
+        doc["coverage"]["limits"]
+            .as_array()
+            .is_none_or(Vec::is_empty),
         "{:#}",
-        doc["limits"]
+        doc["coverage"]["limits"]
     );
-    assert!(doc["unanalysed_files"].to_string().contains("capture.har"));
+    assert!(
+        doc["coverage"]["unanalysed"]["items"]
+            .to_string()
+            .contains("capture.har")
+    );
     let text = impact_markdown(repo, "HEAD");
     assert!(!text.contains("partial"), "{text}");
     assert!(!text.contains("code: capture.har"), "{text}");
@@ -4996,7 +5049,9 @@ fn an_over_cap_file_outside_code_leaves_the_answer_whole() {
     write(repo, "shop/generated.py", &body);
     let doc = impact(repo, "HEAD");
     assert!(
-        doc["limits"].to_string().contains("file_too_large"),
+        doc["coverage"]["limits"]
+            .to_string()
+            .contains("file_too_large"),
         "{doc:#}"
     );
 }
@@ -5108,12 +5163,12 @@ fn a_cap_deals_rows_round_robin_and_a_larger_budget_lists_a_superset() {
     };
     let rows = |text: &str, symbol: &str| -> Vec<String> {
         let doc: serde_json::Value = serde_json::from_str(text).expect("impact JSON");
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
             .filter(|c| c["symbol"] == symbol)
-            .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+            .flat_map(|c| c["rows"].as_array().into_iter().flatten())
             .map(|k| k["path"].as_str().unwrap_or("").to_string())
             .collect()
     };
@@ -5216,12 +5271,12 @@ fn a_key_search_over_many_changed_configs_is_capped_and_counts_the_rest() {
     assert!(!md.contains("app/other.yaml"), "{md}");
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     assert_eq!(
-        doc["key_searches"].as_array().map(Vec::len),
+        doc["named"]["key_searches"].as_array().map(Vec::len),
         Some(6),
         "{doc}"
     );
     assert!(
-        !doc["key_searches"].to_string().contains("svc_19"),
+        !doc["named"]["key_searches"].to_string().contains("svc_19"),
         "the largest change was searched: {doc}"
     );
 }
@@ -5259,7 +5314,7 @@ fn a_key_search_stopped_at_any_poll_answers_a_subset_or_the_whole() {
     let repo = tmp.path();
 
     let named = |doc: &serde_json::Value| -> Vec<String> {
-        doc["named_by"]
+        doc["named"]["by_key"]["items"]
             .as_array()
             .cloned()
             .unwrap_or_default()
@@ -5269,7 +5324,8 @@ fn a_key_search_stopped_at_any_poll_answers_a_subset_or_the_whole() {
     };
     let truth = named(&impact(repo, "HEAD~1..HEAD"));
     assert_eq!(truth.len(), 2, "{truth:?}");
-    let stopped = |doc: &serde_json::Value| doc["limits"].to_string().contains("deadline");
+    let stopped =
+        |doc: &serde_json::Value| doc["coverage"]["limits"].to_string().contains("deadline");
     let sweep = support::sweep_polls(
         |n| {
             impact_env(
@@ -5300,13 +5356,13 @@ fn listed_callers(
     path: &str,
     name: &str,
 ) -> std::collections::BTreeSet<String> {
-    let def = doc["changed"]
+    let def = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|c| c["path"] == path && c["symbol"] == name)
         .unwrap_or_else(|| panic!("{name} missing from {doc:#}"));
-    def["callers"]
+    def["rows"]
         .as_array()
         .into_iter()
         .flatten()
@@ -5316,7 +5372,7 @@ fn listed_callers(
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or(""),
                 c["lines"].as_str().unwrap_or(""),
-                c["evidence"].as_str().unwrap_or("")
+                c["standing"].as_str().unwrap_or("")
             )
         })
         .collect()
@@ -5385,14 +5441,14 @@ fn a_definition_whose_callers_the_cap_dropped_counts_them() {
     let changed = shared("x + 0");
     let tmp = repo(&base, &[("src/shared.ts", changed.as_str())]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let def = doc["changed"]
+    let def = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|c| c["symbol"] == "shared")
         .unwrap_or_else(|| panic!("shared missing from {doc:#}"));
-    let listed = def["callers"].as_array().map_or(0, Vec::len);
-    let omitted = def["callers_omitted"].as_u64().unwrap_or(0) as usize;
+    let listed = def["rows"].as_array().map_or(0, Vec::len);
+    let omitted = shed_total(&def["shed"]);
     assert!(omitted > 0, "the cap kept all {listed} callers: {doc:#}");
     assert_eq!(listed + omitted, 150, "{doc:#}");
 }
@@ -5425,14 +5481,14 @@ fn a_use_inside_a_second_definition_of_the_queried_name_is_a_caller() {
             &[],
         );
         let doc = symbol_doc(tmp.path(), "f");
-        let function = doc["changed"]
+        let function = doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
             .find(|c| c["lines"] == "1-3")
             .unwrap_or_else(|| panic!("the function is missing from {doc:#}"));
         assert_eq!(
-            function["callers"].as_array().map_or(0, Vec::len),
+            function["rows"].as_array().map_or(0, Vec::len),
             expected,
             "exports.{assigned}: {doc:#}"
         );
@@ -5461,14 +5517,19 @@ fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
     );
     let sentence = "`options` is not a tracked definition here (a block-scoped binding); its uses are not resolved";
     let doc = symbol_doc(tmp.path(), "options");
-    let untracked = doc["changed"]
+    let untracked = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|c| c["path"] == "test/each.ts")
         .unwrap_or_else(|| panic!("the block binding is missing from {doc:#}"));
-    assert_eq!(untracked["unresolved"], sentence, "{doc:#}");
-    assert_eq!(untracked["callers"], serde_json::json!([]), "{doc:#}");
+    assert!(
+        untracked["gaps"].as_array().is_some_and(|gaps| gaps
+            .iter()
+            .any(|g| g["kind"] == "untracked" && g["name"] == "options")),
+        "{doc:#}"
+    );
+    assert_eq!(untracked["rows"], serde_json::json!([]), "{doc:#}");
     let out = diffctx()
         .current_dir(tmp.path())
         .args(["--symbol", "options", "-q", "-f", "md"])
@@ -5505,7 +5566,7 @@ fn impact_unfolded(repo: &Path) -> serde_json::Value {
 }
 
 fn row<'a>(doc: &'a serde_json::Value, symbol: &str) -> &'a serde_json::Value {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .and_then(|rows| rows.iter().find(|c| c["symbol"] == symbol))
         .unwrap_or_else(|| panic!("{symbol} is not listed: {doc:#}"))
@@ -5513,7 +5574,7 @@ fn row<'a>(doc: &'a serde_json::Value, symbol: &str) -> &'a serde_json::Value {
 
 fn nothing_folds(doc: &serde_json::Value) {
     assert!(
-        doc["changed"]
+        doc["definitions"]
             .as_array()
             .is_some_and(|rows| rows.iter().all(|c| c.get("folded").is_none())),
         "nothing folds here: {doc:#}"
@@ -5521,7 +5582,7 @@ fn nothing_folds(doc: &serde_json::Value) {
 }
 
 fn callers_of<'a>(doc: &'a serde_json::Value, symbol: &str) -> Vec<&'a str> {
-    row(doc, symbol)["callers"]
+    row(doc, symbol)["rows"]
         .as_array()
         .into_iter()
         .flatten()
@@ -5559,14 +5620,14 @@ fn a_new_parameter_with_a_default_folds_the_calls_that_still_work() {
     let folded = &price["folded"][0];
     assert_eq!(folded["rule"], "check-the-default", "{doc:#}");
     assert_eq!(folded["kind"], "calls", "{doc:#}");
-    assert_eq!(folded["count"], 4, "{doc:#}");
-    assert_eq!(folded["exact"], true, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 4, "{doc:#}");
+    assert_eq!(folded["count"]["exact"], true, "{doc:#}");
     assert_eq!(folded["parameters"], serde_json::json!(["tax"]), "{doc:#}");
     let examples: Vec<&str> = folded["examples"]
         .as_array()
         .expect("examples")
         .iter()
-        .filter_map(|e| e.as_str())
+        .filter_map(|e| e["path"].as_str())
         .collect();
     assert_eq!(examples.len(), 3, "{doc:#}");
     for (example, file) in examples.iter().zip(["a.py", "b.py", "c.py"]) {
@@ -5589,7 +5650,7 @@ fn a_new_parameter_with_a_default_folds_the_calls_that_still_work() {
     let unfolded = impact_unfolded(tmp.path());
     assert_eq!(callers_of(&unfolded, "price").len(), 4, "{unfolded:#}");
     assert!(
-        row(&unfolded, "price")["callers"]
+        row(&unfolded, "price")["rows"]
             .as_array()
             .expect("callers")
             .iter()
@@ -5629,7 +5690,7 @@ fn a_test_is_the_first_example_of_a_folded_line() {
         .as_array()
         .expect("examples")
         .iter()
-        .filter_map(|e| e.as_str())
+        .filter_map(|e| e["path"].as_str())
         .collect();
     assert_eq!(examples.len(), 3, "{doc:#}");
     assert!(
@@ -5688,7 +5749,7 @@ fn a_body_only_change_folds_the_overrides_of_the_method() {
     let folded = &row(&doc, "run")["folded"][0];
     assert_eq!(folded["rule"], "override-not-run", "{doc:#}");
     assert_eq!(folded["kind"], "overrides", "{doc:#}");
-    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 1, "{doc:#}");
     assert!(callers_of(&doc, "run").is_empty(), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(
@@ -5717,7 +5778,7 @@ fn a_body_only_change_folds_the_reexports_of_the_function() {
     let folded = &row(&doc, "f")["folded"][0];
     assert_eq!(folded["rule"], "imports-a-body", "{doc:#}");
     assert_eq!(folded["kind"], "reexports", "{doc:#}");
-    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 1, "{doc:#}");
 }
 
 /// R19: an export statement that names a definition of its own module is the
@@ -5757,10 +5818,10 @@ fn a_body_only_change_folds_the_module_own_export_of_the_function() {
         let folded = &row(&doc, "f")["folded"][0];
         assert_eq!(folded["rule"], "imports-a-body", "{form}: {doc:#}");
         assert_eq!(folded["kind"], "reexports", "{form}: {doc:#}");
-        assert_eq!(folded["count"], 1, "{form}: {doc:#}");
+        assert_eq!(folded["count"]["n"], 1, "{form}: {doc:#}");
         assert!(callers_of(&doc, "f").is_empty(), "{form}: {doc:#}");
         let unfolded = impact_unfolded(tmp.path());
-        let listed = row(&unfolded, "f")["callers"].as_array().expect("callers");
+        let listed = row(&unfolded, "f")["rows"].as_array().expect("callers");
         assert_eq!(listed.len(), 1, "{form}: {unfolded:#}");
         assert_eq!(
             listed[0]["folded_by"], "imports-a-body",
@@ -5814,18 +5875,16 @@ fn a_body_only_change_folds_the_export_and_lists_the_modules_own_read_of_it() {
         "the read stays listed: {doc:#}"
     );
     let unfolded = impact_unfolded(tmp.path());
-    let listed = row(&unfolded, "Route")["callers"]
-        .as_array()
-        .expect("callers");
+    let listed = row(&unfolded, "Route")["rows"].as_array().expect("rows");
     let marked: Vec<&serde_json::Value> = listed
         .iter()
         .filter(|c| c.get("folded_by").is_some_and(|f| !f.is_null()))
         .collect();
     assert_eq!(marked.len(), 1, "{unfolded:#}");
-    assert_eq!(marked[0]["relation"], "reexports", "{unfolded:#}");
+    assert_eq!(marked[0]["class"], "reexports", "{unfolded:#}");
     assert!(
         listed.iter().any(|c| {
-            c["relation"] != "reexports" && c.get("folded_by").is_none_or(|f| f.is_null())
+            c["class"] != "reexports" && c.get("folded_by").is_none_or(|f| f.is_null())
         }),
         "a row that is not the export is listed unfolded: {unfolded:#}"
     );
@@ -5893,7 +5952,7 @@ fn a_member_written_through_an_assertion_on_an_inherited_interface_has_its_user(
         )],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let users: Vec<&str> = doc["changed"]
+    let users: Vec<&str> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -5903,7 +5962,7 @@ fn a_member_written_through_an_assertion_on_an_inherited_interface_has_its_user(
                 .is_some_and(|s| s == "pagination" || s.ends_with(".pagination"))
                 && c["path"] == "src/types.ts"
         })
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .filter_map(|c| c["path"].as_str())
         .collect();
     assert!(users.contains(&"src/use.ts"), "{users:?}: {doc:#}");
@@ -5957,7 +6016,7 @@ fn a_candidate_folds_under_the_untyped_receiver_and_stays_counted() {
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let folded = &row(&doc, "start")["folded"][0];
     assert_eq!(folded["rule"], "untyped-receiver", "{doc:#}");
-    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 1, "{doc:#}");
     assert!(callers_of(&doc, "start").is_empty(), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     // A candidate may be affected: the line says what it is, never "not affected".
@@ -6101,7 +6160,14 @@ fn an_interface_change_folds_nothing() {
             "export interface Opts {\n  a: number;\n  b?: string;\n}\n",
         )],
     );
-    nothing_folds(&impact(tmp.path(), "HEAD~1..HEAD"));
+    // The one count an interface gaining an optional member earns is the
+    // signature-compatible one (#388): it names no caller, so it folds none.
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    for fold in row(&doc, "Opts")["folded"].as_array().into_iter().flatten() {
+        assert_eq!(fold["rule"], "check-the-default", "{doc:#}");
+        assert_eq!(fold["examples"], serde_json::json!([]), "{doc:#}");
+    }
+    assert!(callers_of(&doc, "Opts").is_empty(), "{doc:#}");
 }
 
 /// A removed interface that an unchanged file still imports and annotates with is
@@ -6387,11 +6453,12 @@ fn a_test_helper_used_only_by_changed_tests_is_named_like_any_definition() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let make = row(&doc, "make");
-    assert_eq!(make["callers"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(make["rows"], serde_json::json!([]), "{doc:#}");
     assert!(
-        make["also_changed"][0]
+        make["also_changed"][0]["path"]
             .as_str()
-            .is_some_and(|s| s.starts_with("tests/test_make.py::test_make (")),
+            .zip(make["also_changed"][0]["symbol"].as_str())
+            .is_some_and(|(p, s)| format!("{p}::{s}") == "tests/test_make.py::test_make"),
         "{doc:#}"
     );
     assert!(
@@ -6455,17 +6522,21 @@ fn the_cap_sheds_the_definitions_of_test_files_before_any_other() {
     let mut helper_shed = false;
     for budget in (60..=top).rev().step_by(20) {
         let doc = impact_budget(tmp.path(), budget);
-        let omitted: Vec<&str> = doc["changed"]
+        let omitted: Vec<String> = doc["omitted"]["definitions"]["items"]
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|c| c["kind"] == "omitted")
-            .flat_map(|c| c["omitted"].as_array().into_iter().flatten())
-            .filter_map(|d| d["definition"].as_str())
+            .map(|d| {
+                format!(
+                    "{}::{}",
+                    d["def"]["path"].as_str().unwrap_or(""),
+                    d["def"]["symbol"].as_str().unwrap_or("")
+                )
+            })
             .collect();
-        helper_shed |= omitted.contains(&helper);
+        helper_shed |= omitted.iter().any(|d| d == helper);
         assert!(
-            omitted.iter().all(|d| *d == helper) || omitted.contains(&helper),
+            omitted.iter().all(|d| d == helper) || omitted.iter().any(|d| d == helper),
             "budget {budget}: a definition outside the tests is shed while the helper is listed: {doc:#}"
         );
     }
@@ -6500,18 +6571,19 @@ fn a_field_used_only_by_changed_definitions_is_named_with_its_users() {
         ],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let limit = doc["changed"]
+    let limit = doc["definitions"]
         .as_array()
         .and_then(|rows| {
             rows.iter()
                 .find(|c| c["symbol"].as_str().is_some_and(|s| s.ends_with("limit")))
         })
         .unwrap_or_else(|| panic!("the field is not listed: {doc:#}"));
-    assert_eq!(limit["callers"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(limit["rows"], serde_json::json!([]), "{doc:#}");
     assert!(
-        limit["also_changed"][0]
+        limit["also_changed"][0]["path"]
             .as_str()
-            .is_some_and(|s| s.starts_with("pkg/use.py::attempts (")),
+            .zip(limit["also_changed"][0]["symbol"].as_str())
+            .is_some_and(|(p, s)| format!("{p}::{s}") == "pkg/use.py::attempts"),
         "{doc:#}"
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
@@ -6577,7 +6649,7 @@ fn a_removed_definition_still_named_by_a_changed_function_keeps_that_user() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let old = row(&doc, "old");
-    assert_eq!(old["kind"], "removed", "{doc:#}");
+    assert_eq!(old["change"]["kind"], "removed", "{doc:#}");
     assert_eq!(callers_of(&doc, "old"), ["app.py"], "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(md.contains("called from app.py::run"), "{md}");
@@ -6600,8 +6672,8 @@ fn a_removed_private_typescript_constant_is_listed_alone() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     let factor = row(&doc, "factor");
-    assert_eq!(factor["kind"], "removed", "{doc:#}");
-    assert_eq!(factor["callers"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(factor["change"]["kind"], "removed", "{doc:#}");
+    assert_eq!(factor["rows"], serde_json::json!([]), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(md.contains("src/util.ts::factor (removed; was "), "{md}");
     assert!(md.contains("nothing references it"), "{md}");
@@ -6654,7 +6726,7 @@ fn a_method_called_only_through_untyped_receivers_in_changed_functions_is_possib
         ],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let method = doc["changed"]
+    let method = doc["definitions"]
         .as_array()
         .and_then(|rows| {
             rows.iter().find(|c| {
@@ -6664,12 +6736,13 @@ fn a_method_called_only_through_untyped_receivers_in_changed_functions_is_possib
             })
         })
         .unwrap_or_else(|| panic!("the method is not listed: {doc:#}"));
-    assert_eq!(method["callers"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(method["rows"], serde_json::json!([]), "{doc:#}");
     assert!(method.get("also_changed").is_none(), "{doc:#}");
     assert!(
-        method["possibly_also_changed"][0]
+        method["possibly_also_changed"][0]["path"]
             .as_str()
-            .is_some_and(|s| s.starts_with("src/delay.ts::calculateRetryDelay (")),
+            .zip(method["possibly_also_changed"][0]["symbol"].as_str())
+            .is_some_and(|(p, s)| format!("{p}::{s}") == "src/delay.ts::calculateRetryDelay"),
         "{doc:#}"
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
@@ -6720,7 +6793,7 @@ fn a_changed_function_value_that_leaves_its_function_has_its_own_entry() {
         &[("src/c.ts", after.as_str())],
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let symbols: Vec<&str> = doc["changed"]
+    let symbols: Vec<&str> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -6765,7 +6838,7 @@ fn a_comment_only_change_of_a_decorated_function_folds_every_relation() {
     let folded = &row(&doc, "index")["folded"][0];
     assert_eq!(folded["rule"], "no-code-change", "{doc:#}");
     assert_eq!(folded["kind"], "calls", "{doc:#}");
-    assert_eq!(folded["count"], 1, "{doc:#}");
+    assert_eq!(folded["count"]["n"], 1, "{doc:#}");
     assert!(callers_of(&doc, "index").is_empty(), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(
@@ -6795,11 +6868,11 @@ fn repo_deleting_a_schema_module(others: &[(&str, &str)]) -> TempDir {
 }
 
 fn removed_symbols(doc: &serde_json::Value) -> Vec<&str> {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["kind"] == "removed")
+        .filter(|c| c["change"]["kind"] == "removed")
         .filter_map(|c| c["symbol"].as_str())
         .collect()
 }
@@ -6814,7 +6887,7 @@ fn a_deleted_module_nothing_imports_is_named_once() {
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     assert_eq!(
         doc["deleted_modules"],
-        serde_json::json!([{"path": "pkg/schema.py", "definitions": 10}]),
+        serde_json::json!({"total": 1, "items": [{"path": "pkg/schema.py", "definitions": 10}]}),
         "{doc:#}"
     );
     assert!(removed_symbols(&doc).is_empty(), "{doc:#}");
@@ -6836,7 +6909,7 @@ fn a_deleted_module_with_an_importer_keeps_its_definitions_and_the_importer() {
         "from pkg.schema import Model0\n\n\ndef build():\n    return Model0()\n",
     )]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    assert!(doc.get("deleted_modules").is_none(), "{doc:#}");
+    assert!(doc["deleted_modules"].is_null(), "{doc:#}");
     assert_eq!(removed_symbols(&doc).len(), 10, "{doc:#}");
     assert_eq!(callers_of(&doc, "Model0"), ["app/use.py"], "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
@@ -6852,7 +6925,10 @@ fn a_computed_import_leaves_a_deleted_module_unproven() {
         "import importlib\n\n\ndef load(name):\n    return importlib.import_module(name)\n",
     )]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    assert_eq!(doc["deleted_modules"][0]["dynamic_import"], true, "{doc:#}");
+    assert_eq!(
+        doc["deleted_modules"]["items"][0]["dynamic_import"], true,
+        "{doc:#}"
+    );
     assert_ne!(
         doc["empty"], true,
         "a claim with a gap is no empty answer: {doc:#}"

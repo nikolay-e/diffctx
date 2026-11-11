@@ -109,7 +109,6 @@ def _pack_files_to_fragments(repo_dir: Path, ranked_files: list[str], budget: in
     return {
         "name": repo_dir.name,
         "type": "diff_context",
-        "fragment_count": len(fragments),
         "fragments": fragments,
     }
 
@@ -320,7 +319,7 @@ def evaluate_instance(
 
     sel_files = extract_selected_files(output)
     sel_ranges = extract_selected_ranges(output)
-    frag_count = output.get("fragment_count", 0)
+    frag_count = len(output.get("fragments", []))
 
     file_recall = len(gf & sel_files) / len(gf) if gf else 0
     file_precision = len(gf & sel_files) / len(sel_files) if sel_files else 0

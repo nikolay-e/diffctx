@@ -555,7 +555,7 @@ fn budget_growth(lang: Lang, id: &str) {
                         ));
                     }
                 }
-                let shed = |doc: &Value| doc["truncated"].as_u64().unwrap_or(0);
+                let shed = |doc: &Value| doc["summary"]["shed"].as_u64().unwrap_or(0);
                 if shed(wide) > shed(narrow) {
                     return Err(format!(
                         "budget {large} shed {} callers, budget {small} only {}",

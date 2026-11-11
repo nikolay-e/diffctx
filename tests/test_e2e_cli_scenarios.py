@@ -253,7 +253,7 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_OK
         doc = yaml.safe_load(result.stdout)
         assert doc["type"] == "diff_context"
-        assert doc["fragment_count"] > 0
+        assert len(doc["fragments"]) > 0
         assert "subtract" in result.stdout
         # Seven of the ten injected files carry neither "GARBAGE" nor
         # "garbage_marker"; the lowercase prefix is the one thing all of them
@@ -265,7 +265,7 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_OK
         doc = json.loads(result.stdout)
         assert doc["type"] == "diff_context"
-        assert doc["fragment_count"] >= 1
+        assert len(doc["fragments"]) >= 1
 
     def test_bare_diff_defaults_to_head(self, diff_repo):
         result = run_diffctx_subprocess([".", "--diff"], cwd=diff_repo.path)
@@ -276,8 +276,8 @@ class TestDiffModeJourneys:
         result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "0", "-f", "yaml"], cwd=diff_repo.path)
         assert result.returncode == EXIT_EMPTY_DIFF
         doc = yaml.safe_load(result.stdout)
-        assert doc["changed_files"], "an empty selection must still report the range's files"
-        assert doc["commit_message"]
+        assert doc["inventory"]["changed"]["items"], "an empty selection must still report the range's files"
+        assert doc["range"]["messages"]
 
     def test_full_includes_all_changed_fragments(self, diff_repo):
         smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
@@ -285,7 +285,7 @@ class TestDiffModeJourneys:
         assert full.returncode == EXIT_OK
         smart_doc = yaml.safe_load(smart.stdout)
         full_doc = yaml.safe_load(full.stdout)
-        assert full_doc["fragment_count"] >= smart_doc["fragment_count"]
+        assert len(full_doc["fragments"]) >= len(smart_doc["fragments"])
 
     def test_budget_bounds_output_size(self, diff_repo):
         small = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "400"], cwd=diff_repo.path)
@@ -453,7 +453,7 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_OK, result.stderr
         assert "deadline" in result.stderr
         assert "no semantic context" not in result.stderr
-        assert "deadline" in json.loads(result.stdout)["coverage"]["limit_reasons"]
+        assert "deadline" in json.loads(result.stdout)["coverage"]["limits"]
 
     @pytest.mark.parametrize("spec", ["staged", "--cached"])
     def test_an_empty_staged_pack_names_a_command_git_accepts(self, diff_repo, spec):

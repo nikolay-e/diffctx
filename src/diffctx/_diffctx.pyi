@@ -59,7 +59,28 @@ def build_diff_context(
     scoring_mode: str = ...,
     timeout: int = ...,
     paths: list[str] = ...,
+    with_raw_diff: bool = ...,
 ) -> dict[str, Any]: ...
+def deliver(
+    root_dir: str,
+    mode: str,
+    diff_range: str = ...,
+    symbol: str | None = ...,
+    paths: list[str] = ...,
+    budget: int | None = ...,
+    ceiling: int | None = ...,
+    envelope: str = ...,
+    format: str = ...,
+    unfold: bool = ...,
+    alpha: float = ...,
+    tau: float | None = ...,
+    scoring_mode: str = ...,
+    timeout: int = ...,
+    no_content: bool = ...,
+    full: bool = ...,
+    with_raw_diff: bool = ...,
+    overflow: bool = ...,
+) -> tuple[str, list[tuple[str, str]], int, int, dict[str, Any] | None]: ...
 def fit_artifact(document: dict[str, Any], format: str) -> tuple[dict[str, Any], str]: ...
 def build_locate(
     root_dir: str,
@@ -70,6 +91,7 @@ def build_locate(
     scoring_mode: str = ...,
     timeout: int = ...,
     paths: list[str] = ...,
+    include_overflow: bool = ...,
 ) -> str: ...
 def build_impact(
     root_dir: str,
@@ -100,7 +122,6 @@ def select_with_params(
 def get_raw_diff_text(
     root_dir: str, diff_range: str, timeout: int = ..., paths: list[str] = ...
 ) -> tuple[str, int, list[str]]: ...
-def resolve_diff_range(root_dir: str, diff_range: str) -> str: ...
 def get_language_for_file(path: str) -> str | None: ...
 def count_tokens(text: str) -> int: ...
 def is_secret_path(path: str) -> bool: ...

@@ -51,12 +51,12 @@ fn listed(
     out: &serde_json::Value,
     is_def: impl Fn(&serde_json::Value) -> bool,
 ) -> BTreeSet<String> {
-    let changed = out["changed"].as_array().expect("changed");
+    let changed = out["definitions"].as_array().expect("changed");
     let def = changed
         .iter()
         .find(|c| is_def(c))
         .unwrap_or_else(|| panic!("definition not in {out:#}"));
-    def["callers"]
+    def["rows"]
         .as_array()
         .expect("callers")
         .iter()
@@ -69,7 +69,7 @@ fn listed(
                     c["lines"].as_str().unwrap()
                 ),
             };
-            format!("{} {at}", c["relation"].as_str().unwrap_or("call"))
+            format!("{} {at}", c["class"].as_str().unwrap_or("call"))
         })
         .collect()
 }
@@ -307,25 +307,25 @@ fn a_glob_import_reaches_the_modules_its_pattern_matches() {
         callers(&out, "src/lib/other/b.ts", "mountA"),
         set(&["call src/pages/Decoy.ts::decoy"])
     );
-    let engine = out["changed"]
+    let engine = out["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["path"] == "src/lib/live/engine/core.ts");
     assert!(
-        engine.is_none_or(|c| c["callers"].as_array().is_none_or(Vec::is_empty)),
+        engine.is_none_or(|c| c["rows"].as_array().is_none_or(Vec::is_empty)),
         "{out:#}"
     );
-    let candidates: Vec<&serde_json::Value> = out["changed"]
+    let candidates: Vec<&serde_json::Value> = out["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .flat_map(|c| c["callers"].as_array().unwrap())
+        .flat_map(|c| c["rows"].as_array().unwrap())
         .collect();
     assert!(
         candidates
             .iter()
-            .all(|c| c["evidence"] == "candidate" && c["reason"] == "import_glob"),
+            .all(|c| c["standing"] == "candidate" && c["reason"] == "import_glob"),
         "{out:#}"
     );
 }
@@ -392,14 +392,14 @@ fn a_vite_alias_resolves_to_the_file_it_names() {
             "call apps/d/src/main.ts::startD",
         ])
     );
-    let evidence: Vec<(String, String)> = out["changed"][0]["callers"]
+    let evidence: Vec<(String, String)> = out["definitions"][0]["rows"]
         .as_array()
         .unwrap()
         .iter()
         .map(|c| {
             (
                 c["path"].as_str().unwrap().to_string(),
-                format!("{} {}", c["evidence"], c["reason"]),
+                format!("{} {}", c["standing"], c["reason"]),
             )
         })
         .collect();
@@ -487,16 +487,16 @@ fn a_removed_export_has_no_callers_that_import_a_namesake_or_speak_another_langu
         )],
     );
     let doc = impact(tmp.path());
-    let named: Vec<&str> = doc["changed"]
+    let named: Vec<&str> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .filter_map(|c| c["path"].as_str())
         .collect();
     assert_eq!(named, vec!["A/apps/frontend/src/App.tsx"], "{doc:#}");
     assert!(
-        doc["contracts"].as_array().is_some_and(|c| c
+        doc["contracts"]["items"].as_array().is_some_and(|c| c
             .iter()
             .any(|c| { c["kind"] == "removed_api" && c["symbol"] == "useIsAuthenticated" })),
         "{doc:#}"
@@ -505,7 +505,7 @@ fn a_removed_export_has_no_callers_that_import_a_namesake_or_speak_another_langu
 
 /// The definitions an answer lists, as `path::symbol`.
 fn definitions(out: &serde_json::Value) -> BTreeSet<String> {
-    out["changed"]
+    out["definitions"]
         .as_array()
         .expect("changed")
         .iter()
@@ -694,14 +694,14 @@ fn a_global_or_exported_member_assignment_is_a_definition() {
         callers(&impact(tmp.path()), "kit/sw-kit.js", "serveShell"),
         expected
     );
-    let unloaded: Vec<(String, String)> = kit["changed"][0]["callers"]
+    let unloaded: Vec<(String, String)> = kit["definitions"][0]["rows"]
         .as_array()
         .unwrap()
         .iter()
         .map(|c| {
             (
                 c["path"].as_str().unwrap().to_string(),
-                format!("{} {}", c["evidence"], c["reason"]),
+                format!("{} {}", c["standing"], c["reason"]),
             )
         })
         .filter(|(_, e)| e != "\"resolved\" null")
@@ -780,17 +780,20 @@ fn a_member_of_an_interface_or_class_is_a_definition() {
         callers(&prefs, "src/cache.ts", "softPrefs"),
         set(&["call src/read.ts::untyped"])
     );
-    let unresolved = prefs["changed"]
+    let unresolved = prefs["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["lines"] == "2-2")
-        .map(|c| c["unresolved"].clone());
-    assert_eq!(
-        unresolved,
-        Some(serde_json::json!(
-            "1 read(s) of `.softPrefs` through a receiver the binding model cannot type"
-        ))
+        .map(|c| c["gaps"].clone());
+    assert!(
+        unresolved
+            .as_ref()
+            .and_then(|g| g.as_array())
+            .is_some_and(|gaps| gaps.contains(
+                &serde_json::json!({"kind": "unlanded", "name": "softPrefs", "uses": 1})
+            )),
+        "{prefs:#}"
     );
     let timeout = symbol(tmp.path(), "loadTimeoutMs");
     assert_eq!(
@@ -805,7 +808,7 @@ fn a_member_of_an_interface_or_class_is_a_definition() {
         set(&["reference src/engine.ts::constructor"])
     );
     let wait = symbol(tmp.path(), "wait");
-    let lines: BTreeSet<&str> = wait["changed"]
+    let lines: BTreeSet<&str> = wait["definitions"]
         .as_array()
         .unwrap()
         .iter()
@@ -893,7 +896,7 @@ fn functions_nested_in_a_factory_closure_are_locals_with_their_uses() {
     // answer is `beta`.
     let changed = impact(tmp.path());
     assert!(
-        changed["changed"]
+        changed["definitions"]
             .as_array()
             .expect("changed")
             .iter()
@@ -911,11 +914,10 @@ fn functions_nested_in_a_factory_closure_are_locals_with_their_uses() {
             ]),
             "{path}: the parameter `alpha` of `delta` is no use"
         );
-        let note = alpha["changed"][0]["unresolved"].as_str().unwrap_or("");
-        assert!(
-            note.contains(&format!("is a local of `{path}::useStore`")),
-            "{path}: {note}"
-        );
+        let enclosing = alpha["definitions"][0]["local_of"]["enclosing"]
+            .as_str()
+            .unwrap_or("");
+        assert_eq!(enclosing, format!("{path}::useStore"), "{path}: {alpha:#}");
         assert_eq!(
             callers(&symbol(tmp.path(), &at("beta")), path, "beta"),
             set(&[&format!("call {path}::gamma")]),
@@ -928,7 +930,9 @@ fn functions_nested_in_a_factory_closure_are_locals_with_their_uses() {
         );
         // `delta` leaves the closure (the store returns it): a definition.
         assert!(
-            symbol(tmp.path(), &at("delta"))["changed"][0]["kind"] != "local",
+            symbol(tmp.path(), &at("delta"))["definitions"][0]
+                .get("local_of")
+                .is_none(),
             "{path}"
         );
     }
@@ -942,7 +946,7 @@ fn functions_nested_in_a_factory_closure_are_locals_with_their_uses() {
 
 /// The paths a definition's answer names as not fully analysed.
 fn missed_in(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    out["changed"]
+    out["definitions"]
         .as_array()
         .expect("changed")
         .iter()

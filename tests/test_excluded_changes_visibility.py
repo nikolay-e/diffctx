@@ -45,8 +45,8 @@ def test_gitignore_excluded_changed_file_is_listed_by_path(tmp_path):
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
     rendered = diffctx.to_yaml(result)
 
-    assert result.get("ignored_changes") == ["notes.md"]
-    assert "ignored_changes" in rendered
+    assert result.get("inventory", {}).get("ignored", {}).get("items") == ["notes.md"]
+    assert "ignored:" in rendered
     assert "notes.md" in rendered
     # The excluded file's content must still stay out.
     assert "changed alongside code" not in rendered
@@ -57,8 +57,8 @@ def test_policy_excluded_changed_file_surfaces_as_count_without_the_path(tmp_pat
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
     rendered = diffctx.to_yaml(result)
 
-    assert result.get("policy_excluded_count") == 1
-    assert "policy_excluded_count" in rendered
+    assert result.get("inventory", {}).get("withheld") == 1
+    assert "withheld: 1" in rendered
     # The policy's whole point: neither the path nor the content reappears.
     assert "notes.md" not in rendered
     assert "changed alongside code" not in rendered
@@ -80,7 +80,7 @@ def test_policy_excluded_count_is_files_not_hunks(tmp_path):
     repo.commit("two separated edits inside the withheld file")
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
-    assert result.get("policy_excluded_count") == 1
+    assert result.get("inventory", {}).get("withheld") == 1
 
 
 def test_exclusion_only_change_still_renders_the_withheld_notice(tmp_path):
@@ -96,7 +96,7 @@ def test_exclusion_only_change_still_renders_the_withheld_notice(tmp_path):
     repo.commit("touch only the excluded file")
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
-    assert result.get("ignored_changes") == ["notes.md"]
+    assert result.get("inventory", {}).get("ignored", {}).get("items") == ["notes.md"]
     for rendered in (
         diffctx.to_yaml(result),
         diffctx.to_markdown(result),
@@ -136,7 +136,7 @@ def test_omitted_changed_files_are_disclosed_in_md_and_text(tmp_path):
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", budget_tokens=25)
     represented = {f["path"] for f in result.get("fragments") or []}
-    omitted = [p for p in result.get("changed_files") or [] if p not in represented]
+    omitted = [p for p in result.get("inventory", {}).get("changed", {}).get("items") or [] if p not in represented]
     assert omitted, "budget 25 over 6 changed files must force omission"
 
     # One list, omitted entries marked (#241): the second full copy of the
@@ -164,7 +164,7 @@ def test_a_changed_file_with_no_fragments_is_not_blamed_on_the_budget(tmp_path):
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
     assert [c["path"] for c in result["changes"] if c.get("no_fragments")] == ["assets/icon.svg"]
-    assert "evidence_budget_exceeded" not in (result.get("coverage") or {}).get("limit_reasons", [])
+    assert "evidence_budget_exceeded" not in (result.get("coverage") or {}).get("limits", [])
     assert (result.get("coverage") or {}).get("status") != "degraded"
 
     md = diffctx.to_markdown(result)
@@ -174,9 +174,9 @@ def test_a_changed_file_with_no_fragments_is_not_blamed_on_the_budget(tmp_path):
     assert "assets/icon.svg (no fragments)" in diffctx.to_text(result)
 
     located = run_diffctx_subprocess([".", "--diff", "HEAD~1", "--mode", "locate", "-f", "json", "-q"], cwd=repo.path)
-    coverage = json.loads(located.stdout).get("coverage") or {}
-    assert coverage.get("no_fragment_changed_files") == ["assets/icon.svg"]
-    assert "assets/icon.svg" not in coverage.get("unrepresented_changed_files", [])
+    selection = (json.loads(located.stdout).get("coverage") or {}).get("selection") or {}
+    assert selection.get("no_fragment_changed_files") == ["assets/icon.svg"]
+    assert "assets/icon.svg" not in selection.get("unrepresented_changed_files", [])
 
 
 def test_fully_represented_output_has_no_omission_footer(tmp_path):
@@ -213,7 +213,7 @@ def _commit_all(repo: Path, message: str) -> None:
 def _assert_listed_unrepresented(repo: Path, diff_args: list[str], path: str) -> str:
     result = run_diffctx_subprocess([".", *diff_args, "-f", "json", "-q"], cwd=repo)
     doc = json.loads(result.stdout)
-    assert doc["changed_files"] == [path], result.stderr
+    assert doc["inventory"]["changed"]["items"] == [path], result.stderr
     assert doc["changes"] == [{"path": path, "class": doc["changes"][0]["class"], "represented": False, "no_fragments": True}]
     return str(result.stderr)
 

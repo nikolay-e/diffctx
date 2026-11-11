@@ -307,6 +307,8 @@ pub fn build_diff_context_in_memory(
     let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
     changed_list.sort();
     let change = crate::render::ChangeSummary {
+        range_spec: None,
+        index_tree: None,
         lockfile_changes: Vec::new(),
         ignored_changes: Vec::new(),
         policy_excluded_count: 0,

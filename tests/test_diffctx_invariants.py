@@ -268,8 +268,8 @@ def test_diff_context_output_has_orientation_header_and_roles(tmp_path):
     stdout, _ = _run(repo.path, [".", "--diff", diff_range, "--budget", "2048", "-f", "json"])
     out = json.loads(stdout)
 
-    assert out["commit_message"] == "add div"
-    assert "src/calc.py" in out["changed_files"]
+    assert out["range"]["messages"][0] == "add div"
+    assert "src/calc.py" in out["inventory"]["changed"]["items"]
 
     fragments = out["fragments"]
     roles = [f.get("role") for f in fragments]
@@ -373,7 +373,7 @@ def test_diff_context_scopes_markdown_preamble_change_not_whole_file(tmp_path):
 
 
 def test_deletion_only_diff_reports_deleted_files_via_bridge(tmp_path):
-    """The CLI path emits deleted_files/renamed_files on a deletion-only diff
+    """The CLI path emits inventory.deleted/inventory.renamed on a deletion-only diff
     (empty_output_from_state); the pybridge select_with_params empty branch
     used to return a bare skeleton instead, so MCP/benchmark consumers lost
     the only signal the diff carried."""
@@ -388,8 +388,8 @@ def test_deletion_only_diff_reports_deleted_files_via_bridge(tmp_path):
 
     state = compute_scored_state(str(repo.path), "HEAD~1..HEAD")
     out = select_with_params(state, budget_tokens=8000, tau=0.12)
-    assert out.get("deleted_files") == ["doomed.py"]
-    assert out.get("fragment_count") == 0
+    assert out.get("inventory", {}).get("deleted", {}).get("items") == ["doomed.py"]
+    assert out["fragments"] == []
 
 
 def test_eof_append_to_flat_data_file_keeps_the_change_signal(tmp_path):
@@ -438,7 +438,7 @@ def test_eof_append_to_flat_data_file_keeps_the_change_signal(tmp_path):
 def _lockfile_repo(tmp_path: Path) -> tuple[Pygit2Repo, str]:
     def lock(patch: int) -> str:
         entries = "".join(
-            f'[[package]]\nname = "dep{i}"\nversion = "1.0.{i}"\n' f'checksum = "{i:064x}"\ndependencies = ["dep{i + 1}"]\n\n'
+            f'[[package]]\nname = "dep{i}"\nversion = "1.0.{i}"\nchecksum = "{i:064x}"\ndependencies = ["dep{i + 1}"]\n\n'
             for i in range(120)
         )
         return f'version = 4\n\n{entries}[[package]]\nname = "regex"\nversion = "1.12.{patch}"\n'
@@ -467,7 +467,7 @@ def test_lockfile_changes_are_reported_as_paths_not_content(tmp_path):
     stdout, _ = _run(repo.path, [".", "--diff", diff_range, "-f", "json"])
     doc = json.loads(stdout)
 
-    assert doc["lockfile_changes"] == ["Cargo.lock"]
+    assert doc["inventory"]["lockfiles"]["items"] == ["Cargo.lock"]
     assert all(f["path"] != "Cargo.lock" for f in doc["fragments"]), "lock content must not render"
     assert "checksum" not in stdout, "lock checksums leaked into the output"
     assert any(f["path"] == "src/lib.rs" for f in doc["fragments"]), "real code must still render"
@@ -487,8 +487,8 @@ def test_lockfile_only_diff_is_not_reported_as_empty(tmp_path):
     stdout, _ = _run(repo.path, [".", "--diff", f"{base}..{head}", "-f", "json"])
     doc = json.loads(stdout)
 
-    assert doc["lockfile_changes"] == ["uv.lock"]
-    assert doc["fragment_count"] == 0
+    assert doc["inventory"]["lockfiles"]["items"] == ["uv.lock"]
+    assert len(doc["fragments"]) == 0
 
 
 def test_full_mode_keeps_lockfile_content(tmp_path):
@@ -503,10 +503,9 @@ def test_full_mode_keeps_lockfile_content(tmp_path):
 
 
 def test_rename_only_diff_emits_labelled_from_to_pairs(tmp_path):
-    """renamed_files is the only field with a hand-written serializer
-    (render.rs serialize_renames). Dropping that attribute makes serde emit
-    two-element arrays instead of {from, to}: still valid YAML/JSON, still
-    parses, fragment_count unchanged - and every consumer loses the label. On a
+    """inventory.renamed rows are {from, to} objects. A serializer that emitted
+    two-element arrays instead would still be valid YAML/JSON, still parse,
+    and every consumer would lose the label. On a
     pure-rename diff this field is the only signal the output carries."""
     body = "def compute(a, b):\n    return a + b\n\n\ndef helper():\n    return compute(1, 2)\n"
     repo = Pygit2Repo(tmp_path / "repo")
@@ -522,6 +521,6 @@ def test_rename_only_diff_emits_labelled_from_to_pairs(tmp_path):
             cwd=repo.path,
         )
         doc = load(result.stdout)
-        assert doc["renamed_files"] == [
+        assert doc["inventory"]["renamed"]["items"] == [
             {"from": "old_name.py", "to": "new_name.py"}
-        ], f"{fmt} output lost the labelled rename: {doc.get('renamed_files')!r}"
+        ], f"{fmt} output lost the labelled rename: {doc.get('inventory')!r}"

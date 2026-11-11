@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
+use crate::impact::AUTOMATIC_TOKEN_CAP;
 use crate::mode::ScoringMode;
 use crate::snapshot as snap;
 use intent::{Intent, Search, before_glob, is_absolute_dir};
@@ -2223,17 +2224,13 @@ fn failure_reason(error: &anyhow::Error) -> Silence {
     }
 }
 
-struct Answer {
+struct Reply {
     context: String,
     /// The line a later reminder repeats.
     headline: String,
     /// The run stopped at a limit: delivered as partial, retried later.
     partial: bool,
 }
-
-/// The automatic answer's size, limits and notes included. An explicit
-/// request keeps the engine's own cap.
-const AUTOMATIC_TOKEN_CAP: u32 = 600;
 
 fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
     let lead = match (event, trigger) {
@@ -2461,7 +2458,7 @@ fn impact_context(
     spec: Option<snap::RangeSpec>,
     secs: u64,
     paths: Option<&[String]>,
-) -> Result<Answer, Silence> {
+) -> Result<Reply, Silence> {
     let mut output = run_impact(root, range, spec, secs)?;
     let hedge = match trigger {
         Trigger::Inspect { own: Some(own), .. } if !own.others.is_empty() => {
@@ -2475,7 +2472,7 @@ fn impact_context(
     // The files it read reach nothing, and files it withheld could: said in one
     // line, never as "reaches nothing".
     if let Some(line) = crate::impact::unread_line(&output, range).filter(|_| hedge.is_none()) {
-        return Ok(Answer {
+        return Ok(Reply {
             context: line.clone(),
             headline: line,
             partial: false,
@@ -2487,7 +2484,7 @@ fn impact_context(
     let stopped = stopped_note(&output, range, paths);
     let text = crate::impact::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
     let headline = text.lines().next().unwrap_or_default().to_string();
-    Ok(Answer {
+    Ok(Reply {
         context: format!(
             "{} What it reaches outside the diff:\n{text}\n{stopped}{}{}",
             lead_of(event, trigger, range),
@@ -2507,13 +2504,7 @@ fn impact_context(
 /// context — a caller a test reaches, a config naming the file — and a
 /// constant "check these" under it taught skipping the block (#656).
 fn what_to_check(output: &crate::impact::ImpactOutput, hedged: bool) -> Option<String> {
-    let untested = output
-        .changed
-        .iter()
-        .flat_map(|c| &c.callers)
-        .filter(|c| crate::impact::without_test_link(c))
-        .count()
-        + output.truncated_untested;
+    let untested = crate::answer::Tally::of(&crate::impact::v2_of(output)).untested_callers;
     let mut parts: Vec<String> = Vec::new();
     if untested > 0 {
         parts.push(format!(

@@ -41,8 +41,8 @@ def test_user_diff_config_cannot_empty_the_selection(tmp_path, key, value):
 
     ctx = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
 
-    assert ctx["changed_files"] == ["calc.py"], (key, value)
-    assert ctx["fragment_count"] > 0, (key, value)
+    assert ctx["inventory"]["changed"]["items"] == ["calc.py"], (key, value)
+    assert len(ctx["fragments"]) > 0, (key, value)
 
 
 def _repo_with_two_distant_edits(path: Path) -> Pygit2Repo:
@@ -117,4 +117,4 @@ def test_range_side_starting_with_a_dash_is_rejected(tmp_path, crafted):
 def test_ordinary_range_still_accepted(tmp_path):
     repo = _repo_with_change(tmp_path)
     ctx = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1..HEAD")
-    assert ctx["fragment_count"] > 0
+    assert len(ctx["fragments"]) > 0

@@ -87,7 +87,7 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path,
 
         root = Path({str(repo.path)!r})
         r = {call}
-        print(json.dumps({{"coverage": r.get("coverage"), "changed": r.get("changed_files") or []}}))
+        print(json.dumps({{"coverage": r.get("coverage"), "changed": ((r.get("inventory") or dict()).get("changed") or dict()).get("items") or []}}))
         """)
     proc = subprocess.run(
         [sys.executable, "-c", child],
@@ -101,7 +101,7 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path,
     assert report["coverage"], "the ceiling never fired; the artifact claims to be complete"
     if surface == "pack":
         assert report["coverage"]["status"] == "partial"
-    assert "deadline" in report["coverage"]["limit_reasons"]
+    assert "deadline" in report["coverage"]["limits"]
     assert report["changed"] == ["main.py"], "a partial artifact still lists every changed file"
 
 
@@ -125,9 +125,9 @@ def test_impact_past_its_deadline_answers_partially(tmp_path):
     )
     assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
     doc = json.loads(proc.stdout)
-    assert "deadline" in doc.get("limits", []), doc
+    assert "deadline" in doc["coverage"].get("limits", []), doc
     assert doc["empty"] is False
-    assert doc["changed_files"] == ["main.py"]
+    assert doc["inventory"]["changed"]["items"] == ["main.py"]
 
 
 _STALLING_GIT = """#!/bin/sh

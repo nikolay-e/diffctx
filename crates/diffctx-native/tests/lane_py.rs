@@ -36,7 +36,7 @@ fn impact(repo: &Path) -> serde_json::Value {
 }
 
 fn changed<'v>(doc: &'v serde_json::Value, path: &str, name: &str) -> &'v serde_json::Value {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -46,11 +46,11 @@ fn changed<'v>(doc: &'v serde_json::Value, path: &str, name: &str) -> &'v serde_
 
 /// `path::symbol` of every caller listed for `path::name`.
 fn callers(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    changed(doc, path, name)["callers"]
+    changed(doc, path, name)["rows"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["evidence"] != "reexport")
+        .filter(|c| c["class"] != "reexports")
         .map(|c| {
             format!(
                 "{}::{}",
@@ -64,13 +64,12 @@ fn callers(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
 /// The modules that re-export the definition: each is its own row, stated as
 /// `reexports`, and is no caller of it.
 fn reexports(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    changed(doc, path, name)["callers"]
+    changed(doc, path, name)["rows"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["evidence"] == "reexport")
+        .filter(|c| c["class"] == "reexports")
         .map(|c| {
-            assert_eq!(c["relation"], "reexports", "{c}");
             assert!(
                 c["symbol"].is_null(),
                 "a re-export names no definition: {c}"
@@ -182,12 +181,8 @@ fn a_module_level_change_is_reached_by_the_tests_importing_it() {
         "{doc}"
     );
     let mcp = changed(&doc, "app/server.py", "mcp");
-    assert_eq!(mcp["untested"], serde_json::Value::Null, "{doc}");
-    assert_eq!(
-        doc["untested_definitions"],
-        serde_json::Value::Null,
-        "{doc}"
-    );
+    assert_eq!(mcp["guard"], serde_json::Value::Null, "{doc}");
+    assert_eq!(doc["tests"]["definitions_without_link"]["n"], 0, "{doc}");
 }
 
 /// #488 (Python): a class-level field is a definition; reads and writes
@@ -222,9 +217,8 @@ fn a_class_field_is_defined_and_its_readers_and_writers_listed() {
     );
     let field = changed(&doc, "app/models.py", "valued_at");
     assert!(
-        field["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("1 read(s) of `.valued_at`")),
+        field["gaps"].as_array().is_some_and(|gaps| gaps
+            .contains(&serde_json::json!({"kind": "unlanded", "name": "valued_at", "uses": 1}))),
         "{doc}"
     );
     // Control: a method, which the base already models.
@@ -277,7 +271,7 @@ fn a_receiver_a_function_returns_is_a_possible_caller() {
     );
     let doc = symbol(tmp.path(), "Client.token");
     let token = changed(&doc, "app/client.py", "token");
-    let listed: BTreeSet<String> = token["callers"]
+    let listed: BTreeSet<String> = token["rows"]
         .as_array()
         .into_iter()
         .flatten()
@@ -286,7 +280,7 @@ fn a_receiver_a_function_returns_is_a_possible_caller() {
                 "{}::{} {} {}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or(""),
-                c["evidence"].as_str().unwrap_or(""),
+                c["standing"].as_str().unwrap_or(""),
                 c["reason"].as_str().unwrap_or("")
             )
         })
@@ -348,7 +342,7 @@ fn a_test_importing_through_sys_path_reaches_the_module() {
     );
     let doc = impact(tmp.path());
     let step = changed(&doc, "transcribe/jobs.py", "step");
-    let listed: BTreeSet<String> = step["callers"]
+    let listed: BTreeSet<String> = step["rows"]
         .as_array()
         .into_iter()
         .flatten()
@@ -357,8 +351,8 @@ fn a_test_importing_through_sys_path_reaches_the_module() {
                 "{}::{} {} {}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or(""),
-                c["evidence"].as_str().unwrap_or(""),
-                c["tested_by"].as_str().unwrap_or("-")
+                c["standing"].as_str().unwrap_or(""),
+                c["guard"]["test"].as_str().unwrap_or("-")
             )
         })
         .collect();
@@ -370,7 +364,7 @@ fn a_test_importing_through_sys_path_reaches_the_module() {
         ]),
         "{doc}"
     );
-    assert_eq!(step["untested"], serde_json::Value::Null, "{doc}");
+    assert_eq!(step["guard"], serde_json::Value::Null, "{doc}");
     // Control: the other module, imported as a package.
     let doc = symbol(tmp.path(), "other/jobs.py:step");
     assert_eq!(
@@ -415,9 +409,11 @@ fn an_attribute_a_method_sets_is_defined_and_used() {
         "{doc}"
     );
     assert!(
-        changed(&doc, "app/engine.py", "load_timeout")["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("1 read(s) of `.load_timeout`")),
+        changed(&doc, "app/engine.py", "load_timeout")["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.contains(
+                &serde_json::json!({"kind": "unlanded", "name": "load_timeout", "uses": 1})
+            )),
         "{doc}"
     );
     let doc = impact(tmp.path());
@@ -442,17 +438,17 @@ fn an_attribute_a_method_sets_is_defined_and_used() {
 
 /// `path::symbol evidence reason` of every caller listed for `path::name`.
 fn evidenced(doc: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    changed(doc, path, name)["callers"]
+    changed(doc, path, name)["rows"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["evidence"] != "reexport")
+        .filter(|c| c["class"] != "reexports")
         .map(|c| {
             format!(
                 "{}::{} {} {}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or(""),
-                c["evidence"].as_str().unwrap_or(""),
+                c["standing"].as_str().unwrap_or(""),
                 c["reason"].as_str().unwrap_or("-")
             )
         })
@@ -504,19 +500,23 @@ fn a_method_the_framework_dispatches_is_reached_through_its_class() {
     // a test hands to the server links it; a handler no test reaches stays a
     // test gap, its role named, and a test spelling its class in a string and
     // a comment links nothing.
-    let entries: Vec<&str> = doc["entry_unlisted"]
+    let entries = doc["unlisted"]["entered_by"]["items"]
         .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.as_str())
-        .collect();
+        .cloned()
+        .unwrap_or_default();
     assert!(
-        entries.contains(&"server.py::do_GET (5-7) \u{2014} dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via serve"),
+        entries.contains(&serde_json::json!({
+            "def": {"path": "server.py", "symbol": "do_GET", "lines": "5-7"},
+            "role": "dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via serve"
+        })),
         "{doc}"
     );
-    assert!(!entries.iter().any(|e| e.starts_with("quiet.py")), "{doc}");
     assert!(
-        doc["changed"]
+        !entries.iter().any(|e| e["def"]["path"] == "quiet.py"),
+        "{doc}"
+    );
+    assert!(
+        doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
@@ -524,10 +524,15 @@ fn a_method_the_framework_dispatches_is_reached_through_its_class() {
         "{doc}"
     );
     assert_eq!(
-        doc["untested_unlisted"],
+        doc["unlisted"]["no_caller"]["items"],
         serde_json::json!([
-            "plain.py::tally (2-3)",
-            "quiet.py::do_GET (5-6) \u{2014} dispatched by `BaseHTTPRequestHandler`"
+            {"path": "plain.py", "symbol": "tally", "lines": "2-3"},
+            {
+                "path": "quiet.py",
+                "symbol": "do_GET",
+                "lines": "5-6",
+                "role": "dispatched by `BaseHTTPRequestHandler`"
+            }
         ]),
         "{doc}"
     );
@@ -781,7 +786,7 @@ fn a_nested_function_has_no_callers_outside_its_function() {
         &[("lib/policy.py", &policy("s", ".strip()"))],
     );
     let doc = impact(tmp.path());
-    let listed: BTreeSet<String> = doc["changed"]
+    let listed: BTreeSet<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -809,7 +814,7 @@ fn a_nested_function_has_no_callers_outside_its_function() {
     );
     let control = changed(&doc, "lib/policy.py", "cache_control");
     assert_eq!(
-        control["callers"][0]["path"], "child/src/pkg/domain.py",
+        control["rows"][0]["path"], "child/src/pkg/domain.py",
         "{doc}"
     );
     assert!(control["missed_in"].is_null(), "{doc}");
@@ -845,7 +850,7 @@ fn a_deleted_function_is_not_called_by_a_parameter_or_a_docstring() {
         &[("pkg/eval.py", &format!("{head}{tail}"))],
     );
     let doc = impact(tmp.path());
-    let listed: BTreeSet<String> = doc["changed"]
+    let listed: BTreeSet<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -1030,7 +1035,7 @@ fn an_imported_name_is_no_changed_definition_of_the_importer() {
         )],
     );
     let doc = impact(tmp.path());
-    let defined: BTreeSet<&str> = doc["changed"]
+    let defined: BTreeSet<&str> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -1101,7 +1106,7 @@ fn every_removed_definition_is_reported_and_a_moved_field_is_not() {
         )],
     );
     let doc = impact(tmp.path());
-    let listed: BTreeSet<String> = doc["changed"]
+    let listed: BTreeSet<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -1110,7 +1115,10 @@ fn every_removed_definition_is_reported_and_a_moved_field_is_not() {
                 "{}::{} {}",
                 c["path"].as_str().unwrap_or(""),
                 c["symbol"].as_str().unwrap_or(""),
-                c["kind"].as_str().unwrap_or("")
+                c["kind"]
+                    .as_str()
+                    .or_else(|| c["change"]["kind"].as_str())
+                    .unwrap_or("")
             )
         })
         .collect();
@@ -1125,7 +1133,7 @@ fn every_removed_definition_is_reported_and_a_moved_field_is_not() {
         "{doc}"
     );
     assert_eq!(
-        changed(&doc, "api.py", "_Facts")["callers"],
+        changed(&doc, "api.py", "_Facts")["rows"],
         serde_json::json!([]),
         "{doc}"
     );
@@ -1146,15 +1154,15 @@ fn a_removed_field_is_named_by_its_class() {
         )],
     );
     let doc = impact(tmp.path());
-    let removed: BTreeSet<String> = doc["changed"]
+    let removed: BTreeSet<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["kind"] == "removed")
+        .filter(|c| c["change"]["kind"] == "removed")
         .filter_map(|c| c["symbol"].as_str().map(str::to_string))
         .collect();
     assert_eq!(removed, set(&["Create.kind"]), "{doc}");
-    let contracts: BTreeSet<String> = doc["contracts"]
+    let contracts: BTreeSet<String> = doc["contracts"]["items"]
         .as_array()
         .into_iter()
         .flatten()

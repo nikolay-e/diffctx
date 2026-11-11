@@ -58,23 +58,24 @@ fn run(probes: Vec<Probe>) -> Result<(), Failed> {
 /// An impact answer for a change to `shop/pricing.py::total` with these callers.
 fn answer(callers: &Value) -> Value {
     json!({
-        "changed": [{
+        "definitions": [{
             "path": "shop/pricing.py", "symbol": "total", "kind": "function",
-            "lines": "1-2", "callers": callers,
+            "lines": "1-2", "change": {"kind": "edited"}, "rows": callers,
         }],
-        "changed_files": ["shop/pricing.py"],
+        "inventory": {"changed": {"total": 1, "items": ["shop/pricing.py"]}},
         "empty": false,
-        "tests_known": true,
+        "tests": {"known": true},
     })
 }
 
 fn charge(evidence: &str, relation: &str, tested_by: Option<&str>) -> Value {
     let mut caller = json!({
         "path": "shop/checkout.py", "symbol": "charge", "lines": "4-5",
-        "evidence": evidence, "relation": relation, "sites": [5],
+        "standing": evidence, "class": relation, "sites": [5],
+        "guard": {"state": "none"},
     });
     if let Some(test) = tested_by {
-        caller["tested_by"] = json!(test);
+        caller["guard"] = json!({"state": "linked", "test": test});
     }
     caller
 }
@@ -150,15 +151,19 @@ expect:
 
 fn contract(path: &str, kind: &str) -> Value {
     json!({
-        "changed": [], "changed_files": ["api/schema.py"], "empty": false,
-        "contracts": [{"path": path, "symbol": "Row", "kind": kind}],
+        "definitions": [],
+        "inventory": {"changed": {"total": 1, "items": ["api/schema.py"]}},
+        "empty": false,
+        "contracts": {"total": 1, "items": [{"path": path, "symbol": "Row", "kind": kind}]},
     })
 }
 
 fn collection_read(path: &str, collection: &str) -> Value {
     json!({
-        "changed": [], "changed_files": ["content/blog/post.md"], "empty": false,
-        "collection_reads": [{"path": path, "line": 3, "collection": collection}],
+        "definitions": [],
+        "inventory": {"changed": {"total": 1, "items": ["content/blog/post.md"]}},
+        "empty": false,
+        "named": {"collections": {"total": 1, "items": [{"path": path, "line": 3, "collection": collection}]}},
     })
 }
 
@@ -249,7 +254,7 @@ fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
             case: CHARGE_CALLS_TOTAL,
             answer: answer(&json!([{
                 "path": "shop/report.py", "symbol": "build", "lines": "4-5",
-                "evidence": "resolved", "relation": "call", "sites": [5],
+                "standing": "resolved", "class": "call", "sites": [5],
             }])),
             verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
         },
@@ -258,7 +263,7 @@ fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
             case: CHARGE_CALLS_TOTAL,
             answer: answer(&json!([{
                 "path": "shop/checkout.py", "symbol": "charge", "lines": "4-9",
-                "evidence": "resolved", "relation": "call", "sites": [8],
+                "standing": "resolved", "class": "call", "sites": [8],
             }])),
             verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
         },
@@ -385,8 +390,8 @@ expect:
 /// no caller expectation, and a caller row does not satisfy it.
 fn a_static_reexport_is_a_resolved_reexports_relation() -> Result<(), Failed> {
     let reexport = json!({
-        "path": "shop/__init__.py", "lines": "1-1", "evidence": "reexport",
-        "relation": "reexports", "sites": [1],
+        "path": "shop/__init__.py", "lines": "1-1", "standing": "resolved",
+        "class": "reexports", "sites": [1],
     });
     run(vec![
         Probe {
@@ -399,8 +404,8 @@ fn a_static_reexport_is_a_resolved_reexports_relation() -> Result<(), Failed> {
             what: "a call row is no re-export",
             case: PACKAGE_REEXPORTS_TOTAL,
             answer: answer(&json!([{
-                "path": "shop/__init__.py", "lines": "1-1", "evidence": "resolved",
-                "relation": "call", "sites": [1],
+                "path": "shop/__init__.py", "lines": "1-1", "standing": "resolved",
+                "class": "call", "sites": [1],
             }])),
             verdict: Verdict::Fails("missing shop/__init__.py -reexports->"),
         },

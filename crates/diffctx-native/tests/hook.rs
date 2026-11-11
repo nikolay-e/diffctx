@@ -4128,3 +4128,62 @@ fn an_amend_whose_parent_git_refused_to_resolve_is_not_reviewed() {
     assert!(context.contains("diffctx did not review"), "{context}");
     assert!(context.contains("git refused a read"), "{context}");
 }
+
+/// What the hook put between its lead and its notes.
+fn hook_block(context: &str) -> &str {
+    let (_, after) = context
+        .split_once("What it reaches outside the diff:\n")
+        .unwrap_or_else(|| panic!("no review block in {context:?}"));
+    after.split("\nCheck ").next().unwrap_or(after)
+}
+
+/// The answer without its header line, which names what was reviewed: the hook
+/// says the snapshot it read, the command line the range it was given.
+fn after_header(text: &str) -> String {
+    text.trim_end()
+        .split_once('\n')
+        .map_or("", |(_, rest)| rest)
+        .trim_end()
+        .to_string()
+}
+
+/// The hook's block is the engine's render of the same change, not a text of its
+/// own: `Profile::Hook`, read in-process, is what the hook printed; and where the
+/// automatic answer cuts nothing, it is the text the command line prints.
+#[test]
+fn the_hooks_block_is_the_engines_render_of_the_same_change() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git diff"),
+    );
+    let context = context_of(&h);
+    let block = after_header(hook_block(&context));
+    assert!(block.contains("shop/checkout.py::charge"), "{context}");
+
+    let mut request =
+        _diffctx::delivery::Request::new(repo.to_path_buf(), _diffctx::delivery::Mode::Impact);
+    request.range = Some("HEAD".to_string());
+    request.profile = _diffctx::delivery::Profile::Hook;
+    let engine = _diffctx::delivery::deliver(&request).unwrap().text;
+    assert_eq!(
+        block,
+        after_header(&engine),
+        "hook:\n{context}\nengine:\n{engine}"
+    );
+
+    let cli = diffctx()
+        .current_dir(repo)
+        .env("DIFFCTX_CACHE_DIR", cache.path())
+        .args([".", "--diff", "HEAD", "--mode", "impact", "-f", "md", "-q"])
+        .output()
+        .expect("run diffctx");
+    assert!(cli.status.success());
+    let cli = String::from_utf8(cli.stdout).unwrap();
+    assert_eq!(block, after_header(&cli), "hook:\n{context}\ncli:\n{cli}");
+}

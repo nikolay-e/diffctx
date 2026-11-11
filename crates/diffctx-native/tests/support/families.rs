@@ -854,18 +854,11 @@ pub fn control(family: Family, broken_unrelated: bool) -> Repo {
 
 // Sections that list what changed, which name the definition's own file and
 // so are no evidence of a link.
-const LISTINGS: [&str; 6] = [
-    "changed_files",
-    "untracked_files",
-    "deleted_files",
-    "range",
-    "name",
-    "index_tree",
-];
+const LISTINGS: [&str; 5] = ["inventory", "range", "name", "schema", "provenance"];
 
-// What a row of `changed` says about the definition itself, which is no
+// What a row of `definitions` says about the definition itself, which is no
 // evidence of a caller even where the caller is the definition's own file.
-const OWN: [&str; 4] = ["path", "symbol", "lines", "kind"];
+const OWN: [&str; 5] = ["path", "symbol", "lines", "kind", "change"];
 
 fn names(value: &Value, path: &str) -> bool {
     match value {
@@ -873,7 +866,7 @@ fn names(value: &Value, path: &str) -> bool {
         Value::Array(items) => items.iter().any(|item| names(item, path)),
         Value::Object(map) => map.iter().any(|(key, item)| match key.as_str() {
             listed if LISTINGS.contains(&listed) => false,
-            "changed" => item.as_array().into_iter().flatten().any(|row| {
+            "definitions" => item.as_array().into_iter().flatten().any(|row| {
                 row.as_object().is_some_and(|fields| {
                     fields
                         .iter()
@@ -896,34 +889,28 @@ pub fn names_link(doc: &Value, path: &str) -> bool {
 pub fn fingerprint(doc: &Value) -> String {
     let mut out = format!(
         "limits={} unanalysed={} withheld={}",
-        doc["limits"], doc["unanalysed_files"], doc["withheld_files"]
+        doc["coverage"]["limits"], doc["coverage"]["unanalysed"], doc["inventory"]["withheld"]
     );
-    for row in doc["changed"].as_array().into_iter().flatten() {
+    for row in doc["definitions"].as_array().into_iter().flatten() {
         out.push_str(&format!(
-            "\n{}::{} missed_in={} unresolved={}",
-            row["path"], row["symbol"], row["missed_in"], row["unresolved"]
+            "\n{}::{} missed_in={} gaps={}",
+            row["path"], row["symbol"], row["missed_in"], row["gaps"]
         ));
     }
     out
 }
 
 pub fn discloses(doc: &Value) -> bool {
-    let listed = |key: &str| doc[key].as_array().is_some_and(|rows| !rows.is_empty());
-    listed("limits")
-        || listed("unanalysed_files")
-        || doc["withheld_files"].as_u64() > Some(0)
-        || doc["symbol_named"]["caveat"]
-            .as_str()
-            .is_some_and(|caveat| !caveat.is_empty())
-        || doc["symbol_named"]["rows"]
+    let listed = |value: &Value| value.as_array().is_some_and(|rows| !rows.is_empty());
+    listed(&doc["coverage"]["limits"])
+        || doc["coverage"]["unanalysed"]["total"].as_u64() > Some(0)
+        || doc["inventory"]["withheld"].as_u64() > Some(0)
+        || listed(&doc["spelled"]["rows"])
+        || doc["definitions"]
             .as_array()
-            .is_some_and(|rows| !rows.is_empty())
-        || doc["changed"].as_array().into_iter().flatten().any(|row| {
-            row["missed_in"]
-                .as_array()
-                .is_some_and(|rows| !rows.is_empty())
-                || !row["unresolved"].is_null()
-        })
+            .into_iter()
+            .flatten()
+            .any(|row| listed(&row["missed_in"]) || listed(&row["gaps"]))
 }
 
 // The answer says the change reaches nothing.

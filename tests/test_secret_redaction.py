@@ -49,12 +49,12 @@ def test_the_artifact_redacts_planted_secrets_and_says_so(tmp_path):
     doc = json.loads(diffctx.to_json(tree))
     assert doc["redactions"]["count"] >= 4
     assert {"aws_access_key", "github_token", "private_key"} <= set(doc["redactions"]["categories"])
-    assert "sanitization_redaction" in doc["coverage"]["limit_reasons"]
+    assert "sanitization_redaction" in doc["coverage"]["limits"]
     joined = "\n".join(f["content"] for f in doc["fragments"] if f.get("content"))
     assert "[REDACTED:aws_access_key]" in joined
     assert "[REDACTED:private_key]" in joined
     assert "REGION = 'eu-central-1'" in joined, "the rest of the fragment is untouched"
-    assert all("[REDACTED:aws_access_key]" in m for m in doc["commit_messages"])
+    assert all("[REDACTED:aws_access_key]" in m for m in doc["range"]["messages"])
 
 
 def test_the_raw_diff_bundle_is_sanitized_too(tmp_path):
@@ -99,9 +99,9 @@ async def test_mcp_fetch_and_glob_surfaces_redact(tmp_path):
 
 def _locate_doc_is_redacted(doc: dict, where: str) -> None:
     _assert_clean(json.dumps(doc), where)
-    assert "[REDACTED:aws_access_key]" in doc["commit_message"], where
+    assert "[REDACTED:aws_access_key]" in doc["range"]["messages"][0], where
     assert doc["redactions"]["count"] >= 1, where
-    assert "sanitization_redaction" in doc["coverage"]["limit_reasons"], where
+    assert "sanitization_redaction" in doc["coverage"]["limits"], where
 
 
 def test_locate_mode_redacts_the_commit_message(tmp_path):
@@ -128,6 +128,6 @@ def test_a_secret_only_on_removed_lines_is_counted(tmp_path):
     assert "[REDACTED:aws_access_key]" in doc["raw_diff"]
     assert doc["redactions"]["count"] >= 1
     assert "aws_access_key" in doc["redactions"]["categories"]
-    assert "sanitization_redaction" in doc["coverage"]["limit_reasons"]
+    assert "sanitization_redaction" in doc["coverage"]["limits"]
     assert doc["coverage"]["unknown"] == ["resources"], "the run measured nothing it could report"
     assert "credential-shaped string(s) redacted" in result.stderr

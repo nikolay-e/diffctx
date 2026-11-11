@@ -51,7 +51,7 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         gaps = [*definition.get("gaps", []), *searched]
         if gaps:  # a search that left a gap says what it did not cover, in the words of the closed vocabulary
             target.unresolved = target.unresolved or ", ".join(sorted({gap["kind"] for gap in gaps}))
-        target.missed_in += [f"{gap.get('files', 0)} unread file(s)" for gap in searched if gap["kind"] == "unread"]
+        target.missed_in += [f"{gap.get('files', 0)} unread file(s)" for gap in searched if gap["kind"] == "unaccounted"]
         shed = _shed_total(definition.get("shed", {}))
         target.callers_omitted += shed
         attributed = attributed or shed > 0

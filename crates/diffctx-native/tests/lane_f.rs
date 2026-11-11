@@ -67,7 +67,7 @@ fn run(repo: &Path, args: &[&str], polls: Option<u64>) -> serde_json::Value {
 }
 
 fn limits(doc: &serde_json::Value) -> Vec<String> {
-    doc["coverage"]["limit_reasons"]
+    doc["coverage"]["limits"]
         .as_array()
         .into_iter()
         .flatten()
@@ -172,6 +172,7 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     ("src/impact.rs", Some("missed_namers")),
     ("src/impact/mentions.rs", Some("stale_references")),
     ("src/impact.rs", Some("fit_with")),
+    ("src/fit.rs", None),
     // The snapshot layer lists and reads the repository for every run: its
     // loops are over a listing already in memory, and each git call and
     // object read beneath them carries the run's deadline and cancellation.
@@ -274,14 +275,19 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
         "the deleted and renamed paths",
     ),
     (
-        "src/impact.rs",
-        "while !fits(output)",
+        "src/fit.rs",
+        "while !fits(body)",
         "the answer, a stride a turn; past the deadline it must still fit",
     ),
     (
-        "src/impact.rs",
+        "src/fit.rs",
         "while hi - lo > 1",
         "halves one stride of the answer",
+    ),
+    (
+        "src/fit.rs",
+        "for below in (1..hi).rev().take(LOOK_BELOW)",
+        "LOOK_BELOW steps below the one bisection found",
     ),
     (
         "src/snapshot/reader.rs",

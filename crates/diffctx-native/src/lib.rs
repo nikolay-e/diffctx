@@ -5,6 +5,7 @@
 //! change or disappear between releases without a semver signal.
 
 // Input: git plumbing and path handling.
+pub mod fit;
 pub mod git;
 pub mod in_memory_harness;
 mod paths;
@@ -50,7 +51,9 @@ pub(crate) mod select;
 pub(crate) mod utility;
 
 // Output.
+pub mod answer;
 pub mod artifact;
+pub mod delivery;
 pub mod hook;
 pub mod impact;
 pub mod kotlin_bindings;

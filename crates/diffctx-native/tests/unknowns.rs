@@ -632,16 +632,16 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     assert!(head.contains("1 caller(s) outside the diff"), "{md}");
     // Plan (Rev 17 stream 5, phase 1): a language without a cell never claims a
     // complete set, so its definition carries the account's gap.
-    let rates = json["changed"]
+    let rates = json["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["path"] == "src/Rates.cs")
         .unwrap_or_else(|| panic!("{json}"));
     assert!(
-        rates["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("interaction group")),
+        rates["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "unaccounted")),
         "{json}"
     );
     for row in ["ops/run.sh.j2", "src/Invoice.cs:"] {
@@ -656,13 +656,13 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     assert!(!md.contains("callers may be missing"), "{md}");
     assert!(!md.contains("Callers outside Python"), "{md}");
     assert!(head.contains("called from core/cart.py::checkout"), "{md}");
-    let evidence: Vec<&str> = json["changed"]
+    let evidence: Vec<&str> = json["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .flat_map(|c| c["callers"].as_array().unwrap())
+        .flat_map(|c| c["rows"].as_array().unwrap())
         .filter(|c| c["path"] == "src/Invoice.cs")
-        .map(|c| c["evidence"].as_str().unwrap())
+        .map(|c| c["standing"].as_str().unwrap())
         .collect();
     assert_eq!(evidence, ["name"], "{json}");
 }
@@ -832,7 +832,7 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         let tmp = repo(&[(path, before), reader], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], false, "{path}: {json}");
-        let listed = json["unanalysed_files"]
+        let listed = json["coverage"]["unanalysed"]["items"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -888,7 +888,7 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         let tmp = repo(&[(path, before)], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], true, "{path}: {json}");
-        assert!(json.get("unanalysed_files").is_none(), "{path}: {json}");
+        assert!(json["coverage"]["unanalysed"].is_null(), "{path}: {json}");
     }
 }
 
@@ -904,7 +904,7 @@ fn a_dockerfile_nothing_names_is_a_gap_and_one_a_workflow_builds_is_named() {
     let json = impact_json(unnamed.path());
     assert_eq!(json["empty"], false, "{json}");
     assert!(
-        json["unanalysed_files"]
+        json["coverage"]["unanalysed"]["items"]
             .as_array()
             .is_some_and(|files| files
                 .iter()
@@ -924,12 +924,14 @@ fn a_dockerfile_nothing_names_is_a_gap_and_one_a_workflow_builds_is_named() {
     );
     let json = impact_json(built.path());
     assert!(
-        json["named_by"].as_array().is_some_and(|rows| rows
-            .iter()
-            .any(|r| r["target"] == "Dockerfile" && r["path"] == ".github/workflows/ci.yml")),
+        json["named"]["by_path"]["items"]
+            .as_array()
+            .is_some_and(|rows| rows
+                .iter()
+                .any(|r| r["target"] == "Dockerfile" && r["path"] == ".github/workflows/ci.yml")),
         "{json}"
     );
-    assert!(json.get("unanalysed_files").is_none(), "{json}");
+    assert!(json["coverage"]["unanalysed"].is_null(), "{json}");
 }
 
 /// #563: a changed document is named by the config or code that reads it
@@ -1053,9 +1055,10 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
         let tmp = repo(&[(path, before)], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], false, "{path}: {json}");
-        let unresolved = json["changed"][0]["unresolved"].as_str().unwrap_or("");
+        let gaps = json["definitions"][0]["gaps"].as_array();
         assert!(
-            unresolved.contains(via) && unresolved.contains("not traced"),
+            gaps.is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains(via)))),
             "{path}: {json}"
         );
     }
@@ -1105,12 +1108,12 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
         )],
     );
     let json = impact_json(tmp.path());
-    let total = &json["changed"][0];
+    let total = &json["definitions"][0];
     assert!(
-        total["callers"].as_array().is_some_and(|c| !c.is_empty()),
+        total["rows"].as_array().is_some_and(|c| !c.is_empty()),
         "{json}"
     );
-    assert!(total.get("unresolved").is_none(), "{json}");
+    assert!(total.get("gaps").is_none(), "{json}");
 }
 
 /// #442: an edit that changes the code's tokens, the block a line sits in
@@ -1231,7 +1234,10 @@ fn an_edit_a_formatter_cannot_make_is_never_layout() {
     ] {
         let tmp = repo(&[("schemas/s.yaml", before)], &[("schemas/s.yaml", after)]);
         let json = impact_json(tmp.path());
-        let contracts = json["contracts"].as_array().cloned().unwrap_or_default();
+        let contracts = json["contracts"]["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(
             contracts.iter().any(|c| c["kind"] == "schema"),
             "{after:?}: {json}"
@@ -1282,11 +1288,12 @@ fn an_edit_a_formatter_cannot_make_is_never_layout() {
     for (path, before, after, (caller, caller_src, listed)) in &layout {
         let tmp = repo(&[(path, before), (caller, caller_src)], &[(path, after)]);
         let json = impact_json(tmp.path());
-        let skipped = json["layout_only"].as_array().cloned().unwrap_or_default();
+        let skipped = json["unlisted"]["layout_only"]["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(
-            skipped.iter().any(|s| s
-                .as_str()
-                .is_some_and(|s| s.starts_with(&format!("{path}::")))),
+            skipped.iter().any(|s| s["path"] == *path),
             "{path}: {after:?}\n{json}"
         );
         let md = impact_markdown(tmp.path());
@@ -1355,12 +1362,12 @@ fn a_coverage_block_added_by_the_fit_names_its_counts_unknown() {
     );
     let cut = pack_json(tmp.path(), &["--budget", "900"], None);
     assert!(
-        cut["fragment_count"].as_u64().is_some_and(|n| n > 0),
+        cut["fragments"].as_array().is_some_and(|f| !f.is_empty()),
         "{cut}"
     );
     let coverage = &cut["coverage"];
     assert!(
-        coverage["limit_reasons"]
+        coverage["limits"]
             .as_array()
             .is_some_and(|r| r.iter().any(|r| r == "selection_budget_exceeded")),
         "{cut}"
@@ -1444,12 +1451,12 @@ fn a_name_nothing_defines_is_listed_where_files_spell_it() {
         .expect("run diffctx");
     assert!(json.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&json.stdout).expect("json");
-    assert_eq!(doc["symbol_named"]["files"], 15, "{doc:#}");
+    assert_eq!(doc["spelled"]["files"], 15, "{doc:#}");
     assert_eq!(
-        doc["symbol_named"]["rows"][0]["path"], "rules/backup.yaml",
+        doc["spelled"]["rows"][0]["path"], "rules/backup.yaml",
         "{doc:#}"
     );
-    assert_eq!(doc["symbol_named"]["rows"][0]["line"], 3, "{doc:#}");
+    assert_eq!(doc["spelled"]["rows"][0]["line"], 3, "{doc:#}");
 
     let none = diffctx()
         .current_dir(tmp.path())
@@ -1637,7 +1644,9 @@ fn a_content_entry_lists_the_calls_reading_its_collection() {
     let json = impact_json(tmp.path());
     assert_eq!(json["empty"], false, "{json}");
     assert_eq!(
-        json["collection_reads"].as_array().map(Vec::len),
+        json["named"]["collections"]["items"]
+            .as_array()
+            .map(Vec::len),
         Some(4),
         "{json}"
     );
@@ -1645,7 +1654,7 @@ fn a_content_entry_lists_the_calls_reading_its_collection() {
     let control = repo(&base, &[("site/README.md", "# Site\n\nA portfolio.\n")]);
     let json = impact_json(control.path());
     assert_eq!(json["empty"], true, "{json}");
-    assert!(json.get("collection_reads").is_none(), "{json}");
+    assert!(json["named"]["collections"].is_null(), "{json}");
 }
 
 /// #579: a call inside a long function is a call from that function. Its
@@ -1797,7 +1806,7 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     );
     let doc = impact_json(infra.path());
     assert!(
-        doc["named_by"]
+        doc["named"]["by_path"]["items"]
             .to_string()
             .contains("deploy/cron-foo-check.yaml"),
         "{doc:#}"
@@ -1832,7 +1841,7 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     );
     let doc = impact_json(site.path());
     assert_eq!(doc["empty"], false, "{doc:#}");
-    let missed = doc["changed"].to_string();
+    let missed = doc["definitions"].to_string();
     assert!(missed.contains("src/pages/index.astro"), "{doc:#}");
     assert!(!missed.contains("README.md"), "{doc:#}");
     // A plain word in a data file is no reader of a function named `total`.
@@ -1847,6 +1856,13 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
         "{text}"
     );
     assert!(!text.contains("callers may be missing"), "{text}");
+}
+
+/// Whether a definition says no binding model reads its language.
+fn not_modelled(definition: &serde_json::Value) -> bool {
+    definition["gaps"]
+        .as_array()
+        .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled"))
 }
 
 /// #505: a verdict needs a model. A changed method whose only caller is in
@@ -1872,13 +1888,8 @@ fn a_verdict_needs_a_model() {
         let tmp = repo(&[(path, base)], &[(path, change)]);
         let doc = impact_json(tmp.path());
         assert_eq!(doc["empty"], false, "{path}: {doc:#}");
-        let changed = doc["changed"].as_array().cloned().unwrap_or_default();
-        assert!(
-            changed.iter().any(|c| c["unresolved"]
-                .as_str()
-                .is_some_and(|u| u.contains("no binding model"))),
-            "{path}: {doc:#}"
-        );
+        let changed = doc["definitions"].as_array().cloned().unwrap_or_default();
+        assert!(changed.iter().any(|c| not_modelled(c)), "{path}: {doc:#}");
     }
     let python = repo(
         &[(
@@ -1892,7 +1903,7 @@ fn a_verdict_needs_a_model() {
     );
     let doc = impact_json(python.path());
     assert!(
-        doc["changed"][0]["unresolved"].is_null(),
+        !not_modelled(&doc["definitions"][0]),
         "a modelled language answers itself: {doc:#}"
     );
     let linked = repo(
@@ -1915,13 +1926,13 @@ fn a_verdict_needs_a_model() {
     // Plan (Rev 17 stream 5, phase 1): a definition in a language without a cell
     // carries the account's gap, which names the interaction group.
     assert!(
-        doc["changed"][0]["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains("interaction group")),
+        doc["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "unaccounted")),
         "a definition without a cell carries the account's gap: {doc:#}"
     );
     assert!(
-        doc["changed"][0]["callers"][0]["path"] == "src/Report.cs",
+        doc["definitions"][0]["rows"][0]["path"] == "src/Report.cs",
         "a caller the graph links is still found: {doc:#}"
     );
 }
@@ -1961,13 +1972,11 @@ fn a_language_without_a_model_never_claims_an_absence() {
         let tmp = repo(&[(path, base)], &[(path, change)]);
         let doc = impact_json(tmp.path());
         assert_eq!(doc["empty"], false, "{path}: {doc:#}");
-        let named = doc["changed"].as_array().cloned().unwrap_or_default();
+        let named = doc["definitions"].as_array().cloned().unwrap_or_default();
         assert!(
-            named.iter().any(|c| c["symbol"] == *symbol
-                && c["unresolved"]
-                    .as_str()
-                    .is_some_and(|u| u.contains("no binding model")
-                        && u.contains("finding none does not mean there are none"))),
+            named
+                .iter()
+                .any(|c| c["symbol"] == *symbol && not_modelled(c)),
             "{path}: {doc:#}"
         );
         for (door, md) in [
@@ -2011,10 +2020,10 @@ fn a_hedge_needs_reach() {
         let tmp = repo(&files, change);
         let len = std::fs::metadata(tmp.path().join(extra.0)).unwrap().len();
         assert!(len > 100_000, "{} is {len} bytes, under the cap", extra.0);
-        impact_json(tmp.path())["changed"][0].clone()
+        impact_json(tmp.path())["definitions"][0].clone()
     };
     let in_file = |changed: &serde_json::Value, path: &str| {
-        changed["callers"]
+        changed["rows"]
             .as_array()
             .into_iter()
             .flatten()
@@ -2857,7 +2866,7 @@ fn a_change_only_a_withheld_file_could_read_is_not_empty() {
     );
     let json = impact_json(withheld.path());
     assert_eq!(json["empty"], false, "{json}");
-    assert_eq!(json["withheld_files"], 1, "{json}");
+    assert_eq!(json["inventory"]["withheld"], 1, "{json}");
     let md = impact_markdown(withheld.path());
     assert!(
         md.lines()
@@ -2883,7 +2892,7 @@ fn assert_reads_undetermined_calls_found(md: &str, json: &serde_json::Value, nam
     );
     assert!(md.contains("no call found in the analysed scope"), "{md}");
     assert!(!md.contains("nothing calls them"), "{md}");
-    let row = json["changed"]
+    let row = json["definitions"]
         .as_array()
         .and_then(|rows| {
             // A field is named by its class (`Cart.total`).
@@ -2895,12 +2904,18 @@ fn assert_reads_undetermined_calls_found(md: &str, json: &serde_json::Value, nam
         })
         .unwrap_or_else(|| panic!("{name} is not listed: {json:#}"));
     assert!(
-        row["unresolved"]
-            .as_str()
-            .is_some_and(|u| u.contains(&read)),
+        row["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.contains(&serde_json::json!({
+                "kind": "unlanded",
+                "name": name,
+                "uses": 1
+            }))),
         "{json:#}"
     );
-    assert_eq!(row["callers"].as_array().map(Vec::len), Some(0), "{json:#}");
+    assert_eq!(row["coverage"]["reads"]["complete"], false, "{json:#}");
+    assert_eq!(row["coverage"]["calls"]["complete"], true, "{json:#}");
+    assert_eq!(row["rows"].as_array().map(Vec::len), Some(0), "{json:#}");
 }
 
 #[test]

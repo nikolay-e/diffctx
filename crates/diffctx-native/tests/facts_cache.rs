@@ -747,7 +747,7 @@ fn a_cold_cache_and_a_warm_cache_give_byte_identical_answers_through_star_import
         );
         let doc: serde_json::Value = serde_json::from_slice(&cold).expect("json");
         assert!(
-            doc["changed"].as_array().is_some_and(|c| !c.is_empty()),
+            doc["definitions"].as_array().is_some_and(|c| !c.is_empty()),
             "{what}: {doc:#}"
         );
     }
