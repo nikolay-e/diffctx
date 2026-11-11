@@ -9,7 +9,10 @@ say, not how they are wrapped:
   relation set from the two JSON doors;
 - pack: the same fragments (path and lines) from every door and format;
 - locate: the same ranked ids in the same order;
-- a refused symbol: the same refusal.
+- a refused symbol: the same refusal;
+- what no answer says: the budget a door was not asked for, the empty-diff exit
+  and its hint, the token summary and the redaction line are the engine's
+  (`diffctx::delivery`), so every door observes the same one.
 
 A difference that exists today is an `xfail(strict=True)` entry in
 KNOWN_DIFFERENCES, keyed by the test id and carrying its tracker reference
@@ -122,15 +125,17 @@ def repo(tmp_path_factory) -> Path:
 # ---- the doors ----
 
 
-def _native(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _native(repo: Path, *args: str, quiet: bool = True) -> subprocess.CompletedProcess[str]:
     binary = _native_bin()
     if binary is None:
         pytest.skip("no native binary: set DIFFCTX_NATIVE_BIN")
-    return subprocess.run([binary, ".", *args, "-q"], cwd=repo, capture_output=True, text=True, encoding="utf-8")
+    return subprocess.run(
+        [binary, ".", *args, *(["-q"] if quiet else [])], cwd=repo, capture_output=True, text=True, encoding="utf-8"
+    )
 
 
-def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return run_diffctx_subprocess([".", *args, "-q"], cwd=repo)
+def _cli(repo: Path, *args: str, quiet: bool = True) -> subprocess.CompletedProcess[str]:
+    return run_diffctx_subprocess([".", *args, *(["-q"] if quiet else [])], cwd=repo)
 
 
 def _mcp_server() -> Any | None:
@@ -165,20 +170,21 @@ def _text(value: str) -> str:
 
 
 def _relations(doc: dict[str, Any]) -> set[str]:
-    """Callers, the test reaching each, unresolved callers, stale references
+    """Rows, the test reaching each, the possible rows' gaps, stale references
     and the listed definitions — no line numbers, no weights."""
     found: set[str] = set()
-    for changed in doc.get("changed", []):
-        target = f"{changed['path']}::{changed.get('symbol')} ({changed.get('kind')})"
+    for definition in doc.get("definitions", []):
+        target = f"{definition['path']}::{definition.get('symbol')} ({definition.get('kind')})"
         found.add(target)
-        for caller in changed.get("callers", []):
-            who = f"{caller['path']}::{caller.get('symbol')}"
-            found.add(f"{target} <- {who} [{caller.get('relation', 'call')}, {caller.get('evidence')}]")
-            if caller.get("tested_by"):
-                found.add(f"{who} is tested by {caller['tested_by']}")
-        if changed.get("unresolved"):
-            found.add(f"{target} has unresolved callers: {changed['unresolved']}")
-    found.update(f"stale {row['path']}" for row in doc.get("stale_references", []))
+        for row in definition.get("rows", []):
+            who = f"{row['path']}::{row.get('symbol')}"
+            found.add(f"{target} <- {who} [{row['class']}, {row['standing']}]")
+            guard = row["guard"]
+            if guard["state"] == "linked":
+                found.add(f"{who} is tested by {guard['test']}")
+        if definition.get("gaps"):
+            found.add(f"{target} has gaps: {definition['gaps']}")
+    found.update(f"stale {row['path']}" for row in doc.get("stale", {}).get("items", []))
     return found
 
 
@@ -280,7 +286,8 @@ def test_pack_fragments_are_one_set(repo, ref, budget):
         "native": _fragments(_ok(_native(repo, *args, "-f", "json")), "json"),
         "cli": _fragments(_ok(_cli(repo, *args, "-f", "json")), "json"),
     }
-    assert as_json["native"], "the fixture must leave something to compare"
+    # A JSON document's own framing can take the tightest budget whole.
+    assert as_json["native"] or budget == min(PACK_BUDGETS), "the fixture must leave something to compare"
     _identical(f"pack json fragments {ref} at {budget}", as_json)
     as_md = {"cli": _fragments(_ok(_cli(repo, *args, "-f", "md")), "md")}
     if _mcp_server() is not None:
@@ -303,3 +310,157 @@ def test_locate_ids_are_one_list(repo, ref, budget):
         doors["mcp"] = _ids(text)
     assert doors["native"], "the fixture must leave something to compare"
     _identical(f"locate ids {ref} at {budget}", doors)
+
+
+# ---- the engine's policies, observed through every door ----
+
+
+@pytest.mark.parametrize("ref", RANGES.values(), ids=RANGES.keys())
+def test_impact_without_a_budget_is_one_text(repo, ref):
+    """No door is asked for a budget, so none decides one: the engine's default
+    for the mode applies everywhere, the MCP's included (it used to say 8000
+    while the CLI and the docs said 2000)."""
+    doors = {
+        "native": _text(_ok(_native(repo, "--diff", ref, "--mode", "impact", "-f", "md"))),
+        "cli": _text(_ok(_cli(repo, "--diff", ref, "--mode", "impact", "-f", "md"))),
+    }
+    if _mcp_server() is not None:
+        text, refusal = _mcp(repo, diff_ref=ref, mode="impact")
+        assert text is not None, refusal
+        doors["mcp"] = _text(text)
+    _identical(f"impact {ref} without a budget", doors)
+
+
+@pytest.mark.parametrize("symbol", SYMBOLS)
+def test_symbol_without_a_budget_is_one_text(repo, symbol):
+    doors = {
+        "native": _text(_ok(_native(repo, "--symbol", symbol, "-f", "md"))),
+        "cli": _text(_ok(_cli(repo, "--symbol", symbol, "-f", "md"))),
+    }
+    if _mcp_server() is not None:
+        text, refusal = _mcp(repo, symbol=symbol)
+        assert text is not None, refusal
+        doors["mcp"] = _text(text)
+    _identical(f"symbol {symbol} without a budget", doors)
+
+
+@pytest.fixture(scope="module")
+def quiet_repo(tmp_path_factory) -> Path:
+    """One commit that changed a function, and a clean working tree after it."""
+    root = tmp_path_factory.mktemp("quiet") / "repo"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main", ".")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "door parity")
+    _write(root, "pricing.py", "def total(items):\n    return sum(items)\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "initial")
+    _write(root, "pricing.py", "def total(items):\n    return sum(items) + 1\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "total adds one")
+    return root
+
+
+def _said(done: subprocess.CompletedProcess[str]) -> list[str]:
+    """What a door warned on stderr, without its own name."""
+    return [line.split(": ", 1)[1] for line in done.stderr.splitlines() if line.startswith("diffctx: ")]
+
+
+@pytest.mark.parametrize(
+    ("mode", "args", "hint"),
+    [
+        pytest.param("pack", ("--diff", "HEAD"), "the working tree matches HEAD", id="clean-tree"),
+        pytest.param("locate", ("--diff", "HEAD"), "the working tree matches HEAD", id="clean-tree-locate"),
+        pytest.param("pack", ("--diff", "HEAD~1..HEAD", "--budget", "0"), "--budget 0 emits no fragments", id="budget-zero"),
+        pytest.param("pack", ("--diff", "staged"), "git diff --cached --stat", id="nothing-staged"),
+    ],
+)
+def test_an_empty_diff_is_one_exit_and_one_hint(quiet_repo, mode, args, hint):
+    """The engine decides what an empty diff is, says and exits with (4); the
+    Python door used to word it its own way, and say none of it for locate."""
+    flags = (*args, "--mode", mode)
+    native, cli = _native(quiet_repo, *flags), _cli(quiet_repo, *flags)
+    assert native.returncode == cli.returncode == 4, (native.stderr, cli.stderr)
+    assert _said(native) == _said(cli), (native.stderr, cli.stderr)
+    assert any(hint in line for line in _said(native)), native.stderr
+
+
+def test_an_empty_impact_is_an_answer_not_a_failure(quiet_repo):
+    flags = ("--diff", "HEAD", "--mode", "impact", "-f", "md")
+    assert _native(quiet_repo, *flags).returncode == 0
+    assert _cli(quiet_repo, *flags).returncode == 0
+    if _mcp_server() is not None:
+        text, refusal = _mcp(quiet_repo, diff_ref="HEAD", mode="impact")
+        assert text is not None, refusal
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param(("--diff", "HEAD~1..HEAD", "--mode", "impact", "-f", "md"), id="impact"),
+        pytest.param(("--diff", "HEAD~1..HEAD", "--mode", "locate"), id="locate"),
+        pytest.param(("--diff", "HEAD~1..HEAD", "-f", "json", "--budget", "8000"), id="pack"),
+    ],
+)
+def test_the_token_summary_is_one_line(quiet_repo, args):
+    native, cli = _native(quiet_repo, *args, quiet=False), _cli(quiet_repo, *args, quiet=False)
+    assert native.returncode == cli.returncode == 0, (native.stderr, cli.stderr)
+    assert native.stdout == cli.stdout
+    assert re.fullmatch(r"[\d,]+ tokens \(o200k_base\), [\d.]+ (B|KB|MB)\n?", native.stderr.strip() + "\n"), native.stderr
+    assert native.stderr.strip() == cli.stderr.strip()
+
+
+def test_a_redacted_secret_is_said_by_every_door(tmp_path):
+    aws = "AKIA" + "IOSFODNN7EXAMPLE"  # assembled so the repository's own scanners do not trip
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main", ".")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "door parity")
+    _write(root, "settings.py", "REGION = 'eu-central-1'\n\n\ndef client():\n    return REGION\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "initial")
+    _write(root, "settings.py", f"REGION = 'eu-central-1'\nACCESS_KEY = '{aws}'\n\n\ndef client():\n    return REGION\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "wire the client")
+
+    args = ("--diff", "HEAD~1..HEAD", "-f", "json")
+    native, cli = _native(root, *args, quiet=False), _cli(root, *args, quiet=False)
+    for door in (native, cli):
+        assert aws not in door.stdout
+        assert door.returncode == 0, door.stderr
+    said = {
+        door: [line for line in out.stderr.splitlines() if "credential-shaped" in line]
+        for door, out in (("native", native), ("cli", cli))
+    }
+    assert said["native"] and said["native"] == said["cli"], said
+
+
+@pytest.mark.parametrize("ref", RANGES.values(), ids=RANGES.keys())
+def test_the_raw_diff_is_one_patch(repo, ref):
+    """The native and Python CLIs ask the engine for the same request, so they
+    bundle the same patch, say its share the same way, and withhold the same
+    sections (the file `.diffctx/ignore` names is not in it)."""
+    args = ("--diff", ref, "--budget", "8000", "-f", "json", "--with-raw-diff")
+    native, cli = _native(repo, *args, quiet=False), _cli(repo, *args, quiet=False)
+    assert native.returncode == cli.returncode == 0, (native.stderr, cli.stderr)
+    patch = {door: json.loads(done.stdout).get("raw_diff") for door, done in (("native", native), ("cli", cli))}
+    assert patch["native"], "the fixture's range must leave a patch to bundle"
+    assert "vault.py" not in patch["native"]
+    _identical(f"raw diff {ref}", patch)
+    assert native.stdout == cli.stdout
+    share = {
+        door: [line for line in done.stderr.splitlines() if "are the raw diff" in line]
+        for door, done in (("native", native), ("cli", cli))
+    }
+    assert share["native"], native.stderr
+    _identical(f"raw diff share {ref}", share)
+
+
+@pytest.mark.parametrize("mode", ["impact", "locate"])
+def test_a_raw_diff_is_refused_where_there_is_no_source(repo, mode):
+    args = ("--diff", "HEAD~1..HEAD", "--mode", mode, "--with-raw-diff")
+    native, cli = _native(repo, *args), _cli(repo, *args)
+    assert native.returncode == cli.returncode == 2, (native.stderr, cli.stderr)
+    for done in (native, cli):
+        assert f"--mode {mode} emits no source" in done.stderr, done.stderr

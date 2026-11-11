@@ -418,86 +418,116 @@ fn stated_kind(caller: &Value) -> Result<Option<Kind>, String> {
     }
 }
 
+/// Lines of a name a gap may count before the name is "too common to trace".
+const COMMON_WORD_LINES: u64 = 500;
+
+/// A listing's items: `{total, items}` in the answer.
+fn listing<'a>(value: &'a Value, key: &str) -> &'a [Value] {
+    items(&value[key], "items")
+}
+
+/// The class a gap of the answer belongs to; `None` for a gap that is a stop, a
+/// withheld file or a route nothing traces, which have no class of their own.
+fn class_of_gap(gap: &Value) -> Option<UnknownClass> {
+    match text(gap, "kind")? {
+        "dispatched" => Some(UnknownClass::Dispatched),
+        "ambiguous" => Some(UnknownClass::Ambiguous),
+        "overridable" => Some(UnknownClass::Overridable),
+        "not_modelled" => Some(UnknownClass::NotModelled),
+        "unlanded" if count(gap, "uses") > COMMON_WORD_LINES => Some(UnknownClass::CommonWord),
+        "unlanded" => Some(UnknownClass::UnresolvedReads),
+        _ => None,
+    }
+}
+
 pub fn extract(doc: &Value) -> Result<Answer, String> {
     let mut answer = Answer {
         empty: doc.get("empty").and_then(Value::as_bool).unwrap_or(false),
-        truncated: count(doc, "truncated"),
-        tests_known: doc
-            .get("tests_known")
+        truncated: count(&doc["summary"], "shed"),
+        tests_known: doc["tests"]
+            .get("known")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        run_disclosure: !items(doc, "limits").is_empty()
-            || !items(doc, "unanalysed_files").is_empty()
-            || count(doc, "unanalysed_files_omitted") > 0
-            || count(doc, "withheld_files") > 0
-            || doc.get("symbol_named").is_some_and(|v| !v.is_null()),
+        run_disclosure: !items(&doc["coverage"], "limits").is_empty()
+            || count(&doc["coverage"]["unanalysed"], "total") > 0
+            || count(&doc["inventory"], "withheld") > 0
+            || doc.get("spelled").is_some_and(|v| !v.is_null()),
         ..Answer::default()
     };
 
-    for changed in items(doc, "changed") {
-        let definition = node_of(changed);
+    for definition_doc in items(doc, "definitions") {
+        let definition = node_of(definition_doc);
         answer.definitions.push(definition.clone());
         answer.touched.push(definition.clone());
-        if text(changed, "kind") == Some("removed") {
+        if text(&definition_doc["change"], "kind") == Some("removed") {
             answer.removed.push(definition.clone());
         }
-        if changed
-            .get("untested")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-        {
+        if definition_doc.get("guard").is_some_and(|g| !g.is_null()) {
             answer.untested.push(definition.clone());
         }
-        if let Some(entry) = text(changed, "entry") {
+        if let Some(entry) = text(definition_doc, "entry") {
             if entry.contains("reachable from tests:") {
                 answer.entry_tested.push(definition.clone());
             } else {
                 answer.entry_not_tested.push(definition.clone());
             }
         }
-        for caller in items(changed, "callers") {
+        for row in items(definition_doc, "rows") {
+            let standing = text(row, "standing").unwrap_or("");
+            let class = text(row, "class").unwrap_or("call");
+            // A re-export is a row of its own class, counted apart in the header.
+            let evidence = if class == "reexports" {
+                "reexport"
+            } else {
+                standing
+            };
             answer.caller_rows.push((
-                text(caller, "path").unwrap_or("").to_string(),
-                text(caller, "evidence").unwrap_or("").to_string(),
+                text(row, "path").unwrap_or("").to_string(),
+                evidence.to_string(),
             ));
             // A word match is the textual section of the answer, not a caller.
-            if text(caller, "evidence") == Some("name") {
+            if standing == "name" {
                 continue;
             }
-            let from = node_of(caller);
-            let stated = stated_kind(caller)?;
+            let from = node_of(row);
+            let stated = stated_kind(row)?;
             answer.relations.push(Relation {
                 from: from.clone(),
                 to: definition.clone(),
-                kind: stated.unwrap_or_else(|| kind_of(text(caller, "relation").unwrap_or("call"))),
-                resolution: resolution_of(text(caller, "evidence").unwrap_or("name")),
-                sites: lines_of(caller),
+                kind: stated.unwrap_or_else(|| kind_of(class)),
+                resolution: resolution_of(evidence),
+                sites: lines_of(row),
                 loose_kind: false,
                 kind_stated: stated.is_some(),
             });
-            if let Some(test) = text(caller, "tested_by") {
-                answer.relations.push(Relation {
-                    from: Node::new(test, None),
-                    to: from,
-                    kind: Kind::TestsReach,
-                    resolution: Resolution::Resolved,
-                    sites: Vec::new(),
-                    loose_kind: false,
-                    kind_stated: false,
-                });
+            if text(&row["guard"], "state") == Some("linked") {
+                if let Some(test) = text(&row["guard"], "test") {
+                    answer.relations.push(Relation {
+                        from: Node::new(test, None),
+                        to: from,
+                        kind: Kind::TestsReach,
+                        resolution: Resolution::Resolved,
+                        sites: Vec::new(),
+                        loose_kind: false,
+                        kind_stated: false,
+                    });
+                }
             }
         }
-        if let Some(sentence) = text(changed, "unresolved") {
-            answer.unknowns.push((
-                definition.clone(),
-                UnknownClass::of_sentence(sentence),
-                sentence.to_string(),
-            ));
+        for gap in items(definition_doc, "gaps") {
             answer.gapped.push(definition.clone());
+            // Files that spell the name but were not read are a claim about those
+            // files (below), not an unknown of the definition.
+            if text(gap, "kind") == Some("unaccounted") {
+                continue;
+            }
+            answer
+                .unknowns
+                .push((definition.clone(), class_of_gap(gap), gap.to_string()));
         }
         // A file that spells the name but was not fully analysed is named only
         // textually: a claim about that file, and a gap in the answer.
-        let missed = items(changed, "missed_in");
+        let missed = items(definition_doc, "missed_in");
         for file in missed {
             answer.relations.push(Relation {
                 from: Node::new(text(file, "path").unwrap_or(""), None),
@@ -513,29 +543,39 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
             answer.gapped.push(definition);
         }
     }
+    // What the cap shed whole is a gap the answer discloses, never a caller list.
+    if doc.get("omitted").is_some_and(|o| !o.is_null()) {
+        let shed = Node::new("(changed definitions)", None);
+        answer.unknowns.push((
+            shed.clone(),
+            None,
+            "changed definitions omitted: the answer cap".to_string(),
+        ));
+        answer.gapped.push(shed);
+    }
 
-    for key in ["untested_unlisted", "untested_called_in_diff"] {
-        for label in items(doc, key).iter().filter_map(Value::as_str) {
-            let node = node_of_label(label);
+    let unlisted = &doc["unlisted"];
+    for key in ["no_caller", "called_in_diff"] {
+        for def in listing(unlisted, key) {
+            let node = node_of(def);
             answer.touched.push(node.clone());
             answer.untested.push(node);
         }
     }
-    for key in ["entry_unlisted", "layout_only"] {
-        for label in items(doc, key).iter().filter_map(Value::as_str) {
-            let node = node_of_label(label);
-            if key == "entry_unlisted" {
-                if label.contains("reachable from tests:") {
-                    answer.entry_tested.push(node.clone());
-                } else {
-                    answer.entry_not_tested.push(node.clone());
-                }
-            }
-            answer.touched.push(node);
+    for def in listing(unlisted, "entered_by") {
+        let node = node_of(&def["def"]);
+        if text(def, "role").is_some_and(|role| role.contains("reachable from tests:")) {
+            answer.entry_tested.push(node.clone());
+        } else {
+            answer.entry_not_tested.push(node.clone());
         }
+        answer.touched.push(node);
+    }
+    for def in listing(unlisted, "layout_only") {
+        answer.touched.push(node_of(def));
     }
 
-    for reference in items(doc, "stale_references") {
+    for reference in listing(doc, "stale") {
         if let Some(target) = text(reference, "target") {
             answer
                 .relations
@@ -549,29 +589,29 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
             ));
         }
     }
-    for reference in items(doc, "named_by") {
-        if let Some(target) = text(reference, "target") {
-            let resolution = if reference.get("key").is_some_and(|k| !k.is_null()) {
-                Resolution::Candidate
-            } else {
-                Resolution::Resolved
-            };
-            answer
-                .relations
-                .push(path_relation(reference, target, resolution));
-            answer
-                .named_by
-                .push(text(reference, "path").unwrap_or("").to_string());
-            answer.mention_classes.push((
-                text(reference, "path").unwrap_or("").to_string(),
-                text(reference, "class").unwrap_or("").to_string(),
-            ));
+    for (rows, resolution) in [
+        (listing(&doc["named"], "by_path"), Resolution::Resolved),
+        (listing(&doc["named"], "by_key"), Resolution::Candidate),
+    ] {
+        for reference in rows {
+            if let Some(target) = text(reference, "target") {
+                answer
+                    .relations
+                    .push(path_relation(reference, target, resolution));
+                answer
+                    .named_by
+                    .push(text(reference, "path").unwrap_or("").to_string());
+                answer.mention_classes.push((
+                    text(reference, "path").unwrap_or("").to_string(),
+                    text(reference, "class").unwrap_or("").to_string(),
+                ));
+            }
         }
     }
     // A name no file defines, spelled in files: the rows are candidates for
     // the queried name itself, which has no path.
-    if let (Some(symbol), Some(named)) = (text(doc, "symbol"), doc.get("symbol_named")) {
-        for row in items(named, "rows") {
+    if let (Some(symbol), Some(spelled)) = (text(doc, "symbol"), doc.get("spelled")) {
+        for row in items(spelled, "rows") {
             answer.relations.push(Relation {
                 from: Node::new(text(row, "path").unwrap_or(""), None),
                 to: Node::new(symbol, None),
@@ -583,9 +623,9 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
             });
         }
     }
-    answer.contracts = items(doc, "contracts").iter().map(node_of).collect();
+    answer.contracts = listing(doc, "contracts").iter().map(node_of).collect();
     // A removed public API is a removal, whether or not anything refers to it.
-    for contract in items(doc, "contracts") {
+    for contract in listing(doc, "contracts") {
         if text(contract, "kind") == Some("removed_api") {
             let node = node_of(contract);
             answer.removed.push(node.clone());
@@ -593,11 +633,11 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
         }
     }
     // `getCollection('blog')` reads every entry under `content/blog/`.
-    let changed_files: Vec<&str> = items(doc, "changed_files")
+    let changed_files: Vec<&str> = items(&doc["inventory"]["changed"], "items")
         .iter()
         .filter_map(Value::as_str)
         .collect();
-    for read in items(doc, "collection_reads") {
+    for read in listing(&doc["named"], "collections") {
         let Some(collection) = text(read, "collection") else {
             continue;
         };

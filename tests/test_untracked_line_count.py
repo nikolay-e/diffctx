@@ -49,7 +49,7 @@ def _changed_files(repo_path):
     from diffctx._native.pipeline import build_diff_context
 
     result = build_diff_context(repo_path, "HEAD", budget_tokens=8000)
-    return set(result.get("changed_files") or [])
+    return set(result.get("inventory", {}).get("changed", {}).get("items") or [])
 
 
 def _history_with_untracked(path: Path, commits: int) -> Pygit2Repo:
@@ -68,7 +68,7 @@ def test_an_untracked_source_file_is_reported(tmp_path: Path, revision: str) -> 
 
     repo = _history_with_untracked(tmp_path / "repo", 2)
     result = build_diff_context(repo.path, revision, budget_tokens=8000)
-    assert "helper.py" in set(result.get("changed_files") or [])
+    assert "helper.py" in set(result.get("inventory", {}).get("changed", {}).get("items") or [])
     assert result["provenance"]["input"]["working_tree"] is True
 
 
@@ -77,7 +77,7 @@ def test_a_committed_range_never_reports_untracked_files(tmp_path: Path) -> None
 
     repo = _history_with_untracked(tmp_path / "repo", 6)
     result = build_diff_context(repo.path, "HEAD~5..HEAD~3", budget_tokens=8000)
-    assert set(result.get("changed_files") or []) == {"src/app.py"}
+    assert set(result.get("inventory", {}).get("changed", {}).get("items") or []) == {"src/app.py"}
 
 
 @pytest.mark.parametrize(
@@ -132,7 +132,7 @@ def test_a_file_over_the_size_cap_costs_no_more_memory_than_a_small_one(repo_wit
 
     result = build_diff_context(repo.path, "HEAD", budget_tokens=8000)
 
-    assert "huge.log" in set(result.get("changed_files") or [])
+    assert "huge.log" in set(result.get("inventory", {}).get("changed", {}).get("items") or [])
     assert not [
         f for f in result["fragments"] if f["path"].endswith("huge.log")
     ], "a file past max_changed_file_size contributed fragments"

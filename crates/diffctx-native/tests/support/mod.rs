@@ -107,13 +107,13 @@ pub fn set(items: &[&str]) -> BTreeSet<String> {
 
 /// Every caller and stale reference an impact answer claims, sorted.
 pub fn claims(doc: &serde_json::Value) -> Vec<String> {
-    let mut out: Vec<String> = doc["changed"]
+    let mut out: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .flat_map(|c| {
             let symbol = c["symbol"].as_str().unwrap_or("").to_string();
-            c["callers"]
+            c["rows"]
                 .as_array()
                 .cloned()
                 .unwrap_or_default()
@@ -121,7 +121,7 @@ pub fn claims(doc: &serde_json::Value) -> Vec<String> {
                 .map(move |k| format!("{symbol} <- {}", k["path"].as_str().unwrap_or("")))
         })
         .chain(
-            doc["stale_references"]
+            doc["stale"]["items"]
                 .as_array()
                 .into_iter()
                 .flatten()

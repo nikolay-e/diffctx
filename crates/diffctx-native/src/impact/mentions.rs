@@ -53,7 +53,7 @@ impl Class {
         matches!(self, Self::Code | Self::Config | Self::Command)
     }
 
-    pub(super) const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Code => "code",
             Self::Config => "config",

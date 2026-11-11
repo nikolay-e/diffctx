@@ -13,63 +13,78 @@ fn text(value: &Value) -> &str {
     value.as_str().unwrap_or("")
 }
 
+// The entries of a `{total, items}` listing of an impact answer.
+fn listed<'a>(value: &'a Value) -> impl Iterator<Item = &'a Value> {
+    rows(&value["items"])
+}
+
+// What a row's evidence was in the claims the suites compare: a re-export is
+// counted apart from a resolved caller.
+fn evidence(row: &Value) -> &str {
+    if row["class"] == "reexports" {
+        "reexport"
+    } else {
+        text(&row["standing"])
+    }
+}
+
 // Every caller of every changed definition, the test that reaches it, the
-// callers an answer says it could not resolve, and the stale references:
-// the claims an impact answer makes (the stubs of the answer cap apart). Line numbers and weights are left out,
-// so a transformation that moves code does not read as a changed answer.
+// gaps an answer says it could not close, and the stale references: the claims
+// an impact answer makes. Line numbers are left out, so a transformation that
+// moves code does not read as a changed answer.
 pub fn relations(doc: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for changed in rows(&doc["changed"]) {
+    for changed in rows(&doc["definitions"]) {
         let target = format!("{}::{}", text(&changed["path"]), text(&changed["symbol"]));
-        for caller in rows(&changed["callers"]) {
+        for caller in rows(&changed["rows"]) {
             let who = format!("{}::{}", text(&caller["path"]), text(&caller["symbol"]));
-            let relation = caller["relation"].as_str().unwrap_or("call");
-            let evidence = text(&caller["evidence"]);
-            out.insert(format!("{target} <- {who} [{relation}, {evidence}]"));
-            if let Some(test) = caller["tested_by"].as_str() {
+            let class = caller["class"].as_str().unwrap_or("call");
+            out.insert(format!("{target} <- {who} [{class}, {}]", evidence(caller)));
+            if let Some(test) = caller["guard"]["test"]
+                .as_str()
+                .filter(|_| caller["guard"]["state"] == "linked")
+            {
                 out.insert(format!("{who} is tested by {test}"));
             }
         }
-        // A stub the answer cap left is a claim about the budget, not about
-        // the code: a larger budget lists the callers instead, and that
-        // replaces it.
-        let unresolved = &changed["unresolved"];
-        if !unresolved.is_null() && !text(unresolved).contains("omitted: the answer cap") {
-            out.insert(format!("{target} has unresolved callers: {unresolved}"));
+        // Files that spell the name but were not read are named by `missed_in`.
+        for gap in rows(&changed["gaps"]).filter(|g| g["kind"] != "unaccounted") {
+            out.insert(format!("{target} has unresolved callers: {gap}"));
         }
     }
-    for stale in rows(&doc["stale_references"]) {
+    for stale in listed(&doc["stale"]) {
         out.insert(format!("stale {}", text(&stale["path"])));
     }
     out
 }
 
-// The definitions the answer lists, with their kind.
+// The definitions the answer lists, with their kind (or what became of them).
 pub fn changed_rows(doc: &Value) -> BTreeSet<String> {
-    rows(&doc["changed"])
+    rows(&doc["definitions"])
         .map(|c| {
-            format!(
-                "{}::{} ({})",
-                text(&c["path"]),
-                text(&c["symbol"]),
-                text(&c["kind"])
-            )
+            let kind = c["kind"]
+                .as_str()
+                .unwrap_or_else(|| text(&c["change"]["kind"]));
+            format!("{}::{} ({kind})", text(&c["path"]), text(&c["symbol"]))
         })
         .collect()
 }
 
 // Definitions the answer says the change removed.
 pub fn removed_rows(doc: &Value) -> Vec<String> {
-    rows(&doc["changed"])
-        .filter(|c| c["kind"] == "removed")
+    rows(&doc["definitions"])
+        .filter(|c| c["change"]["kind"] == "removed")
         .map(|c| format!("{}::{}", text(&c["path"]), text(&c["symbol"])))
         .collect()
 }
 
 // Whether an impact answer said it did not see everything.
 pub fn impact_disclosed(doc: &Value) -> bool {
-    let listed = |key: &str| doc[key].as_array().is_some_and(|a| !a.is_empty());
-    listed("limits") || listed("unanalysed_files") || doc["withheld_files"].as_u64() > Some(0)
+    doc["coverage"]["limits"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty())
+        || doc["coverage"]["unanalysed"]["total"].as_u64() > Some(0)
+        || doc["inventory"]["withheld"].as_u64() > Some(0)
 }
 
 // What an impact answer says about its own completeness, in one comparable
@@ -78,9 +93,9 @@ pub fn disclosure(doc: &Value) -> String {
     format!(
         "empty={} limits={} unanalysed={} withheld={}",
         doc["empty"],
-        doc["limits"],
-        rows(&doc["unanalysed_files"]).count(),
-        doc["withheld_files"].as_u64().unwrap_or(0)
+        doc["coverage"]["limits"],
+        doc["coverage"]["unanalysed"]["total"].as_u64().unwrap_or(0),
+        doc["inventory"]["withheld"].as_u64().unwrap_or(0)
     )
 }
 
@@ -91,8 +106,10 @@ pub fn coverage_disclosed(doc: &Value) -> bool {
     let listed = |key: &str| coverage[key].as_array().is_some_and(|a| !a.is_empty());
     coverage.is_object()
         && (coverage["status"].as_str().is_some_and(|s| s != "complete")
-            || listed("limit_reasons")
-            || listed("unparsed_files"))
+            || listed("limits")
+            || coverage["selection"]["unparsed_files"]
+                .as_array()
+                .is_some_and(|a| !a.is_empty()))
 }
 
 // The fragments a pack answer selected.
@@ -109,34 +126,45 @@ pub fn items(doc: &Value) -> BTreeSet<String> {
         .collect()
 }
 
-const SECTIONS: [&str; 14] = [
-    "changed_files",
-    "untracked_files",
-    "deleted_files",
-    "stale_references",
-    "named_by",
-    "key_searches",
-    "collection_reads",
-    "contracts",
-    "untested_unlisted",
-    "untested_called_in_diff",
-    "entry_unlisted",
-    "layout_only",
-    "lockfile_changes",
-    "unanalysed_files",
+// The sections of an impact answer, each named as it was in v1, with where its
+// entries are in v2.
+const SECTIONS: [(&str, &[&str]); 14] = [
+    ("changed_files", &["/inventory/changed/items"]),
+    ("untracked_files", &["/inventory/untracked/items"]),
+    ("deleted_files", &["/inventory/deleted/items"]),
+    ("stale_references", &["/stale/items"]),
+    ("named_by", &["/named/by_path/items", "/named/by_key/items"]),
+    ("key_searches", &["/named/key_searches"]),
+    ("collection_reads", &["/named/collections/items"]),
+    ("contracts", &["/contracts/items"]),
+    ("untested_unlisted", &["/unlisted/no_caller/items"]),
+    (
+        "untested_called_in_diff",
+        &["/unlisted/called_in_diff/items"],
+    ),
+    ("entry_unlisted", &["/unlisted/entered_by/items"]),
+    ("layout_only", &["/unlisted/layout_only/items"]),
+    ("lockfile_changes", &["/inventory/lockfiles/items"]),
+    ("unanalysed_files", &["/coverage/unanalysed/items"]),
 ];
 
 // How many entries each section of an impact answer holds, callers included.
 pub fn section_sizes(doc: &Value) -> Vec<(String, usize)> {
     let mut sizes: Vec<(String, usize)> = SECTIONS
         .iter()
-        .map(|name| ((*name).to_string(), rows(&doc[*name]).count()))
+        .map(|(name, at)| {
+            let size = at
+                .iter()
+                .map(|p| doc.pointer(p).map_or(0, |v| rows(v).count()))
+                .sum();
+            ((*name).to_string(), size)
+        })
         .collect();
-    sizes.push(("changed".to_string(), rows(&doc["changed"]).count()));
+    sizes.push(("changed".to_string(), rows(&doc["definitions"]).count()));
     sizes.push((
         "callers".to_string(),
-        rows(&doc["changed"])
-            .map(|c| rows(&c["callers"]).count())
+        rows(&doc["definitions"])
+            .map(|c| rows(&c["rows"]).count())
             .sum(),
     ));
     sizes

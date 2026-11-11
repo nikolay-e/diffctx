@@ -15,7 +15,7 @@ from tests.framework.pygit2_backend import Pygit2Repo
 jsonschema = pytest.importorskip("jsonschema")
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
-SCHEMA = json.loads((SCHEMAS / "diffctx.context.v1.json").read_text())
+SCHEMA = json.loads((SCHEMAS / "diffctx.context.v2.json").read_text())
 
 
 def _repo(tmp_path):
@@ -36,12 +36,12 @@ def test_every_surface_emits_the_same_validating_document(tmp_path):
     validator = jsonschema.Draft202012Validator(SCHEMA)
     for diff_range in ("HEAD~1..HEAD", "HEAD~2..HEAD~1", "HEAD~2..HEAD"):
         result = diffctx.build_diff_context(root_dir=repo.path, diff_range=diff_range)
-        assert result["schema"] == "diffctx.context.v1"
+        assert result["schema"] == "diffctx.context.v2"
         document = json.loads(diffctx.to_json(result))
         document.pop("latency", None)
         errors = sorted(validator.iter_errors(document), key=lambda e: list(e.path))
         assert not errors, [f"{list(e.path)}: {e.message}" for e in errors][:5]
-        assert diffctx.to_yaml(result).startswith("schema: diffctx.context.v1\n")
+        assert diffctx.to_yaml(result).startswith("schema: diffctx.context.v2\n")
 
 
 def test_a_capped_run_still_validates(tmp_path, monkeypatch):
@@ -69,15 +69,15 @@ d = json.loads(diffctx.to_json(r)); d.pop("latency", None); print(json.dumps(d))
 
 @pytest.mark.parametrize("diff_range", ["HEAD", "HEAD~1..HEAD", "HEAD~2..HEAD"])
 def test_locate_and_impact_documents_validate_against_their_schemas(tmp_path, diff_range):
-    # `skip_serializing_if` without `default` left `truncated`, `commit_count`
-    # and friends required in the generated schema, so no real document
-    # validated; the Rust pin only proves the file matches the type.
+    # `skip_serializing_if` without `default` left optional fields required in the
+    # generated schema, so no real document validated; the Rust pin only proves
+    # the file matches the type.
     from diffctx._native import build_impact, build_locate
 
     repo = _repo(tmp_path)
     for name, build in (("locate", build_locate), ("impact", build_impact)):
-        schema = json.loads((SCHEMAS / f"diffctx.{name}.v1.json").read_text())
+        schema = json.loads((SCHEMAS / f"diffctx.{name}.v2.json").read_text())
         document = json.loads(build(root_dir=repo.path, diff_range=diff_range))
-        assert document["schema"] == f"diffctx.{name}.v1"
+        assert document["schema"] == f"diffctx.{name}.v2"
         errors = sorted(jsonschema.Draft202012Validator(schema).iter_errors(document), key=lambda e: list(e.path))
         assert not errors, [f"{name} {list(e.path)}: {e.message}" for e in errors][:5]

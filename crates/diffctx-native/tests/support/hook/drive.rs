@@ -247,9 +247,9 @@ pub fn covered_files(world: &World, repo: Repo, range: &str) -> BTreeSet<String>
             String::from_utf8_lossy(&out.stderr)
         )
     });
-    doc["changed_files"]
+    doc["inventory"]["changed"]["items"]
         .as_array()
-        .unwrap_or_else(|| panic!("HARNESS: no changed_files for {range}"))
+        .unwrap_or_else(|| panic!("HARNESS: no changed files for {range}"))
         .iter()
         .filter_map(|f| f.as_str().map(str::to_string))
         .collect()

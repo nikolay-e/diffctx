@@ -514,7 +514,10 @@ impl std::fmt::Display for Gap {
 }
 
 /// Why a file of a definition's interaction group is not accounted for.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(
+    serde::Serialize, schemars::JsonSchema, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Reason {
     ReadFailed,
     Changed,
@@ -1347,6 +1350,10 @@ pub struct Changed {
     /// its visibility changed. A body, doc or decorator edit leaves it. In Kotlin
     /// a definition not public at the head has no place in the surface to move.
     pub api: bool,
+    /// What differs between the two sides of an edited definition, from the facts.
+    pub delta: Option<Delta>,
+    /// `moved` or `renamed`, when the pairing says so.
+    pub origin: Option<&'static str>,
 }
 
 impl Changed {
@@ -1950,6 +1957,8 @@ impl Cell {
                         basis: None,
                         decorated: false,
                         api: false,
+                        delta: None,
+                        origin: None,
                     };
                     // A class that lost its constructor is changed like one whose
                     // constructor was edited: what builds, extends or names it is
@@ -1976,6 +1985,8 @@ impl Cell {
                                     basis: None,
                                     decorated: false,
                                     api: false,
+                                    delta: None,
+                                    origin: None,
                                 },
                             );
                         }
@@ -2007,6 +2018,8 @@ impl Cell {
                                 basis: None,
                                 decorated: false,
                                 api: false,
+                                delta: None,
+                                origin: None,
                             };
                             held.subjects.truncate(1);
                             merge(&mut by_key, held);
@@ -2067,6 +2080,8 @@ impl Cell {
                                 basis: None,
                                 decorated: false,
                                 api: false,
+                                delta: None,
+                                origin: None,
                             };
                             if !self.stale_uses(&gone).0.is_empty() {
                                 removed.push(gone);
@@ -2094,6 +2109,16 @@ impl Cell {
                         changed.decorated = decorated.contains(&d.key);
                         changed.api =
                             api && changed.subjects.first().is_some_and(|s| s.key == d.key);
+                        if changed.subjects.first().is_some_and(|s| s.key == d.key) {
+                            if let DefChange::Changed { origin, delta } = change {
+                                changed.delta = Some(*delta);
+                                changed.origin = match origin {
+                                    Origin::Same => None,
+                                    Origin::Moved { .. } => Some("moved"),
+                                    Origin::Renamed { .. } => Some("renamed"),
+                                };
+                            }
+                        }
                         merge(&mut by_key, changed);
                     }
                 }
@@ -2539,6 +2564,8 @@ impl Cell {
             basis: None,
             decorated: false,
             api: false,
+            delta: None,
+            origin: None,
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
@@ -3858,6 +3885,8 @@ fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
             }
             known.decorated |= changed.decorated;
             known.api |= changed.api;
+            known.delta = known.delta.or(changed.delta);
+            known.origin = known.origin.or(changed.origin);
             known.how = match (known.how, changed.how) {
                 (How::Edited { layout_only: a }, How::Edited { layout_only: b }) => How::Edited {
                     layout_only: a && b,

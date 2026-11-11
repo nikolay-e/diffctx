@@ -69,7 +69,8 @@ fn declared_need(text: &str, format: Format) -> Option<u32> {
     match format {
         Format::Json => serde_json::from_str::<Value>(text)
             .ok()?
-            .get("budget_needed")?
+            .get("fit")?
+            .get("least")?
             .as_u64()
             .and_then(|n| u32::try_from(n).ok()),
         Format::Markdown => text.lines().find_map(|line| {
@@ -99,34 +100,54 @@ struct Whole {
     counted_apart: bool,
 }
 
-fn callers_of(doc: &Value) -> usize {
-    rows(&doc["changed"])
+/// Rows the cap shed, by the ledger of a definition or of an omitted one.
+fn shed_of(ledger: &Value) -> usize {
+    ["resolved", "candidate", "name"]
         .iter()
-        .map(|c| rows(&c["callers"]).len() + count(&c["callers_omitted"]))
+        .map(|kind| count(&ledger[*kind]))
         .sum()
 }
 
+/// The definitions the cap shed whole, as the answer names them.
+fn omitted_names(doc: &Value) -> &[Value] {
+    rows(&doc["omitted"]["definitions"]["items"])
+}
+
+/// The rows of every definition shed whole: the names are trimmed to fit, the
+/// ledger is not.
+fn omitted_shed(doc: &Value) -> usize {
+    shed_of(&doc["omitted"]["shed"])
+}
+
+/// Every caller of the answer: a row listed, or one the cap shed from a listed
+/// definition or took with an omitted one, counted once.
+fn callers_of(doc: &Value) -> usize {
+    let listed: usize = rows(&doc["definitions"])
+        .iter()
+        .map(|d| rows(&d["rows"]).len() + shed_of(&d["shed"]))
+        .sum();
+    listed + omitted_shed(doc)
+}
+
 fn files_of(doc: &Value) -> usize {
-    rows(&doc["changed_files"]).len()
-        + count(&doc["changed_files_omitted"])
-        + rows(&doc["deleted_files"]).len()
+    count(&doc["inventory"]["changed"]["total"]) + count(&doc["inventory"]["deleted"]["total"])
 }
 
 fn whole(repo: &Path, shape: &Shape) -> Whole {
     let text = run(repo, shape, Format::Json, Some(1_000_000));
     let doc: Value = serde_json::from_str(&text).expect("impact JSON");
-    let changed = rows(&doc["changed"]);
+    let definitions = rows(&doc["definitions"]);
     assert!(
-        changed.iter().all(|c| c["kind"] != "omitted"),
+        doc["omitted"].is_null(),
         "{}: nothing is shed with room for everything: {doc:#}",
         shape.name
     );
     Whole {
         files: files_of(&doc),
-        definitions: changed.len(),
+        definitions: definitions.len(),
         callers: callers_of(&doc),
-        counted_apart: changed.iter().any(|c| {
-            rows(&c["callers"]).iter().any(|k| k["evidence"] == "name")
+        counted_apart: definitions.iter().any(|c| {
+            rows(&c["rows"]).iter().any(|k| k["standing"] == "name")
                 || !rows(&c["missed_in"]).is_empty()
         }),
     }
@@ -247,22 +268,20 @@ fn check_json(shape: &Shape, whole: &Whole, schema: &Value, text: &str, at: &str
         whole.callers,
         "{at}: every caller is listed or counted once\n{text}"
     );
-    let shed: usize = rows(&doc["changed"])
+    // One count of what was shed: the summary is the sum of the ledgers, those of the
+    // listed definitions and those of the ones shed whole.
+    let from_listed: usize = rows(&doc["definitions"])
         .iter()
-        .map(|c| count(&c["callers_omitted"]))
+        .map(|d| shed_of(&d["shed"]))
         .sum();
+    let total = count(&doc["omitted"]["definitions"]["total"]);
     assert_eq!(
-        count(&doc["truncated"]),
-        shed,
+        count(&doc["summary"]["shed"]),
+        from_listed + omitted_shed(&doc),
         "{at}: one count of callers\n{text}"
     );
-    let entries: Vec<&Value> = rows(&doc["changed"])
-        .iter()
-        .filter(|c| c["kind"] == "omitted")
-        .collect();
-    assert!(entries.len() <= 1, "{at}: one omitted entry\n{text}");
-    let listed = rows(&doc["changed"]).len() - entries.len();
-    let Some(entry) = entries.first() else {
+    let listed = rows(&doc["definitions"]).len();
+    if doc["omitted"].is_null() {
         if shape.env.is_empty() {
             assert_eq!(
                 listed, whole.definitions,
@@ -270,12 +289,8 @@ fn check_json(shape: &Shape, whole: &Whole, schema: &Value, text: &str, at: &str
             );
         }
         return;
-    };
-    let counted: usize = entry["unresolved"]
-        .as_str()
-        .and_then(|note| note.split_whitespace().next())
-        .and_then(|n| n.parse().ok())
-        .unwrap_or_else(|| panic!("{at}: the entry counts its definitions\n{text}"));
+    }
+    let counted = total;
     if shape.env.is_empty() {
         assert_eq!(
             listed + counted,
@@ -283,7 +298,7 @@ fn check_json(shape: &Shape, whole: &Whole, schema: &Value, text: &str, at: &str
             "{at}: a definition is counted twice or not at all\n{text}"
         );
     }
-    let named = rows(&entry["omitted"]);
+    let named = omitted_names(&doc);
     assert!(
         !named.is_empty(),
         "{at}: the first omitted name stays\n{text}"
@@ -291,23 +306,6 @@ fn check_json(shape: &Shape, whole: &Whole, schema: &Value, text: &str, at: &str
     assert!(
         named.len() <= counted,
         "{at}: more names than definitions\n{text}"
-    );
-    let named_callers: usize = named.iter().map(|d| count(&d["callers_omitted"])).sum();
-    if named.len() == counted {
-        assert_eq!(
-            count(&entry["callers_omitted"]),
-            named_callers,
-            "{at}\n{text}"
-        );
-    } else {
-        assert!(
-            count(&entry["callers_omitted"]) >= named_callers,
-            "{at}\n{text}"
-        );
-    }
-    assert!(
-        rows(&entry["callers"]).is_empty(),
-        "{at}: a stub lists no caller\n{text}"
     );
 }
 
@@ -466,13 +464,10 @@ fn check(shape: &Shape) {
 fn listed_rows(text: &str) -> std::collections::BTreeSet<String> {
     let doc: Value = serde_json::from_str(text).expect("impact JSON");
     let mut out = std::collections::BTreeSet::new();
-    for changed in rows(&doc["changed"])
-        .iter()
-        .filter(|c| c["kind"] != "omitted")
-    {
+    for changed in rows(&doc["definitions"]) {
         let owner = format!("{}::{}", changed["path"], changed["symbol"]);
         out.insert(owner.clone());
-        for caller in rows(&changed["callers"]) {
+        for caller in rows(&changed["rows"]) {
             out.insert(format!(
                 "{owner} <- {} {}",
                 caller["path"], caller["symbol"]
@@ -723,4 +718,214 @@ fn the_budget_holds_for_non_ascii_names() {
         env: &[],
         named: None,
     });
+}
+
+// Pack and locate keep the same contract through the same fitter: at any budget the
+// artifact is within it, or it says that the least it can say does not fit and
+// names the tokens that least takes. Both are charged for every byte printed;
+// pack's leaves the raw diff out (none is asked for), and locate lists no overflow
+// entries unless asked.
+
+/// Stdout and exit status of one run of `mode` (pack when empty) at `budget`.
+/// Exit 4 is "no semantic context": the artifact is still printed, and a budget
+/// below the least is how a run gets there.
+fn run_artifact(repo: &Path, mode: &str, format: &str, budget: u32) -> String {
+    let mut args = vec!["--diff", "HEAD~1..HEAD", "-q", "-f", format];
+    if !mode.is_empty() {
+        args.extend(["--mode", mode]);
+    }
+    let budget = budget.to_string();
+    args.extend(["--budget", &budget]);
+    let out = diffctx()
+        .current_dir(repo)
+        .args(&args)
+        .output()
+        .expect("run diffctx");
+    assert!(
+        matches!(out.status.code(), Some(0 | 4)),
+        "{mode} {format} --budget {budget}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("utf8")
+}
+
+/// The tokens an artifact says its least takes, when it says it does not fit.
+fn artifact_need(text: &str, format: &str) -> Option<u32> {
+    if format == "json" || text.starts_with('{') {
+        serde_json::from_str::<Value>(text)
+            .ok()?
+            .get("fit")?
+            .get("least")?
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+    } else {
+        Regex::new(r"(?m)^  least: (\d+)$")
+            .expect("regex")
+            .captures(text)?[1]
+            .parse()
+            .ok()
+    }
+}
+
+fn artifact_check(name: &str, mode: &str, format: &str, build: fn(&Path)) {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    build(repo);
+    let at_most = |budget: u32| run_artifact(repo, mode, format, budget);
+    let least = artifact_need(&at_most(1), format)
+        .unwrap_or_else(|| panic!("{name} {format}: one token is below any artifact"));
+    let whole: Value = serde_json::from_str(&run_artifact(repo, mode, "json", 1_000_000))
+        .expect("the whole artifact");
+    let changed_files = rows(&whole["inventory"]["changed"]["items"]).len();
+    for budget in [
+        least.saturating_sub(1).max(1),
+        least,
+        least + 1,
+        150,
+        200,
+        300,
+        1_000,
+        8_000,
+    ] {
+        let at = format!("{name} {mode} {format} budget {budget} (least {least})");
+        let text = at_most(budget);
+        let cost = _diffctx::tokenizer::count_tokens(&text);
+        match artifact_need(&text, format) {
+            Some(needed) => {
+                assert!(
+                    needed > budget,
+                    "{at}: declared too small at {needed}\n{text}"
+                );
+                assert!(
+                    needed <= least + 8,
+                    "{at}: the least is one number (read {least}, said {needed})\n{text}"
+                );
+            }
+            None => assert!(cost <= budget, "{at}: {cost} tokens\n{text}"),
+        }
+        if format != "json" {
+            continue;
+        }
+        let doc: Value = serde_json::from_str(&text).expect("artifact JSON");
+        if mode == "locate" {
+            let items = rows(&doc["items"]);
+            assert!(
+                doc.get("item_count").is_none(),
+                "{at}: a count beside its list"
+            );
+            assert_eq!(
+                count(&doc["summary"]["changed"]) + count(&doc["summary"]["context"]),
+                items.len(),
+                "{at}: the summary counts the items"
+            );
+            let paths: std::collections::BTreeSet<&str> =
+                items.iter().filter_map(|i| i["path"].as_str()).collect();
+            assert_eq!(count(&doc["summary"]["files"]), paths.len(), "{at}: files");
+            for file in rows(&doc["inventory"]["changed"]["items"])
+                .iter()
+                .filter_map(Value::as_str)
+            {
+                assert!(
+                    paths.contains(file),
+                    "{at}: the first item of a changed file stays: {file}"
+                );
+            }
+        } else {
+            let fragments = rows(&doc["fragments"]);
+            assert!(
+                doc.get("fragment_count").is_none(),
+                "{at}: a count beside its list"
+            );
+            assert_eq!(
+                rows(&doc["inventory"]["changed"]["items"]).len(),
+                changed_files,
+                "{at}: the inventory is never cut"
+            );
+            for change in rows(&doc["changes"]) {
+                let path = change["path"].as_str().unwrap_or("");
+                let shown = fragments.iter().any(|f| f["path"] == path);
+                assert!(
+                    change["no_fragments"] == true || change["represented"] == shown,
+                    "{at}: `represented` of {path} disagrees with the fragments\n{text}"
+                );
+            }
+        }
+    }
+}
+
+/// Eight changed files of six functions each.
+fn many_fragments(repo: &Path) {
+    let body = |k: u32| -> String {
+        (0..6)
+            .map(|i| format!("def op_{i}(x):\n    y = x + {k}\n    return y * {i}\n\n\n"))
+            .collect()
+    };
+    for f in 0..8 {
+        write(repo, &format!("pkg/m{f}.py"), &body(1));
+    }
+    commit_all(repo, "base");
+    for f in 0..8 {
+        write(repo, &format!("pkg/m{f}.py"), &body(2));
+    }
+    commit_all(repo, "rewrite");
+}
+
+/// One file whose single function is rewritten: its fragment is shortened, not
+/// dropped, as the budget falls.
+fn one_big_rewrite(repo: &Path) {
+    let body = |k: u32| -> String {
+        let steps: String = (0..60)
+            .map(|i| format!("    step_{i} = rows[{i}] * {k}\n"))
+            .collect();
+        format!("def plan(rows):\n{steps}    return step_0\n")
+    };
+    write(repo, "plan.py", &body(1));
+    commit_all(repo, "base");
+    write(repo, "plan.py", &body(2));
+    commit_all(repo, "rewrite");
+}
+
+/// A changed module with fifteen functions, each called from a file of its own.
+fn callers_as_context(repo: &Path) {
+    let api = |k: u32| -> String {
+        (0..15)
+            .map(|i| format!("def op_{i:02}(x):\n    return x + {i} + {k}\n\n\n"))
+            .collect()
+    };
+    write(repo, "lib/api.py", &api(0));
+    for i in 0..15 {
+        write(
+            repo,
+            &format!("client/c_{i:02}.py"),
+            &format!(
+                "from lib.api import op_{i:02}\n\n\ndef run_{i:02}():\n    return op_{i:02}(1)\n"
+            ),
+        );
+    }
+    commit_all(repo, "base");
+    write(repo, "lib/api.py", &api(1));
+    commit_all(repo, "change");
+}
+
+#[test]
+fn the_pack_budget_holds_with_many_fragments() {
+    artifact_check("many fragments", "", "json", many_fragments);
+    artifact_check("many fragments", "", "yaml", many_fragments);
+}
+
+#[test]
+fn the_pack_budget_holds_when_one_fragment_is_shortened() {
+    artifact_check("one big rewrite", "", "json", one_big_rewrite);
+    artifact_check("one big rewrite", "", "yaml", one_big_rewrite);
+}
+
+#[test]
+fn the_locate_budget_holds_with_callers_as_context() {
+    artifact_check("callers as context", "locate", "json", callers_as_context);
+}
+
+#[test]
+fn the_locate_budget_holds_with_many_changed_files() {
+    artifact_check("many changed files", "locate", "json", many_fragments);
 }

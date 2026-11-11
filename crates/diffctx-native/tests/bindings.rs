@@ -62,15 +62,25 @@ fn markdown(repo: &Path) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
+/// What a row's evidence is in the claims this suite makes: a re-export is
+/// counted apart from a resolved caller.
+fn evidence_of(row: &serde_json::Value) -> &str {
+    if row["class"] == "reexports" {
+        "reexport"
+    } else {
+        row["standing"].as_str().unwrap_or("")
+    }
+}
+
 /// `path::symbol` of every caller of `symbol` with the given evidence.
 fn callers(doc: &serde_json::Value, symbol: &str, evidence: &str) -> Vec<String> {
-    let mut found: Vec<String> = doc["changed"]
+    let mut found: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == symbol)
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
-        .filter(|c| c["evidence"] == evidence)
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
+        .filter(|c| evidence_of(c) == evidence)
         .map(|c| {
             format!(
                 "{}::{}",
@@ -88,11 +98,11 @@ fn caller<'a>(
     symbol: &str,
     path: &str,
 ) -> Option<&'a serde_json::Value> {
-    doc["changed"]
+    doc["definitions"]
         .as_array()?
         .iter()
         .filter(|c| c["symbol"] == symbol)
-        .flat_map(|c| c["callers"].as_array().into_iter().flatten())
+        .flat_map(|c| c["rows"].as_array().into_iter().flatten())
         .find(|c| c["path"] == path)
 }
 
@@ -164,7 +174,7 @@ fn a_method_resolves_through_its_receiver_and_only_through_it() {
     );
     if let Some(c) = caller(&doc, "message", "pkg_a/factory.py") {
         assert_eq!(
-            c["evidence"], "candidate",
+            c["standing"], "candidate",
             "a factory's product is unknown: {doc}"
         );
     }
@@ -304,7 +314,7 @@ fn module_level_code_split_into_chunks_is_one_caller() {
         &[("web/App.tsx", "export function App() {\n  return 2;\n}\n")],
     );
     let doc = impact(tmp.path());
-    let from_main: Vec<&serde_json::Value> = doc["changed"][0]["callers"]
+    let from_main: Vec<&serde_json::Value> = doc["definitions"][0]["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -410,7 +420,7 @@ fn an_alias_is_a_caller_its_tests_reach_and_shadowing_breaks_it() {
         "{doc}"
     );
     let by_symbol = |name: &str| {
-        doc["changed"][0]["callers"]
+        doc["definitions"][0]["rows"]
             .as_array()
             .unwrap()
             .iter()
@@ -419,20 +429,20 @@ fn an_alias_is_a_caller_its_tests_reach_and_shadowing_breaks_it() {
             .unwrap()
     };
     let is_slow = by_symbol("is_slow");
-    assert_eq!(is_slow["tested_by"], "tests/test_checkout.py", "{doc}");
-    let later = doc["changed"][0]["callers"]
+    assert_eq!(is_slow["guard"]["test"], "tests/test_checkout.py", "{doc}");
+    let later = doc["definitions"][0]["rows"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["symbol"] == "later")
         .unwrap();
     assert_eq!(
-        later["relation"], "reference",
+        later["class"], "reference",
         "passing the alias on is not a call: {doc}"
     );
     let badge = caller(&doc, "elapsed", "shop/view.py").unwrap();
     assert!(
-        badge.get("tested_by").is_none(),
+        badge["guard"]["test"].is_null(),
         "a same-named helper in another test is not a test of shop/view.py::badge: {doc}"
     );
     let text = markdown(tmp.path());
@@ -462,17 +472,17 @@ fn a_trait_method_reached_by_dynamic_dispatch_is_never_reported_as_uncalled() {
         )],
     );
     let doc = impact(tmp.path());
-    let build = doc["changed"]
+    let build = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["symbol"] == "build")
         .unwrap_or_else(|| panic!("the dispatched method must be listed: {doc}"));
     assert!(
-        build["unresolved"]
-            .as_str()
+        build["gaps"]
+            .as_array()
             .unwrap()
-            .contains("dyn Builder"),
+            .contains(&serde_json::json!({"kind": "dispatched", "via": "Builder"})),
         "{doc}"
     );
     let text = markdown(tmp.path());
@@ -500,17 +510,22 @@ fn a_name_defined_everywhere_says_so_and_a_qualified_query_still_resolves() {
         &[("src/app/A.scala", &def("A", 10))],
     );
     let doc = impact(tmp.path());
-    let build = doc["changed"]
+    let build = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
         .find(|c| c["symbol"] == "build")
         .unwrap_or_else(|| panic!("{doc}"));
     assert!(
-        build["unresolved"]
-            .as_str()
+        build["gaps"]
+            .as_array()
             .unwrap()
-            .contains("`build` is ambiguous: 3 scala definitions"),
+            .contains(&serde_json::json!({
+                "kind": "ambiguous",
+                "name": "build",
+                "definitions": 3,
+                "language": "scala"
+            })),
         "{doc}"
     );
     let out = run(
@@ -876,7 +891,7 @@ fn removed_go_package_constants_name_the_readers_they_break() {
     for evidence in ["candidate", "name"] {
         assert!(callers(&doc, "MaxRetries", evidence).is_empty(), "{doc}");
     }
-    let removed: Vec<&str> = doc["contracts"]
+    let removed: Vec<&str> = doc["contracts"]["items"]
         .as_array()
         .into_iter()
         .flatten()
@@ -887,7 +902,7 @@ fn removed_go_package_constants_name_the_readers_they_break() {
     // (`decide.rs`), not by name or by reader count.
     assert_eq!(removed, vec!["MaxRetries", "Backoff"], "{doc}");
     assert!(
-        !doc["changed"]
+        !doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
@@ -917,12 +932,12 @@ fn module_level_calls_stay_beside_a_function_level_caller() {
         )],
     );
     let doc = impact(tmp.path());
-    let sites: Vec<u64> = doc["changed"]
+    let sites: Vec<u64> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "register")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .flat_map(|c| c["sites"].as_array().cloned().unwrap_or_default())
         .filter_map(|s| s.as_u64())
         .collect();
@@ -1023,7 +1038,7 @@ fn selftest_scripts_are_tests() {
     );
     let doc = impact(tmp.path());
     let c = caller(&doc, "util", "scripts/qa.mjs").expect("qa.mjs calls util");
-    assert_eq!(c["tested_by"], "scripts/selftest-qa.mjs", "{doc}");
+    assert_eq!(c["guard"]["test"], "scripts/selftest-qa.mjs", "{doc}");
 }
 
 /// #497: a shell function is called by name as a command word — from its
@@ -1050,12 +1065,12 @@ fn shell_functions_are_called_from_script_bodies_and_sourcing_scripts() {
         )],
     );
     let doc = impact(tmp.path());
-    let paths: Vec<String> = doc["changed"]
+    let paths: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == "run_tool")
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| c["path"].as_str().unwrap().to_string())
         .collect();
     assert!(paths.contains(&"lib.sh".to_string()), "{doc}");
@@ -1094,7 +1109,7 @@ fn a_call_in_a_local_const_belongs_to_its_function() {
         "{doc}"
     );
     let c = caller(&doc, "rows", "tools/report.mjs").unwrap();
-    assert_eq!(c["tested_by"], "tests/report.test.mjs", "{doc}");
+    assert_eq!(c["guard"]["test"], "tests/report.test.mjs", "{doc}");
 }
 
 /// #318: a changed constructor is called by its class's name — through a
@@ -1178,12 +1193,12 @@ fn a_dynamic_import_binds_its_module() {
         )],
     );
     let doc = impact(tmp.path());
-    let found: Vec<String> = doc["changed"]
+    let found: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
-        .filter(|c| c["evidence"] == "resolved")
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
+        .filter(|c| c["standing"] == "resolved")
         .map(|c| c["path"].as_str().unwrap().to_string())
         .collect();
     assert!(found.contains(&"src/PlayerBar.tsx".to_string()), "{doc}");

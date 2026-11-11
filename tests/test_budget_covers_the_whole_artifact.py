@@ -66,7 +66,7 @@ def test_a_budget_smaller_than_the_summary_yields_the_summary_alone(tmp_path):
     # Deliberate: a changed path is never dropped to fit, so the summary can
     # exceed a budget that cannot hold it — but nothing else is spent.
     assert not result.get("fragments")
-    assert len(result["changed_files"]) == FILE_COUNT
+    assert len(result["inventory"]["changed"]["items"]) == FILE_COUNT
     assert count_tokens(md) > 100
 
 
@@ -76,9 +76,9 @@ def test_the_changed_file_list_is_printed_once(tmp_path):
     # Without an actual omission there is no second list to find, and the
     # assertion below would hold on the pre-#241 build too.
     represented = {f["path"] for f in result.get("fragments") or []}
-    assert set(result["changed_files"]) - represented, "the budget must force at least one omission"
+    assert set(result["inventory"]["changed"]["items"]) - represented, "the budget must force at least one omission"
     assert "not represented in the output" not in md
-    for path in result["changed_files"]:
+    for path in result["inventory"]["changed"]["items"]:
         assert md.count(f"`{path}`") == 1, f"{path} appears more than once in the artifact"
 
 
@@ -127,7 +127,7 @@ def test_budget_fitting_drops_context_whole_and_never_marks_it_as_the_change(tmp
     assert any(f["path"] == "lib/helpers.py" and len(f["content"].splitlines()) > 50 for f in context), context
 
     changed_tokens = sum(count_tokens(f["content"]) for f in tree["fragments"] if f.get("role") == "changed")
-    tree["provenance"]["selection"]["budget_tokens"] = count_tokens(json.dumps({**tree, "fragments": []})) + changed_tokens + 60
+    tree["fit"]["cap"] = count_tokens(json.dumps({**tree, "fragments": []})) + changed_tokens + 60
     fitted, _ = fit_artifact(tree, "json")
     for fragment in fitted["fragments"]:
         if fragment.get("role") != "changed":

@@ -2,19 +2,26 @@
 //!
 //! One renderer per format and one fit to `--budget`, measured on the text
 //! it returns: the native binary, the Python CLI and the MCP server all hand
-//! their serialized document here (#507). They used to fit in three places
-//! on three different texts, and the Python copy cut JSON and YAML by
-//! position, production before docs (#438).
+//! their document here (#507). They used to fit in three places on three
+//! different texts, and the Python copy cut JSON and YAML by position,
+//! production before docs (#438). The document is the typed
+//! [`DiffContextOutput`]; a dict from the Python bridge parses into it first
+//! ([`fit_value`]).
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::{Serialize, Serializer};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
+use crate::answer::v2::Range;
 use crate::change_class::ChangeClass;
-use crate::resource::{CoverageReport, LimitReason, ResourceUsage};
+use crate::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
+use crate::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 use crate::tokenizer::count_tokens;
+
+/// More tokens than the `needs` line of a document ever takes.
+const NEEDS_LINE_TOKENS: u32 = 16;
 
 /// What `--budget -1` resolves to in every door: a ceiling no fit applies.
 pub const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
@@ -39,86 +46,136 @@ impl Format {
     }
 }
 
+/// A dict a door holds, as the document it denotes. A document of another schema
+/// is refused, never read as this one.
+pub fn parse(doc: &Value) -> Result<DiffContextOutput, String> {
+    let pack: DiffContextOutput = serde_json::from_value(doc.clone())
+        .map_err(|e| format!("not a {CONTEXT_SCHEMA} document: {e}"))?;
+    if pack.schema != CONTEXT_SCHEMA {
+        return Err(format!(
+            "unknown schema {:?}: this build reads {CONTEXT_SCHEMA}",
+            pack.schema
+        ));
+    }
+    Ok(pack)
+}
+
+/// [`fit`] on a dict: parsed, cut and rendered, with the fitted document written
+/// back over it.
+pub fn fit_value(doc: &mut Value, format: Format) -> Result<String, String> {
+    let mut pack = parse(doc)?;
+    let rendered = fit(&mut pack, format);
+    *doc = serde_json::to_value(&pack).map_err(|e| e.to_string())?;
+    Ok(rendered)
+}
+
 /// The text `--budget` bounds, cut until it fits.
 ///
 /// The whole document as the reader receives it, cut to the budget the run
-/// recorded (auto included). The selection charged an estimate of the
+/// recorded in `fit` (auto included). The selection charged an estimate of the
 /// envelope; this is the measurement. Context goes from the tail first, then changed fragments lowest evidence
 /// tier first; the inventory, coverage and provenance never go. The raw
-/// diff is verbatim input, documented as not charged to `--budget`.
-pub fn fit(doc: &mut Value, format: Format) -> String {
-    let mut rendered = render(doc, format);
-    let Some(budget) = recorded_budget(doc) else {
-        return rendered;
+/// diff is verbatim input, documented as not charged to `--budget`: `fit.exempt`
+/// says how much it is.
+pub fn fit(pack: &mut DiffContextOutput, format: Format) -> String {
+    let Some(cap) = recorded_budget(pack) else {
+        return render(pack, format);
     };
-    while charged_tokens(doc, format, &rendered) > budget && drop_one_fragment(doc) {
-        rendered = render(doc, format);
+    // The patch's weight is stated after the cut, never charged by it: the line
+    // that declares an exemption is part of it, so the same budget keeps the same
+    // fragments with the patch carried and without.
+    let exempt = pack.raw_diff.as_deref().map_or(0, count_tokens);
+    if let Some(fit) = pack.fit.as_mut() {
+        fit.exempt = 0;
     }
-    rendered
+    let measure = |p: &DiffContextOutput| count_tokens(&render_with(p, format, false));
+    // What showing everything would take, to the next hundred tokens.
+    let whole = measure(&*pack);
+    if let Some(fit) = pack.fit.as_mut() {
+        fit.needs = whole.div_ceil(100) * 100;
+    }
+    // The `needs` line is part of the document: a margin it cannot outgrow spares
+    // measuring again.
+    if whole + NEEDS_LINE_TOKENS <= cap || measure(&*pack) <= cap {
+        return declare_exempt(pack, exempt, format);
+    }
+    crate::fit::shed_to_fit(pack, cap, &measure);
+    // The least the artifact can say may outgrow the budget: said, not cut into.
+    let least = measure(&*pack);
+    if least > cap {
+        if let Some(fit) = pack.fit.as_mut() {
+            fit.least = Some(least);
+        }
+    }
+    declare_exempt(pack, exempt, format)
 }
 
-pub fn render(doc: &Value, format: Format) -> String {
-    render_with(doc, format, true)
+fn declare_exempt(pack: &mut DiffContextOutput, exempt: u32, format: Format) -> String {
+    if let Some(fit) = pack.fit.as_mut() {
+        fit.exempt = exempt;
+    }
+    render(pack, format)
 }
 
-fn recorded_budget(doc: &Value) -> Option<u32> {
-    doc.pointer("/provenance/selection/budget_tokens")?
-        .as_u64()
-        .filter(|&b| b > 0 && b < u64::from(UNLIMITED_BUDGET_TOKENS))
-        .map(|b| b as u32)
-}
-
-fn charged_tokens(doc: &Value, format: Format, rendered: &str) -> u32 {
-    if truthy(doc.get("raw_diff")) {
-        count_tokens(&render_with(doc, format, false))
-    } else {
-        count_tokens(rendered)
+/// A pack document, shed a fragment at a time.
+impl crate::fit::Shed for DiffContextOutput {
+    fn shed_one(&mut self) -> bool {
+        drop_one_fragment(self)
     }
 }
 
-fn render_with(doc: &Value, format: Format, raw_diff: bool) -> String {
-    let delivered = Delivered { doc, raw_diff };
+/// The line that says the budget could not hold even the least the artifact says.
+fn budget_note(pack: &DiffContextOutput) -> Option<String> {
+    let fit = pack.fit.as_ref()?;
+    let needed = fit.least?;
+    Some(format!(
+        "(budget too small: the least this artifact can say takes {needed} tokens, over the {} asked; `--budget {needed}` or a larger one delivers it without this note)",
+        fit.cap
+    ))
+}
+
+pub fn render(pack: &DiffContextOutput, format: Format) -> String {
+    render_with(pack, format, true)
+}
+
+fn recorded_budget(pack: &DiffContextOutput) -> Option<u32> {
+    pack.fit
+        .as_ref()
+        .map(|f| f.cap)
+        .filter(|&b| b > 0 && b < UNLIMITED_BUDGET_TOKENS)
+}
+
+fn render_with(pack: &DiffContextOutput, format: Format, raw_diff: bool) -> String {
     match format {
         Format::Json => format!(
             "{}\n",
-            serde_json::to_string_pretty(&delivered).unwrap_or_default()
+            serde_json::to_string_pretty(&delivered(pack, raw_diff)).unwrap_or_default()
         ),
-        Format::Yaml => yaml(&delivered),
-        Format::Md => markdown(doc, raw_diff),
-        Format::Txt => text(doc, raw_diff),
+        Format::Yaml => yaml(&delivered(pack, raw_diff)),
+        Format::Md => markdown(pack, raw_diff),
+        Format::Txt => text(pack, raw_diff),
     }
 }
 
-/// The document without `latency`, telemetry the Python bridge carries
-/// beside the artifact, and with or without the raw diff.
-struct Delivered<'a> {
-    doc: &'a Value,
-    raw_diff: bool,
-}
-
-impl Delivered<'_> {
-    fn entries(&self) -> impl Iterator<Item = (&String, &Value)> {
-        self.doc
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter(|(k, _)| k.as_str() != "latency" && (self.raw_diff || k.as_str() != "raw_diff"))
+/// The document as serialized, with or without the raw diff. `latency`,
+/// telemetry the Python bridge carries beside the artifact, is never in it.
+fn delivered(pack: &DiffContextOutput, raw_diff: bool) -> Value {
+    let mut value = serde_json::to_value(pack).unwrap_or(Value::Null);
+    if !raw_diff {
+        if let Some(map) = value.as_object_mut() {
+            map.shift_remove("raw_diff");
+        }
     }
-}
-
-impl Serialize for Delivered<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_map(self.entries())
-    }
+    value
 }
 
 /// Block YAML that a YAML 1.1 reader (`PyYAML`) and a 1.2 one read alike: a
 /// string is plain only when no resolver can take it for anything else — a
 /// symbol named `off` or `y` stays a string, and `=` does not crash the
 /// reader — and a multi-line value is a literal block.
-fn yaml(delivered: &Delivered) -> String {
+fn yaml(document: &Value) -> String {
     let mut out = String::new();
-    for (key, value) in delivered.entries() {
+    for (key, value) in document.as_object().into_iter().flatten() {
         yaml_entry(&mut out, key, value, "");
     }
     out
@@ -254,21 +311,13 @@ fn yaml_block(out: &mut String, key: &str, s: &str, indent: &str) {
 
 /// One fragment fewer, or a changed one shortened; `false` once nothing is
 /// left to drop.
-fn drop_one_fragment(doc: &mut Value) -> bool {
-    let Some(obj) = doc.as_object_mut() else {
-        return false;
-    };
-    let classes: FxHashMap<String, ChangeClass> = list(obj.get("changes"))
+fn drop_one_fragment(pack: &mut DiffContextOutput) -> bool {
+    let classes: FxHashMap<&str, ChangeClass> = pack
+        .changes
         .iter()
-        .filter_map(|c| {
-            let class = serde_json::from_value(c.get("class")?.clone()).ok()?;
-            Some((str_at(c, "path").to_string(), class))
-        })
+        .map(|c| (c.path.as_str(), c.class))
         .collect();
-    let Some(fragments) = obj.get_mut("fragments").and_then(Value::as_array_mut) else {
-        return false;
-    };
-    let Some(index) = drop_index(fragments, &classes) else {
+    let Some(index) = drop_index(&pack.fragments, &classes) else {
         return false;
     };
     // A changed fragment is shortened from its tail before it goes: a larger
@@ -276,92 +325,47 @@ fn drop_one_fragment(doc: &mut Value) -> bool {
     // of `plan` vanished at the budget where a smaller one showed its
     // signature, while the one-line bumps above it stayed (#438). Context
     // has no such floor and drops whole.
-    let changed = str_at(&fragments[index], "role") == "changed";
-    if !(changed && halve_witness(&mut fragments[index])) {
-        fragments.remove(index);
+    let changed = pack.fragments[index].role.as_deref() == Some("changed");
+    if !(changed && halve_witness(&mut pack.fragments[index])) {
+        pack.fragments.remove(index);
     }
-    let represented: FxHashSet<String> = fragments
-        .iter()
-        .map(|f| str_at(f, "path").to_string())
-        .collect();
-    let count = fragments.len();
-    obj.insert("fragment_count".to_string(), count.into());
+    let represented: FxHashSet<&str> = pack.fragments.iter().map(|f| f.path.as_str()).collect();
     let mut unrepresented = false;
-    if let Some(changes) = obj.get_mut("changes").and_then(Value::as_array_mut) {
-        for change in changes.iter_mut().filter_map(Value::as_object_mut) {
-            let shown = change
-                .get("path")
-                .and_then(Value::as_str)
-                .is_some_and(|p| represented.contains(p));
-            unrepresented |= !shown && !truthy(change.get("no_fragments"));
-            change.insert("represented".to_string(), shown.into());
-        }
+    for change in &mut pack.changes {
+        let shown = represented.contains(change.path.as_str());
+        unrepresented |= !shown && !change.no_fragments;
+        change.represented = shown;
     }
-    record_cut(obj, unrepresented);
+    record_cut(pack, unrepresented);
     true
 }
 
-fn record_cut(obj: &mut Map<String, Value>, unrepresented: bool) {
-    if !obj.get("coverage").is_some_and(Value::is_object) {
-        let fresh = CoverageReport {
-            status: "partial",
-            limit_reasons: Vec::new(),
-            capped: Vec::new(),
-            limited_files: Vec::new(),
-            resources: ResourceUsage::default(),
-            unknown: vec!["resources"],
-            lossy_files: Vec::new(),
-        };
-        let at = obj
-            .keys()
-            .position(|k| k == "redactions" || k == "latency")
-            .unwrap_or(obj.len());
-        obj.shift_insert(
-            at,
-            "coverage".to_string(),
-            serde_json::to_value(fresh).unwrap_or_default(),
-        );
+fn record_cut(pack: &mut DiffContextOutput, unrepresented: bool) {
+    let coverage = pack.coverage.get_or_insert_with(|| CoverageReport {
+        status: CoverageStatus::Partial,
+        limits: Vec::new(),
+        capped: Vec::new(),
+        limited_files: Vec::new(),
+        resources: ResourceUsage::default(),
+        unknown: vec!["resources".to_string()],
+        lossy_files: Vec::new(),
+    });
+    let cut = LimitReason::SelectionBudgetExceeded;
+    if !coverage.limits.contains(&cut) {
+        coverage.limits.push(cut);
     }
-    let Some(coverage) = obj.get_mut("coverage").and_then(Value::as_object_mut) else {
-        return;
-    };
-    let cut = serde_json::to_value(LimitReason::SelectionBudgetExceeded).unwrap_or_default();
-    if !coverage.contains_key("limit_reasons") {
-        let after_status = coverage
-            .keys()
-            .position(|k| k == "status")
-            .map_or(0, |i| i + 1);
-        coverage.shift_insert(
-            after_status,
-            "limit_reasons".to_string(),
-            Value::Array(Vec::new()),
-        );
-    }
-    if let Some(reasons) = coverage
-        .get_mut("limit_reasons")
-        .and_then(Value::as_array_mut)
-    {
-        if !reasons.contains(&cut) {
-            reasons.push(cut);
-        }
-    }
-    let status = if unrepresented {
-        Some("degraded")
-    } else if coverage.get("status").and_then(Value::as_str) == Some("complete") {
-        Some("partial")
-    } else {
-        None
-    };
-    if let Some(status) = status {
-        coverage.insert("status".to_string(), status.into());
+    if unrepresented {
+        coverage.status = CoverageStatus::Degraded;
+    } else if coverage.status == CoverageStatus::Complete {
+        coverage.status = CoverageStatus::Partial;
     }
 }
 
 const CLIPPED_MARKER_PREFIX: &str = "… [";
 const CLIPPED_MARKER_SUFFIX: &str = " more lines of this change]";
 
-fn halve_witness(fragment: &mut Value) -> bool {
-    let Some(content) = fragment.get("content").and_then(Value::as_str) else {
+fn halve_witness(fragment: &mut FragmentEntry) -> bool {
+    let Some(content) = fragment.content.as_deref() else {
         return false;
     };
     let mut lines: Vec<&str> = content.lines().collect();
@@ -384,13 +388,14 @@ fn halve_witness(fragment: &mut Value) -> bool {
         "{}\n{CLIPPED_MARKER_PREFIX}{hidden}{CLIPPED_MARKER_SUFFIX}\n",
         lines[..keep].join("\n")
     );
-    let start: usize = str_at(fragment, "lines")
+    let start: usize = fragment
+        .lines
         .split('-')
         .next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
-    fragment["lines"] = format!("{start}-{}", start + keep - 1).into();
-    fragment["content"] = clipped.into();
+    fragment.lines = format!("{start}-{}", start + keep - 1);
+    fragment.content = Some(Arc::from(clipped.as_str()));
     true
 }
 
@@ -402,71 +407,41 @@ fn halve_witness(fragment: &mut Value) -> bool {
 /// in, and from the tail within a tier. By position alone the production
 /// file went first because `zsrc/` sorts after `README.md` and `tests/`
 /// (#411, #438).
-fn drop_index(fragments: &[Value], classes: &FxHashMap<String, ChangeClass>) -> Option<usize> {
+fn drop_index(
+    fragments: &[FragmentEntry],
+    classes: &FxHashMap<&str, ChangeClass>,
+) -> Option<usize> {
     if let Some(i) = fragments
         .iter()
-        .rposition(|f| str_at(f, "role") != "changed")
+        .rposition(|f| f.role.as_deref() != Some("changed"))
     {
         return Some(i);
     }
-    let tier = |f: &Value| {
-        let path = str_at(f, "path");
-        let class = classes.get(path).copied().unwrap_or(ChangeClass::Content);
-        crate::pipeline::evidence_tier(path, class)
+    let tier = |f: &FragmentEntry| {
+        let class = classes
+            .get(f.path.as_str())
+            .copied()
+            .unwrap_or(ChangeClass::Content);
+        crate::pipeline::evidence_tier(&f.path, class)
     };
     let mut per_file: FxHashMap<&str, usize> = FxHashMap::default();
     for f in fragments {
-        *per_file.entry(str_at(f, "path")).or_default() += 1;
+        *per_file.entry(f.path.as_str()).or_default() += 1;
     }
     let lowest_from_the_tail = |second: bool| {
         (0..fragments.len())
-            .filter(|&i| !second || per_file[str_at(&fragments[i], "path")] > 1)
+            .filter(|&i| !second || per_file[fragments[i].path.as_str()] > 1)
             .max_by_key(|&i| (tier(&fragments[i]), i))
     };
     lowest_from_the_tail(true).or_else(|| lowest_from_the_tail(false))
 }
 
-fn str_at<'a>(v: &'a Value, key: &str) -> &'a str {
-    v.get(key).and_then(Value::as_str).unwrap_or_default()
-}
-
-fn list(v: Option<&Value>) -> &[Value] {
-    v.and_then(Value::as_array).map_or(&[], Vec::as_slice)
-}
-
-/// Python's truthiness, which decided what the reader formats showed.
-fn truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|x| x != 0.0),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Array(a)) => !a.is_empty(),
-        Some(Value::Object(o)) => !o.is_empty(),
-    }
-}
-
-fn shown(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
-fn has_diff_metadata(doc: &Value) -> bool {
-    [
-        "fragments",
-        "deleted_files",
-        "renamed_files",
-        "changed_files",
-        "commit_message",
-        "lockfile_changes",
-        "ignored_changes",
-        "policy_excluded_count",
-        "raw_diff",
-    ]
-    .iter()
-    .any(|k| truthy(doc.get(*k)))
+/// Whether the document names anything beyond its heading.
+fn has_diff_metadata(pack: &DiffContextOutput) -> bool {
+    !pack.fragments.is_empty()
+        || !pack.inventory.is_empty()
+        || !pack.range.messages.is_empty()
+        || pack.raw_diff.as_deref().is_some_and(|d| !d.is_empty())
 }
 
 /// `str.splitlines()`: the commit messages were split by it, `\r` and the
@@ -505,39 +480,35 @@ fn splitlines(s: &str) -> Vec<&str> {
 
 /// Changed files no fragment of which is in the document, and those that
 /// yielded none to select.
-fn changed_file_marks(doc: &Value) -> (FxHashSet<String>, FxHashSet<String>) {
-    let changes = list(doc.get("changes"));
-    let omitted = if changes.is_empty() {
-        let represented: FxHashSet<&str> = list(doc.get("fragments"))
+fn changed_file_marks(pack: &DiffContextOutput) -> (FxHashSet<&str>, FxHashSet<&str>) {
+    let omitted = if pack.changes.is_empty() {
+        let represented: FxHashSet<&str> = pack.fragments.iter().map(|f| f.path.as_str()).collect();
+        pack.inventory
+            .changed
+            .items
             .iter()
-            .map(|f| str_at(f, "path"))
-            .collect();
-        list(doc.get("changed_files"))
-            .iter()
-            .map(shown)
-            .filter(|p| !represented.contains(p.as_str()))
+            .map(String::as_str)
+            .filter(|p| !represented.contains(p))
             .collect()
     } else {
-        changes
+        pack.changes
             .iter()
-            .filter(|c| {
-                c.get("represented").and_then(Value::as_bool) == Some(false)
-                    && !truthy(c.get("no_fragments"))
-            })
-            .map(|c| str_at(c, "path").to_string())
+            .filter(|c| !c.represented && !c.no_fragments)
+            .map(|c| c.path.as_str())
             .collect()
     };
-    let fragmentless = changes
+    let fragmentless = pack
+        .changes
         .iter()
-        .filter(|c| truthy(c.get("no_fragments")))
-        .map(|c| str_at(c, "path").to_string())
+        .filter(|c| c.no_fragments)
+        .map(|c| c.path.as_str())
         .collect();
     (omitted, fragmentless)
 }
 
 fn mark<'a>(
     path: &str,
-    (omitted, fragmentless): &(FxHashSet<String>, FxHashSet<String>),
+    (omitted, fragmentless): &(FxHashSet<&str>, FxHashSet<&str>),
     no_fragments: &'a str,
     omitted_mark: &'a str,
 ) -> &'a str {
@@ -550,81 +521,85 @@ fn mark<'a>(
     }
 }
 
-fn commit_count_shown(doc: &Value, listed: usize) -> String {
-    match doc.get("commit_count").and_then(Value::as_u64) {
-        Some(total) if total > listed as u64 => format!("newest {listed} of {total}"),
-        _ => listed.to_string(),
+/// How many commits the messages stand for: all of them, or the newest few.
+fn commit_count_shown(range: &Range) -> String {
+    let listed = range.messages.len();
+    if range.commits > listed {
+        format!("newest {listed} of {}", range.commits)
+    } else {
+        listed.to_string()
     }
 }
 
-fn markdown(doc: &Value, raw_diff: bool) -> String {
-    let mut out = format!("# diff context: {}\n\n", str_at(doc, "name"));
-    if !has_diff_metadata(doc) {
+fn markdown(pack: &DiffContextOutput, raw_diff: bool) -> String {
+    let mut out = format!("# diff context: {}\n\n", pack.name);
+    if !has_diff_metadata(pack) {
         return out;
     }
-    md_commit_messages(&mut out, doc);
-    if let Some(note) = coverage_note(doc) {
+    md_commit_messages(&mut out, &pack.range);
+    if let Some(note) = coverage_note(pack) {
         let _ = write!(out, "*{note}*\n\n");
     }
-    md_changed_files(&mut out, doc);
-    md_path_list(&mut out, doc, "deleted_files", "Deleted files");
-    let renames = list(doc.get("renamed_files"));
+    if let Some(note) = budget_note(pack) {
+        let _ = write!(out, "*{note}*\n\n");
+    }
+    md_changed_files(&mut out, pack);
+    md_path_list(&mut out, &pack.inventory.deleted.items, "Deleted files");
+    let renames = &pack.inventory.renamed.items;
     if !renames.is_empty() {
         out.push_str("**Renamed files:**\n\n");
         for pair in renames {
             let _ = writeln!(
                 out,
                 "- {} \u{2192} {}",
-                inline_code(str_at(pair, "from")),
-                inline_code(str_at(pair, "to"))
+                inline_code(&pair.from),
+                inline_code(&pair.to)
             );
         }
         out.push('\n');
     }
-    md_path_list(&mut out, doc, "lockfile_changes", "Lock files changed");
     md_path_list(
         &mut out,
-        doc,
-        "ignored_changes",
+        &pack.inventory.lockfiles.items,
+        "Lock files changed",
+    );
+    md_path_list(
+        &mut out,
+        &pack.inventory.ignored.items,
         "Changed but excluded by ignore rules",
     );
-    if let Some(n) = doc.get("policy_excluded_count").filter(|v| truthy(Some(v))) {
+    if pack.inventory.withheld > 0 {
         let _ = write!(
             out,
-            "*{n} changed file(s) withheld by exclusion policy (`.diffctx/ignore` or secret paths).*\n\n"
+            "*{} changed file(s) withheld by exclusion policy (`.diffctx/ignore` or secret paths).*\n\n",
+            pack.inventory.withheld
         );
     }
-    if raw_diff && truthy(doc.get("raw_diff")) {
+    if let Some(patch) = pack
+        .raw_diff
+        .as_deref()
+        .filter(|d| raw_diff && !d.is_empty())
+    {
         out.push_str("## Raw diff\n\n");
-        code_block(&mut out, str_at(doc, "raw_diff"), "diff");
+        code_block(&mut out, patch, "diff");
     }
-    for frag in list(doc.get("fragments")) {
+    for frag in &pack.fragments {
         md_fragment(&mut out, frag);
     }
     out
 }
 
-fn md_commit_messages(out: &mut String, doc: &Value) {
-    let messages = list(doc.get("commit_messages"));
-    if messages.is_empty() {
-        if truthy(doc.get("commit_message")) {
-            let _ = write!(out, "> {}\n\n", str_at(doc, "commit_message"));
-        }
-        return;
-    }
-    if let [only] = messages {
-        md_quoted(out, &shown(only), "> ");
-    } else {
-        let _ = writeln!(
-            out,
-            "> {} commits:",
-            commit_count_shown(doc, messages.len())
-        );
-        for message in messages {
-            let message = shown(message);
-            let (subject, body) = message.split_once('\n').unwrap_or((&message, ""));
-            let _ = writeln!(out, "> - **{subject}**");
-            md_quoted(out, body.trim_matches('\n'), ">   ");
+fn md_commit_messages(out: &mut String, range: &Range) {
+    match range.messages.as_slice() {
+        [] => return,
+        [only] => md_quoted(out, only, "> "),
+        messages => {
+            let _ = writeln!(out, "> {} commits:", commit_count_shown(range));
+            for message in messages {
+                let (subject, body) = message.split_once('\n').unwrap_or((message.as_str(), ""));
+                let _ = writeln!(out, "> - **{subject}**");
+                md_quoted(out, body.trim_matches('\n'), ">   ");
+            }
         }
     }
     out.push('\n');
@@ -640,21 +615,15 @@ fn md_quoted(out: &mut String, text: &str, prefix: &str) {
     }
 }
 
-fn coverage_note(doc: &Value) -> Option<String> {
-    let coverage = doc.get("coverage").filter(|c| truthy(Some(c)))?;
-    let status = coverage
-        .get("status")
-        .map_or_else(|| "partial".to_string(), shown);
-    if status == "complete" {
+fn coverage_note(pack: &DiffContextOutput) -> Option<String> {
+    let coverage = pack.coverage.as_ref()?;
+    if coverage.status == CoverageStatus::Complete {
         return None;
     }
-    let reasons: Vec<String> = list(coverage.get("limit_reasons"))
+    let files: Vec<String> = coverage
+        .limited_files
         .iter()
-        .map(shown)
-        .collect();
-    let files: Vec<String> = list(coverage.get("limited_files"))
-        .iter()
-        .map(|f| format!("{} ({})", str_at(f, "path"), str_at(f, "reason")))
+        .map(|f| format!("{} ({})", f.path, crate::impact::reason_names(&[f.reason])))
         .collect();
     let place = if files.is_empty() {
         String::new()
@@ -662,25 +631,25 @@ fn coverage_note(doc: &Value) -> Option<String> {
         format!(" in {}", files.join(", "))
     };
     Some(format!(
-        "Coverage: {status} — the run hit a limit ({}){place}; context may be missing.",
-        reasons.join(", ")
+        "Coverage: {} — the run hit a limit ({}){place}; context may be missing.",
+        coverage.status.as_str(),
+        crate::impact::reason_names(&coverage.limits)
     ))
 }
 
-fn md_changed_files(out: &mut String, doc: &Value) {
-    let changed = list(doc.get("changed_files"));
+fn md_changed_files(out: &mut String, pack: &DiffContextOutput) {
+    let changed = &pack.inventory.changed.items;
     if changed.is_empty() {
         return;
     }
-    let marks = changed_file_marks(doc);
+    let marks = changed_file_marks(pack);
     out.push_str("**Changed files:**\n\n");
     for path in changed {
-        let path = shown(path);
         let _ = writeln!(
             out,
             "- {}{}",
-            inline_code(&path),
-            mark(&path, &marks, " — no fragments", " — omitted")
+            inline_code(path),
+            mark(path, &marks, " — no fragments", " — omitted")
         );
     }
     if !marks.0.is_empty() {
@@ -696,34 +665,31 @@ fn md_changed_files(out: &mut String, doc: &Value) {
     out.push('\n');
 }
 
-fn md_path_list(out: &mut String, doc: &Value, key: &str, title: &str) {
-    let paths = list(doc.get(key));
+fn md_path_list(out: &mut String, paths: &[String], title: &str) {
     if paths.is_empty() {
         return;
     }
     let _ = write!(out, "**{title}:**\n\n");
     for path in paths {
-        let _ = writeln!(out, "- {}", inline_code(&shown(path)));
+        let _ = writeln!(out, "- {}", inline_code(path));
     }
     out.push('\n');
 }
 
-fn md_fragment(out: &mut String, frag: &Value) {
-    let path = str_at(frag, "path");
-    let mut header = inline_code(&format!("{path}:{}", str_at(frag, "lines")));
-    let symbol = str_at(frag, "symbol");
-    if !symbol.is_empty() {
+fn md_fragment(out: &mut String, frag: &FragmentEntry) {
+    let path = frag.path.as_str();
+    let mut header = inline_code(&format!("{path}:{}", frag.lines));
+    if let Some(symbol) = frag.symbol.as_deref().filter(|s| !s.is_empty()) {
         let _ = write!(header, " **{}**", escape_markdown(symbol));
     }
-    let kind = str_at(frag, "kind");
-    if !kind.is_empty() {
-        let _ = write!(header, " _{}_", escape_markdown(kind));
+    if !frag.kind.is_empty() {
+        let _ = write!(header, " _{}_", escape_markdown(&frag.kind));
     }
-    if str_at(frag, "role") == "changed" {
+    if frag.role.as_deref() == Some("changed") {
         header.push_str(" — **changed**");
     }
     let _ = write!(out, "## {header}\n\n");
-    let content = str_at(frag, "content");
+    let content = frag.content.as_deref().unwrap_or_default();
     if !content.is_empty() {
         let name = path.rsplit('/').next().unwrap_or(path);
         let lang = crate::languages::get_language_for_file(name).unwrap_or_default();
@@ -767,62 +733,64 @@ fn escape_markdown(s: &str) -> String {
 const OMITTED_TEXT_MARK: &str = " (omitted)";
 const NO_FRAGMENTS_TEXT_MARK: &str = " (no fragments)";
 
-fn text(doc: &Value, raw_diff: bool) -> String {
-    let mut out = format!("diff context: {}\n", str_at(doc, "name"));
-    if !has_diff_metadata(doc) {
+fn text(pack: &DiffContextOutput, raw_diff: bool) -> String {
+    let mut out = format!("diff context: {}\n", pack.name);
+    if !has_diff_metadata(pack) {
         return out;
     }
-    let messages = list(doc.get("commit_messages"));
+    if let Some(note) = budget_note(pack) {
+        let _ = writeln!(out, "  {note}");
+    }
+    let messages = &pack.range.messages;
     if !messages.is_empty() {
-        let _ = writeln!(
-            out,
-            "  commits: {}",
-            commit_count_shown(doc, messages.len())
-        );
+        let _ = writeln!(out, "  commits: {}", commit_count_shown(&pack.range));
         for message in messages {
-            for (i, line) in splitlines(&shown(message)).into_iter().enumerate() {
+            for (i, line) in splitlines(message).into_iter().enumerate() {
                 let _ = writeln!(out, "    {}{line}", if i == 0 { "- " } else { "  " });
             }
         }
-    } else if truthy(doc.get("commit_message")) {
-        let _ = writeln!(out, "  change: {}", str_at(doc, "commit_message"));
     }
-    let changed = list(doc.get("changed_files"));
+    let changed = &pack.inventory.changed.items;
     if !changed.is_empty() {
-        let marks = changed_file_marks(doc);
+        let marks = changed_file_marks(pack);
         out.push_str("  changed files:\n");
         for path in changed {
-            let path = shown(path);
             let _ = writeln!(
                 out,
                 "    {}{}",
-                escape_text_path(&path),
-                mark(&path, &marks, NO_FRAGMENTS_TEXT_MARK, OMITTED_TEXT_MARK)
+                escape_text_path(path),
+                mark(path, &marks, NO_FRAGMENTS_TEXT_MARK, OMITTED_TEXT_MARK)
             );
         }
     }
-    text_path_list(&mut out, doc, "deleted_files", "deleted files");
-    for pair in list(doc.get("renamed_files")) {
-        let _ = writeln!(
-            out,
-            "  renamed: {} -> {}",
-            str_at(pair, "from"),
-            str_at(pair, "to")
-        );
+    text_path_list(&mut out, &pack.inventory.deleted.items, "deleted files");
+    for pair in &pack.inventory.renamed.items {
+        let _ = writeln!(out, "  renamed: {} -> {}", pair.from, pair.to);
     }
-    text_path_list(&mut out, doc, "lockfile_changes", "lock files changed");
     text_path_list(
         &mut out,
-        doc,
-        "ignored_changes",
+        &pack.inventory.lockfiles.items,
+        "lock files changed",
+    );
+    text_path_list(
+        &mut out,
+        &pack.inventory.ignored.items,
         "changed but excluded by ignore rules",
     );
-    if let Some(n) = doc.get("policy_excluded_count").filter(|v| truthy(Some(v))) {
-        let _ = writeln!(out, "  changed files withheld by exclusion policy: {n}");
+    if pack.inventory.withheld > 0 {
+        let _ = writeln!(
+            out,
+            "  changed files withheld by exclusion policy: {}",
+            pack.inventory.withheld
+        );
     }
-    if raw_diff && truthy(doc.get("raw_diff")) {
+    if let Some(patch) = pack
+        .raw_diff
+        .as_deref()
+        .filter(|d| raw_diff && !d.is_empty())
+    {
         out.push_str("  raw diff:\n");
-        for line in str_at(doc, "raw_diff").trim_end_matches('\n').split('\n') {
+        for line in patch.trim_end_matches('\n').split('\n') {
             if line.is_empty() {
                 out.push('\n');
             } else {
@@ -830,26 +798,25 @@ fn text(doc: &Value, raw_diff: bool) -> String {
             }
         }
     }
-    for frag in list(doc.get("fragments")) {
+    for frag in &pack.fragments {
         text_fragment(&mut out, frag);
     }
     out
 }
 
-fn text_fragment(out: &mut String, frag: &Value) {
-    let mut header = format!("{}:{}", str_at(frag, "path"), str_at(frag, "lines"));
-    for (key, open, close) in [
-        ("symbol", " (", ")"),
-        ("kind", " [", "]"),
-        ("role", " <", ">"),
+fn text_fragment(out: &mut String, frag: &FragmentEntry) {
+    let mut header = format!("{}:{}", frag.path, frag.lines);
+    for (value, open, close) in [
+        (frag.symbol.as_deref().unwrap_or_default(), " (", ")"),
+        (frag.kind.as_str(), " [", "]"),
+        (frag.role.as_deref().unwrap_or_default(), " <", ">"),
     ] {
-        let value = str_at(frag, key);
         if !value.is_empty() {
             let _ = write!(header, "{open}{value}{close}");
         }
     }
     let _ = writeln!(out, "  {header}");
-    let content = str_at(frag, "content");
+    let content = frag.content.as_deref().unwrap_or_default();
     if !content.is_empty() {
         for line in content.trim_end_matches('\n').split('\n') {
             let _ = writeln!(out, "    {line}");
@@ -857,14 +824,13 @@ fn text_fragment(out: &mut String, frag: &Value) {
     }
 }
 
-fn text_path_list(out: &mut String, doc: &Value, key: &str, label: &str) {
-    let paths = list(doc.get(key));
+fn text_path_list(out: &mut String, paths: &[String], label: &str) {
     if paths.is_empty() {
         return;
     }
     let _ = writeln!(out, "  {label}:");
     for path in paths {
-        let _ = writeln!(out, "    {}", escape_text_path(&shown(path)));
+        let _ = writeln!(out, "    {}", escape_text_path(path));
     }
 }
 
@@ -888,58 +854,83 @@ fn escape_text_path(path: &str) -> String {
 mod tests {
     use super::*;
 
-    fn entry(path: &str, role: Option<&str>, lines: usize) -> Value {
+    fn entry(path: &str, role: Option<&str>, lines: usize) -> FragmentEntry {
         let body: String = (0..lines).map(|i| format!("line_{i}\n")).collect();
-        let mut f = serde_json::json!({
-            "path": path,
-            "lines": format!("1-{lines}"),
-            "kind": "function",
-            "content": body,
-        });
-        if let Some(role) = role {
-            f["role"] = role.into();
+        FragmentEntry {
+            path: path.to_string(),
+            lines: format!("1-{lines}"),
+            role: role.map(str::to_string),
+            kind: "function".to_string(),
+            symbol: None,
+            content: Some(Arc::from(body.as_str())),
         }
-        f
+    }
+
+    fn pack(fragments: Vec<FragmentEntry>, changed: &[&str]) -> DiffContextOutput {
+        let mut pack = DiffContextOutput::empty("repo");
+        pack.fragments = fragments;
+        pack.inventory.changed =
+            crate::answer::v2::Listing::of(changed.iter().map(|p| (*p).to_string()).collect(), 0);
+        pack
     }
 
     #[test]
     fn budget_fitting_drops_context_whole_and_shortens_only_the_change() {
-        let mut doc = serde_json::json!({
-            "name": "repo",
-            "type": "diff_context",
-            "fragment_count": 2,
-            "fragments": [entry("app.py", Some("changed"), 40), entry("lib/helpers.py", None, 40)],
-        });
+        let mut doc = pack(
+            vec![
+                entry("app.py", Some("changed"), 40),
+                entry("lib/helpers.py", None, 40),
+            ],
+            &[],
+        );
 
         assert!(drop_one_fragment(&mut doc));
-        let fragments = doc["fragments"].as_array().unwrap();
-        assert_eq!(fragments.len(), 1, "context must drop, not shrink");
-        assert_eq!(fragments[0]["path"], "app.py");
+        assert_eq!(doc.fragments.len(), 1, "context must drop, not shrink");
+        assert_eq!(doc.fragments[0].path, "app.py");
 
         assert!(drop_one_fragment(&mut doc));
-        let witness = &doc["fragments"][0];
-        assert_eq!(witness["lines"], "1-30");
+        let witness = &doc.fragments[0];
+        assert_eq!(witness.lines, "1-30");
         assert!(
-            witness["content"]
-                .as_str()
+            witness
+                .content
+                .as_deref()
                 .unwrap()
                 .ends_with("… [10 more lines of this change]\n")
         );
         assert_eq!(
-            doc["coverage"]["limit_reasons"][0],
-            "selection_budget_exceeded"
+            doc.coverage.as_ref().unwrap().limits[0],
+            LimitReason::SelectionBudgetExceeded
         );
+    }
+
+    /// A dict a door hands back is the document it came from, and a document of
+    /// another schema is refused.
+    #[test]
+    fn a_dict_parses_into_the_document_and_a_foreign_schema_is_refused() {
+        let doc = pack(vec![entry("app.py", Some("changed"), 3)], &["app.py"]);
+        let value = serde_json::to_value(&doc).unwrap();
+        let back = parse(&value).unwrap();
+        assert_eq!(serde_json::to_value(&back).unwrap(), value);
+
+        let mut foreign = value;
+        foreign["schema"] = "diffctx.context.v1".into();
+        assert!(parse(&foreign).unwrap_err().contains("unknown schema"));
     }
 
     #[test]
     fn yaml_quotes_what_a_yaml_1_1_reader_would_resolve() {
-        let doc = serde_json::json!({
-            "schema": "diffctx.context.v1",
-            "changed_files": ["off", "y", "=", "2026-10-15", "src/app.py", "tab\there"],
-            "fragments": [{"path": "a.py", "symbol": "on", "content": "x\n\n  y\n"}],
-        });
+        let mut doc = pack(
+            vec![FragmentEntry {
+                symbol: Some("on".to_string()),
+                content: Some(Arc::from("x\n\n  y\n")),
+                ..entry("a.py", None, 1)
+            }],
+            &["off", "y", "=", "2026-10-15", "src/app.py", "tab\there"],
+        );
+        doc.fragments[0].lines = "1-1".to_string();
         let text = render(&doc, Format::Yaml);
-        assert!(text.starts_with("schema: diffctx.context.v1\n"), "{text}");
+        assert!(text.starts_with("schema: diffctx.context.v2\n"), "{text}");
         for quoted in [
             "\"off\"",
             "\"y\"",
@@ -961,11 +952,13 @@ mod tests {
     /// literal block: it is escaped, in a block's text and in a plain string.
     #[test]
     fn yaml_escapes_what_falls_outside_the_printable_set() {
-        let doc = serde_json::json!({
-            "schema": "diffctx.context.v1",
-            "changed_files": ["a\u{ffff}b"],
-            "fragments": [{"path": "a.py", "content": "\u{fffe}\n"}],
-        });
+        let doc = pack(
+            vec![FragmentEntry {
+                content: Some(Arc::from("\u{fffe}\n")),
+                ..entry("a.py", None, 1)
+            }],
+            &["a\u{ffff}b"],
+        );
         let text = render(&doc, Format::Yaml);
         assert!(!text.contains(['\u{fffe}', '\u{ffff}']), "{text:?}");
         assert!(text.contains("  - \"a\\uffffb\"\n"), "{text}");

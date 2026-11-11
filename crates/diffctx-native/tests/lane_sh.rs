@@ -34,7 +34,7 @@ fn symbol(repo: &Path, name: &str) -> serde_json::Value {
 }
 
 fn changed<'a>(out: &'a serde_json::Value, path: &str, name: &str) -> &'a serde_json::Value {
-    out["changed"]
+    out["definitions"]
         .as_array()
         .expect("changed")
         .iter()
@@ -45,7 +45,7 @@ fn changed<'a>(out: &'a serde_json::Value, path: &str, name: &str) -> &'a serde_
 /// The callers listed under `path::name`: `path::symbol`, or `path@sites`
 /// for one without a name, `possibly … (reason)` for a candidate.
 fn callers(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    changed(out, path, name)["callers"]
+    changed(out, path, name)["rows"]
         .as_array()
         .expect("callers")
         .iter()
@@ -61,7 +61,7 @@ fn callers(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
                     format!("{file}@{}", sites.join(","))
                 }
             };
-            match c["evidence"].as_str() {
+            match c["standing"].as_str() {
                 Some("candidate") => format!("possibly {at} ({})", c["reason"].as_str().unwrap()),
                 _ => at,
             }
@@ -272,7 +272,7 @@ fn calls_inside_compound_commands_are_callers() {
         );
     }
     assert!(
-        out["changed"]
+        out["definitions"]
             .as_array()
             .unwrap()
             .iter()
@@ -280,7 +280,7 @@ fn calls_inside_compound_commands_are_callers() {
         "{out:#}"
     );
     assert!(
-        out["unanalysed_files"]
+        out["coverage"]["unanalysed"]["items"]
             .as_array()
             .is_none_or(|u| u.iter().all(|f| f["path"] != "bin/call")),
         "an extensionless script read whole is no unanalysed file: {out:#}"
@@ -392,12 +392,14 @@ fn sql_routines_and_views_are_definitions_with_callers() {
             "{query}: {out:#}"
         );
         assert!(
-            out["contracts"].as_array().is_none_or(Vec::is_empty),
+            out["contracts"]["items"]
+                .as_array()
+                .is_none_or(Vec::is_empty),
             "a query changes no schema: {out:#}"
         );
     }
     let view = symbol(tmp.path(), "book_view");
-    let referenced: Vec<&str> = changed(&view, "db/V5__view.sql", "book_view")["callers"]
+    let referenced: Vec<&str> = changed(&view, "db/V5__view.sql", "book_view")["rows"]
         .as_array()
         .unwrap()
         .iter()

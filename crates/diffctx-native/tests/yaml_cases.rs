@@ -515,7 +515,7 @@ fn run_case_with_scoring(
     // full `cargo test` that is a timing failure, and it says so instead of
     // failing on a score with nothing to read (#390).
     if let Some(stop) = output.coverage.as_ref().and_then(|c| {
-        c.limit_reasons.iter().find(|r| {
+        c.limits.iter().find(|r| {
             matches!(
                 r,
                 _diffctx::resource::LimitReason::Deadline
