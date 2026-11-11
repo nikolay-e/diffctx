@@ -434,3 +434,25 @@ def test_an_answer_with_no_entry_for_the_target_claims_no_absence():
     for found in (found_nothing, other_entry):
         cells, _ = compare(TARGET, [relation("shop/checkout.py::charge")], found)
         assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, False, False)
+
+
+def test_same_named_overloads_are_scored_apart_by_their_spans():
+    first = Definition("shop/pricing.py", "method", "total", ("Cart",), 1, 3, 0, 4, "(int)", "h1", "s1", overloaded=True)
+    second = Definition("shop/pricing.py", "method", "total", ("Cart",), 5, 8, 4, 4, "(str)", "h2", "s2", overloaded=True)
+    defs = {
+        "shop/checkout.py": [caller_def("shop/checkout.py", "charge", 1, 3), caller_def("shop/checkout.py", "refund", 5, 8)],
+        "shop/pricing.py": [first, second],
+    }
+    resolve = make_resolver(lambda path: defs.get(path, []))
+    charges = [caller("shop/checkout.py", "charge", "1-3")]
+    refunds = [caller("shop/checkout.py", "refund", "5-8")]
+    entries = [
+        {"path": "shop/pricing.py", "symbol": "Cart.total", "lines": "1-3", "kind": "method", "callers": charges},
+        {"path": "shop/pricing.py", "symbol": "Cart.total", "lines": "5-8", "kind": "method", "callers": refunds},
+    ]
+    found = parse_answer({"changed": entries}, resolve)
+
+    assert first.key != second.key
+    for target, user, site in ((first, "charge", 2), (second, "refund", 6)):
+        cells, _ = compare(target, [Relation(f"shop/checkout.py::{user}", target.key, "calls", site)], found)
+        assert (cells[0]["truth"], cells[0]["tp"], cells[0]["fp"], cells[0]["fn"]) == (1, 1, 0, 0)

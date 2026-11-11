@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from answer import Answer, AnswerCaller, Resolver, TargetAnswer
 from answer import parse_answer as parse_answer  # the scorer's callers read answers through this module
-from model import MODULE, Definition, Relation
+from model import MODULE, Definition, Relation, without_span
 
 CONSTRUCTORS = {"__init__", "constructor"}
 
@@ -29,6 +29,10 @@ def _line_span(lines: str | None) -> tuple[int, int] | None:
         return None
 
 
+def _overlap(definition: Definition, span: tuple[int, int]) -> bool:
+    return definition.start <= span[1] and span[0] <= definition.end
+
+
 def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
     """Map diffctx's (path, symbol, lines) to the AST definition key the oracle uses."""
 
@@ -37,13 +41,16 @@ def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
             return f"{path}::{MODULE}"
         name = symbol.replace("::", ".").split(".")[-1]
         span = _line_span(lines)
+        fallback = None
         for provider in providers:
             named = [d for d in provider(path) if d.name == name]
             if named:
                 if span:
                     named.sort(key=lambda d: -(max(0, min(span[1], d.end) - max(span[0], d.start) + 1)))
-                return named[0].key
-        return f"{path}::{symbol}"
+                if len(named) == 1 or not span or _overlap(named[0], span):
+                    return named[0].key
+                fallback = fallback or named[0].key  # overloads, none of them at the span: another snapshot may hold it
+        return fallback or f"{path}::{symbol}"
 
     def by_span(path: str, lines: str) -> str:
         """The definition a bare `path:lines` names: the narrowest one holding the span, else the one overlapping most."""
@@ -113,10 +120,10 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     ignored = {k for k, rels in grouped.items() if all(r.in_diff for r in rels)}
     scored = {k: [r for r in rels if not r.in_diff] for k, rels in grouped.items() if k not in ignored}
     reported = answer.targets.get(target.key)
-    constructor = next((name for name in CONSTRUCTORS if target.key.endswith(f".{name}")), None)
+    constructor = next((name for name in CONSTRUCTORS if without_span(target.key).endswith(f".{name}")), None)
     if reported is None and constructor:
         # A constructor is reported as its class: its callers build the class.
-        reported = answer.targets.get(target.key.removesuffix(f".{constructor}"))
+        reported = answer.targets.get(without_span(target.key).removesuffix(f".{constructor}"))
     callers = _strongest(reported.callers) if reported else {}
     # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
     # is a partial answer: the listed callers count, the missing truth is abstention.

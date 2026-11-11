@@ -4,6 +4,7 @@ import pytest
 
 from changed import ChangedDefinition
 from delta import classify
+from model import without_span
 from scipindex import Index
 from truth import Snapshot
 
@@ -18,7 +19,7 @@ def delta_of(tmp_path: Path, path: str, old: str, new: str, key: str, status: st
         (root / path).write_text(text)
         snapshots.append(Snapshot(root, Index(), LANGUAGE[path.rsplit(".", 1)[1]]))
     base, head = snapshots
-    find = lambda snap: next((d for d in snap.definitions(path) if d.key == f"{path}::{key}"), None)  # noqa: E731
+    find = lambda snap: next((d for d in snap.definitions(path) if without_span(d.key) == f"{path}::{key}"), None)  # noqa: E731
     item = ChangedDefinition(status, find(head), find(base))
     return classify(item, base, head)
 

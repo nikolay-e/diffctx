@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 
 MODULE = "<module>"
 UNCAPPED_BUDGET = 200_000  # `--budget` far above any answer the engine builds: the cap never bites
@@ -38,6 +39,7 @@ class Definition:
     body_hash: str  # hash of the non-comment tokens: formatting and comments do not move it
     shape_hash: str  # the same with the name blanked, so a rename keeps it
     decorated: bool = False
+    overloaded: bool = False  # another definition of the file has this container and name: the span tells them apart
 
     @property
     def qualname(self) -> str:
@@ -45,11 +47,27 @@ class Definition:
 
     @property
     def key(self) -> str:
-        return f"{self.path}::{self.qualname}"
+        return f"{self.path}::{self.qualname}" + (f"@{self.start}-{self.end}" if self.overloaded else "")
 
     @property
     def span(self) -> int:
         return self.end - self.start
+
+
+SPAN_MARK = re.compile(r"@\d+-\d+$")
+
+
+def without_span(key: str) -> str:
+    """The key of a definition without the span that tells its overloads apart."""
+    return SPAN_MARK.sub("", key)
+
+
+def mark_overloads(defs: list[Definition]) -> list[Definition]:
+    """Definitions of one file that share container and name are keyed by their spans: the engine answers per definition."""
+    counts: dict[tuple[tuple[str, ...], str], int] = {}
+    for d in defs:
+        counts[(d.container, d.name)] = counts.get((d.container, d.name), 0) + 1
+    return [replace(d, overloaded=True) if counts[(d.container, d.name)] > 1 else d for d in defs]
 
 
 def grammar_for(path: str) -> str | None:
