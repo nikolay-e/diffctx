@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::bindings::{Evidence, Finding, Relation, absorb};
 use crate::facts::kotlin::{
     Declaration, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
 };
@@ -36,21 +35,78 @@ const MAX_PROJECT_HOPS: usize = 6;
 /// Initializers followed through their receivers to type one value.
 const MAX_TYPING_DEPTH: usize = 4;
 
-pub fn is_kotlin(path: &str) -> bool {
-    has_extension(path, EXTENSIONS)
-}
-
-fn has_extension(path: &str, extensions: &[&str]) -> bool {
-    Path::new(path)
-        .extension()
-        .is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)))
-}
-
 /// The extensions of the language.
 const EXTENSIONS: &[&str] = &["kt", "kts"];
 
 /// The keywords a type declaration starts with.
 const TYPE_KEYWORDS: &[&str] = &["class", "interface", "object", "typealias"];
+
+/// How a reference relates to the changed definition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Evidence {
+    /// Available binding evidence points elsewhere.
+    Rejected,
+    /// The reference may reach the definition; its binding or receiver is
+    /// not known. The reason says which.
+    Candidate(&'static str),
+    /// A binding links the reference to the definition.
+    Resolved,
+}
+
+impl Evidence {
+    fn rank(self) -> u8 {
+        match self {
+            Self::Rejected => 0,
+            // A call through the same receiver says more than a read of it.
+            Self::Candidate("unresolved_read") => 1,
+            Self::Candidate(_) => 2,
+            Self::Resolved => 3,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Relation {
+    Call,
+    Reference,
+}
+
+#[derive(Debug, Clone)]
+pub struct Finding {
+    pub evidence: Evidence,
+    pub relation: Relation,
+    pub lines: Vec<u32>,
+}
+
+/// Folds one occurrence into the finding: stronger evidence replaces the
+/// lines, equal evidence adds its line, a call outranks a reference.
+fn absorb(best: &mut Option<Finding>, evidence: Evidence, relation: Relation, line: u32) {
+    let Some(f) = best else {
+        *best = Some(Finding {
+            evidence,
+            relation,
+            lines: vec![line],
+        });
+        return;
+    };
+    if evidence.rank() > f.evidence.rank() {
+        *f = Finding {
+            evidence,
+            relation,
+            lines: vec![line],
+        };
+        return;
+    }
+    if evidence.rank() < f.evidence.rank() {
+        return;
+    }
+    if relation == Relation::Call {
+        f.relation = Relation::Call;
+    }
+    if !f.lines.contains(&line) {
+        f.lines.push(line);
+    }
+}
 
 /// A declaration and where it lives.
 #[derive(Clone, Debug)]
@@ -117,9 +173,6 @@ pub struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
-    /// Facts of the base side, by (revision, path): asked for once per
-    /// changed definition.
-    facts_at: RefCell<FxHashMap<(String, String), Option<Arc<KotlinFacts>>>>,
     type_files: RefCell<FxHashMap<String, Vec<String>>>,
     projects: RefCell<FxHashMap<PathBuf, Option<PathBuf>>>,
     deps: RefCell<FxHashMap<PathBuf, Vec<PathBuf>>>,
@@ -132,7 +185,6 @@ impl<'a> KotlinResolver<'a> {
             root,
             source,
             facts: RefCell::default(),
-            facts_at: RefCell::default(),
             type_files: RefCell::default(),
             projects: RefCell::default(),
             deps: RefCell::default(),
@@ -166,46 +218,6 @@ impl<'a> KotlinResolver<'a> {
             decl,
             package: facts.package.clone(),
         })
-    }
-
-    /// The facts of `rel` on the base side of the analysis; `rev` only keys
-    /// the memo.
-    pub fn facts_at(&self, rev: &str, rel: &str) -> Option<Arc<KotlinFacts>> {
-        let key = (rev.to_string(), rel.to_string());
-        if let Some(known) = self.facts_at.borrow().get(&key) {
-            return known.clone();
-        }
-        let read = self
-            .source
-            .base()
-            .read_lossy(&self.root.join(rel))
-            .ok()
-            .flatten()
-            .and_then(|text| crate::facts::kotlin::facts(&text));
-        self.facts_at.borrow_mut().insert(key, read.clone());
-        read
-    }
-
-    /// Whether `path` is a file of this resolver's language.
-    pub fn covers(&self, path: &str) -> bool {
-        has_extension(path, EXTENSIONS)
-    }
-
-    /// The lines of `rel` where a use could reach `def` by spelling: its
-    /// name, or the alias the file imports it under.
-    pub fn use_lines(&self, rel: &str, def: &KDef) -> Vec<u32> {
-        let Some(facts) = self.facts(rel) else {
-            return Vec::new();
-        };
-        let names = self.names_for(&facts, def);
-        let mut lines: Vec<u32> = facts
-            .uses
-            .iter()
-            .filter(|u| names.contains(&u.name))
-            .map(|u| u.line)
-            .collect();
-        lines.dedup();
-        lines
     }
 
     /// How the uses inside `lines` of `rel` relate to `def`: the strongest

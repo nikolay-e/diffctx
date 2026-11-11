@@ -267,8 +267,9 @@ impl EdgeBuilder for PythonEdgeBuilder {
         let mut file_aliases: FxHashMap<&str, FxHashMap<String, (String, String)>> =
             FxHashMap::default();
         for f in &py_frags {
-            for (local, target) in crate::bindings::python_bindings(&f.content).names {
-                if let crate::bindings::Target::Member { module, name } = target {
+            for (local, target) in super::legacy::python_imports::python_bindings(&f.content).names
+            {
+                if let super::legacy::python_imports::Target::Member { module, name } = target {
                     if local == name {
                         continue;
                     }
