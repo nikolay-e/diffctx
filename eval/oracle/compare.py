@@ -167,7 +167,9 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         status = "fp" if caller.evidence in SURE else "fp_weak"
         cell(kind)[status] += 1
         details.append(_detail(status, from_key, target, None, kind, caller.evidence, reported, moved))
-    complete_negative = bool(scored) and not callers and not abstained
+    # An answer with no entry for the target says nothing of it: a symbol it found no definition of ("named in N file(s), a
+    # textual match"), a nested definition it reports under its container. Only an entry that lists no caller claims there are none.
+    complete_negative = bool(scored) and reported is not None and not callers and not abstained
     for row in cells.values():
         row["abstained"] = abstained
         row["fcn"] = (
