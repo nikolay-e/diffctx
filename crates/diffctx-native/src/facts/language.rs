@@ -36,6 +36,17 @@ pub enum Language {
     /// A script for a shell the bash grammar does not read (zsh, ksh, fish),
     /// by its extension or its shebang: no facts, and a loss that says so.
     ShellUnread,
+    /// A web page: the scripts it embeds are read as JavaScript, at their own
+    /// positions in the page (`facts::lang::html`).
+    Html,
+    /// An Astro component: its frontmatter and scripts, read as TypeScript.
+    Astro,
+    /// A Swift source file: the syntax facts of the Kotlin walk, read by the
+    /// Kotlin reader and resolver in their Swift dialect.
+    Swift,
+    /// A SQL file: the routines and views it defines and the calls and reads it
+    /// makes, read off the tokens.
+    Sql,
 }
 
 /// How far into a file the shebang line is looked for.
@@ -81,6 +92,10 @@ impl Language {
             "tf" | "tfvars" => Self::Terraform,
             "sh" | "bash" | "dash" => Self::Shell,
             "zsh" | "ksh" | "fish" => Self::ShellUnread,
+            "html" | "htm" => Self::Html,
+            "astro" => Self::Astro,
+            "swift" => Self::Swift,
+            "sql" => Self::Sql,
             _ => return None,
         })
     }
@@ -154,6 +169,10 @@ impl Language {
             Self::Dockerfile => "dockerfile",
             Self::Shell => "shell",
             Self::ShellUnread => "shell-unread",
+            Self::Html => "html",
+            Self::Astro => "astro",
+            Self::Swift => "swift",
+            Self::Sql => "sql",
         }
     }
 }

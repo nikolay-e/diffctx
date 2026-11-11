@@ -830,6 +830,8 @@ macro_rules! every_family {
                 terraform: Terraform,
                 dockerfile: Dockerfile,
                 shell: Shell,
+                swift: Swift,
+                sql: Sql,
             ]
         );
     };
@@ -853,6 +855,8 @@ macro_rules! every_nesting_family {
                 config: Config,
                 terraform: Terraform,
                 shell: Shell,
+                swift: Swift,
+                sql: Sql,
             ]
         );
     };

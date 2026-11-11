@@ -8,7 +8,7 @@
 //! carries what the grammar knows: a brace group spanning lines, a rename,
 //! an import inside a comment that is not an import at all.
 
-//! Two layers share the name. `java`, `kotlin`, `python`, `scala` and `swift` are
+//! Two layers share the name. `java`, `kotlin`, `python` and `scala` are
 //! the syntax facts the edge builders read today (`LanguageFacts`, `Declaration`).
 //! The rest is the facts layer of the 2.0 architecture: what an [`Extractor`]
 //! says about a blob ([`BlobFacts`]), the cache keyed by blob ([`FactsCache`]),
@@ -30,7 +30,6 @@ pub mod kotlin;
 pub mod python;
 pub mod scala;
 pub mod shell;
-pub mod swift;
 
 mod blob;
 mod cache;

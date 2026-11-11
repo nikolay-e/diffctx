@@ -25,6 +25,10 @@ pub fn locate(
                 }
             })
             .unwrap_or_else(|| stem(inside(root, path)).to_string()),
+        // A module is the SwiftPM target a file sits in; a file outside the
+        // `Sources/<target>/` and `Tests/<target>/` layout is in the one unnamed
+        // module.
+        Language::Swift => swift_target(path).map_or_else(String::new, str::to_string),
         Language::Kotlin | Language::Java | Language::Go => workspace
             .package_of(path)
             .map(|package| package.name)
@@ -36,7 +40,9 @@ pub fn locate(
         | Language::HelmTemplate
         | Language::HelmValues
         | Language::Shell
-        | Language::ShellUnread => stem(inside(root, path)).to_string(),
+        | Language::ShellUnread
+        | Language::Html
+        | Language::Astro => stem(inside(root, path)).to_string(),
         // A header and its source share a stem and both define the name.
         Language::C | Language::Cpp => inside(root, path).to_string(),
         // A module is a directory, whatever manifest or lockfile the project has.
@@ -44,7 +50,8 @@ pub fn locate(
             .rsplit_once('/')
             .map_or(String::new(), |(directory, _)| directory.to_string()),
         // `Dockerfile.dev` and `Dockerfile.prod` share a stem.
-        Language::Dockerfile => inside(root, path).to_string(),
+        // A routine redefined by a later migration is a definition of each file.
+        Language::Dockerfile | Language::Sql => inside(root, path).to_string(),
     };
     (ProjectId::new(root), ModulePath::new(module))
 }
@@ -70,6 +77,15 @@ fn python_module(
         None if dotted == "__init__" => String::new(),
         None => dotted,
     }
+}
+
+/// The directory under `Sources/` or `Tests/` that holds the file.
+fn swift_target(path: &str) -> Option<&str> {
+    let parts: Vec<&str> = path.split('/').collect();
+    parts
+        .windows(3)
+        .find(|w| w[0] == "Sources" || w[0] == "Tests")
+        .map(|w| w[1])
 }
 
 fn inside<'p>(dir: &str, path: &'p str) -> &'p str {

@@ -38,6 +38,8 @@ mod php;
 mod python;
 mod rust;
 mod shell;
+mod sql;
+mod swift;
 mod terraform;
 mod typescript;
 
@@ -51,6 +53,8 @@ pub use php::{DYNAMIC, PhpResolver};
 pub use python::PythonResolver;
 pub use rust::RustResolver;
 pub use shell::ShellResolver;
+pub use sql::SqlResolver;
+pub use swift::SwiftResolver;
 pub use terraform::TerraformResolver;
 pub use typescript::TypeScriptResolver;
 
@@ -223,6 +227,9 @@ pub enum CandidateReason {
     /// A chart's own `values.yaml`, read by every release of it: the repository
     /// names no release, so it may be overridden or not.
     NoRelease,
+    /// An unqualified name and a definition of another schema: the schemas it
+    /// resolves through are the session's search path, which no file states.
+    SearchPath,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

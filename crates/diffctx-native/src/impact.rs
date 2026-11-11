@@ -17,7 +17,7 @@ use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells};
 use crate::facts::{EntryKind, framework};
 use crate::graph::EdgeCategory;
-use crate::lang::{self, At, LanguageFacts, Registry, UseSite};
+use crate::lang;
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
@@ -1157,9 +1157,8 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             })
         })
         .collect();
-    // A deleted file over the size cap had its removals skipped
-    // (`removed_by_models`): as unanalysed as a changed one, and never in
-    // `changed`.
+    // A deleted file over the size cap had its removals skipped: as unanalysed as a
+    // changed one, and never in `changed`.
     out.extend(
         state
             .deleted_files
@@ -1849,7 +1848,7 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
         .to_str()?
         .to_ascii_lowercase();
     match ext.as_str() {
-        // Traits are the Rust model's (`LanguageFacts::dispatched`).
+        // Traits are the Rust cell's (`Gap::Dispatched`).
         "rs" => return None,
         "go" => {
             return core
@@ -1967,38 +1966,6 @@ fn indent_of(text: &str) -> usize {
     text.lines()
         .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
         .map_or(0, |l| l.len() - l.trim_start().len())
-}
-
-/// The object literal a method belongs to — `cart` of
-/// `const cart = { total() {} }` — reached as `cart.total()` the way a
-/// class's method is reached through its instance (#473).
-pub(crate) fn object_owner(f: &Fragment, file: &[&Fragment]) -> Option<String> {
-    file.iter()
-        .filter(|o| {
-            o.kind == FragmentKind::Variable
-                && o.id != f.id
-                && o.start_line() <= f.start_line()
-                && o.end_line() >= f.end_line()
-                && o.content
-                    .split_once('=')
-                    .is_some_and(|(_, v)| v.trim_start().starts_with('{'))
-        })
-        .min_by_key(|o| o.line_count())
-        .and_then(|o| o.symbol_name.clone())
-}
-
-/// `name: (…) => …` or `name(…) {` as a property of an object no variable
-/// holds — a store built inside `create(...)`: a method of an owner the
-/// syntax does not name (#473).
-pub(crate) fn is_object_property(f: &Fragment, name: &str) -> bool {
-    let head = f.content.trim_start();
-    [
-        format!("{name}:"),
-        format!("\"{name}\":"),
-        format!("'{name}':"),
-    ]
-    .iter()
-    .any(|k| head.starts_with(k.as_str()))
 }
 
 pub(crate) fn enclosing_class<'a>(f: &Fragment, file: &[&'a Fragment]) -> Option<&'a Fragment> {
@@ -2835,11 +2802,6 @@ pub fn build_impact(
         state,
     };
     let source = state.run.source();
-    let registering = crate::profile::detail("impact.setup.registry", "");
-    let universe: FxHashSet<String> = read_or_note(state, source.list_paths(&state.root_dir))
-        .into_iter()
-        .chain(state.all_fragments.iter().map(|f| rel(state, f.path())))
-        .collect();
     // A lexical link stops at a project the workspace model says cannot
     // reference the other: a Python test naming `config` is not a test of
     // another project's `config.ts`. It crosses through a declared
@@ -2848,55 +2810,7 @@ pub fn build_impact(
     let one_tree =
         |user: &str, used: &str| source.may_reference(&rel(state, user), &rel(state, used));
     let one_project = |user: &Fragment, used: &Fragment| one_tree(user.path(), used.path());
-    // Files the range deleted or renamed away are files an import may still
-    // name: resolved, a remaining import of one is a broken caller, not an
-    // external package.
-    let registry = Registry::for_analysis(
-        &state.root_dir,
-        &source,
-        universe
-            .into_iter()
-            .chain(state.deleted_files.iter().cloned())
-            .chain(state.renamed_files.iter().map(|(old, _)| old.clone()))
-            .collect(),
-    );
-    drop(registering);
     let file_of = |f: &Fragment| files.fragments.get(f.path()).map_or(&[][..], Vec::as_slice);
-    // The definition a fragment stands for, as the model of its language
-    // resolved it.
-    let definition = |model: &dyn LanguageFacts, f: &Fragment| {
-        let path = rel(state, f.path());
-        model.definition(&At {
-            path: &path,
-            frag: f,
-            file: file_of(f),
-        })
-    };
-    let finding = |user: &Fragment, used: &Fragment| -> Option<Finding> {
-        let model = registry.for_pair(user.path(), used.path())?;
-        let def = definition(model, used)?;
-        let path = rel(state, user.path());
-        model
-            .classify(
-                &UseSite {
-                    path: &path,
-                    lines: (user.start_line(), user.end_line()),
-                    frag: Some((user, file_of(user))),
-                },
-                def,
-            )
-            .filter(|f| {
-                one_tree(user.path(), used.path())
-                    && (!untyped_guess(f)
-                        || source.same_package(&path, &rel(state, used.path()))
-                        || references_module(
-                            user,
-                            &files,
-                            used.symbol_name.as_deref().map(base_symbol),
-                            used.path(),
-                        ))
-            })
-    };
     let registration = |f: &Fragment| -> Option<String> {
         let path = rel(state, f.path());
         let stated_entry = f.symbol_name.as_deref().map(base_symbol).and_then(|name| {
@@ -2910,8 +2824,7 @@ pub fn build_impact(
             return Some(framework::describe(kind, &entry));
         }
         if is_jvm_path(f.path()) {
-            // Kotlin's annotations are the facts' own; Java's and Swift's the
-            // syntax model's.
+            // Kotlin's and Java's annotations are the facts' own.
             let stated = cells.of(&path).and_then(|cell| {
                 cell.annotations_at(
                     &path,
@@ -2919,17 +2832,11 @@ pub fn build_impact(
                     (f.start_line(), f.end_line()),
                 )
             });
-            let annotations = stated.or_else(|| {
-                registry
-                    .for_path(f.path())
-                    .and_then(|m| m.annotations(definition(m, f)?))
-            });
-            jvm_entry_point(f, file_of(f), annotations.as_deref())
+            jvm_entry_point(f, file_of(f), stated.as_deref())
         } else {
             registering_decorator(f, file_of(f))
         }
     };
-    let modelled = |a: &Fragment, b: &Fragment| registry.for_pair(a.path(), b.path()).is_some();
     let link = |user: &Fragment, used: &Fragment| -> bool {
         let Some(name) = used.symbol_name.as_deref().map(base_symbol) else {
             return false;
@@ -2947,13 +2854,9 @@ pub fn build_impact(
                 (used.start_line(), used.end_line()),
             );
         }
-        if modelled(user, used) {
-            finding(user, used).is_some_and(|f| f.evidence == Evidence::Resolved)
-        } else {
-            one_project(user, used)
-                && mentions(user, Some(name), &Receiver::Any)
-                && references_module(user, &files, Some(name), used.path())
-        }
+        one_project(user, used)
+            && mentions(user, Some(name), &Receiver::Any)
+            && references_module(user, &files, Some(name), used.path())
     };
     let reaches_file = |test: &Fragment, caller: &Fragment| -> bool {
         if !same_runtime(test.path(), caller.path()) {
@@ -2963,12 +2866,7 @@ pub fn build_impact(
         if let Some(cell) = cells.of(&test_rel).filter(|c| c.owns(&caller_rel)) {
             return cell.reaches(&test_rel, &caller_rel);
         }
-        match registry.for_pair(test.path(), caller.path()) {
-            Some(model) => model.reaches_file(&rel(state, test.path()), &rel(state, caller.path())),
-            None => {
-                one_project(test, caller) && references_module(test, &files, None, caller.path())
-            }
-        }
+        one_project(test, caller) && references_module(test, &files, None, caller.path())
     };
     // A field changes its class too: how the class is built (a dataclass's
     // constructor, a column's default) is its callers' business, and what
@@ -3238,10 +3136,9 @@ pub fn build_impact(
         // `build`, `new`, `run`: a name defined all over the repository links
         // by name to every definition, and its "callers" would be everyone's.
         let core_lang = crate::languages::get_language_for_file(core.path()).unwrap_or("");
-        // With a binding model, imports decide which definition a reference
-        // reaches; a name defined in many files is ambiguous only without one.
-        let binding_model =
-            symbol.is_some() && (py.is_some() || registry.for_path(core.path()).is_some());
+        // With a cell, imports decide which definition a reference reaches; a
+        // name defined in many files is ambiguous only without one.
+        let binding_model = symbol.is_some() && py.is_some();
         // A qualified query (`path:name`) names its definition; only a bare
         // name or a diff leaves the lexical model guessing among many.
         let qualified = query.is_some_and(|q| q.contains(':'));
@@ -3269,9 +3166,6 @@ pub fn build_impact(
         // fragment that names it without one is where the edge cap can have
         // hidden a caller.
         let mut linked: FxHashSet<FragmentId> = FxHashSet::default();
-        // Fragments outside the diff that read the member through a receiver
-        // nothing types: counted, since such a read may or may not be one.
-        let mut unresolved_readers: FxHashSet<FragmentId> = FxHashSet::default();
         // Whether a fragment that reaches the core is a caller, and with
         // what evidence; the reason it is not, otherwise.
         let judge = |frag: &Fragment| -> Result<Option<Finding>, &'static str> {
@@ -3295,13 +3189,6 @@ pub fn build_impact(
                 Err("local_binding")
             } else if !is_code_file(frag.path()) {
                 Err("not_code")
-            } else if binding_model && modelled(frag, core) {
-                match finding(frag, core) {
-                    Some(f) if f.evidence == Evidence::Candidate(bindings::UNRESOLVED_READ) => {
-                        Err(bindings::UNRESOLVED_READ)
-                    }
-                    found => found.map(Some).ok_or("binding_rejected"),
-                }
             } else if !one_tree(frag.path(), core.path()) {
                 Err("other_project")
             } else if !{
@@ -3362,24 +3249,6 @@ pub fn build_impact(
                     "ambiguous_name"
                 } else if within(src, core) {
                     "own_body"
-                } else if let Some((frag, found)) = by_id
-                    .get(src)
-                    .filter(|f| {
-                        binding_model
-                            && modelled(f, core)
-                            && f.kind != FragmentKind::Excerpt
-                            && !is_import_block(&f.content)
-                    })
-                    .and_then(|f| {
-                        finding(f, core)
-                            .filter(|x| x.evidence == Evidence::Resolved)
-                            .map(|x| (*f, x))
-                    })
-                {
-                    // A resolved binding is stronger evidence than which way the
-                    // edge between the two fragments happens to weigh more.
-                    sources.push((frag, weight, Some(found)));
-                    return;
                 } else if let Some(frag) = by_id
                     .get(src)
                     .filter(|f| in_diff.contains(&f.id) && judge(f).is_ok())
@@ -3420,12 +3289,7 @@ pub fn build_impact(
                             sources.push((frag, weight, found));
                             return;
                         }
-                        Err(reason) => {
-                            if reason == bindings::UNRESOLVED_READ && !inside_the_diff(&frag.id) {
-                                unresolved_readers.insert(frag.id.clone());
-                            }
-                            reason
-                        }
+                        Err(reason) => reason,
                     }
                 };
                 *dropped.entry(reason).or_default() += 1;
@@ -3434,10 +3298,9 @@ pub fn build_impact(
             // caller that references many names can lose its edge to the changed
             // definition, and the answer read "0 callers" (#446, Forgejo #68). A
             // capped fragment naming the definition faces the same tests as an
-            // edge would have; models that read uses off the syntax do so below.
-            // The definition's own file is no exception: a long function there
-            // calling it is capped like any other (#547).
-            if !ambiguous && !registry.answers(core.path(), lang::Relation::Uses) {
+            // edge would have. The definition's own file is no exception: a long
+            // function there calling it is capped like any other (#547).
+            if !ambiguous {
                 let word = symbol.map_or_else(String::new, str::to_lowercase);
                 let capped = &graph.cap_stats.capped_sources;
                 for frag in files
@@ -3457,9 +3320,6 @@ pub fn build_impact(
                                 in_diff.insert(frag.id.clone());
                             }
                             sources.push((frag, 0.0, found));
-                        }
-                        Err(bindings::UNRESOLVED_READ) if !inside_the_diff(&frag.id) => {
-                            unresolved_readers.insert(frag.id.clone());
                         }
                         Err(_) => {}
                     }
@@ -3571,74 +3431,6 @@ pub fn build_impact(
                         lines: vec![line],
                     }),
                 ));
-            }
-        }
-        // A model that reads uses off the syntax finds a caller the graph
-        // never linked — a call through an inherited receiver, through the
-        // implicit `this` of the class, a function the edge cap dropped.
-        let core_def = registry
-            .for_path(core.path())
-            .filter(|m| m.modelled().contains(&lang::Relation::Uses))
-            .and_then(|m| Some((m, definition(m, core)?)));
-        // Temporary, until the facts read HTML (wave 7): a cell-owned
-        // definition takes from this model only the uses a page makes of it.
-        let use_lines = |path: &str| -> Vec<u32> {
-            match core_def {
-                Some((model, def))
-                    if model.covers(path) && (py.is_none() || lang::is_page(path)) =>
-                {
-                    // A model with no lines for the file has no use to list.
-                    model
-                        .use_lines(&rel(state, path), def)
-                        .into_iter()
-                        .flatten()
-                        .collect()
-                }
-                _ => Vec::new(),
-            }
-        };
-        if core_def.is_some() {
-            let _t = crate::profile::detail("impact.callers.uses", "");
-            let listed: FxHashSet<FragmentId> =
-                sources.iter().map(|(f, _, _)| f.id.clone()).collect();
-            let mut seen = listed;
-            let mut found: Vec<(&Fragment, Finding)> = Vec::new();
-            for (path, frags) in &files.fragments {
-                for line in use_lines(path) {
-                    let Some(frag) = frags
-                        .iter()
-                        .filter(|f| {
-                            f.start_line() <= line
-                                && f.end_line() >= line
-                                && f.kind != FragmentKind::Excerpt
-                                && !f.kind.is_signature()
-                        })
-                        .min_by_key(|f| f.line_count())
-                    else {
-                        continue;
-                    };
-                    if within(&frag.id, core) {
-                        continue;
-                    }
-                    if inside_the_diff(&frag.id) {
-                        called_in_diff = called_in_diff || finding(frag, core).is_some();
-                        continue;
-                    }
-                    if !seen.insert(frag.id.clone()) {
-                        continue;
-                    }
-                    match finding(frag, core) {
-                        Some(f) if f.evidence == Evidence::Candidate(bindings::UNRESOLVED_READ) => {
-                            unresolved_readers.insert(frag.id.clone());
-                        }
-                        Some(f) => found.push((frag, f)),
-                        None => {}
-                    }
-                }
-            }
-            for (frag, f) in found {
-                let weight = graph.forward_edge_weight(&frag.id, &core.id).unwrap_or(0.0);
-                sources.push((frag, weight, Some(f)));
             }
         }
         // A local `const items = rows(xs)` is a line of its function, not a
@@ -3940,38 +3732,26 @@ pub fn build_impact(
         } else {
             None
         };
-        let unresolved = core_def
-            .and_then(|(model, def)| model.dispatched(def))
-            .map(|trait_name| Unknown::Dispatched { trait_name })
-            .or_else(|| {
-                symbol.filter(|_| ambiguous).map(|s| Unknown::Ambiguous {
-                    name: s.to_string(),
-                    definitions: definitions
-                        .get(&(core_lang, s.to_lowercase()))
-                        .copied()
-                        .unwrap_or(0),
-                    language: core_lang,
-                })
-            })
-            .or_else(|| {
-                let reads = unresolved_readers.len();
-                (reads > 0).then(|| Unknown::UnresolvedReads {
-                    name: symbol.map(base_symbol).unwrap_or("").to_string(),
-                    reads,
-                })
+        let unresolved = symbol
+            .filter(|_| ambiguous)
+            .map(|s| Unknown::Ambiguous {
+                name: s.to_string(),
+                definitions: definitions
+                    .get(&(core_lang, s.to_lowercase()))
+                    .copied()
+                    .unwrap_or(0),
+                language: core_lang,
             })
             .or_else(|| route.clone().map(|via| Unknown::Overridable { via }))
             .or_else(|| {
-                (callers.is_empty()
-                    && py.is_none()
-                    && is_code_file(core.path())
-                    && !registry.answers(core.path(), lang::Relation::Callers))
-                .then(|| Unknown::NotModelled {
-                    language: if core_lang.is_empty() {
-                        "this language"
-                    } else {
-                        core_lang
-                    },
+                (callers.is_empty() && py.is_none() && is_code_file(core.path())).then(|| {
+                    Unknown::NotModelled {
+                        language: if core_lang.is_empty() {
+                            "this language"
+                        } else {
+                            core_lang
+                        },
+                    }
                 })
             });
         // An entry point is called by its runner or framework: the hedge for
@@ -4033,13 +3813,6 @@ pub fn build_impact(
         } else {
             0
         };
-        // A file that cannot name the definition cannot call it, read or
-        // not: a function local to another (#546), a private Rust item
-        // outside its module (#599).
-        let model_def = registry
-            .for_path(core.path())
-            .and_then(|m| Some((m, definition(m, core)?)));
-        let names_it = |file: &str| model_def.is_none_or(|(m, def)| m.names_from(def, file));
         // The files of the definition's interaction group the account could not
         // place: the cell's own for its definitions, the group's by extension for
         // the rest, none of them bound. A file outside code has no group.
@@ -4053,7 +3826,7 @@ pub fn build_impact(
                 state,
                 &rel(state, core.path()),
                 &symbol.map_or_else(Vec::new, names_of),
-                &names_it,
+                &|_| true,
             ))
         } else {
             None
@@ -4070,7 +3843,6 @@ pub fn build_impact(
                 missed_namers(state, &cells, base_symbol(s), core.path())
             })
             .into_iter()
-            .filter(|f| names_it(&f.path))
             .collect();
         let mut outside = embedded.len();
         missed_in.extend(embedded);
@@ -4082,11 +3854,7 @@ pub fn build_impact(
                     .is_some_and(decide::Verdict::gaps_are_only_unaccounted))
             && missed_in.is_empty()
         {
-            missed_in = untraced
-                .of(core)
-                .into_iter()
-                .filter(|f| names_it(&f.path))
-                .collect();
+            missed_in = untraced.of(core).into_iter().collect();
             outside += missed_in.len();
         }
         let coverage = search_coverage(
@@ -4344,20 +4112,11 @@ pub fn build_impact(
         let head_rev = analysed
             .map(crate::snapshot::split_diff_range)
             .and_then(|(_, head)| head);
-        let binds_to = |file: &str, text: &str, name: &str, old: &str| {
-            registry
-                .for_path(file)
-                .and_then(|m| m.binds(file, text, name, old))
-                .unwrap_or(false)
-        };
         // The facts layer answers for the files of the cells' languages
         // (`cell_removed`).
-        let read_off_facts = |path: &str| {
-            registry.answers(path, lang::Relation::Removals) || cells.of(path).is_some()
-        };
+        let read_off_facts = |path: &str| cells.of(path).is_some();
         let mut listed_alone: FxHashSet<(String, String)> = FxHashSet::default();
-        let mut from_facts =
-            removed_by_models(state, &registry, &base, head_rev.as_deref(), &one_tree);
+        let mut from_facts: Vec<(ChangedSymbol, Option<Contract>)> = Vec::new();
         // A removed name is listed with its readers, or with what could not be
         // told, or alone (#699). A removed public definition is a contract that
         // moved, listed or not.
@@ -4382,9 +4141,7 @@ pub fn build_impact(
             &defined,
             head_rev.as_deref(),
             &in_a_hunk,
-            &binds_to,
             &read_off_facts,
-            &one_tree,
         )
         .into_iter()
         .chain(from_facts)
@@ -4696,256 +4453,12 @@ fn definition_holders(state: &ScoredState) -> FxHashMap<String, Vec<&Fragment>> 
     holders
 }
 
-/// Definitions the models that read removals off their facts say the range
-/// removed, with the lines at the head still using them.
-fn removed_by_models(
-    state: &ScoredState,
-    registry: &Registry,
-    base: &str,
-    head: Option<&str>,
-    one_tree: &dyn Fn(&str, &str) -> bool,
-) -> Vec<(ChangedSymbol, Option<Contract>)> {
-    // (path at the base, path at the head): a rename compares across both.
-    let renamed_to: FxHashMap<&str, &str> = state
-        .renamed_files
-        .iter()
-        .map(|(old, new)| (new.as_str(), old.as_str()))
-        .collect();
-    // A side over the size cap is not analysed, as fragmentation decided for
-    // the head; parsing it here anyway cost seconds per MB. Its removals go
-    // unread and the file is named not analysed (`unanalysed_files`).
-    let cap = crate::config::limits::LIMITS.max_changed_file_size as u64;
-    let head_too_large = state
-        .run
-        .limited_by(crate::resource::LimitReason::FileTooLarge);
-    let pairs: Vec<(String, Option<String>)> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .filter(|p| !head_too_large.contains(p))
-        .map(|p| {
-            let old = renamed_to
-                .get(p.as_str())
-                .map_or_else(|| p.clone(), |o| (*o).to_string());
-            (old, Some(p))
-        })
-        .chain(state.deleted_files.iter().map(|p| (p.clone(), None)))
-        .collect();
-    let base_source = state.run.source().base();
-    let over_cap = |old: &str| match base_source.read(&state.root_dir.join(old)) {
-        Ok(bytes) => bytes.is_some_and(|b| b.len() as u64 > cap),
-        Err(e) => match crate::resource::reason_for(&e) {
-            crate::resource::LimitReason::FileTooLarge => true,
-            reason => {
-                state.run.note(reason);
-                false
-            }
-        },
-    };
-    let pairs: Vec<(String, Option<String>)> = pairs
-        .into_iter()
-        .filter(|(old, new)| {
-            let over = over_cap(old);
-            if over {
-                // Named where its removals are reported: the head's path.
-                let named = new.clone().unwrap_or_else(|| old.clone());
-                state
-                    .run
-                    .note_file(crate::resource::LimitReason::FileTooLarge, named);
-            }
-            !over
-        })
-        .collect();
-    let removed: Vec<(&dyn LanguageFacts, lang::RemovedDef)> = registry
-        .models()
-        .filter(|m| m.modelled().contains(&lang::Relation::Removals))
-        .flat_map(|m| {
-            m.removed(base, &pairs)
-                .into_iter()
-                .flatten()
-                .map(move |r| (m, r))
-        })
-        .collect();
-    if removed.is_empty() {
-        return Vec::new();
-    }
-    let names: Vec<String> = {
-        let mut n: Vec<String> = removed.iter().map(|(_, d)| d.name.clone()).collect();
-        n.sort();
-        n.dedup();
-        n
-    };
-    // Whole words of code files: read over every file, a common name
-    // counted each withheld data file that spells it.
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_code_words(
-            &state.root_dir,
-            &state.run.source(),
-            &names,
-            head,
-            MAX_REMOVED_NAME_HITS + 1,
-        ),
-    );
-    state.run.note_withheld(grepped.withheld);
-    let hits = grepped.rows;
-    let holders = definition_holders(state);
-    let changed: FxHashSet<&str> = pairs.iter().filter_map(|(_, new)| new.as_deref()).collect();
-    let mut out = Vec::new();
-    for (model, def) in removed {
-        if !state.run.check() {
-            break;
-        }
-        let mut lines_by_file: FxHashMap<&str, Vec<u32>> = FxHashMap::default();
-        for (path, line, text) in &hits {
-            if model.covers(path) && names_word(text, &def.name) {
-                lines_by_file.entry(path.as_str()).or_default().push(*line);
-            }
-        }
-        // As for a name the grammar reads off removed lines: on this many
-        // lines it is a common word, and each would be classified in turn.
-        let spelled: usize = lines_by_file.values().map(Vec::len).sum();
-        let unresolved = (spelled > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
-            name: def.name.clone(),
-            lines: spelled,
-        });
-        if unresolved.is_some() {
-            lines_by_file.clear();
-        }
-        let mut callers: Vec<Caller> = Vec::new();
-        for (path, lines) in &lines_by_file {
-            for &line in lines {
-                let site = UseSite {
-                    path,
-                    lines: (line, line),
-                    frag: None,
-                };
-                let Some(found) = model.classify(&site, def.def) else {
-                    continue;
-                };
-                if untyped_guess(&found) && !one_tree(path, &def.path) {
-                    continue;
-                }
-                let holder = holders
-                    .get(*path)
-                    .into_iter()
-                    .flatten()
-                    .filter(|f| f.start_line() <= line && f.end_line() >= line)
-                    .min_by_key(|f| f.line_count());
-                callers.push(Caller {
-                    path: path.to_string(),
-                    symbol: holder.and_then(|f| f.symbol_name.clone()),
-                    lines: holder.map_or_else(|| format!("{line}-{line}"), |f| lines_of(&f.id)),
-                    weight: 1.0,
-                    tested_by: None,
-                    tested_via: None,
-                    file_tested: false,
-                    registered_by: None,
-                    unread_test: None,
-                    evidence: match found.evidence {
-                        Evidence::Resolved => "resolved",
-                        _ => "candidate",
-                    },
-                    reason: match found.evidence {
-                        Evidence::Candidate(r) => Some(r),
-                        _ => None,
-                    },
-                    relation: match found.relation {
-                        Relation::Reference => "reference",
-                        Relation::Implementation => "implementation",
-                        Relation::Call => "call",
-                    },
-                    kind: None,
-                    folded_by: None,
-                    fold_kind: None,
-                    fold_share: 0,
-                    sites: vec![line],
-                });
-            }
-        }
-        // Moved, not removed, when nothing still reaches it where it was
-        // and a use reaches the name the range now declares in another
-        // file: every importer names the new path (#540). A move whose
-        // callers still name the old module stays a removal, with them.
-        let reaches_moved = |frag: &Fragment, frags: &[&Fragment], path: &str| {
-            model
-                .definition(&lang::At {
-                    path,
-                    frag,
-                    file: frags,
-                })
-                .is_some_and(|moved| {
-                    lines_by_file.iter().any(|(at, lines)| {
-                        lines.iter().any(|&line| {
-                            let site = UseSite {
-                                path: at,
-                                lines: (line, line),
-                                frag: None,
-                            };
-                            model
-                                .classify(&site, moved)
-                                .is_some_and(|f| f.evidence == Evidence::Resolved)
-                        })
-                    })
-                })
-        };
-        let moved = callers.is_empty()
-            && holders
-                .iter()
-                .filter(|(path, _)| {
-                    **path != def.path && changed.contains(path.as_str()) && model.covers(path)
-                })
-                .any(|(path, frags)| {
-                    frags.iter().any(|f| {
-                        f.symbol_name.as_deref().map(base_symbol) == Some(def.name.as_str())
-                            && reaches_moved(f, frags, path)
-                    })
-                });
-        if moved {
-            continue;
-        }
-        let contract = def.public.then(|| Contract {
-            path: def.path.clone(),
-            symbol: Some(def.name.clone()),
-            kind: "removed_api",
-        });
-        out.push((
-            ChangedSymbol {
-                path: def.path,
-                symbol: Some(def.name),
-                lines: format!("{}-{}", def.lines.0, def.lines.1),
-                kind: "removed".to_string(),
-                commits: 0,
-                callers: merge_by_symbol(callers),
-                entry: None,
-                unresolved,
-                untested: false,
-                compatible_callers: 0,
-                missed_in: Vec::new(),
-                also_changed: Vec::new(),
-                possibly_also_changed: Vec::new(),
-                shed: crate::answer::v2::ShedRows::default(),
-                change: None,
-                callers_omitted: 0,
-                omitted: Vec::new(),
-                folded: Vec::new(),
-                new_parameters: Vec::new(),
-                coverage: decide::Coverages::partial(decide::Gap::NotTraced),
-            },
-            contract,
-        ));
-    }
-    out
-}
-
 fn removed_definitions(
     state: &ScoredState,
     defined: &FxHashMap<&str, FxHashSet<String>>,
     head: Option<&str>,
     in_a_hunk: &dyn Fn(&FragmentId) -> bool,
-    binds_to: &dyn Fn(&str, &str, &str, &str) -> bool,
     read_off_facts: &dyn Fn(&str) -> bool,
-    one_tree: &dyn Fn(&str, &str) -> bool,
 ) -> Vec<(ChangedSymbol, Option<Contract>)> {
     // Read off the grammar, the file at the base against the file at the
     // head: a removed definition is one the base declared and the head does
@@ -4962,8 +4475,7 @@ fn removed_definitions(
     // interface)
     let mut removed: Vec<(String, String, (String, String), bool, Option<String>)> = Vec::new();
     for h in &state.hunk_texts {
-        // A model that reads removals off its facts answers for its files
-        // (`removed_by_models`).
+        // The facts answer for the files of the cells' languages.
         if h.removed.is_empty()
             || !is_code_file(&h.path)
             || read_off_facts(&h.path)
@@ -5069,7 +4581,7 @@ fn removed_definitions(
     }
     let holders = definition_holders(state);
     let mut out = Vec::new();
-    for (name, path_removed, (path_at_base, lines), exported, container) in removed {
+    for (name, path_removed, (path_at_base, lines), exported, _) in removed {
         if !state.run.check() {
             break;
         }
@@ -5114,24 +4626,12 @@ fn removed_definitions(
             // TypeScript `test.describe` were callers (#470, #471, #458).
             let modelled =
                 bindings::lang_of(&path).is_some() && bindings::lang_of(&path_removed).is_some();
-            // A row the binding model let through is model-informed; one no
-            // model checked is a word match (R1).
-            let mut checked: Option<Option<&'static str>> = None;
+            // No model binds a name across files: of the files a removed
+            // definition's language reads, only its own lines are known readers,
+            // and a row no model checked is a word match (R1).
             if modelled {
-                // A member is reached through its class, imported by name.
-                let by_name = binds_to(&path, &text, &name, &path_removed);
-                let bound = by_name
-                    || container
-                        .as_deref()
-                        .is_some_and(|c| binds_to(&path, &text, c, &path_removed));
-                if path != path_removed && !bound {
-                    continue;
-                }
                 if path != path_removed {
-                    if !by_name && !one_tree(&path, &path_removed) {
-                        continue;
-                    }
-                    checked = Some((!by_name).then_some("receiver_unresolved"));
+                    continue;
                 }
             } else if runtime_of(&path) != runtime_of(&path_removed)
                 // A file that declares the name itself calls its own.
@@ -5143,7 +4643,7 @@ fn removed_definitions(
             }
             if let Some(at) = moved_to {
                 let reaches_new = if bindings::lang_of(&path).is_some() {
-                    !binds_to(&path, &text, &name, &path_removed)
+                    true
                 } else {
                     at.iter().any(|f| qualified_by(&text, f)) && !qualified_by(&text, &path_removed)
                 };
@@ -5195,12 +4695,8 @@ fn removed_definitions(
                 file_tested: false,
                 registered_by: None,
                 unread_test: None,
-                evidence: if checked.is_some() {
-                    "candidate"
-                } else {
-                    "name"
-                },
-                reason: checked.flatten(),
+                evidence: "name",
+                reason: None,
                 relation: if next.starts_with('(') || next.starts_with("?.(") {
                     "call"
                 } else {
@@ -5262,15 +4758,6 @@ const PROJECT_MANIFESTS: &[&str] = &[
     "mix.exs",
     "deno.json",
 ];
-
-/// A use through a receiver nothing types: any object's attribute or method
-/// of that name. Another project that never imports the module cannot reach
-/// the definition, so such a guess does not cross a project root (#649,
-/// Forgejo #86).
-fn untyped_guess(found: &Finding) -> bool {
-    matches!(found.evidence, Evidence::Candidate(r)
-        if r == "receiver_unresolved" || r == bindings::UNRESOLVED_READ)
-}
 
 const MAX_STALE_REFERENCES: usize = 24;
 const MAX_STALE_PER_TARGET: usize = 8;

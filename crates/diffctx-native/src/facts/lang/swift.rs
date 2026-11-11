@@ -1,30 +1,92 @@
-//! Swift facts from the alex-pinkus grammar (`tree-sitter-swift`), in the
-//! shape of the Kotlin facts: that grammar follows fwcd's, and one binding
-//! model (`kotlin_bindings`) reads both (#526).
+//! What a Swift file's syntax states, read from the alex-pinkus grammar
+//! (`tree-sitter-swift`) in the shape of the Kotlin walk (`facts::kotlin`): that
+//! grammar follows fwcd's, and the Kotlin reader turns both into the facts
+//! contract (`facts::lang::kotlin`, [`Dialect::Swift`]).
 //!
-//! Swift ties a module to its target directory, not to a line of the file,
-//! so the package is left to the reader that knows the path, and an `import`
-//! names a module: a wildcard import of it. An `extension` is a declaration
-//! of its own kind; the members it adds are owned by the type it extends,
-//! wherever that type is declared.
+//! Swift ties a module to its target directory, not to a line of the file, so
+//! the file states no package (the module is the path's: `facts::module`), and an
+//! `import` names a module: a wildcard import of it. An `extension` is a
+//! declaration of its own kind, a definition that extends the type of its name;
+//! the members it adds are owned by that type, wherever it is declared.
 
-use tree_sitter::Node;
+use std::cell::RefCell;
 
-use super::kotlin::{
+use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
+
+use crate::facts::kotlin::{
     Binding, Declaration, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility, child,
     line_of, push_use, squash, string_text, text, walk,
 };
+use crate::facts::lang::kotlin::{Dialect, blob_of};
+use crate::facts::{BlobFacts, Extractor, Language, expired};
+use crate::snapshot::{Loss, RepoPath, RunBudget};
 
-/// The facts of one blob; `None` when the grammar is not compiled in or the
-/// parse timed out.
-pub fn facts(content: &str) -> Option<KotlinFacts> {
-    let tree = crate::parsers::parse_tree("swift", content)?;
-    Some(extract(tree.root_node(), content.as_bytes()))
+pub struct SwiftExtractor;
+
+impl Extractor for SwiftExtractor {
+    fn language(&self) -> Language {
+        Language::Swift
+    }
+
+    fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {
+        let mut blob = BlobFacts::new(Language::Swift);
+        let Some(tree) = parse(text, budget) else {
+            if expired(budget) {
+                blob.deadline();
+            } else {
+                blob.losses.push(Loss::Unsupported {
+                    path: RepoPath::new("<blob>").expect("a valid path"),
+                });
+            }
+            return blob;
+        };
+        let root = tree.root_node();
+        let read = extract(root, text);
+        blob_of(Language::Swift, Dialect::Swift, text, root, &read, budget)
+    }
+}
+
+#[cfg(feature = "tree-sitter-swift")]
+fn grammar() -> Option<Grammar> {
+    Some(Grammar::new(tree_sitter_swift::LANGUAGE))
+}
+
+#[cfg(not(feature = "tree-sitter-swift"))]
+fn grammar() -> Option<Grammar> {
+    None
+}
+
+thread_local! {
+    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
+)]
+fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
+    let language = grammar()?;
+    PARSER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let parser = slot.get_or_insert_with(Parser::new);
+        parser.set_language(&language).ok()?;
+        let mut progress = |_: &ParseState| expired(budget);
+        let len = text.len();
+        let tree = parser.parse_with_options(
+            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
+            None,
+            Some(ParseOptions::new().progress_callback(&mut progress)),
+        );
+        if tree.is_none() {
+            parser.reset();
+        }
+        tree
+    })
 }
 
 type Owners = Vec<(String, Option<Visibility>)>;
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+fn extract(root: Node<'_>, bytes: &[u8]) -> KotlinFacts {
     walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
@@ -718,7 +780,8 @@ func check(_ track: Track, them: Track?) {\n\
 }\n";
 
     fn facts_of() -> KotlinFacts {
-        facts(SOURCE).expect("swift grammar")
+        let tree = parse(SOURCE.as_bytes(), &RunBudget::default()).expect("swift grammar");
+        extract(tree.root_node(), SOURCE.as_bytes())
     }
 
     fn decl<'a>(f: &'a KotlinFacts, name: &str) -> &'a Declaration {

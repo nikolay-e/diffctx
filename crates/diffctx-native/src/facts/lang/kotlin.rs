@@ -54,6 +54,8 @@ use crate::snapshot::{Loss, RepoPath, RunBudget};
 const UNBOUND_PATH: &str = "<blob>";
 const POLL_EVERY: usize = 256;
 const MAX_ERROR_RANGES: usize = 32;
+/// Names an unwrapped binding is followed back through to the one that types it.
+const MAX_ALIAS_HOPS: usize = 4;
 
 /// Annotations that make a function a test a runner calls.
 const TEST_ANNOTATIONS: &[&str] = &[
@@ -130,11 +132,33 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     };
     let root = tree.root_node();
     let read = old::extract(root, text);
+    blob_of(Language::Kotlin, Dialect::Kotlin, text, root, &read, budget)
+}
+
+/// What differs between the languages this reader serves: Swift's syntax facts
+/// take Kotlin's shape (`facts::lang::swift`), and the contract's conventions
+/// are the same but for the ones the types of the Swift file say.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Dialect {
+    Kotlin,
+    Swift,
+}
+
+/// The facts of one blob, from the syntax facts the language's walk made of it.
+pub(super) fn blob_of(
+    language: Language,
+    dialect: Dialect,
+    text: &[u8],
+    root: Node<'_>,
+    read: &old::KotlinFacts,
+    budget: &RunBudget,
+) -> BlobFacts {
+    let mut blob = BlobFacts::new(language);
     let lines = error_ranges(&read.error_lines);
     if !lines.is_empty() {
         blob.parse_error(lines);
     }
-    let mut reader = Reader::new(text, root, &read, budget);
+    let mut reader = Reader::new(dialect, text, root, read, budget);
     reader.run();
     if reader.halted {
         blob.deadline();
@@ -166,6 +190,7 @@ struct Leaf {
 }
 
 struct Reader<'a> {
+    dialect: Dialect,
     bytes: &'a [u8],
     read: &'a old::KotlinFacts,
     budget: &'a RunBudget,
@@ -179,6 +204,7 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn new(
+        dialect: Dialect,
         bytes: &'a [u8],
         root: Node<'_>,
         read: &'a old::KotlinFacts,
@@ -201,7 +227,10 @@ impl<'a> Reader<'a> {
                 leaves.push(Leaf {
                     start: node.start_byte(),
                     end: node.end_byte(),
-                    comment: matches!(node.kind(), "line_comment" | "multiline_comment"),
+                    comment: matches!(
+                        node.kind(),
+                        "line_comment" | "multiline_comment" | "comment"
+                    ),
                 });
             }
             if descending && cursor.goto_first_child() {
@@ -217,6 +246,7 @@ impl<'a> Reader<'a> {
             descending = false;
         }
         Self {
+            dialect,
             bytes,
             read,
             budget,
@@ -341,12 +371,15 @@ impl<'a> Reader<'a> {
         let mut keys: Vec<LocalKey> = Vec::with_capacity(decls.len());
         let mut seen: Vec<(Vec<Name>, Name, Namespace, bool, u16)> = Vec::new();
         for d in decls {
-            let extension = d.receiver.is_some();
+            // A Swift `extension T` is a definition that extends `T`, as a Kotlin
+            // extension function extends its receiver type.
+            let extends = d.kind == "extension";
+            let extension = d.receiver.is_some() || extends;
             let mut container: Vec<Name> = d.owners.iter().map(|o| Name::new(o.as_str())).collect();
             if let Some(receiver) = &d.receiver {
                 container.push(Name::new(receiver.as_str()));
             }
-            let ns = if d.is_type() {
+            let ns = if d.is_type() || extends {
                 Namespace::Type
             } else {
                 Namespace::Value
@@ -368,6 +401,8 @@ impl<'a> Reader<'a> {
             let mut key = LocalKey::new(container, name, ns);
             if let Some(receiver) = &d.receiver {
                 key = key.with_disambig(Disambig::ImplOf(TypeName::new(receiver.as_str())));
+            } else if extends {
+                key = key.with_disambig(Disambig::ImplOf(TypeName::new(d.name.as_str())));
             } else if twin > 0 {
                 key = key.with_disambig(Disambig::Overload(twin));
             }
@@ -437,7 +472,11 @@ impl<'a> Reader<'a> {
 
     fn kind_of(&self, d: &old::Declaration) -> DefKind {
         match d.kind {
+            "extension" => DefKind::Class,
             "class" if has_word(&d.signature, "enum") => DefKind::Enum,
+            "class" if self.dialect == Dialect::Swift && has_word(&d.signature, "struct") => {
+                DefKind::Struct
+            }
             "class" => DefKind::Class,
             "interface" => DefKind::Interface,
             "object" | "companion" => DefKind::Object,
@@ -538,7 +577,7 @@ impl<'a> Reader<'a> {
                 found = Some(start);
                 if matches!(
                     d.kind,
-                    "class" | "interface" | "object" | "companion" | "typealias"
+                    "class" | "interface" | "object" | "companion" | "typealias" | "extension"
                 ) {
                     break;
                 }
@@ -571,8 +610,34 @@ impl<'a> Reader<'a> {
         )
     }
 
+    /// A Swift type marked `@main` is the program's entry; a method named
+    /// `test…` of an `XCTestCase` is a test a runner calls.
+    fn swift_entry(&self, d: &old::Declaration) -> Option<EntryKind> {
+        if d.kind == "class" && d.annotations.iter().any(|a| a == "main") {
+            return Some(EntryKind::Main);
+        }
+        let owner = d.owners.last()?;
+        let xctest = self
+            .read
+            .supertypes_of(owner)
+            .iter()
+            .any(|s| s == "XCTestCase");
+        (d.kind == "fun" && d.name.starts_with("test") && xctest).then_some(EntryKind::Test)
+    }
+
     fn entry_point(&mut self, index: usize) {
         let d = &self.read.declarations[index];
+        if self.dialect == Dialect::Swift {
+            if let Some(kind) = self.swift_entry(d) {
+                self.facts.push(Fact::EntryPoint(EntryPoint {
+                    site: self.name_span(d),
+                    kind,
+                    target: Scope::Def(self.keys[index].clone()),
+                    framework: None,
+                }));
+                return;
+            }
+        }
         if d.kind != "fun" {
             return;
         }
@@ -695,13 +760,27 @@ impl<'a> Reader<'a> {
 
     /// A written chain and what its head is, when the head is a local.
     fn chain(&self, at: usize, parts: &[String]) -> (Receiver, Vec<Name>) {
-        let qualifier: Vec<Name> = parts.iter().map(|p| Name::new(p.as_str())).collect();
+        let mut qualifier: Vec<Name> = parts.iter().map(|p| Name::new(p.as_str())).collect();
         let Some(head) = parts.first() else {
             return (Receiver::None, qualifier);
         };
-        let Some(binding) = self.read.binding_at(head, at) else {
+        let Some(mut binding) = self.read.binding_at(head, at) else {
             return (Receiver::None, qualifier);
         };
+        // `if let t = maybe` and `guard let t = maybe` bind a name that has the
+        // type of the one it unwraps: the chain goes on from that name, a local
+        // of its own or one the resolver finds in scope.
+        for _ in 0..MAX_ALIAS_HOPS {
+            let (None, None, Some(from)) = (&binding.type_name, &binding.init_call, &binding.alias)
+            else {
+                break;
+            };
+            qualifier[0] = Name::new(from.as_str());
+            match self.read.binding_at(from, at) {
+                Some(next) => binding = next,
+                None => return (Receiver::None, qualifier),
+            }
+        }
         let receiver = if let Some(written) = &binding.type_name {
             Receiver::Typed(TypeName::new(written.as_str()))
         } else if let Some(call) = &binding.init_call {

@@ -44,8 +44,8 @@ use crate::pipeline::ScoredState;
 use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
     EvidenceKind, GoResolver, JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation,
-    Resolution, RustResolver, ShellResolver, TerraformResolver, TypeScriptResolver,
-    UnresolvedReason,
+    Resolution, RustResolver, ShellResolver, SqlResolver, SwiftResolver, TerraformResolver,
+    TypeScriptResolver, UnresolvedReason,
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
@@ -73,6 +73,7 @@ const NAME_SUFFIX: &str = "name_suffix";
 const LABEL_SELECTOR: &str = "label_selector";
 const NO_RELEASE: &str = "no_release";
 const CASE_FOLD: &str = "case_fold";
+const SEARCH_PATH: &str = "search_path";
 
 /// The languages one resolver reads: a cell answers for one family.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -95,10 +96,14 @@ pub enum Family {
     Dockerfile,
     /// Shell scripts: functions and variables, the files a script sources.
     Shell,
+    /// Swift: the Kotlin engine in its Swift dialect, a module being a target.
+    Swift,
+    /// SQL files: the routines and views they define, and the calls and reads of them.
+    Sql,
 }
 
 impl Family {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 14] = [
         Self::Python,
         Self::TypeScript,
         Self::Rust,
@@ -111,12 +116,17 @@ impl Family {
         Self::Terraform,
         Self::Dockerfile,
         Self::Shell,
+        Self::Swift,
+        Self::Sql,
     ];
 
     fn has(self, language: Language) -> bool {
         match self {
             Self::Python => language == Language::Python,
-            Self::TypeScript => matches!(language, Language::JavaScript | Language::TypeScript),
+            Self::TypeScript => matches!(
+                language,
+                Language::JavaScript | Language::TypeScript | Language::Html | Language::Astro
+            ),
             Self::Rust => language == Language::Rust,
             Self::Kotlin => language == Language::Kotlin,
             Self::Java => language == Language::Java,
@@ -127,6 +137,8 @@ impl Family {
             Self::Terraform => language == Language::Terraform,
             Self::Dockerfile => language == Language::Dockerfile,
             Self::Shell => matches!(language, Language::Shell | Language::ShellUnread),
+            Self::Swift => language == Language::Swift,
+            Self::Sql => language == Language::Sql,
         }
     }
 
@@ -144,6 +156,8 @@ impl Family {
             Self::Terraform => "Terraform",
             Self::Dockerfile => "Dockerfile",
             Self::Shell => "shell",
+            Self::Swift => "Swift",
+            Self::Sql => "SQL",
         }
     }
 
@@ -175,7 +189,9 @@ impl Family {
             | Self::Config
             | Self::Terraform
             | Self::Dockerfile
-            | Self::Shell => Group::Family(self),
+            | Self::Shell
+            | Self::Swift
+            | Self::Sql => Group::Family(self),
         }
     }
 }
@@ -240,6 +256,8 @@ enum Resolver {
     Terraform(TerraformResolver),
     Dockerfile(DockerfileResolver),
     Shell(ShellResolver),
+    Sql(SqlResolver),
+    Swift(SwiftResolver),
 }
 
 impl Resolver {
@@ -269,6 +287,8 @@ impl Resolver {
             Family::Terraform => Self::Terraform(TerraformResolver::open(ctx, side, cache)?),
             Family::Dockerfile => Self::Dockerfile(DockerfileResolver::open(ctx, side, cache)?),
             Family::Shell => Self::Shell(ShellResolver::open(ctx, side, cache)?),
+            Family::Swift => Self::Swift(SwiftResolver::open(ctx, side, cache)?),
+            Family::Sql => Self::Sql(SqlResolver::open(ctx, side, cache)?),
         })
     }
 
@@ -286,6 +306,8 @@ impl Resolver {
             Self::Terraform(r) => r.bindings(),
             Self::Dockerfile(r) => r.bindings(),
             Self::Shell(r) => r.bindings(),
+            Self::Sql(r) => r.bindings(),
+            Self::Swift(r) => r.bindings(),
         }
     }
 
@@ -303,6 +325,8 @@ impl Resolver {
             Self::Terraform(r) => r.definitions(),
             Self::Dockerfile(r) => r.definitions(),
             Self::Shell(r) => r.definitions(),
+            Self::Sql(r) => r.definitions(),
+            Self::Swift(r) => r.definitions(),
         }
     }
 
@@ -320,6 +344,8 @@ impl Resolver {
             Self::Terraform(r) => r.references_to(key),
             Self::Dockerfile(r) => r.references_to(key),
             Self::Shell(r) => r.references_to(key),
+            Self::Sql(r) => r.references_to(key),
+            Self::Swift(r) => r.references_to(key),
         }
     }
 
@@ -358,6 +384,8 @@ impl Resolver {
             Self::Terraform(r) => r.read_paths(),
             Self::Dockerfile(r) => r.read_paths(),
             Self::Shell(r) => r.read_paths(),
+            Self::Sql(r) => r.read_paths(),
+            Self::Swift(r) => r.read_paths(),
         }
     }
 
@@ -375,6 +403,8 @@ impl Resolver {
             Self::Terraform(r) => r.losses(),
             Self::Dockerfile(r) => r.losses(),
             Self::Shell(r) => r.losses(),
+            Self::Sql(r) => r.losses(),
+            Self::Swift(r) => r.losses(),
         }
     }
 
@@ -1553,6 +1583,7 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
             CandidateReason::LabelSelector => LABEL_SELECTOR,
             CandidateReason::NoRelease => NO_RELEASE,
             CandidateReason::CaseFold => CASE_FOLD,
+            CandidateReason::SearchPath => SEARCH_PATH,
         })),
         Resolution::Module { .. } | Resolution::Unresolved { .. } => None,
     }
@@ -3916,7 +3947,8 @@ mod tests {
             ("main.tf", Group::Family(Family::Terraform)),
             ("Dockerfile", Group::Family(Family::Dockerfile)),
             ("a.sh", Group::Family(Family::Shell)),
-            ("a.swift", Group::Language("swift")),
+            ("a.swift", Group::Family(Family::Swift)),
+            ("a.sql", Group::Family(Family::Sql)),
             ("a.rb", Group::Language("ruby")),
         ];
         for (path, group) in groups {

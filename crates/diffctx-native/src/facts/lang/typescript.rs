@@ -67,7 +67,7 @@ impl Extractor for JavaScript {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Dialect {
+pub(super) enum Dialect {
     TypeScript,
     JavaScript,
 }
@@ -250,6 +250,17 @@ fn extract(dialect: Dialect, text: &[u8], budget: &RunBudget) -> BlobFacts {
         Dialect::TypeScript => Language::TypeScript,
         Dialect::JavaScript => Language::JavaScript,
     };
+    extract_as(language, dialect, text, budget)
+}
+
+/// The facts of `text` read as `dialect` and stored for `language`: a page's
+/// scripts are read in place (`html`) and are the page's.
+pub(super) fn extract_as(
+    language: Language,
+    dialect: Dialect,
+    text: &[u8],
+    budget: &RunBudget,
+) -> BlobFacts {
     let source = String::from_utf8_lossy(text);
     let tree = match parse_dialect(dialect, &source, budget) {
         Parsed::Tree(tree) => spelled_without_bare_ampersands(dialect, &source, budget, tree),
@@ -415,7 +426,7 @@ fn string_value(src: &str, node: Node<'_>) -> Option<String> {
 
 /// How many directories a relative specifier climbs, counting its own: `./a`
 /// is 1, `../a` is 2, a bare or absolute one 0.
-fn relative_of(specifier: &str) -> u32 {
+pub(super) fn relative_of(specifier: &str) -> u32 {
     let mut rest = specifier;
     let mut relative = 0;
     loop {

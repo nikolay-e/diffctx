@@ -16,6 +16,14 @@
 //! Compiler-grade typing is out of reach: a receiver typed by inference is
 //! unresolved, never guessed.
 //!
+//! Swift reads through the same engine (`resolve::swift`, [`solve_swift`]): its facts
+//! take Kotlin's shape, a module is the SwiftPM target a file sits in (the
+//! "package": every file of a target sees the others' declarations, and an
+//! `import` of a target brings its names), an `extension` adds members to the
+//! type of its name from any file of the module, a `static` member is reached
+//! through its type, and a member of a conforming type may run behind a call
+//! through the protocol without stating `override`.
+//!
 //! Two projects are linked only through a declared dependency
 //! (`WorkspaceModel::may_reference`); `internal` stops at the project, `private`
 //! at the file.
@@ -90,7 +98,19 @@ pub(super) fn solve(
     if files.is_empty() {
         return (Vec::new(), Vec::new(), false);
     }
-    let index = Index::build(files.to_vec(), foreign.to_vec(), &ctx.workspace);
+    let index = Index::build(files.to_vec(), foreign.to_vec(), &ctx.workspace, false);
+    Engine::new(index, &ctx.workspace).run(ctx)
+}
+
+/// The definitions of the Swift `files` and what their references land on.
+pub(super) fn solve_swift(
+    ctx: &AnalysisContext,
+    files: &[FileFacts],
+) -> (Vec<Definition>, Vec<Binding>, bool) {
+    if files.is_empty() {
+        return (Vec::new(), Vec::new(), false);
+    }
+    let index = Index::build(files.to_vec(), Vec::new(), &ctx.workspace, true);
     Engine::new(index, &ctx.workspace).run(ctx)
 }
 
@@ -124,6 +144,14 @@ const KEYWORDS: &[&str] = &[
     "var",
     "typealias",
     "constructor",
+    // Swift's.
+    "struct",
+    "enum",
+    "actor",
+    "protocol",
+    "extension",
+    "func",
+    "let",
 ];
 
 /// The header with everything inside brackets blanked, brackets that open kept:
@@ -241,13 +269,23 @@ fn outer_name(written: &str) -> Option<String> {
     .then(|| last.to_string())
 }
 
+/// Whether the token is the keyword the declaration is introduced by: Kotlin's
+/// `enum class` and Swift's `class func` and `class var` have a modifier that
+/// spells one.
+fn is_keyword(tokens: &[(usize, usize, String)], at: usize) -> bool {
+    let word = tokens[at].2.as_str();
+    let next = tokens.get(at + 1).map(|(_, _, t)| t.as_str());
+    match word {
+        "enum" => next != Some("class"),
+        "class" => !matches!(next, Some("func" | "var" | "let")),
+        _ => KEYWORDS.contains(&word),
+    }
+}
+
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
     let flat = Flat::new(text);
     let tokens = flat.tokens();
-    let Some(at) = tokens
-        .iter()
-        .position(|(_, _, t)| KEYWORDS.contains(&t.as_str()))
-    else {
+    let Some(at) = (0..tokens.len()).find(|i| is_keyword(&tokens, *i)) else {
         return Sig::default();
     };
     let mut sig = Sig {
@@ -309,6 +347,11 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                         let colon = close + 1 + rest.find(':').unwrap_or(0);
                         let end = flat.type_end(colon + 1).min(body_end);
                         sig.declared = outer_name(&flat.text(colon + 1..end));
+                    } else if let Some(arrow) = rest.find("->") {
+                        // Swift: `func f(…) async throws -> Track`.
+                        let from = close + 1 + rest[..arrow].chars().count() + 2;
+                        let end = flat.type_end(from).min(body_end);
+                        sig.declared = outer_name(&flat.text(from..end));
                     }
                 }
             }
@@ -390,8 +433,16 @@ struct Index {
     extensions: HashMap<Name, Vec<usize>>,
     /// Members of types by name: what an untyped receiver may be.
     members: HashMap<Name, Vec<usize>>,
-    /// Members that state `override`, by name.
+    /// Members that state `override`, by name. In Swift every member: a type
+    /// that conforms to a protocol or inherits states no `override` for what it
+    /// implements.
     overriders: HashMap<Name, Vec<usize>>,
+    /// The `extension`s of a type, by its name: the definitions that add members
+    /// and conformances to a type declared elsewhere in the module.
+    ext_types: HashMap<Name, Vec<usize>>,
+    /// The files are Swift: a module is a target, an `internal` name is the
+    /// module's.
+    swift: bool,
 }
 
 fn is_type(kind: DefKind) -> bool {
@@ -426,8 +477,16 @@ fn is_value(kind: DefKind) -> bool {
 }
 
 impl Index {
-    fn build(files: Vec<FileFacts>, foreign: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
-        let mut index = Self::default();
+    fn build(
+        files: Vec<FileFacts>,
+        foreign: Vec<FileFacts>,
+        workspace: &WorkspaceModel,
+        swift: bool,
+    ) -> Self {
+        let mut index = Self {
+            swift,
+            ..Self::default()
+        };
         let neighbours = foreign.into_iter().map(|facts| (facts, true));
         for (facts, neighbour) in files
             .into_iter()
@@ -436,7 +495,12 @@ impl Index {
         {
             let at = index.files.len();
             let project = workspace.project_of(facts.path.as_str());
-            let mut package = String::new();
+            // A Swift file declares no package: its module is its target's.
+            let mut package = if swift {
+                facts.module.as_str().to_string()
+            } else {
+                String::new()
+            };
             let blob = std::sync::Arc::clone(&facts.blob);
             let projected = if neighbour {
                 jvm::java_as_kotlin(&facts)
@@ -544,21 +608,27 @@ impl Index {
             .push(id);
         file.by_path.entry(path.clone()).or_default().push(id);
         let extension = is_extension(def);
-        if is_type(def.kind) {
+        // A Swift `extension T` is no type of its own.
+        let extends_type = extension && is_type(def.kind);
+        if is_type(def.kind) && !extends_type {
             self.types.entry(name.clone()).or_default().push(id);
         }
-        if container_empty {
+        if container_empty && !extends_type {
             self.tops
                 .entry((package.to_string(), name.clone()))
                 .or_default()
                 .push(id);
         }
-        if extension {
+        if extends_type {
+            self.ext_types.entry(name.clone()).or_default().push(id);
+        } else if extension {
             self.extensions.entry(name.clone()).or_default().push(id);
         } else if !container_empty && !is_type(def.kind) {
             self.members.entry(name.clone()).or_default().push(id);
         }
-        if sig.has("override") {
+        if sig.has("override")
+            || (self.swift && !container_empty && !is_type(def.kind) && !extension)
+        {
             self.overriders.entry(name).or_default().push(id);
         }
         self.defs.push(DefRec {
@@ -696,7 +766,10 @@ impl<'w> Engine<'w> {
         }
         match rec.def.visibility {
             Visibility::Private => Err(UnresolvedReason::NoMember),
-            Visibility::Crate if self.ix.files[f].project != self.ix.files[rec.file].project => {
+            Visibility::Crate
+                if !self.ix.swift
+                    && self.ix.files[f].project != self.ix.files[rec.file].project =>
+            {
                 Err(UnresolvedReason::OutsideProject)
             }
             _ => Ok(()),
@@ -736,7 +809,7 @@ impl<'w> Engine<'w> {
                 .copied()
                 .filter(|id| {
                     let rec = &self.ix.defs[*id];
-                    is_type(rec.def.kind) && rec.def.local.name == *name
+                    is_type(rec.def.kind) && !is_extension(&rec.def) && rec.def.local.name == *name
                 })
                 .collect()
         };
@@ -796,10 +869,16 @@ impl<'w> Engine<'w> {
     /// The declarations named `name` in a package or type, `owners` being the
     /// dotted path: the segments up to the first capitalised one are the package.
     fn named_in(&self, owners: &[String], name: &Name) -> Vec<usize> {
-        let split = owners
-            .iter()
-            .position(|s| s.chars().next().is_some_and(char::is_uppercase))
-            .unwrap_or(owners.len());
+        // A Swift module is named like a type (`Shop`): what is a declared module
+        // is no type.
+        let split = if self.ix.swift && self.ix.packages.contains(&owners.join(".")) {
+            owners.len()
+        } else {
+            owners
+                .iter()
+                .position(|s| s.chars().next().is_some_and(char::is_uppercase))
+                .unwrap_or(owners.len())
+        };
         let package = owners[..split].join(".");
         let types: Vec<Name> = owners[split..]
             .iter()
@@ -852,11 +931,37 @@ impl<'w> Engine<'w> {
     )]
     fn children_of(&self, holder: usize) -> Vec<usize> {
         let rec = &self.ix.defs[holder];
-        self.ix.files[rec.file]
+        let mut kids = self.ix.files[rec.file]
             .children
             .get(&rec.path)
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // What the extensions of the type, in the module's other files, add.
+        if self.ix.swift {
+            for ext in self
+                .ix
+                .ext_types
+                .get(&rec.def.local.name)
+                .into_iter()
+                .flatten()
+            {
+                let ext = &self.ix.defs[*ext];
+                if ext.file != rec.file
+                    && ext.def.local.container == rec.def.local.container
+                    && self.ix.files[ext.file].package == self.ix.files[rec.file].package
+                {
+                    kids.extend(
+                        self.ix.files[ext.file]
+                            .children
+                            .get(&ext.path)
+                            .into_iter()
+                            .flatten()
+                            .copied(),
+                    );
+                }
+            }
+        }
+        kids
     }
 
     /// What a wildcard import brings under `name`: the declarations of a package,
@@ -876,13 +981,37 @@ impl<'w> Engine<'w> {
         let rec = &self.ix.defs[class];
         let scope: Path = rec.def.local.container.clone();
         let mut out = Vec::new();
-        for name in &rec.sig.supers {
-            let name = Name::new(name.as_str());
-            let mut inside = scope.clone();
-            inside.push(rec.def.local.name.clone());
-            match self.resolve_type(rec.file, &inside, &name) {
-                Found::Defs(ids, _) => out.push(Super::Repo(ids[0])),
-                _ => out.push(Super::Foreign(name)),
+        let mut inside = scope.clone();
+        inside.push(rec.def.local.name.clone());
+        let mut stated: Vec<(usize, &[String])> = vec![(rec.file, rec.sig.supers.as_slice())];
+        // The conformances a Swift extension of the type adds.
+        if self.ix.swift {
+            for id in self
+                .ix
+                .ext_types
+                .get(&rec.def.local.name)
+                .into_iter()
+                .flatten()
+            {
+                let ext = &self.ix.defs[*id];
+                if *id != class
+                    && ext.def.local.container == rec.def.local.container
+                    && self.ix.files[ext.file].package == self.ix.files[rec.file].package
+                {
+                    stated.push((ext.file, ext.sig.supers.as_slice()));
+                }
+            }
+        }
+        for (file, names) in stated {
+            for name in names {
+                let name = Name::new(name.as_str());
+                let found = match self.resolve_type(file, &inside, &name) {
+                    Found::Defs(ids, _) => Super::Repo(ids[0]),
+                    _ => Super::Foreign(name),
+                };
+                if !out.contains(&found) {
+                    out.push(found);
+                }
             }
         }
         let out = Rc::new(out);
@@ -942,10 +1071,14 @@ impl<'w> Engine<'w> {
             .copied()
             .filter(|c| {
                 let k = &self.ix.defs[*c];
-                k.def.local.name == *name && (!is_type(k.def.kind) || k.def.kind == DefKind::Object)
+                k.def.local.name == *name
+                    && (!is_type(k.def.kind) || k.def.kind == DefKind::Object)
+                    // A Swift type's own members are reached through the type
+                    // when they are `static` or `class` ones.
+                    && (!(self.ix.swift && statics) || k.sig.has("static") || k.sig.has("class"))
             })
             .collect();
-        let singleton = rec.def.kind == DefKind::Object;
+        let singleton = rec.def.kind == DefKind::Object || self.ix.swift;
         if !own.is_empty() && (!statics || singleton) {
             return Some((own, false));
         }
@@ -990,7 +1123,11 @@ impl<'w> Engine<'w> {
             }
             if matches!(
                 rec.def.kind,
-                DefKind::Class | DefKind::Interface | DefKind::Enum | DefKind::Object
+                DefKind::Class
+                    | DefKind::Interface
+                    | DefKind::Enum
+                    | DefKind::Object
+                    | DefKind::Struct
             ) {
                 let singleton = rec.def.kind == DefKind::Object;
                 out.push(Implicit::Class(id, instance || singleton));
