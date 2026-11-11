@@ -91,7 +91,7 @@ def test_a_removal_the_answer_pairs_with_a_head_definition_of_the_same_body_is_s
     paired = renamed_answer(answer, "m.py::ResponseClosed", "m.py::StreamClosed")
     cells, _ = compare(removed, truth, paired)
 
-    assert (unpaired[0]["fn"], unpaired[0]["fcn"]) == (1, True)
+    assert (unpaired[0]["fn"], unpaired[0]["fcn"]) == (1, False)  # no entry for the removed name: the answer claims nothing of it
     assert (cells[0]["tp"], cells[0]["fcn"]) == (1, False)
     kept = still_named(truth, head, [ChangedDefinition("removed", None, removed)], {"ResponseClosed", "StreamClosed"})
     assert [r.from_key for r in kept] == ["m.py::read"]  # the user's head version names the new name
