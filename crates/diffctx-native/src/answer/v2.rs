@@ -251,6 +251,9 @@ impl std::fmt::Display for Gap {
                 f,
                 "{files} file(s) outside the run's pathspecs were left out"
             ),
+            Self::Unaccounted { reason, files: 0 } => {
+                write!(f, "no file of its interaction group was read: {reason}")
+            }
             Self::Unaccounted { reason, files } => write!(
                 f,
                 "{files} file(s) of its interaction group not read: {reason}"
