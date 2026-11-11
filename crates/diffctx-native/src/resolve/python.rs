@@ -434,7 +434,12 @@ impl<'a> Engine<'a> {
     }
 
     /// The fields, properties and variables a chain passes through between its
-    /// head and its last name, as far as the receiver's type is known.
+    /// head and its last name, as far as the receiver's type is known. Where
+    /// nothing types the receiver, each member from there on is an untyped read
+    /// like the chain's last name: `error.request.url` reads some object's
+    /// `request`, which may be the property a change removed. A member the
+    /// receiver's class lacks is bound to nothing, as the last name is: the line
+    /// a removal strands.
     fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
         let mut reads = Vec::new();
         if r.qualifier.len() < 2 {
@@ -442,14 +447,31 @@ impl<'a> Engine<'a> {
         }
         let scope = scope_path(&r.enclosing);
         let (mut entity, kind) = self.head_entity(f, &scope, &r.qualifier[0], 0);
-        for member in &r.qualifier[1..] {
-            let Lookup::Found {
-                entity: next,
-                through,
-                inherited,
-            } = self.member(f, &entity, member)
-            else {
-                break;
+        let mut members = r.qualifier[1..].iter();
+        while let Some(member) = members.next() {
+            let (next, through, inherited) = match self.member(f, &entity, member) {
+                Lookup::Found {
+                    entity,
+                    through,
+                    inherited,
+                } => (entity, through, inherited),
+                Lookup::Untyped | Lookup::Any | Lookup::Possible(_) => {
+                    reads.extend(std::iter::once(member).chain(members).map(|name| {
+                        (
+                            name.clone(),
+                            Resolution::Unresolved {
+                                reason: UnresolvedReason::UntypedRead,
+                            },
+                        )
+                    }));
+                    break;
+                }
+                Lookup::Absent(reason) => {
+                    if reason.is_ours() {
+                        reads.push((member.clone(), Resolution::Unresolved { reason }));
+                    }
+                    break;
+                }
             };
             if let Entity::Def(id) = next {
                 let held = matches!(

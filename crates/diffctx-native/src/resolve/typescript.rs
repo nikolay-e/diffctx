@@ -1855,35 +1855,69 @@ impl<'a> Engine<'a> {
     }
 
     /// The members a chain passes through on its way to its last name are read:
-    /// `o.softPrefs.length` reads `softPrefs`.
+    /// `o.softPrefs.length` reads `softPrefs`. Where nothing types the receiver the
+    /// member is an untyped read like the chain's last name, and one an interface
+    /// or an abstract class declares is a candidate: `error.request.url` reads some
+    /// object's `request`, which may be the property a change removed. A member
+    /// the receiver's class lacks is bound to nothing, as the last name is: the
+    /// line a removal strands.
     fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
         let (mut entity, kind, rest) = self.chain_start(f, r, 0);
         let mut reads = Vec::new();
+        let holds = |id: usize| {
+            matches!(
+                self.ix.defs[id].def.kind,
+                DefKind::Field | DefKind::Property | DefKind::Variable | DefKind::Constant
+            )
+        };
         for name in rest {
-            if let Lookup::Found {
-                entity: Entity::Def(id),
-                through,
-                inherited,
-            } = self.member(f, &entity, name)
-            {
-                let holds = matches!(
-                    self.ix.defs[id].def.kind,
-                    DefKind::Field | DefKind::Property | DefKind::Variable | DefKind::Constant
-                );
-                if holds && self.reachable(f, id) {
-                    let kind = if inherited {
-                        EvidenceKind::Inherited
-                    } else {
-                        kind
-                    };
-                    reads.push((
-                        name.clone(),
-                        Resolution::Resolved {
-                            target: self.ix.defs[id].key.clone(),
-                            evidence: Evidence::through(kind, self.paths(&through)),
-                        },
-                    ));
+            match self.member(f, &entity, name) {
+                Lookup::Found {
+                    entity: Entity::Def(id),
+                    through,
+                    inherited,
+                } => {
+                    if holds(id) && self.reachable(f, id) {
+                        let kind = if inherited {
+                            EvidenceKind::Inherited
+                        } else {
+                            kind
+                        };
+                        reads.push((
+                            name.clone(),
+                            Resolution::Resolved {
+                                target: self.ix.defs[id].key.clone(),
+                                evidence: Evidence::through(kind, self.paths(&through)),
+                            },
+                        ));
+                    }
                 }
+                Lookup::Dispatch(ids) => {
+                    let targets: Vec<DefKey> = ids
+                        .iter()
+                        .filter(|id| holds(**id) && self.reachable(f, **id))
+                        .map(|id| self.ix.defs[*id].key.clone())
+                        .collect();
+                    if !targets.is_empty() {
+                        reads.push((
+                            name.clone(),
+                            Resolution::Candidate {
+                                targets,
+                                reason: CandidateReason::UntypedReceiver,
+                            },
+                        ));
+                    }
+                }
+                Lookup::Untyped | Lookup::Any => reads.push((
+                    name.clone(),
+                    Resolution::Unresolved {
+                        reason: UnresolvedReason::UntypedRead,
+                    },
+                )),
+                Lookup::Absent(reason) if reason.is_ours() => {
+                    reads.push((name.clone(), Resolution::Unresolved { reason }))
+                }
+                Lookup::Found { .. } | Lookup::Absent(_) => {}
             }
             entity = self.step(f, &entity, name);
         }
