@@ -861,6 +861,7 @@ impl<'a> Engine<'a> {
         }
         let file = &self.ix.files[g];
         let top: Path = Vec::new();
+        let mut fallback = None;
         if let Some(ids) = file.children.get(&top) {
             let named: Vec<usize> = ids
                 .iter()
@@ -868,7 +869,10 @@ impl<'a> Engine<'a> {
                 .filter(|id| self.ix.defs[*id].def.local.name == *name)
                 .collect();
             if let Some(id) = self.ix.primary(&named) {
-                return Some(self.entity_of_def(id));
+                if !self.ix.is_fallback(id) {
+                    return Some(self.entity_of_def(id));
+                }
+                fallback = Some(id);
             }
         }
         for rec in file
@@ -879,7 +883,8 @@ impl<'a> Engine<'a> {
         {
             let mut hops = Vec::new();
             let entity = self.import_entity(g, rec, depth + 1, &mut hops, seen);
-            if entity != Entity::Unknown {
+            let outside = matches!(entity, Entity::External | Entity::Outside | Entity::Builtin);
+            if entity != Entity::Unknown && !(fallback.is_some() && outside) {
                 through.push(g);
                 through.extend(hops);
                 return Some(entity);
@@ -900,6 +905,9 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
+        }
+        if let Some(id) = fallback {
+            return Some(self.entity_of_def(id));
         }
         if file.is_init {
             if let Some(h) = self.ix.find_module("", &join(&file.dir, name.as_str())) {

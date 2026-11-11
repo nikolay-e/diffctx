@@ -1,0 +1,44 @@
+name: py_package_reexport_in_try_except_binds_the_try_branch
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, reexport, try-except, tests-reach]
+repo:
+  initial_files:
+    toolkit/__init__.py: |
+      try:
+          from ._cli import main
+      except ImportError:  # pragma: nocover
+
+          def main() -> None:
+              raise SystemExit("the command line needs its extras")
+    toolkit/_cli.py: |
+      def render(text):
+          return text
+
+
+      def main(argv):
+          print(render(argv[0]))
+    tests/test_cli.py: |
+      import toolkit
+
+
+      def test_main_prints_its_argument():
+          toolkit.main(["hello"])
+  changed_files:
+    toolkit/_cli.py: |
+      def render(text):
+          return text.strip()
+
+
+      def main(argv):
+          print(render(argv[0]))
+  commit_message: "cli: render strips the text"
+expect:
+  changed:
+  - toolkit/_cli.py::render
+  not_untested:
+  - render
+  callers:
+    render: [toolkit/_cli.py::main]
+  tested_by: {toolkit/_cli.py: tests/test_cli.py}
