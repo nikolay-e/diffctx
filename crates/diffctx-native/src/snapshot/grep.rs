@@ -11,7 +11,7 @@ use regex::escape;
 
 use crate::snapshot::diff::validate_pathspec;
 use crate::snapshot::error::Result;
-use crate::snapshot::git::{Exec, git_command};
+use crate::snapshot::git::{Exec, git_command, refusal};
 use crate::snapshot::types::contains_lexically;
 
 /// One matching line: repo-relative path, line number, text.
