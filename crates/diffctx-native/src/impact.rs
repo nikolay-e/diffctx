@@ -3377,10 +3377,11 @@ pub fn build_impact(
                 } else {
                     &mut possibly_also_changed
                 };
+                let owner = lifted_caller(file_of(frag), frag);
                 users.push(label(
                     &u.file,
-                    frag.symbol_name.as_deref(),
-                    &lines_of(&frag.id),
+                    owner.symbol_name.as_deref(),
+                    &lines_of(&owner.id),
                 ));
                 continue;
             }
