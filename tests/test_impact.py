@@ -58,14 +58,15 @@ class TestImpactCli:
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "impact", "-q", "-f", "json"])
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
-        assert doc["schema"] == "diffctx.impact.v1"
+        assert doc["schema"] == "diffctx.impact.v2"
         assert doc["empty"] is False
-        total = next(c for c in doc["changed"] if c["symbol"] == "total")
-        callers = {c["symbol"]: c for c in total["callers"]}
-        assert callers["charge"]["path"] == "shop/checkout.py"
-        assert callers["charge"]["tested_by"] == "tests/test_checkout.py"
-        assert callers["summarize"]["path"] == "shop/report.py"
-        assert "tested_by" not in callers["summarize"]
+        total = next(d for d in doc["definitions"] if d["symbol"] == "total")
+        rows = {r["symbol"]: r for r in total["rows"]}
+        assert rows["charge"]["path"] == "shop/checkout.py"
+        assert rows["charge"]["guard"]["state"] == "linked"
+        assert rows["charge"]["guard"]["test"] == "tests/test_checkout.py"
+        assert rows["summarize"]["path"] == "shop/report.py"
+        assert rows["summarize"]["guard"]["state"] == "none"
 
     def test_the_default_text_is_what_the_hook_injects(self, impact_repo):
         repo, diff_range = impact_repo
@@ -85,7 +86,7 @@ class TestImpactCli:
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
         assert doc["empty"] is True
-        assert doc["changed"] == []
+        assert doc["definitions"] == []
 
     def test_other_formats_are_refused(self, impact_repo):
         repo, diff_range = impact_repo
@@ -230,7 +231,7 @@ class TestSymbolQuery:
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
         assert doc["symbol"] == "total"
-        callers = {d["path"]: {c["path"] for c in d["callers"]} for d in doc["changed"]}
+        callers = {d["path"]: {r["path"] for r in d["rows"]} for d in doc["definitions"]}
         assert callers["legacy/tally.py"] == {"legacy/invoice.py"}
         assert {"shop/checkout.py", "shop/report.py"} <= callers["shop/pricing.py"]
 
@@ -260,12 +261,12 @@ class TestSymbolQuery:
         repo.commit("many callers")
         result = _run(repo.path, [".", "--symbol", "settle", "-q", "-f", "json"])
         assert result.returncode == 0, result.stderr
-        assert [d["path"] for d in json.loads(result.stdout)["changed"]] == ["zz/core.py"]
+        assert [d["path"] for d in json.loads(result.stdout)["definitions"]] == ["zz/core.py"]
 
     def test_a_name_qualified_by_its_module_answers_for_that_definition(self, clean_repo):
         result = _run(clean_repo.path, [".", "--symbol", "pricing.total", "-q", "-f", "json"])
         assert result.returncode == 0, result.stderr
-        assert [d["path"] for d in json.loads(result.stdout)["changed"]] == ["shop/pricing.py"]
+        assert [d["path"] for d in json.loads(result.stdout)["definitions"]] == ["shop/pricing.py"]
 
     @pytest.mark.parametrize(
         "args",
@@ -338,9 +339,9 @@ class TestStagedImpact:
         result = _run(staged_repo.path, [".", "--diff", "staged", "--mode", "impact", "-q", "-f", "json"])
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
-        assert doc["changed_files"] == ["shop/pricing.py"]
-        assert doc["index_tree"]
-        callers = {c["path"] for s in doc["changed"] for c in s["callers"]}
+        assert doc["inventory"]["changed"]["items"] == ["shop/pricing.py"]
+        assert doc["range"]["index_tree"]
+        callers = {r["path"] for d in doc["definitions"] for r in d["rows"]}
         assert callers == {"shop/checkout.py", "shop/report.py"}, "report.py's unstaged edit is not the snapshot"
 
     @pytest.mark.asyncio

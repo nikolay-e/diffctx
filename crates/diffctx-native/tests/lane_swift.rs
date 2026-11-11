@@ -36,7 +36,7 @@ fn impact(repo: &Path) -> Value {
 }
 
 fn changed<'a>(doc: &'a Value, path: &str, name: &str) -> &'a Value {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["path"] == path && c["symbol"] == name))
         .unwrap_or_else(|| panic!("{path}::{name} not in {doc:#}"))
@@ -44,7 +44,7 @@ fn changed<'a>(doc: &'a Value, path: &str, name: &str) -> &'a Value {
 
 /// `path::caller-symbol evidence` of every caller of `path::name`.
 fn callers(doc: &Value, path: &str, name: &str) -> Vec<String> {
-    let mut out: Vec<String> = changed(doc, path, name)["callers"]
+    let mut out: Vec<String> = changed(doc, path, name)["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -53,7 +53,7 @@ fn callers(doc: &Value, path: &str, name: &str) -> Vec<String> {
                 "{}::{} {}",
                 c["path"].as_str().unwrap(),
                 c["symbol"].as_str().unwrap_or("-"),
-                c["evidence"].as_str().unwrap(),
+                c["standing"].as_str().unwrap(),
             )
         })
         .collect();
@@ -346,16 +346,14 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
     let folded = changed(&doc, path, "toDto")["folded"].as_array().unwrap();
     assert_eq!(folded.len(), 1, "{folded:?}");
     assert_eq!(folded[0]["rule"], "untyped-receiver");
-    assert_eq!(folded[0]["count"], 1);
-    assert_eq!(folded[0]["exact"], true);
-    assert!(
-        folded[0]["examples"][0]
-            .as_str()
-            .unwrap()
-            .starts_with(&format!("{svc}::viaInterface")),
-        "{folded:?}"
+    assert_eq!(
+        folded[0]["count"],
+        serde_json::json!({"n": 1, "exact": true})
     );
-    let details = changed(&doc, path, "toDto")["callers"]
+    let example = &folded[0]["examples"][0];
+    assert_eq!(example["path"], svc, "{folded:?}");
+    assert_eq!(example["symbol"], "viaInterface", "{folded:?}");
+    let details = changed(&doc, path, "toDto")["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -363,7 +361,7 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
         .unwrap()
         .clone();
     assert_eq!(
-        details["tested_by"],
+        details["guard"]["test"],
         "src/test/java/com/acme/svc/DrugServiceTest.java"
     );
 }
@@ -426,7 +424,7 @@ fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
         ],
     );
     let doc = impact(tmp.path());
-    let mut contracts: Vec<String> = doc["contracts"]
+    let mut contracts: Vec<String> = doc["contracts"]["items"]
         .as_array()
         .unwrap()
         .iter()
@@ -510,7 +508,7 @@ fn a_cast_with_a_default_in_a_trailing_closure_parses() {
         &[("a.swift", &gaps("$0 + Double($1[\"frames\"] as? Int ?? 1)"))],
     );
     let doc = impact(tmp.path());
-    let unanalysed: Vec<&str> = doc["unanalysed_files"]
+    let unanalysed: Vec<&str> = doc["coverage"]["unanalysed"]["items"]
         .as_array()
         .into_iter()
         .flatten()

@@ -7,6 +7,8 @@ use anyhow::Result;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::answer::envelope::Inventory;
+use crate::answer::v2::Listing;
 use crate::candidate_files;
 use crate::config::budget::BUDGET;
 use crate::config::graph_filtering::GRAPH_FILTERING;
@@ -207,6 +209,7 @@ pub fn build_diff_context_locate(
     tau: Option<f64>,
     scoring_mode: ScoringMode,
     timeout: u64,
+    include_overflow: bool,
 ) -> Result<crate::locate::LocateOutput> {
     let _run = crate::profile::run("locate");
     validate_tau(tau)?;
@@ -231,7 +234,7 @@ pub fn build_diff_context_locate(
     };
     let _render = crate::profile::phase("render");
     let mut output = crate::locate::build_locate(&state, &outcome);
-    output.fit_to(outcome.effective_budget);
+    output.fit_to(outcome.effective_budget, include_overflow);
     Ok(output)
 }
 
@@ -823,18 +826,17 @@ fn parse_symbol_query(query: &str) -> Option<(Option<&str>, Vec<&str>)> {
         .then_some((path, segments))
 }
 
-/// The files naming a symbol that this build read as text, said after "no
-/// definition found": the definition may well be in one of them, and
-/// without this the answer reads as "the name does not exist" (#454).
+/// The files naming a symbol that this build read as text: the definition may well
+/// be in one of them, and without them an answer of "no definition found" reads as
+/// "the name does not exist" (#454).
 fn unanalysed_namers(
     root_dir: &Path,
     files: &[PathBuf],
     fragments: &[Fragment],
     run: &crate::resource::RunContext,
-) -> String {
+) -> Vec<crate::impact::UnanalysedFile> {
     let source = run.source();
-    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-    let mut total = 0usize;
+    let mut unread = Vec::new();
     for file in files {
         let Some(rel) = rel_path_string(root_dir, file) else {
             continue;
@@ -842,26 +844,38 @@ fn unanalysed_namers(
         let has_definition = fragments
             .iter()
             .any(|f| Path::new(f.path()) == file.as_path() && f.kind.is_definition_kind());
-        let Some((reason, _)) =
+        let Some((reason, lines)) =
             crate::parsers::unanalysed_reason(&rel, has_definition, || source.read_bytes(file))
         else {
             continue;
         };
+        unread.push(crate::impact::UnanalysedFile {
+            language: crate::languages::get_language_for_file(&rel),
+            path: rel,
+            reason,
+            lines,
+        });
+    }
+    unread
+}
+
+/// What the files read as text are said to be, after "no definition found" on the
+/// command line's error.
+fn unanalysed_namers_text(unread: &[crate::impact::UnanalysedFile]) -> String {
+    if unread.is_empty() {
+        return String::new();
+    }
+    let mut groups: Vec<(String, Vec<&str>)> = Vec::new();
+    for file in unread {
         let why = format!(
             "{}{}",
-            crate::languages::get_language_for_file(&rel)
-                .map(|l| format!("{l}: "))
-                .unwrap_or_default(),
-            crate::parsers::unanalysed_text(reason)
+            file.language.map(|l| format!("{l}: ")).unwrap_or_default(),
+            crate::parsers::unanalysed_text(file.reason)
         );
-        total += 1;
         match groups.iter_mut().find(|(w, _)| *w == why) {
-            Some((_, paths)) => paths.push(rel),
-            None => groups.push((why, vec![rel])),
+            Some((_, paths)) => paths.push(&file.path),
+            None => groups.push((why, vec![&file.path])),
         }
-    }
-    if total == 0 {
-        return String::new();
     }
     let groups: Vec<String> = groups
         .into_iter()
@@ -876,7 +890,8 @@ fn unanalysed_namers(
         })
         .collect();
     format!(
-        " in the analysed files; {total} file(s) naming it were read as text, so a definition or caller there is not seen: {}",
+        " in the analysed files; {} file(s) naming it were read as text, so a definition or caller there is not seen: {}",
+        unread.len(),
         groups.join("; ")
     )
 }
@@ -1215,9 +1230,10 @@ fn resolve_symbol_change_set(
         };
         // A run that stopped looking has not found there is none.
         let stops = run.stops();
+        let unread_files = unanalysed_namers(root_dir, &files, &fragments, run);
         let unread = format!(
             "{}{}",
-            unanalysed_namers(root_dir, &files, &fragments, run),
+            unanalysed_namers_text(&unread_files),
             if stops.is_empty() {
                 String::new()
             } else {
@@ -1242,7 +1258,7 @@ fn resolve_symbol_change_set(
                     root_dir,
                     &run.source(),
                     lines,
-                    &unread,
+                    unread_files,
                     crate::resource::classify_limits(run, &[], &|_| false).0,
                 )
             });
@@ -2403,6 +2419,7 @@ pub fn select_with_params(
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
     let selection_provenance = outcome.selection_provenance();
+    let fit = crate::answer::envelope::fit_of(outcome.budget_requested, outcome.effective_budget);
     let selection_limits = outcome.limit_reasons.clone();
     let commit_messages = outcome.commit_messages.clone();
     let stand_in_ids = outcome.stand_in_ids;
@@ -2423,6 +2440,8 @@ pub fn select_with_params(
 
     let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
+        range_spec: state.provenance.input.diff_range.clone(),
+        index_tree: state.index_tree.clone(),
         commit_count: state.commit_count,
         commit_message: state.commit_message.clone(),
         commit_messages,
@@ -2489,7 +2508,10 @@ pub fn select_with_params(
             .map(|&(category, raw, deduped)| (category.as_str(), raw, deduped))
             .collect(),
     });
-    output.provenance = Some(state.provenance.finish(Some(selection_provenance)));
+    output.provenance = Some(render::provenance_value(
+        &state.provenance.finish(Some(selection_provenance)),
+    ));
+    output.fit = Some(fit);
     let mut limits = selection_limits;
     if output.redactions.is_some() {
         limits.push(crate::resource::LimitReason::SanitizationRedaction);
@@ -2783,10 +2805,15 @@ fn full_empty_output(
         &git::diff_names(root_dir, diff_range, pathspec)?,
     );
     let mut output = empty_output(root_dir);
-    output.deleted_files = deleted;
-    output.renamed_files = renamed;
-    output.ignored_changes = withheld.ignored_changes.clone();
-    output.policy_excluded_count = withheld.policy_excluded_count;
+    output.range = crate::answer::envelope::range_of(diff_range, None, 0, Vec::new());
+    output.inventory = Inventory::new(
+        Vec::new(),
+        deleted,
+        renamed,
+        Vec::new(),
+        withheld.ignored_changes.clone(),
+        withheld.policy_excluded_count,
+    );
     list_unrepresented_changes(
         &mut output,
         &classify_changes(root_dir, changed_files, &[], &[], &[]),
@@ -2802,7 +2829,10 @@ fn list_unrepresented_changes(
     change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
     fragmentless: &FxHashSet<String>,
 ) {
-    output.changed_files = change_classes.iter().map(|(p, _, _)| p.clone()).collect();
+    output.inventory.changed = Listing::of(
+        change_classes.iter().map(|(p, _, _)| p.clone()).collect(),
+        0,
+    );
     output.changes = change_classes
         .iter()
         .map(|(path, class, _)| render::ChangeEntry {
@@ -2912,6 +2942,8 @@ fn build_diff_context_full(
         });
     let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, &source, &names);
     let change = render::ChangeSummary {
+        range_spec: diff_range.map(str::to_string),
+        index_tree: None,
         commit_count: 0,
         commit_message,
         commit_messages: Vec::new(),
@@ -3060,21 +3092,29 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 /// same lists, or MCP/benchmark consumers lose them while the CLI keeps them.
 pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
-    output.commit_message = state.commit_message.clone();
-    output.commit_messages = state.commit_messages.clone();
-    output.commit_count =
-        render::listed_commit_total(state.commit_count, output.commit_messages.len());
-    output.deleted_files = state.deleted_files.clone();
-    output.renamed_files = state.renamed_files.clone();
-    output.lockfile_changes = state.lockfile_changes.clone();
-    output.ignored_changes = state.ignored_changes.clone();
-    output.policy_excluded_count = state.policy_excluded_count;
+    output.range = crate::answer::envelope::range_of(
+        state.provenance.input.diff_range.as_deref(),
+        state.index_tree.as_deref(),
+        state.commit_count,
+        crate::answer::envelope::messages_of(
+            state.commit_message.clone(),
+            state.commit_messages.clone(),
+        ),
+    );
+    output.inventory = Inventory::new(
+        Vec::new(),
+        state.deleted_files.clone(),
+        state.renamed_files.clone(),
+        state.lockfile_changes.clone(),
+        state.ignored_changes.clone(),
+        state.policy_excluded_count,
+    );
     list_unrepresented_changes(
         &mut output,
         &state.change_classes,
         &fragmentless_changed_files(&state.root_dir, &state.changed_files, &state.all_fragments),
     );
-    output.provenance = Some(state.provenance.finish(None));
+    output.provenance = Some(render::provenance_value(&state.provenance.finish(None)));
     let limits: &[crate::resource::LimitReason] = if output.redactions.is_some() {
         &[crate::resource::LimitReason::SanitizationRedaction]
     } else {

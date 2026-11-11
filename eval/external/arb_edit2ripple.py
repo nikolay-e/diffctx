@@ -71,12 +71,14 @@ def fetch(out: Path) -> Path:
 def ranking_from_locate(doc: dict, anchor_file: str) -> dict:
     """Files by their best fragment score, anchor dropped.
 
-    `items` is the 8k selection, `overflow` the capped list of admitted
-    candidates the budget left behind; both carry the relevance score the
-    selection used, so the union is one ranking.
+    `items` is the 8k selection, `overflow.items` the capped list of admitted
+    candidates the budget left behind (listed on request, and charged to the
+    budget when it is); both carry the relevance score the selection used, so the
+    union is one ranking.
     """
+    overflow = doc.get("overflow") or {}
     best: dict[str, float] = {}
-    for entry in [*doc.get("items", []), *doc.get("overflow", [])]:
+    for entry in [*doc.get("items", []), *overflow.get("items", [])]:
         path = entry["path"]
         best[path] = max(best.get(path, float("-inf")), float(entry.get("score") or 0.0))
     ranked = sorted(((p, s) for p, s in best.items() if p != anchor_file), key=lambda ps: (-ps[1], ps[0]))
@@ -84,7 +86,7 @@ def ranking_from_locate(doc: dict, anchor_file: str) -> dict:
     return {
         "ranked": [[p, s] for p, s in ranked],
         "selected_files": sorted({e["path"] for e in doc.get("items", []) if e["path"] != anchor_file}),
-        "overflow_count": doc.get("overflow_count", 0),
+        "overflow_count": overflow.get("total", 0),
         "engine_version": (provenance.get("engine") or {}).get("version"),
         "effective_config_hash": provenance.get("effective_config_hash"),
         "tau": (provenance.get("selection") or {}).get("tau"),
@@ -94,7 +96,7 @@ def ranking_from_locate(doc: dict, anchor_file: str) -> dict:
 def locate_ranking(repo_dir: Path, anchor_file: str, budget: int, timeout: int) -> dict:
     from diffctx._native.pipeline import build_locate
 
-    raw = build_locate(repo_dir, "HEAD~1..HEAD", budget_tokens=budget, timeout=timeout)
+    raw = build_locate(repo_dir, "HEAD~1..HEAD", budget_tokens=budget, timeout=timeout, include_overflow=True)
     return ranking_from_locate(json.loads(raw), anchor_file)
 
 

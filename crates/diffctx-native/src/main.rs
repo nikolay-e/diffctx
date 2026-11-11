@@ -3,7 +3,7 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -12,18 +12,12 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
-use _diffctx::artifact::{Format, UNLIMITED_BUDGET_TOKENS};
+use _diffctx::artifact::Format;
 use _diffctx::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
 };
+use _diffctx::delivery::{Delivery, Mode, Note, Request};
 use _diffctx::mode::ScoringMode;
-use _diffctx::pipeline::build_diff_context;
-use _diffctx::resource::LimitReason;
-use serde_json::Value;
-
-/// Mirrors `_EXIT_EMPTY_DIFF` in src/diffctx/_app.py: a diff that yields no
-/// semantic context is an actionable result, not a success.
-const EXIT_EMPTY_DIFF: i32 = 4;
 
 /// Mirrors the Python CLI: a closed stdout pipe ends the run as SIGPIPE would.
 const EXIT_BROKEN_PIPE: i32 = 141;
@@ -99,9 +93,20 @@ struct Cli {
     #[arg(long, value_parser = parse_tau)]
     tau: Option<f64>,
 
+    /// Locate mode: list the ranked candidates the budget left out (up to 50,
+    /// without bodies, charged to the budget); their count is always stated
+    #[arg(long)]
+    overflow: bool,
+
     /// Skip fragment contents (structure only)
     #[arg(long)]
     no_content: bool,
+
+    /// Pack mode: also embed the raw unified diff ahead of the fragments. It is
+    /// not charged to --budget; the stderr token summary counts it. Lock-file,
+    /// ignored and secret-like sections stay omitted
+    #[arg(long)]
+    with_raw_diff: bool,
 
     /// Only the changed files, every fragment, no related-code context
     #[arg(long)]
@@ -130,7 +135,7 @@ struct Cli {
 
     /// Migration measurement: per changed file, the changed definitions the
     /// impact path reports beside the facts layer's, as JSON
-    #[arg(long, hide = true, requires = "diff_ref", conflicts_with_all = ["symbol", "mode"])]
+    #[arg(long, hide = true, requires = "diff_ref", conflicts_with_all = ["symbol", "mode", "with_raw_diff"])]
     shadow: bool,
 }
 
@@ -220,46 +225,6 @@ fn parse_budget(raw: &str) -> Result<i64, String> {
     }
 }
 
-fn resolve_budget(budget: Option<i64>) -> Option<u32> {
-    match budget {
-        None => None,
-        Some(n) if n < 0 => Some(UNLIMITED_BUDGET_TOKENS),
-        Some(n) => Some(u32::try_from(n).unwrap_or(UNLIMITED_BUDGET_TOKENS)),
-    }
-}
-
-fn group_thousands(n: u32) -> String {
-    let digits = n.to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(ch);
-    }
-    grouped
-}
-
-fn format_size(byte_size: usize) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = 1024.0 * 1024.0;
-    if byte_size < 1024 {
-        format!("{byte_size} B")
-    } else if byte_size < 1024 * 1024 {
-        format!("{:.1} KB", byte_size as f64 / KB)
-    } else {
-        format!("{:.1} MB", byte_size as f64 / MB)
-    }
-}
-
-fn print_token_summary(rendered: &str) {
-    eprintln!(
-        "{} tokens (o200k_base), {}",
-        group_thousands(_diffctx::tokenizer::count_tokens(rendered)),
-        format_size(rendered.len())
-    );
-}
-
 const WATCHDOG_GRACE_SECS: u64 = 30;
 
 /// Test hook: the whole watchdog wait, deadline included, so its exit 124 is
@@ -314,57 +279,29 @@ where
     }
 }
 
-// Both entry points end the same way, and the exit code is part of the CLI
-// contract: an empty diff must still print, still summarize, and still exit
-// EXIT_EMPTY_DIFF rather than 0.
-fn emit(
-    cli: &Cli,
-    rendered: &str,
-    found_nothing: bool,
-    limits: &[LimitReason],
-    changed_files: &[String],
-) -> Result<()> {
-    let is_empty = found_nothing && !disclose_early_stop(limits);
-    if is_empty {
-        eprintln!(
-            "diffctx: diff produced no semantic context (clean working tree, binary-only, or \
-             files over the size cap); {}",
-            empty_diff_hint(
-                &cli.path,
-                cli.budget,
-                cli.diff_ref.as_deref().unwrap_or("HEAD"),
-                changed_files
-            )
-        );
+/// Every diff mode ends the same way, and the engine decided it: the notes, the
+/// text, the status. An empty diff still prints and still summarizes before it
+/// exits non-zero.
+fn finish(cli: &Cli, delivery: Delivery) -> Result<()> {
+    for note in &delivery.notes {
+        match note {
+            Note::Warning(text) => eprintln!("diffctx: {text}"),
+            Note::Detail(text) if !cli.quiet => eprintln!("diffctx: {text}"),
+            Note::Figure(text) if !cli.quiet => eprintln!("{text}"),
+            Note::Detail(_) | Note::Figure(_) => {}
+        }
     }
-    if !cli.quiet {
-        print_token_summary(rendered);
-    }
-    write_stdout(rendered)?;
-    if is_empty {
-        exit(EXIT_EMPTY_DIFF);
+    write_stdout(&delivery.text)?;
+    if delivery.exit != 0 {
+        exit(delivery.exit);
     }
     Ok(())
 }
 
-/// Whether the deadline or a cancellation stopped the run, said on stderr by
-/// the names its coverage gives them. A run that found nothing before it
-/// stopped is partial, not a clean tree, and exits 0 as every partial
-/// artifact does (#408).
-fn disclose_early_stop(limits: &[LimitReason]) -> bool {
-    let stopped: Vec<String> = limits
-        .iter()
-        .filter(|r| matches!(r, LimitReason::Deadline | LimitReason::Cancelled))
-        .filter_map(|r| serde_json::to_value(r).ok()?.as_str().map(str::to_string))
-        .collect();
-    if !stopped.is_empty() {
-        eprintln!(
-            "diffctx: the run stopped early ({}) before it found any context; the output is \
-             partial, not a clean tree: raise --timeout or narrow the range",
-            stopped.join(", ")
-        );
-    }
-    !stopped.is_empty()
+fn deliver(cli: &Cli, request: Request) -> Result<()> {
+    let timeout = request.timeout;
+    let delivery = run_with_deadline(timeout, move || _diffctx::delivery::deliver(&request))?;
+    finish(cli, delivery)
 }
 
 /// An exit in the middle of a run: `process::exit` skips the profile's guard.
@@ -386,157 +323,6 @@ fn write_stdout(rendered: &str) -> Result<()> {
     }
 }
 
-// Mirrors `_diff_result_is_empty` in src/diffctx/_app.py: deletions and renames
-// are real signal even with zero fragments, so only a result carrying neither
-// counts as empty. Judged on the fitted document, what is actually emitted.
-fn diff_result_is_empty(doc: &Value) -> bool {
-    [
-        "deleted_files",
-        "renamed_files",
-        "lockfile_changes",
-        "ignored_changes",
-    ]
-    .iter()
-    .all(|key| {
-        doc.get(*key)
-            .and_then(Value::as_array)
-            .is_none_or(Vec::is_empty)
-    }) && ["policy_excluded_count", "fragment_count"]
-        .iter()
-        .all(|key| doc.get(*key).and_then(Value::as_u64).unwrap_or(0) == 0)
-}
-
-fn empty_diff_hint(
-    root: &Path,
-    budget: Option<i64>,
-    diff_ref: &str,
-    changed_files: &[String],
-) -> String {
-    match budget {
-        Some(0) => {
-            "--budget 0 emits no fragments (changed files are listed as omitted); use --full \
-                    for the changed code, or omit --budget for auto sizing"
-                .to_string()
-        }
-        Some(n) if n > 0 => {
-            format!(
-                "--budget {n} may be too small to fit any fragment; raise it or omit for auto sizing"
-            )
-        }
-        _ if !changed_files.is_empty() => format!(
-            "{} changed file(s) carry no text hunk (a mode change, a submodule pointer, a binary \
-             or a '-diff' attribute); they are listed in changed_files",
-            changed_files.len()
-        ),
-        _ if diff_ref == "HEAD" && working_tree_is_clean(root) => {
-            "the working tree matches HEAD; try --diff HEAD~1 for the last commit".to_string()
-        }
-        _ if _diffctx::git::is_staged_keyword(diff_ref) => {
-            "check the staged changes with: git diff --cached --stat".to_string()
-        }
-        _ if is_duration_window(root, diff_ref) => {
-            format!("nothing changed in the last {diff_ref}; widen the window (e.g. --diff 7d)")
-        }
-        // `A..B` is read from the fork point, which is git's `A...B`.
-        _ if diff_ref.contains("..") && !diff_ref.contains("...") => format!(
-            "check the range with: git diff --stat {}",
-            diff_ref.replacen("..", "...", 1)
-        ),
-        _ => format!("check the range with: git diff --stat {diff_ref}"),
-    }
-}
-
-fn working_tree_is_clean(root: &Path) -> bool {
-    _diffctx::git::run_git(root, &["status", "--porcelain"]).is_ok_and(|out| out.trim().is_empty())
-}
-
-fn is_duration_window(root: &Path, diff_ref: &str) -> bool {
-    _diffctx::git::duration_base(root, diff_ref).is_ok_and(|base| base.is_some())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_locate(
-    cli: &Cli,
-    path: PathBuf,
-    diff_ref: Option<String>,
-    budget: Option<u32>,
-    alpha: f64,
-    tau: Option<f64>,
-    scoring_mode: ScoringMode,
-    timeout: u64,
-) -> Result<()> {
-    let output = run_with_deadline(timeout, move || {
-        _diffctx::pipeline::build_diff_context_locate(
-            &path,
-            diff_ref.as_deref(),
-            &[],
-            budget,
-            alpha,
-            tau,
-            scoring_mode,
-            timeout,
-        )
-    })?;
-
-    let rendered = format!("{}\n", serde_json::to_string(&output)?);
-    let found_nothing = output.item_count == 0
-        && output.deleted_files.is_empty()
-        && output.renamed_files.is_empty()
-        && output.lockfile_changes.is_empty()
-        && output.ignored_changes.is_empty()
-        && output.policy_excluded_count == 0;
-    emit(
-        cli,
-        &rendered,
-        found_nothing,
-        &output.coverage.limit_reasons,
-        &[],
-    )
-}
-
-fn run_impact(
-    cli: &Cli,
-    path: PathBuf,
-    diff_ref: Option<String>,
-    alpha: f64,
-    scoring_mode: ScoringMode,
-    timeout: u64,
-) -> Result<()> {
-    let range = diff_ref.clone();
-    let output = run_with_deadline(timeout, move || {
-        _diffctx::pipeline::build_diff_context_impact(
-            &path,
-            range.as_deref(),
-            &[],
-            alpha,
-            scoring_mode,
-            timeout,
-        )
-    })?;
-    if let Some(range) = diff_ref.as_deref() {
-        _diffctx::hook::mark_range_reviewed(&cli.path, range, &output);
-    }
-    emit_impact(cli, output)
-}
-
-fn emit_impact(cli: &Cli, mut output: _diffctx::impact::ImpactOutput) -> Result<()> {
-    let markdown = matches!(cli.format, OutputFormat::Md);
-    let mut rendered = _diffctx::impact::deliver(
-        &mut output,
-        markdown,
-        resolve_budget(cli.budget),
-        cli.unfold,
-    );
-    if !markdown {
-        rendered.push('\n');
-    }
-    // An empty impact is the answer, not a failure: the hook keys on it.
-    if !cli.quiet {
-        print_token_summary(&rendered);
-    }
-    write_stdout(&rendered)
-}
-
 fn main() {
     if let Err(err) = real_main() {
         // The Python CLI and README promise exit 3 for git/environment
@@ -553,6 +339,16 @@ fn main() {
         }
         eprintln!("Error: {err:?}");
         std::process::exit(1);
+    }
+}
+
+/// Only pack carries source, so only pack has a patch to bundle.
+fn refuse_raw_diff_without_source(cli: &Cli, mode: &str) {
+    if cli.with_raw_diff {
+        eprintln!(
+            "error: --mode {mode} emits no source; --with-raw-diff applies to pack mode only"
+        );
+        std::process::exit(EXIT_USAGE);
     }
 }
 
@@ -585,99 +381,63 @@ fn real_main() -> Result<()> {
     // `--timeout` as a true total wall-clock ceiling: on expiry, fail fast with
     // the actionable-error contract instead of hanging unbounded.
     let timeout = cli.timeout;
-    let path = cli.path.clone();
     // No `--diff` at all used to reach git as a bare `git diff` — index vs
     // worktree, staged edits invisible — while the pipeline's untracked-file
     // rule read the same `None` as "vs HEAD". One meaning: HEAD.
     let diff_ref = Some(cli.diff_ref.clone().unwrap_or_else(|| "HEAD".to_string()));
-    let budget = resolve_budget(cli.budget);
-    let alpha = cli.alpha;
-    let tau = cli.tau;
-    let no_content = cli.no_content;
-    let full = cli.full;
 
     let mode = cli.mode.as_deref().unwrap_or("pack");
+    if cli.overflow && mode != "locate" {
+        eprintln!("error: --overflow applies to --mode locate only");
+        std::process::exit(EXIT_USAGE);
+    }
+    let mut request = Request::new(cli.path.clone(), Mode::named(mode).unwrap_or(Mode::Pack));
+    request.range = diff_ref.clone();
+    request.budget = cli.budget;
+    request.unfold = cli.unfold;
+    request.alpha = cli.alpha;
+    request.tau = cli.tau;
+    request.scoring = scoring_mode;
+    request.timeout = timeout;
+    request.no_content = cli.no_content;
+    request.full = cli.full;
+    request.with_raw_diff = cli.with_raw_diff;
+    request.overflow = cli.overflow;
+    request.format = match cli.format {
+        OutputFormat::Yaml => Format::Yaml,
+        OutputFormat::Json => Format::Json,
+        OutputFormat::Md => Format::Md,
+    };
     if let Some(symbol) = cli.symbol.clone() {
         if cli.mode.as_deref().is_some_and(|m| m != "impact") {
             eprintln!("error: --symbol answers in --mode impact");
             std::process::exit(EXIT_USAGE);
         }
-        let output = run_with_deadline(timeout, move || {
-            _diffctx::pipeline::build_symbol_impact(
-                &path,
-                &symbol,
-                &[],
-                alpha,
-                scoring_mode,
-                timeout,
-            )
-        })?;
-        return emit_impact(&cli, output);
+        request.mode = Mode::Impact;
+        request.symbol = Some(symbol);
+        refuse_raw_diff_without_source(&cli, "impact");
+        return deliver(&cli, request);
     }
     if cli.shadow {
+        let path = cli.path.clone();
+        let (alpha, scoring) = (cli.alpha, scoring_mode);
         let report = run_with_deadline(timeout, move || {
-            _diffctx::shadow::report(&path, diff_ref.as_deref(), alpha, scoring_mode, timeout)
+            _diffctx::shadow::report(&path, diff_ref.as_deref(), alpha, scoring, timeout)
         })?;
         return write_stdout(&format!("{report}\n"));
     }
-    if mode == "impact" {
-        return run_impact(&cli, path, diff_ref, alpha, scoring_mode, timeout);
+    if request.mode != Mode::Pack {
+        refuse_raw_diff_without_source(&cli, mode);
     }
-    if matches!(cli.format, OutputFormat::Md) {
+    if request.mode != Mode::Impact && matches!(cli.format, OutputFormat::Md) {
         eprintln!("error: --format md is only available with --mode impact");
         std::process::exit(EXIT_USAGE);
     }
-    if mode == "locate" {
-        if full {
-            eprintln!(
-                "error: --mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)"
-            );
-            std::process::exit(2);
-        }
-        return run_locate(
-            &cli,
-            path,
-            diff_ref,
-            budget,
-            alpha,
-            tau,
-            scoring_mode,
-            timeout,
+    if request.mode == Mode::Locate && cli.full {
+        eprintln!(
+            "error: --mode locate is incompatible with --full (locate ranks the selection; --full bypasses it)"
         );
+        std::process::exit(2);
     }
-
-    let output = run_with_deadline(timeout, move || {
-        build_diff_context(
-            &path,
-            diff_ref.as_deref(),
-            budget,
-            alpha,
-            tau,
-            no_content,
-            full,
-            scoring_mode,
-            timeout,
-        )
-    })?;
-
-    let format = match cli.format {
-        OutputFormat::Yaml => Format::Yaml,
-        OutputFormat::Json => Format::Json,
-        OutputFormat::Md => unreachable!("rejected before the pipeline runs"),
-    };
-    let render = _diffctx::profile::phase("render");
-    let mut doc = serde_json::to_value(&output)?;
-    let rendered = _diffctx::artifact::fit(&mut doc, format);
-    drop(render);
-
-    emit(
-        &cli,
-        &rendered,
-        diff_result_is_empty(&doc),
-        output
-            .coverage
-            .as_ref()
-            .map_or(&[][..], |c| c.limit_reasons.as_slice()),
-        &output.changed_files,
-    )
+    deliver(&cli, request)
 }

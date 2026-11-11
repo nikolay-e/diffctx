@@ -34,7 +34,7 @@ def _run(repo, env: dict[str, str]) -> dict:
     code = f"""
 import json, diffctx
 r = diffctx.build_diff_context(root_dir={str(repo.path)!r}, diff_range="HEAD~1..HEAD")
-print(json.dumps({{"coverage": r.get("coverage"), "changed": r.get("changed_files"), "md": diffctx.to_markdown(r), "yaml": diffctx.to_yaml(r), "json": diffctx.to_json(r)}}))
+print(json.dumps({{"coverage": r.get("coverage"), "changed": ((r.get("inventory") or dict()).get("changed") or dict()).get("items"), "md": diffctx.to_markdown(r), "yaml": diffctx.to_yaml(r), "json": diffctx.to_json(r)}}))
 """
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env={**os.environ, **env})
     assert proc.returncode == 0, proc.stderr[-600:]
@@ -51,19 +51,19 @@ def test_the_contribution_cap_is_disclosed_on_every_surface(tmp_path):
     out = _run(_repo(tmp_path), {"DIFFCTX_MAX_EDGE_CONTRIBUTIONS": "1"})
     coverage = out["coverage"]
     assert coverage["status"] == "partial"
-    assert "edge_contribution_limit" in coverage["limit_reasons"]
+    assert "edge_contribution_limit" in coverage["limits"]
     assert coverage["resources"]["edge_contributions"] >= 1
     assert out["changed"] == ["main.py"], "the change itself is never dropped by a graph cap"
     assert "Coverage: partial" in out["md"]
     assert "edge_contribution_limit" in out["md"]
     assert "coverage:" in out["yaml"]
     assert "edge_contribution_limit" in out["yaml"]
-    assert json.loads(out["json"])["coverage"]["limit_reasons"] == coverage["limit_reasons"]
+    assert json.loads(out["json"])["coverage"]["limits"] == coverage["limits"]
 
 
 def test_the_byte_cap_bounds_discovery_but_never_the_change(tmp_path):
     out = _run(_repo(tmp_path), {"DIFFCTX_MAX_SOURCE_BYTES": "1"})
-    assert "total_byte_limit" in out["coverage"]["limit_reasons"]
+    assert "total_byte_limit" in out["coverage"]["limits"]
     assert out["changed"] == ["main.py"]
     assert "main.py" in out["md"]
     assert "**changed**" in out["md"]
@@ -71,7 +71,7 @@ def test_the_byte_cap_bounds_discovery_but_never_the_change(tmp_path):
 
 def test_the_candidate_cap_is_disclosed(tmp_path):
     out = _run(_repo(tmp_path), {"DIFFCTX_MAX_CANDIDATE_FILES": "1"})
-    assert "candidate_limit" in out["coverage"]["limit_reasons"]
+    assert "candidate_limit" in out["coverage"]["limits"]
     assert out["coverage"]["resources"]["candidate_files"] == 1
 
 
@@ -97,9 +97,9 @@ def _docs_per_format(repo: Pygit2Repo, env: dict[str, str], *extra: str) -> dict
 
 def _assert_reason_on_every_format(docs: dict[str, str], reason: str) -> dict:
     assert reason in docs["md"], docs["md"][-600:]
-    assert reason in yaml.safe_load(docs["yaml"])["coverage"]["limit_reasons"]
+    assert reason in yaml.safe_load(docs["yaml"])["coverage"]["limits"]
     doc = json.loads(docs["json"])
-    assert reason in doc["coverage"]["limit_reasons"]
+    assert reason in doc["coverage"]["limits"]
     return doc
 
 
@@ -124,7 +124,7 @@ def test_a_context_file_over_the_size_cap_is_named_not_silently_dropped(tmp_path
     paths = {f["path"] for f in doc["fragments"]}
     if read:
         assert "helper.py" in paths
-        assert "file_too_large" not in (doc.get("coverage") or {}).get("limit_reasons", [])
+        assert "file_too_large" not in (doc.get("coverage") or {}).get("limits", [])
     else:
         assert "helper.py" not in paths
         _assert_reason_on_every_format(docs, "file_too_large")
@@ -149,7 +149,7 @@ def test_the_per_node_edge_cap_is_disclosed(tmp_path):
     assert "edge_limit" in yaml.safe_load(docs["yaml"])["coverage"]["capped"]
     coverage = json.loads(docs["json"])["coverage"]
     assert "edge_limit" in coverage["capped"]
-    assert "edge_limit" not in coverage.get("limit_reasons", [])
+    assert "edge_limit" not in coverage.get("limits", [])
     assert "Coverage:" not in docs["md"]
     uncapped = json.loads(_docs_per_format(repo, {})["json"])
     assert "edge_limit" not in (uncapped.get("coverage") or {}).get("capped", [])
@@ -198,7 +198,7 @@ def test_a_trimmed_diff_is_degraded_with_exact_representation(tmp_path, budget, 
     assert result.returncode == 0, result.stderr
     doc = json.loads(result.stdout)
     assert doc["coverage"]["status"] == "degraded"
-    assert doc["coverage"]["limit_reasons"] == reasons
+    assert doc["coverage"]["limits"] == reasons
     represented = {f["path"] for f in doc["fragments"]}
     assert len(doc["changes"]) == 60
     for change in doc["changes"]:

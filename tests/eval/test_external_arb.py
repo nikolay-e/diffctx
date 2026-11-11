@@ -203,7 +203,10 @@ class TestRankingAgainstTheRealEngine:
     def test_ranking_orders_by_best_fragment_score_across_selection_and_overflow(self):
         doc = {
             "items": [{"path": "a.py", "score": 1.0}, {"path": "b.py", "score": 0.2}],
-            "overflow": [{"path": "b.py", "score": 0.5}, {"path": "c.py", "score": 0.3}, {"path": "a.py", "score": 0.9}],
+            "overflow": {
+                "total": 3,
+                "items": [{"path": "b.py", "score": 0.5}, {"path": "c.py", "score": 0.3}, {"path": "a.py", "score": 0.9}],
+            },
             "provenance": {"engine": {"version": "9.9"}, "effective_config_hash": "h", "selection": {"tau": 0.05}},
         }
         ranking = ranking_from_locate(doc, anchor_file="a.py")

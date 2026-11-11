@@ -41,9 +41,9 @@ def test_withheld_secret_files_are_disclosed_as_a_count(tmp_path):
     repo = _build_repo_with_changed_private_keys(tmp_path)
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
-    assert result.get("policy_excluded_count") == 3
+    assert result.get("inventory", {}).get("withheld") == 3
     rendered = diffctx.to_yaml(result)
-    assert "policy_excluded_count: 3" in rendered
+    assert "withheld: 3" in rendered
     assert "id_rsa" not in rendered
 
 
@@ -57,7 +57,7 @@ def test_secret_only_change_still_renders_the_withheld_notice(tmp_path):
     repo.commit("touch only the secret file")
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
-    assert result.get("policy_excluded_count") == 1
+    assert result.get("inventory", {}).get("withheld") == 1
     for rendered in (
         diffctx.to_yaml(result),
         diffctx.to_markdown(result),

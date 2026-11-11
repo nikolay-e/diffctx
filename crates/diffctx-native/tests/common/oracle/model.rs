@@ -121,27 +121,6 @@ impl UnknownClass {
             Self::Overridable => "overridable",
         }
     }
-
-    /// The class of the sentence the engine renders an `Unknown` as.
-    pub fn of_sentence(sentence: &str) -> Option<Self> {
-        if sentence.starts_with("implements `") && sentence.contains("calls through `dyn ") {
-            Some(Self::Dispatched)
-        } else if sentence.contains(" is ambiguous: ") {
-            Some(Self::Ambiguous)
-        } else if sentence.contains(" is a whole word on ") {
-            Some(Self::CommonWord)
-        } else if sentence.contains(" read(s) of `.") {
-            Some(Self::UnresolvedReads)
-        } else if sentence.starts_with("calls through ")
-            && sentence.contains(" are not traced, and no direct caller was found")
-        {
-            Some(Self::Overridable)
-        } else if sentence.starts_with("no binding model reads ") {
-            Some(Self::NotModelled)
-        } else {
-            None
-        }
-    }
 }
 
 /// A definition (`path::symbol`) or a file (`path`). A node with an empty

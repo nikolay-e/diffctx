@@ -92,7 +92,7 @@ def test_a_shallow_clone_names_the_missing_history_then_deepening_fixes_it(tmp_p
     _git(clone, "fetch", "-q", "--deepen=1")
     deepened = _run(clone, "--diff", "HEAD~1", "-f", "json")
     assert deepened.returncode == EXIT_OK, deepened.stderr
-    assert _json(deepened)["changed_files"] == ["app.py"]
+    assert _json(deepened)["inventory"]["changed"]["items"] == ["app.py"]
 
 
 def test_an_untracked_nested_repository_is_not_a_changed_file(tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ def test_an_untracked_nested_repository_is_not_a_changed_file(tmp_path: Path) ->
     _write(repo, "app.py", "def f():\n    return 2\n")
 
     doc = _json(_run(repo, "--diff", "-f", "json"))
-    assert doc["changed_files"] == ["app.py"]
+    assert doc["inventory"]["changed"]["items"] == ["app.py"]
 
 
 def test_committed_conflict_markers_are_ordinary_text(tmp_path: Path) -> None:
@@ -117,7 +117,7 @@ def test_committed_conflict_markers_are_ordinary_text(tmp_path: Path) -> None:
 
     result = _run(repo, "--diff", "HEAD~1..HEAD", "-f", "json")
     assert result.returncode in (EXIT_OK, EXIT_EMPTY_DIFF), result.stderr
-    assert _json(result)["changed_files"] == ["app.py"]
+    assert _json(result)["inventory"]["changed"]["items"] == ["app.py"]
 
 
 def test_full_with_raw_diff_carries_both_the_patch_and_the_fragments(tmp_path: Path) -> None:
@@ -129,7 +129,7 @@ def test_full_with_raw_diff_carries_both_the_patch_and_the_fragments(tmp_path: P
 
     doc = _json(_run(repo, "--diff", "HEAD~1..HEAD", "--full", "--with-raw-diff", "-f", "json"))
     assert "+    return 2" in doc["raw_diff"]
-    assert doc["fragment_count"] >= 1
+    assert len(doc["fragments"]) >= 1
     assert any("return 2" in f.get("content", "") for f in doc["fragments"])
 
 
@@ -150,8 +150,8 @@ def test_a_duration_window_works_in_locate_mode(tmp_path: Path) -> None:
     result = _run(repo, "--diff", "24h", "--mode", "locate")
     assert result.returncode == EXIT_OK, result.stderr
     doc = _json(result)
-    assert doc["schema"] == "diffctx.locate.v1"
-    assert doc["changed_files"] == ["recent.py"]
+    assert doc["schema"] == "diffctx.locate.v2"
+    assert doc["inventory"]["changed"]["items"] == ["recent.py"]
     assert any(i.get("role") == "changed" and i["path"] == "recent.py" for i in doc["items"])
 
 
@@ -165,7 +165,7 @@ def test_a_linked_worktree_runs_from_a_subdirectory(tmp_path: Path) -> None:
 
     result = run_diffctx_subprocess([".", "--diff", "-f", "json", "-q"], cwd=linked / "pkg")
     assert result.returncode == EXIT_OK, result.stderr
-    assert _json(result)["changed_files"] == ["pkg/mod.py"]
+    assert _json(result)["inventory"]["changed"]["items"] == ["pkg/mod.py"]
 
 
 def test_a_conflicted_merge_is_reported_not_crashed_on(tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ def test_a_conflicted_merge_is_reported_not_crashed_on(tmp_path: Path) -> None:
 
     result = _run(repo, "--diff", "-f", "json")
     assert result.returncode in (EXIT_OK, EXIT_EMPTY_DIFF), result.stderr
-    assert _json(result)["changed_files"] == ["app.py"]
+    assert _json(result)["inventory"]["changed"]["items"] == ["app.py"]
 
 
 def test_an_intent_to_add_file_is_a_changed_file(tmp_path: Path) -> None:
@@ -193,7 +193,7 @@ def test_an_intent_to_add_file_is_a_changed_file(tmp_path: Path) -> None:
     _git(repo, "add", "-N", "new.py")
 
     doc = _json(_run(repo, "--diff", "-f", "json"))
-    assert doc["changed_files"] == ["new.py"]
+    assert doc["inventory"]["changed"]["items"] == ["new.py"]
 
 
 def test_an_index_only_removal_reads_as_the_deletion_the_next_commit_makes(tmp_path: Path) -> None:
@@ -207,8 +207,8 @@ def test_an_index_only_removal_reads_as_the_deletion_the_next_commit_makes(tmp_p
     assert (repo / "tracked.py").is_file()
     assert result.returncode == EXIT_OK, result.stderr
     doc = _json(result)
-    assert doc["deleted_files"] == ["tracked.py"]
-    assert "changed_files" not in doc
+    assert doc["inventory"]["deleted"]["items"] == ["tracked.py"]
+    assert "changed" not in doc.get("inventory", {})
 
 
 def _fragment_set(doc: dict[str, Any]) -> set[tuple[str, str, str | None]]:
@@ -228,7 +228,7 @@ def test_a_latin1_file_fragments_the_same_before_and_after_commit(tmp_path: Path
     assert _fragment_set(uncommitted) == _fragment_set(committed)
     assert _fragment_set(committed)
     for doc in (uncommitted, committed):
-        assert "non_utf8_content" in doc["coverage"]["limit_reasons"]
+        assert "non_utf8_content" in doc["coverage"]["limits"]
         assert doc["coverage"]["lossy_files"] == ["cafe.py"]
 
 
@@ -262,8 +262,8 @@ def test_a_mode_only_change_is_not_called_a_clean_tree(tmp_path: Path) -> None:
     result = _run(repo, "--diff", "-f", "json")
     assert result.returncode == EXIT_EMPTY_DIFF, result.stderr
     assert "matches HEAD" not in result.stderr
-    assert "no text hunks" in result.stderr
-    assert "run.sh" in _json(result)["changed_files"]
+    assert "carry no text hunk" in result.stderr
+    assert "run.sh" in _json(result)["inventory"]["changed"]["items"]
 
 
 @pytest.mark.parametrize("scope", [["pkg"], ["pkg/a.py"], ["pkg", "lib/c.py"]])
@@ -275,7 +275,7 @@ def test_path_arguments_narrow_the_diff(tmp_path: Path, scope: list[str]) -> Non
     for rel in ("pkg/a.py", "other/b.py", "lib/c.py"):
         _write(repo, rel, "def f():\n    return 2\n")
 
-    changed = _json(run_diffctx_subprocess([*scope, "--diff", "-f", "json", "-q"], cwd=repo))["changed_files"]
+    changed = _json(run_diffctx_subprocess([*scope, "--diff", "-f", "json", "-q"], cwd=repo))["inventory"]["changed"]["items"]
     expected = {"pkg": ["pkg/a.py"], "pkg/a.py": ["pkg/a.py"], "lib/c.py": ["lib/c.py"]}
     assert sorted(changed) == sorted(p for s in scope for p in expected[s])
 
@@ -292,10 +292,8 @@ def test_locate_honours_path_arguments(tmp_path: Path) -> None:
     assert {item["path"] for item in doc["items"]} == {"pkg/a.py"}
 
 
-@pytest.mark.parametrize(("commits", "total", "heading"), [(25, 25, "> newest 20 of 25 commits:"), (3, None, "> 3 commits:")])
-def test_a_long_range_says_how_many_commits_the_list_left_out(
-    tmp_path: Path, commits: int, total: int | None, heading: str
-) -> None:
+@pytest.mark.parametrize(("commits", "heading"), [(25, "> newest 20 of 25 commits:"), (3, "> 3 commits:")])
+def test_a_long_range_says_how_many_commits_the_list_left_out(tmp_path: Path, commits: int, heading: str) -> None:
     repo = _init(tmp_path / "repo")
     _write(repo, "app.py", "def f():\n    return 0\n")
     _commit(repo, "base")
@@ -304,9 +302,9 @@ def test_a_long_range_says_how_many_commits_the_list_left_out(
         _commit(repo, f"step {i}")
 
     doc = _json(_run(repo, "--diff", f"HEAD~{commits}..HEAD", "-f", "json"))
-    assert len(doc["commit_messages"]) == min(commits, 20)
-    assert doc.get("commit_count") == total
+    assert len(doc["range"]["messages"]) == min(commits, 20)
+    assert doc["range"]["commits"] == commits
     locate = _json(_run(repo, "--diff", f"HEAD~{commits}..HEAD", "--mode", "locate"))
-    assert locate.get("commit_count") == total
+    assert locate["range"]["commits"] == commits
     md = run_diffctx_subprocess([".", "--diff", f"HEAD~{commits}..HEAD", "-q"], cwd=repo).stdout
     assert heading in md
