@@ -85,7 +85,7 @@ pub(crate) fn compute(base: &SnapshotReader, head: &SnapshotReader) -> Result<Ch
         .arg(base_tree.as_str());
         &["diff"]
     };
-    let raw = exec.finish(cmd, work, label, &[])?.stdout;
+    let raw = exec.finish(cmd, label, &[])?.stdout;
 
     let mut set = ChangeSet::default();
     for entry in parse_raw(&raw)? {

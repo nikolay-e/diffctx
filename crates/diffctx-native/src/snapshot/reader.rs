@@ -876,7 +876,7 @@ fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Oid>> {
             let mut cmd = git_command(work);
             cmd.args(["hash-object", "--stdin-paths"])
                 .stdin(std::fs::File::open(&list)?);
-            let out = exec.finish(cmd, work, &["hash-object"], &[])?;
+            let out = exec.finish(cmd, &["hash-object"], &[])?;
             let answer = String::from_utf8_lossy(&out.stdout);
             let lines: Vec<&str> = answer.lines().collect();
             if lines.len() != chunk.len() {

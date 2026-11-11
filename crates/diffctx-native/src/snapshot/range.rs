@@ -4,13 +4,19 @@
 //! force-push deltas are values the caller states, and a single snapshot
 //! (`--symbol`) is `At`.
 
+use std::path::Path;
+
 use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::git::{Exec, git_command};
 use crate::snapshot::reader::Side;
 use crate::snapshot::repo::{
-    RepoRoot, empty_tree_oid, merge_base_with, resolve_commit, resolve_object,
+    RepoRoot, empty_tree_id, empty_tree_oid, merge_base_with, reject_option_like, resolve_commit,
+    resolve_object, rev_oid,
 };
 use crate::snapshot::types::Oid;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum RangeSpec {
@@ -157,7 +163,7 @@ pub fn commits(root: &RepoRoot, range: &RangeSpec) -> Result<Vec<Oid>> {
     let span = format!("{from}..{to}");
     let mut cmd = git_command(work);
     cmd.args(["rev-list", &span, "--"]);
-    let out = exec.finish(cmd, work, &["rev-list"], &[])?;
+    let out = exec.finish(cmd, &["rev-list"], &[])?;
     String::from_utf8_lossy(&out.stdout)
         .lines()
         .map(Oid::parse)
@@ -248,4 +254,218 @@ fn shape(text: &str) -> bool {
             tail.is_empty() || shape(tail)
         })
     })
+}
+
+static RANGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\s*(\S+?)(\.\.\.?)(\S*?)\s*$").expect("the range pattern is valid"));
+
+/// `(base, head)` of a two-sided range as the engine's text readers spell it;
+/// `(None, None)` for a single revision, which git compares with the working
+/// tree. An open right side (`A..`, `A...`) is `A..HEAD` in git's own reading:
+/// both sides committed, so the head is HEAD, not the working tree.
+pub fn split_diff_range(range: &str) -> (Option<String>, Option<String>) {
+    match RANGE_RE.captures(range) {
+        None => (None, None),
+        Some(caps) => {
+            let base = caps
+                .get(1)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let head = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| Some("HEAD".to_string()));
+            (base, head)
+        }
+    }
+}
+
+/// The public names for the staged index: `staged`, and git's own `--cached`,
+/// accepted literally and nowhere else as an option.
+pub fn is_staged_keyword(spec: &str) -> bool {
+    matches!(spec.trim(), "staged" | "--cached")
+}
+
+/// The last commit before a `--diff 24h` window, the empty tree when the
+/// repository is younger: `None` when `spec` is no window (a revision, a range,
+/// the staged keyword). A ref that happens to look like a duration (a branch
+/// `24h`, an abbreviated sha `24d`) keeps its git meaning. Only the phrasing of
+/// messages and the legacy spelling of the analysed range need it; the range
+/// itself is resolved once by [`resolve`].
+pub fn duration_base(root: &Path, spec: &str) -> Result<Option<String>> {
+    let trimmed = spec.trim();
+    if is_staged_keyword(trimmed) || split_diff_range(trimmed).0.is_some() {
+        return Ok(None);
+    }
+    let parsed = parse_duration_seconds(trimmed);
+    if parsed.is_none() && !looks_like_duration(trimmed) {
+        return Ok(None);
+    }
+    if reject_option_like(trimmed).is_ok() && rev_oid(root, trimmed)?.is_some() {
+        return Ok(None);
+    }
+    let Some(seconds) = parsed else {
+        return Err(SnapshotError::InvalidDuration(trimmed.to_string()));
+    };
+    // A repository with no commit has none before the window: the empty tree.
+    // Any other failure of the read is the caller's to see.
+    let base = if rev_oid(root, "HEAD")?.is_some() {
+        // git owns the calendar arithmetic (local timezone, DST) via approxidate.
+        let before = format!("--before={seconds} seconds ago");
+        Exec::current()
+            .text(root, &["rev-list", "-1", &before, "HEAD", "--"])?
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+    Ok(Some(if base.is_empty() {
+        empty_tree_id(root)?
+    } else {
+        base
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = git_command(dir)
+            .args(args)
+            .status()
+            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn init_git_repo(dir: &Path) {
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "test@example.com"]);
+        git(dir, &["config", "user.name", "Test"]);
+        git(dir, &["config", "commit.gpgsign", "false"]);
+    }
+
+    /// One `--name-status` listing answers what the three listings it
+    /// replaced answered, by git's own word on each: renames, deletions and
+
+    fn commit_all(dir: &Path, message: &str) {
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", message]);
+    }
+
+    fn write_file(root: &Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent");
+        }
+        fs::write(&path, content).expect("write file");
+    }
+
+    #[test]
+    fn duration_specs_cover_the_standard_units_and_compose() {
+        for (spec, expected) in [
+            ("5s", 5),
+            ("90 sec", 90),
+            ("10min", 600),
+            ("45m", 2700),
+            ("24h", 86_400),
+            ("3hrs", 10_800),
+            ("8d", 691_200),
+            ("2 weeks", 1_209_600),
+            ("1h30m", 5400),
+            ("1D", 86_400),
+        ] {
+            assert_eq!(
+                parse_duration_seconds(spec),
+                Some(expected),
+                "spec {spec:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn anything_that_is_not_wholly_a_duration_stays_a_revision() {
+        for spec in [
+            "HEAD",
+            "HEAD~1..HEAD",
+            "main",
+            "8dd",
+            "24",
+            "h",
+            "v1.2",
+            "",
+            "1h-",
+            "deadbeef",
+        ] {
+            assert_eq!(parse_duration_seconds(spec), None, "spec {spec:?}");
+        }
+    }
+
+    #[test]
+    fn a_duration_resolves_to_the_last_commit_before_the_window() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "old.txt", "old\n");
+        // `--before` filters on the committer date, so backdating the author
+        // date alone would leave this commit inside the window.
+        git(root, &["add", "-A"]);
+        let status = git_command(root)
+            .args(["commit", "-q", "-m", "old"])
+            .env("GIT_AUTHOR_DATE", "2020-01-01T00:00:00+00:00")
+            .env("GIT_COMMITTER_DATE", "2020-01-01T00:00:00+00:00")
+            .status()
+            .expect("commit");
+        assert!(status.success());
+        let old_head = crate::snapshot::run_git(root, &["rev-parse", "HEAD"])
+            .expect("rev-parse")
+            .trim()
+            .to_string();
+        write_file(root, "new.txt", "new\n");
+        commit_all(root, "new");
+
+        let base = duration_base(root, "24h").expect("resolve");
+        assert_eq!(base.as_deref(), Some(old_head.as_str()));
+
+        let diff =
+            crate::snapshot::diff_text(root, &["--unified=3"], base.as_deref(), &[]).expect("diff");
+        assert!(diff.contains("new.txt"), "window must cover the new commit");
+        assert!(
+            !diff.contains("old.txt"),
+            "window must exclude the commit before it"
+        );
+    }
+
+    #[test]
+    fn a_window_older_than_the_repo_falls_back_to_the_empty_tree() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "only.txt", "only\n");
+        commit_all(root, "only");
+
+        let base = duration_base(root, "1w").expect("resolve");
+        assert!(base.is_some());
+        let diff =
+            crate::snapshot::diff_text(root, &["--unified=3"], base.as_deref(), &[]).expect("diff");
+        assert!(
+            diff.contains("only.txt"),
+            "a repo younger than the window is entirely new within it"
+        );
+    }
+
+    #[test]
+    fn a_ref_that_looks_like_a_duration_keeps_its_git_meaning() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        init_git_repo(root);
+        write_file(root, "a.txt", "a\n");
+        commit_all(root, "a");
+        git(root, &["branch", "24h"]);
+
+        assert_eq!(duration_base(root, "24h").expect("resolve"), None);
+    }
 }

@@ -202,39 +202,20 @@ fn is_lookup_pattern(pattern: &str) -> bool {
 }
 
 fn git_out(root: &Path, args: &[&str]) -> Option<String> {
-    crate::git::run_git(root, args)
+    snap::run_git(root, args)
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-/// A read whose refusal says nothing on stderr, or that a ref does not
-/// exist (`rev-parse --verify --quiet` of an absent ref, `merge-base` of a
-/// ref nothing resolves or of unrelated histories), is git's "no": `None`.
-/// Any other failure is a failure the review cannot go on past.
+/// A read git answers "no" to by exit status 1 (`rev-parse --verify --quiet`
+/// of an absent ref, `merge-base` of unrelated histories) is `None`: an
+/// absence (#416). Any other failure is one the review cannot go on past.
 fn git_checked(root: &Path, args: &[&str]) -> Result<Option<String>, Silence> {
-    match crate::git::run_git(root, args) {
-        Ok(out) => Ok(Some(out.trim().to_string()).filter(|s| !s.is_empty())),
-        Err(e) if names_no_such_ref(&e.to_string()) => Ok(None),
+    match snap::run_git_or_none(root, args, 1) {
+        Ok(out) => Ok(out.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())),
         Err(_) => Err("error:git"),
     }
-}
-
-/// What git says when a ref the line names is not in the repository: an
-/// absence (#416), not a refusal to read. No stderr at all is the `--quiet`
-/// spelling of the same answer.
-fn names_no_such_ref(message: &str) -> bool {
-    message.ends_with("failed: unknown error")
-        || [
-            "unknown revision",
-            "bad revision",
-            "ambiguous argument",
-            "Not a valid object name",
-            "needed a single revision",
-            "Needed a single revision",
-        ]
-        .iter()
-        .any(|words| message.contains(words))
 }
 
 fn first_reachable(root: &Path, revs: &[&str]) -> Result<Option<String>, Silence> {
@@ -251,7 +232,7 @@ fn first_reachable(root: &Path, revs: &[&str]) -> Result<Option<String>, Silence
 /// copy: `write-tree` on the real index takes its lock from under a
 /// concurrent `git add`.
 fn staged_range(root: &Path, base: Option<&str>) -> Option<String> {
-    let staged = crate::git::capture_planned(root, &[]).ok()?;
+    let staged = snap::capture_planned(root, &[]).ok()?;
     Some(format!("{}..{}", base.unwrap_or(&staged.base), staged.tree))
 }
 
@@ -259,7 +240,7 @@ fn staged_range(root: &Path, base: Option<&str>) -> Option<String> {
 /// other path as `HEAD` has it: the pending change without the edits other
 /// sessions left in the same checkout, captured on a copy of the index.
 fn own_range(root: &Path, staged: bool, files: &[String]) -> Option<String> {
-    let step = |args: &[&str], magic: &str| -> crate::git::PlanStep {
+    let step = |args: &[&str], magic: &str| -> snap::PlanStep {
         let paths = files.iter().map(|f| format!(":({magic}){f}"));
         let args = args.iter().map(|a| a.to_string()).chain(paths).collect();
         (root.to_path_buf(), args)
@@ -269,7 +250,7 @@ fn own_range(root: &Path, staged: bool, files: &[String]) -> Option<String> {
         plan.push(step(&["add", "-A", "--"], "literal"));
     }
     plan.push(step(&["reset", "-q", "--", ":/"], "exclude,literal"));
-    let snapshot = crate::git::capture_planned(root, &plan).ok()?;
+    let snapshot = snap::capture_planned(root, &plan).ok()?;
     Some(format!("{}..{}", snapshot.base, snapshot.tree))
 }
 
@@ -312,10 +293,13 @@ fn range_for(root: &Path, trigger: &Trigger) -> Result<String, Silence> {
                     first_reachable(root, &[format!("refs/remotes/origin/{h}").as_str(), h])?
                         .ok_or("unresolved-ref")?
                 }
-                None => "HEAD".to_string(),
+                None => first_reachable(root, &["HEAD"])?.ok_or("unresolved-ref")?,
             };
+            // `merge-base` of a ref nothing resolves is a refusal, not an
+            // absence: the refs are asked first.
             let base = match base {
-                Some(b) => format!("refs/remotes/origin/{b}"),
+                Some(b) => first_reachable(root, &[format!("refs/remotes/origin/{b}").as_str()])?
+                    .ok_or("unresolved-ref")?,
                 None => first_reachable(root, &["origin/HEAD", "origin/main", "origin/master"])?
                     .ok_or("unresolved-ref")?,
             };
@@ -475,9 +459,8 @@ fn refs_of(repo: &snap::RepoRoot) -> Result<Before, Silence> {
 /// list` where opening each tree asked git twice per tree. A bare or pruned
 /// entry has no work tree and is left out.
 fn work_trees(home: &snap::RepoRoot) -> Result<Vec<(PathBuf, String)>, Silence> {
-    let listing =
-        crate::git::run_git_z(&home.work_tree, &["worktree", "list", "--porcelain", "-z"])
-            .map_err(|_| "error:git")?;
+    let listing = snap::run_git_z(&home.work_tree, &["worktree", "list", "--porcelain", "-z"])
+        .map_err(|_| "error:git")?;
     let mut trees: Vec<(PathBuf, String, bool)> = Vec::new();
     for line in &listing {
         if let Some(path) = line.strip_prefix("worktree ") {
@@ -645,7 +628,6 @@ fn landed(
     // it grows from where the line started (or from where its rebase ended),
     // or amends a commit the line started on or made: another session's
     // commit after a reset of the same checkout does neither (#406).
-    let empty = || crate::git::empty_tree_oid(root);
     let mut anchor = before.head.clone();
     let mut ours: Vec<String> = vec![before.head.clone()];
     let mut start: Option<String> = None;
@@ -687,7 +669,10 @@ fn landed(
         // already landed there: nothing for this session to review.
         if verb == "merge"
             && entry.subject.contains("Fast-forward")
-            && crate::git::rev_oid(root, "@{upstream}").as_deref() == Some(new.as_str())
+            && snap::rev_oid(root, "@{upstream}")
+                .map_err(|_| "error:git")?
+                .as_deref()
+                == Some(new.as_str())
         {
             continue;
         }
@@ -703,19 +688,24 @@ fn landed(
         if !grows {
             continue;
         }
-        start.get_or_insert_with(|| {
-            if amend {
+        if start.is_none() {
+            // A commit with no parent, or none before the line, starts from
+            // the empty tree.
+            let parent = if amend {
                 git_out(
                     root,
                     &["rev-parse", "--verify", "--quiet", &format!("{new}~1")],
                 )
-                .unwrap_or_else(empty)
             } else if before.head.is_empty() {
-                empty()
+                None
             } else {
-                before.head.clone()
-            }
-        });
+                Some(before.head.clone())
+            };
+            start = Some(match parent {
+                Some(parent) => parent,
+                None => snap::empty_tree_id(root).map_err(|_| "error:git")?,
+            });
+        }
         ours.push(new.clone());
         last = Some((new, verb));
     }
@@ -953,10 +943,10 @@ fn pushed_ranges(
         .iter()
         .filter_map(|u| u.range.as_ref().filter(|_| pushed_to(&u.to)))
     {
-        if let (Some(old), Some(new)) = (
-            crate::git::rev_oid(root, old),
-            crate::git::rev_oid(root, new),
-        ) {
+        // A tip this clone does not hold names no range to review; a read git
+        // could not answer is the hook's error.
+        let held = |rev: &str| snap::rev_oid(root, rev).map_err(|_| "error:git");
+        if let (Some(old), Some(new)) = (held(old)?, held(new)?) {
             ranges.push(push_range(repo, &old, &new)?);
         }
     }
@@ -1026,9 +1016,10 @@ fn first_push_since(
         root,
         &["rev-parse", "--verify", "--quiet", &format!("{oldest}^")],
     );
-    let base = parent
-        .clone()
-        .unwrap_or_else(|| crate::git::empty_tree_oid(root));
+    let base = match parent.clone() {
+        Some(parent) => parent,
+        None => snap::empty_tree_id(root).map_err(|_| "error:git")?,
+    };
     let (Ok(old), Ok(new)) = (snap::Oid::parse(&base), snap::Oid::parse(&pushed)) else {
         return Err("error:git");
     };
@@ -1072,15 +1063,14 @@ impl Fnv {
 /// changes nothing; a read git refused is an error, never "nothing": an
 /// unknown set of files changed.
 pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silence> {
-    let (base, head) = match crate::git::split_diff_range(range) {
+    let (base, head) = match snap::split_diff_range(range) {
         (Some(b), h) => (b, h),
         _ => (range.to_string(), None),
     };
     let mut entries = changed_blobs(root, &base, head.as_deref())?;
     if head.is_none() {
-        let untracked =
-            crate::git::run_git_z(root, &["ls-files", "-o", "--exclude-standard", "-z"])
-                .map_err(|_| "error:git")?;
+        let untracked = snap::run_git_z(root, &["ls-files", "-o", "--exclude-standard", "-z"])
+            .map_err(|_| "error:git")?;
         entries.extend(
             untracked
                 .into_iter()
@@ -1093,8 +1083,11 @@ pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silen
     hash_working_tree_blobs(root, &mut entries);
     entries.sort();
     // The checkout by its canonical root: `.` from a manual run and the
-    // absolute path the hook resolves are one repository.
-    let checkout = crate::git::find_toplevel(root).unwrap_or_else(|| root.to_path_buf());
+    // absolute path the hook resolves are one repository. A path with no work
+    // tree is its own.
+    let checkout = snap::find_toplevel(root)
+        .map_err(|_| "error:git")?
+        .unwrap_or_else(|| root.to_path_buf());
     let base = git_out(root, &["rev-parse", "--verify", "--quiet", &base]).unwrap_or_default();
     let mut h = Fnv::new();
     h.feed(env!("CARGO_PKG_VERSION").as_bytes())
@@ -1119,7 +1112,7 @@ fn changed_blobs(
     let mut args = vec!["diff", "--raw", "-z", "--no-abbrev", "--no-renames", base];
     args.extend(head);
     args.push("--");
-    let raw = crate::git::run_git_z(root, &args).map_err(|_| "error:git")?;
+    let raw = snap::run_git_z(root, &args).map_err(|_| "error:git")?;
     Ok(raw
         .chunks(2)
         .filter_map(|pair| {
@@ -1150,7 +1143,7 @@ fn hash_working_tree_blobs(root: &Path, entries: &mut [(String, String, String)]
         .filter(|(p, mode, oid)| open(oid) && mode != "160000" && root.join(p).is_file())
         .map(|(p, _, _)| p.clone())
         .collect();
-    let hashed: FxHashMap<String, String> = crate::git::hash_object_paths(root, &files)
+    let hashed: FxHashMap<String, String> = snap::hash_object_paths(root, &files)
         .map(|oids| files.iter().cloned().zip(oids).collect())
         .unwrap_or_default();
     for (path, _, oid) in entries.iter_mut().filter(|(_, _, oid)| open(oid)) {
@@ -1415,10 +1408,6 @@ fn payload_cwd(payload: &serde_json::Value) -> Option<PathBuf> {
 
 /// A relative directory on the command line is relative to where the agent
 /// ran it, which the payload names; this process's cwd is a guess.
-fn repo_root(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
-    crate::git::find_toplevel(&root_dir(payload, dir)?)
-}
-
 fn root_dir(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
     let dir = resolve_dir(&payload_cwd(payload)?, dir);
     // A search names a file as often as a directory.
@@ -1429,8 +1418,9 @@ fn root_dir(payload: &serde_json::Value, dir: Option<&str>) -> Option<PathBuf> {
     })
 }
 
-/// `repo_root` for a review: a directory that is no repository is `None`, a
-/// `rev-parse` git refused for any other reason is a failure, not "not git".
+/// The work tree a payload's directory is in: a directory that is no
+/// repository is `None`, a read git refused for any other reason is a
+/// failure, not "not git".
 fn repo_root_checked(
     payload: &serde_json::Value,
     dir: Option<&str>,
@@ -1438,17 +1428,7 @@ fn repo_root_checked(
     let Some(dir) = root_dir(payload, dir) else {
         return Ok(None);
     };
-    match crate::git::run_git(&dir, &["rev-parse", "--show-toplevel"]) {
-        Ok(out) => {
-            let top = out.trim();
-            Ok((!top.is_empty()).then(|| {
-                dunce::canonicalize(top).unwrap_or_else(|_| Path::new(top).components().collect())
-            }))
-        }
-        Err(crate::git::GitError::NotARepo(_) | crate::git::GitError::Io(_)) => Ok(None),
-        Err(e) if e.to_string().contains("not a git repository") => Ok(None),
-        Err(_) => Err("error:git"),
-    }
+    snap::find_toplevel(&dir).map_err(|_| "error:git")
 }
 
 fn prepare(
@@ -1830,10 +1810,10 @@ fn changed_paths(root: &Path, staged: bool) -> Result<Vec<String>, Silence> {
     } else {
         &["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]
     };
-    let mut paths = crate::git::run_git_z(root, args).map_err(|_| "error:git")?;
+    let mut paths = snap::run_git_z(root, args).map_err(|_| "error:git")?;
     if !staged {
         let untracked = ["ls-files", "-o", "--exclude-standard", "-z"];
-        paths.extend(crate::git::run_git_z(root, &untracked).map_err(|_| "error:git")?);
+        paths.extend(snap::run_git_z(root, &untracked).map_err(|_| "error:git")?);
     }
     Ok(paths)
 }
@@ -1943,7 +1923,7 @@ const MAX_BRACKETED_PATHS: usize = 20_000;
 /// instead cost about as much again as the rest of the call's recording on a
 /// work tree with thousands of them.
 fn dirty_stamps(root: &Path) -> Option<FxHashMap<String, u64>> {
-    let status = crate::git::run_git_z(
+    let status = snap::run_git_z(
         root,
         &[
             "--no-optional-locks",
@@ -2216,7 +2196,7 @@ fn run_impact(
 /// instead of "failed". The command line ends the same failures with exit
 /// code 3 (git), 2 (a range that cannot be resolved) or 1.
 fn failure_reason(error: &anyhow::Error) -> Silence {
-    match error.downcast_ref::<crate::git::GitError>() {
+    match error.downcast_ref::<snap::SnapshotError>() {
         Some(e) if e.is_interruption() => "error:deadline",
         Some(e) if e.is_usage() => "error:range",
         Some(_) => "error:git",
@@ -2842,19 +2822,17 @@ fn search_answer(
     if names.is_empty() {
         return Err("no-symbol");
     }
-    let root = repo_root(payload, search.dir.as_deref()).ok_or("not-git")?;
+    let root = repo_root_checked(payload, search.dir.as_deref())?.ok_or("not-git")?;
     trace.root = Some(root.clone());
     trace.range = Some("HEAD".to_string());
     // A revision other than HEAD is a tree the answer would not be about: a
     // subagent's `git grep x origin/main` got 17 answers from a checkout 36
     // commits behind it.
-    let head = crate::git::rev_oid(&root, "HEAD");
-    if search
-        .revisions
-        .iter()
-        .any(|r| crate::git::rev_oid(&root, r) != head)
-    {
-        return Err("other-tree");
+    let head = snap::rev_oid(&root, "HEAD").map_err(|_| "error:git")?;
+    for revision in &search.revisions {
+        if snap::rev_oid(&root, revision).map_err(|_| "error:git")? != head {
+            return Err("other-tree");
+        }
     }
     let scope = search_scope(payload, search, &root);
     // A pending change git would not read leaves unknown which names it
@@ -2999,7 +2977,10 @@ fn symbol_answer(
     started: Instant,
     trace: &mut Trace,
 ) -> Result<String, Silence> {
-    let head = crate::git::rev_oid(root, "HEAD").unwrap_or_default();
+    // An unborn branch has no head: its key is the empty one.
+    let head = snap::rev_oid(root, "HEAD")
+        .map_err(|_| "error:git")?
+        .unwrap_or_default();
     let session = trace.session.clone();
     let key = |name: &str| session_key(&format!("sym-{head}-{name}"), session.as_deref());
     let fresh: Vec<&String> = names
@@ -3183,7 +3164,7 @@ fn within_budget<T: Send + 'static>(
 /// the files are unknown, which is not an empty list.
 fn range_paths(root: &Path, range: &str) -> Option<Vec<String>> {
     let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
-    crate::git::run_git_z(root, &args).ok()
+    snap::run_git_z(root, &args).ok()
 }
 
 /// The hook's whole decision on one stdin payload. An answer is marked
@@ -3241,7 +3222,12 @@ fn names_other_repositories(payload: &serde_json::Value) -> Option<String> {
             // A directory that is gone (a work tree the line removed) holds
             // nothing to have missed.
             dir.exists()
-                && crate::git::find_toplevel(&dir).is_none_or(|top| !own.contains(&canonical(&top)))
+                && match snap::find_toplevel(&dir) {
+                    Ok(Some(top)) => !own.contains(&canonical(&top)),
+                    // No work tree, or git could not say: the notice that the
+                    // call's own repository was the only one read stands.
+                    Ok(None) | Err(_) => true,
+                }
         }
     });
     elsewhere.then(|| {

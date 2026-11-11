@@ -741,6 +741,53 @@ fn a_ref_the_line_does_not_resolve_is_logged_not_replaced() {
     assert!(line.contains(" unresolved-ref "), "{line}");
 }
 
+/// A PR base nothing resolves is "unresolved-ref" by git's exit status, not by
+/// the English of its refusal: the same log line when git speaks German.
+#[cfg(unix)]
+#[test]
+fn an_unresolved_pr_base_is_logged_unresolved_in_any_language() {
+    let (tmp, _remote) = repo_with_branches_beside_origin();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = support::path_with_translated_git(tools.path());
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &env,
+        &payload(repo, "gh pr create --base nope --fill"),
+    );
+    assert_eq!(h.stdout, "");
+    let line = last_log_line(cache.path());
+    assert!(line.contains(" unresolved-ref "), "{line}");
+}
+
+/// A directory that is no repository is "not-git" by what the file system and
+/// git's exit status say, not by git's words.
+#[cfg(unix)]
+#[test]
+fn a_directory_that_is_no_repository_is_not_git_in_any_language() {
+    let plain = TempDir::new().unwrap();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let path = support::path_with_translated_git(tools.path());
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        plain.path(),
+        cache.path(),
+        "pretooluse",
+        &[],
+        &env,
+        &payload(plain.path(), "gh pr create --fill"),
+    );
+    assert_eq!(h.stdout, "");
+    let line = last_log_line(cache.path());
+    assert!(line.contains(" not-git "), "{line}");
+}
+
 /// One command line's `PreToolUse` and `PostToolUse` in `session`, with what
 /// the line does in between.
 fn hook_pair(session: &str, repo: &Path, cache: &Path, command: &str, runs: impl FnOnce()) -> Hook {
@@ -1360,6 +1407,33 @@ fn a_search_the_ceiling_cuts_is_said_by_name_and_tried_again() {
     assert!(
         commit.contains("ran past the hook's deadline") && commit.contains("shop/pricing.py"),
         "{commit}"
+    );
+}
+
+/// A repository git refuses to read is an error the log names, not a path
+/// that is no repository: "not-git" would send the reader after the wrong
+/// problem, and the hook would stay silent about it.
+#[test]
+fn a_repository_git_cannot_read_is_an_error_not_a_non_repository() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let config = repo.join(".git/config");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    text.push_str("[core\n");
+    std::fs::write(&config, text).unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "grep -rn total ."),
+    );
+    assert_eq!(h.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" error:git "),
+        "{}",
+        last_log_line(cache.path())
     );
 }
 

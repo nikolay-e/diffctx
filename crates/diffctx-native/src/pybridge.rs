@@ -10,10 +10,10 @@ use crate::config::limits::{
     DEFAULT_STOPPING_THRESHOLD,
 };
 use crate::delivery::{Delivery, Mode, Note, Request};
-use crate::git::GitError as RustGitError;
 use crate::mode::ScoringMode;
 use crate::pipeline::{self, ScoredState};
 use crate::render::DiffContextOutput;
+use crate::snapshot::SnapshotError as RustGitError;
 
 #[pyclass(unsendable)]
 pub struct PyScoredState {

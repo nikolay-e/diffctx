@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::snapshot::error::{Result, SnapshotError};
-use crate::snapshot::git::{Exec, git_command};
+use crate::snapshot::git::{Exec, FATAL_STATUS, git_command};
 use crate::snapshot::types::{Cursor, Oid, RefName, ReflogEntry, Remote};
 
 /// A repository.
@@ -39,11 +39,12 @@ pub fn open(path: &Path) -> Result<RepoRoot> {
                 "--is-bare-repository",
             ],
         )
-        .map_err(|e| match e {
-            SnapshotError::Git(reason) if reason.contains("not a git repository") => {
+        .map_err(|e| {
+            if refused_without_repository(&e, path) {
                 SnapshotError::NotARepo(path.to_path_buf())
+            } else {
+                e
             }
-            e => e,
         })?;
     let mut lines = out.lines();
     let (Some(common), Some(bare)) = (lines.next(), lines.next()) else {
@@ -62,6 +63,31 @@ pub fn open(path: &Path) -> Result<RepoRoot> {
         work_tree,
         common_dir,
     })
+}
+
+/// git refused to start in `path` and no repository is there to refuse. Its
+/// refusal has one exit status for "no repository" and for every unreadable
+/// config, gitfile or ownership, and its words are translated, so the status
+/// only says that git refused; the file system says why.
+fn refused_without_repository(error: &SnapshotError, path: &Path) -> bool {
+    error.git_status() == Some(FATAL_STATUS) && holds_no_repository(path)
+}
+
+/// `path` is a directory with no `.git` at or above it and no bare repository
+/// at or above it. Anything the file system will not say counts as a possible
+/// repository: the answer is then git's refusal, never "no repository".
+fn holds_no_repository(path: &Path) -> bool {
+    let Ok(start) = dunce::canonicalize(path) else {
+        return false;
+    };
+    let present = |entry: PathBuf| entry.try_exists().unwrap_or(true);
+    start.is_dir()
+        && !start.ancestors().any(|dir| {
+            present(dir.join(".git"))
+                || (present(dir.join("HEAD"))
+                    && present(dir.join("objects"))
+                    && present(dir.join("refs")))
+        })
 }
 
 /// Git on Windows answers `D:/a/repo`, while every path canonicalised later
@@ -162,7 +188,7 @@ fn split_tracking<'a>(rest: &'a str, remotes: &[String]) -> (&'a str, &'a str) {
 pub(crate) fn rev_to_oid(exec: &Exec, work: &Path, spec: &str) -> Result<Option<Oid>> {
     let mut cmd = git_command(work);
     cmd.args(["rev-parse", "--verify", "--quiet", spec]);
-    let out = exec.finish(cmd, work, &["rev-parse"], &[1])?;
+    let out = exec.finish(cmd, &["rev-parse"], &[1])?;
     let text = String::from_utf8_lossy(&out.stdout);
     let text = text.trim();
     if text.is_empty() {
@@ -172,7 +198,7 @@ pub(crate) fn rev_to_oid(exec: &Exec, work: &Path, spec: &str) -> Result<Option<
     }
 }
 
-fn reject_option_like(rev: &str) -> Result<()> {
+pub(crate) fn reject_option_like(rev: &str) -> Result<()> {
     if rev.is_empty()
         || rev.starts_with('-')
         || rev
@@ -217,16 +243,144 @@ pub(crate) fn tree_of(exec: &Exec, work: &Path, object: &Oid) -> Result<Oid> {
     })
 }
 
+const SHA1_EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"; // pragma: allowlist secret
+const SHA256_EMPTY_TREE: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"; // pragma: allowlist secret
+
 /// The oid of the empty tree, derived from the repository's hash algorithm.
 pub(crate) fn empty_tree_oid(exec: &Exec, work: &Path) -> Result<Oid> {
-    const SHA1: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"; // pragma: allowlist secret
-    const SHA256: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"; // pragma: allowlist secret
     let format = exec.text(work, &["rev-parse", "--show-object-format"])?;
     Oid::parse(if format.trim() == "sha256" {
-        SHA256
+        SHA256_EMPTY_TREE
     } else {
-        SHA1
+        SHA1_EMPTY_TREE
     })
+}
+
+/// The empty tree's id as text, the base of a window older than the
+/// repository: every file is then genuinely new within it. A repository whose
+/// object format git cannot state is an error, not sha1.
+pub fn empty_tree_id(root: &Path) -> Result<String> {
+    Ok(empty_tree_oid(&Exec::current(), root)?.as_str().to_string())
+}
+
+/// The commit a revision names, for provenance: the ref may move, the id does
+/// not. `None` when it names no commit (an unknown ref, an unborn branch, a
+/// string git would read as an option); a failed read, an interruption
+/// included, is an `Err`.
+pub fn rev_oid(root: &Path, rev: &str) -> Result<Option<String>> {
+    if reject_option_like(rev).is_err() {
+        return Ok(None);
+    }
+    Ok(
+        rev_to_oid(&Exec::current(), root, &format!("{rev}^{{commit}}"))?
+            .map(|oid| oid.as_str().to_string()),
+    )
+}
+
+/// The index captured once as a tree: every current-side byte of the run
+/// comes from `tree`, every old one from `base`, whatever the disk or a later
+/// `git add` says. `head` is the commit the snapshot sits on, for the history
+/// channels; `None` on an unborn branch.
+#[derive(Clone, Debug)]
+pub struct StagedSnapshot {
+    pub base: String,
+    pub tree: String,
+    pub head: Option<String>,
+}
+
+/// One `git add`/`git rm` of a command line, run in its own directory.
+pub type PlanStep = (PathBuf, Vec<String>);
+
+/// The tree a command line will hand to git, built without touching the index
+/// or the working tree: a copy of the index in the git directory (a linked
+/// worktree has its own, a split index keeps its shared part beside it), the
+/// line's staging commands replayed against the copy, then `write-tree`. The
+/// steps run git itself, so pathspecs, ignores and clean filters resolve as
+/// they will when the line runs.
+pub fn capture_planned(root: &Path, steps: &[PlanStep]) -> Result<StagedSnapshot> {
+    let exec = Exec::current();
+    let out = exec.text(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+    )?;
+    let index = PathBuf::from(out.trim());
+    let scratch = ScratchIndex(index.with_file_name(format!(
+        "diffctx-plan-{}-{}.index",
+        std::process::id(),
+        SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed)
+    )));
+    let head = rev_oid(root, "HEAD")?;
+    if index.try_exists()? {
+        std::fs::copy(&index, &scratch.0)?;
+    }
+    for (dir, args) in steps {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let mut cmd = git_command(dir);
+        cmd.env("GIT_INDEX_FILE", &scratch.0).args(&args);
+        exec.finish(cmd, &args, &[])?;
+    }
+    let mut cmd = git_command(root);
+    cmd.env("GIT_INDEX_FILE", &scratch.0).arg("write-tree");
+    let written = exec.finish(cmd, &["write-tree"], &[])?;
+    let tree = String::from_utf8_lossy(&written.stdout).trim().to_string();
+    let base = match &head {
+        Some(head) => head.clone(),
+        None => empty_tree_id(root)?,
+    };
+    Ok(StagedSnapshot { base, tree, head })
+}
+
+/// The work tree's root, resolved from `path` (which may be a subdirectory).
+/// `git diff` and `git cat-file` paths are reported relative to the work tree,
+/// not to an arbitrary `-C` cwd: a run with `path` still a subdirectory
+/// produced zero fragments because file lookups were double-prefixed
+/// (`src/src/app.py`). `None` when `path` has no work tree (not a repository,
+/// or a bare one); a read git could not answer is an `Err`.
+pub fn find_toplevel(path: &Path) -> Result<Option<PathBuf>> {
+    let exec = Exec::current();
+    let out = match exec.text(path, &["rev-parse", "--show-toplevel"]) {
+        Ok(out) => out,
+        Err(e) if e.git_status() == Some(FATAL_STATUS) => {
+            return if holds_no_repository(path) || is_outside_work_tree(&exec, path) {
+                Ok(None)
+            } else {
+                Err(e)
+            };
+        }
+        Err(e) => return Err(e),
+    };
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    // Git on Windows answers `D:/a/repo`, while every path canonicalised later
+    // reads `D:\a\repo\x`. Paths are compared as strings downstream, so a
+    // root in git's spelling silently split one file into two keys.
+    Ok(Some(dunce::canonicalize(trimmed).unwrap_or_else(|_| {
+        Path::new(trimmed).components().collect()
+    })))
+}
+
+/// A repository whose git directory or bare root is where `path` stands: git
+/// answers `false` to the question a bare repository or a `.git` directory
+/// cannot answer with a top level.
+fn is_outside_work_tree(exec: &Exec, path: &Path) -> bool {
+    exec.text(path, &["rev-parse", "--is-inside-work-tree"])
+        .is_ok_and(|answer| answer.trim() == "false")
+}
+
+/// `Err` when git could not answer at all, a timeout above all: collapsing that
+/// into "not a repository" sent the reader after the wrong problem. `false`
+/// only when git ran and said no.
+pub fn is_git_repo(path: &Path) -> Result<bool> {
+    match Exec::current().text(path, &["rev-parse", "--git-dir"]) {
+        Ok(_) => Ok(true),
+        // Any other failure (a `[core` line in `.git/config`, dubious
+        // ownership in a container, a path that does not exist) is git
+        // refusing to start, and its own `fatal:` line is the diagnosis.
+        Err(e) if refused_without_repository(&e, path) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[allow(
@@ -237,7 +391,7 @@ pub fn is_ancestor(root: &RepoRoot, a: Oid, b: Oid) -> Result<bool> {
     let exec = Exec::ambient();
     let mut cmd = git_command(&root.work_tree);
     cmd.args(["merge-base", "--is-ancestor", a.as_str(), b.as_str()]);
-    let out = exec.finish(cmd, &root.work_tree, &["merge-base"], &[1])?;
+    let out = exec.finish(cmd, &["merge-base"], &[1])?;
     Ok(out.status.success())
 }
 
@@ -253,7 +407,7 @@ pub fn merge_base(root: &RepoRoot, a: Oid, b: Oid) -> Result<Option<Oid>> {
 pub(crate) fn merge_base_with(exec: &Exec, work: &Path, a: &Oid, b: &Oid) -> Result<Option<Oid>> {
     let mut cmd = git_command(work);
     cmd.args(["merge-base", a.as_str(), b.as_str()]);
-    let out = exec.finish(cmd, work, &["merge-base"], &[1])?;
+    let out = exec.finish(cmd, &["merge-base"], &[1])?;
     let text = String::from_utf8_lossy(&out.stdout);
     let text = text.trim();
     if text.is_empty() {
@@ -306,12 +460,20 @@ pub(crate) fn index_tree_with(exec: &Exec, work: &Path) -> Result<Oid> {
     cmd.env("GIT_INDEX_FILE", &scratch.0)
         .args(["--no-optional-locks", "write-tree"]);
     let written = exec
-        .finish(cmd, work, &["write-tree"], &[])
+        .finish(cmd, &["write-tree"], &[])
         .map_err(|e| match e {
-            SnapshotError::Git(reason) => SnapshotError::Git(format!(
-                "cannot analyse the staged changes: the index cannot be written as a tree \
-             (unmerged entries? resolve them and stage the result) - {reason}"
-            )),
+            SnapshotError::GitRefused {
+                subcommand,
+                status,
+                reason,
+            } => SnapshotError::GitRefused {
+                subcommand,
+                status,
+                reason: format!(
+                    "cannot analyse the staged changes: the index cannot be written as a tree \
+                     (unmerged entries? resolve them and stage the result) - {reason}"
+                ),
+            },
             e => e,
         })?;
     Oid::parse(&String::from_utf8_lossy(&written.stdout))

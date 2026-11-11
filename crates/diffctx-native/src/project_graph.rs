@@ -76,7 +76,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn git(dir: &Path, args: &[&str]) {
-        let status = crate::git::git_command(dir)
+        let status = crate::snapshot::git_command(dir)
             .args(args)
             .status()
             .unwrap_or_else(|e| panic!("git {args:?}: {e}"));

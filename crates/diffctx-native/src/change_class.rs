@@ -135,7 +135,7 @@ pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
     // `"b/src/caf\303\251.js"`: git quotes a non-ASCII path, and a quoted
     // path matched no fragment, so every check on that file went dark.
     let side = |rest: &str, prefix: &str| {
-        let p = crate::git::unquote_c_style(rest.split('\t').next().unwrap_or(""));
+        let p = crate::diff_parse::unquote_c_style(rest.split('\t').next().unwrap_or(""));
         (p != "/dev/null").then(|| p.strip_prefix(prefix).unwrap_or(&p).to_string())
     };
     // The next old and new line numbers, and whether the last body line

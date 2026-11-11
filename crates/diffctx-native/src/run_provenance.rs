@@ -86,31 +86,35 @@ pub struct RunProvenance {
 }
 
 impl RunProvenance {
+    /// A revision git cannot be asked about is the run's error: a record that
+    /// leaves its input unnamed would pass for one with no committed side.
     pub fn new(
         root_dir: &Path,
         diff_range: Option<&str>,
         effective_config: EffectiveConfigV1,
-    ) -> Self {
+    ) -> crate::snapshot::Result<Self> {
         let (base_rev, head_rev) = diff_range
-            .map(crate::git::split_diff_range)
+            .map(crate::snapshot::split_diff_range)
             .unwrap_or((None, None));
         // `git diff X` compares X with the working tree; only `A..B` names a
         // committed right side.
         let working_tree = head_rev.is_none();
         // A staged snapshot's head is a tree, named by its own id.
-        let head = head_rev.as_deref().and_then(|rev| {
-            crate::git::rev_oid(root_dir, rev).or_else(|| {
-                rev.bytes()
+        let head = match head_rev.as_deref() {
+            Some(rev) => match crate::snapshot::rev_oid(root_dir, rev)? {
+                Some(oid) => Some(oid),
+                None => rev
+                    .bytes()
                     .all(|b| b.is_ascii_hexdigit())
-                    .then(|| rev.to_string())
-            })
-        });
-        let base = base_rev
-            .as_deref()
-            .or(diff_range)
-            .or(Some("HEAD"))
-            .and_then(|rev| crate::git::rev_oid(root_dir, rev));
-        Self {
+                    .then(|| rev.to_string()),
+            },
+            None => None,
+        };
+        let base = crate::snapshot::rev_oid(
+            root_dir,
+            base_rev.as_deref().or(diff_range).unwrap_or("HEAD"),
+        )?;
+        Ok(Self {
             input: Input {
                 diff_range: diff_range.map(str::to_string),
                 base,
@@ -118,7 +122,7 @@ impl RunProvenance {
                 working_tree,
             },
             effective_config,
-        }
+        })
     }
 
     pub fn finish(&self, selection: Option<Selection>) -> ProvenanceV1 {

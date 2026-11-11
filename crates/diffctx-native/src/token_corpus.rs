@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::bm25::BM25;
 use crate::config::tokenization::TOKENIZATION;
 use crate::discovery::DiscoveryContext;
-use crate::git;
+use crate::snapshot;
 
 // The digest of the sources that make tokens (`build.rs`: identifier extraction,
 // its configuration, the stopword lists): it is part of the on-disk cache key,
@@ -123,10 +123,11 @@ impl TokenCorpus {
 // fall through to a direct read+tokenize, which keeps cold and warm runs
 // bit-equivalent. Any git failure disables keying entirely for the run.
 fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
-    let Ok(entries) = git::run_git_z(root_dir, &["ls-files", "-s", "-z"]) else {
+    let Ok(entries) = snapshot::run_git_z(root_dir, &["ls-files", "-s", "-z"]) else {
         return FxHashMap::default();
     };
-    let Ok(dirty_parts) = git::run_git_z(root_dir, &["diff-files", "--name-only", "-z"]) else {
+    let Ok(dirty_parts) = snapshot::run_git_z(root_dir, &["diff-files", "--name-only", "-z"])
+    else {
         return FxHashMap::default();
     };
     let dirty: FxHashSet<PathBuf> = dirty_parts
@@ -414,7 +415,7 @@ mod tests {
     }
 
     fn git(repo: &Path, args: &[&str]) {
-        let out = git::git_command(repo)
+        let out = snapshot::git_command(repo)
             .args(args)
             .env("GIT_AUTHOR_NAME", "test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")

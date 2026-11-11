@@ -99,7 +99,7 @@ pub(crate) fn check(
                 cmd.args(["init", "-q", "--template=", "work"]);
                 cmd
             };
-            exec.finish(init, scratch.path(), &["init"], &[])?;
+            exec.finish(init, &["init"], &[])?;
             let mut patterns = Vec::new();
             for (path, bytes) in *files {
                 if path.file_name() == ".gitignore" {
@@ -211,7 +211,7 @@ fn run(
     cmd.args(["check-ignore", "--no-index", "-v", "-z", "--stdin"])
         .stdin(std::fs::File::open(&query_file)?);
     // Exit 1 means "none of the given paths are ignored": an answer.
-    let output = exec.finish(cmd, dir, &["check-ignore"], &[1])?;
+    let output = exec.finish(cmd, &["check-ignore"], &[1])?;
 
     let rules = parse_verbose_records(&String::from_utf8_lossy(&output.stdout));
     let excludes_source = set_excludes.then(|| format!("{}:", excludes.display()));

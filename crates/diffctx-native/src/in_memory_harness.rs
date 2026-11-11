@@ -531,7 +531,7 @@ mod tests {
             .output()
             .expect("git diff --no-index");
         let diff_text = String::from_utf8_lossy(&output.stdout);
-        let from_git = crate::git::parse_hunks_from_diff_output(&diff_text, tmp.path());
+        let from_git = crate::diff_parse::parse_hunks_from_diff_output(&diff_text, tmp.path());
         assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
 
         let path: Arc<str> = Arc::from("f.py");

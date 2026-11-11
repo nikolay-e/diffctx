@@ -329,7 +329,7 @@ fn main() {
         // failures (not a repo, unknown revision, no commits); anyhow's
         // default is 1, which made the two binaries disagree on the one code
         // a wrapper script keys on.
-        if let Some(git_err) = err.downcast_ref::<_diffctx::git::GitError>() {
+        if let Some(git_err) = err.downcast_ref::<_diffctx::snapshot::SnapshotError>() {
             eprintln!("diffctx: {err}");
             std::process::exit(if git_err.is_usage() { EXIT_USAGE } else { 3 });
         }

@@ -1029,7 +1029,7 @@ impl<'a> KotlinResolver<'a> {
                 .iter()
                 .map(|e| format!("*.{e}"))
                 .collect();
-            let declared = crate::git::grep_lines_matching(
+            let declared = crate::grep::grep_lines_matching(
                 self.root,
                 self.source,
                 &format!("({})[[:space:]]+[A-Za-z_]", keywords.join("|")),

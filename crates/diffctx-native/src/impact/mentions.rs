@@ -304,7 +304,7 @@ pub(super) fn stale_references(
     }
     let root = state.root_dir.to_string_lossy().replace('\\', "/");
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let surviving: FxHashSet<String> =
         read_or_note(state, state.run.source().list_paths(&state.root_dir))
@@ -331,7 +331,7 @@ pub(super) fn stale_references(
     needles.dedup();
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
@@ -545,7 +545,7 @@ pub(super) fn named_by_path(
     }
     let root = state.root_dir.to_string_lossy().replace('\\', "/");
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let mut basenames: FxHashMap<String, usize> = FxHashMap::default();
     for p in read_or_note(state, state.run.source().list_paths(&state.root_dir)) {
@@ -564,7 +564,7 @@ pub(super) fn named_by_path(
     // withheld count stays the one the answer's own reads give.
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,

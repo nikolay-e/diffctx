@@ -418,12 +418,12 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
         return Vec::new();
     }
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
@@ -605,11 +605,11 @@ fn console_runs(
     needles.sort();
     needles.dedup();
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
@@ -686,11 +686,11 @@ fn script_runs(
     needles.sort();
     needles.dedup();
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
@@ -876,11 +876,11 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
     needles.sort();
     needles.dedup();
     let head = diff_range
-        .map(crate::git::split_diff_range)
+        .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head);
     let grepped = read_or_note(
         state,
-        crate::git::grep_lines(
+        crate::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             &needles,
