@@ -295,6 +295,9 @@ class JavaWalker(_Collector):
             name = node.child_by_field_name("name")
             if name is not None:
                 self.add(node, name, "variant", container, [], first_line=leading_line(node))
+                body = node.child_by_field_name("body")
+                for member in kids(body, True) if body is not None else ():
+                    self.visit(member, (*container, self.text(name)))  # an enum constant's body is its own class
         else:
             for child in kids(node, True):
                 self.visit(child, container)
