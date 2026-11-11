@@ -71,9 +71,11 @@ fn the_checked_in_locate_schema_is_the_generated_one() {
 fn the_checked_in_impact_schema_is_the_generated_one() {
     let schema = _diffctx::impact::impact_schema();
     assert_pinned("diffctx.impact.v2.json", &schema);
-    // What every v2 impact document carries, whatever the change: the sections
-    // that say what changed, what was found, what was not covered and what the cap
-    // did. `symbol`, `spelled` and `omitted` come only when they apply.
+    // What every v2 impact document carries, whatever the change: who and what
+    // was asked, the definitions, what was not covered, and what the cap did. A
+    // list or container with nothing in it is left out of the JSON, so the
+    // sections that hold one are optional, as are `symbol`, `spelled` and
+    // `omitted`, which come only when they apply.
     let required: Vec<&str> = schema["required"]
         .as_array()
         .unwrap()
@@ -85,13 +87,7 @@ fn the_checked_in_impact_schema_is_the_generated_one() {
         "name",
         "provenance",
         "range",
-        "inventory",
         "definitions",
-        "unlisted",
-        "contracts",
-        "stale",
-        "named",
-        "deleted_modules",
         "tests",
         "coverage",
         "empty",
@@ -103,7 +99,21 @@ fn the_checked_in_impact_schema_is_the_generated_one() {
     let mut want = always.to_vec();
     want.sort_unstable();
     assert_eq!(got, want, "the keys every v2 document carries");
-    for optional in ["symbol", "spelled", "omitted"] {
+    for optional in [
+        "inventory",
+        "unlisted",
+        "contracts",
+        "stale",
+        "named",
+        "deleted_modules",
+        "symbol",
+        "spelled",
+        "omitted",
+    ] {
+        assert!(
+            schema["properties"][optional].is_object(),
+            "{optional} is a property"
+        );
         assert!(!required.contains(&optional), "{optional} is optional");
     }
 }

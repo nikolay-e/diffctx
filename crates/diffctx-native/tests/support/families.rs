@@ -82,8 +82,11 @@ impl Family {
     // The families that state a clean absence as `empty: true`; the others
     // state it through their own sections, so only the absence of a gap is
     // read there.
+    //
+    // A SQL file is a schema contract by its extension, so a change to one is
+    // never `empty`: its absence is read through the gap sections alone.
     pub fn proves_empty(self) -> bool {
-        self.answers_symbol()
+        self.answers_symbol() && self != Self::Sql
     }
 
     // The file suffixes of the family's interaction group, as the repository

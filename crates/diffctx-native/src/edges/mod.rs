@@ -950,13 +950,7 @@ mod knife_tests {
             names.len(),
             "duplicate knife names: {names:?}"
         );
-        for expected in [
-            "cells-python",
-            "cells-shell",
-            "tags",
-            "perl",
-            "cells-terraform",
-        ] {
+        for expected in ["python", "shell", "tags", "perl", "terraform"] {
             assert!(
                 names.iter().any(|n| n == expected),
                 "{expected} missing from {names:?}"

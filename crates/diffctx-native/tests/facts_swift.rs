@@ -157,10 +157,11 @@ fn a_receiver_is_typed_by_its_parameter_and_an_unwrapped_optional_goes_back_to_i
         by_head("c").receiver,
         Receiver::Typed(TypeName::new("Checkout"))
     );
-    // `me` unwraps `them`, which the resolver finds as a value in scope.
+    // `me` unwraps `them`, a parameter of type `Checkout?`: the chain goes on
+    // from `them`, typed as written.
     let me = calls
         .iter()
         .find(|r| r.qualifier[0].as_str() == "them")
         .expect("me is read as them");
-    assert_eq!(me.receiver, Receiver::None);
+    assert_eq!(me.receiver, Receiver::Typed(TypeName::new("Checkout")));
 }

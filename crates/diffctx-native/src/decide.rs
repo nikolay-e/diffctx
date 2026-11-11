@@ -28,7 +28,7 @@
 #![deny(clippy::disallowed_methods)]
 
 use std::cell::{OnceCell, RefCell};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -3774,7 +3774,21 @@ fn dynamic_reaches(relation: Relation, kind: DefKind) -> bool {
 struct Bare {
     ctx: AnalysisContext,
     fixed: Losses,
+    cache: FactsCache,
 }
+
+/// What a search for spelled keys found, and the files it could not look in.
+#[derive(Default)]
+pub struct Spelled {
+    /// (path, line, text) of each line that holds a needle.
+    pub rows: Vec<(String, u32, String)>,
+    /// Files past the size cap or unreadable: one of them may spell a needle.
+    pub unread: Vec<String>,
+}
+
+/// The most a file of no language the token index groups may hold to be read whole
+/// for a spelled key.
+const UNGROUPED_BYTES: u64 = 1 << 20;
 
 /// The cells of one run: one per family of languages the answer is about.
 pub struct Cells {
@@ -3842,7 +3856,7 @@ impl Cells {
                 };
                 let fixed =
                     Losses::of(ctx.workspace.losses().iter().chain(listing.losses().iter()));
-                Some(Bare { ctx, fixed })
+                Some(Bare { ctx, fixed, cache })
             })
             .as_ref()
     }
@@ -3853,6 +3867,102 @@ impl Cells {
             self.bare(state)?;
         }
         Some(self.tokens.group(group))
+    }
+
+    /// The lines of the head's files that hold one of `needles` (fixed strings),
+    /// as (path, line, text): where a key or a value a config change touched is
+    /// spelled back. The token index names the files that spell every identifier
+    /// of a needle, whatever their language; the head's own bytes give the lines.
+    /// A file of no language the index groups is read whole when it is small, and
+    /// a file the index could not tokenise (past the size cap) is not searched.
+    pub fn spelled_lines(&self, state: &ScoredState, needles: &[String]) -> Result<Spelled> {
+        if self.cells.is_empty() && self.bare(state).is_none() {
+            anyhow::bail!("the head snapshot cannot be read");
+        }
+        let (ctx, cache) = match (self.cells.first(), self.bare.get()) {
+            (Some(cell), _) => (&cell.ctx, &cell.cache),
+            (None, Some(Some(bare))) => (&bare.ctx, &bare.cache),
+            _ => anyhow::bail!("the head snapshot cannot be read"),
+        };
+        let listing = cache.listing(&ctx.head)?;
+        let wanted: Vec<Names> = needles
+            .iter()
+            .map(|needle| Names::new([needle.as_str()]))
+            .collect();
+        let mut groups: Vec<Group> = Vec::new();
+        let mut candidates: BTreeMap<&str, &RepoPath> = BTreeMap::new();
+        let mut unread: BTreeSet<String> = listing
+            .not_analysed
+            .iter()
+            .filter(|(_, reason)| *reason == NotAnalysedReason::Oversize)
+            .map(|(path, _)| path.as_str().to_string())
+            .collect();
+        for entry in &listing.entries {
+            match Group::of_path(entry.path.as_str()) {
+                Some(group) => {
+                    if !groups.contains(&group) {
+                        groups.push(group);
+                    }
+                }
+                None if entry.size <= UNGROUPED_BYTES => {
+                    candidates.insert(entry.path.as_str(), &entry.path);
+                }
+                None => {
+                    unread.insert(entry.path.as_str().to_string());
+                }
+            }
+        }
+        for group in groups {
+            let tokens = self.tokens.group(group);
+            for at in tokens.unread() {
+                if let Some(path) = tokens.files().get(*at as usize) {
+                    if listing
+                        .entries
+                        .binary_search_by(|entry| entry.path.cmp(path))
+                        .is_ok()
+                    {
+                        unread.insert(path.as_str().to_string());
+                    }
+                }
+            }
+            for names in &wanted {
+                for at in tokens.spelling(names) {
+                    if let Some(path) = tokens.files().get(at as usize) {
+                        if let Ok(at) = listing
+                            .entries
+                            .binary_search_by(|entry| entry.path.cmp(path))
+                        {
+                            let held = &listing.entries[at].path;
+                            candidates.insert(held.as_str(), held);
+                        }
+                    }
+                }
+            }
+        }
+        let mut rows: Vec<(String, u32, String)> = Vec::new();
+        for (name, path) in candidates {
+            if !state.run.check() {
+                break;
+            }
+            let Some(bytes) = ctx.head.read(path)? else {
+                continue;
+            };
+            if bytes.contains(&0) {
+                continue;
+            }
+            let text = String::from_utf8_lossy(&bytes);
+            for (at, line) in text.lines().enumerate() {
+                if needles.iter().any(|needle| line.contains(needle.as_str())) {
+                    rows.push((name.to_string(), at as u32 + 1, line.to_string()));
+                }
+            }
+        }
+        rows.sort_unstable();
+        rows.dedup();
+        Ok(Spelled {
+            rows,
+            unread: unread.into_iter().collect(),
+        })
     }
 
     /// The account of a definition in `file` that no cell answers for: the files

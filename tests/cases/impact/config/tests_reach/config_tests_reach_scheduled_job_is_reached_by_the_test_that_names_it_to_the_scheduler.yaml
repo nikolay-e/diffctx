@@ -15,7 +15,7 @@ repo:
           return "digest"
 
 
-      @scheduler.scheduled_job("interval", minutes=5, id="refresh_cache")
+      @scheduler.scheduled_job("interval", minutes=5)
       def refresh_cache():
           return "cache"
     tests/test_jobs.py: |
@@ -39,7 +39,7 @@ repo:
           return "digest v2"
 
 
-      @scheduler.scheduled_job("interval", minutes=5, id="refresh_cache")
+      @scheduler.scheduled_job("interval", minutes=5)
       def refresh_cache():
           return "cache v2"
   commit_message: "jobs: new payloads"
