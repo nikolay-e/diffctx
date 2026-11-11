@@ -667,7 +667,10 @@ fn cases_root() -> PathBuf {
 /// The Go cases the resolver cannot answer yet, each with the reason. The list
 /// is held both ways: a listed case that turns green fails the run, as does a
 /// red case that is not listed.
-const RED: &[(&str, &str)] = &[];
+const RED: &[(&str, &str)] = &[(
+    "impact/go/go_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
+    "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
+)];
 
 #[test]
 fn the_go_corpus_is_answered_as_the_list_says() {

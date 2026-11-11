@@ -269,6 +269,12 @@ pub enum UnresolvedReason {
 }
 
 impl UnresolvedReason {
+    /// Whether a name that was not found is for the project to answer: what lies
+    /// in outside code is not.
+    pub const fn is_ours(self) -> bool {
+        !matches!(self, Self::External | Self::Builtin | Self::OutsideProject)
+    }
+
     /// Whether the reference may be a use of something in the repository that
     /// was not found: what a report must disclose rather than count as nothing.
     pub const fn is_unknown(self) -> bool {

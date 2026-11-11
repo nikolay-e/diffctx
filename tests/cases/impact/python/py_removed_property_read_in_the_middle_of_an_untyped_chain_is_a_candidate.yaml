@@ -1,0 +1,50 @@
+name: py_removed_property_read_in_the_middle_of_an_untyped_chain_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-definition, absence-claim, untyped-receiver, chain]
+repo:
+  initial_files:
+    pkg/errors.py: |
+      class HTTPError(Exception):
+          def __init__(self, message, request=None):
+              super().__init__(message)
+              self._request = request
+
+          @property
+          def request(self):
+              return self._request
+    tests/test_errors.py: |
+      import pytest
+
+      from pkg.errors import HTTPError
+
+
+      def test_raise_through_the_context_manager():
+          with pytest.raises(HTTPError) as exc_info:
+              raise HTTPError("boom", request="r")
+          assert exc_info.value.request.upper() == "R"
+
+
+      def test_error_handed_in_by_a_fixture(error):
+          assert error.request.lower() == "r"
+  changed_files:
+    pkg/errors.py: |
+      class HTTPError(Exception):
+          def __init__(self, message, *, request):
+              super().__init__(message)
+              self.args = (message, request)
+  commit_message: "errors: request is a keyword-only argument"
+expect:
+  removed: [pkg/errors.py::request]
+  relations:
+  - from: tests/test_errors.py::test_raise_through_the_context_manager
+    to: pkg/errors.py::request
+    kind: reads
+    resolution: candidate
+  - from: tests/test_errors.py::test_error_handed_in_by_a_fixture
+    to: pkg/errors.py::request
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true

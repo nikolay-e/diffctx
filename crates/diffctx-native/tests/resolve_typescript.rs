@@ -782,6 +782,14 @@ fn cases_root() -> PathBuf {
 /// the run, as does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
+        "impact/typescript/ts_removed_member_read_through_an_untyped_receiver_is_a_candidate",
+        "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
+    ),
+    (
+        "impact/typescript/ts_removed_property_read_in_the_middle_of_an_untyped_chain_is_a_candidate",
+        "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
+    ),
+    (
         "impact/typescript/ts_removed_type_a_glob_re_exports_is_still_named_by_its_importer",
         "the candidate is the removal side's: the importer's name binds to the type the glob \
          re-exports, and decide() reports that rebound use as possibly meant for the removed one; \

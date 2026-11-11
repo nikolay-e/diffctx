@@ -1,0 +1,61 @@
+name: go_removed_field_read_in_the_middle_of_a_chain_is_not_absent
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, removed-definition, absence-claim, chain, untyped-receiver]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    e/e.go: |
+      package e
+
+      type Req struct {
+          URL string
+      }
+
+      type ApiError struct {
+          Request *Req
+          Code    int
+      }
+    use.go: |
+      package app
+
+      import "example.com/app/e"
+
+      func Direct(x *e.ApiError) string {
+          return x.Request.URL
+      }
+    loose.go: |
+      package app
+
+      func Unknown(y Thing) string {
+          return y.Request.URL
+      }
+  changed_files:
+    e/e.go: |
+      package e
+
+      type Req struct {
+          URL string
+      }
+
+      type ApiError struct {
+          Code int
+      }
+  commit_message: "e: drop the request field"
+expect:
+  removed: [e/e.go::Request]
+  relations:
+  - from: "use.go::Direct"
+    to: "e/e.go::Request"
+    kind: reads
+    resolution: resolved
+  - from: "loose.go::Unknown"
+    to: "e/e.go::Request"
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true

@@ -3731,7 +3731,9 @@ impl Cell {
         let member = changed
             .subjects
             .first()
-            .is_some_and(|s| !s.key.local.container.is_empty());
+            .map(|s| &s.key)
+            .or_else(|| changed.stale.first())
+            .is_some_and(|key| !key.local.container.is_empty());
         let top_level_only = self.family == Family::TypeScript && !member;
         // A use whose name is not written (`$o->$m()`, `new $c`) may be of any
         // definition of a kind its relation reaches.

@@ -1,0 +1,59 @@
+name: php_removed_property_read_in_the_middle_of_a_chain_is_not_absent
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, removed-definition, absence-claim, chain]
+repo:
+  initial_files:
+    src/Req.php: |
+      <?php
+
+      class Req
+      {
+          public string $url = '';
+      }
+    src/ApiError.php: |
+      <?php
+
+      class ApiError
+      {
+          public ?Req $request = null;
+          public int $code = 0;
+      }
+    src/Report.php: |
+      <?php
+
+      class Report
+      {
+          public function describe(ApiError $e): string
+          {
+              return $e->request->url;
+          }
+
+          public function loose($x): string
+          {
+              return $x->request->url;
+          }
+      }
+  changed_files:
+    src/ApiError.php: |
+      <?php
+
+      class ApiError
+      {
+          public int $code = 0;
+      }
+  commit_message: "drop the request property"
+expect:
+  removed: [src/ApiError.php::request]
+  relations:
+  - from: "src/Report.php::Report.describe"
+    to: "src/ApiError.php::request"
+    kind: reads
+    resolution: resolved
+  - from: "src/Report.php::Report.loose"
+    to: "src/ApiError.php::request"
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true

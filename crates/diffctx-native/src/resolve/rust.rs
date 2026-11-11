@@ -1515,6 +1515,22 @@ impl<'a> Engine<'a> {
 
     fn reference(&self, f: usize, r: &Ref, out: &mut Vec<Binding>) {
         self.bind(f, r, out);
+        if r.receiver != Receiver::None
+            && r.use_kind != UseKind::Override
+            && !r.name.as_str().ends_with('!')
+        {
+            for (name, resolution) in self.chain_reads(f, r) {
+                out.push(Binding {
+                    file: self.path_of(f).clone(),
+                    site: r.site.clone(),
+                    from: r.enclosing.clone(),
+                    relation: Relation::Reads,
+                    name,
+                    resolution,
+                    entry_guard: false,
+                });
+            }
+        }
         // `Type::name` and `Enum::Variant` also use the type they are written
         // through.
         if r.receiver == Receiver::None
@@ -1720,31 +1736,44 @@ impl<'a> Engine<'a> {
 
     // ---- method calls
 
-    fn method_outcome(&self, site: &Site, r: &Ref, receiver: &Receiver) -> Outcome {
-        let mut skip = 0;
-        let (start, evidence) = match receiver {
-            Receiver::SelfType => (self.self_typed(site), EvidenceKind::SelfReceiver),
-            Receiver::Typed(t) => (self.typed(site, t.as_str(), 0), EvidenceKind::TypedReceiver),
-            Receiver::New(t) => (self.typed(site, t.as_str(), 0), EvidenceKind::Constructed),
+    /// Where a method chain starts, how many of its qualifier's names the start
+    /// already takes, and how it is known; `None` where the head is a local
+    /// nothing types.
+    fn chain_start(
+        &self,
+        site: &Site,
+        r: &Ref,
+        receiver: &Receiver,
+    ) -> Option<(Typed, usize, EvidenceKind)> {
+        Some(match receiver {
+            Receiver::SelfType => (self.self_typed(site), 0, EvidenceKind::SelfReceiver),
+            Receiver::Typed(t) => (
+                self.typed(site, t.as_str(), 0),
+                0,
+                EvidenceKind::TypedReceiver,
+            ),
+            Receiver::New(t) => (
+                self.typed(site, t.as_str(), 0),
+                0,
+                EvidenceKind::Constructed,
+            ),
             Receiver::CallResult(path) => {
-                (self.call_result(site, path), EvidenceKind::FactoryReturn)
+                (self.call_result(site, path), 0, EvidenceKind::FactoryReturn)
             }
             // `Unit.method()`: the first name of the chain is a unit struct, which
             // is its own value; the names after it are fields.
-            Receiver::Unknown => match r
-                .qualifier
-                .first()
-                .and_then(|head| self.unit_struct(site, head))
-            {
-                Some(t) => {
-                    skip = 1;
-                    (Typed::Def(t), EvidenceKind::TypedReceiver)
-                }
-                None => return self.untyped_outcome(site, r),
-            },
-            Receiver::Module(_) | Receiver::None => {
-                return self.untyped_outcome(site, r);
+            Receiver::Unknown => {
+                let head = r.qualifier.first()?;
+                let unit = self.unit_struct(site, head)?;
+                (Typed::Def(unit), 1, EvidenceKind::TypedReceiver)
             }
+            Receiver::Module(_) | Receiver::None => return None,
+        })
+    }
+
+    fn method_outcome(&self, site: &Site, r: &Ref, receiver: &Receiver) -> Outcome {
+        let Some((start, skip, evidence)) = self.chain_start(site, r, receiver) else {
+            return self.untyped_outcome(site, r);
         };
         // The fields written after the receiver.
         let mut at = start;
@@ -1776,6 +1805,64 @@ impl<'a> Engine<'a> {
             Typed::External => Outcome::Unresolved(UnresolvedReason::ExternalBase),
             Typed::Unknown => self.untyped_outcome(site, r),
         }
+    }
+
+    /// The fields a chain passes through on its way to its last name are read:
+    /// `e.request.url` reads the field `request`. Where nothing types the value
+    /// each is an untyped read like the last name; a type the repository does
+    /// not hold and a trait object say nothing of ours. A member its type lacks
+    /// is the line a removal strands: it is bound to nothing, as the last name is.
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+        let site = self.site(f, &r.enclosing);
+        let (mut at, skip, evidence) = match self.chain_start(&site, r, &r.receiver) {
+            Some(start) => start,
+            None if r.receiver == Receiver::Unknown => (Typed::Unknown, 1, EvidenceKind::SameScope),
+            None => return Vec::new(),
+        };
+        let fields = r.qualifier.get(skip..).unwrap_or(&[]);
+        let mut reads = Vec::new();
+        for (i, field) in fields.iter().enumerate() {
+            match at {
+                Typed::Def(t) => {
+                    let found = self.member_named(t, field);
+                    let Some(m) = found.filter(|m| self.ix.defs[*m].def.kind == DefKind::Field)
+                    else {
+                        if found.is_none() {
+                            reads.push((
+                                field.clone(),
+                                Resolution::Unresolved {
+                                    reason: UnresolvedReason::NoMember,
+                                },
+                            ));
+                        }
+                        break;
+                    };
+                    if self.reachable(f, m) {
+                        reads.push((
+                            field.clone(),
+                            Resolution::Resolved {
+                                target: self.ix.defs[m].key.clone(),
+                                evidence: Evidence::new(evidence),
+                            },
+                        ));
+                    }
+                    at = self.field_type(m, 0);
+                }
+                Typed::Dyn(_) | Typed::External => break,
+                Typed::Unknown => {
+                    reads.extend(fields[i..].iter().map(|name| {
+                        (
+                            name.clone(),
+                            Resolution::Unresolved {
+                                reason: UnresolvedReason::UntypedRead,
+                            },
+                        )
+                    }));
+                    break;
+                }
+            }
+        }
+        reads
     }
 
     /// The struct a capitalised name stands for as a value, as `Unit` does for a

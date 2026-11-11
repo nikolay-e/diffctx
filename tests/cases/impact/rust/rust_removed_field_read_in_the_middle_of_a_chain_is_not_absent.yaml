@@ -1,0 +1,59 @@
+name: rust_removed_field_read_in_the_middle_of_a_chain_is_not_absent
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, removed-definition, absence-claim, chain, untyped-receiver]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod err;
+      pub mod loose;
+      pub mod usr;
+    src/err.rs: |
+      pub struct Req {
+          pub url: String,
+      }
+
+      pub struct ApiError {
+          pub request: Req,
+          pub code: i32,
+      }
+    src/usr.rs: |
+      use crate::err::ApiError;
+
+      pub fn direct(e: &ApiError) -> &str {
+          &e.request.url
+      }
+    src/loose.rs: |
+      pub fn loose() -> String {
+          let y = ext::fail();
+          y.request.url
+      }
+  changed_files:
+    src/err.rs: |
+      pub struct Req {
+          pub url: String,
+      }
+
+      pub struct ApiError {
+          pub code: i32,
+      }
+  commit_message: "err: drop the request field"
+expect:
+  removed: [src/err.rs::request]
+  relations:
+  - from: "src/usr.rs::direct"
+    to: "src/err.rs::request"
+    kind: reads
+    resolution: resolved
+  - from: "src/loose.rs::loose"
+    to: "src/err.rs::request"
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true
