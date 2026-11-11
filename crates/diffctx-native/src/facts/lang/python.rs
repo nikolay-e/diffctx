@@ -455,6 +455,9 @@ struct Ix {
     in_class: bool,
     in_fn: bool,
     type_checking: bool,
+    /// Inside an `except` handler: the names its `try` body imports, which
+    /// a definition here stands behind (`except ImportError: def main()`).
+    fallback_for: Option<Rc<HashSet<String>>>,
     /// Inside a function's body: the names declared there that leave it. A
     /// `def` or `class` among them is a definition, any other a local.
     leaving: Option<Rc<HashSet<String>>>,
@@ -467,6 +470,7 @@ struct Cand {
     kind: DefKind,
     shape: Shape,
     type_checking: bool,
+    fallback: bool,
     statement: Option<usize>,
     variable: bool,
     vis: Visibility,
@@ -1101,6 +1105,22 @@ impl<'t> Walker<'t> {
                     self.collect(child, inner, out, depth + 1);
                 }
             }
+            "try_statement" => {
+                let imported = self.imported_names(node.child_by_field_name("body"));
+                let handler = Ix {
+                    fallback_for: (!imported.is_empty()).then(|| Rc::new(imported)),
+                    ..ix.clone()
+                };
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    let inner = if matches!(child.kind(), "except_clause" | "except_group_clause") {
+                        &handler
+                    } else {
+                        ix
+                    };
+                    self.collect(child, inner, out, depth + 1);
+                }
+            }
             kind if is_container(kind) => {
                 let mut cursor = node.walk();
                 for child in node.named_children(&mut cursor) {
@@ -1109,6 +1129,33 @@ impl<'t> Walker<'t> {
             }
             _ => {}
         }
+    }
+
+    /// The names the imports directly in a block bind.
+    fn imported_names(&self, block: Option<Node<'t>>) -> HashSet<String> {
+        let mut names = HashSet::new();
+        let Some(block) = block else {
+            return names;
+        };
+        let mut statements = block.walk();
+        for statement in block.named_children(&mut statements) {
+            if !matches!(
+                statement.kind(),
+                "import_statement" | "import_from_statement"
+            ) {
+                continue;
+            }
+            let mut cursor = statement.walk();
+            for clause in statement.children_by_field_name("name", &mut cursor) {
+                let bound = match clause.kind() {
+                    "aliased_import" => clause.child_by_field_name("alias"),
+                    "dotted_name" => clause.named_child(0),
+                    _ => None,
+                };
+                names.extend(bound.map(|b| self.text(b).to_string()));
+            }
+        }
+        names
     }
 
     fn collect_def(
@@ -1168,6 +1215,7 @@ impl<'t> Walker<'t> {
             kind,
             shape,
             type_checking: ix.type_checking,
+            fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
             statement: None,
             variable: false,
             vis: visibility(&name, ix.in_class, ix.in_fn),
@@ -1186,6 +1234,7 @@ impl<'t> Walker<'t> {
             in_class: is_class,
             in_fn: ix.in_fn || !is_class,
             type_checking: false,
+            fallback_for: None,
             leaving,
         };
         inner.container.push(name);
@@ -1233,6 +1282,7 @@ impl<'t> Walker<'t> {
                             kind: DefKind::Field,
                             shape: Shape::Plain,
                             type_checking: false,
+                            fallback: false,
                             statement: None,
                             variable: true,
                             vis: visibility(&name, true, false),
@@ -1313,6 +1363,7 @@ impl<'t> Walker<'t> {
                     kind,
                     shape: Shape::Plain,
                     type_checking: ix.type_checking,
+                    fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
                     statement: Some(statement),
                     variable: true,
                     vis: visibility(&name, ix.in_class, false),
@@ -1345,6 +1396,7 @@ impl<'t> Walker<'t> {
             kind: DefKind::TypeAlias,
             shape: Shape::Plain,
             type_checking: ix.type_checking,
+            fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
             statement: Some(statement.id()),
             variable: true,
             vis: visibility(&name, ix.in_class, false),
@@ -1517,6 +1569,11 @@ impl<'t> Walker<'t> {
                     n = n.saturating_add(1);
                     disambig[i] = Some(Disambig::Overload(n));
                 }
+            }
+        }
+        for (cand, disambig) in kept.iter().zip(&mut disambig) {
+            if cand.fallback && disambig.is_none() {
+                *disambig = Some(Disambig::Cfg("fallback".to_string()));
             }
         }
         for (cand, disambig) in kept.into_iter().zip(disambig) {

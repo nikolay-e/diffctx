@@ -304,6 +304,12 @@ impl Index {
             .or_else(|| ids.first().copied())
     }
 
+    /// A definition an `except` handler gives a name its `try` body imports:
+    /// what the import binds is meant, and this is what stands in when it fails.
+    pub(super) fn is_fallback(&self, id: usize) -> bool {
+        matches!(&self.defs[id].def.local.disambig, Some(Disambig::Cfg(c)) if c == "fallback")
+    }
+
     pub(super) fn has_init(&self, dir: &str) -> bool {
         self.by_file.contains_key(&join(dir, "__init__.py"))
     }
