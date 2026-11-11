@@ -334,4 +334,6 @@ sweeps! {
     terraform: Terraform;
     dockerfile: Dockerfile;
     shell: Shell;
+    swift: Swift;
+    sql: Sql;
 }

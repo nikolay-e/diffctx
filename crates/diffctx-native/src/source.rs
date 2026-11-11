@@ -563,11 +563,6 @@ impl Source {
         self.workspace().is_none_or(|w| w.may_reference(user, used))
     }
 
-    /// Whether the two files sit in one package of the workspace.
-    pub fn same_package(&self, a: &str, b: &str) -> bool {
-        self.workspace().is_some_and(|w| w.same_package(a, b))
-    }
-
     /// Which of `rels` this side withholds.
     pub fn withheld(&self, rels: &[String]) -> Vec<String> {
         rels.iter()
