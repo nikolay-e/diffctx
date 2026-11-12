@@ -96,30 +96,6 @@ fn canonical(path: &Path) -> PathBuf {
     dunce::canonicalize(path).unwrap_or_else(|_| path.components().collect())
 }
 
-/// Every checked-out work tree of the repository, this one included.
-pub fn worktrees(root: &RepoRoot) -> Result<Vec<RepoRoot>> {
-    let exec = Exec::ambient();
-    let records = exec.records(&root.work_tree, &["worktree", "list", "--porcelain", "-z"])?;
-    let mut found: Vec<(PathBuf, bool)> = Vec::new();
-    for record in records {
-        let text = String::from_utf8_lossy(&record);
-        if let Some(path) = text.strip_prefix("worktree ") {
-            found.push((PathBuf::from(path), true));
-        } else if let Some(last) = found.last_mut() {
-            // A bare repository has no work tree; a pruned one has no
-            // directory to open.
-            if text == "bare" || text.starts_with("prunable") {
-                last.1 = false;
-            }
-        }
-    }
-    found
-        .into_iter()
-        .filter(|(_, usable)| *usable)
-        .map(|(path, _)| open(&path))
-        .collect()
-}
-
 pub fn refs(root: &RepoRoot) -> Result<Refs> {
     let exec = Exec::ambient();
     let work = &root.work_tree;
@@ -396,14 +372,6 @@ pub fn is_ancestor(root: &RepoRoot, a: Oid, b: Oid) -> Result<bool> {
 }
 
 /// The best common ancestor, `None` for histories with none in common.
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "the snapshot contract takes ids by value"
-)]
-pub fn merge_base(root: &RepoRoot, a: Oid, b: Oid) -> Result<Option<Oid>> {
-    merge_base_with(&Exec::ambient(), &root.work_tree, &a, &b)
-}
-
 pub(crate) fn merge_base_with(exec: &Exec, work: &Path, a: &Oid, b: &Oid) -> Result<Option<Oid>> {
     let mut cmd = git_command(work);
     cmd.args(["merge-base", a.as_str(), b.as_str()]);
