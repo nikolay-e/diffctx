@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 /// What the line is about to do, in the call's own directory.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Intent {
+pub(super) enum Intent {
     /// `git commit`: `plain` is a line that stages nothing itself and names
     /// no paths and no `-a`; anything else is asked to stage first, so the
     /// gate never predicts what a command will stage.
@@ -27,7 +27,7 @@ pub enum Intent {
 }
 
 /// A text search a line runs.
-pub struct Search {
+pub(super) struct Search {
     /// The directory the line changed into before the search, when it did:
     /// the paths a search prints are relative to it.
     pub ran_in: Option<String>,
@@ -482,7 +482,7 @@ struct Statement {
 
 /// Where a line points a git statement.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Place {
+pub(super) enum Place {
     /// A directory, as the line spells it: relative to the call's cwd unless
     /// absolute.
     Dir(String),
@@ -773,7 +773,7 @@ fn statements(command: &str) -> Vec<Statement> {
 
 /// Every place the line points a git statement at besides the directory the
 /// call started in. It says where the line looks, never what it did.
-pub fn places(command: &str) -> Vec<Place> {
+pub(super) fn places(command: &str) -> Vec<Place> {
     statements(command)
         .into_iter()
         .filter(|st| st.git)
@@ -812,7 +812,7 @@ fn is_unresolvable(dir: &str) -> bool {
 
 /// A directory as the shell line spelled it: `/r` is absolute on every
 /// platform here, and the join keeps the line's own separator.
-pub fn is_absolute_dir(dir: &str) -> bool {
+pub(super) fn is_absolute_dir(dir: &str) -> bool {
     dir.starts_with('/') || Path::new(dir).is_absolute()
 }
 
@@ -907,7 +907,7 @@ fn flag_value(args: &[String], long: &str, short: &str) -> Option<String> {
 /// a diff beside it. A line that stages before it commits is not a plain
 /// commit: the gate asks for the staging to run first instead of predicting
 /// it.
-pub fn of(after: bool, command: &str) -> Option<Intent> {
+pub(super) fn of(after: bool, command: &str) -> Option<Intent> {
     let mut stages = false;
     let mut summary = None;
     for st in statements(command) {
@@ -996,7 +996,7 @@ fn of_statement(after: bool, st: &Statement) -> Option<Intent> {
 /// The first text search of the line: `grep`, `rg`, `ag`, `ack` or
 /// `git grep`, the paths it names resolved against the directory the line
 /// changed into.
-pub fn search(command: &str) -> Option<Search> {
+pub(super) fn search(command: &str) -> Option<Search> {
     let Statement {
         dir, args, verb, ..
     } = statements(command)
@@ -1032,7 +1032,7 @@ pub fn search(command: &str) -> Option<Search> {
 
 /// A glob searches the directory it starts in (`src/*.rs`, `-- '*.py'`):
 /// read as a directory, it named no repository and the search went unanswered.
-pub fn before_glob(path: &Path) -> std::path::PathBuf {
+pub(super) fn before_glob(path: &Path) -> std::path::PathBuf {
     path.components()
         .take_while(|c| !c.as_os_str().to_string_lossy().contains(['*', '?', '[']))
         .collect()
