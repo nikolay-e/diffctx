@@ -296,8 +296,8 @@ pub enum Implicit {
     /// A `Fact::EntryPoint` of kind `Main`, `ScriptGuard`, `Command`, `Route`,
     /// `Scheduled`, `Tool` or `Fixture`, and a C constructor attribute.
     Entry,
-    /// An `EntryKind::Test` outside a test file: inside one, the answer names the
-    /// test runner as the entry.
+    /// An `EntryKind::Test` outside a test file and not Rust's: inside one, and for a
+    /// `#[test]`, the answer names the test runner as the entry.
     Test,
     /// Consumed outside the repository: configuration, a Dockerfile, Terraform
     /// root variables and outputs, an executable script, an exported symbol.

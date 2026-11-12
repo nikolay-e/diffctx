@@ -201,9 +201,9 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
             found.push(*kind);
         }
     }
-    // The answer lists a test of a test file as entered by the test runner, which
-    // names the entry: only a test the runner is not known to enter stays a hedge.
-    let run_by_runner = is_test_path(Path::new(file.path.as_str()));
+    // The runner is the entry the answer names for a test file's test and any Rust `#[test]`.
+    let run_by_runner =
+        is_test_path(Path::new(file.path.as_str())) || Family::Rust.has(file.language());
     Implicit::ALL
         .into_iter()
         .filter(|kind| found.contains(kind) && !(*kind == Implicit::Test && run_by_runner))
