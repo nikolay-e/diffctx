@@ -135,7 +135,7 @@ pub(super) struct FileRec {
 impl FileRec {
     /// The imports, local bindings and referenced names of `facts`; `package` is the
     /// file's own unless an import of the facts declares one.
-    pub fn read(
+    pub(super) fn read(
         facts: FileFacts,
         foreign: bool,
         workspace: &WorkspaceModel,
@@ -248,7 +248,7 @@ pub(super) struct Flat {
 }
 
 impl Flat {
-    pub fn new(text: &str, syntax: Syntax) -> Self {
+    pub(super) fn new(text: &str, syntax: Syntax) -> Self {
         let chars: Vec<char> = text.chars().collect();
         let mut depth = vec![0usize; chars.len() + 1];
         let mut d = 0usize;
@@ -281,7 +281,7 @@ impl Flat {
     }
 
     /// The top-level words, with where each starts and ends.
-    pub fn tokens(&self) -> Vec<(usize, usize, String)> {
+    pub(super) fn tokens(&self) -> Vec<(usize, usize, String)> {
         let mut out = Vec::new();
         let mut at = 0;
         let separator = |c: char| {
