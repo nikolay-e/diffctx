@@ -348,13 +348,26 @@ jobs:
   # ============================================================================
   # Rust diffctx tests (the full YAML corpus under tests/cases, real git repos)
   # ============================================================================
+  # One job per OS runs the suites in parts, because a single job outgrew its
+  # time limit (Linux and macOS were cancelled at 60 and 90 minutes while
+  # still running tests, Windows had taken over 90 before it was split). `part`
+  # is scripts/cargo-test-suites.sh's argument, and
+  # tests/test_ci_runs_every_suite.py holds the parts of each OS to every
+  # suite. Branch protection requires the check named "Rust diffctx tests":
+  # the Linux corpus part, which also carries the lint components and the
+  # examples build.
   rust-diffctx-test:
-    name: Rust diffctx tests
+    name: Rust diffctx tests${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {part: corpus, label: ""}
+          - {part: "rest:1/2", label: " (ubuntu-latest, 1/2)"}
+          - {part: "rest:2/2", label: " (ubuntu-latest, 2/2)"}
     runs-on: ubuntu-latest
     # tests/git_faults.rs stalls never end on their own (#510): a run its
-    # deadline does not end hangs, and this is where it fails. Green runs
-    # took 12.6 (ubuntu), 21.5 (macos) and 37.9 (windows) minutes on
-    # 38693094541.
+    # deadline does not end hangs, and this is where it fails.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -377,37 +390,39 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # No DIFFCTX_YAML_CASES_LIMIT: the whole corpus is gated here (~2 min).
+      - name: Build the examples
+        if: matrix.part == 'corpus'
+        working-directory: crates/diffctx-native
+        run: cargo build --release --locked --examples
+
+      # No DIFFCTX_YAML_CASES_LIMIT: the whole corpus is gated here.
       # Cases below threshold at the shipped operating point are enumerated in
       # crates/diffctx-native/tests/known_below_threshold.txt (the file is the
       # count — numbers written here rotted twice), enforced bidirectionally, so
       # a regression in ANY case fails the build. A limit still works locally
       # for a fast stratified subset.
-      - name: Build and test
-        run: |
-          (cd crates/diffctx-native && cargo build --release --locked --examples)
-          scripts/cargo-test-suites.sh
+      - name: Test
+        env:
+          PART: ${{ matrix.part }}
+        run: scripts/cargo-test-suites.sh "$PART"
 
   # The Linux job above keeps its name because branch protection requires it;
-  # this one gates the same suites where paths, line endings and process
-  # spawning differ. One Windows job held them all and took 53, 80, 71, 54 and
-  # over 90 minutes on its last five runs (the compile about 8, the corpus 35
-  # and more), so Windows runs in three parts: the library and half the
-  # integration suites, the other half, and the corpus. `part` is
-  # scripts/cargo-test-suites.sh's argument, and tests/test_ci_runs_every_suite.py
-  # holds the parts of each OS to every suite.
+  # this one gates the same suites on macOS and Windows, where paths, line
+  # endings and process spawning differ, in the same three parts.
   rust-diffctx-test-cross:
-    name: Rust diffctx tests (${{ matrix.os }}${{ matrix.label }})
+    name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: macos-latest, part: all, label: ""}
-          - {os: windows-latest, part: "rest:1/2", label: ", 1/2"}
-          - {os: windows-latest, part: "rest:2/2", label: ", 2/2"}
-          - {os: windows-latest, part: corpus, label: ", corpus"}
+          - {os: macos-latest, part: "rest:1/2", label: "1/2"}
+          - {os: macos-latest, part: "rest:2/2", label: "2/2"}
+          - {os: macos-latest, part: corpus, label: corpus}
+          - {os: windows-latest, part: "rest:1/2", label: "1/2"}
+          - {os: windows-latest, part: "rest:2/2", label: "2/2"}
+          - {os: windows-latest, part: corpus, label: corpus}
     runs-on: ${{ matrix.os }}
-    # The hang guard of #510, no longer the margin of a whole Windows run.
+    # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -436,9 +451,9 @@ jobs:
         run: scripts/cargo-test-suites.sh "$PART"
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
-      # first build of it must not be the release itself.
+      # first build of it must not be the release itself. One macOS part does it.
       - name: Cross-build the Intel-Mac binary and run it under Rosetta
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && matrix.part == 'rest:1/2'
         working-directory: crates/diffctx-native
         run: |
           rustup target add x86_64-apple-darwin

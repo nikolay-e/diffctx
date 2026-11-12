@@ -82,6 +82,20 @@ def test_every_rust_suite_runs_on_each_ci_os():
         assert suites == _suites(), f"{os_name} never runs {sorted(_suites() - suites)}"
 
 
+def test_the_intel_mac_cross_build_runs_in_exactly_one_macos_part():
+    cross = [job for job in _rust_jobs() if any("x86_64-apple-darwin" in step.get("run", "") for step in job["steps"])]
+    assert len(cross) == 1
+    step = next(step for step in cross[0]["steps"] if "x86_64-apple-darwin" in step.get("run", ""))
+    ran = [
+        cell
+        for cell in _cells(cross[0])
+        if cell["os"].startswith("macos")
+        and "macOS" in step["if"]
+        and ("matrix.part" not in step["if"] or f"matrix.part == '{cell['part']}'" in step["if"])
+    ]
+    assert len(ran) == 1, ran
+
+
 def test_every_rust_suite_runs_in_the_pre_commit_hook():
     config = yaml.safe_load((PROJECT_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
     hooks = [h for repo in config["repos"] for h in repo["hooks"] if h["id"] == "cargo-test"]
