@@ -310,7 +310,7 @@ impl DiffHunk {
 
 static IDENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Za-z_]\w*").unwrap());
 
-pub fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
+pub(crate) fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -318,7 +318,7 @@ pub fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
         .collect()
 }
 
-pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
+pub(crate) fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -326,7 +326,10 @@ pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
         .collect()
 }
 
-pub fn extract_identifier_counts(text: &str, min_length: usize) -> (FxHashMap<String, u32>, u32) {
+pub(crate) fn extract_identifier_counts(
+    text: &str,
+    min_length: usize,
+) -> (FxHashMap<String, u32>, u32) {
     let mut counts: FxHashMap<String, u32> = FxHashMap::default();
     let mut total = 0u32;
     for m in IDENT_RE.find_iter(text) {
@@ -385,7 +388,7 @@ mod fragment_id_tests {
 /// recorded fact from the moment of substitution, not a guess from a shared
 /// start line, so a stand-in that one day gets its own location keeps its
 /// role.
-pub fn carries_change(
+pub(crate) fn carries_change(
     frag: &Fragment,
     core_ids: &rustc_hash::FxHashSet<FragmentId>,
     stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,

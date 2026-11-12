@@ -29,7 +29,7 @@ pub enum Why {
 
 /// The secret-path floor, which needs no repository: private-key, keystore
 /// and credential files never reach LLM-bound output on any surface (#227).
-pub fn is_secret_path(path: &Path) -> bool {
+pub(crate) fn is_secret_path(path: &Path) -> bool {
     snap::is_secret_path(path)
 }
 
@@ -104,7 +104,7 @@ enum End {
 }
 
 /// One analysis, built once by the door that received the question.
-pub struct Analysis {
+pub(crate) struct Analysis {
     ctx: snap::AnalysisContext,
     root: PathBuf,
     /// The range as `git diff` is asked it: both ends as object ids for a
@@ -127,7 +127,7 @@ impl Analysis {
     /// by the snapshot layer. The staged index is captured here, once, as a
     /// tree, and every current-side byte of the run comes from that tree
     /// whatever the disk or a later `git add` says.
-    pub fn open(
+    pub(crate) fn open(
         root_dir: &Path,
         spec: Option<&str>,
         run: &crate::resource::RunContext,
@@ -142,7 +142,7 @@ impl Analysis {
     /// The analysis of a range its caller already holds as a value: a push
     /// or a force-push the hook read off git's record reaches the engine
     /// as the two ids it measured, never as text to be read again.
-    pub fn open_range(
+    pub(crate) fn open_range(
         root_dir: &Path,
         range: snap::RangeSpec,
         run: &crate::resource::RunContext,
@@ -158,7 +158,7 @@ impl Analysis {
 
     /// The analysis of one snapshot, not of a change: `--symbol`, the project
     /// graph, a question about the checkout as it is.
-    pub fn at_working_tree(
+    pub(crate) fn at_working_tree(
         root_dir: &Path,
         run: &crate::resource::RunContext,
     ) -> snap::Result<Arc<Self>> {
@@ -247,22 +247,22 @@ impl Analysis {
         }))
     }
 
-    pub fn range(&self) -> Option<&str> {
+    pub(crate) fn range(&self) -> Option<&str> {
         self.range.as_deref()
     }
 
-    pub fn staged(&self) -> Option<&snap::StagedSnapshot> {
+    pub(crate) fn staged(&self) -> Option<&snap::StagedSnapshot> {
         self.staged.as_ref()
     }
 
     /// Whether the change's head is the checkout itself, which is where
     /// untracked files belong in the change set.
-    pub fn is_working_tree_diff(&self) -> bool {
+    pub(crate) fn is_working_tree_diff(&self) -> bool {
         self.working_tree_diff
     }
 
     /// The current side.
-    pub fn head(self: &Arc<Self>) -> Source {
+    pub(crate) fn head(self: &Arc<Self>) -> Source {
         Source::over(self, End::Head)
     }
 

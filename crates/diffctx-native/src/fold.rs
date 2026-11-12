@@ -45,7 +45,7 @@ impl Rule {
 /// signature, body or decorator change is an edit of comments alone: the caller
 /// builds none when a docstring changed, which a decorator may read.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Basis {
+pub(crate) struct Basis {
     pub kind: DefKind,
     pub signature: bool,
     pub body: bool,
@@ -60,7 +60,12 @@ pub struct Basis {
 /// The rule that folds a row of a definition with this `basis`, if the table has
 /// one. `candidate`: the row is a candidate. `runtime`: the row is a Python
 /// annotation a framework may execute.
-pub fn rule(basis: &Basis, relation: Relation, candidate: bool, runtime: bool) -> Option<Rule> {
+pub(crate) fn rule(
+    basis: &Basis,
+    relation: Relation,
+    candidate: bool,
+    runtime: bool,
+) -> Option<Rule> {
     use DefKind::{
         Class, Constant, Constructor, Field, Function, Method, Property, Struct, Variable,
     };
@@ -297,7 +302,12 @@ fn has_default(text: &str) -> bool {
 /// with the same names, defaults and types, every added parameter has a default,
 /// is optional or takes the rest, and what surrounds the list is the same. Never
 /// in Rust or Go, which have neither.
-pub fn compatible(base: &str, head: &str, name: &str, language: Language) -> Option<Vec<String>> {
+pub(crate) fn compatible(
+    base: &str,
+    head: &str,
+    name: &str,
+    language: Language,
+) -> Option<Vec<String>> {
     if matches!(language, Language::Rust | Language::Go) {
         return None;
     }
@@ -328,7 +338,7 @@ pub fn compatible(base: &str, head: &str, name: &str, language: Language) -> Opt
 /// move. Python: every parameter but `self` and `cls` annotated and a return
 /// type; TypeScript: an explicit return type; Rust and Go: always; a variable: an
 /// annotation (Go: a type written after the name). Kotlin and the rest: not said, so not declared.
-pub fn declared_types(
+pub(crate) fn declared_types(
     kind: DefKind,
     language: Language,
     signature: Option<&str>,

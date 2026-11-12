@@ -7,7 +7,7 @@
 /// candidates. Every other language is Tier 3: not modelled, and no answer about
 /// it claims an absence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Tier {
+pub(crate) enum Tier {
     One,
     Two,
 }
@@ -19,7 +19,7 @@ pub enum Tier {
     dead_code,
     reason = "tests/test_tiers_readme.py reads the README's table off this one"
 )]
-pub const TIERS: &[(Tier, &str, &[&str])] = &[
+pub(crate) const TIERS: &[(Tier, &str, &[&str])] = &[
     (Tier::One, "Python", &["python"]),
     (
         Tier::One,
@@ -166,7 +166,7 @@ pub(crate) const fn kind_of_use(relation: crate::resolve::Relation) -> RelationK
 /// The kind a caller row of a definition in `path` states: the use's, when
 /// the (language, relation) cell is `Precise`; no other cell says which kind
 /// of "called from" a row is.
-pub fn stated_kind_of(path: &str, kind: RelationKind) -> Option<&'static str> {
+pub(crate) fn stated_kind_of(path: &str, kind: RelationKind) -> Option<&'static str> {
     stated_kind_by(is_precise, path, kind)
 }
 

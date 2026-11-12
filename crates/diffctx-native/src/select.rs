@@ -23,7 +23,7 @@ fn selection_cost(selected: &[Fragment]) -> u32 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectionReason {
+pub(crate) enum SelectionReason {
     TopK,
     NoCandidates,
     BudgetExhausted,
@@ -32,7 +32,7 @@ pub enum SelectionReason {
     BestSingleton,
 }
 
-pub struct SelectionResult {
+pub(crate) struct SelectionResult {
     pub selected: Vec<Fragment>,
     #[cfg_attr(
         not(test),
@@ -68,7 +68,7 @@ pub struct SelectionResult {
 impl SelectionResult {
     /// Nothing selected: no candidates reached the selector at all. Spelled out
     /// identically in the greedy and the Boltzmann path before this.
-    pub fn none() -> Self {
+    pub(crate) fn none() -> Self {
         Self {
             selected: Vec::new(),
             reason: SelectionReason::NoCandidates,
@@ -1091,7 +1091,7 @@ fn setup_and_select_core(
     )
 }
 
-pub fn lazy_greedy_select(
+pub(crate) fn lazy_greedy_select(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,
