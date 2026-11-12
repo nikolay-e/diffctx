@@ -44,6 +44,6 @@ pub use ids::{ModulePath, Name, ProjectId, Span, TypeName};
 pub use language::Language;
 pub use model::{
     BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind,
-    EntryPoint, Export, Fact, FileFacts, Framework, Import, ImportKind, Local, LocalKey, LocalKind,
-    Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
+    EntryPoint, Export, Fact, FileFacts, Framework, Import, ImportKind, Lexical, Local, LocalKey,
+    LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
 };
