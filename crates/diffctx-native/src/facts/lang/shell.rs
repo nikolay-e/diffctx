@@ -388,6 +388,15 @@ impl<'a> Walker<'a> {
                 let called = self.text_of(arg).to_string();
                 self.call(called, syntax::span(arg), scope);
             }
+        } else if word == "trap" {
+            let mut cursor = node.walk();
+            let handler = node
+                .children_by_field_name("argument", &mut cursor)
+                .find(|a| !self.text_of(*a).starts_with('-'))
+                .filter(|a| matches!(a.kind(), "string" | "raw_string"));
+            if let Some(handler) = handler {
+                self.trap_handler(handler, scope);
+            }
         } else if matches!(word, "bash" | "sh" | "dash") {
             // `bash script args`: the first word that is no flag, unless the
             // shell is given code with `-c`.
@@ -416,6 +425,24 @@ impl<'a> Walker<'a> {
                 self.call(word.to_string(), site, scope);
             }
         }
+    }
+
+    /// A quoted trap handler is shell code run later: its first word is a call.
+    fn trap_handler(&mut self, handler: TsNode<'a>, scope: &Scope) {
+        let inner = &self.text_of(handler)[1..];
+        let lead = inner.len() - inner.trim_start().len();
+        let word = inner[lead..]
+            .split(|c: char| c.is_whitespace() || ";&|<>()$\"'`".contains(c))
+            .next()
+            .unwrap_or("");
+        if word.is_empty() {
+            return;
+        }
+        let start = (handler.start_byte() + 1 + lead) as u32;
+        let row = handler.start_position().row as u32 + 1;
+        let line = row + inner[..lead].matches('\n').count() as u32;
+        let site = Span::new(start..start + word.len() as u32, (line, line));
+        self.call(word.to_string(), site, scope);
     }
 
     fn call(&mut self, name: String, site: Span, scope: &Scope) {
