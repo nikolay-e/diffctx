@@ -134,17 +134,20 @@ mod r#async {
 pub use self::r#async::r#await;
 
 pub fn user(r#in: &Holder) -> u32 {
+    let (r#left, r#right) = pair();
     let r#loop = r#spelled();
     let r#kept = spelled();
-    r#loop + r#kept + r#match() + r#in.r#try()
+    r#loop + r#kept + r#match() + r#in.r#try() + r#left.r#try() + r#right
 }
 "##,
     extract: rust,
     quoted: raw,
     defined: &["spelled", "match", "Holder", "try", "await", "user"],
-    used: &[("spelled", 2), ("match", 1), ("try", 1)],
-    bound: &["in", "loop", "kept"],
-    qualifiers: &["in"],
+    used: &[("spelled", 2), ("match", 1), ("try", 2)],
+    bound: &["in", "left", "right", "loop", "kept"],
+    // A local of a known type is the receiver's type, so only one of no known
+    // type is written before the member.
+    qualifiers: &["left"],
     site_quote: None,
 };
 

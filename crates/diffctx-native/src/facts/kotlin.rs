@@ -446,7 +446,7 @@ pub fn name_of(node: &Node, bytes: &[u8]) -> Option<String> {
     let found = node
         .children(&mut cursor)
         .find(|c| matches!(c.kind(), "simple_identifier" | "type_identifier"))?;
-    text(found, bytes).map(|t| t.trim_matches('`').to_string())
+    name_text(found, bytes).map(str::to_string)
 }
 
 /// A declaration inside a function, a lambda, an `init` block or an
@@ -693,7 +693,7 @@ fn parameter_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
                     .children(&mut cursor)
                     .find(|c| c.kind() == "simple_identifier")
                 {
-                    if let Some(name) = text(id, bytes) {
+                    if let Some(name) = name_text(id, bytes) {
                         bindings.push(Binding::new(
                             name.to_string(),
                             first_child_type(node, bytes),
@@ -767,7 +767,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                     // `Obj::f` reads `Obj` as much as it names `f`.
                     push(text(*recv, bytes), UseKind::Access, None, *recv);
                     (
-                        text(*recv, bytes).map(|t| Receiver::Name(t.to_string())),
+                        name_text(*recv, bytes).map(|t| Receiver::Name(t.to_string())),
                         *target,
                     )
                 }
@@ -786,7 +786,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                     Receiver::Path(
                         path[..path.len() - 1]
                             .iter()
-                            .filter_map(|p| text(*p, bytes).map(str::to_string))
+                            .filter_map(|p| name_text(*p, bytes).map(str::to_string))
                             .collect(),
                     )
                 });
@@ -853,14 +853,14 @@ fn is_bare_reference(node: &Node) -> bool {
 
 fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
     match node.kind() {
-        "simple_identifier" | "type_identifier" => text(node, bytes)
+        "simple_identifier" | "type_identifier" => name_text(node, bytes)
             .map(|t| Receiver::Name(t.to_string()))
             .unwrap_or(Receiver::Expr),
         "this_expression" => Receiver::This,
         "call_expression" => node
             .named_child(0)
             .filter(|c| c.kind() == "simple_identifier")
-            .and_then(|c| text(c, bytes))
+            .and_then(|c| name_text(c, bytes))
             .map_or(Receiver::Expr, |callee| Receiver::Call(callee.to_string())),
         "navigation_expression" => {
             let mut parts = Vec::new();
@@ -868,7 +868,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
             loop {
                 let Some(name) = child(current, "navigation_suffix")
                     .and_then(|s| child(s, "simple_identifier"))
-                    .and_then(|n| text(n, bytes))
+                    .and_then(|n| name_text(n, bytes))
                 else {
                     return Receiver::Expr;
                 };
@@ -876,7 +876,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
                 match current.named_child(0) {
                     Some(inner) if inner.kind() == "navigation_expression" => current = inner,
                     Some(inner) if inner.kind() == "simple_identifier" => {
-                        if let Some(head) = text(inner, bytes) {
+                        if let Some(head) = name_text(inner, bytes) {
                             parts.push(head.to_string());
                         }
                         break;
@@ -952,7 +952,7 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
     match head.kind() {
         "simple_identifier" => Some(InitCall {
             receiver: None,
-            callee: text(head, bytes)?.to_string(),
+            callee: name_text(head, bytes)?.to_string(),
         }),
         "navigation_expression" => {
             let receiver = head
@@ -961,8 +961,8 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
             let callee =
                 child(head, "navigation_suffix").and_then(|s| child(s, "simple_identifier"))?;
             Some(InitCall {
-                receiver: Some(text(receiver, bytes)?.to_string()),
-                callee: text(callee, bytes)?.to_string(),
+                receiver: Some(name_text(receiver, bytes)?.to_string()),
+                callee: name_text(callee, bytes)?.to_string(),
             })
         }
         _ => None,
@@ -1055,26 +1055,45 @@ fn last_type_name(node: Node, bytes: &[u8]) -> Option<String> {
         .children(&mut cursor)
         .filter(|c| c.kind() == "type_identifier")
         .last()?;
-    text(last, bytes).map(str::to_string)
+    name_text(last, bytes).map(str::to_string)
 }
 
-/// Records a use of `name` at `at`; no name, or an empty one, is none.
+/// A name without the backticks Kotlin and Swift let one write around it:
+/// `` `my fn` `` and `my fn` are one name.
+pub(super) fn unquoted(written: &str) -> &str {
+    written.trim_matches('`')
+}
+
+/// The name an identifier node writes.
+pub(super) fn name_text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
+    text(node, bytes).map(unquoted)
+}
+
+/// Records a use of the name `written` at `at`; no name, or an empty one, is
+/// none. The name is recorded bare and its site moves past the opening
+/// backtick, so the site still reads as the name.
 pub(super) fn push_use(
     uses: &mut Vec<Use>,
-    name: Option<&str>,
+    written: Option<&str>,
     kind: UseKind,
     receiver: Option<Receiver>,
     at: Node,
 ) {
-    if let Some(name) = name.filter(|n| !n.is_empty()) {
-        uses.push(Use {
-            name: name.to_string(),
-            kind,
-            receiver,
-            at: at.start_byte(),
-            line: line_of(at),
-        });
+    let Some(written) = written else {
+        return;
+    };
+    let name = unquoted(written);
+    if name.is_empty() {
+        return;
     }
+    let opening = written.len() - written.trim_start_matches('`').len();
+    uses.push(Use {
+        name: name.to_string(),
+        kind,
+        receiver,
+        at: at.start_byte() + opening,
+        line: line_of(at),
+    });
 }
 
 pub(super) fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
@@ -1107,8 +1126,7 @@ fn dotted(identifier: Node, bytes: &[u8]) -> String {
     identifier
         .children(&mut cursor)
         .filter(|c| c.kind() == "simple_identifier")
-        .filter_map(|c| text(c, bytes))
-        .map(|t| t.trim_matches('`'))
+        .filter_map(|c| name_text(c, bytes))
         .collect::<Vec<_>>()
         .join(".")
 }
