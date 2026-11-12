@@ -463,7 +463,7 @@ pub fn header(out: &mut String, a: &Answer) {
                 },
                 match tally.untracked {
                     0 => String::new(),
-                    n => format!(", {n} untracked"),
+                    n => format!(", {n} untracked (analysed)"),
                 },
                 withheld("file(s)"),
                 callers_phrase(
