@@ -15,11 +15,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
 use crate::graph::{
-    CappedEdges, CompactEdge, EdgeCapStats, EdgeCategory, RankedCandidate, SourceTopK,
-    SuppressionFactors, cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes,
-    push_bounded_top_k, read_max_out_edges_per_node,
+    CappedEdges, CompactEdge, EdgeCapStats, RankedCandidate, SourceTopK, SuppressionFactors,
+    cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes, push_bounded_top_k,
+    read_max_out_edges_per_node,
 };
-use crate::types::FragmentId;
+use crate::types::{EdgeCategory, FragmentId};
 
 type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 

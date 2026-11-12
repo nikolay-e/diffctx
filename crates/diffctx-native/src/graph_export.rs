@@ -5,8 +5,8 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::analytics::QuotientGraph;
-use crate::graph::{EdgeCategory, Graph};
-use crate::types::{Fragment, FragmentId};
+use crate::graph::Graph;
+use crate::types::{EdgeCategory, Fragment, FragmentId};
 
 pub(crate) struct ProjectGraphView<'a> {
     pub graph: &'a Graph,
