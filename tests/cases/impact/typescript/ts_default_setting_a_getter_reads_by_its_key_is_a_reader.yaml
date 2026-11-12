@@ -1,0 +1,75 @@
+name: ts_default_setting_a_getter_reads_by_its_key_is_a_reader
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- callers
+- settings-key
+repo:
+  initial_files:
+    lib/app.js: |
+      const app = {settings: {}};
+
+      app.set = function set(key, value) {
+        this.settings[key] = value;
+        return this;
+      };
+
+      app.get = function get(key) {
+        return this.settings[key];
+      };
+
+      app.defaultConfiguration = function defaultConfiguration() {
+        this.set('etag', 'weak');
+        this.set('query parser', 'extended');
+      };
+
+      module.exports = app;
+    lib/request.js: |
+      const app = require('./app');
+
+      const req = {};
+
+      Object.defineProperty(req, 'query', {
+        get() {
+          const mode = app.get('query parser');
+          return mode === 'simple' ? {} : {nested: true};
+        },
+      });
+
+      module.exports = req;
+    test/request.js: |
+      const assert = require('assert');
+      const req = require('../lib/request');
+
+      assert.deepStrictEqual(req.query, {nested: true});
+  changed_files:
+    lib/app.js: |
+      const app = {settings: {}};
+
+      app.set = function set(key, value) {
+        this.settings[key] = value;
+        return this;
+      };
+
+      app.get = function get(key) {
+        return this.settings[key];
+      };
+
+      app.defaultConfiguration = function defaultConfiguration() {
+        this.set('etag', 'weak');
+        this.set('query parser', 'simple');
+      };
+
+      module.exports = app;
+  commit_message: Default the query parser to simple
+expect:
+  changed:
+  - lib/app.js::defaultConfiguration
+  exact: false
+  relations:
+  - from: lib/request.js
+    to: lib/app.js::defaultConfiguration
+    kind: reads
+    resolution: candidate
