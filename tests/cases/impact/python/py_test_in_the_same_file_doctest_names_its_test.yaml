@@ -39,8 +39,10 @@ repo:
           return amount * 3
   commit_message: Touch both functions
 expect:
+  # `total` changes too, but a changed definition nothing calls and a test
+  # reaches is not listed: the answer's claim about it is that it is absent from
+  # the untested lists (`not_untested`).
   changed:
-  - shop/price.py::total
   - shop/price.py::tax
   exact: false
   not_untested:
