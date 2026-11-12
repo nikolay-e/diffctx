@@ -30,6 +30,10 @@
 #![cfg(unix)]
 
 #[path = "support/fake_git.rs"]
+#[allow(
+    dead_code,
+    reason = "this suite drives the shim and leaves the translated one to the others"
+)]
 mod fake_git;
 #[path = "support/hook/mod.rs"]
 mod hook;
