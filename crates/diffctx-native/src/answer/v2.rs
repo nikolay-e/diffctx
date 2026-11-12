@@ -532,7 +532,7 @@ impl Guard {
 }
 
 /// How a row uses the definition, coarsely and always.
-#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Class {
     Call,
@@ -542,7 +542,7 @@ pub enum Class {
 }
 
 /// How sure the resolver is of a row.
-#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Standing {
     Resolved,
@@ -762,6 +762,13 @@ pub struct Definition {
 }
 
 impl Definition {
+    /// The name a word match is said to name: the definition's own, or its file.
+    pub fn word(&self) -> &str {
+        self.symbol
+            .as_deref()
+            .map_or(self.path.as_str(), crate::impact::base_symbol)
+    }
+
     /// Both groups of its uses were searched whole: no row listed means no such use.
     pub fn complete(&self) -> bool {
         self.coverage.calls.complete && self.coverage.reads.complete
@@ -1284,6 +1291,7 @@ impl ImpactV2 {
                 exempt: 0,
             },
         };
+        super::one_row_per_fact(&mut doc.definitions);
         doc.summary = Tally::of(&doc).summary(v1.traced_definitions);
         doc
     }
