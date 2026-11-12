@@ -13,8 +13,9 @@
 //! job to the scheduler.
 //!
 //! For the files no cell reads, the files of the group that spell a name are the
-//! users, held to the same bar as a caller; only a test file the ranking graph
-//! linked to a source by its name (`by_path`) still comes from the graph. A claim that a definition
+//! users, held to the same bar as a caller, and a test file's name links it to the
+//! source it asks for (`testfiles::naming_links`). Nothing here reads the ranking
+//! graph. A claim that a definition
 //! has no test link is printed only where `any` says tests are in view.
 
 use std::cell::RefCell;
@@ -27,10 +28,11 @@ use crate::facts::EntryKind;
 use super::mentions::{Naming, commented, naming, starts_a_program};
 use super::rust;
 use super::{
-    Cells, EdgeCategory, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState,
-    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
+    Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, base_symbol,
+    cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
 };
 use crate::decide::Group;
+use crate::testfiles::naming_links;
 use crate::tokens::Names;
 
 /// How a test runs code that no use of its own reaches: `file` as the fragments
@@ -57,9 +59,8 @@ pub(super) struct TestsReach<'a> {
     by_rel: FxHashMap<String, Vec<&'a Fragment>>,
     /// The path the answer prints for each path a fragment spells.
     rel_of: FxHashMap<&'a str, String>,
-    /// Source path -> one test path linked to it by a test edge of the ranking
-    /// graph: the channel of the files no cell reads.
-    by_path: FxHashMap<String, String>,
+    /// The source files no cell reads whose name a test file's asks for.
+    named: FxHashSet<String>,
     test_fragments: Vec<&'a Fragment>,
     /// Functions outside test files an attribute marks as tests: a Rust
     /// `#[test]` in an inline `mod tests` (#528).
@@ -94,26 +95,26 @@ impl<'a> TestsReach<'a> {
             by_rel.entry(shown).or_default().push(f);
         }
         let read_by_a_cell = |path: &str| cells.of(&rel(state, path)).is_some();
-        let graph = &state.scoring_result.graph;
-        let mut by_path: FxHashMap<String, String> = FxHashMap::default();
-        graph.for_each_categorized_edge(|src, dst, cat| {
-            if cat != EdgeCategory::TestEdge || !state.run.check() {
-                return;
-            }
-            let src_is_test = crate::testfiles::is_test_path(Path::new(src.path.as_ref()));
-            let dst_is_test = crate::testfiles::is_test_path(Path::new(dst.path.as_ref()));
-            let (source, test) = match (src_is_test, dst_is_test) {
-                (true, false) => (dst, src),
-                (false, true) => (src, dst),
-                _ => return,
-            };
-            if read_by_a_cell(source.path.as_ref()) {
-                return;
-            }
-            by_path
-                .entry(source.path.to_string())
-                .or_insert_with(|| test.path.to_string());
-        });
+        // The files no cell reads that a test file's name asks for: the naming
+        // convention is a rule over paths, whatever the ranking linked.
+        let listed: Vec<&str> = {
+            let mut seen: FxHashSet<&str> = FxHashSet::default();
+            state
+                .all_fragments
+                .iter()
+                .map(Fragment::path)
+                .filter(|path| seen.insert(*path))
+                .collect()
+        };
+        let named: FxHashSet<String> = naming_links(&listed)
+            .into_iter()
+            .filter(|(test, source)| {
+                crate::testfiles::is_test_path(Path::new(test))
+                    && !read_by_a_cell(source)
+                    && state.run.check()
+            })
+            .map(|(_, source)| source.to_string())
+            .collect();
         let mut tests_at: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
         for f in &state.all_fragments {
             if f.kind == FragmentKind::Function && rust::is_rust(f.path()) {
@@ -163,7 +164,7 @@ impl<'a> TestsReach<'a> {
         runs.extend(framework_runs(state, cells, diff_range));
         runs.extend(literal_runs(state, diff_range));
         let repo_tests = test_fragments.is_empty()
-            && by_path.is_empty()
+            && named.is_empty()
             && runs.is_empty()
             && repo_holds_test_file(state);
         Self {
@@ -171,7 +172,7 @@ impl<'a> TestsReach<'a> {
             cells,
             by_rel,
             rel_of,
-            by_path,
+            named,
             test_fragments,
             inline_tests,
             unread,
@@ -183,7 +184,7 @@ impl<'a> TestsReach<'a> {
 
     pub(super) fn any(&self) -> bool {
         !self.test_fragments.is_empty()
-            || !self.by_path.is_empty()
+            || !self.named.is_empty()
             || !self.runs.is_empty()
             || self.repo_tests
     }
@@ -475,7 +476,7 @@ impl<'a> TestsReach<'a> {
                     .iter()
                     .any(|t| t.path() == caller.path());
         }
-        self.by_path.contains_key(caller.path())
+        self.named.contains(caller.path())
             || self.test_fragments.iter().any(|t| reaches_file(t, caller))
     }
 }

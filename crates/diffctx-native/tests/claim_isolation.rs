@@ -1,6 +1,6 @@
 //! What a claim says comes from the cells and the token index, never from an old
 //! edge builder: the answer, impact and the decision read no path into
-//! `crate::edges`, which stays the ranking's alone (`facts` and `resolve` are held
+//! `crate::edges` and ask the ranking graph nothing, which stay the ranking's alone (`facts` and `resolve` are held
 //! tighter by their own isolation tests).
 
 use std::fs;
@@ -20,8 +20,12 @@ const CLAIM_PATHS: [&str; 5] = [
     "src/answer",
 ];
 
+/// What the ranking graph answers to, which only the ranking may ask.
+const GRAPH_READS: &str = r"\b(?:for_each_reverse_neighbor|for_each_categorized_edge|edge_category|forward_edge_weight|is_forward|cap_stats)\b|\bscoring_result\s*\.\s*graph\b|\bcrate\s*::\s*graph\b";
+
 fn edge_paths(source: &str) -> Vec<String> {
     let source = without_comments(source);
+    let graph = Regex::new(GRAPH_READS).expect("a pattern");
     let direct = Regex::new(r"\b(?:crate|_diffctx|diffctx|super)\s*::\s*edges\b|\bedges\s*::")
         .expect("a pattern");
     let grouped = Regex::new(r"\b(?:crate|_diffctx|diffctx)\s*::\s*\{[^}]*\bedges\b[^}]*\}")
@@ -29,6 +33,7 @@ fn edge_paths(source: &str) -> Vec<String> {
     direct
         .find_iter(&source)
         .chain(grouped.find_iter(&source))
+        .chain(graph.find_iter(&source))
         .map(|hit| hit.as_str().to_string())
         .collect()
 }
@@ -70,4 +75,10 @@ fn a_path_into_the_edges_is_a_violation() {
     assert_eq!(edge_paths("use super::edges::EdgeDict;").len(), 1);
     assert!(edge_paths("// crate::edges::base\nlet edges = Vec::new(); edges.len();").is_empty());
     assert!(edge_paths("use crate::keytable::counterparts_of_change;").is_empty());
+    assert_eq!(
+        edge_paths("graph.for_each_categorized_edge(|a, b, c| {});").len(),
+        1
+    );
+    assert_eq!(edge_paths("let g = &state.scoring_result.graph;").len(), 1);
+    assert_eq!(edge_paths("use crate::graph::EdgeCategory;").len(), 1);
 }

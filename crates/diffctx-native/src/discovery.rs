@@ -332,9 +332,8 @@ impl DiscoveryStrategy for TestFileDiscovery {
                 test_stems.insert(format!("{stem}{suffix}"));
             }
             let ext = crate::edges::base::file_ext(f);
-            if crate::edges::structural::testing::JVM_TEST_SUFFIX_EXTENSIONS.contains(&ext.as_str())
-            {
-                for suffix in crate::edges::structural::testing::JVM_TEST_SUFFIXES {
+            if crate::testfiles::JVM_TEST_SUFFIX_EXTENSIONS.contains(&ext.as_str()) {
+                for suffix in crate::testfiles::JVM_TEST_SUFFIXES {
                     test_stems.insert(format!("{stem}{suffix}"));
                 }
             }
