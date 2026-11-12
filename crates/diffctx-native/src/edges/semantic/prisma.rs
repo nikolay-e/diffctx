@@ -15,7 +15,7 @@ fn is_prisma_file(path: &Path) -> bool {
 }
 
 fn is_prisma_consumer(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     matches!(ext.as_str(), ".ts" | ".js" | ".tsx" | ".jsx")
 }
 

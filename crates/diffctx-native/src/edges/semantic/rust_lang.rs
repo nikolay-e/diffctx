@@ -16,7 +16,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_rust_file(path: &Path) -> bool {
-    RUST_EXTENSIONS.contains(base::file_ext(path).as_str())
+    RUST_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 static USE_RE: Lazy<Regex> =

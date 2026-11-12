@@ -24,7 +24,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, path_to_module};
 
 fn is_python_file(path: &Path) -> bool {
-    PYTHON_EXTENSIONS.contains(base::file_ext(path).as_str())
+    PYTHON_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w.]+)").unwrap());

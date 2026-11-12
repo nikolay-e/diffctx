@@ -8,13 +8,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::C_FAMILY_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
+use crate::languages::file_ext;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_c_family(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = file_ext(path);
     C_FAMILY_EXTENSIONS.contains(ext.as_str())
 }
 
@@ -324,11 +325,11 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             }
             let headers: Vec<&&str> = files
                 .iter()
-                .filter(|p| HEADER_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
+                .filter(|p| HEADER_EXTENSIONS.contains(file_ext(Path::new(**p)).as_str()))
                 .collect();
             let impls: Vec<&&str> = files
                 .iter()
-                .filter(|p| IMPL_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
+                .filter(|p| IMPL_EXTENSIONS.contains(file_ext(Path::new(**p)).as_str()))
                 .collect();
             for h in &headers {
                 for imp in &impls {

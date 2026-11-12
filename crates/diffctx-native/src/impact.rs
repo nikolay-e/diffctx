@@ -850,9 +850,7 @@ fn names_word(text: &str, name: &str) -> bool {
 }
 
 fn is_code_file(path: &str) -> bool {
-    let ext = Path::new(path).extension().map_or_else(String::new, |e| {
-        format!(".{}", e.to_string_lossy().to_lowercase())
-    });
+    let ext = crate::languages::file_ext(Path::new(path));
     crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
 }
 

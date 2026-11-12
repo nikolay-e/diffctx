@@ -12,7 +12,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_openapi_candidate(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     matches!(ext.as_str(), ".yaml" | ".yml" | ".json")
 }
 

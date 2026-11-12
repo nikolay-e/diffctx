@@ -2020,7 +2020,7 @@ pub(crate) fn evidence_priority_of(
 pub(crate) fn evidence_tier(repo_path: &str, class: crate::change_class::ChangeClass) -> u8 {
     use crate::change_class::ChangeClass;
     let path = Path::new(repo_path);
-    let ext = crate::edges::base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     match class {
         ChangeClass::Generated => 4,
         ChangeClass::Mechanical | ChangeClass::Layout => 3,
