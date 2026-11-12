@@ -13,7 +13,7 @@ TIER_NAMES = {"One": 1, "Two": 2, "Three": 3}
 
 def _code_rows() -> dict[int, list[str]]:
     source = (PROJECT_ROOT / "crates" / "diffctx-native" / "src" / "vocabulary.rs").read_text(encoding="utf-8")
-    table = re.search(r"pub const TIERS: &\[\(Tier, &str, &\[&str\]\)\] = &\[(.*?)\n\];", source, re.DOTALL)
+    table = re.search(r"(?:pub(?:\([a-z]+\))?\s+)?const TIERS: &\[\(Tier, &str, &\[&str\]\)\] = &\[(.*?)\n\];", source, re.DOTALL)
     assert table, "vocabulary.rs has no TIERS table"
     rows: dict[int, list[str]] = {}
     for tier, label in re.findall(r'\(\s*Tier::(One|Two|Three),\s*"([^"]+)",', table.group(1)):
