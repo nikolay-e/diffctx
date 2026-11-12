@@ -653,9 +653,9 @@ fn count_tokens(py: Python<'_>, text: &str) -> PyResult<u32> {
 use rustc_hash::{FxHashMap as RsFxHashMap, FxHashSet as RsFxHashSet};
 
 use crate::analytics;
-use crate::graph::EdgeCategory;
 use crate::graph_export;
 use crate::project_graph;
+use crate::types::EdgeCategory;
 
 #[pyclass]
 pub struct PyProjectGraph {
