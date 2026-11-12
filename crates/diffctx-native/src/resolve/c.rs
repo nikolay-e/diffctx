@@ -30,7 +30,7 @@ use std::rc::Rc;
 use super::index::{Path, dir_of, join, normalise};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
-    UnresolvedReason, unresolved,
+    UnresolvedReason, is_callable, unresolved,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, LocalKey,
@@ -1217,13 +1217,6 @@ fn is_type_kind(kind: DefKind) -> bool {
     )
 }
 
-fn is_callable_kind(kind: DefKind) -> bool {
-    matches!(
-        kind,
-        DefKind::Function | DefKind::Method | DefKind::Constructor
-    )
-}
-
 fn is_value_kind(kind: DefKind) -> bool {
     matches!(
         kind,
@@ -1232,11 +1225,11 @@ fn is_value_kind(kind: DefKind) -> bool {
 }
 
 fn is_callable_or_type(kind: DefKind) -> bool {
-    is_callable_kind(kind) || is_type_kind(kind)
+    is_callable(kind) || is_type_kind(kind)
 }
 
 fn is_value_or_callable(kind: DefKind) -> bool {
-    is_value_kind(kind) || is_callable_kind(kind)
+    is_value_kind(kind) || is_callable(kind)
 }
 
 fn cpp_relation(use_kind: UseKind, target: DefKind) -> Relation {
@@ -1589,7 +1582,7 @@ impl Engine<'_> {
     ) {
         let kind = self.ix.defs[ids[0]].def.kind;
         let relation = cpp_relation(r.use_kind, kind);
-        let ids = if is_callable_kind(kind) {
+        let ids = if is_callable(kind) {
             let linked = self.linked_cpp(f, &ids);
             self.fitting(f, r, ids.into_iter().chain(linked).collect())
         } else {
@@ -1664,7 +1657,7 @@ impl Engine<'_> {
             .filter(|i| {
                 let rec = &self.ix.defs[*i];
                 !ids.contains(i)
-                    && is_callable_kind(rec.def.kind)
+                    && is_callable(rec.def.kind)
                     && rec.def.body_hash != 0
                     && rec.def.visibility != Visibility::Private
                     && self.may_reach(f, *i)
@@ -1776,9 +1769,7 @@ impl Engine<'_> {
                     .copied()
                     .filter(|i| {
                         let rec = &self.ix.defs[*i];
-                        is_callable_kind(rec.def.kind)
-                            && !rec.scope.is_empty()
-                            && self.may_reach(f, *i)
+                        is_callable(rec.def.kind) && !rec.scope.is_empty() && self.may_reach(f, *i)
                     })
                     .collect()
             } else {
@@ -1840,8 +1831,7 @@ impl Engine<'_> {
             }
             Receiver::CallResult(path) => {
                 if let Some(function) = path.last() {
-                    let (ids, _) =
-                        self.cpp_find(f, scope, &[], function.as_str(), is_callable_kind);
+                    let (ids, _) = self.cpp_find(f, scope, &[], function.as_str(), is_callable);
                     class = match ids.as_slice() {
                         [one] => self.declared_class(*one),
                         _ => None,
@@ -1867,7 +1857,7 @@ impl Engine<'_> {
         match class {
             Some(class) => {
                 let wanted: fn(DefKind) -> bool = if call {
-                    is_callable_kind
+                    is_callable
                 } else {
                     is_value_or_callable
                 };
