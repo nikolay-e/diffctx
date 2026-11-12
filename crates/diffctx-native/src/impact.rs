@@ -1653,8 +1653,8 @@ fn is_public(path: &str, symbol: Option<&str>, content: &str) -> bool {
 /// An added run whose lines, blank ones aside, are a run removed elsewhere in
 /// the same file: the definition moved, its text and indentation did not.
 fn moved_verbatim(
-    run: &crate::change_class::HunkText,
-    hunks: &[crate::change_class::HunkText],
+    run: &crate::changed_lines::HunkText,
+    hunks: &[crate::changed_lines::HunkText],
 ) -> bool {
     let text = |lines: &[String]| -> Vec<String> {
         lines
@@ -2452,7 +2452,7 @@ fn declares_member(line: &str) -> bool {
 /// Whether every hunk in the definition only added fields or parameters
 /// that carry a default (#388): the call sites keep working, so they are
 /// counted instead of listed.
-fn compatible_extension(core: &Fragment, hunks: &[&crate::change_class::HunkText]) -> bool {
+fn compatible_extension(core: &Fragment, hunks: &[&crate::changed_lines::HunkText]) -> bool {
     let head_end = core.start_line() + declaration_head(&core.content).lines().count() as u32;
     !hunks.is_empty()
         && hunks.iter().all(|h| {
@@ -2847,7 +2847,7 @@ pub fn build_impact(
                     .any(|&(a, b)| id.start_line <= b && id.end_line >= a)
             })
     };
-    let hunks_in = |core: &Fragment| -> Vec<&crate::change_class::HunkText> {
+    let hunks_in = |core: &Fragment| -> Vec<&crate::changed_lines::HunkText> {
         let path = rel(state, core.path());
         state
             .hunk_texts

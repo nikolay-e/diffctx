@@ -85,7 +85,7 @@ pub struct ScoredState {
     pub analysed_range: Option<String>,
     /// The diff's hunks with their removed and added lines: whether a change
     /// is layout only, what it removed, where its lines are.
-    pub hunk_texts: Vec<crate::change_class::HunkText>,
+    pub hunk_texts: Vec<crate::changed_lines::HunkText>,
     /// See `ScoredFragments::changed_lines`.
     pub changed_lines: FxHashMap<FragmentId, f64>,
     /// The pathspecs that narrow the run (`paths`, or the subtree it was asked

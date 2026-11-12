@@ -382,6 +382,81 @@ impl DiffHunk {
 
 static IDENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Za-z_]\w*").unwrap());
 
+pub(crate) fn unquote_c_style(quoted: &str) -> String {
+    if !(quoted.starts_with('"') && quoted.ends_with('"')) {
+        return quoted.to_string();
+    }
+
+    let raw = &quoted[1..quoted.len() - 1];
+    let bytes = raw.as_bytes();
+    let mut result: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            let nxt = bytes[i + 1];
+            match nxt {
+                b't' => {
+                    result.push(b'\t');
+                    i += 2;
+                }
+                b'n' => {
+                    result.push(b'\n');
+                    i += 2;
+                }
+                b'r' => {
+                    result.push(b'\r');
+                    i += 2;
+                }
+                b'b' => {
+                    result.push(0x08);
+                    i += 2;
+                }
+                b'f' => {
+                    result.push(0x0C);
+                    i += 2;
+                }
+                b'v' => {
+                    result.push(0x0B);
+                    i += 2;
+                }
+                b'a' => {
+                    result.push(0x07);
+                    i += 2;
+                }
+                b'\\' => {
+                    result.push(b'\\');
+                    i += 2;
+                }
+                b'"' => {
+                    result.push(b'"');
+                    i += 2;
+                }
+                b'0'..=b'7'
+                    if i + 3 < bytes.len()
+                        && bytes[i + 2].is_ascii_digit()
+                        && bytes[i + 2] <= b'7'
+                        && bytes[i + 3].is_ascii_digit()
+                        && bytes[i + 3] <= b'7' =>
+                {
+                    let val = (nxt - b'0') * 64 + (bytes[i + 2] - b'0') * 8 + (bytes[i + 3] - b'0');
+                    result.push(val);
+                    i += 4;
+                }
+                _ => {
+                    result.push(b'\\');
+                    i += 1;
+                }
+            }
+        } else {
+            result.push(bytes[i]);
+            i += 1;
+        }
+    }
+
+    String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
 pub(crate) fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
     IDENT_RE
         .find_iter(text)
@@ -447,6 +522,19 @@ mod fragment_id_tests {
         let direct = FragmentId::new(Arc::from("a.rs"), 12, 12);
         assert_eq!(direct.start_line, 12);
         assert_eq!(direct.end_line, 12);
+    }
+
+    #[test]
+    fn unquote_c_style_decodes_octal_utf8_escapes() {
+        // Exactly what git emits for `café.py` under the default
+        // core.quotePath=true: é is UTF-8 0xC3 0xA9, i.e. octal 303 251.
+        let quoted = r#""a/caf\303\251.py""#;
+        assert_eq!(unquote_c_style(quoted), "a/café.py");
+    }
+
+    #[test]
+    fn unquote_c_style_leaves_unquoted_input_untouched() {
+        assert_eq!(unquote_c_style("a/plain.py"), "a/plain.py");
     }
 }
 

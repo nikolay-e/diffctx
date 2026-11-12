@@ -13,6 +13,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::changed_lines::{HunkText, reverted};
 use crate::types::DiffHunk;
 
 #[derive(
@@ -81,138 +82,6 @@ pub fn classify(
     }
 }
 
-/// One run of changed lines of a unified diff with its text, for what the
-/// line ranges alone cannot say: whether the code or only its layout
-/// changed, and what the change removed. Context lines split a hunk into
-/// runs, so the ranges are the ones `-U0` would print.
-#[derive(Clone, Debug, Default)]
-pub struct HunkText {
-    /// The new-side path as the diff prints it (repository-relative); the
-    /// old-side path for a deleted file.
-    pub path: String,
-    pub old_start: u32,
-    pub old_len: u32,
-    pub new_start: u32,
-    pub new_len: u32,
-    pub removed: Vec<String>,
-    pub added: Vec<String>,
-    /// Only what a formatter changes, settled by [`settle_layout`] against
-    /// both whole versions of the file.
-    pub layout: bool,
-}
-
-impl HunkText {
-    /// The new-side lines the run occupies; a pure removal anchors on the
-    /// new line right above it, as `-U0` numbers it.
-    pub fn new_range(&self) -> (u32, u32) {
-        if self.new_len == 0 {
-            (self.new_start.max(1), self.new_start.max(1))
-        } else {
-            (self.new_start, self.new_start + self.new_len - 1)
-        }
-    }
-}
-
-fn hunk_start(spec: &str) -> Option<u32> {
-    spec.split(',').next()?.parse().ok()
-}
-
-pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
-    let mut out: Vec<HunkText> = Vec::new();
-    let mut old_path: Option<String> = None;
-    let mut new_path: Option<String> = None;
-    // `"b/src/caf\303\251.js"`: git quotes a non-ASCII path, and a quoted
-    // path matched no fragment, so every check on that file went dark.
-    let side = |rest: &str, prefix: &str| {
-        let p = crate::diff_parse::unquote_c_style(rest.split('\t').next().unwrap_or(""));
-        (p != "/dev/null").then(|| p.strip_prefix(prefix).unwrap_or(&p).to_string())
-    };
-    // The next old and new line numbers, and whether the last body line
-    // extended the current run.
-    let mut old_no = 0u32;
-    let mut new_no = 0u32;
-    let mut open = false;
-    let mut in_hunk = false;
-    for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("@@ -") {
-            let mut parts = rest.split_whitespace();
-            let old = parts.next().and_then(hunk_start);
-            let new = parts
-                .next()
-                .and_then(|n| n.strip_prefix('+'))
-                .and_then(hunk_start);
-            if let (Some(o), Some(n)) = (old, new) {
-                old_no = o;
-                new_no = n;
-                in_hunk = true;
-                open = false;
-            }
-            continue;
-        }
-        if line.starts_with("diff ") {
-            old_path = None;
-            new_path = None;
-            in_hunk = false;
-            continue;
-        }
-        if !in_hunk {
-            if let Some(rest) = line.strip_prefix("--- ") {
-                old_path = side(rest, "a/");
-            } else if let Some(rest) = line.strip_prefix("+++ ") {
-                new_path = side(rest, "b/");
-            }
-            continue;
-        }
-        let (removed, text) = match line.as_bytes().first() {
-            Some(b'-') => (true, &line[1..]),
-            Some(b'+') => (false, &line[1..]),
-            Some(b'\\') => continue,
-            _ => {
-                old_no += 1;
-                new_no += 1;
-                open = false;
-                continue;
-            }
-        };
-        if !open {
-            // A removal-only run sits after the new line before it, as -U0
-            // numbers it.
-            out.push(HunkText {
-                path: new_path
-                    .clone()
-                    .or_else(|| old_path.clone())
-                    .unwrap_or_default(),
-                old_start: old_no,
-                new_start: new_no,
-                ..HunkText::default()
-            });
-            open = true;
-        }
-        let h = out.last_mut().expect("an open run");
-        if removed {
-            h.removed.push(text.to_string());
-            h.old_len += 1;
-            old_no += 1;
-        } else {
-            if h.new_len == 0 {
-                h.new_start = new_no;
-            }
-            h.added.push(text.to_string());
-            h.new_len += 1;
-            new_no += 1;
-        }
-    }
-    for h in &mut out {
-        if h.new_len == 0 {
-            h.new_start = h.new_start.saturating_sub(1);
-        }
-        if h.old_len == 0 {
-            h.old_start = h.old_start.saturating_sub(1);
-        }
-    }
-    out
-}
-
 /// Settles `layout` on the runs of one file from its text after the change.
 /// The text before is that text with the runs reverted, so both versions
 /// parse whole and a run is read in its context: the block a line sits in,
@@ -257,36 +126,6 @@ pub fn settle_layout(runs: &mut [HunkText], new: Option<&str>) {
             }
         };
     }
-}
-
-/// `new` with the runs undone, or `None` when the runs do not describe it.
-pub(crate) fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
-    let lines: Vec<&str> = new.lines().collect();
-    let mut old: Vec<&str> = Vec::with_capacity(lines.len());
-    let mut next = 0usize;
-    for run in runs {
-        // A run without lines on a side sits after the line its start names.
-        let at = |start: u32, len: u32| start as usize - usize::from(len > 0);
-        let new_at = at(run.new_start, run.new_len);
-        let new_end = new_at + run.new_len as usize;
-        if new_at < next || new_end > lines.len() {
-            return None;
-        }
-        old.extend(&lines[next..new_at]);
-        let added = lines[new_at..new_end]
-            .iter()
-            .zip(&run.added)
-            .all(|(line, added)| *line == added.trim_end_matches('\r'));
-        if !added || old.len() != at(run.old_start, run.old_len) {
-            return None;
-        }
-        old.extend(run.removed.iter().map(|l| l.trim_end_matches('\r')));
-        next = new_end;
-    }
-    old.extend(&lines[next..]);
-    let mut text = old.join("\n");
-    text.push('\n');
-    Some(text)
 }
 
 /// A token of a run's shape: a syntax node opening or closing, or text — a
@@ -554,18 +393,5 @@ mod tests {
         let h = hunk(5, 2);
         assert_eq!(classify(&[&h], &[], false, false).0, ChangeClass::Content);
         assert_eq!(classify(&[&h], &[], true, false).0, ChangeClass::Generated);
-    }
-
-    #[test]
-    fn hunk_texts_carry_both_sides_under_the_surviving_path() {
-        let diff = "diff --git a/a.yaml b/a.yaml\n--- a/a.yaml\n+++ b/a.yaml\n@@ -1 +1 @@\n-tag: 1\n+tag: 2\ndiff --git a/gone b/gone\n--- a/gone\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n";
-        let hunks = hunk_texts(diff);
-        assert_eq!(hunks[0].path, "a.yaml");
-        assert_eq!(hunks[0].removed, vec!["tag: 1".to_string()]);
-        assert_eq!(hunks[0].added, vec!["tag: 2".to_string()]);
-        assert_eq!((hunks[1].path.as_str(), hunks[1].new_len), ("gone", 0));
-        let context = "--- a/f\n+++ b/f\n@@ -1,6 +1,6 @@\n a\n-b\n+B\n c\n d\n-e\n+E\n f\n";
-        let runs: Vec<(u32, u32)> = hunk_texts(context).iter().map(|h| h.new_range()).collect();
-        assert_eq!(runs, vec![(2, 2), (5, 5)]);
     }
 }

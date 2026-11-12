@@ -31,7 +31,7 @@ use crate::signatures::generate_signature_variants;
 use crate::snapshot;
 use crate::source::{Admitted, Source, Why};
 use crate::tokenizer::count_tokens;
-use crate::types::{Fragment, FragmentId};
+use crate::types::{Fragment, FragmentId, unquote_c_style};
 use crate::utility::InformationNeed;
 use crate::{diff_parse, grep};
 
@@ -1547,7 +1547,7 @@ pub fn compute_scored_state_anchored(
         .iter()
         .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
         .collect();
-    let mut hunk_texts: Vec<_> = crate::change_class::hunk_texts(&diff_text)
+    let mut hunk_texts: Vec<_> = crate::changed_lines::hunk_texts(&diff_text)
         .into_iter()
         .filter(|h| analysed.contains(&h.path))
         .collect();
@@ -1801,11 +1801,11 @@ const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 /// in parallel. Past the deadline a file is judged by its lines alone.
 fn settle_layout(
     root_dir: &Path,
-    hunk_texts: &mut [crate::change_class::HunkText],
+    hunk_texts: &mut [crate::changed_lines::HunkText],
     run: &crate::resource::RunContext,
 ) {
     let source = run.source();
-    let mut files: Vec<&mut [crate::change_class::HunkText]> =
+    let mut files: Vec<&mut [crate::changed_lines::HunkText]> =
         hunk_texts.chunk_by_mut(|a, b| a.path == b.path).collect();
     for chunk in files.chunks_mut(rayon::current_num_threads().max(1)) {
         let texts: Vec<Option<String>> = chunk
@@ -1836,7 +1836,7 @@ pub(crate) fn classify_changes(
     root_dir: &Path,
     changed_files: &[PathBuf],
     hunks: &[crate::types::DiffHunk],
-    hunk_texts: &[crate::change_class::HunkText],
+    hunk_texts: &[crate::changed_lines::HunkText],
     fragments: &[Fragment],
 ) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
     // A file is layout-only when every run of it is: lines that only moved
@@ -2636,7 +2636,7 @@ fn pathless_section(root_dir: &Path, section: &[&str]) -> Option<PathBuf> {
         .iter()
         .find_map(|line| line.strip_prefix("rename to "))
     {
-        return diff_parse::resolve_in_repo(root_dir, &diff_parse::unquote_c_style(quoted.trim()));
+        return diff_parse::resolve_in_repo(root_dir, &unquote_c_style(quoted.trim()));
     }
     let rest = section.first()?.strip_prefix("diff --git ")?;
     let rel_path = rest.get("a/".len()..rest.find(" b/")?)?;
