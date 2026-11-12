@@ -112,7 +112,14 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     assert!(md.contains("possibly called from loose.py::emit"), "{md}");
     assert!(!md.contains("lists.py"), "{md}");
     assert!(!md.contains("built.py"), "{md}");
-    assert!(!md.contains("stray.py"), "{md}");
+    assert!(
+        !md.contains("stray.py::"),
+        "a script no import reaches is no row: {md}"
+    );
+    assert!(
+        md.contains("possibly called from loose.py:5, stray.py:2"),
+        "the gap names the two reads its count holds: {md}"
+    );
 }
 
 /// #389 on TypeScript: `new Map()` is a `Map`, and its `get` is not
