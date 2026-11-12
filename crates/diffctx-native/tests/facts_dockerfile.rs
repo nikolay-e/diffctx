@@ -169,3 +169,21 @@ fn onbuild_and_heredoc_bodies_are_not_read() {
     let facts = docker("FROM a AS x\nONBUILD COPY ./gone /g\nRUN <<EOF\ncp ./x /y\nEOF\n");
     assert!(mentions(&facts).is_empty());
 }
+
+#[test]
+fn a_variable_and_a_stage_read_are_sited_at_their_names_alone() {
+    let source = "ARG V=1\nFROM a AS builder\nCOPY --from=builder /x /y\nRUN --mount=type=cache,from=builder,target=/c true\n";
+    let facts = docker(source);
+    let spelled =
+        |span: &_diffctx::facts::Span| &source[span.bytes.start as usize..span.bytes.end as usize];
+    assert_eq!(spelled(&def_named(&facts, "V").name_span), "V");
+    let sites: Vec<&str> = facts
+        .facts
+        .iter()
+        .filter_map(|fact| match fact {
+            Fact::Reference(r) if r.name.as_str() == "builder" => Some(spelled(&r.site)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sites, ["builder", "builder"]);
+}

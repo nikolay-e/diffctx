@@ -107,6 +107,7 @@ fn is_identifier_byte(language: Language, byte: u8) -> bool {
         || byte == b'_'
         || byte >= 0x80
         || (byte == b'$' && dollar_joins(language))
+        || (byte == b'-' && language == Language::Dockerfile)
 }
 
 /// Whether `text[start..end]` stands alone: the bytes around it that touch it
