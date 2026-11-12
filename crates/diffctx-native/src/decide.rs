@@ -54,7 +54,7 @@ use crate::snapshot::{
     RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::tokens::occurrence::{Hedge, Index, Known, Reason as OccurrenceReason, View};
+use crate::tokens::occurrence::{Hedge, Implicit, Index, Known, Reason as OccurrenceReason, View};
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 
 /// The reasons a candidate row carries in the answer.
@@ -757,7 +757,7 @@ pub enum Evidence<'a> {
 /// What each hedge of an occurrence account of `relation` says in the answer's
 /// words: a candidate occurrence names its site, a file lost is unaccounted for by
 /// its loss, the rest are routes no model traces.
-fn hedge_gaps(relation: Relation, hedges: &[Hedge]) -> Vec<Gap> {
+fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap> {
     let (mut common, mut sites) = (0, Vec::new());
     let (mut lost, mut rest) = (BTreeMap::<Reason, usize>::new(), Vec::new());
     let reads = matches!(
@@ -787,6 +787,8 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge]) -> Vec<Gap> {
                 common += occurrences;
                 continue;
             }
+            // The call through a trait is the `Dispatched` gap's to name.
+            Hedge::Implicit(Implicit::Override) if dispatched => continue,
             Hedge::Unread { loss, .. } => match effect_of(loss) {
                 Effect::File(reason) | Effect::Subtree(reason, _) => {
                     *lost.entry(reason).or_default() += 1;
@@ -825,7 +827,8 @@ impl Coverage {
     /// the way).
     pub fn close(evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self {
         if let Evidence::Occurrences(relation, hedges) = evidence {
-            for gap in hedge_gaps(relation, hedges) {
+            let dispatched = gaps.iter().any(|gap| matches!(gap, Gap::Dispatched { .. }));
+            for gap in hedge_gaps(relation, hedges, dispatched) {
                 if !gaps.contains(&gap) {
                     gaps.push(gap);
                 }
