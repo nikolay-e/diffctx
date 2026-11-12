@@ -53,7 +53,7 @@ check "PyPI latest" "$VERSION" "$latest"
 pypi_files=$(curl --proto =https --proto-redir =https -fsS "https://pypi.org/pypi/diffctx/${VERSION}/json" | jq -r '.urls[].filename' || true)
 for platform in manylinux_2_28_x86_64 manylinux_2_28_aarch64 'macosx_[0-9_]+_arm64' 'macosx_[0-9_]+_x86_64' \
   win_amd64 win_arm64; do
-  for abi in cp310-abi3 cp314-cp314t; do
+  for abi in cp311-abi3 cp314-cp314t; do
     have=$(printf '%s\n' "$pypi_files" | grep -cE "^diffctx-${VERSION}-${abi}-${platform}\.whl$" || true)
     check "PyPI ${abi} wheel ${platform}" "1" "$have"
   done
