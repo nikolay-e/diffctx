@@ -111,6 +111,9 @@ def test_the_counts_per_language_follow_the_sizing_input(tmp_path: Path):
     assert [len(sampling.sample_commits(sized, r, git_dir, 1)) for r in repos] == [1, 1, 1]
 
 
+NEVER_MEASURED = {"gin", "cli", "go-toml"}  # Go repositories added in Revision 18: no engine answer on them yet
+
+
 def test_the_real_corpus_sizes_every_indexed_language_and_spends_every_earlier_commit_list():
     corpus = load_corpus()
 
@@ -119,5 +122,5 @@ def test_the_real_corpus_sizes_every_indexed_language_and_spends_every_earlier_c
         repos = [r for r in corpus.repos if r.language == language]
         assert sum(corpus.quota(r) for r in repos) == corpus.sampling.language_commits[language]
     assert corpus.sampling.fast_commits < min(corpus.quota(r) for r in corpus.repos)
-    assert all(corpus.spent.get(r.name) for r in corpus.repos)
+    assert all(corpus.spent.get(r.name) for r in corpus.repos if r.name not in NEVER_MEASURED)
     assert all(len(sha) == 40 for shas in corpus.spent.values() for sha in shas)
