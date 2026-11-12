@@ -25,7 +25,7 @@ fn is_helm_template(path: &Path) -> bool {
     if !path_str.contains("templates") {
         return false;
     }
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     ext == ".yaml" || ext == ".yml" || ext == ".tpl"
 }
 

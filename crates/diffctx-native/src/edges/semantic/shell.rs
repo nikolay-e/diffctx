@@ -12,7 +12,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, link_by_name};
 
 fn is_shell_file(path: &Path) -> bool {
-    SHELL_EXTENSIONS.contains(base::file_ext(path).as_str())
+    SHELL_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 fn is_shebang_shell(path: &Path, content: &str) -> bool {

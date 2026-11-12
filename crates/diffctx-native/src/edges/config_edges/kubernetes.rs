@@ -82,7 +82,7 @@ static K8S_KINDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 static WORKLOAD_KINDS: Lazy<FxHashSet<&str>> =
     Lazy::new(|| base::kw("Pod Deployment StatefulSet DaemonSet ReplicaSet Job CronJob"));
 fn is_yaml_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     YAML_EXTS.contains(ext.as_str())
 }
 
