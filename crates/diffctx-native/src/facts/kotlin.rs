@@ -90,14 +90,7 @@ pub struct Declaration {
     pub is_override: bool,
     /// An `inner class`, which sees the instance that holds it.
     pub inner: bool,
-    /// A member with no body: an interface or `abstract` method, which every
-    /// implementation has to provide.
-    pub abstract_member: bool,
     pub annotations: Vec<String>,
-    /// Parameters a call has to pass: those without a default. `None` for
-    /// what takes no parameter list.
-    pub required_params: Option<usize>,
-    pub params: Option<usize>,
     pub start_line: u32,
     pub end_line: u32,
     pub span: Range<usize>,
@@ -110,16 +103,6 @@ pub struct Declaration {
 }
 
 impl Declaration {
-    /// What identifies the declaration across revisions of its file.
-    pub fn key(&self) -> (&[String], &str, &'static str, Option<&str>) {
-        (
-            &self.owners,
-            &self.name,
-            self.kind,
-            self.receiver.as_deref(),
-        )
-    }
-
     pub fn is_type(&self) -> bool {
         matches!(
             self.kind,
@@ -219,10 +202,6 @@ pub struct KotlinFacts {
 }
 
 impl KotlinFacts {
-    pub fn partial(&self) -> bool {
-        !self.error_lines.is_empty()
-    }
-
     /// The declaration a fragment starting at `line` stands for.
     pub fn declaration_named(&self, name: &str, line: u32) -> Option<&Declaration> {
         self.declarations
@@ -246,13 +225,6 @@ impl KotlinFacts {
 
     pub fn is_text(&self, byte: usize) -> bool {
         self.text.iter().any(|r| r.contains(&byte))
-    }
-
-    /// The type declared here, by its name and owners.
-    pub fn type_named(&self, name: &str) -> Option<&Declaration> {
-        self.declarations
-            .iter()
-            .find(|d| d.is_type() && d.name == name)
     }
 
     pub fn supertypes_of(&self, name: &str) -> &[String] {
@@ -514,17 +486,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
     let is_override = modifiers.is_some_and(|m| has_word(m, bytes, "override"));
     let effective = effective_visibility(visibility, is_override, owners);
     let body = body_of(node);
-    let owner_is_interface = node
-        .parent()
-        .and_then(|p| p.parent())
-        .is_some_and(|t| declaration_kind(&t) == Some("interface"));
-    let abstract_member = kind == "fun"
-        && body.is_none()
-        && (owner_is_interface || modifiers.is_some_and(|m| has_word(m, bytes, "abstract")));
     let (end_line, end_byte) = end_with_accessors(node);
-    let (params, required_params) = child(*node, "function_value_parameters")
-        .map(|p| count_params(p))
-        .map_or((None, None), |(a, r)| (Some(a), Some(r)));
     #[allow(
         clippy::disallowed_methods,
         reason = "a declaration without modifiers states no annotations"
@@ -543,10 +505,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
         effective,
         is_override,
         inner: modifiers.is_some_and(|m| has_word(m, bytes, "inner")),
-        abstract_member,
         annotations,
-        required_params,
-        params,
         start_line: line_of(*node),
         end_line,
         span: node.start_byte()..end_byte,
@@ -608,10 +567,7 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
         effective: effective_visibility(visibility, is_override, owners),
         is_override,
         inner: false,
-        abstract_member: false,
         annotations,
-        required_params: None,
-        params: None,
         start_line: line_of(*node),
         end_line: node.end_position().row as u32 + 1,
         span: node.byte_range(),
@@ -969,24 +925,6 @@ fn first_child_type(node: &Node, bytes: &[u8]) -> Option<String> {
     last_type_name(found, bytes)
 }
 
-fn count_params(params: Node) -> (usize, usize) {
-    let mut cursor = params.walk();
-    let all: Vec<Node> = params
-        .named_children(&mut cursor)
-        .filter(|c| c.kind() == "parameter")
-        .collect();
-    // A default value follows its parameter as a sibling expression.
-    let mut defaults = 0;
-    let mut cursor = params.walk();
-    let children: Vec<Node> = params.children(&mut cursor).collect();
-    for w in children.windows(2) {
-        if w[0].kind() == "parameter" && w[1].kind() == "=" {
-            defaults += 1;
-        }
-    }
-    (all.len(), all.len().saturating_sub(defaults))
-}
-
 fn visibility_of(modifiers: Node, bytes: &[u8]) -> Option<Visibility> {
     let mut cursor = modifiers.walk();
     let found = modifiers
@@ -1184,7 +1122,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     #[test]
     fn package_and_imports_are_the_declared_ones_aliases_included() {
         let f = facts_of();
-        assert!(!f.partial());
+        assert!(f.error_lines.is_empty());
         assert_eq!(f.package.as_deref(), Some("com.acme.matrix"));
         assert_eq!(
             f.imported("resolveTag").map(|i| i.path.as_str()),
@@ -1216,8 +1154,6 @@ fun `weird name`() = 1 // tagFor in a comment\n";
             Some(Visibility::Internal),
             "a public member of an internal class"
         );
-        assert_eq!(execute.required_params, Some(0));
-        assert_eq!(execute.params, Some(2));
         assert_eq!(
             decl(&f, "run").effective,
             Some(Visibility::Internal),
@@ -1238,7 +1174,6 @@ fun `weird name`() = 1 // tagFor in a comment\n";
         );
         assert!(f.declarations.iter().all(|d| d.name != "local"), "a local");
         let save = decl(&f, "save");
-        assert!(save.abstract_member);
         assert_eq!(save.annotations, ["Throws"]);
         assert_eq!(decl(&f, "Worker").annotations, ["Service"]);
         assert_eq!(decl(&f, "weird name").effective, Some(Visibility::Public));
@@ -1323,7 +1258,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     fn a_type_the_tree_did_not_read_is_a_parse_gap_and_a_clean_file_has_none() {
         let clean = facts("package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n")
             .expect("kotlin grammar");
-        assert!(!clean.partial(), "{:?}", clean.error_lines);
+        assert!(clean.error_lines.is_empty(), "{:?}", clean.error_lines);
         let mut gap = (*clean).clone();
         gap.declarations.retain(|d| d.name != "A");
         let source = "package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n";
@@ -1334,7 +1269,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     fn a_broken_declaration_is_reported_and_the_rest_survives() {
         let f = facts("class A {\n    fun ok() = 1\n}\nclass B {\n    fun broken(: Int {\n}\n")
             .expect("kotlin grammar");
-        assert!(f.partial());
+        assert!(!f.error_lines.is_empty());
         assert!(f.declarations.iter().any(|d| d.name == "ok"));
     }
 }

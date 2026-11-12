@@ -200,10 +200,7 @@ fn declaration(
             found
         }),
         inner: false,
-        abstract_member: node.kind() == "protocol_function_declaration",
         annotations,
-        required_params: None,
-        params: None,
         start_line: line_of(*node),
         end_line: node.end_position().row as u32 + 1,
         span: node.byte_range(),
@@ -754,7 +751,7 @@ func check(_ track: Track, them: Track?) {\n\
     #[test]
     fn modules_are_wildcard_imports_and_the_package_is_left_to_the_path() {
         let f = facts_of();
-        assert!(!f.partial(), "{:?}", f.error_lines);
+        assert!(f.error_lines.is_empty(), "{:?}", f.error_lines);
         assert_eq!(f.package, None);
         let modules: Vec<(&str, bool)> = f
             .imports
