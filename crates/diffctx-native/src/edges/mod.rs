@@ -1,11 +1,11 @@
 pub(crate) mod base;
-pub(crate) mod cells;
-pub(crate) mod config_edges;
-pub(crate) mod document;
-pub(crate) mod history;
-pub(crate) mod semantic;
-pub(crate) mod similarity;
-pub(crate) mod structural;
+mod cells;
+mod config_edges;
+mod document;
+mod history;
+mod semantic;
+mod similarity;
+mod structural;
 
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
@@ -21,7 +21,7 @@ use crate::graph::{
 };
 use crate::types::FragmentId;
 
-pub(crate) type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
+type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 
 use crate::types::Fragment;
 
@@ -33,7 +33,7 @@ use self::base::EdgeBuilder;
 /// test_reverse at 0.30 and same-package/namespace markers at 0.05 stay
 /// diffuse — `naming_reachable_files` walks undirected, so the reverse arc
 /// adds nothing the forward one lacks).
-pub(crate) const NAMING_WEIGHT_FLOOR: f64 = 0.30;
+const NAMING_WEIGHT_FLOOR: f64 = 0.30;
 
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
 
@@ -75,7 +75,7 @@ fn builder_categories() -> Vec<BuilderCategory> {
 /// run. A measurement knife, not a tuning knob: the nightly builder-knife job
 /// disables one builder at a time and asserts the corpus notices, which is
 /// the only evidence a builder carries any case at all.
-pub(crate) fn disabled_builders() -> FxHashSet<String> {
+fn disabled_builders() -> FxHashSet<String> {
     std::env::var("DIFFCTX_DISABLE_BUILDERS")
         .unwrap_or_default()
         .split(',')
@@ -92,7 +92,7 @@ fn enabled_builders(cat: &BuilderCategory) -> Vec<Box<dyn EdgeBuilder>> {
         .collect()
 }
 
-pub(crate) fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
+fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut all = Vec::new();
     for cat in builder_categories() {
         all.extend(enabled_builders(&cat));
