@@ -130,6 +130,18 @@ pub(crate) struct Exec {
     stall_file: Option<PathBuf>,
 }
 
+/// Test hook: the file a stalled child leaves when its output stops.
+///
+/// A git read that has waited empty gives up as timed out once the file exists,
+/// whatever the clock says, so a stall test ends its run on the stall itself,
+/// not on a short `--timeout` or a count of waits (fj#172). Semantic, like the
+/// expired deadline.
+const TEST_GIT_STALL_FILE_ENV: &str = "DIFFCTX_TEST_GIT_STALL_FILE";
+
+fn test_git_stall_file() -> Option<PathBuf> {
+    std::env::var_os(TEST_GIT_STALL_FILE_ENV).map(Into::into)
+}
+
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
 /// again; a finished child is noticed at once whatever the slice.
 const POLL_SLICE: Duration = Duration::from_millis(100);
@@ -196,7 +208,7 @@ impl Exec {
         Self {
             timeout_secs: GIT_TIMEOUT_SECS.with(Cell::get),
             budget,
-            stall_file: crate::resource::test_git_stall_file(),
+            stall_file: test_git_stall_file(),
         }
     }
 
