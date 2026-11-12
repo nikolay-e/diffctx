@@ -1,0 +1,75 @@
+name: rust_test_in_the_same_file_cfg_test_module_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- test-in-the-same-file
+- cfg-test
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub fn total(items: &[i32]) -> i32 {
+          items.iter().sum()
+      }
+
+      pub fn tax(amount: i32) -> i32 {
+          amount * 2
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          fn fixture() -> Vec<i32> {
+              vec![1, 2]
+          }
+
+          #[test]
+          fn sums() {
+              assert_eq!(total(&fixture()), 3);
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub fn total(items: &[i32]) -> i32 {
+          items.iter().sum::<i32>() + 0
+      }
+
+      pub fn tax(amount: i32) -> i32 {
+          amount * 3
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+
+          fn fixture() -> Vec<i32> {
+              vec![1, 2, 0]
+          }
+
+          #[test]
+          fn sums() {
+              assert_eq!(total(&fixture()), 3);
+          }
+      }
+  commit_message: Touch the functions and the fixture
+expect:
+  changed:
+  - src/lib.rs::total
+  - src/lib.rs::tax
+  - src/lib.rs::fixture
+  exact: false
+  tested_by:
+    src/lib.rs::sums: src/lib.rs
+  not_untested:
+  - total
+  - fixture
+  untested:
+  - tax

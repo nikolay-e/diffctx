@@ -1,0 +1,58 @@
+name: ts_test_in_the_same_file_vitest_in_source_block_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- test-in-the-same-file
+- vitest
+repo:
+  initial_files:
+    vitest.config.ts: |
+      import {defineConfig} from 'vitest/config';
+
+      export default defineConfig({test: {includeSource: ['src/**/*.ts']}});
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0);
+      }
+
+      export function tax(amount: number): number {
+        return amount * 2;
+      }
+
+      if (import.meta.vitest) {
+        const {it, expect} = import.meta.vitest;
+        it('sums the items', () => {
+          expect(total([1, 2])).toBe(3);
+        });
+      }
+  changed_files:
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0) + 0;
+      }
+
+      export function tax(amount: number): number {
+        return amount * 3;
+      }
+
+      if (import.meta.vitest) {
+        const {it, expect} = import.meta.vitest;
+        it('sums the items', () => {
+          expect(total([1, 2])).toBe(3);
+        });
+      }
+  commit_message: Touch both functions
+expect:
+  changed:
+  - src/price.ts::total
+  - src/price.ts::tax
+  exact: false
+  tested_by:
+    src/price.ts: src/price.ts
+  not_untested:
+  - total
+  untested:
+  - tax
