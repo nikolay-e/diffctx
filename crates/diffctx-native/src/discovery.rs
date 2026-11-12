@@ -9,7 +9,7 @@ use crate::config::bm25::BM25;
 use crate::token_corpus::{DocTokens, TokenCorpus};
 use crate::types::extract_identifier_list;
 
-pub struct DiscoveryContext {
+pub(crate) struct DiscoveryContext {
     pub root_dir: PathBuf,
     pub changed_files: Vec<PathBuf>,
     pub all_candidates: Vec<PathBuf>,
@@ -27,19 +27,19 @@ pub struct DiscoveryContext {
 }
 
 impl DiscoveryContext {
-    pub fn read_file(&self, path: &Path) -> Option<Cow<'_, str>> {
+    pub(crate) fn read_file(&self, path: &Path) -> Option<Cow<'_, str>> {
         if let Some(content) = self.file_cache.get(path) {
             return Some(Cow::Borrowed(content.as_str()));
         }
         self.source.read_to_string(path).map(Cow::Owned)
     }
 
-    pub fn shared_corpus(&self) -> &TokenCorpus {
+    pub(crate) fn shared_corpus(&self) -> &TokenCorpus {
         self.token_corpus.get_or_init(|| TokenCorpus::build(self))
     }
 }
 
-pub trait DiscoveryStrategy: Send + Sync {
+pub(crate) trait DiscoveryStrategy: Send + Sync {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf>;
 
     /// Stable identifier for telemetry. Not a display name — it is written into
@@ -65,7 +65,7 @@ pub trait DiscoveryStrategy: Send + Sync {
     }
 }
 
-pub struct DefaultDiscovery;
+pub(crate) struct DefaultDiscovery;
 
 impl DiscoveryStrategy for DefaultDiscovery {
     fn name(&self) -> &'static str {
@@ -132,7 +132,7 @@ fn expand_by_rare_identifiers(ctx: &DiscoveryContext) -> Vec<PathBuf> {
 /// one of them and the impact view called the rest silence. Only the
 /// impact mode asks for this: widening the universe moves selection, and
 /// the corpus operating point is calibrated without it.
-pub struct ReverseReferenceDiscovery;
+pub(crate) struct ReverseReferenceDiscovery;
 
 /// A name held by more candidate files than this is vocabulary, not a
 /// reference, and following it would admit the repository.
@@ -282,7 +282,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
     }
 }
 
-pub struct TestFileDiscovery;
+pub(crate) struct TestFileDiscovery;
 
 const TEST_PREFIXES: &[&str] = &["test_", "spec_"];
 const TEST_SUFFIXES: &[&str] = &["_test", "_spec", ".test", ".spec", "-test", "-spec"];
@@ -356,12 +356,12 @@ impl DiscoveryStrategy for TestFileDiscovery {
     }
 }
 
-pub struct BM25Discovery {
+pub(crate) struct BM25Discovery {
     pub top_k: usize,
 }
 
 impl BM25Discovery {
-    pub fn new(top_k: usize) -> Self {
+    pub(crate) fn new(top_k: usize) -> Self {
         Self { top_k }
     }
 
@@ -473,12 +473,12 @@ impl DiscoveryStrategy for BM25Discovery {
     }
 }
 
-pub struct EnsembleDiscovery {
+pub(crate) struct EnsembleDiscovery {
     strategies: Vec<Box<dyn DiscoveryStrategy>>,
 }
 
 impl EnsembleDiscovery {
-    pub fn new(strategies: Vec<Box<dyn DiscoveryStrategy>>) -> Self {
+    pub(crate) fn new(strategies: Vec<Box<dyn DiscoveryStrategy>>) -> Self {
         Self { strategies }
     }
 }

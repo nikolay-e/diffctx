@@ -18,7 +18,7 @@ static HUNK_RE: Lazy<Regex> =
 
 /// The diff with the context lines that anchor a run and tell layout from
 /// content; a `diff.context` in the user's config must not move them.
-pub fn get_diff_text(
+pub(crate) fn get_diff_text(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -214,7 +214,7 @@ fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
     })
 }
 
-pub fn parse_diff(
+pub(crate) fn parse_diff(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -271,7 +271,7 @@ pub(crate) fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Ve
 /// changed path (a rename by its destination), the deletions, and the rename
 /// pairs. They were three listings, two of them run twice per run.
 #[derive(Default)]
-pub struct DiffNames {
+pub(crate) struct DiffNames {
     pub changed: Vec<PathBuf>,
     pub deleted: FxHashSet<PathBuf>,
     renamed: Vec<(String, String)>,
@@ -282,7 +282,7 @@ impl DiffNames {
     /// cannot be fragmented, so the pipeline excludes them from the changed set.
     /// The rename destinations need no special handling: they exist on HEAD and
     /// reach the universe through the ordinary changed-file path.
-    pub fn renamed_sources(&self, repo_root: &Path) -> FxHashSet<PathBuf> {
+    pub(crate) fn renamed_sources(&self, repo_root: &Path) -> FxHashSet<PathBuf> {
         self.renamed
             .iter()
             .map(|(old, _)| {
@@ -295,7 +295,7 @@ impl DiffNames {
     /// Rename pairs as repo-relative display paths (`old -> new`), for the
     /// output header: the pairing kept, nothing canonicalized (the old path no
     /// longer exists on disk).
-    pub fn rename_pairs(&self) -> Vec<(String, String)> {
+    pub(crate) fn rename_pairs(&self) -> Vec<(String, String)> {
         self.renamed
             .iter()
             .map(|(old, new)| {
@@ -308,7 +308,7 @@ impl DiffNames {
     }
 }
 
-pub fn diff_names(
+pub(crate) fn diff_names(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -371,7 +371,7 @@ pub fn diff_names(
     Ok(names)
 }
 
-pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
+pub(crate) fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
     let parts = untracked(repo_root, pathspec)?.names;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`

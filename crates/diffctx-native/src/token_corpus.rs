@@ -15,7 +15,8 @@ use crate::snapshot;
 // its configuration, the stopword lists): it is part of the on-disk cache key,
 // so a build that tokenizes differently reads no entry of another instead of
 // silently poisoning results.
-pub const TOKENIZER_FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
+pub(crate) const TOKENIZER_FINGERPRINT: u64 =
+    include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
 
 // Size cap for the on-disk token cache, overridable with
 // DIFFCTX_TOKEN_CACHE_MAX_BYTES (0 = unlimited). The cache is a pure speedup,
@@ -24,12 +25,12 @@ const DEFAULT_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const CACHE_SHARDS: u64 = 256;
 const SHARD_EVICTION_TARGET_FRACTION: f64 = 0.8;
 
-pub struct DocTokens {
+pub(crate) struct DocTokens {
     pub term_counts: FxHashMap<String, u32>,
     pub total_len: u32,
 }
 
-pub struct TokenCorpus {
+pub(crate) struct TokenCorpus {
     pub docs: Vec<(PathBuf, DocTokens)>,
 }
 
@@ -50,7 +51,7 @@ fn shared_min_token_length() -> usize {
 }
 
 impl TokenCorpus {
-    pub fn build(ctx: &DiscoveryContext) -> Self {
+    pub(crate) fn build(ctx: &DiscoveryContext) -> Self {
         let t0 = Instant::now();
         let min_len = shared_min_token_length();
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();

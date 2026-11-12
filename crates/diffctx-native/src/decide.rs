@@ -646,7 +646,7 @@ impl std::fmt::Display for Reason {
 
 /// What a loss does to an answer: leaves one file unaccounted, the files under a
 /// directory, or the whole run.
-pub enum Effect {
+pub(crate) enum Effect {
     File(Reason),
     Subtree(Reason, String),
     Run(Gap),
@@ -654,7 +654,7 @@ pub enum Effect {
 
 /// The one reading of a loss. A new variant of `Loss` does not compile until it
 /// is decided here.
-pub fn effect_of(loss: &Loss) -> Effect {
+pub(crate) fn effect_of(loss: &Loss) -> Effect {
     match loss {
         Loss::ReadFailed { .. } => Effect::File(Reason::ReadFailed),
         Loss::SnapshotChanged { .. } => Effect::File(Reason::Changed),
@@ -915,14 +915,14 @@ impl Count {
 /// (reads, writes, a value passed on). One can be known while the other is not:
 /// an untyped read of a name leaves its reads undetermined and its calls found.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Coverages {
+pub(crate) struct Coverages {
     calls: Coverage,
     reads: Coverage,
 }
 
 impl Coverages {
     /// A search incomplete for one reason it already knows, of both.
-    pub fn partial(gap: Gap) -> Self {
+    pub(crate) fn partial(gap: Gap) -> Self {
         Self {
             calls: Coverage::partial(gap.clone()),
             reads: Coverage::partial(gap),
@@ -930,7 +930,7 @@ impl Coverages {
     }
 
     /// What the cell covered of a definition.
-    pub fn of_verdict(verdict: &Verdict) -> Self {
+    pub(crate) fn of_verdict(verdict: &Verdict) -> Self {
         Self {
             calls: verdict.calls(),
             reads: verdict.reads(),
@@ -940,7 +940,7 @@ impl Coverages {
     /// The coverage of a definition no cell answers for: nothing accounts for the
     /// occurrences of its names, so it is never complete. Its gaps are the ones the
     /// answer knows, or a route no model traces.
-    pub fn unowned(mut gaps: Vec<Gap>) -> Self {
+    pub(crate) fn unowned(mut gaps: Vec<Gap>) -> Self {
         if gaps.is_empty() {
             gaps.push(Gap::NotTraced);
         }
@@ -952,23 +952,23 @@ impl Coverages {
 
     /// The same coverages with one more gap, when there is one.
     #[must_use]
-    pub fn with(self, gap: Option<Gap>) -> Self {
+    pub(crate) fn with(self, gap: Option<Gap>) -> Self {
         Self {
             calls: self.calls.with(gap.clone()),
             reads: self.reads.with(gap),
         }
     }
 
-    pub const fn calls(&self) -> &Coverage {
+    pub(crate) const fn calls(&self) -> &Coverage {
         &self.calls
     }
 
-    pub const fn reads(&self) -> &Coverage {
+    pub(crate) const fn reads(&self) -> &Coverage {
         &self.reads
     }
 
     /// Both groups, as one coverage: what a claim about every use needs.
-    pub fn all(&self) -> Coverage {
+    pub(crate) fn all(&self) -> Coverage {
         self.calls.clone().both(self.reads.clone())
     }
 }
@@ -990,7 +990,7 @@ pub(crate) const USES: [Relation; 6] = [
     dead_code,
     reason = "the witness is held so that an absence needs one, never read"
 )]
-pub enum Claim {
+pub(crate) enum Claim {
     Resolved,
     Candidate,
     Unresolved,
@@ -1027,7 +1027,7 @@ pub struct Use {
 /// The uses of a definition and what covered the search for them: the one
 /// coverage of the relations that use it (`Relation::uses`), which is every
 /// relation an absence is claimed for.
-pub struct Verdict {
+pub(crate) struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
     overridden: Option<String>,
@@ -1037,36 +1037,36 @@ pub struct Verdict {
 impl Verdict {
     /// Whether the accounting found no use of the definition and nothing it could
     /// not explain: what a holder needs of what it holds to be said unused.
-    pub fn unused(&self) -> bool {
+    pub(crate) fn unused(&self) -> bool {
         self.found.unused
     }
 
     /// The type a removed override was reached through, when it was one: what
     /// called the member it overrode reached it, and no model traces that.
-    pub fn overridden_via(&self) -> Option<&str> {
+    pub(crate) fn overridden_via(&self) -> Option<&str> {
         self.overridden.as_deref()
     }
 
     /// Callers outside the diff with a static chain to the definition.
-    pub fn resolved(&self) -> impl Iterator<Item = &Use> {
+    pub(crate) fn resolved(&self) -> impl Iterator<Item = &Use> {
         self.uses
             .iter()
             .filter(|u| !u.also_changed && u.standing == Standing::Resolved)
     }
 
-    pub fn candidates(&self) -> impl Iterator<Item = &Use> {
+    pub(crate) fn candidates(&self) -> impl Iterator<Item = &Use> {
         self.uses
             .iter()
             .filter(|u| !u.also_changed && matches!(u.standing, Standing::Candidate(_)))
     }
 
-    pub fn also_changed(&self) -> impl Iterator<Item = &Use> {
+    pub(crate) fn also_changed(&self) -> impl Iterator<Item = &Use> {
         self.uses.iter().filter(|u| u.also_changed)
     }
 
     /// Whether every gap of the search is a file of the group it could not place:
     /// nothing else stands in the way of what a file outside code says of it.
-    pub fn gaps_are_only_unaccounted(&self) -> bool {
+    pub(crate) fn gaps_are_only_unaccounted(&self) -> bool {
         self.coverage()
             .gaps()
             .iter()
@@ -1074,12 +1074,12 @@ impl Verdict {
     }
 
     /// What stands in the way of each relation's absence, occurrence by occurrence.
-    pub fn hedges(&self) -> &[(Relation, Hedge)] {
+    pub(crate) fn hedges(&self) -> &[(Relation, Hedge)] {
         &self.found.hedges
     }
 
     /// What covered the search of one relation of use.
-    pub fn relation(&self, relation: Relation) -> &Coverage {
+    pub(crate) fn relation(&self, relation: Relation) -> &Coverage {
         self.by_relation
             .iter()
             .find(|(r, _)| *r == relation)
@@ -1095,28 +1095,28 @@ impl Verdict {
     }
 
     /// The calls of the definition: calls, constructions and overrides.
-    pub fn calls(&self) -> Coverage {
+    pub(crate) fn calls(&self) -> Coverage {
         self.merged([Relation::Calls, Relation::Instantiates, Relation::Overrides])
     }
 
     /// The reads of the definition: reads, writes and a value passed on.
-    pub fn reads(&self) -> Coverage {
+    pub(crate) fn reads(&self) -> Coverage {
         self.merged([Relation::Reads, Relation::Writes, Relation::PassesAsValue])
     }
 
     /// Every relation of use at once.
-    pub fn coverage(&self) -> Coverage {
+    pub(crate) fn coverage(&self) -> Coverage {
         self.calls().both(self.reads())
     }
 
     /// The gap the answer names first.
-    pub fn gap(&self) -> Option<Gap> {
+    pub(crate) fn gap(&self) -> Option<Gap> {
         self.coverage().gaps().first().cloned()
     }
 
     /// The strongest thing the evidence carries of one relation. An absence is
     /// the one claim only a complete search of that relation makes.
-    pub fn claim(&self, relation: Relation) -> Claim {
+    pub(crate) fn claim(&self, relation: Relation) -> Claim {
         if self.resolved().any(|u| u.relation == relation) {
             Claim::Resolved
         } else if self.candidates().any(|u| u.relation == relation) {
@@ -1132,7 +1132,7 @@ impl Verdict {
         }
     }
 
-    pub fn complete(&self) -> bool {
+    pub(crate) fn complete(&self) -> bool {
         self.coverage().witness().is_some()
     }
 }
@@ -1329,7 +1329,7 @@ impl Changed {
 
 type Hunks = HashMap<String, Vec<(u32, u32)>>;
 
-pub struct Cell {
+pub(crate) struct Cell {
     family: Family,
     ctx: AnalysisContext,
     cache: FactsCache,
@@ -1440,17 +1440,17 @@ fn context_in(
 /// bindings and the definitions, as plain data. The resolver itself stays with
 /// the cell (the TypeScript one is not `Send`, so a run cannot hold one for
 /// every thread that builds edges).
-pub struct HeadFamily {
+pub(crate) struct HeadFamily {
     bindings: Vec<Binding>,
     definitions: Vec<Definition>,
 }
 
 impl HeadFamily {
-    pub fn bindings(&self) -> &[Binding] {
+    pub(crate) fn bindings(&self) -> &[Binding] {
         &self.bindings
     }
 
-    pub fn definitions(&self) -> &[Definition] {
+    pub(crate) fn definitions(&self) -> &[Definition] {
         &self.definitions
     }
 }
@@ -1460,7 +1460,7 @@ impl HeadFamily {
 /// per run and family however many edge builders and discovery ask; the run's
 /// I/O deadline and cancellation are the current run's. A family that cannot be
 /// read is an `Err`, never kept: the caller notes it and draws no edge.
-pub fn open_head(
+pub(crate) fn open_head(
     root: &std::path::Path,
     range: Option<&str>,
     family: Family,
@@ -2112,7 +2112,12 @@ impl Cell {
     /// The annotations a Kotlin definition states at the head, by where it is:
     /// the JVM entry points a framework calls are read off them. `None` for
     /// another family or a definition the facts do not hold.
-    pub fn annotations_at(&self, file: &str, name: &str, lines: (u32, u32)) -> Option<Vec<String>> {
+    pub(crate) fn annotations_at(
+        &self,
+        file: &str,
+        name: &str,
+        lines: (u32, u32),
+    ) -> Option<Vec<String>> {
         if self.family != Family::Kotlin {
             return None;
         }
@@ -2138,7 +2143,7 @@ impl Cell {
     /// is: what the facts state of who calls it (a route, a scheduled job, a
     /// command, a tool, a fixture). Empty for a definition no rule matches, and
     /// for one the facts do not hold.
-    pub fn framework_entries_at(
+    pub(crate) fn framework_entries_at(
         &self,
         file: &str,
         name: &str,
@@ -2568,14 +2573,14 @@ impl Cell {
             })
     }
 
-    pub fn changed(&self) -> &[Changed] {
+    pub(crate) fn changed(&self) -> &[Changed] {
         &self.changed
     }
 
     /// What the cell could not read, for the run's limits: a read that failed or
     /// a deadline. Files it read in part are said by the answer's own
     /// unanalysed list.
-    pub fn stops(&self) -> Vec<LimitReason> {
+    pub(crate) fn stops(&self) -> Vec<LimitReason> {
         stopped_by(&self.losses)
     }
 
@@ -2585,7 +2590,7 @@ impl Cell {
     /// cell traces definitions, so what these lines change is not traced, and the
     /// answer says so. A file the range adds, and a test file, have no callers to
     /// lose.
-    pub fn outside_definitions(&self) -> Vec<(String, Vec<(u32, u32)>)> {
+    pub(crate) fn outside_definitions(&self) -> Vec<(String, Vec<(u32, u32)>)> {
         let added_files: HashSet<&str> = self
             .ctx
             .changes
@@ -2646,7 +2651,7 @@ impl Cell {
     }
 
     /// Whether the cell answers for `rel`: a file of its family in the snapshot.
-    pub fn owns(&self, rel: &str) -> bool {
+    pub(crate) fn owns(&self, rel: &str) -> bool {
         self.files.contains(rel) || self.family.has_path(rel)
     }
 
@@ -2654,21 +2659,21 @@ impl Cell {
     /// reads: a CI workflow, a compose file or a script runs a Dockerfile, and
     /// a tool applies a configuration. The cell traces the relations inside and
     /// between the files; their consumers are reached only by a mention.
-    pub fn consumed_outside(&self) -> bool {
+    pub(crate) fn consumed_outside(&self) -> bool {
         matches!(self.family, Family::Config | Family::Dockerfile)
     }
 
     /// Whether the cell read the file without a loss: its definitions and uses
     /// are the cell's. A file the grammar read only in part, or lost any other
     /// way, has uses the cell never saw.
-    pub fn is_bound(&self, rel: &str) -> bool {
+    pub(crate) fn is_bound(&self, rel: &str) -> bool {
         within_scope(&self.scope, rel) && self.read.contains(rel) && self.loss_about(rel).is_none()
     }
 
     /// The files of the cell's group that spell `name` (or could not be tokenised)
     /// and were lost, with why: where a name asked for may be defined though no
     /// definition of it was read.
-    pub fn lost_namers(&self, name: &str) -> Vec<(RepoPath, Reason)> {
+    pub(crate) fn lost_namers(&self, name: &str) -> Vec<(RepoPath, Reason)> {
         let tokens = self.tokens.group(self.family.group());
         let mut at = tokens.spelling(&Names::new([name]));
         at.extend_from_slice(tokens.unread());
@@ -2684,7 +2689,7 @@ impl Cell {
 
     /// Why a loss leaves `rel` unread, when one does. A listing that cannot be had
     /// again leaves every file lost.
-    pub fn loss_about(&self, rel: &str) -> Option<Reason> {
+    pub(crate) fn loss_about(&self, rel: &str) -> Option<Reason> {
         let Some(fixed) = self.fixed_losses() else {
             return Some(Reason::NotRead);
         };
@@ -2722,7 +2727,7 @@ impl Cell {
 
     /// The definition of a queried name or a fragment at these lines, as the
     /// cell would report it.
-    pub fn define(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<Changed> {
+    pub(crate) fn define(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<Changed> {
         let Some(def) = self.definition_at(file, name, lines) else {
             return Vec::new();
         };
@@ -2822,7 +2827,7 @@ impl Cell {
     }
 
     /// Who uses the definition, and what the answer cannot say about it.
-    pub fn verdict(&self, changed: &Changed) -> Verdict {
+    pub(crate) fn verdict(&self, changed: &Changed) -> Verdict {
         let mut uses: Vec<Use> = Vec::new();
         for subject in &changed.subjects {
             for b in self.head.references_to(&subject.key) {
@@ -2907,7 +2912,7 @@ impl Cell {
     }
 
     /// Whether the account holds a hedge, read like `stranded`: no write, no memo.
-    pub fn hedged(&self, changed: &Changed) -> bool {
+    pub(crate) fn hedged(&self, changed: &Changed) -> bool {
         let done = self.account_occurrences(changed, &[], false);
         !done.hedges.is_empty()
     }
@@ -3565,7 +3570,7 @@ impl Cell {
     /// Whether a line range of `user_file` holds a resolved use of the
     /// definition called `name` at `lines` of `used_file`: the link a test has to
     /// a function it calls.
-    pub fn links(
+    pub(crate) fn links(
         &self,
         user_file: &str,
         user_lines: (u32, u32),
@@ -3583,14 +3588,14 @@ impl Cell {
     }
 
     /// Whether anything in `user_file` is bound to something in `used_file`.
-    pub fn reaches(&self, user_file: &str, used_file: &str) -> bool {
+    pub(crate) fn reaches(&self, user_file: &str, used_file: &str) -> bool {
         self.reaches
             .contains(&(user_file.to_string(), used_file.to_string()))
     }
 
     /// The function or method of `file` that holds `line`, the innermost: the test
     /// function a use inside a test file belongs to.
-    pub fn function_at(&self, file: &str, line: u32) -> Option<&str> {
+    pub(crate) fn function_at(&self, file: &str, line: u32) -> Option<&str> {
         self.defs_by_file
             .get(file)?
             .iter()
@@ -3610,7 +3615,7 @@ impl Cell {
 
     /// The file and line of each resolved use of the definition called `name`
     /// at `lines` of `file`: who a test has to be, or to reach, to reach it.
-    pub fn users(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<(String, u32)> {
+    pub(crate) fn users(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<(String, u32)> {
         let Some(def) = self.definition_at(file, name, lines) else {
             return Vec::new();
         };
@@ -3630,7 +3635,7 @@ impl Cell {
     }
 
     /// The file and line of each pointer the family settled on `target`.
-    pub fn pointers_to(&self, target: &str) -> Vec<(String, u32)> {
+    pub(crate) fn pointers_to(&self, target: &str) -> Vec<(String, u32)> {
         if !self.points_by_path() {
             return Vec::new();
         }
@@ -3647,7 +3652,7 @@ impl Cell {
 
     /// Whether the family settled a pointer written at `file:line` on a file
     /// other than `target`.
-    pub fn points_elsewhere(&self, file: &str, line: u32, target: &str) -> bool {
+    pub(crate) fn points_elsewhere(&self, file: &str, line: u32, target: &str) -> bool {
         self.points_by_path()
             && self.bindings_by_file.get(file).is_some_and(|at| {
                 at.iter().map(|i| &self.head.bindings()[*i]).any(|b| {
@@ -3660,7 +3665,10 @@ impl Cell {
     }
 
     /// The files whose bindings reach something in `used_file`.
-    pub fn reached_from<'a>(&'a self, used_file: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+    pub(crate) fn reached_from<'a>(
+        &'a self,
+        used_file: &'a str,
+    ) -> impl Iterator<Item = &'a str> + 'a {
         self.reaches
             .iter()
             .filter(move |(_, used)| used == used_file)
@@ -3676,7 +3684,7 @@ struct Bare {
 
 /// What a search for spelled keys found, and the files it could not look in.
 #[derive(Default)]
-pub struct Spelled {
+pub(crate) struct Spelled {
     /// (path, line, text) of each line that holds a needle.
     pub rows: Vec<(String, u32, String)>,
     /// Files past the size cap or unreadable: one of them may spell a needle.
@@ -3688,7 +3696,7 @@ pub struct Spelled {
 const UNGROUPED_BYTES: u64 = 1 << 20;
 
 /// The cells of one run: one per family of languages the answer is about.
-pub struct Cells {
+pub(crate) struct Cells {
     cells: Vec<Cell>,
     /// Families whose files could not be resolved: their definitions are
     /// undetermined, never answered by the paths the cells replaced.
@@ -3701,7 +3709,7 @@ pub struct Cells {
 }
 
 impl Cells {
-    pub fn open(state: &ScoredState, range: Option<&str>, symbol: bool) -> Self {
+    pub(crate) fn open(state: &ScoredState, range: Option<&str>, symbol: bool) -> Self {
         let tokens = Arc::new(TokenIndex::default());
         let mut cells = Vec::new();
         let mut lost = Vec::new();
@@ -3754,7 +3762,11 @@ impl Cells {
     }
 
     /// The files of `group` and what they spell, when the head can be read.
-    pub fn group_tokens(&self, state: &ScoredState, group: Group) -> Option<Arc<GroupTokens>> {
+    pub(crate) fn group_tokens(
+        &self,
+        state: &ScoredState,
+        group: Group,
+    ) -> Option<Arc<GroupTokens>> {
         if self.cells.is_empty() {
             self.bare(state)?;
         }
@@ -3767,7 +3779,7 @@ impl Cells {
     /// of a needle, whatever their language; the head's own bytes give the lines.
     /// A file of no language the index groups is read whole when it is small, and
     /// a file the index could not tokenise (past the size cap) is not searched.
-    pub fn spelled_lines(&self, state: &ScoredState, needles: &[String]) -> Result<Spelled> {
+    pub(crate) fn spelled_lines(&self, state: &ScoredState, needles: &[String]) -> Result<Spelled> {
         if self.cells.is_empty() && self.bare(state).is_none() {
             anyhow::bail!("the head snapshot cannot be read");
         }
@@ -3857,20 +3869,20 @@ impl Cells {
         })
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Cell> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Cell> {
         self.cells.iter()
     }
 
     /// The cell whose family's group holds `rel`, whether or not it has a
     /// definition or a use in it: the one that read the file or lost it.
-    pub fn reading(&self, rel: &str) -> Option<&Cell> {
+    pub(crate) fn reading(&self, rel: &str) -> Option<&Cell> {
         self.cells
             .iter()
             .find(|cell| cell.family.group().has_path(rel))
     }
 
     /// The cell that answers for `rel`.
-    pub fn of(&self, rel: &str) -> Option<&Cell> {
+    pub(crate) fn of(&self, rel: &str) -> Option<&Cell> {
         self.cells.iter().find(|cell| cell.owns(rel))
     }
 
@@ -3878,12 +3890,12 @@ impl Cells {
     /// computes (`importlib.import_module(name)`, `import(path)`, `require(path)`),
     /// which no importer search can see: some file holds a `ComputedImport` fact, or
     /// a family could not be read at all, so none is known to hold none.
-    pub fn computed_imports_possible(&self) -> bool {
+    pub(crate) fn computed_imports_possible(&self) -> bool {
         !self.lost.is_empty() || self.cells.iter().any(Cell::computes_an_import)
     }
 
     /// Whether `rel` is a file of a family that could not be resolved.
-    pub fn lost(&self, rel: &str) -> bool {
+    pub(crate) fn lost(&self, rel: &str) -> bool {
         self.lost.iter().any(|family| family.has_path(rel))
     }
 }

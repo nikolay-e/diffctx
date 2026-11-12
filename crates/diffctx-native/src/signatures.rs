@@ -112,7 +112,7 @@ fn find_signature_end(lines: &[&str], apostrophe_quotes: bool) -> usize {
     2.min(lines.len())
 }
 
-pub fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
+pub(crate) fn generate_signature_variants(fragments: &[Fragment]) -> Vec<Fragment> {
     let mut signatures: Vec<Fragment> = Vec::new();
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
 

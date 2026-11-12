@@ -11,13 +11,13 @@ use crate::fragmentation::process_files_for_fragments;
 use crate::graph::{self, Graph};
 use crate::types::{Fragment, FragmentId};
 
-pub struct ProjectGraph {
+pub(crate) struct ProjectGraph {
     pub fragments: Vec<Fragment>,
     pub graph: Graph,
     pub root_dir: PathBuf,
 }
 
-pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
+pub(crate) fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
     let resolved_root = dunce::canonicalize(root_dir)
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
