@@ -436,6 +436,7 @@ pub struct Complete(());
 pub enum Via {
     Call,
     Read,
+    Unbound,
     Embedded,
 }
 
@@ -766,10 +767,13 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge]) -> Vec<Gap> {
     for hedge in hedges {
         let gap = match hedge {
             Hedge::Candidate { file, line, reason } => {
-                let via = match (*reason == OccurrenceReason::Embedded, reads) {
-                    (true, _) => Via::Embedded,
-                    (false, true) => Via::Read,
-                    (false, false) => Via::Call,
+                let via = match (*reason, reads) {
+                    (OccurrenceReason::Embedded, _) => Via::Embedded,
+                    (OccurrenceReason::Unresolved(UnresolvedReason::NoBinding), true) => {
+                        Via::Unbound
+                    }
+                    (_, true) => Via::Read,
+                    (_, false) => Via::Call,
                 };
                 let path = file.as_str().to_string();
                 sites.push(Site {
