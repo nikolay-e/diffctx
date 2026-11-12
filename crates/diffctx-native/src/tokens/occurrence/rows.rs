@@ -30,7 +30,11 @@ pub(super) const BARE_HEADS: &[(Family, bool, bool)] = &[
 pub(super) const MODULE_PATHS: &[(Family, &str, &str)] = &[(Family::Python, "from", "import")];
 
 /// The keyword that opens a clause naming the package of the file: the name after it is no use.
-pub(super) const PACKAGE_HEADS: &[(Family, &str)] = &[(Family::Go, "package")];
+pub(super) const PACKAGE_HEADS: &[(Family, &str)] = &[
+    (Family::Go, "package"),
+    (Family::Java, "package"),
+    (Family::Kotlin, "package"),
+];
 
 /// What separates a path's segments: a name before it names a module or a type, and so is no
 /// use of a function, a member or a value.

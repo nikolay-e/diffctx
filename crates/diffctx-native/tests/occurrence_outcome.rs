@@ -14,8 +14,8 @@ use _diffctx::occurrence::{
 };
 use _diffctx::resolve::{
     Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
-    JavaResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver, ShellResolver,
-    TypeScriptResolver, UnresolvedReason,
+    JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver,
+    ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
@@ -41,6 +41,7 @@ enum Lang {
     Python,
     TypeScript,
     Java,
+    Kotlin,
     Rust,
     Go,
     Php,
@@ -66,6 +67,10 @@ fn resolved(
         }
         Lang::Java => {
             let it = JavaResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Kotlin => {
+            let it = KotlinResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
         Lang::Rust => {
@@ -1597,4 +1602,30 @@ fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
         &["Total"],
     );
     assert_ne!(on(&found, 9).outcome, Outcome::NotOurs, "{found:#?}");
+}
+
+#[test]
+fn a_segment_of_a_package_name_is_no_use_of_a_definition_of_that_name() {
+    for (lang, file, subject, source) in [
+        (
+            Lang::Java,
+            "shop/total/Calc.java",
+            "Calc.total",
+            "package shop.total;\n\npublic class Calc {\n    public int total() {\n        return 1;\n    }\n}\n",
+        ),
+        (
+            Lang::Kotlin,
+            "shop/total/Calc.kt",
+            "total",
+            "package shop.total\n\nfun total(): Int {\n    return 1\n}\n",
+        ),
+    ] {
+        let world = snapshot_in(lang, &[(file, source)]);
+        let found = world.outcomes(world.def(file, subject), file, &["total"]);
+        assert_eq!(
+            shape(on(&found, 1)),
+            ("not_ours", "other_module", None),
+            "{file}: {found:#?}"
+        );
+    }
 }

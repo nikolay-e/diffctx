@@ -936,14 +936,19 @@ impl<'a> Reading<'a> {
             .then_some(Basis::OtherModule)
     }
 
-    /// The name a package clause gives the file's package names a module, never a definition.
+    /// The name a package clause gives the file's package, and each segment of a dotted one, names
+    /// a module, never a definition.
     fn package_clause(&self, occurrence: &Occurrence) -> Option<Basis> {
         let (_, keyword) = PACKAGE_HEADS
             .iter()
             .find(|row| row.0.has(self.file.language()))?;
         let before = &self.text[..occurrence.bytes.start as usize];
         let line = before.rsplit(|b| *b == b'\n').next()?;
-        (split_words(line) == [keyword.as_bytes()]).then_some(Basis::OtherModule)
+        let dotted = line
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || b"_. \t".contains(b));
+        (dotted && split_words(line).first() == Some(&keyword.as_bytes()))
+            .then_some(Basis::OtherModule)
     }
 
     /// A segment before the `::` of a path names a namespace: a subject of another kind is not it.
