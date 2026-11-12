@@ -514,6 +514,72 @@ fn a_function_the_grammar_parked_under_an_error_node_is_read() {
     assert_eq!(unread, [&[(5, 5)][..]], "only the stray token is unread");
 }
 
+/// Wherever the grammar parks the declarations around a syntax error (inside
+/// an error node, after a stray token, before it, between junk lines, past an
+/// unclosed parenthesis or a stray brace), every declaration outside the error
+/// is read: its definition, and the calls in its body. The file is still a
+/// parse loss; that is the claim, and the facts are what it leaves.
+#[test]
+fn every_declaration_outside_a_parse_error_is_read() {
+    let shapes: [(&str, &[&str], &[&str]); 8] = [
+        (
+            "func F() {\n\tA()\n} $\n\nfunc G() {\n\tB()\n}\n",
+            &["F", "G"],
+            &["A", "B"],
+        ),
+        ("$\nfunc F() {\n\tA()\n}\n", &["F"], &["A"]),
+        (
+            "func Bad( {\n\tx\n}\n\nfunc F() {\n\tA()\n}\n",
+            &["F"],
+            &["A"],
+        ),
+        (
+            "type T struct{}\n\n$\n\nfunc (t T) F() {\n\tA()\n}\n\nfunc G() { B() }\n",
+            &["T", "T.F", "G"],
+            &["A", "B"],
+        ),
+        (
+            "foo bar baz\n\nfunc F() {\n\tA()\n}\n\nqux quux\n\nfunc G() { B() }\n",
+            &["F", "G"],
+            &["A", "B"],
+        ),
+        ("func\n\nfunc F() {\n\tA()\n}\n", &["F"], &["A"]),
+        (
+            "func F() {\n\tA()\n}\n}\n\nfunc G() {\n\tB()\n}\n",
+            &["F", "G"],
+            &["A", "B"],
+        ),
+        (
+            "type T struct{}\n$ func (t T) F() { A() }\n",
+            &["T", "T.F"],
+            &["A"],
+        ),
+    ];
+    for (body, defs, calls) in shapes {
+        let blob = extract(&format!("package p\n\n{body}"));
+        assert!(
+            blob.losses
+                .iter()
+                .any(|l| matches!(l, Loss::ParseError { .. })),
+            "{body:?}: {:?}",
+            blob.losses
+        );
+        for wanted in defs {
+            assert!(
+                blob.defs().any(|d| key(&d.local) == *wanted),
+                "{body:?}: no definition {wanted}"
+            );
+        }
+        let names: Vec<&str> = refs(&blob).iter().map(|r| r.name.as_str()).collect();
+        for wanted in calls {
+            assert!(
+                names.contains(wanted),
+                "{body:?}: no reference to {wanted} in {names:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn an_expired_budget_is_a_deadline_loss() {
     let budget = RunBudget {
