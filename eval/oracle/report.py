@@ -322,8 +322,9 @@ def observations(report: dict) -> dict[str, list[Observation]]:
     for entry in report["paired"]:
         found = entry["result"]["measurability"]
         source = f"{entry['head']} against {entry['base']}"
-        counts = f"{found['measured']} of {found['cells']} cells measured, {found['unmeasured']} judged on the safety rows alone"
-        seen["measurability.interval_width"].append((source, found["widest"], counts))
+        counts = f"{found['measured']} of {found['cells']} cells measured"
+        widest = f"widest decided interval {found['widest']}; {found['unmeasured']} cells judged on the safety rows alone"
+        seen["measurability.interval_width"].append((source, counts, widest))
         seen["measurability.lower_bound"].append((source, found["lowest"], "; ".join(found["failing"])))
     ac5 = report.get("ac5")
     if ac5:
@@ -339,9 +340,14 @@ def observations(report: dict) -> dict[str, list[Observation]]:
     return seen
 
 
+INFORMATIONAL = frozenset({"measurability.interval_width"})  # it sorts cells into measured or not and can never fail
+
+
 def _status(gate: Threshold, value: object) -> str:
     if value is None:
         return "n/a"
+    if gate.gate in INFORMATIONAL:
+        return "info"
     if gate.op == "read":
         return "read"
     if gate.op == "require":

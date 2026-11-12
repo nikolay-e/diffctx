@@ -69,10 +69,11 @@ another file, `--ac5-head` and `--ac5-base` the AC5 scorer's `totals.json`).
 `--against DIR` pairs the run with another on the same commits and resamples
 over commits. A cell, one (language, mode, relation), is *measured* when the
 95 % intervals of its precision and recall are at most `interval_width_max`
-wide; a
-measured cell *fails* when the lower bound of a measured interval is under
-`lower_bound_min`. Every other cell is *unmeasured* and is judged on the safety
-rows alone: a statistic over a handful of commits decides nothing. Each cell row
+wide (its verdict line is `info`, "N of M cells measured": it sorts cells
+and can never fail); a measured cell *fails* when the lower bound of a
+measured interval is under `lower_bound_min`. Every other cell is
+*unmeasured* and is judged on the safety rows alone: a statistic over a
+handful of commits decides nothing. Each cell row
 carries its commits, sites and the head's precision and recall.
 
 ## Pins and isolation
