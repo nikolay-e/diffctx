@@ -432,7 +432,13 @@ fn fragment_one(
     ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
     let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
-    let mut raw_frags = fragment_file(path_arc, content);
+    let mut raw_frags = fragment_file(Arc::clone(&path_arc), content);
+    if is_changed
+        && raw_frags.len() > LIMITS.max_fragments
+        && is_added_data_document(file_path, content, hunks)
+    {
+        return truncate_generated_fragments(vec![whole_file_chunk(path_arc, content.to_owned())]);
+    }
     let generated = !is_changed && is_generated_file(file_path, content);
     // Changed files also get 10x cap headroom: the biggest-N truncation below
     // keeps the LONGEST fragments, and the edited hunk is typically a small
@@ -458,6 +464,27 @@ fn fragment_one(
         raw_frags = truncate_generated_fragments(raw_frags);
     }
     raw_frags
+}
+
+/// A JSON or YAML file added whole, with more keys than a file may hold
+/// fragments. Its keys are not named symbols, and the whole-file hunk makes
+/// every one of them a changed definition: a generated artifact beside a
+/// one-line source edit spent the budget on data (gh#731). The file is one
+/// change, shown by its head with the count of lines left out, as a
+/// generated file is.
+fn is_added_data_document(
+    file_path: &Path,
+    content: &str,
+    hunks: &[crate::types::DiffHunk],
+) -> bool {
+    if !matches!(file_ext(file_path).as_str(), ".json" | ".yaml" | ".yml") {
+        return false;
+    }
+    let key = file_path.to_string_lossy();
+    let lines = content.lines().count() as u32;
+    hunks.iter().any(|h| {
+        h.path.as_ref() == key.as_ref() && h.old_len == 0 && h.new_start == 1 && h.new_len >= lines
+    })
 }
 
 /// Longest first — but a manifest's one-line `apiVersion:`/`kind:` pairs are
@@ -521,20 +548,24 @@ pub(crate) fn create_whole_file_fragment(
         content
     };
 
-    let lines: Vec<&str> = content.lines().collect();
-    let line_count = lines.len() as u32;
-    let path_arc: Arc<str> = Arc::from(path.to_string_lossy().as_ref());
+    Some(whole_file_chunk(
+        Arc::from(path.to_string_lossy().as_ref()),
+        content,
+    ))
+}
+
+fn whole_file_chunk(path: Arc<str>, content: String) -> Fragment {
+    let line_count = content.lines().count() as u32;
     let token_count = count_tokens(&content) + LIMITS.overhead_per_fragment;
     let identifiers = extract_identifiers(&content, TOKENIZATION.fragment_min_identifier_length);
-
-    Some(Fragment {
-        id: FragmentId::new(path_arc, 1, line_count),
+    Fragment {
+        id: FragmentId::new(path, 1, line_count),
         kind: FragmentKind::Chunk,
         content: Arc::from(content),
         identifiers,
         token_count,
         symbol_name: None,
-    })
+    }
 }
 
 #[cfg(test)]
