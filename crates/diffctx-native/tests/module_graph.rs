@@ -280,7 +280,7 @@ impl Graph {
                 nested.push(name.to_string());
                 match node.child_by_field_name("body") {
                     Some(body) => self.visit_children(body, source, &nested, &dir.join(name)),
-                    None => self.walk_declared(dir, name, nested),
+                    None => self.walk_declared(dir, name, &nested),
                 }
                 return;
             }
@@ -326,7 +326,7 @@ impl Graph {
     }
 
     /// `mod name;` declared in a file whose child modules live in `dir`.
-    fn walk_declared(&mut self, dir: &Path, name: &str, module_path: Vec<String>) {
+    fn walk_declared(&mut self, dir: &Path, name: &str, module_path: &[String]) {
         let flat = dir.join(format!("{name}.rs"));
         let (file, children) = if flat.is_file() {
             (flat, dir.join(name))
@@ -335,7 +335,7 @@ impl Graph {
         };
         let (text, tree) = parse(&file);
         let source = Source { text: &text };
-        self.visit_children(tree.root_node(), &source, &module_path, &children);
+        self.visit_children(tree.root_node(), &source, module_path, &children);
     }
 }
 
@@ -380,7 +380,7 @@ fn read_graph(src: &Path) -> Graph {
         }
     }
     for module in graph.modules.clone() {
-        graph.walk_declared(src, &module, vec![module.clone()]);
+        graph.walk_declared(src, &module, &[module.clone()]);
     }
     graph
 }
