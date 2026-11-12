@@ -152,15 +152,19 @@ def test_a_v2_gap_in_any_search_makes_the_target_a_partial_answer_and_none_leave
         gaps=[{"kind": "unlanded", "uses": 3}],
         coverage={"calls": {"complete": True}, "reads": {"complete": False, "gaps": [{"kind": "unlanded", "uses": 3}]}},
     )
+    # schemas/diffctx.impact.v2.json: a file the run could not read is the gap `unaccounted` with a `reason` and a count
     unread = definition(
-        coverage={"calls": {"complete": False, "gaps": [{"kind": "unread", "files": 2}]}, "reads": {"complete": True}}
+        coverage={
+            "calls": {"complete": False, "gaps": [{"kind": "unaccounted", "reason": "not_read", "files": 2}]},
+            "reads": {"complete": True},
+        }
     )
 
     partial = parse_answer(v2(definitions=[unlanded]), Resolve()).targets["a.py::f"]
     missed = parse_answer(v2(definitions=[unread]), Resolve()).targets["a.py::f"]
 
     assert not whole.unresolved and not whole.missed_in
-    assert partial.unresolved == "unlanded" and missed.unresolved == "unread" and missed.missed_in == ["2 unread file(s)"]
+    assert partial.unresolved == "unlanded" and missed.unresolved == "unaccounted" and missed.missed_in == ["2 unread file(s)"]
 
 
 def test_what_a_v2_definition_shed_is_its_ledger_total_and_one_the_ledger_attributes_is_no_unattributed_truncation():
