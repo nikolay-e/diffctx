@@ -21,7 +21,7 @@ const CATFILE_TERMINATION_SECONDS: u64 = 2;
 /// The exit status of every git `fatal:`: a usage error, a missing revision, an
 /// unreadable config, no repository. One status for all of them, so it says
 /// that git refused, never which question it refused.
-pub const FATAL_STATUS: i32 = 128;
+pub(super) const FATAL_STATUS: i32 = 128;
 
 thread_local! {
     static GIT_TIMEOUT_SECS: Cell<u64> = const { Cell::new(DEFAULT_TIMEOUT_SECONDS) };
