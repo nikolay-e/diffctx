@@ -20,7 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use super::index::scope_path;
-use super::twins::{Outcome, Typed};
+use super::twins::{self, Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
@@ -32,7 +32,8 @@ use crate::facts::{
 };
 use crate::snapshot::workspace::CrateKind;
 use crate::snapshot::{
-    AnalysisContext, Loss, RepoPath, Result, SideTag, SnapshotError, Stage, WorkspaceModel,
+    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotError, SnapshotReader, Stage,
+    WorkspaceModel,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -179,8 +180,9 @@ impl RustResolver {
             })
             .map(|file| file.facts.path.as_str().to_string())
             .collect();
-        let engine = Engine::new(index, &ctx.workspace);
+        let engine = Engine::new(index, &ctx.workspace, reader, side);
         let (definitions, bindings, owned) = engine.run();
+        losses.extend(engine.losses.take());
         // The table is built before the first lookup, so this is a bug of the
         // build itself: said, never an answer from half a table.
         if engine.met_unfinished_table.get() {
@@ -704,6 +706,10 @@ type Owned = (DefKey, DefKey, DefKind);
 struct Engine<'a> {
     ix: Index,
     workspace: &'a WorkspaceModel,
+    reader: &'a SnapshotReader,
+    side: SideTag,
+    texts: RefCell<HashMap<usize, Option<Bytes>>>,
+    losses: RefCell<Vec<Loss>>,
     /// What an import binds, once found.
     imported: RefCell<HashMap<(usize, usize), Option<Ent>>>,
     members: RefCell<HashMap<usize, Vec<usize>>>,
@@ -722,10 +728,19 @@ enum Traits {
 }
 
 impl<'a> Engine<'a> {
-    fn new(ix: Index, workspace: &'a WorkspaceModel) -> Self {
+    fn new(
+        ix: Index,
+        workspace: &'a WorkspaceModel,
+        reader: &'a SnapshotReader,
+        side: SideTag,
+    ) -> Self {
         Self {
             ix,
             workspace,
+            reader,
+            side,
+            texts: RefCell::default(),
+            losses: RefCell::default(),
             imported: RefCell::new(HashMap::new()),
             members: RefCell::new(HashMap::new()),
             implemented: RefCell::new(Traits::Unbuilt),
@@ -775,6 +790,8 @@ impl<'a> Engine<'a> {
         }
         (definitions, bindings, owned)
     }
+
+    file_text!();
 
     fn path_of(&self, f: usize) -> &RepoPath {
         &self.ix.files[f].facts.path
@@ -1439,10 +1456,16 @@ impl<'a> Engine<'a> {
             && r.use_kind != UseKind::Override
             && !r.name.as_str().ends_with('!')
         {
-            for (name, resolution) in self.chain_reads(f, r) {
+            let reads = self.chain_reads(f, r);
+            let sites = if reads.is_empty() {
+                Vec::new()
+            } else {
+                twins::qualifier_sites(self.text(f).as_deref(), r)
+            };
+            for (index, name, resolution) in reads {
                 out.push(Binding {
                     file: self.path_of(f).clone(),
-                    site: r.site.clone(),
+                    site: sites[index].clone(),
                     from: r.enclosing.clone(),
                     relation: Relation::Reads,
                     name,
@@ -1471,9 +1494,10 @@ impl<'a> Engine<'a> {
                         .last()
                         .cloned()
                         .unwrap_or_else(|| r.name.clone());
+                    let sites = twins::qualifier_sites(self.text(f).as_deref(), r);
                     out.push(Binding {
                         file: self.path_of(f).clone(),
-                        site: r.site.clone(),
+                        site: sites[r.qualifier.len() - 1].clone(),
                         from: r.enclosing.clone(),
                         relation: Relation::Reads,
                         name: last,
@@ -1732,7 +1756,7 @@ impl<'a> Engine<'a> {
     /// each is an untyped read like the last name; a type the repository does
     /// not hold and a trait object say nothing of ours. A member its type lacks
     /// is the line a removal strands: it is bound to nothing, as the last name is.
-    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(usize, Name, Resolution)> {
         let site = self.site(f, &r.enclosing);
         let (mut at, skip, evidence) = match self.chain_start(&site, r, &r.receiver) {
             Some(start) => start,
@@ -1742,6 +1766,7 @@ impl<'a> Engine<'a> {
         let fields = r.qualifier.get(skip..).unwrap_or(&[]);
         let mut reads = Vec::new();
         for (i, field) in fields.iter().enumerate() {
+            let index = skip + i;
             match at {
                 Typed::Def(t) => {
                     let found = self.member_named(t, field);
@@ -1749,6 +1774,7 @@ impl<'a> Engine<'a> {
                     else {
                         if found.is_none() {
                             reads.push((
+                                index,
                                 field.clone(),
                                 Resolution::Unresolved {
                                     reason: UnresolvedReason::NoMember,
@@ -1759,6 +1785,7 @@ impl<'a> Engine<'a> {
                     };
                     if self.reachable(f, m) {
                         reads.push((
+                            index,
                             field.clone(),
                             Resolution::Resolved {
                                 target: self.ix.defs[m].key.clone(),
@@ -1770,8 +1797,9 @@ impl<'a> Engine<'a> {
                 }
                 Typed::Dyn(_) | Typed::External => break,
                 Typed::Unknown => {
-                    reads.extend(fields[i..].iter().map(|name| {
+                    reads.extend(fields[i..].iter().enumerate().map(|(at, name)| {
                         (
+                            index + at,
                             name.clone(),
                             Resolution::Unresolved {
                                 reason: UnresolvedReason::UntypedRead,
