@@ -599,10 +599,7 @@ fn collect_terraform_needs(
     }
 }
 
-pub(crate) fn concepts_from_diff_text(
-    diff_text: &str,
-    changed_lines: Option<&[String]>,
-) -> FxHashSet<String> {
+fn concepts_from_diff_text(diff_text: &str, changed_lines: Option<&[String]>) -> FxHashSet<String> {
     let owned;
     let lines = match changed_lines {
         Some(l) => l,
