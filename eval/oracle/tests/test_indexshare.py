@@ -49,10 +49,24 @@ def test_the_commits_that_predate_the_module_file_are_the_excluded_share_and_the
         runners.PLANNERS, "go", lambda ctx: runners.Plan([sys.executable, "-c", FAKE_INDEXER, str(ctx.out)], {"PATH": ""})
     )
 
-    rows = indexshare.index_sample(load_corpus(), Repo("t", "", "go", head, "MIT"), repo_dir / ".git", count=6)
+    corpus = load_corpus()
+    repo = Repo("t", "", "go", head, "MIT")
+
+    rows = indexshare.index_sample(corpus, repo, repo_dir / ".git", count=6)
 
     assert len(rows) == 6
+    assert {(row["seed"], row["quota"]) for row in rows} == {(corpus.sampling.seed, corpus.quota(repo))}
     excluded = [row for row in rows if row["excluded"]]
     assert len(excluded) == 4  # three before modules, and the one that adds go.mod (its parent has none)
     assert all("nothing indexed" in row["causes"].values() for row in excluded)
     assert indexshare.summary("t", rows).startswith("t\texcluded 4/6 = 66.7%\tabove 20%")
+
+
+def test_the_commits_help_names_the_default_and_the_quota_that_measure_draws(capsys: pytest.CaptureFixture[str]):
+    with pytest.raises(SystemExit):
+        indexshare.main(["--help"])
+
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "default 24" in help_text
+    assert "quota" in help_text
+    assert "draws 40" not in help_text
