@@ -24,8 +24,14 @@ pub(crate) struct Hit {
 }
 
 pub(crate) enum Basis<'a> {
-    /// The rules git finds in the checkout at `root`.
-    WorkingTree { root: &'a Path },
+    /// The rules git finds in the checkout at `root`: the policy files it
+    /// tracks and those among `untracked`, the untracked names a collapsed
+    /// read found. A policy file in a directory that read left unread
+    /// governs only files that are not read.
+    WorkingTree {
+        root: &'a Path,
+        untracked: &'a [Vec<u8>],
+    },
     /// The `.gitignore` and `.diffctx/ignore` files a tree holds, by path.
     Tree { files: &'a [(RepoPath, Vec<u8>)] },
 }
@@ -87,9 +93,9 @@ pub(crate) fn check(
     }
     let scratch = Scratch::new()?;
     let (dir, patterns, own_excludes) = match basis {
-        Basis::WorkingTree { root } => (
+        Basis::WorkingTree { root, untracked } => (
             root.to_path_buf(),
-            working_tree_patterns(exec, root)?,
+            working_tree_patterns(exec, root, untracked)?,
             false,
         ),
         Basis::Tree { files } => {
@@ -132,30 +138,28 @@ pub(crate) fn check(
     run(exec, &dir, &scratch, &patterns, own_excludes, paths)
 }
 
-/// The `.diffctx/ignore` files of a checkout, tracked or present, as
-/// anchored patterns. `Err` when the declared policy could not be read in
+/// The `.diffctx/ignore` files of a checkout, tracked or among the untracked
+/// names given, as anchored patterns. `Err` when the declared policy could not be read in
 /// full: "no policy" is the one answer that publishes what was declared
 /// private.
 #[allow(
     clippy::disallowed_methods,
     reason = "reads the ignore files of the working tree, which git itself would read from the disk"
 )]
-fn working_tree_patterns(exec: &Exec, root: &Path) -> Result<Vec<String>> {
-    let files = exec.records(
+fn working_tree_patterns(exec: &Exec, root: &Path, untracked: &[Vec<u8>]) -> Result<Vec<String>> {
+    let tracked = exec.records(
         root,
         &[
             "ls-files",
             "-z",
             "--cached",
-            "--others",
-            "--exclude-standard",
             "--",
             ":(glob)**/.diffctx/ignore",
         ],
     )?;
     let mut patterns = Vec::new();
-    for raw in files {
-        let rel = String::from_utf8_lossy(&raw).into_owned();
+    for raw in tracked.iter().chain(untracked) {
+        let rel = String::from_utf8_lossy(raw).into_owned();
         if rel != DIFFCTX_IGNORE && !rel.ends_with("/.diffctx/ignore") {
             continue;
         }

@@ -1,6 +1,6 @@
 //! The legacy diff text, read into the hunks and names the pack pipeline
 //! works from. The text comes from the snapshot layer (`diff_text`,
-//! `untracked_names`), which owns the flags and the gates; this module only
+//! `untracked`), which owns the flags and the gates; this module only
 //! parses it, and refuses a header that does not stay inside the repository.
 
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashSet;
 
-use crate::snapshot::{Result, diff_text, untracked_names};
+use crate::snapshot::{Result, diff_text, untracked};
 use crate::types::DiffHunk;
 
 static HUNK_RE: Lazy<Regex> =
@@ -372,7 +372,7 @@ pub fn diff_names(
 }
 
 pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
-    let parts = untracked_names(repo_root, pathspec)?;
+    let parts = untracked(repo_root, pathspec)?.names;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
     // entered the changed-file list under an absolute out-of-root path. That

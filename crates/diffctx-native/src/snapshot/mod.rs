@@ -31,6 +31,7 @@ mod reader;
 mod repo;
 mod run;
 mod types;
+mod untracked;
 pub mod workspace;
 
 pub use admission::{
@@ -39,7 +40,7 @@ pub use admission::{
 };
 pub use changes::{Change, ChangeKind, ChangeSet};
 pub use context::{AnalysisContext, ToolchainId};
-pub use diff::{diff_text, untracked_names, validate_pathspec};
+pub use diff::{diff_text, validate_pathspec};
 pub use error::{Result, SnapshotError};
 pub use git::{
     DEFAULT_TIMEOUT_SECONDS, REPO_LOCATING_ENV, ReadFault, RunBudget, RunScope, enter_run,
@@ -66,6 +67,7 @@ pub use run::{
 pub use types::{
     Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath, contains_lexically,
 };
+pub use untracked::{Untracked, untracked};
 pub use workspace::WorkspaceModel;
 
 /// The largest blob a reader hands out; a larger one is listed, not read.
