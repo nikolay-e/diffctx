@@ -13,13 +13,14 @@ max_code_files = 12  # a commit touching more code files says little about one d
 definitions_per_repo = 40  # `--symbol` queries per repository
 
 # Sampled commits per language, split evenly over its repositories. Sized per (language, mode, relation) cell from the
-# paired intervals of the earlier runs: n = n0 * (w0 / 0.20)^2, capped to one quiet machine's eight hours.
+# paired intervals of the earlier runs: n = n0 * (w0 / 0.20)^2, capped to one quiet machine's eight hours (886 commits,
+# 6.56 h of 6.8 h). Go is sized from its measured index time (3.74 s per commit) and usable share (0.986).
 [sampling.commits]
 python = 132
 typescript = 345
 rust = 48
 kotlin = 48
-go = 253
+go = 205
 java = 108
 
 [completeness]
