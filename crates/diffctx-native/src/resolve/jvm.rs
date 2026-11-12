@@ -12,7 +12,7 @@
 //! makes (`FKt`, `INSTANCE`, `Companion`) carries a key no cell lists.
 //!
 //! - Kotlin as Java: a top-level function or property of `F.kt` is a static member
-//!   of `FKt` (`@JvmName` renames a member); a property is `getX`, `setX`, `isX`
+//!   of `FKt` (`@JvmName` renames a member, `@file:JvmName` the class); a property is `getX`, `setX`, `isX`
 //!   (and the field `x` when `const`, `@JvmField` or `lateinit`); an `object` has
 //!   the static field `INSTANCE`; a companion is the static field `Companion` (a
 //!   named one, its name) and its `@JvmStatic` members are static members of the
@@ -21,15 +21,13 @@
 //!   Kotlin engine reads a type's statics there); a getter `getX()` or `isX()` and
 //!   a setter `setX(v)` are also the property `x`; an enum constant is a constant
 //!   of the companion.
-//!
-//! Not stated by the facts, so not modelled: `@file:JvmName`.
 
 use std::collections::{HashMap, HashSet};
 
 use super::{Binding, Definition, Relation, Resolution, java, kotlin};
 use crate::facts::{
-    Def, DefKey, DefKind, Disambig, FactsCache, FileFacts, Language, LocalKey, Name, Namespace,
-    Visibility, expired, facts_of,
+    Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, Language, LocalKey, Name,
+    Namespace, Visibility, expired, facts_of,
 };
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
@@ -432,8 +430,18 @@ fn supertypes(signature: &str, name: &str) -> Vec<String> {
         .collect()
 }
 
-/// The class the compiler makes of a file's top-level declarations.
+/// The class the compiler makes of a file's top-level declarations: the one
+/// `@file:JvmName` names, else the file's name and `Kt`.
 fn file_class(file: &FileFacts) -> String {
+    let named = file.blob.facts.iter().find_map(|fact| match fact {
+        Fact::Export(Export::Default {
+            local: Some(name), ..
+        }) => Some(name.as_str().to_string()),
+        _ => None,
+    });
+    if let Some(name) = named {
+        return name;
+    }
     let stem = std::path::Path::new(file.path.as_str())
         .file_stem()
         .and_then(|stem| stem.to_str())

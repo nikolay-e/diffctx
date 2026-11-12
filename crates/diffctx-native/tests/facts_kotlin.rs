@@ -3,8 +3,8 @@
 
 use _diffctx::facts::lang::kotlin::KotlinExtractor;
 use _diffctx::facts::{
-    BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
-    LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
+    BlobFacts, Def, DefKind, Disambig, EntryKind, Export, Extractor, Fact, Import, ImportKind,
+    LocalKey, LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
 };
 use _diffctx::snapshot::{Loss, RunBudget};
 
@@ -431,4 +431,33 @@ fn facts_come_in_source_order() {
     let mut sorted = starts.clone();
     sorted.sort_unstable();
     assert_eq!(starts, sorted);
+}
+
+/// `@file:JvmName("X")` is the file's default export `X`, the class Java reads its
+/// top-level declarations from; another annotation that has the word in a string,
+/// and a file without one, state none.
+#[test]
+fn a_file_jvmname_is_the_files_default_export() {
+    let exported = |source: &str| -> Vec<String> {
+        kt(source)
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::Export(Export::Default {
+                    local: Some(name), ..
+                }) => Some(name.as_str().to_string()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        exported("@file:JvmName(\"TextUtil\")\npackage shop\n\nfun shout() {}\n"),
+        ["TextUtil"]
+    );
+    assert_eq!(
+        exported("@file:JvmName(name = \"Texts\")\npackage shop\n\nfun shout() {}\n"),
+        ["Texts"]
+    );
+    assert!(exported("@file:Suppress(\"JvmName\")\npackage shop\n\nfun shout() {}\n").is_empty());
+    assert!(exported("package shop\n\nfun shout() {}\n").is_empty());
 }
