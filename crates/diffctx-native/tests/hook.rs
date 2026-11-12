@@ -4427,3 +4427,103 @@ fn a_push_review_lists_no_untracked_file_one_by_one() {
         calls.hook_stdout
     );
 }
+
+/// fj#170: the untracked part of a pending change is read collapsed, and a
+/// directory is expanded for what it holds: a package directory no git
+/// listing names file by file is still a change the review reads.
+#[test]
+fn a_search_for_a_name_defined_in_an_untracked_directory_is_answered() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["init", "-q", "."]);
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    write(
+        repo,
+        "main.py",
+        "from pkg.tools import convert\n\n\ndef run(x):\n    return convert(x)\n",
+    );
+    commit_all(repo, "main");
+    write(repo, "pkg/tools.py", "def convert(x):\n    return int(x)\n");
+    let cache = TempDir::new().unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def convert"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("`convert`"), "{context}");
+    assert!(context.contains("main.py::run"), "{context}");
+}
+
+/// A policy file inside an untracked directory the read expanded still
+/// withholds what it names, and the file beside it stays reviewed.
+#[test]
+fn a_policy_in_an_expanded_untracked_directory_withholds_its_files() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["init", "-q", "."]);
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    write(
+        repo,
+        "main.py",
+        "from pkg.tools import convert\n\n\ndef run(x):\n    return convert(x)\n",
+    );
+    commit_all(repo, "main");
+    write(repo, "pkg/tools.py", "def convert(x):\n    return int(x)\n");
+    write(repo, "private/.diffctx/ignore", "secret.py\n");
+    write(
+        repo,
+        "private/secret.py",
+        "def hidden_name(x):\n    return x\n",
+    );
+    let cache = TempDir::new().unwrap();
+    let open = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def convert"),
+    );
+    assert!(context_of(&open).contains("`convert`"), "{}", open.stdout);
+    let cache = TempDir::new().unwrap();
+    let withheld = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def hidden_name"),
+    );
+    assert!(
+        !withheld.stdout.contains("secret.py"),
+        "{}",
+        withheld.stdout
+    );
+}
+
+/// An untracked directory whose entries do not fit the budget of the read is
+/// left unread, and the review says so by name: a smaller answer is never a
+/// clean one. (The budget is 5000 entries below the top level.)
+#[test]
+fn an_untracked_directory_over_the_budget_is_named_as_unread() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    for n in 0..5_100 {
+        write(repo, &format!("bulk/f{n}.txt"), "x\n");
+    }
+    let cache = TempDir::new().unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git diff"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("1 untracked director"), "{context}");
+    assert!(context.contains("bulk"), "{context}");
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+}
