@@ -105,6 +105,14 @@ pub fn run(case: &Case, name: &str) -> Result<Answer, String> {
             dump(name, "json", &output.stdout);
             let doc: Value = serde_json::from_slice(&output.stdout)
                 .map_err(|e| format!("the answer is not JSON: {e}"))?;
+            let repeated = crate::fact_keys::repeated_facts(&doc);
+            if !repeated.is_empty() {
+                return Err(format!(
+                    "{}\nthe answer states one fact in more than one row:\n  {}",
+                    super::ASSERTION_FAILED,
+                    repeated.join("\n  ")
+                ));
+            }
             extract(&doc)?
         }
         None => Answer {
