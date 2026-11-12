@@ -1,10 +1,13 @@
 """Two measure runs on the same commits, compared: a paired bootstrap over commits, never a bare difference.
 
-A cell gate says "this relation did not get worse". Per (language, mode, relation) the unit that is resampled is
-the commit (a commit's targets share one diff, one index and one budget), the same commit in both runs; 2 000
-resamples with a seed fixed per group give a 95 % percentile interval of the change in precision and in recall.
-A regression is declared only when that whole interval lies below zero. Relations whose truth is thin (under
-`SMALL_TRUTH`) are not decided by a statistic: their rows are listed for reading.
+Per (language, mode, relation) the unit that is resampled is the commit (a commit's targets share one diff, one
+index and one budget), the same commit in both runs; 2 000 resamples with a seed fixed per group give a 95 %
+percentile interval of the change in precision and in recall.
+
+A cell is measured when the intervals of both are at most `Measurability.width_max` wide, and a measured cell
+fails when the lower bound of a measured interval falls under `lower_min`. A cell the data cannot pin down is
+unmeasured and is judged by the safety rows alone: a statistic over a handful of commits decides nothing. Relations
+whose truth is thin (under `SMALL_TRUTH`) also have their rows listed for reading.
 """
 
 from __future__ import annotations
@@ -20,9 +23,18 @@ SEED = 20261106
 SMALL_TRUTH = 30
 MIN_COMMITS = 5  # fewer paired commits collapse the interval onto the point estimate
 TAIL = 0.025
+METRICS = ("precision", "recall", "recall_affected")
 Group = tuple[str, str, str]  # (language, mode, relation)
 CommitKey = tuple[str, str]  # (repo, commit)
 ERROR_FIELD = {"impact": "impact_error", "symbol": "symbol_error"}
+
+
+@dataclass(frozen=True)
+class Measurability:
+    """What makes a cell measured and what fails a measured one; the numbers come from gates.toml."""
+
+    width_max: float
+    lower_min: float
 
 
 @dataclass(frozen=True)
@@ -84,7 +96,7 @@ class Interval:
     high: float
 
     def verdict(self) -> str:
-        return "regression" if self.high < 0 else "better" if self.low > 0 else ""
+        return "worse" if self.high < 0 else "better" if self.low > 0 else ""
 
 
 def _interval(values: list[float]) -> Interval | None:
@@ -122,7 +134,23 @@ def _round(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
 
-def _row(group: Group, base: dict[CommitKey, Counts], head: dict[CommitKey, Counts]) -> dict:
+def _decided(metric: dict, rule: Measurability) -> bool:
+    """The interval is there and, as printed, no wider than the rule allows."""
+    return metric["low"] is not None and round(metric["high"] - metric["low"], 3) <= rule.width_max
+
+
+def cell_state(row: dict, rule: Measurability) -> tuple[str, list[str]]:
+    """`measured`, `failing` or `unmeasured`, and the metrics that fail.
+
+    Measured needs both precision and recall decided; failing is a decided metric whose lower bound is under the floor.
+    """
+    if not all(_decided(row[name], rule) for name in ("precision", "recall")):
+        return "unmeasured", []
+    failing = [name for name in METRICS if _decided(row[name], rule) and row[name]["low"] < rule.lower_min]
+    return ("failing" if failing else "measured"), failing
+
+
+def _row(group: Group, base: dict[CommitKey, Counts], head: dict[CommitKey, Counts], rule: Measurability) -> dict:
     commits = sorted(set(base) | set(head))
     pairs = [(base.get(c, Counts()), head.get(c, Counts())) for c in commits]
     b = Counts(*(sum(getattr(p[0], f) for p in pairs) for f in Counts.__dataclass_fields__))
@@ -161,6 +189,7 @@ def _row(group: Group, base: dict[CommitKey, Counts], head: dict[CommitKey, Coun
             "high": _round(interval.high) if interval else None,
             "verdict": interval.verdict() if interval else "",
         }
+    row["state"], row["failing"] = cell_state(row, rule)
     return row
 
 
@@ -197,7 +226,23 @@ def small_relation_rows(
     return listed
 
 
-def compare_runs(base: Path, head: Path) -> dict:
+def measurability_summary(rows: list[dict], rule: Measurability) -> dict:
+    """How many cells the data pins down, which of them fail, and the widest and lowest interval that decided them."""
+    measured = [r for r in rows if r["state"] != "unmeasured"]
+    decided = [r[name] for r in measured for name in METRICS if _decided(r[name], rule)]
+    return {
+        "width_max": rule.width_max,
+        "lower_min": rule.lower_min,
+        "cells": len(rows),
+        "measured": len(measured),
+        "unmeasured": len(rows) - len(measured),
+        "failing": [f"{r['language']} {r['mode']} {r['relation']}: {name}" for r in rows for name in r["failing"]],
+        "widest": max((round(m["high"] - m["low"], 3) for m in decided), default=None),
+        "lowest": min((m["low"] for m in decided), default=None),
+    }
+
+
+def compare_runs(base: Path, head: Path, rule: Measurability) -> dict:
     """The paired comparison of two measure output directories over the commits both answered."""
     base_commits, head_commits = _read_lines(base / "commits.jsonl"), _read_lines(head / "commits.jsonl")
     languages = {c["repo"]: c["language"] for c in (*base_commits, *head_commits) if c.get("language")}
@@ -205,7 +250,8 @@ def compare_runs(base: Path, head: Path) -> dict:
     shared = {mode: base_ok[mode] & head_ok[mode] for mode in ERROR_FIELD}
     base_counts = commit_counts(_read_lines(base / "cells.jsonl"), shared)
     head_counts = commit_counts(_read_lines(head / "cells.jsonl"), shared)
-    rows = [_row(g, base_counts.get(g, {}), head_counts.get(g, {})) for g in sorted(set(base_counts) | set(head_counts))]
+    groups = sorted(set(base_counts) | set(head_counts))
+    rows = [_row(g, base_counts.get(g, {}), head_counts.get(g, {}), rule) for g in groups]
     base_details = _verdicts(_read_lines(base / "relations.jsonl"), shared)
     head_details = _verdicts(_read_lines(head / "relations.jsonl"), shared)
     return {
@@ -215,11 +261,6 @@ def compare_runs(base: Path, head: Path) -> dict:
             "head": {mode: len(head_ok[mode] - shared[mode]) for mode in shared},
         },
         "rows": rows,
-        "regressions": [
-            f"{r['language']} {r['mode']} {r['relation']}: {metric}"
-            for r in rows
-            for metric in ("precision", "recall", "recall_affected")
-            if r[metric]["verdict"] == "regression"
-        ],
+        "measurability": measurability_summary(rows, rule),
         "small": small_relation_rows(rows, base_details, head_details, languages),
     }
