@@ -1,6 +1,7 @@
 //! What an extractor says about one blob, and the file it is bound to. Facts never
 //! resolve a binding: that is the resolve layer's job (wave 4).
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -424,6 +425,15 @@ impl Fact {
     }
 }
 
+/// What a stretch of a blob's bytes is, where it is not code. A string literal
+/// with code inside it (an f-string's `{x}`, a template's `${x}`) is recorded as
+/// the pieces between the code, never whole.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub enum Lexical {
+    Comment,
+    String,
+}
+
 /// The file a blob loss is bound to when it is read, in place until then: a blob
 /// names no path, so a loss an extractor reports about it carries this one.
 fn unbound() -> RepoPath {
@@ -438,6 +448,10 @@ pub struct BlobFacts {
     pub language: Language,
     pub facts: Vec<Fact>,
     pub losses: Vec<Loss>,
+    /// The byte ranges of the comments and of the string literals, sorted by
+    /// start and not overlapping. Empty where the extractor records none: every
+    /// byte is then code.
+    pub lexical: Vec<(Range<u32>, Lexical)>,
 }
 
 impl BlobFacts {
@@ -446,6 +460,7 @@ impl BlobFacts {
             language,
             facts: Vec::new(),
             losses: Vec::new(),
+            lexical: Vec::new(),
         }
     }
 
@@ -471,6 +486,7 @@ impl BlobFacts {
             language,
             facts: Vec::new(),
             losses: vec![Loss::ExtractorFailed { path: unbound() }],
+            lexical: Vec::new(),
         }
     }
 
@@ -496,6 +512,7 @@ impl BlobFacts {
             language,
             facts,
             losses: Vec::new(),
+            lexical: Vec::new(),
         };
         for lines in errors {
             blob.parse_error(lines);
@@ -516,6 +533,16 @@ impl BlobFacts {
     pub fn in_source_order(&mut self) {
         self.facts
             .sort_by_key(|fact| (fact.site().bytes.start, fact.rank()));
+        self.lexical.sort_by_key(|(range, _)| range.start);
+    }
+
+    /// What the byte at `at` is when it lies in a comment or a string literal.
+    pub fn lexical_at(&self, at: u32) -> Option<Lexical> {
+        let next = self.lexical.partition_point(|(range, _)| range.end <= at);
+        self.lexical
+            .get(next)
+            .filter(|(range, _)| range.start <= at)
+            .map(|(_, kind)| *kind)
     }
 
     pub fn defs(&self) -> impl Iterator<Item = &Def> {
