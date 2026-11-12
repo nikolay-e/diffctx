@@ -6,7 +6,7 @@ use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::FragmentationStrategy;
 
-pub struct GenericStrategy;
+pub(super) struct GenericStrategy;
 
 impl FragmentationStrategy for GenericStrategy {
     fn can_handle(&self, _path: &str, _content: &str) -> bool {
