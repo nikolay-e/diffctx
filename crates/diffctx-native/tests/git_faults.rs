@@ -84,6 +84,8 @@ impl Fixture {
             bin_dir.display(),
             std::env::var("PATH").unwrap_or_default()
         );
+        // A run ends on its own stall, not on an earlier run's record.
+        let _ = std::fs::remove_file(self.stalled_file());
         let sentinel = self.sentinel();
         // SAFETY: mkfifo(2) only creates the path; an existing one is the
         // earlier run's.
@@ -402,8 +404,6 @@ fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
 fn repeated_stalls_are_each_bounded_and_cleaned_up() {
     let fx = fixture();
     for _ in 0..3 {
-        // Each run ends on its own stall, not on the last one's record.
-        let _ = std::fs::remove_file(fx.stalled_file());
         let _ = fx.impact("cat-file", "stall_before_read");
     }
     fx.assert_no_survivors();
@@ -595,7 +595,6 @@ fn a_policy_read_the_stall_cut_still_withholds() {
     ] {
         let published = String::from_utf8_lossy(&out.stdout);
         assert!(!published.contains("vault.py"), "{mode}: {published}");
-        let _ = std::fs::remove_file(fx.stalled_file());
     }
     fx.assert_no_survivors();
 }
