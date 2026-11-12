@@ -44,6 +44,7 @@ fn candidates(name: &str, uses: usize, sites: &[Site]) -> String {
             .collect()
     };
     let (calls, reads, embedded) = (at(Via::Call), at(Via::Read), at(Via::Embedded));
+    let unbound = at(Via::Unbound);
     let mut parts: Vec<String> = Vec::new();
     if !calls.is_empty() {
         parts.push(format!("possibly called from {}", calls.join(", ")));
@@ -53,6 +54,13 @@ fn candidates(name: &str, uses: usize, sites: &[Site]) -> String {
             "{} read(s) of `.{name}` through a receiver the binding model cannot type ({})",
             reads.len(),
             reads.join(", ")
+        ));
+    }
+    if !unbound.is_empty() {
+        parts.push(format!(
+            "{} read(s) of `{name}` no binding in scope settles ({})",
+            unbound.len(),
+            unbound.join(", ")
         ));
     }
     if !embedded.is_empty() {

@@ -85,7 +85,7 @@ fields, one v2 field. Dropped = derived or internal, with the reason.
 ### Gaps (`unresolved` sentences → `gaps`)
 
 `unlanded{name, uses, sites[{path, line, via}]}` (`sites` is optional, the
-first of the uses; `via` is `call`, `read` or `embedded`), `unpaired{name}`,
+first of the uses; `via` is `call`, `read`, `unbound` or `embedded`), `unpaired{name}`,
 `base_unresolved{reason}`,
 `stopped{reasons}`, `outside_scope{files}`, `unaccounted{reason, files}`,
 `withheld{files}`, `untracked{files, name}`, `dispatched{via}`,

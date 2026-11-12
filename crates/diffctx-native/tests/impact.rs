@@ -987,8 +987,8 @@ fn a_package_reexport_reaches_the_defining_module() {
         "importing another name from the package is not a reference: {md}"
     );
     assert!(
-        md.contains("(reports/summary.py:5)"),
-        "the unbound `Steps` stays a named read the search could not settle: {md}"
+        md.contains("1 read(s) of `Steps` no binding in scope settles (reports/summary.py:5)"),
+        "the unbound `Steps` stays a named read, worded as the bare name it is: {md}"
     );
 }
 
