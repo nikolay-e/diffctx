@@ -718,6 +718,36 @@ fn names_too_common_to_trace_fold_into_one_line() {
     assert!(!md.contains("called from src/app/Main.scala"), "{md}");
 }
 
+/// A name defined in forty modules is "too common to trace" before any
+/// definition is searched: a same-file call of each `run` is not a row per
+/// definition, it is the noise the one folded line stands for.
+#[test]
+fn a_name_in_forty_modules_is_folded_before_any_definition_is_searched() {
+    let modules: Vec<(String, String)> = (0..40)
+        .map(|i| {
+            (
+                format!("lib/mod{i}.rb"),
+                format!(
+                    "class Mod{i}\n  def run(arg)\n    arg + 1\n  end\n\n  def helper{i}(a)\n    run(a)\n  end\nend\n"
+                ),
+            )
+        })
+        .collect();
+    let files: Vec<(&str, &str)> = modules
+        .iter()
+        .map(|(path, body)| (path.as_str(), body.as_str()))
+        .collect();
+    let tmp = repo(&files, &[]);
+    let md = symbol_markdown(tmp.path(), "run");
+    assert!(
+        md.contains("- 40 changed definition(s) with names too common to trace by name (ruby has no binding model here"),
+        "{md}"
+    );
+    assert!(!md.contains("named only textually"), "{md}");
+    assert!(!md.contains("callers not resolved: `run`"), "{md}");
+    assert!(md.len() < 1000, "{md}");
+}
+
 /// What names a changed file by path is context, never at a caller's
 /// expense: under a tight cap the same callers show with or without the
 /// configs that name the file, its omitted-count line included.

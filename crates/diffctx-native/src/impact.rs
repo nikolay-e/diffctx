@@ -3239,8 +3239,11 @@ pub fn build_impact(
         // A definition no cell reads has no resolved use to list: the files of
         // its group that spell the name are the text level's answer, each
         // fragment that names it in code a candidate and never a certainty. The
-        // account below says what the search could not read.
-        if py.is_none() {
+        // account below says what the search could not read. A name defined all
+        // over the language says the same thing on every definition ("too common
+        // to trace"), so nothing is searched for it: a text row per definition
+        // would be the noise that line folds.
+        if py.is_none() && !ambiguous {
             let _t = crate::profile::detail("impact.callers.text", "");
             let names = symbol.map_or_else(Vec::new, names_of);
             for path in spelling_files(state, &cells, &rel(state, core.path()), &names) {
@@ -3255,12 +3258,7 @@ pub fn build_impact(
                     if inside_the_diff(src) {
                         in_diff.insert(src.clone());
                     }
-                    // Ambiguity is across files: inside the definition's own file a
-                    // name is that file's own, as a file defining the same name
-                    // calls its own (#538).
-                    let reason = if ambiguous && src.path != core.id.path {
-                        "ambiguous_name"
-                    } else if within(src, core) {
+                    let reason = if within(src, core) {
                         "own_body"
                     } else {
                         match judge(frag) {
