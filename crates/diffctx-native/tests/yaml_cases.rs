@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use _diffctx::mode::ScoringMode;
-use _diffctx::pipeline::build_diff_context;
+use _diffctx::pipeline::build_diff_context_in;
 use _diffctx::render::DiffContextOutput;
 use libtest_mimic::{Arguments, Failed, Trial};
 use tempfile::TempDir;
@@ -505,9 +505,10 @@ fn run_case_with_scoring(
     let tau = std::env::var("DIFFCTX_PROBE_TAU")
         .ok()
         .and_then(|s| s.parse::<f64>().ok());
-    let output = build_diff_context(
+    let output = build_diff_context_in(
         repo,
         Some(&diff_range),
+        &[],
         Some(budget),
         _diffctx::config::limits::DEFAULT_PPR_ALPHA,
         tau,

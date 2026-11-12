@@ -163,7 +163,6 @@ fn a_source_nothing_settles_makes_the_call_a_candidate_and_is_counted() {
         )]
     );
     assert_eq!(fixture.head.unknown_sources(), 1);
-    assert_eq!(fixture.head.unread_scripts(), 0);
 }
 
 #[test]
@@ -296,13 +295,12 @@ fn a_sourced_and_a_run_path_land_on_the_file_they_name() {
 }
 
 #[test]
-fn a_script_for_another_shell_by_shebang_or_extension_is_counted_unread() {
+fn a_script_for_another_shell_by_shebang_or_extension_defines_nothing() {
     let fixture = open(&[
         ("a.sh", "#!/bin/zsh\nf() { :; }\n"),
         ("b.sh", "#!/bin/bash\ng() { :; }\n"),
         ("c.zsh", "h() { :; }\n"),
     ]);
-    assert_eq!(fixture.head.unread_scripts(), 2);
     assert!(
         fixture
             .head

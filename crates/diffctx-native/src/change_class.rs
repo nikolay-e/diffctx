@@ -33,17 +33,6 @@ pub enum ChangeClass {
     Layout,
 }
 
-impl ChangeClass {
-    /// Lower sorts first when evidence competes for budget.
-    pub fn priority(self) -> u8 {
-        match self {
-            ChangeClass::Content | ChangeClass::Unknown => 0,
-            ChangeClass::Mechanical | ChangeClass::Layout => 1,
-            ChangeClass::Generated => 2,
-        }
-    }
-}
-
 /// A single-line change that names a version, a tag, a digest or a hash.
 static MECHANICAL_LINE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -565,8 +554,6 @@ mod tests {
         let h = hunk(5, 2);
         assert_eq!(classify(&[&h], &[], false, false).0, ChangeClass::Content);
         assert_eq!(classify(&[&h], &[], true, false).0, ChangeClass::Generated);
-        assert!(ChangeClass::Unknown.priority() == ChangeClass::Content.priority());
-        assert!(ChangeClass::Mechanical.priority() > ChangeClass::Content.priority());
     }
 
     #[test]
