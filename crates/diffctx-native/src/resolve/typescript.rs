@@ -1736,8 +1736,9 @@ impl<'a> Engine<'a> {
     /// object's `request`, which may be the property a change removed. A member
     /// the receiver's class lacks is bound to nothing, as the last name is: the
     /// line a removal strands.
-    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(usize, Name, Resolution)> {
         let (mut entity, kind, rest) = self.chain_start(f, r, 0);
+        let first = r.qualifier.len() - rest.len();
         let mut reads = Vec::new();
         let holds = |id: usize| {
             matches!(
@@ -1745,7 +1746,7 @@ impl<'a> Engine<'a> {
                 DefKind::Field | DefKind::Property | DefKind::Variable | DefKind::Constant
             )
         };
-        for name in rest {
+        for (at, name) in rest.iter().enumerate() {
             match self.member(f, &entity, name) {
                 Lookup::Found {
                     entity: Entity::Def(id),
@@ -1759,6 +1760,7 @@ impl<'a> Engine<'a> {
                             kind
                         };
                         reads.push((
+                            first + at,
                             name.clone(),
                             Resolution::Resolved {
                                 target: self.ix.defs[id].key.clone(),
@@ -1775,6 +1777,7 @@ impl<'a> Engine<'a> {
                         .collect();
                     if !targets.is_empty() {
                         reads.push((
+                            first + at,
                             name.clone(),
                             Resolution::Candidate {
                                 targets,
@@ -1784,13 +1787,14 @@ impl<'a> Engine<'a> {
                     }
                 }
                 Lookup::Untyped | Lookup::Any => reads.push((
+                    first + at,
                     name.clone(),
                     Resolution::Unresolved {
                         reason: UnresolvedReason::UntypedRead,
                     },
                 )),
                 Lookup::Absent(reason) if reason.is_ours() => {
-                    reads.push((name.clone(), Resolution::Unresolved { reason }))
+                    reads.push((first + at, name.clone(), Resolution::Unresolved { reason }))
                 }
                 Lookup::Found { .. } | Lookup::Absent(_) => {}
             }
@@ -2739,10 +2743,41 @@ impl<'a> Engine<'a> {
         }
         if r.qualifier.len() > 1 || matches!(r.receiver, Receiver::CallResult(_) | Receiver::New(_))
         {
-            for (name, resolution) in self.chain_reads(f, r) {
-                out.push(binding(&name, Relation::Reads, resolution));
+            let sites = self.qualifier_sites(f, r);
+            for (index, name, resolution) in self.chain_reads(f, r) {
+                let site = sites[index].clone();
+                out.push(Binding {
+                    site,
+                    ..binding(&name, Relation::Reads, resolution)
+                });
             }
         }
+    }
+
+    /// Where each name of the qualifier is written, read back from the reference's own
+    /// site: a member in the middle of a chain is read where it stands, not where the
+    /// chain ends. A name the text does not show there keeps the reference's site.
+    fn qualifier_sites(&self, f: usize, r: &Ref) -> Vec<Span> {
+        let mut sites = vec![r.site.clone(); r.qualifier.len()];
+        let Some(text) = self.text(f) else {
+            return sites;
+        };
+        let (mut end, mut line) = (r.site.bytes.start as usize, r.site.lines.0);
+        for (index, name) in r.qualifier.iter().enumerate().rev() {
+            while end > 0
+                && (text[end - 1].is_ascii_whitespace() || b".?!".contains(&text[end - 1]))
+            {
+                end -= 1;
+                line -= u32::from(text[end] == b'\n');
+            }
+            let start = end.saturating_sub(name.as_str().len());
+            if text.get(start..end) != Some(name.as_str().as_bytes()) {
+                break;
+            }
+            sites[index] = Span::new(start as u32..end as u32, (line, line));
+            end = start;
+        }
+        sites
     }
 
     /// The variable, constant, field, class or enum a chain starts from, when it

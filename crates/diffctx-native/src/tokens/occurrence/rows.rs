@@ -24,6 +24,17 @@ pub(super) const BARE_HEADS: &[(Family, bool, bool)] = &[
 /// what lies between them names modules, never a definition.
 pub(super) const MODULE_PATHS: &[(Family, &str, &str)] = &[(Family::Python, "from", "import")];
 
+/// The keyword that opens a clause naming the package of the file: the name after it is no use.
+pub(super) const PACKAGE_HEADS: &[(Family, &str)] = &[(Family::Go, "package")];
+
+/// What separates a path's segments: a name before it names a module or a type, and so is no
+/// use of a function, a member or a value.
+pub(super) const PATH_SEPARATORS: &[(Family, &str)] = &[(Family::Rust, "::")];
+
+/// Families that write a keyword argument as `name=value`: the name is a field of the class it
+/// builds when the callee is that class.
+pub(super) const KEYWORD_ARGUMENTS: &[Family] = &[Family::Python];
+
 /// The candidates a resolver reads off one class's members (overloads cut by the argument
 /// count, a member and the overrides below it): they name every callee among that class.
 pub(super) const CLASS_CANDIDATES: &[(Family, CandidateReason)] = &[

@@ -352,6 +352,9 @@ pub struct Account {
     /// The definition's kind admits `calls`: only then a leak or an implicit
     /// call stands against it (a property is read, never called).
     pub admits_calls: bool,
+    /// A tool outside the repository consumes the definition by reading it (a
+    /// configuration object): `Outside` then stands against its `reads`.
+    pub consumed_by_reading: bool,
     pub alias_bound: Option<AliasBound>,
     /// A name too common to list: its occurrences, folded into one row.
     pub too_common: Option<usize>,
@@ -369,6 +372,7 @@ impl Account {
             mentions: 0,
             implicit: Vec::new(),
             admits_calls: true,
+            consumed_by_reading: false,
             alias_bound: None,
             too_common: None,
         }
@@ -412,6 +416,13 @@ impl Account {
         }
         if self.relation == Relation::Calls && self.admits_calls {
             hedges.extend(self.implicit.iter().copied().map(Hedge::Implicit));
+        }
+        if self.relation == Relation::Reads && self.consumed_by_reading {
+            let outside = self
+                .implicit
+                .iter()
+                .filter(|kind| **kind == Implicit::Outside);
+            hedges.extend(outside.copied().map(Hedge::Implicit));
         }
         hedges.extend(self.alias_bound.map(Hedge::AliasBound));
         hedges.extend(
