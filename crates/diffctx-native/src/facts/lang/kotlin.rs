@@ -8,6 +8,8 @@
 //! - The package a file declares is an [`Import`] of kind `SideEffect` whose
 //!   module is the package: Kotlin ties a package to no directory, so the name
 //!   is a fact of the blob, and a file without one has none.
+//! - `@file:JvmName("X")` is an [`Export`] of kind `Default` whose `local` is `X`:
+//!   the class Java reads the file's top-level declarations from.
 //! - `import a.b.C as D` is module `a.b`, names `[(C, Some(D))]`; `import a.b.*`
 //!   is module `a.b` with `star: Star::Glob`. Whether `a.b` is a package, a
 //!   class or an object is for the resolver to find out.
@@ -45,9 +47,9 @@ use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, T
 use crate::facts::framework;
 use crate::facts::kotlin as old;
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Import, ImportKind,
-    Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref, Scope, Span,
-    Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
+    BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Import,
+    ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
+    Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -182,6 +184,26 @@ fn error_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
     ranges
 }
 
+/// The class a `@file:JvmName("X")` annotation names, when it is a plain name.
+fn jvm_name(annotation: &str) -> Option<&str> {
+    let at = annotation.find("JvmName")?;
+    if annotation[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    let after = annotation[at + "JvmName".len()..]
+        .trim_start()
+        .strip_prefix('(')?;
+    let open = after.find('"')?;
+    let close = after[open + 1..].find('"')?;
+    let name = &after[open + 1..open + 1 + close];
+    let plain = !name.is_empty()
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+    plain.then_some(name)
+}
+
 /// A leaf of the tree: its bytes, and whether it is a comment.
 struct Leaf {
     start: usize,
@@ -195,6 +217,7 @@ struct Reader<'a> {
     read: &'a old::KotlinFacts,
     budget: &'a RunBudget,
     leaves: Vec<Leaf>,
+    file_annotations: Vec<Range<usize>>,
     line_starts: Vec<usize>,
     keys: Vec<LocalKey>,
     facts: Vec<Fact>,
@@ -219,10 +242,14 @@ impl<'a> Reader<'a> {
                 .map(|(at, _)| at + 1),
         );
         let mut leaves = Vec::new();
+        let mut file_annotations = Vec::new();
         let mut cursor = root.walk();
         let mut descending = true;
         loop {
             let node = cursor.node();
+            if descending && node.kind() == "file_annotation" {
+                file_annotations.push(node.byte_range());
+            }
             if descending && node.child_count() == 0 && node.end_byte() > node.start_byte() {
                 leaves.push(Leaf {
                     start: node.start_byte(),
@@ -251,6 +278,7 @@ impl<'a> Reader<'a> {
             read,
             budget,
             leaves,
+            file_annotations,
             line_starts,
             keys: Vec::new(),
             facts: Vec::new(),
@@ -288,6 +316,7 @@ impl<'a> Reader<'a> {
 
     fn run(&mut self) {
         self.package();
+        self.facade();
         self.imports();
         self.definitions();
         if self.halted {
@@ -329,6 +358,21 @@ impl<'a> Reader<'a> {
             star: Star::None,
             default: None,
         }));
+    }
+
+    fn facade(&mut self) {
+        if self.dialect != Dialect::Kotlin {
+            return;
+        }
+        for range in self.file_annotations.clone() {
+            let Some(name) = jvm_name(self.slice(range.clone())) else {
+                continue;
+            };
+            self.facts.push(Fact::Export(Export::Default {
+                site: self.span(range),
+                local: Some(Name::new(name)),
+            }));
+        }
     }
 
     fn imports(&mut self) {
