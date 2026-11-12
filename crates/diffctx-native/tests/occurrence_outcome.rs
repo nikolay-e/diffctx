@@ -571,7 +571,7 @@ fn f_of_g_of_f_binds_each_f_by_its_own_span() {
 fn a_spelling_no_binding_names_is_unexplained() {
     let world = snapshot(&[
         ("lib.py", LIB_F),
-        ("app.py", "def h(a):\n    return a.f.g()\n"),
+        ("app.py", "def h(g):\n    return g(f=1)\n"),
     ]);
     let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
     let member = on(&found, 2);
@@ -611,7 +611,7 @@ fn a_member_spelled_like_a_local_is_no_bare_name() {
     let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
     assert_eq!(
         on(&found, 3).outcome,
-        Outcome::Candidate(Reason::Unexplained),
+        Outcome::Candidate(Reason::Unresolved(UnresolvedReason::UntypedRead)),
         "the middle of a chain is an attribute of another object: {found:#?}"
     );
 }
@@ -629,7 +629,7 @@ fn a_bare_name_heading_a_chain_is_what_an_import_binds_it_to_elsewhere() {
     let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
     assert_eq!(
         shape(on(&found, 5)),
-        ("not_ours", "other_definition", None),
+        ("not_ours", "other_definition", Some(Relation::Reads)),
         "{found:#?}"
     );
 }
@@ -861,7 +861,7 @@ fn a_mention_nobody_explained_is_counted_not_listed() {
 fn an_unbound_spelling_counts_against_the_relations_the_kind_admits() {
     let world = snapshot(&[
         ("lib.py", LIB_F),
-        ("app.py", "def h(a):\n    return a.f.g()\n"),
+        ("app.py", "def h(g):\n    return g(f=1)\n"),
     ]);
     let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
     let unbound = on(&found, 2);
