@@ -43,7 +43,8 @@ eval/oracle/run.sh                                 # the full corpus
 
 `DIFFCTX_BIN` defaults to `target/release/diffctx`. Results are written to
 `eval/oracle/out/latest`: `cells.jsonl`, `relations.jsonl`, `commits.jsonl`,
-`indexes.jsonl`, `unmapped.jsonl`, `bench.json`, `report.md`, `report.json`.
+`silent_loss.jsonl`, `indexes.jsonl`, `unmapped.jsonl`, `bench.json`,
+`report.md`, `report.json`.
 `report.py` also merges the YAML corpus report (`DIFFCTX_ORACLE_REPORT`) and
 the metamorphic and fault outcomes (`ORACLE_METAMORPHIC_REPORT`,
 `ORACLE_FAULTS_REPORT`; JSON, JSON lines or a `cargo test` log).
@@ -125,6 +126,12 @@ corpus cases hold. A language not in `fresh_seed` is not fresh; a precise cell
 without `old_path_deleted` or enough `decoys` is untrue. (v1, which had no
 declared state, is refused.)
 
+`report.py --cell-facts FILE` (with `--against`) prints the `precise.*` and
+`declared.every_state_true` verdict lines from `cellstate` and a cell-state
+table; without the file they stay `N/A`. A `precise.*` line is judged over the
+cells declared precise: a floor shows the weakest value among them, a required
+condition is true when none of them misses it.
+
 ```text
 python cellstate.py --report out/report.json --facts facts.json \
     [--gates FILE] [--json states.json] [--readme [README.md]]
@@ -134,6 +141,22 @@ python cellstate.py --report out/report.json --facts facts.json \
 goes to stdout. `--readme` rewrites the table between the `cell-states`
 markers, appending the section the first time: the table is generated (never
 edited by hand) after the fresh seed.
+
+## Safety rows read from the cells
+
+`report.py` counts an *incomplete complete* per cell (an answer complete for a
+definition and relation that lists none of a truth site it can reach; a false
+complete negative is the case where it lists no caller at all) and lists every
+pair. A *silent loss* is a changed definition with no entry, no fold row naming
+it and no disclosure of its file; `measure.py` writes one `silent_loss.jsonl` row
+per scored impact answer, counted per answer: the definitions it lost, less the
+`unnamed_omitted` it says it shed without a name (never below 0). Every missing
+definition is listed with that count beside it and with what classifies it, an
+entry of its file or name under another key being an identity mismatch and none
+an engine loss. A run without `silent_loss.jsonl` or the `incomplete_complete`
+column (an older run) leaves those lines `N/A`; an answer that lost nothing
+still has its row, so a zero is a witnessed zero. The silent-loss gate is `read`:
+each row is read and classified.
 
 ## Pins and isolation
 
