@@ -1,0 +1,67 @@
+name: py_guard_names_three_tests_and_counts_the_rest
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, tests-reach]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(price, qty):
+          return price * qty
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(price, qty):
+          return total(price, qty)
+    tests/test_checkout_a.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_a():
+          assert charge(2, 3) == 6
+    tests/test_checkout_b.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_b():
+          assert charge(2, 3) == 6
+    tests/test_checkout_c.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_c():
+          assert charge(2, 3) == 6
+    tests/test_checkout_d.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_d():
+          assert charge(2, 3) == 6
+    tests/test_checkout_e.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_e():
+          assert charge(2, 3) == 6
+  changed_files:
+    shop/pricing.py: |
+      def total(price, qty):
+          return round(price * qty, 2)
+  commit_message: "pricing: round the total"
+expect:
+  relations:
+    - {from: "shop/checkout.py::charge", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+    - from: "tests/test_checkout_a.py::test_test_checkout_a"
+      to: "shop/checkout.py::charge"
+      kind: tests_reach
+      resolution: resolved
+    - from: "tests/test_checkout_b.py::test_test_checkout_b"
+      to: "shop/checkout.py::charge"
+      kind: tests_reach
+      resolution: resolved
+    - from: "tests/test_checkout_c.py::test_test_checkout_c"
+      to: "shop/checkout.py::charge"
+      kind: tests_reach
+      resolution: resolved

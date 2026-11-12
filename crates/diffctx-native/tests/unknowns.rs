@@ -1743,12 +1743,12 @@ fn a_call_in_a_long_function_is_the_function_s_call() {
     let a = caller("processA");
     assert!(a.contains("processA (6-"), "{md}");
     assert!(
-        a.ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+        a.ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt::runs via run"),
         "{md}"
     );
     assert!(
         caller("processB")
-            .ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+            .ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt::runs via run"),
         "{md}"
     );
     let c = caller("processC");
@@ -2433,7 +2433,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     let linked = server(true);
     let md = impact_markdown(linked.path());
     assert!(
-        md.contains("dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via make_server"),
+        md.contains("dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py::test_server via make_server"),
         "{md}"
     );
     assert_no_negative_claim(&md);

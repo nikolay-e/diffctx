@@ -3781,6 +3781,26 @@ impl Cell {
             .contains(&(user_file.to_string(), used_file.to_string()))
     }
 
+    /// The function or method of `file` that holds `line`, the innermost: the test
+    /// function a use inside a test file belongs to.
+    pub fn function_at(&self, file: &str, line: u32) -> Option<&str> {
+        self.defs_by_file
+            .get(file)?
+            .iter()
+            .map(|at| &self.head.definitions()[*at])
+            .filter(|d| {
+                matches!(
+                    d.kind,
+                    crate::facts::DefKind::Function
+                        | crate::facts::DefKind::Method
+                        | crate::facts::DefKind::Constructor
+                ) && d.span.lines.0 <= line
+                    && line <= d.span.lines.1
+            })
+            .min_by_key(|d| d.span.lines.1 - d.span.lines.0)
+            .map(|d| d.key.local.name.as_str())
+    }
+
     /// The file and line of each resolved use of the definition called `name`
     /// at `lines` of `file`: who a test has to be, or to reach, to reach it.
     pub fn users(&self, file: &str, name: &str, lines: (u32, u32)) -> Vec<(String, u32)> {

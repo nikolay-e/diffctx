@@ -435,15 +435,41 @@ pub enum GuardState {
     NoTests,
 }
 
-#[derive(Serialize, JsonSchema, Clone, Debug)]
-pub struct Guard {
-    pub state: GuardState,
-    /// The test file (`linked`), or the unread one (`unread`).
+/// Tests a guard names before the rest are counted.
+pub const TESTS_NAMED: usize = 3;
+
+/// A test that reaches a caller, beyond the first the guard names.
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq)]
+pub struct GuardTest {
+    /// The test file.
+    pub test: String,
+    /// The test function, where the answer resolved it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub test: Option<String>,
+    pub name: Option<String>,
     /// The function between the caller and the test.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
+}
+
+#[derive(Serialize, JsonSchema, Clone, Debug)]
+pub struct Guard {
+    pub state: GuardState,
+    /// The first test file (`linked`) in path order, or the unread one (`unread`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
+    /// The function of that test, where the answer resolved it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The function between the caller and the test.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    /// The other tests that reach the caller at the same fewest hops, in path
+    /// then name order, three tests in all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also: Vec<GuardTest>,
+    /// How many more reach it beyond those named.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub more: u32,
     /// The decorator (`registered`), or the framework's own sentence (`entry_point`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registrar: Option<String>,
@@ -454,13 +480,28 @@ impl Guard {
         let bare = |state| Self {
             state,
             test: None,
+            name: None,
             via: None,
+            also: Vec::new(),
+            more: 0,
             registrar: None,
         };
-        if let Some(test) = &caller.tested_by {
+        if let Some((first, rest)) = caller.tests.split_first() {
             return Self {
-                test: Some(test.clone()),
-                via: caller.tested_via.clone(),
+                test: Some(first.path.clone()),
+                name: first.name.clone(),
+                via: first.via.clone(),
+                also: rest
+                    .iter()
+                    .take(TESTS_NAMED - 1)
+                    .map(|t| GuardTest {
+                        test: t.path.clone(),
+                        name: t.name.clone(),
+                        via: t.via.clone(),
+                    })
+                    .collect(),
+                more: u32::try_from(caller.tests.len().saturating_sub(TESTS_NAMED))
+                    .unwrap_or(u32::MAX),
                 ..bare(GuardState::Linked)
             };
         }
@@ -1377,7 +1418,10 @@ fn definition(c: &ChangedSymbol, tests_known: bool) -> Definition {
         guard: c.untested.then(|| Guard {
             state: GuardState::None,
             test: None,
+            name: None,
             via: None,
+            also: Vec::new(),
+            more: 0,
             registrar: None,
         }),
         rows: c.callers.iter().map(|r| Row::of(r, tests_known)).collect(),

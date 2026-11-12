@@ -11,11 +11,12 @@ use rustc_hash::FxHashMap;
 
 use super::{
     ImpactOutput, MAX_ALSO_CHANGED_SHOWN, MAX_CALLERS_SHOWN_PER_FILE, MAX_CANDIDATES_SHOWN,
-    TEXTUAL_MATCH, TOO_COMMON_NAMED, base_symbol, reason_names, stops_of, v2_of,
+    TEXTUAL_MATCH, TOO_COMMON_NAMED, TestLink, base_symbol, reason_names, stops_of, v2_of,
 };
 use crate::answer::render::{self as rendered, gap_sentence, label, place};
 use crate::answer::v2::{
     Class, DefRef, Definition, Fold, Gap, GuardState, LocalOf, RangeKind, Row, Spelled, Standing,
+    TESTS_NAMED,
 };
 use crate::answer::{Answer, Page, RenderCtx};
 
@@ -406,14 +407,54 @@ fn named_list(symbols: &[&Definition]) -> String {
     }
 }
 
+/// The tests that reach a caller, as the entries print them: each `path::name`
+/// and `via` where known, the rest counted.
+pub(super) fn reachable_from_tests(tests: &[TestLink]) -> String {
+    reachable(
+        tests
+            .iter()
+            .take(TESTS_NAMED)
+            .map(|t| (t.path.as_str(), t.name.as_deref(), t.via.as_deref())),
+        tests.len().saturating_sub(TESTS_NAMED),
+    )
+}
+
+fn reachable<'a>(
+    tests: impl Iterator<Item = (&'a str, Option<&'a str>, Option<&'a str>)>,
+    more: usize,
+) -> String {
+    let mut line = String::from("reachable from tests: ");
+    for (n, (path, name, via)) in tests.enumerate() {
+        if n > 0 {
+            line.push_str(", ");
+        }
+        line.push_str(path);
+        if let Some(name) = name {
+            let _ = write!(line, "::{name}");
+        }
+        if let Some(via) = via {
+            let _ = write!(line, " via {via}");
+        }
+    }
+    if more > 0 {
+        let _ = write!(line, " and {more} more");
+    }
+    line
+}
+
 fn guard_text(row: &Row) -> String {
     let guard = &row.guard;
     let test = guard.test.as_deref().unwrap_or("");
     match guard.state {
-        GuardState::Linked => match &guard.via {
-            Some(via) => format!("reachable from tests: {test} via {via}"),
-            None => format!("reachable from tests: {test}"),
-        },
+        GuardState::Linked => reachable(
+            std::iter::once((test, guard.name.as_deref(), guard.via.as_deref())).chain(
+                guard
+                    .also
+                    .iter()
+                    .map(|t| (t.test.as_str(), t.name.as_deref(), t.via.as_deref())),
+            ),
+            guard.more as usize,
+        ),
         GuardState::Registered => format!(
             "registered by `@{}`; whatever reads that registry reaches it, which static test links do not follow",
             guard.registrar.as_deref().unwrap_or("")

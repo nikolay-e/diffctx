@@ -114,6 +114,63 @@ fn callers_outside_the_diff_are_listed_with_their_test_guard() {
     );
 }
 
+/// Every test that reaches a caller at the fewest hops is named, in path then
+/// name order and three at most; the rest are counted, never dropped silently,
+/// and each test is named by its function.
+#[test]
+fn the_guard_names_the_tests_at_the_fewest_hops_and_counts_the_rest() {
+    let tests: Vec<(String, String)> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|n| {
+            (
+                format!("tests/test_{n}.py"),
+                format!(
+                    "from shop.checkout import charge\n\n\ndef test_{n}():\n    assert charge(2, 3) == 6\n"
+                ),
+            )
+        })
+        .collect();
+    let mut base: Vec<(&str, &str)> = vec![
+        ("shop/__init__.py", ""),
+        ("shop/pricing.py", "def total(p, q):\n    return p * q\n"),
+        (
+            "shop/checkout.py",
+            "from shop.pricing import total\n\n\ndef charge(p, q):\n    return total(p, q)\n",
+        ),
+    ];
+    base.extend(tests.iter().map(|(p, c)| (p.as_str(), c.as_str())));
+    let tmp = repo(
+        &base,
+        &[(
+            "shop/pricing.py",
+            "def total(p, q):\n    return round(p * q, 2)\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let row = &doc["definitions"][0]["rows"][0];
+    let guard = &row["guard"];
+    assert_eq!(guard["state"], "linked", "{doc}");
+    assert_eq!(guard["test"], "tests/test_a.py", "{doc}");
+    assert_eq!(guard["name"], "test_a", "{doc}");
+    let also: Vec<(&str, &str)> = guard["also"]
+        .as_array()
+        .expect("also")
+        .iter()
+        .map(|t| (t["test"].as_str().unwrap(), t["name"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        also,
+        [("tests/test_b.py", "test_b"), ("tests/test_c.py", "test_c")],
+        "{doc}"
+    );
+    assert_eq!(guard["more"], 2, "{doc}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains("reachable from tests: tests/test_a.py::test_a, tests/test_b.py::test_b, tests/test_c.py::test_c and 2 more"),
+        "{md}"
+    );
+}
+
 #[test]
 fn a_test_that_only_shares_the_callers_name_is_not_its_guard() {
     // A test that imports the changed module and happens to use the word
@@ -955,7 +1012,7 @@ fn a_test_reaches_a_caller_through_the_function_it_calls() {
     let md = impact_markdown(repo, "HEAD~1..HEAD");
     assert!(
         md.contains(
-            "app/tools.py::helper (4-5) — reachable from tests: tests/test_tools.py via public_tool"
+            "app/tools.py::helper (4-5) — reachable from tests: tests/test_tools.py::test_tool via public_tool"
         ),
         "{md}"
     );

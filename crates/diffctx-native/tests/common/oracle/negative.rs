@@ -167,18 +167,36 @@ fn collection_read(path: &str, collection: &str) -> Value {
     })
 }
 
-/// A1: a test expectation names a test function, the engine only the test file.
-fn a1_test_file_stands_for_its_function() -> Result<(), Failed> {
+/// A1: a test expectation that names a test function is met only by an answer
+/// that names it; one that names the file alone is judged by the file.
+fn a1_a_named_test_function_needs_the_answer_to_name_it() -> Result<(), Failed> {
+    let named = |test: &str, name: &str| {
+        let mut caller = charge("resolved", "call", Some(test));
+        caller["guard"]["name"] = json!(name);
+        answer(&json!([caller]))
+    };
     run(vec![
         Probe {
-            what: "the test file the answer names is the expected one",
+            what: "the answer names the expected test function",
+            case: CHARGE_IS_CALLED_AND_TESTED,
+            answer: named("tests/test_checkout.py", "test_charge"),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the answer names the file but not the function",
             case: CHARGE_IS_CALLED_AND_TESTED,
             answer: answer(&json!([charge(
                 "resolved",
                 "call",
                 Some("tests/test_checkout.py")
             )])),
-            verdict: Verdict::Passes,
+            verdict: Verdict::Fails("missing tests/test_checkout.py::test_charge"),
+        },
+        Probe {
+            what: "another function of the file reaches the caller",
+            case: CHARGE_IS_CALLED_AND_TESTED,
+            answer: named("tests/test_checkout.py", "test_other"),
+            verdict: Verdict::Fails("missing tests/test_checkout.py::test_charge"),
         },
         Probe {
             what: "another test file reaches the caller",
@@ -188,13 +206,13 @@ fn a1_test_file_stands_for_its_function() -> Result<(), Failed> {
                 "call",
                 Some("tests/test_other.py")
             )])),
-            verdict: Verdict::Fails("missing tests/test_checkout.py"),
+            verdict: Verdict::Fails("missing tests/test_checkout.py::test_charge"),
         },
         Probe {
             what: "no test reaches the caller",
             case: CHARGE_IS_CALLED_AND_TESTED,
             answer: answer(&json!([charge("resolved", "call", None)])),
-            verdict: Verdict::Fails("missing tests/test_checkout.py"),
+            verdict: Verdict::Fails("missing tests/test_checkout.py::test_charge"),
         },
     ])
 }
@@ -487,8 +505,8 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
 pub fn trials() -> Vec<Trial> {
     let rules: [(&str, fn() -> Result<(), Failed>); 11] = [
         (
-            "a1_test_file_stands_for_its_function",
-            a1_test_file_stands_for_its_function,
+            "a1_a_named_test_function_needs_the_answer_to_name_it",
+            a1_a_named_test_function_needs_the_answer_to_name_it,
         ),
         (
             "a2_only_a_removed_api_contract_is_a_removal",

@@ -924,7 +924,14 @@
           "$ref": "#/$defs/GuardState"
         },
         "test": {
-          "description": "The test file (`linked`), or the unread one (`unread`).",
+          "description": "The first test file (`linked`) in path order, or the unread one (`unread`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The function of that test, where the answer resolved it.",
           "type": [
             "string",
             "null"
@@ -936,6 +943,19 @@
             "string",
             "null"
           ]
+        },
+        "also": {
+          "description": "The other tests that reach the caller at the same fewest hops, in path\nthen name order, three tests in all.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardTest"
+          }
+        },
+        "more": {
+          "description": "How many more reach it beyond those named.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
         },
         "registrar": {
           "description": "The decorator (`registered`), or the framework's own sentence (`entry_point`).",
@@ -987,6 +1007,33 @@
           "type": "string",
           "const": "no_tests"
         }
+      ]
+    },
+    "GuardTest": {
+      "description": "A test that reaches a caller, beyond the first the guard names.",
+      "type": "object",
+      "properties": {
+        "test": {
+          "description": "The test file.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The test function, where the answer resolved it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "The function between the caller and the test.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "test"
       ]
     },
     "Row": {

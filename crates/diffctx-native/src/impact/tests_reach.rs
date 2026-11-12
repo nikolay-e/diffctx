@@ -28,8 +28,8 @@ use crate::facts::EntryKind;
 use super::mentions::{Naming, commented, naming, starts_a_program};
 use super::rust;
 use super::{
-    Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, base_symbol,
-    cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
+    Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
+    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
 };
 use crate::decide::Group;
 use crate::testfiles::naming_links;
@@ -49,7 +49,7 @@ struct Run {
 #[derive(Default)]
 struct Up<'a> {
     fragments: Vec<&'a Fragment>,
-    test: Option<String>,
+    test: Option<(String, Option<String>)>,
 }
 
 pub(super) struct TestsReach<'a> {
@@ -76,7 +76,7 @@ pub(super) struct TestsReach<'a> {
     repo_tests: bool,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
-    memo: RefCell<FxHashMap<FragmentId, Option<(String, Option<String>)>>>,
+    memo: RefCell<FxHashMap<FragmentId, Vec<TestLink>>>,
 }
 
 impl<'a> TestsReach<'a> {
@@ -216,50 +216,75 @@ impl<'a> TestsReach<'a> {
         Some((self.cells.of(shown)?, shown.as_str()))
     }
 
-    /// A test guards a caller when it names the caller's symbol in code and
+    /// The tests that guard a caller: each names the caller's symbol in code and
     /// reaches the caller's module — the same bar a caller has to clear. A
     /// bare name match (`render` in a Rust test, `render()` in a Python
     /// script) attributed guards to tests that never import the file (#312),
     /// and a test edge to the file proves the file is tested, not the caller.
-    fn direct(&self, caller: &Fragment, link: &Link) -> Option<String> {
+    /// A test function names itself; a run of an entry names the file only.
+    fn direct(&self, caller: &Fragment, link: &Link) -> Vec<(String, Option<String>)> {
         if self.is_test(caller) {
-            return Some(caller.path().to_string());
+            return vec![(
+                caller.path().to_string(),
+                caller
+                    .symbol_name
+                    .as_deref()
+                    .map(|n| base_symbol(n).to_string()),
+            )];
         }
         // A chunk inside a long function is named `main[88]`; the test
         // names `main`.
         let name = caller.symbol_name.as_deref().map(base_symbol);
-        if let Some(run) = self.runs.iter().find(|run| {
-            run.file == caller.path()
-                && run
-                    .symbol
-                    .as_deref()
-                    .is_none_or(|symbol| name == Some(symbol))
-        }) {
-            return Some(run.test.clone());
-        }
-        let name = name.filter(|s| s.len() >= 3)?;
-        // A test that does not spell the name cannot link to it.
-        self.test_fragments
+        let mut found: Vec<(String, Option<String>)> = self
+            .runs
             .iter()
-            .filter(|t| t.content.contains(name))
-            .find(|t| link(t, caller))
-            .map(|t| t.path().to_string())
+            .filter(|run| {
+                run.file == caller.path()
+                    && run
+                        .symbol
+                        .as_deref()
+                        .is_none_or(|symbol| name == Some(symbol))
+            })
+            .map(|run| (run.test.clone(), None))
+            .collect();
+        // A test that does not spell the name cannot link to it.
+        if let Some(name) = name.filter(|s| s.len() >= 3) {
+            found.extend(
+                self.test_fragments
+                    .iter()
+                    .filter(|t| t.content.contains(name))
+                    .filter(|t| link(t, caller))
+                    .map(|t| {
+                        (
+                            t.path().to_string(),
+                            t.symbol_name.as_deref().map(|n| base_symbol(n).to_string()),
+                        )
+                    }),
+            );
+        }
+        found
     }
 
-    /// The test that reaches the caller, and the function in between when
-    /// the test calls something that calls it — a public tool over a helper
-    /// is how most code is tested (#348). Two hops up the call graph.
+    /// Every test that reaches the caller at the fewest hops, in path then name
+    /// order, and the function in between when the test calls something that
+    /// calls it — a public tool over a helper is how most code is tested
+    /// (#348). Up to [`MAX_TEST_HOPS`] hops up the uses; none: no test.
     pub(super) fn tested_by(
         &self,
         caller: &'a Fragment,
         state: &ScoredState,
         by_id: &FxHashMap<&FragmentId, &'a Fragment>,
         link: &Link,
-    ) -> Option<(String, Option<String>)> {
+    ) -> Vec<TestLink> {
         if let Some(known) = self.memo.borrow().get(&caller.id) {
             return known.clone();
         }
-        let answer = self.walk_up(caller, state, by_id, link);
+        let mut answer = self.walk_up(caller, state, by_id, link);
+        for test in &mut answer {
+            test.path = rel(state, &test.path);
+        }
+        answer.sort();
+        answer.dedup();
         self.memo
             .borrow_mut()
             .insert(caller.id.clone(), answer.clone());
@@ -282,7 +307,12 @@ impl<'a> TestsReach<'a> {
                 }) {
                     Some(user) => up.fragments.push(user),
                     None if crate::testfiles::is_test_path(Path::new(&file)) => {
-                        up.test = Some(file);
+                        let name = self
+                            .cells
+                            .of(&file)
+                            .and_then(|cell| cell.function_at(&file, line))
+                            .map(str::to_string);
+                        up.test = Some((file, name));
                     }
                     None => {}
                 }
@@ -404,7 +434,7 @@ impl<'a> TestsReach<'a> {
                 .filter(|f| self.is_test(f))
                 .map(|f| f.path())
                 .min()
-                .map(str::to_string);
+                .map(|path| (path.to_string(), None));
         }
         up.fragments.extend(
             members
@@ -419,9 +449,20 @@ impl<'a> TestsReach<'a> {
         state: &ScoredState,
         by_id: &FxHashMap<&FragmentId, &'a Fragment>,
         link: &Link,
-    ) -> Option<(String, Option<String>)> {
-        if let Some(test) = self.direct(caller, link) {
-            return Some((test, None));
+    ) -> Vec<TestLink> {
+        let direct = |f: &Fragment, via: Option<&String>| -> Vec<TestLink> {
+            self.direct(f, link)
+                .into_iter()
+                .map(|(path, name)| TestLink {
+                    path,
+                    name,
+                    via: via.cloned(),
+                })
+                .collect()
+        };
+        let found = direct(caller, None);
+        if !found.is_empty() {
+            return found;
         }
         // A chunk of a long definition (`Output[35]`) is reached by what
         // reaches the definition: the graph's edges end at the whole.
@@ -442,24 +483,36 @@ impl<'a> TestsReach<'a> {
         let mut seen: FxHashSet<&FragmentId> = frontier.iter().map(|f| &f.id).collect();
         for _ in 0..MAX_TEST_HOPS {
             let mut next = Vec::new();
+            let mut found = Vec::new();
             for &f in &frontier {
                 let up = self.up(f, state, link);
-                if let Some(test) = up.test {
-                    return Some((test, None));
-                }
+                found.extend(up.test.map(|(path, name)| TestLink {
+                    path,
+                    name,
+                    via: None,
+                }));
                 next.extend(up.fragments.into_iter().filter(|u| seen.insert(&u.id)));
             }
             for up in &next {
                 if self.is_test(up) {
-                    return Some((up.path().to_string(), None));
+                    found.push(TestLink {
+                        path: up.path().to_string(),
+                        name: up
+                            .symbol_name
+                            .as_deref()
+                            .map(|n| base_symbol(n).to_string()),
+                        via: None,
+                    });
+                } else {
+                    found.extend(direct(up, up.symbol_name.as_ref()));
                 }
-                if let Some(test) = self.direct(up, link) {
-                    return Some((test, up.symbol_name.clone()));
-                }
+            }
+            if !found.is_empty() {
+                return found;
             }
             frontier = next;
         }
-        None
+        Vec::new()
     }
 
     pub(super) fn file_tested(
