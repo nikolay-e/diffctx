@@ -12,7 +12,7 @@ const MARKDOWN_EXTENSIONS: &[&str] = &[".md", ".markdown", ".mdx"];
 
 static HEADING_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(#{1,6})(?:\s(.+))?$").unwrap());
 
-pub struct MarkdownStrategy;
+pub(super) struct MarkdownStrategy;
 
 impl FragmentationStrategy for MarkdownStrategy {
     fn can_handle(&self, path: &str, _content: &str) -> bool {

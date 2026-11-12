@@ -11,7 +11,7 @@ use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
 use crate::types::Fragment;
 
-pub trait FragmentationStrategy: Send + Sync {
+pub(crate) trait FragmentationStrategy: Send + Sync {
     fn can_handle(&self, path: &str, content: &str) -> bool;
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment>;
 }
@@ -27,7 +27,7 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
 
 pub(crate) use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree};
 
-pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
+pub(crate) use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
 
 /// Why a code file's definitions were not all read (#454): `no_grammar` when
 /// this build has no grammar for its language, `parse_timeout` when the
@@ -35,7 +35,7 @@ pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declaration
 /// out, `parse_partial` when it broke on some lines and the rest was read.
 /// `None` for a clean parse, a definition-free script included, and for
 /// prose, config and data, which have no definitions to miss.
-pub fn unanalysed_reason(
+pub(crate) fn unanalysed_reason(
     path: &str,
     has_definition: bool,
     content: impl FnOnce() -> Option<Vec<u8>>,
@@ -57,7 +57,7 @@ pub fn unanalysed_reason(
 }
 
 /// How a reason of `unanalysed_reason` reads in prose.
-pub fn unanalysed_text(reason: &str) -> &'static str {
+pub(crate) fn unanalysed_text(reason: &str) -> &'static str {
     match reason {
         "no_grammar" => "no grammar in this build",
         "parse_timeout" => "parse timed out",
@@ -71,7 +71,7 @@ pub fn unanalysed_text(reason: &str) -> &'static str {
     }
 }
 
-pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
+pub(crate) fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {
             let fragments = strategy.fragment(Arc::clone(&path), content);
