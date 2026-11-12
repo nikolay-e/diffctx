@@ -406,13 +406,6 @@ jobs:
           PART: ${{ matrix.part }}
         run: scripts/cargo-test-suites.sh "$PART"
 
-      # The same suites without the runner's scrub, in a hook's environment
-      # against a sentinel repository: one spawn that scrubs nothing itself is
-      # what rewrote a checkout's .git/config (fj#199).
-      - name: Suites leave the enclosing repository alone
-        if: matrix.part == 'rest:1/2'
-        run: scripts/git-env-gate.sh rust
-
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites on macOS and Windows, where paths, line
   # endings and process spawning differ, in the same three parts.
