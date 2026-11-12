@@ -920,9 +920,31 @@ impl<'w> Engine<'w> {
         }
         holders
             .into_iter()
-            .flat_map(|h| self.children_of(h))
+            .flat_map(|h| self.importable_children(h))
             .filter(|c| self.ix.defs[*c].def.local.name == *name)
             .collect()
+    }
+
+    /// What an import names under a type: its children, and for a Java type its
+    /// statics, which this reading holds in a `Companion` that Java does not
+    /// spell: `import shop.Pricing.total` is the static `total` of `Pricing`.
+    fn importable_children(&self, holder: usize) -> Vec<usize> {
+        let mut kids = self.children_of(holder);
+        if !self.ix.files[self.ix.defs[holder].file].foreign {
+            return kids;
+        }
+        let companions: Vec<usize> = kids
+            .iter()
+            .copied()
+            .filter(|c| {
+                let rec = &self.ix.defs[*c];
+                rec.def.kind == DefKind::Object && rec.def.local.name.as_str() == "Companion"
+            })
+            .collect();
+        for companion in companions {
+            kids.extend(self.children_of(companion));
+        }
+        kids
     }
 
     #[allow(

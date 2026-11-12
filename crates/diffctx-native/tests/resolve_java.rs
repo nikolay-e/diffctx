@@ -1003,6 +1003,30 @@ fn kotlin_calls_java_statics_and_accessors() {
     assert_eq!(fx.at(call, "name", 7).relation, Relation::Writes);
 }
 
+/// A Kotlin import names a Java static through its type, as Java writes it, and
+/// the name it brings into the file is the alias when it states one.
+#[test]
+fn kotlin_imports_a_java_static_by_its_name_or_under_an_alias() {
+    let java = "package shop;\n\npublic class Pricing {\n    public static int total(int[] items) {\n        return items.length;\n    }\n\n    public static int roundedTotal(int amount) {\n        return amount;\n    }\n}\n";
+    let kotlin = "package app\n\nimport shop.Pricing.roundedTotal as rt\nimport shop.Pricing.total\n\nfun charge(items: IntArray): Int {\n    val t = total(items)\n    return rt(t)\n}\n";
+    let fx = snapshot(&[
+        ("src/main/java/shop/Pricing.java", java),
+        ("src/main/kotlin/app/Checkout.kt", kotlin),
+    ]);
+    let (call, jv) = (
+        "src/main/kotlin/app/Checkout.kt",
+        "src/main/java/shop/Pricing.java",
+    );
+    assert_eq!(
+        fx.lands_at(call, "total", 7),
+        format!("{jv}::Pricing.total")
+    );
+    assert_eq!(
+        fx.lands_at(call, "rt", 8),
+        format!("{jv}::Pricing.roundedTotal")
+    );
+}
+
 /// A Java definition used only by Kotlin is no unused one.
 #[test]
 fn a_java_definition_has_its_kotlin_callers() {
