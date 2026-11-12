@@ -125,14 +125,17 @@ fn answer(family: &Family) -> (Value, String) {
     (json, run("md"))
 }
 
+fn definition<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
+    doc["definitions"]
+        .as_array()?
+        .iter()
+        .find(|d| d["symbol"] == name)
+}
+
 /// The answer says the definition has no static test link: a listed definition
 /// whose guard is `none`, or a row of the lists a callerless definition goes in.
-/// A definition no caller reaches and a test links is not listed at all.
 fn claimed_untested(doc: &Value, name: &str) -> bool {
-    let listed = doc["definitions"].as_array().is_some_and(|ds| {
-        ds.iter()
-            .any(|d| d["symbol"] == name && d["guard"]["state"] == "none")
-    });
+    let listed = definition(doc, name).is_some_and(|d| d["guard"]["state"] == "none");
     let unlisted = ["no_caller", "called_in_diff"].iter().any(|key| {
         doc["unlisted"][key]["items"]
             .as_array()
@@ -141,9 +144,12 @@ fn claimed_untested(doc: &Value, name: &str) -> bool {
     listed || unlisted
 }
 
-/// Tests are in view, and the definition carries no "no static test link" claim.
+/// The test is named or a gap is named: tests are in view, and the changed
+/// definition has its own row, which carries no "no static test link" guard. A
+/// definition that appears in no row is a silent loss, not a tested one.
 fn names_its_test(doc: &Value, name: &str) -> bool {
-    doc["tests"]["known"] == true && !claimed_untested(doc, name)
+    doc["tests"]["known"] == true
+        && definition(doc, name).is_some_and(|d| d["guard"]["state"] != "none")
 }
 
 #[test]
