@@ -1,4 +1,7 @@
-from compare import compare, make_resolver, missing_definition, parse_answer, silent_loss
+import json
+from pathlib import Path
+
+from compare import compare, make_resolver, missing_definition, parse_answer, silent_loss, unlisted_named
 from model import MODULE, Definition, Relation
 
 TARGET = Definition("shop/pricing.py", "function", "total", (), 1, 3, 0, 4, "()", "h", "s")
@@ -592,3 +595,44 @@ def test_silent_loss_is_never_negative_and_an_answer_missing_nothing_has_none():
 
     assert silent_loss(lost, shed)["silent"] == 0 and silent_loss(lost, shed)["definitions"] == lost
     assert silent_loss([], shed) == {"missing": 0, "unnamed_omitted": 5, "silent": 0, "definitions": []}
+
+
+CLICK_ANSWER = json.loads((Path(__file__).parent / "fixtures" / "impact_unlisted_click.json").read_text())
+
+
+def _click_definition(path, container, name, start, end, kind="function"):
+    return Definition(path, kind, name, container, start, end, start - 1, 4, "()", name, name)
+
+
+def test_a_definition_the_answer_files_in_an_unlisted_list_is_named_and_one_it_never_mentions_is_lost():
+    """click b90faad1: the answer files three helpers under `called_in_diff` and says nothing of a test module's constant."""
+    core, tests = "src/click/core.py", "tests/test_arguments.py"
+    filed = [
+        _click_definition(core, (), "_outside_click_stacklevel", 108, 125),
+        _click_definition(core, ("Parameter",), "_check_name_is_usable", 2482, 2517),
+        _click_definition(core, ("Option",), "_check_name_is_normalized", 3335, 3353),
+    ]
+    lost = _click_definition(tests, (), "PARAM_KINDS", 10, 20, "variable")
+    defs = {core: [*filed, _click_definition(core, ("Argument",), "_parse_decls", 3355, 3420)], tests: [lost]}
+    resolve = make_resolver(lambda path: defs.get(path, []))
+    answered = parse_answer(CLICK_ANSWER, resolve)
+    named = unlisted_named(CLICK_ANSWER, resolve)
+
+    assert all(missing_definition(d, answered) for d in filed)  # an answer read without its unlisted lists loses them
+    assert [missing_definition(d, answered, named) for d in filed] == [None, None, None]
+    assert missing_definition(lost, answered, named)["target"] == f"{tests}::PARAM_KINDS"
+    assert silent_loss([missing_definition(lost, answered, named)], answered)["silent"] == 1
+
+
+def test_every_unlisted_list_names_its_items_whether_a_reference_or_one_under_def():
+    resolve = make_resolver(lambda path: DEFS.get(path, []))
+    data = {
+        "unlisted": {
+            "no_caller": {"total": 1, "items": [{"path": "shop/pricing.py", "symbol": "total", "lines": "1-3"}]},
+            "entered_by": {"total": 1, "items": [{"def": {"path": "shop/checkout.py", "symbol": "charge", "lines": "1-3"}}]},
+            "layout_only": {"total": 1, "items": [{"path": "shop/report.py", "lines": "1-4"}]},
+        }
+    }
+
+    assert unlisted_named(data, resolve) == {"shop/pricing.py::total", "shop/checkout.py::charge", "shop/report.py::build"}
+    assert unlisted_named({"changed": []}, resolve) == frozenset()

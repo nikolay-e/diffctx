@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from answer import Answer, AnswerCaller, Resolver, TargetAnswer
 from answer import parse_answer as parse_answer  # the scorer's callers read answers through this module
+from answer_v2 import _ref_key
 from model import MODULE, Definition, Relation, without_span
 
 CONSTRUCTORS = {"__init__", "constructor"}
@@ -138,15 +139,28 @@ def _in_fold_row(target: Definition, answer: Answer) -> bool:
     )
 
 
-def missing_definition(target: Definition, answer: Answer) -> dict | None:
-    """A changed definition the answer says nothing of: no entry, no fold row naming it, no disclosure that its file
-    went unanalysed. None where the answer names it.
+def unlisted_named(data: dict, resolve: Resolver) -> frozenset[str]:
+    """The definitions a v2 answer names in any of its `unlisted` lists (no caller, called only in the diff, entered by a
+    role, layout only): it filed them apart from its entries, it did not lose them. An item is a definition reference, or
+    wraps one under `def`."""
+    refs = (item for listing in (data.get("unlisted") or {}).values() for item in (listing or {}).get("items", []))
+    return frozenset(_ref_key(ref, resolve) for ref in (item.get("def", item) for item in refs) if ref.get("path"))
+
+
+def missing_definition(target: Definition, answer: Answer, unlisted: frozenset[str] = frozenset()) -> dict | None:
+    """A changed definition the answer says nothing of: no entry, no fold row naming it, no `unlisted` item naming it, no
+    disclosure that its file went unanalysed. None where the answer names it.
 
     The record holds what classifies it: the answer's entries that may be the same definition under another key (an
     identity mismatch: same file, or the same name elsewhere) and what else the answer says about itself. With none, it is
     an engine loss.
     """
-    if entry_for(target, answer) is not None or target.path in answer.unanalysed or _in_fold_row(target, answer):
+    if (
+        entry_for(target, answer) is not None
+        or target.key in unlisted
+        or target.path in answer.unanalysed
+        or _in_fold_row(target, answer)
+    ):
         return None
     named = [key for key in answer.targets if without_span(key).rpartition("::")[2].split(".")[-1] == target.name]
     return {
