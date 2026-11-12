@@ -4,24 +4,24 @@
 
 #![allow(dead_code)]
 
-pub mod drive;
-pub mod judge;
-pub mod line;
-pub mod strategies;
-pub mod world;
+pub(crate) mod drive;
+pub(crate) mod judge;
+pub(crate) mod line;
+pub(crate) mod strategies;
+pub(crate) mod world;
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 /// A bash the lines run under. macOS ships 3.2 at `/bin/bash`; a newer one
 /// is run too when the machine has it.
-pub struct Shell {
+pub(crate) struct Shell {
     pub path: PathBuf,
     pub label: String,
     major: String,
 }
 
-pub fn shells() -> Vec<Shell> {
+pub(crate) fn shells() -> Vec<Shell> {
     let mut found: Vec<Shell> = Vec::new();
     for candidate in [
         "/bin/bash",

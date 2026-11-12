@@ -2,7 +2,7 @@
 //! and string literals kept. A comment that names a path outside the module
 //! (`// leaves a module by super::super::m`) reaches nothing.
 
-pub fn without_comments(source: &str) -> String {
+pub(crate) fn without_comments(source: &str) -> String {
     let chars: Vec<char> = source.chars().collect();
     let mut out = String::with_capacity(source.len());
     let mut i = 0;

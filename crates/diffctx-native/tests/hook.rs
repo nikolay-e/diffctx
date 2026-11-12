@@ -4245,7 +4245,7 @@ mod untracked_listing {
 
     /// Only a withheld Markdown file changes (modified, tracked), beside
     /// untracked directories: nothing in the change is analysable.
-    pub fn repo_with_only_a_withheld_change() -> TempDir {
+    pub(crate) fn repo_with_only_a_withheld_change() -> TempDir {
         let tmp = TempDir::new().unwrap();
         let repo = tmp.path();
         git(repo, &["init", "-q", "."]);
@@ -4269,7 +4269,13 @@ mod untracked_listing {
     }
 
     /// The git calls one hook event made, through the logging shim.
-    pub fn calls_of(repo: &Path, cache: &Path, shim: &Path, event: &str, line: &str) -> Calls {
+    pub(crate) fn calls_of(
+        repo: &Path,
+        cache: &Path,
+        shim: &Path,
+        event: &str,
+        line: &str,
+    ) -> Calls {
         let bin = shim.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let fake = bin.join("git");
@@ -4309,14 +4315,14 @@ mod untracked_listing {
         }
     }
 
-    pub struct Calls {
+    pub(crate) struct Calls {
         pub hook_stdout: String,
         pub lines: Vec<String>,
     }
 
     impl Calls {
         /// Calls that list every untracked file instead of its directory.
-        pub fn per_file_listings(&self) -> Vec<&str> {
+        pub(crate) fn per_file_listings(&self) -> Vec<&str> {
             self.lines
                 .iter()
                 .map(String::as_str)

@@ -29,7 +29,7 @@ use _diffctx::snapshot::{AnalysisContext, Oid, RangeSpec, RunBudget};
 use crate::snapshot_fixture::Repo;
 
 #[derive(Clone)]
-pub struct Toy {
+pub(crate) struct Toy {
     pub language: Language,
     pub calls: Arc<AtomicUsize>,
     /// The build fingerprint this toy's cache stands for.
@@ -38,7 +38,7 @@ pub struct Toy {
 }
 
 impl Toy {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             language: Language::Python,
             calls: Arc::new(AtomicUsize::new(0)),
@@ -48,23 +48,23 @@ impl Toy {
     }
 
     /// The same stand-in reading TypeScript files.
-    pub fn typescript() -> Self {
+    pub(crate) fn typescript() -> Self {
         Self {
             language: Language::TypeScript,
             ..Self::new()
         }
     }
 
-    pub fn calls(&self) -> usize {
+    pub(crate) fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
 
-    pub fn registry(&self) -> Registry {
+    pub(crate) fn registry(&self) -> Registry {
         Registry::new().with(self.clone())
     }
 
     /// This extractor and `other`, each for its own language.
-    pub fn registry_with(&self, other: &Toy) -> Registry {
+    pub(crate) fn registry_with(&self, other: &Toy) -> Registry {
         Registry::new().with(self.clone()).with(other.clone())
     }
 }
@@ -278,7 +278,7 @@ fn definition(
 }
 
 /// A key as the fixture's repositories (no manifests, no project) give it.
-pub fn key(module: &str, name: &str) -> DefKey {
+pub(crate) fn key(module: &str, name: &str) -> DefKey {
     DefKey {
         project: ProjectId::default(),
         language: Language::Python,
@@ -288,14 +288,14 @@ pub fn key(module: &str, name: &str) -> DefKey {
 }
 
 /// A key of a file of `language`.
-pub fn key_in(language: Language, module: &str, name: &str) -> DefKey {
+pub(crate) fn key_in(language: Language, module: &str, name: &str) -> DefKey {
     DefKey {
         language,
         ..key(module, name)
     }
 }
 
-pub fn key_of(module: &str, local: LocalKey) -> DefKey {
+pub(crate) fn key_of(module: &str, local: LocalKey) -> DefKey {
     DefKey {
         project: ProjectId::default(),
         language: Language::Python,
@@ -304,7 +304,7 @@ pub fn key_of(module: &str, local: LocalKey) -> DefKey {
     }
 }
 
-pub fn review(repo: &Repo, base: &Oid, head: &Oid) -> AnalysisContext {
+pub(crate) fn review(repo: &Repo, base: &Oid, head: &Oid) -> AnalysisContext {
     context(
         repo,
         RangeSpec::Review {
@@ -314,18 +314,18 @@ pub fn review(repo: &Repo, base: &Oid, head: &Oid) -> AnalysisContext {
     )
 }
 
-pub fn context(repo: &Repo, range: RangeSpec) -> AnalysisContext {
+pub(crate) fn context(repo: &Repo, range: RangeSpec) -> AnalysisContext {
     AnalysisContext::new(repo.root.clone(), range, RunBudget::default()).expect("context")
 }
 
-pub fn cache_in(dir: &Path, toy: &Toy) -> FactsCache {
+pub(crate) fn cache_in(dir: &Path, toy: &Toy) -> FactsCache {
     FactsCache::new(dir.to_path_buf())
         .with_registry(toy.registry())
         .with_fingerprint(toy.build)
 }
 
 /// The entries a cache directory holds.
-pub fn entries(dir: &Path) -> Vec<std::path::PathBuf> {
+pub(crate) fn entries(dir: &Path) -> Vec<std::path::PathBuf> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -338,7 +338,7 @@ pub fn entries(dir: &Path) -> Vec<std::path::PathBuf> {
     found
 }
 
-pub fn leftovers(dir: &Path) -> Vec<std::path::PathBuf> {
+pub(crate) fn leftovers(dir: &Path) -> Vec<std::path::PathBuf> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };

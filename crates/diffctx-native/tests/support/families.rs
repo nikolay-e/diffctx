@@ -14,13 +14,13 @@ use tempfile::TempDir;
 use super::diffctx;
 use super::seeds::run_git;
 
-pub type Files = BTreeMap<String, String>;
+pub(crate) type Files = BTreeMap<String, String>;
 
 // The size cap of a changed file, `max_changed_file_size`.
 const SIZE_CAP: usize = 5_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Family {
+pub(crate) enum Family {
     Python,
     TypeScript,
     Rust,
@@ -38,7 +38,7 @@ pub enum Family {
 }
 
 impl Family {
-    pub const ALL: [Self; 14] = [
+    pub(crate) const ALL: [Self; 14] = [
         Self::Python,
         Self::TypeScript,
         Self::Rust,
@@ -55,7 +55,7 @@ impl Family {
         Self::Sql,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Python => "python",
             Self::TypeScript => "typescript",
@@ -75,7 +75,7 @@ impl Family {
     }
 
     // The families whose definitions `--symbol PATH:NAME` names.
-    pub fn answers_symbol(self) -> bool {
+    pub(crate) fn answers_symbol(self) -> bool {
         !matches!(self, Self::Config | Self::Terraform | Self::Dockerfile)
     }
 
@@ -85,13 +85,13 @@ impl Family {
     //
     // A SQL file is a schema contract by its extension, so a change to one is
     // never `empty`: its absence is read through the gap sections alone.
-    pub fn proves_empty(self) -> bool {
+    pub(crate) fn proves_empty(self) -> bool {
         self.answers_symbol() && self != Self::Sql
     }
 
     // The file suffixes of the family's interaction group, as the repository
     // holds them.
-    pub fn group(self) -> &'static [&'static str] {
+    pub(crate) fn group(self) -> &'static [&'static str] {
         match self {
             Self::Python => &[".py"],
             Self::TypeScript => &[
@@ -113,13 +113,13 @@ impl Family {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Break {
+pub(crate) enum Break {
     Declaration,
     Call,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Neighbour {
+pub(crate) enum Neighbour {
     Java,
     Scala,
     Kotlin,
@@ -134,7 +134,7 @@ pub enum Neighbour {
 }
 
 impl Neighbour {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Java => "java",
             Self::Scala => "scala",
@@ -153,7 +153,7 @@ impl Neighbour {
 
 // What a transformation may vary. The default is the plain seed.
 #[derive(Clone, Debug, Default)]
-pub struct Shape {
+pub(crate) struct Shape {
     // Left-nested terms after the call: the call is the leaf `depth` levels
     // down the left spine.
     pub depth: usize,
@@ -166,7 +166,7 @@ pub struct Shape {
 // A seed as a repository: the first commit, and the files the second commit
 // writes (the change under review).
 #[derive(Clone, Debug)]
-pub struct Repo {
+pub(crate) struct Repo {
     pub family: Family,
     pub base: Files,
     pub change: Files,
@@ -176,10 +176,10 @@ pub struct Repo {
     pub symbol: String,
 }
 
-pub const RANGE: &str = "HEAD~1..HEAD";
+pub(crate) const RANGE: &str = "HEAD~1..HEAD";
 
 impl Repo {
-    pub fn commit_into(&self, dir: &Path) {
+    pub(crate) fn commit_into(&self, dir: &Path) {
         run_git(dir, &["init", "-q", "-b", "main", "."]);
         run_git(dir, &["config", "user.email", "test@example.com"]);
         run_git(dir, &["config", "user.name", "diffctx tests"]);
@@ -197,13 +197,13 @@ impl Repo {
         }
     }
 
-    pub fn symbol_arg(&self) -> String {
+    pub(crate) fn symbol_arg(&self) -> String {
         format!("{}:{}", self.definition, self.symbol)
     }
 
     // Every file of the repository at the head that belongs to the family's
     // interaction group, by path.
-    pub fn group_files(&self) -> Vec<(String, String)> {
+    pub(crate) fn group_files(&self) -> Vec<(String, String)> {
         let mut head = self.base.clone();
         head.extend(self.change.clone());
         head.into_iter()
@@ -783,7 +783,7 @@ fn into_files(items: impl IntoIterator<Item = (String, String)>) -> Files {
 // the engine reads, so each seed carries a file that names the changed file's
 // path (a workflow, a script): without one the answer is a `content_untraced`
 // gap by design, never a clean absence.
-pub fn with_caller(family: Family, shape: &Shape) -> Repo {
+pub(crate) fn with_caller(family: Family, shape: &Shape) -> Repo {
     let p = parts(family, shape);
     let mut definition_text = p.base.clone();
     let mut head_text = p.head.clone();
@@ -861,7 +861,7 @@ pub fn with_caller(family: Family, shape: &Shape) -> Repo {
 // The same seed with no caller anywhere: the definition changes and nothing,
 // in any file, calls or names it. `broken_unrelated` adds a file of the group
 // that does not parse and does not spell the name.
-pub fn control(family: Family, broken_unrelated: bool) -> Repo {
+pub(crate) fn control(family: Family, broken_unrelated: bool) -> Repo {
     let shape = Shape::default();
     let p = parts(family, &shape);
     let mut base = into_files(p.unrelated.clone());
@@ -940,13 +940,13 @@ fn names(value: &Value, path: &str) -> bool {
 }
 
 // The answer names `path` somewhere other than the list of changed files.
-pub fn names_link(doc: &Value, path: &str) -> bool {
+pub(crate) fn names_link(doc: &Value, path: &str) -> bool {
     names(doc, path)
 }
 
 // What the answer owns up to not having read: a limit, an unanalysed or
 // withheld file, a caller search that says it was partial.
-pub fn fingerprint(doc: &Value) -> String {
+pub(crate) fn fingerprint(doc: &Value) -> String {
     let mut out = format!(
         "limits={} unanalysed={} withheld={}",
         doc["coverage"]["limits"], doc["coverage"]["unanalysed"], doc["inventory"]["withheld"]
@@ -960,7 +960,7 @@ pub fn fingerprint(doc: &Value) -> String {
     out
 }
 
-pub fn discloses(doc: &Value) -> bool {
+pub(crate) fn discloses(doc: &Value) -> bool {
     let listed = |value: &Value| value.as_array().is_some_and(|rows| !rows.is_empty());
     listed(&doc["coverage"]["limits"])
         || doc["coverage"]["unanalysed"]["total"].as_u64() > Some(0)
@@ -974,21 +974,21 @@ pub fn discloses(doc: &Value) -> bool {
 }
 
 // The answer says the change reaches nothing.
-pub fn says_empty(doc: &Value) -> bool {
+pub(crate) fn says_empty(doc: &Value) -> bool {
     doc["empty"] == true
 }
 
 // ---- asking the binary ----
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Query {
+pub(crate) enum Query {
     Impact,
     Symbol,
 }
 
 // The questions asked of a seed: the change, and the definition by name for
 // the families `--symbol` names.
-pub fn queries(family: Family) -> Vec<Query> {
+pub(crate) fn queries(family: Family) -> Vec<Query> {
     let mut all = vec![Query::Impact];
     if family.answers_symbol() {
         all.push(Query::Symbol);
@@ -998,24 +998,24 @@ pub fn queries(family: Family) -> Vec<Query> {
 
 // A seed as a repository on disk, with a facts cache of its own so that no
 // run reads what another binary or another seed stored.
-pub struct Planted {
+pub(crate) struct Planted {
     pub repo: Repo,
     tmp: TempDir,
 }
 
 impl Planted {
-    pub fn new(repo: Repo) -> Self {
+    pub(crate) fn new(repo: Repo) -> Self {
         let tmp = TempDir::new().expect("tempdir");
         std::fs::create_dir_all(tmp.path().join("repo")).expect("mkdir");
         repo.commit_into(&tmp.path().join("repo"));
         Self { repo, tmp }
     }
 
-    pub fn work(&self) -> PathBuf {
+    pub(crate) fn work(&self) -> PathBuf {
         self.tmp.path().join("repo")
     }
 
-    pub fn run(&self, query: Query, env: &[(&str, &str)]) -> Output {
+    pub(crate) fn run(&self, query: Query, env: &[(&str, &str)]) -> Output {
         let mut command = diffctx();
         command.current_dir(self.work()).arg(".");
         match query {
@@ -1035,7 +1035,7 @@ impl Planted {
     }
 
     // The JSON answer of a run that succeeded.
-    pub fn ask(&self, query: Query, env: &[(&str, &str)]) -> Result<Value, String> {
+    pub(crate) fn ask(&self, query: Query, env: &[(&str, &str)]) -> Result<Value, String> {
         let out = self.run(query, env);
         if !out.status.success() {
             return Err(format!(

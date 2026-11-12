@@ -15,7 +15,7 @@ struct Counts {
     fn_: usize,
 }
 
-pub fn judge(
+pub(crate) fn judge(
     name: &str,
     case: &Case,
     compiled: &Compiled,

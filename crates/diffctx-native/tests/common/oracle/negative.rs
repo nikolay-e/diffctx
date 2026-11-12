@@ -502,7 +502,7 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
     Ok(())
 }
 
-pub fn trials() -> Vec<Trial> {
+pub(crate) fn trials() -> Vec<Trial> {
     let rules: [(&str, fn() -> Result<(), Failed>); 11] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",

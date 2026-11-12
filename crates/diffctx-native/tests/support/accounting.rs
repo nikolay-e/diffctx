@@ -49,7 +49,7 @@ fn judged(doc: &Value) -> bool {
 
 // The definitions the engine took up that the answer names nowhere: how many,
 // and the names it does give so a reader can see which rows are missing.
-pub fn lost_definitions(doc: &Value) -> Option<String> {
+pub(crate) fn lost_definitions(doc: &Value) -> Option<String> {
     if !judged(doc) {
         return None;
     }
