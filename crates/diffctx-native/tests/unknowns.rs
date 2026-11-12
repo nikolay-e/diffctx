@@ -2320,7 +2320,9 @@ fn a_script_guard_and_a_program_main_are_entry_points_not_callers() {
         md.contains("no static test link:\n  - src/main.rs::main"),
         "{md}"
     );
-    assert!(!md.contains(ENTRY_LIST), "{md}");
+    // The changed test is entered by its runner and named there; `main` is not.
+    let roles = md.split_once(ENTRY_LIST).map_or("", |(_, roles)| roles);
+    assert!(!roles.contains("src/main.rs::main"), "{md}");
 
     let go = repo(
         &[
