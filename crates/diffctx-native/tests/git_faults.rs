@@ -24,12 +24,13 @@ use support::fake_git::FAKE_GIT;
 use support::seeds::{Edit, Knobs, Lang, RANGE, seed};
 use support::{claims, diffctx, git};
 
-const TIMEOUT_SECS: u64 = 3;
-/// The deadline for runs that must return the whole answer, where nothing
-/// stalls: one no runner reaches. Under the 3 s one, a slow macOS runner cut
-/// the true answer short and the test read the disclosed partial as a
-/// changed answer (#502).
+/// The `--timeout` of every run: one no runner reaches. Under a 3 s one, a
+/// slow macOS runner cut the true answer short and the test read the
+/// disclosed partial as a changed answer (#502).
 const ANSWER_TIMEOUT_SECS: u64 = 600;
+/// The knob a stalled run ends by: a blocked git read gives up after this many
+/// empty waits, counted, not timed (fj#172).
+const STALL_KNOB: (&str, &str) = ("DIFFCTX_TEST_GIT_STALL_AFTER_WAITS", "10");
 
 fn real_git() -> String {
     let out = Command::new("sh")
@@ -113,13 +114,19 @@ impl Fixture {
         command.output().expect("run diffctx")
     }
 
+    /// The run a stall ends: the knob stops the blocked read.
     fn impact(&self, target: &str, mode: &str) -> Output {
-        self.impact_within(target, mode, TIMEOUT_SECS)
+        self.impact_with(target, mode, &[STALL_KNOB])
     }
 
-    fn impact_within(&self, target: &str, mode: &str, secs: u64) -> Output {
-        let timeout = secs.to_string();
-        self.run(
+    /// A run nothing stalls and nothing cuts short.
+    fn impact_whole(&self, target: &str, mode: &str) -> Output {
+        self.impact_with(target, mode, &[])
+    }
+
+    fn impact_with(&self, target: &str, mode: &str, env: &[(&str, &str)]) -> Output {
+        let timeout = ANSWER_TIMEOUT_SECS.to_string();
+        self.run_with(
             target,
             mode,
             &[
@@ -134,15 +141,20 @@ impl Fixture {
                 "--timeout",
                 &timeout,
             ],
+            env,
         )
     }
 
     fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
-        self.pack_within(target, mode, extra, TIMEOUT_SECS)
+        self.pack_with(target, mode, extra, &[STALL_KNOB])
     }
 
-    fn pack_within(&self, target: &str, mode: &str, extra: &[&str], secs: u64) -> Output {
-        let timeout = secs.to_string();
+    fn pack_whole(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
+        self.pack_with(target, mode, extra, &[])
+    }
+
+    fn pack_with(&self, target: &str, mode: &str, extra: &[&str], env: &[(&str, &str)]) -> Output {
+        let timeout = ANSWER_TIMEOUT_SECS.to_string();
         let mut args = vec![
             ".",
             "--diff",
@@ -154,7 +166,7 @@ impl Fixture {
             &timeout,
         ];
         args.extend_from_slice(extra);
-        self.run(target, mode, &args)
+        self.run_with(target, mode, &args, env)
     }
 
     /// The fake git reached its target, and nothing the run started is left
@@ -332,10 +344,10 @@ fn a_cat_file_stalled_while_draining_an_oversized_blob_is_bounded() {
 /// that looks complete, and git is not asked another way.
 fn assert_error_or_named_loss(mode: &str) {
     let fx = fixture();
-    let clean = fx.impact_within("none", "none", ANSWER_TIMEOUT_SECS);
+    let clean = fx.impact_whole("none", "none");
     let truth = Query::Impact.claims(&json(&clean));
     assert!(!truth.is_empty(), "the clean run claimed nothing");
-    let out = fx.impact_within("cat-file", mode, ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_whole("cat-file", mode);
     verdict(Query::Impact, &truth, &out).unwrap_or_else(|why| panic!("{mode}: {why}"));
     fx.assert_no_survivors();
 }
@@ -365,7 +377,7 @@ fn a_descendant_holding_stdout_cannot_hold_the_run() {
 #[test]
 fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
     let fx = fixture();
-    let out = fx.impact_within("ls-tree", "stderr_flood", ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_whole("ls-tree", "stderr_flood");
     assert!(
         out.status.success(),
         "{}",
@@ -444,18 +456,9 @@ fn untracked_change() -> Fixture {
 fn a_failing_untracked_scan_is_an_error_not_a_clean_tree() {
     let fx = untracked_change();
     for (mode, out) in [
-        (
-            "pack",
-            fx.pack_within("--others", "fail", &[], ANSWER_TIMEOUT_SECS),
-        ),
-        (
-            "full",
-            fx.pack_within("--others", "fail", &["--full"], ANSWER_TIMEOUT_SECS),
-        ),
-        (
-            "impact",
-            fx.impact_within("--others", "fail", ANSWER_TIMEOUT_SECS),
-        ),
+        ("pack", fx.pack_whole("--others", "fail", &[])),
+        ("full", fx.pack_whole("--others", "fail", &["--full"])),
+        ("impact", fx.impact_whole("--others", "fail")),
     ] {
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(
@@ -486,14 +489,8 @@ fn a_refused_range_read_is_an_error_not_a_range_with_no_history() {
     ] {
         let fx = fixture();
         for (mode, out) in [
-            (
-                "pack",
-                fx.pack_within(target, "fail", &[], ANSWER_TIMEOUT_SECS),
-            ),
-            (
-                "impact",
-                fx.impact_within(target, "fail", ANSWER_TIMEOUT_SECS),
-            ),
+            ("pack", fx.pack_whole(target, "fail", &[])),
+            ("impact", fx.impact_whole(target, "fail")),
         ] {
             let stderr = String::from_utf8_lossy(&out.stderr);
             assert_eq!(
@@ -583,9 +580,9 @@ fn a_policy_git_refused_to_read_still_withholds() {
     for mode in ["impact", "pack"] {
         let fx = withheld_change();
         let out = if mode == "impact" {
-            fx.impact_within("ls-tree", "fail", ANSWER_TIMEOUT_SECS)
+            fx.impact_whole("ls-tree", "fail")
         } else {
-            fx.pack_within("ls-tree", "fail", &[], ANSWER_TIMEOUT_SECS)
+            fx.pack_whole("ls-tree", "fail", &[])
         };
         assert_eq!(out.status.code(), Some(3), "{mode}");
         let published = String::from_utf8_lossy(&out.stdout);
@@ -664,7 +661,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
     let fx = sweep_fixture();
     let calls = fx.tmp.path().join("calls");
     let _ = std::fs::remove_file(&calls);
-    let out = fx.impact_within("no-such-verb", "fail", ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_whole("no-such-verb", "fail");
     assert!(
         out.status.success(),
         "{}",
@@ -695,7 +692,7 @@ fn every_failing_git_read_is_an_error_or_a_named_loss() {
     verbs.dedup();
     assert!(verbs.iter().any(|v| v == "grep"), "{verbs:?}");
     for verb in &verbs {
-        let out = fx.impact_within(verb, "fail", ANSWER_TIMEOUT_SECS);
+        let out = fx.impact_whole(verb, "fail");
         if !out.status.success() {
             continue;
         }
@@ -1244,7 +1241,7 @@ fn a_five_megabyte_changed_file_is_a_named_loss() {
     let fx = big_changed_file();
     let size = std::fs::metadata(fx.repo().join("big.py")).unwrap().len();
     assert!(size >= 5 * 1024 * 1024, "the fixture is {size} bytes");
-    let out = fx.impact_within("no-such-verb", "none", ANSWER_TIMEOUT_SECS);
+    let out = fx.impact_whole("no-such-verb", "none");
     assert!(
         out.status.success(),
         "{}",
