@@ -45,11 +45,43 @@ fn repo(dir: &Path) {
     git(dir, &["commit", "-qam", "double"]);
 }
 
-/// Children this process still has after the binary exited, each reaped as it
-/// is found. An orphan still running ends on its stdin's EOF, and the blocking
-/// `waitpid` waits for it; no child at all is `ECHILD`.
-fn orphans() -> Vec<libc::pid_t> {
+/// What `/proc` says a child of ours is: its pid, name and argument vector (a
+/// zombie has none, only the name).
+fn describe(pid: libc::pid_t) -> String {
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    let argv = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+    let argv = String::from_utf8_lossy(&argv).replace('\0', " ");
+    format!("{pid} {} [{}]", comm.trim(), argv.trim())
+}
+
+/// The git children this process still has after the binary exited, each named
+/// and then every child reaped. Only git is judged: what a killed git left
+/// behind, such as a fake's `sleep`, lost its parent with the kill and is
+/// nobody's to reap but an init's. An orphan still running ends on its stdin's
+/// EOF, and the blocking `waitpid` waits for it; no child at all is `ECHILD`.
+fn orphans() -> Vec<String> {
+    let me = i64::from(std::process::id());
     let mut found = Vec::new();
+    for entry in std::fs::read_dir("/proc").unwrap().flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<libc::pid_t>() else {
+            continue;
+        };
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            continue;
+        };
+        let after_name = stat.rsplit_once(')').map_or("", |(_, rest)| rest);
+        if after_name
+            .split_whitespace()
+            .nth(1)
+            .and_then(|p| p.parse().ok())
+            == Some(me)
+        {
+            let named = describe(pid);
+            if named.split(' ').nth(1) == Some("git") {
+                found.push(named);
+            }
+        }
+    }
     loop {
         let mut status = 0;
         // SAFETY: waitpid(2) writes the status into the local it is given.
@@ -58,21 +90,22 @@ fn orphans() -> Vec<libc::pid_t> {
         if pid <= 0 {
             return found;
         }
-        found.push(pid);
     }
 }
 
 #[test]
 fn a_run_leaves_no_git_child_behind() {
-    // SAFETY: prctl(2) with these arguments only changes this process's flag.
-    #[allow(unsafe_code)]
-    let set = unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) };
-    assert_eq!(set, 0, "this kernel has no child subreaper");
-
     let tmp = TempDir::new().unwrap();
     let work = tmp.path().join("repo");
     std::fs::create_dir_all(&work).unwrap();
     repo(&work);
+    // Only now: `git commit` detaches `git maintenance` and leaves it to
+    // whoever adopts orphans, so a subreaper set before the setup adopts git's
+    // own daemons, which no diffctx run left.
+    // SAFETY: prctl(2) with these arguments only changes this process's flag.
+    #[allow(unsafe_code)]
+    let set = unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) };
+    assert_eq!(set, 0, "this kernel has no child subreaper");
     let bin = tmp.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::write(bin.join("git"), FAKE_GIT).unwrap();
