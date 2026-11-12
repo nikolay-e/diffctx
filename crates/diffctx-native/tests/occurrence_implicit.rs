@@ -168,12 +168,6 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
         ),
         seed(
             Implicit::Test,
-            &RustExtractor,
-            "#[test]\nfn works() {}\n",
-            "works",
-        ),
-        seed(
-            Implicit::Test,
             &KotlinExtractor,
             "class T {\n    @Test\n    fun works() {}\n}\n",
             "T.works",
@@ -322,6 +316,14 @@ fn a_test_of_a_test_file_is_entered_by_the_runner_the_answer_names() {
 }
 
 #[test]
+fn a_rust_test_function_is_entered_by_the_runner_wherever_it_lives() {
+    for path in ["src/lib.rs", "crates/x/src/hook.rs"] {
+        let found = kinds_in(path, &RustExtractor, RUST_TEST, "works", Known::default());
+        assert!(found.is_empty(), "{path}: {found:?}");
+    }
+}
+
+#[test]
 fn a_test_the_runner_is_not_known_to_enter_keeps_its_hedge() {
     let at = |path: &str| {
         kinds_in(
@@ -334,14 +336,14 @@ fn a_test_the_runner_is_not_known_to_enter_keeps_its_hedge() {
     };
     assert_eq!(at("app/helpers.py"), [Implicit::Test]);
     assert_eq!(at("src/sample"), [Implicit::Test]);
-    let rust = kinds_in(
-        "src/lib.rs",
-        &RustExtractor,
-        RUST_TEST,
-        "works",
+    let kotlin = kinds_in(
+        "src/Main.kt",
+        &KotlinExtractor,
+        "class T {\n    @Test\n    fun works() {}\n}\n",
+        "T.works",
         Known::default(),
     );
-    assert_eq!(rust, [Implicit::Test]);
+    assert_eq!(kotlin, [Implicit::Test]);
 }
 
 #[test]
