@@ -1,0 +1,35 @@
+name: ts_added_function_read_only_by_the_diff_is_named
+mode: impact
+source: fj#175
+issue_state: open
+tags:
+- typescript
+- added-definition
+- silent-loss
+repo:
+  initial_files:
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0);
+      }
+  changed_files:
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0);
+      }
+
+      function tax(amount: number): number {
+        return amount * 2;
+      }
+
+      export function net(amount: number): number {
+        return amount - tax(amount);
+      }
+  commit_message: Add a net price that subtracts the tax
+expect:
+  # `tax` is read by `net` and by nothing else, `net` by nothing: both are
+  # definitions the range adds, and the answer names each of them.
+  exact: false
+  changed:
+  - src/price.ts::tax
+  - src/price.ts::net
