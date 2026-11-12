@@ -1310,10 +1310,10 @@ fn a_go_chain_member_is_read_at_its_own_name() {
 
 #[test]
 fn a_trap_handler_names_the_function_it_runs() {
-    let source = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\ntrap 'cleanup' EXIT\ntrap \"cleanup now\" INT\ntrap 'echo cleanup' HUP\n";
+    let source = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\ntrap 'cleanup' EXIT\ntrap \"cleanup now\" INT\ntrap cleanup TERM\ntrap 'echo cleanup' HUP\n";
     let world = snapshot_in(Lang::Shell, &[("run.sh", source)]);
     let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
-    for line in [5, 6] {
+    for line in [5, 6, 7] {
         assert_eq!(
             shape(on(&found, line)),
             ("ours", "resolved", Some(Relation::Calls)),
@@ -1321,7 +1321,7 @@ fn a_trap_handler_names_the_function_it_runs() {
         );
     }
     assert_eq!(
-        shape(on(&found, 7)),
+        shape(on(&found, 8)),
         ("not_ours", "builtin", None),
         "{found:#?}"
     );

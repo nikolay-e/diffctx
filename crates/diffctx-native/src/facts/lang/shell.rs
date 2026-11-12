@@ -412,7 +412,7 @@ impl<'a> Walker<'a> {
             let handler = node
                 .children_by_field_name("argument", &mut cursor)
                 .find(|a| !self.text_of(*a).starts_with('-'))
-                .filter(|a| matches!(a.kind(), "string" | "raw_string"));
+                .filter(|a| matches!(a.kind(), "word" | "string" | "raw_string"));
             if let Some(handler) = handler {
                 self.trap_handler(handler, scope);
             }
@@ -446,9 +446,10 @@ impl<'a> Walker<'a> {
         }
     }
 
-    /// A quoted trap handler is shell code run later: its first word is a call.
+    /// A trap handler is shell code run later: its first word is a call.
     fn trap_handler(&mut self, handler: TsNode<'a>, scope: &Scope) {
-        let inner = &self.text_of(handler)[1..];
+        let quoted = handler.kind() != "word";
+        let inner = &self.text_of(handler)[usize::from(quoted)..];
         let lead = inner.len() - inner.trim_start().len();
         let word = inner[lead..]
             .split(|c: char| c.is_whitespace() || ";&|<>()$\"'`".contains(c))
@@ -457,7 +458,7 @@ impl<'a> Walker<'a> {
         if word.is_empty() {
             return;
         }
-        let start = (handler.start_byte() + 1 + lead) as u32;
+        let start = (handler.start_byte() + usize::from(quoted) + lead) as u32;
         let row = handler.start_position().row as u32 + 1;
         let line = row + inner[..lead].matches('\n').count() as u32;
         let site = Span::new(start..start + word.len() as u32, (line, line));
