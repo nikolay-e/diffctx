@@ -1122,7 +1122,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     #[test]
     fn package_and_imports_are_the_declared_ones_aliases_included() {
         let f = facts_of();
-        assert!(f.error_lines.is_empty());
+        assert!(f.error_lines.is_empty(), "{:?}", f.error_lines);
         assert_eq!(f.package.as_deref(), Some("com.acme.matrix"));
         assert_eq!(
             f.imported("resolveTag").map(|i| i.path.as_str()),
@@ -1269,7 +1269,10 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     fn a_broken_declaration_is_reported_and_the_rest_survives() {
         let f = facts("class A {\n    fun ok() = 1\n}\nclass B {\n    fun broken(: Int {\n}\n")
             .expect("kotlin grammar");
-        assert!(!f.error_lines.is_empty());
+        assert!(
+            !f.error_lines.is_empty(),
+            "a broken declaration is an error"
+        );
         assert!(f.declarations.iter().any(|d| d.name == "ok"));
     }
 }
