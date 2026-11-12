@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::{
     Alias, Draft, Ecosystem, Export, Files, Late, Result, RootOrigin, dir_of, expand_members,
-    has_extension, join, name_of,
+    has_extension, join, name_of, target_dir_of,
 };
 
 const MAX_EXTENDS_DEPTH: u8 = 8;
@@ -586,15 +586,6 @@ fn ts_options(
     Ok((options, Some(value)))
 }
 
-/// The directory a `paths` target names: the part before its wildcard, or
-/// the directory of a file target.
-fn target_dir(target: &str) -> String {
-    match target.find('*') {
-        Some(star) => target[..star].trim_end_matches('/').to_string(),
-        None => dir_of(target).to_string(),
-    }
-}
-
 fn read_tsconfig(files: &Files, config: &str, draft: &mut Draft) -> Result<()> {
     let (options, value) = ts_options(files, config, 0, draft)?;
     let Some(value) = value else {
@@ -617,7 +608,7 @@ fn read_tsconfig(files: &Files, config: &str, draft: &mut Draft) -> Result<()> {
     roots.extend(
         aliases
             .iter()
-            .flat_map(|a| a.targets.iter().map(|t| target_dir(t))),
+            .flat_map(|a| a.targets.iter().map(|t| target_dir_of(t))),
     );
     let references: Vec<String> = match value.get("references") {
         Some(Value::Array(items)) => items
