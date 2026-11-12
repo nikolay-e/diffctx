@@ -26,6 +26,6 @@ fn witnessed() -> &'static HashSet<&'static str> {
 }
 
 /// Whether the bump job saw a newer release of `language`'s grammar read `blob`.
-pub fn newer_grammar_reads(language: Language, blob: &Oid) -> bool {
+pub(super) fn newer_grammar_reads(language: Language, blob: &Oid) -> bool {
     witnessed().contains(format!("{language:?} {blob}").as_str())
 }
