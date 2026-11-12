@@ -177,8 +177,10 @@ def test_main_adds_the_paired_section_fails_a_measured_cell_and_lists_thin_relat
 
     lines = {line["gate"]: line for line in json.loads((tmp_path / "out" / "report.json").read_text())["verdict"]}
     assert (lines["measurability.lower_bound"]["status"], lines["measurability.lower_bound"]["value"]) == ("fail", -0.5)
-    assert lines["measurability.interval_width"]["status"] == "pass"
-    assert lines["measurability.interval_width"]["detail"] == "1 of 1 cells measured, 0 judged on the safety rows alone"
+    width = lines["measurability.interval_width"]
+    assert (width["status"], width["value"]) == ("info", "1 of 1 cells measured")
+    assert "0 cells judged on the safety rows alone" in width["detail"]
+    assert "| measurability.interval_width |" in text and "INFO" in text
     assert "Failing: measurability.lower_bound." in text
 
     relaxed = edited_gates(tmp_path, "lower_bound_min = -0.05", "lower_bound_min = -0.6")
@@ -196,7 +198,12 @@ def test_main_adds_the_paired_section_fails_a_measured_cell_and_lists_thin_relat
     )
     unmeasured = json.loads((tmp_path / "strict" / "report.json").read_text())
     assert unmeasured["paired"][0]["result"]["rows"][0]["state"] == "unmeasured"
-    assert {line["gate"]: line["status"] for line in unmeasured["verdict"]}["measurability.lower_bound"] == "n/a"
+    statuses = {line["gate"]: line["status"] for line in unmeasured["verdict"]}
+    assert statuses["measurability.lower_bound"] == "n/a"
+    assert statuses["measurability.interval_width"] == "info"  # no width can make it pass or fail
+    assert {line["gate"]: line["value"] for line in unmeasured["verdict"]}[
+        "measurability.interval_width"
+    ] == "0 of 1 cells measured"
 
 
 def test_recall_over_the_affected_relations_is_its_own_column_and_older_cells_count_everything_as_affected():
