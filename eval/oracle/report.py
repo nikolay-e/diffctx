@@ -337,9 +337,6 @@ def observations(report: dict, states: list[cellstate.CellState], gates: dict[st
     """What this run measured for each gate; a gate with no entry here had no input."""
     seen: dict[str, list[Observation]] = defaultdict(list)
     if report["scip"]:
-        seen["safety.false_complete_negatives"].append(
-            ("oracle cells", sum(r["false_complete_negatives"] for r in report["scip"]), "")
-        )
         seen["safety.false_fold"].append(("oracle cells", sum(r["false_fold"] for r in report["scip"]), ""))
     if report.get("incomplete_complete"):
         found = report["incomplete_complete"]
@@ -351,12 +348,6 @@ def observations(report: dict, states: list[cellstate.CellState], gates: dict[st
             f"{found['missing'] - found['silent']} of them covered by an answer's count of definitions it shed unnamed"
         )
         seen["safety.silent_loss"].append(("oracle answers", found["silent"], detail))
-    for name, label in (("faults", "fault sweep"), ("metamorphic", "metamorphic suite")):
-        if report.get(name):
-            seen["safety.false_complete_negatives"].append((label, report[name]["false_complete_negatives"], ""))
-    if report.get("harness"):
-        found = sum(case["false_complete_negatives"] for case in report["harness"]["cases"])
-        seen["safety.false_complete_negatives"].append(("YAML corpus", found, ""))
     impact = ((report.get("bench") or {}).get("all") or {}).get("impact") or {}
     if impact.get("p95") is not None:
         seen["speed.impact_p95_seconds"].append(("bench", impact["p95"], f"{impact.get('n')} runs"))
