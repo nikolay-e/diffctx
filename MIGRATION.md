@@ -79,12 +79,14 @@ fields, one v2 field. Dropped = derived or internal, with the reason.
 | `reason` | `reason` | kept, candidates only |
 | `relation` (`call`, `reference`, `implementation`, `reexports`; absent for `call`) | `class` (always present) | renamed |
 | `kind` | `kind` | kept: stated only where the (language, relation) cell is precise |
-| `tested_by`, `tested_via`, `file_tested`, `registered_by`, `unread_test` | `guard{state, test, via, registrar}` | merged; `state` is `linked`, `file_only`, `none`, `registered`, `entry_point` (a framework enters it; `registrar` is its sentence), `unread`, `no_tests` or `not_established` (the search for a test stopped at its hop bound, so no absence is claimed) |
+| `tested_by`, `tested_via`, `file_tested`, `registered_by`, `unread_test` | `guard{state, test, via, registrar}` | merged; `state` is `linked`, `file_only`, `none`, `registered`, `entry_point` (a framework enters it; `registrar` is its sentence), `unread`, `no_tests` or `not_established` (the search above it is open, so no absence is claimed) |
 | `folded_by` | `folded_by` | kept, only under `--unfold` |
 
 ### Gaps (`unresolved` sentences → `gaps`)
 
-`unlanded{name, uses}`, `unpaired{name}`, `base_unresolved{reason}`,
+`unlanded{name, uses, sites[{path, line, via}]}` (`sites` is optional, the
+first of the uses; `via` is `call`, `read` or `embedded`), `unpaired{name}`,
+`base_unresolved{reason}`,
 `stopped{reasons}`, `outside_scope{files}`, `unaccounted{reason, files}`,
 `withheld{files}`, `untracked{files, name}`, `dispatched{via}`,
 `macros{files, what}`, `capped`, `not_traced`,
