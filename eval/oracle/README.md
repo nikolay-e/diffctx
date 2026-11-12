@@ -59,6 +59,22 @@ with `--directory`: the repository root has its own pytest configuration.
 `DIFFCTX_BIN=... python run.py selftest` runs the engine against fixtures with
 a body-only edit, a deletion and a move.
 
+## Thresholds and the verdict
+
+`gates.toml` holds every threshold the oracle judges by; no number lives in code.
+`report.py` prints one verdict line per threshold with the numbers behind it (a
+threshold with no input in the run is `N/A`, never a pass; `--gates FILE` reads
+another file, `--ac5-head` and `--ac5-base` the AC5 scorer's `totals.json`).
+
+`--against DIR` pairs the run with another on the same commits and resamples
+over commits. A cell, one (language, mode, relation), is *measured* when the
+95 % intervals of its precision and recall are at most `interval_width_max`
+wide; a
+measured cell *fails* when the lower bound of a measured interval is under
+`lower_bound_min`. Every other cell is *unmeasured* and is judged on the safety
+rows alone: a statistic over a handful of commits decides nothing. Each cell row
+carries its commits, sites and the head's precision and recall.
+
 ## Pins and isolation
 
 - `tools/package.json` pins the indexers exactly; `tools/package-lock.json`

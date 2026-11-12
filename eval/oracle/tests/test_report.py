@@ -136,7 +136,7 @@ def test_main_prints_the_curve_section_when_runs_are_given(tmp_path: Path):
     assert "| python | impact | calls | 4000 | 2 | 1.0 | 1.0 | 0 | 0.0 |" in text
 
 
-def test_main_adds_the_paired_section_flags_a_regression_and_lists_thin_relations(tmp_path: Path):
+def test_main_adds_the_paired_section_fails_a_measured_cell_and_lists_thin_relations(tmp_path: Path):
     def run(name: str, tp: int) -> Path:
         directory = tmp_path / name
         directory.mkdir()
@@ -165,10 +165,38 @@ def test_main_adds_the_paired_section_flags_a_regression_and_lists_thin_relation
 
     text = (tmp_path / "out" / "report.md").read_text()
     assert "## Paired bootstrap: head against base" in text
-    assert "recall REGRESSION" in text and "read rows" in text
-    assert "Regressions: python impact calls: recall; python impact calls: recall_affected." in text
+    assert "recall FAILS, recall_affected FAILS, recall WORSE" in text and "read rows" in text
+    assert (
+        "Cells: 1, measured 1 (failing 2), unmeasured 0. Failing: python impact calls: recall; python impact calls: recall_affected."
+        in text
+    )
     assert "| a::g | a::f | calls | c0 | tp | fn |" in text
-    assert json.loads((tmp_path / "out" / "report.json").read_text())["paired"][0]["result"]["regressions"]
+    assert "| python | impact | calls | 8 | 16 | 1.0 | 0.5 |" in text and "| failing |" in text
+    result = json.loads((tmp_path / "out" / "report.json").read_text())["paired"][0]["result"]
+    assert result["measurability"]["failing"] and result["rows"][0]["state"] == "failing"
+
+    lines = {line["gate"]: line for line in json.loads((tmp_path / "out" / "report.json").read_text())["verdict"]}
+    assert (lines["measurability.lower_bound"]["status"], lines["measurability.lower_bound"]["value"]) == ("fail", -0.5)
+    assert lines["measurability.interval_width"]["status"] == "pass"
+    assert lines["measurability.interval_width"]["detail"] == "1 of 1 cells measured, 0 judged on the safety rows alone"
+    assert "Failing: measurability.lower_bound." in text
+
+    relaxed = edited_gates(tmp_path, "lower_bound_min = -0.05", "lower_bound_min = -0.6")
+    assert (
+        report.main(["--run", str(head), "--against", str(base), "--out", str(tmp_path / "relaxed"), "--gates", str(relaxed)])
+        == 0
+    )
+    again = json.loads((tmp_path / "relaxed" / "report.json").read_text())
+    assert again["paired"][0]["result"]["rows"][0]["state"] == "measured"
+    assert {line["gate"]: line["status"] for line in again["verdict"]}["measurability.lower_bound"] == "pass"
+
+    strict = edited_gates(tmp_path, "interval_width_max = 0.20", "interval_width_max = -1")
+    assert (
+        report.main(["--run", str(head), "--against", str(base), "--out", str(tmp_path / "strict"), "--gates", str(strict)]) == 0
+    )
+    unmeasured = json.loads((tmp_path / "strict" / "report.json").read_text())
+    assert unmeasured["paired"][0]["result"]["rows"][0]["state"] == "unmeasured"
+    assert {line["gate"]: line["status"] for line in unmeasured["verdict"]}["measurability.lower_bound"] == "n/a"
 
 
 def test_recall_over_the_affected_relations_is_its_own_column_and_older_cells_count_everything_as_affected():
