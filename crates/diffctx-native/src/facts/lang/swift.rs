@@ -15,7 +15,7 @@ use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, T
 
 use crate::facts::kotlin::{
     Binding, Declaration, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility, child,
-    line_of, push_use, squash, string_text, text, walk,
+    line_of, name_text, push_use, squash, string_text, text, walk,
 };
 use crate::facts::lang::kotlin::{Dialect, blob_of};
 use crate::facts::{BlobFacts, Extractor, Language, expired};
@@ -93,7 +93,7 @@ fn extract(root: Node<'_>, bytes: &[u8]) -> KotlinFacts {
             "import_declaration" => {
                 let module = child(node, "identifier")
                     .and_then(|i| child(i, "simple_identifier"))
-                    .and_then(|m| text(m, bytes));
+                    .and_then(|m| name_text(m, bytes));
                 if let Some(module) = module {
                     facts.imports.push(Import {
                         path: module.to_string(),
@@ -178,12 +178,12 @@ fn declared_name(node: &Node, bytes: &[u8]) -> Option<(String, Vec<String>)> {
         let mut path: Vec<String> = name
             .children(&mut cursor)
             .filter(|c| c.kind() == "type_identifier")
-            .filter_map(|c| text(c, bytes).map(str::to_string))
+            .filter_map(|c| name_text(c, bytes).map(str::to_string))
             .collect();
         let last = path.pop()?;
         return Some((last, path));
     }
-    Some((text(name, bytes)?.trim_matches('`').to_string(), Vec::new()))
+    Some((name_text(name, bytes)?.to_string(), Vec::new()))
 }
 
 fn declaration(
@@ -314,7 +314,7 @@ fn type_name(node: Node, bytes: &[u8]) -> Option<String> {
                 .children(&mut cursor)
                 .filter(|c| c.kind() == "type_identifier")
                 .last()?;
-            text(last, bytes).map(str::to_string)
+            name_text(last, bytes).map(str::to_string)
         }
         "optional_type" | "opaque_type" | "existential_type" => {
             node.named_child(0).and_then(|t| type_name(t, bytes))
@@ -333,14 +333,14 @@ fn initializer_call(value: Node, bytes: &[u8]) -> Option<InitCall> {
     match head.kind() {
         "simple_identifier" => Some(InitCall {
             receiver: None,
-            callee: text(head, bytes)?.to_string(),
+            callee: name_text(head, bytes)?.to_string(),
         }),
         "navigation_expression" => {
             let receiver = head
                 .child_by_field_name("target")
                 .filter(|r| r.kind() == "simple_identifier")?;
             Some(InitCall {
-                receiver: Some(text(receiver, bytes)?.to_string()),
+                receiver: Some(name_text(receiver, bytes)?.to_string()),
                 callee: member_name(head, bytes)?.to_string(),
             })
         }
@@ -354,7 +354,7 @@ fn member_name<'a>(navigation: Node, bytes: &'a [u8]) -> Option<&'a str> {
         .child_by_field_name("suffix")?
         .child_by_field_name("suffix")
         .filter(|n| n.kind() == "simple_identifier")
-        .and_then(|n| text(n, bytes))
+        .and_then(|n| name_text(n, bytes))
 }
 
 /// A local `let`/`var`, or a nested `func`, which shadows by name too.
@@ -386,7 +386,7 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             if let Some(value) = node.child_by_field_name("value") {
                 b.init_call = initializer_call(value, bytes);
                 b.alias = (value.kind() == "simple_identifier")
-                    .then(|| text(value, bytes).map(str::to_string))
+                    .then(|| name_text(value, bytes).map(str::to_string))
                     .flatten();
             }
         }
@@ -397,7 +397,7 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
 /// The names a pattern binds: `x`, `(a, b)`, `.some(let w)`.
 fn pattern_names(pattern: Node, bytes: &[u8]) -> Vec<String> {
     if pattern.kind() == "simple_identifier" {
-        return text(pattern, bytes)
+        return name_text(pattern, bytes)
             .map(str::to_string)
             .into_iter()
             .collect();
@@ -412,7 +412,7 @@ fn pattern_names(pattern: Node, bytes: &[u8]) -> Vec<String> {
                     if n.kind() == "pattern"
                         && n.field_name_for_child(i as u32) != Some("type") =>
                 {
-                    names.extend(text(c, bytes).map(str::to_string));
+                    names.extend(name_text(c, bytes).map(str::to_string));
                 }
                 "pattern" | "value_binding_pattern" => stack.push(c),
                 _ => {}
@@ -440,7 +440,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             let name = node
                 .child_by_field_name("name")
                 .filter(|n| n.kind() == "simple_identifier")
-                .and_then(|n| text(n, bytes));
+                .and_then(|n| name_text(n, bytes));
             if let (Some(scope), Some(name)) = (scope, name) {
                 bindings.push(Binding::new(
                     name.to_string(),
@@ -529,7 +529,7 @@ fn condition_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
         if *field != Some("bound_identifier") {
             continue;
         }
-        let Some(name) = text(*c, bytes) else {
+        let Some(name) = name_text(*c, bytes) else {
             continue;
         };
         let rest = &children[i + 1..];
@@ -550,7 +550,7 @@ fn condition_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
                 b.start = v.end_byte();
                 b.init_call = initializer_call(v, bytes);
                 b.alias = (v.kind() == "simple_identifier")
-                    .then(|| text(v, bytes).map(str::to_string))
+                    .then(|| name_text(v, bytes).map(str::to_string))
                     .flatten();
             }
             // `if let maybe`: the outer `maybe`, unwrapped.
@@ -562,9 +562,7 @@ fn condition_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
 
 /// The uses a node is the head of, each recorded once.
 fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
-    let mut push = |name: Option<&str>, kind, receiver, at| {
-        push_use(uses, name.map(|n| n.trim_matches('`')), kind, receiver, at);
-    };
+    let mut push = |name, kind, receiver, at| push_use(uses, name, kind, receiver, at);
     let called = || {
         node.parent().is_some_and(|p| {
             p.kind() == "call_expression" && p.named_child(0).is_some_and(|c| c.id() == node.id())
@@ -632,7 +630,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                     Receiver::Path(
                         outer
                             .iter()
-                            .filter_map(|p| text(*p, bytes).map(str::to_string))
+                            .filter_map(|p| name_text(*p, bytes).map(str::to_string))
                             .collect(),
                     )
                 });
@@ -692,7 +690,7 @@ fn is_bare_reference(node: &Node) -> bool {
 
 fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
     match node.kind() {
-        "simple_identifier" => text(node, bytes)
+        "simple_identifier" => name_text(node, bytes)
             .map(|t| Receiver::Name(t.to_string()))
             .unwrap_or(Receiver::Expr),
         "self_expression" => Receiver::This,
@@ -703,7 +701,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
         "call_expression" => node
             .named_child(0)
             .filter(|c| c.kind() == "simple_identifier")
-            .and_then(|c| text(c, bytes))
+            .and_then(|c| name_text(c, bytes))
             .map_or(Receiver::Expr, |callee| Receiver::Call(callee.to_string())),
         "navigation_expression" => {
             let mut parts = Vec::new();
@@ -722,7 +720,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
                 match target {
                     Some(inner) if inner.kind() == "navigation_expression" => current = inner,
                     Some(inner) if inner.kind() == "simple_identifier" => {
-                        parts.extend(text(inner, bytes).map(str::to_string));
+                        parts.extend(name_text(inner, bytes).map(str::to_string));
                         break;
                     }
                     Some(inner) if inner.kind() == "self_expression" => {
