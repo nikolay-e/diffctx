@@ -5,6 +5,9 @@
 // directory, in the order the calls begin, and logs its arguments there; the
 // call numbered FAKE_GIT_FAIL_INDEX fails like a refused read. The numbers
 // are the same for the same run, so a sweep can fail each call in turn.
+//
+// A stalling mode records it in the file FAKE_GIT_STALLED names, when its output
+// stops: the event a run's stall knob (DIFFCTX_TEST_GIT_STALL_FILE) waits for.
 pub const FAKE_GIT: &str = r#"#!/bin/sh
 echo "$*" >> "$FAKE_GIT_CALLS"
 if [ -n "$FAKE_GIT_SLOTS" ]; then
@@ -26,7 +29,7 @@ for a in "$@"; do
 done
 if [ -z "$hit" ]; then exec "$REAL_GIT" "$@"; fi
 echo $$ >> "$FAKE_GIT_PIDS"
-stall() { while :; do sleep 60; done; }
+stall() { [ -z "$FAKE_GIT_STALLED" ] || echo stalled >> "$FAKE_GIT_STALLED"; while :; do sleep 60; done; }
 case "$FAKE_GIT_MODE" in
   stall_before_read) stall ;;
   partial_header) read -r _; printf 'abc'; stall ;;
