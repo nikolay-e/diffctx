@@ -113,6 +113,12 @@ pub fn run(case: &Case, name: &str) -> Result<Answer, String> {
                     repeated.join("\n  ")
                 ));
             }
+            if let Some(lost) = crate::accounting::lost_definitions(&doc) {
+                return Err(format!(
+                    "{}\nthe answer leaves a changed definition it traced unnamed:\n  {lost}",
+                    super::ASSERTION_FAILED
+                ));
+            }
             extract(&doc)?
         }
         None => Answer {
