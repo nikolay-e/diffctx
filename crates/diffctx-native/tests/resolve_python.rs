@@ -764,6 +764,10 @@ const RED: &[(&str, &str)] = &[
         "symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved",
         "gh#710: open ticket; the case asserts what the engine does not yet answer",
     ),
+    (
+        "impact/python/py_class_attribute_holding_a_changed_class_is_a_caller",
+        "fj#186: open ticket; the case asserts what the engine does not yet answer",
+    ),
 ];
 
 #[test]
