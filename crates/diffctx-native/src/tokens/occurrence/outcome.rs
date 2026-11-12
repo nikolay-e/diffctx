@@ -792,11 +792,20 @@ impl<'a> Reading<'a> {
     }
 
     /// A word after a listed command names no function (`trap` is unlisted); a script, only after a
-    /// listed command that runs nothing (`cat check`, not `bash check`).
+    /// listed command that runs nothing (`cat check`, not `bash check`). Part of a longer word
+    /// (`lint.sh`, `--lint`, `lint-all`) it is no function's name at all.
     fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
         let language = self.file.language();
         let family = COMMAND_ARGUMENTS.iter().find(|row| row.0.has(language))?.0;
         let at = occurrence.bytes.start;
+        let joined = |b: Option<&u8>| b.is_some_and(|b| b".-/".contains(b));
+        let (before, after) = (
+            self.text[..at as usize].last(),
+            self.text[occurrence.bytes.end as usize..].first(),
+        );
+        if self.subject.kind != DefKind::Module && (joined(before) || joined(after)) {
+            return Some(Basis::Builtin);
+        }
         let call = (self.file.blob.facts.iter())
             .filter_map(|fact| match fact {
                 Fact::Reference(call)

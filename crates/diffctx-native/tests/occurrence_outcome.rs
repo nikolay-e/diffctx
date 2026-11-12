@@ -1024,6 +1024,30 @@ fn a_word_after_a_command_that_names_no_function_is_no_call() {
 }
 
 #[test]
+fn a_function_name_inside_a_longer_word_is_no_call() {
+    let world = snapshot_in(
+        Lang::Shell,
+        &[(
+            "run.sh",
+            "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\nbash cleanup.sh\nmake cleanup-all\ntar --cleanup x\ntrap cleanup EXIT\n",
+        )],
+    );
+    let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
+    for line in [5, 6, 7] {
+        assert_eq!(
+            shape(on(&found, line)),
+            ("not_ours", "builtin", None),
+            "line {line}: {found:#?}"
+        );
+    }
+    assert_eq!(
+        on(&found, 8).outcome,
+        Outcome::Candidate(Reason::Unexplained),
+        "`trap cleanup EXIT` names it whole: {found:#?}"
+    );
+}
+
+#[test]
 fn a_word_after_a_command_that_may_run_a_function_stays_a_candidate() {
     let world = snapshot_in(Lang::Shell, &[("run.sh", CLEANUP)]);
     let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
