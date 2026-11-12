@@ -76,6 +76,47 @@ measured interval is under `lower_bound_min`. Every other cell is
 handful of commits decides nothing. Each cell row
 carries its commits, sites and the head's precision and recall.
 
+## Cell states
+
+`cellstate.py` derives each (language, relation) cell's state from the
+measurement and never from a typed list. A cell is `precise` only when every
+row of it, in every mode and every paired run of the report, meets the
+`[precise]` floors of `gates.toml` (head precision and recall), has clean
+safety rows, is measured and does not fail against the base, and the cell has
+a fresh seed and its old path deleted. Any other cell is `heuristic`, with
+every missing condition named. A cell the facts name and the table lacks is
+`heuristic` ("no measured row"). Dropping a `[precise]` condition from
+`gates.toml` drops it from the rule.
+
+The last two conditions are facts about the engine, not about a measurement.
+The orchestrator supplies them from the engine at the head as a JSON file
+(`tests/fixtures/cell_facts.json` is the example):
+
+```json
+{
+  "schema": "diffctx.cell-facts.v1",
+  "engine": "a label or commit of the engine the facts were read from",
+  "fresh_seed": { "<language>": "the seed that is fresh, as a witness" },
+  "old_path_deleted": { "<language>/<relation>": "the commit that deleted it" }
+}
+```
+
+`fresh_seed` lists the languages whose measured run drew only commits made
+after the code freeze; `old_path_deleted` lists the cells whose replaced path
+is gone from the engine. Each entry carries its witness, and an empty one is
+refused: no claim is a bare yes. A language or cell not listed is not fresh or
+not deleted.
+
+```text
+python cellstate.py --report out/report.json --facts facts.json \
+    [--gates FILE] [--json states.json] [--readme [README.md]]
+```
+
+`--report` is a `report.py --against` output; without `--readme` the table
+goes to stdout. `--readme` rewrites the table between the `cell-states`
+markers, appending the section the first time: the table is generated (never
+edited by hand) after the fresh seed.
+
 ## Pins and isolation
 
 - `tools/package.json` pins the indexers exactly; `tools/package-lock.json`
