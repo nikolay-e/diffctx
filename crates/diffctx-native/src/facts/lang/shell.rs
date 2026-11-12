@@ -30,13 +30,14 @@
 //!   a comment is layout and a change of quote style is not.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 use tree_sitter::{Language as TsLanguage, Node as TsNode};
 
 use crate::facts::config::syntax;
 use crate::facts::shell::{PathHead, PathUse, ShellPath};
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Local, LocalKey,
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Lexical, Local, LocalKey,
     LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired,
     hash_text,
 };
@@ -131,6 +132,12 @@ impl Extractor for ShellExtractor {
         }
         blob.facts = walker.facts;
         blob.record_lexical(root);
+        blob.lexical.extend(
+            walker
+                .prose
+                .into_iter()
+                .map(|range| (range, Lexical::String)),
+        );
         blob.in_source_order();
         blob
     }
@@ -208,6 +215,8 @@ struct Walker<'a> {
     globals: HashSet<String>,
     /// The names a function declared local.
     locals: HashSet<(String, String)>,
+    /// Bytes that are text by what runs them, not by their quotes.
+    prose: Vec<Range<u32>>,
     /// How many functions of a name were met before.
     functions: HashMap<String, u16>,
     nodes: usize,
@@ -224,6 +233,7 @@ impl<'a> Walker<'a> {
             assigned: HashMap::new(),
             globals: HashSet::new(),
             locals: HashSet::new(),
+            prose: Vec::new(),
             functions: HashMap::new(),
             nodes: 0,
             halted: false,
@@ -372,6 +382,15 @@ impl<'a> Walker<'a> {
         };
         let word = self.text_of(name_node);
         let site = syntax::span(name_node);
+        if matches!(word, "sed" | "awk" | "gawk" | "mawk") {
+            // A single-quoted argument is the program, in another language.
+            let mut cursor = node.walk();
+            let programs = node
+                .children_by_field_name("argument", &mut cursor)
+                .filter(|a| a.kind() == "raw_string")
+                .map(|a| a.start_byte() as u32..a.end_byte() as u32);
+            self.prose.extend(programs);
+        }
         if matches!(word, "source" | ".") {
             if let Some(arg) = node.child_by_field_name("argument") {
                 self.path(arg, scope, PathUse::Source);
