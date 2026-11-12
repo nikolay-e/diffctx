@@ -17,8 +17,9 @@ use super::{
     Reason, Unread, Verdict, View, admitted, close_aliases, counts_against, entered,
     implicit_kinds, outcomes, value_use,
 };
-use crate::decide::{Family, Gap, Group, USES, Use};
+use crate::decide::{Gap, USES, Use};
 use crate::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
+use crate::resolve::family::{Family, Group};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 use crate::tokens::{Names, TokenIndex};

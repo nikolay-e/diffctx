@@ -34,14 +34,11 @@ changed_lines -> change_class
 config -> graph  # against order
 container -> types
 core -> types
-decide -> config
 decide -> facts
 decide -> fold
 decide -> impact
-decide -> languages
 decide -> paths
 decide -> pipeline  # against order
-decide -> profile
 decide -> resolve
 decide -> resource
 decide -> snapshot
@@ -75,7 +72,6 @@ discovery -> types
 edges -> canon
 edges -> config
 edges -> container
-edges -> decide  # against order
 edges -> facts
 edges -> graph
 edges -> grep
@@ -298,7 +294,11 @@ render -> resource
 render -> run_provenance
 render -> sanitize
 render -> types
+resolve -> config
 resolve -> facts
+resolve -> languages
+resolve -> profile
+resolve -> resource
 resolve -> snapshot
 resource -> changed_lines  # against order
 resource -> config

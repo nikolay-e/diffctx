@@ -32,7 +32,7 @@ use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
     base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
 };
-use crate::decide::Group;
+use crate::resolve::family::Group;
 use crate::testfiles::naming_links;
 use crate::tokens::Names;
 

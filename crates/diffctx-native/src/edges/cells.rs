@@ -1,6 +1,6 @@
 //! The ranking graph's edges for the languages that have a cell: read off the
 //! cell's bindings, not off the text of the fragments. One builder per family;
-//! it opens the family's head snapshot (`decide::open_head`, once per run), maps
+//! it opens the family's head snapshot (`family::open_head`, once per run), maps
 //! each binding to the fragment that owns its site and the fragment it lands on,
 //! and weights it with the table the language's old builder read, times the
 //! coefficients of `CELL_EDGES`. A binding that lands on nothing, on a file with
@@ -22,8 +22,8 @@ use crate::config::edge_weights::{
     KUBERNETES, PYTHON_SEMANTIC, SEMANTIC_DISCOVERY, TERRAFORM_SEMANTIC,
 };
 use crate::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
-use crate::decide::{self, Family, HeadFamily};
 use crate::facts::{DefKey, Language};
+use crate::resolve::family::{self, Family, HeadFamily};
 use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
 use crate::resource::{LimitReason, current_source, note_current};
 use crate::snapshot::RepoPath;
@@ -384,7 +384,7 @@ impl CellEdgeBuilder {
 
     fn open(&self, root: &Path) -> Option<Arc<HeadFamily>> {
         let source = current_source();
-        match decide::open_head(root, source.range(), self.family) {
+        match family::open_head(root, source.range(), self.family) {
             Ok(head) => Some(head),
             Err(error) => {
                 tracing::warn!(
