@@ -663,7 +663,8 @@ impl SnapshotReader {
                 .map(|name| (b'?', name.as_slice())),
         );
         let mut rows: Vec<Row> = Vec::with_capacity(entries.len());
-        for (tag, name) in entries {
+        for entry in exec.bounded(entries) {
+            let (tag, name) = entry?;
             // An untracked nested repository is one directory entry, not a
             // file of this repository.
             if name.ends_with(b"/") {
@@ -1013,7 +1014,8 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot, found: &Found) -> Result<Conten
     // same files read beside a different unread tree are another snapshot.
     let mut unread: Vec<&str> = found.unread.iter().map(String::as_str).collect();
     unread.sort_unstable();
-    for dir in unread {
+    for dir in exec.bounded(unread) {
+        let dir = dir?;
         parts.push(b"unread".as_slice());
         parts.push(dir.as_bytes());
     }

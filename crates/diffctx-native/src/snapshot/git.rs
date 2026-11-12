@@ -133,6 +133,10 @@ pub(crate) struct Exec {
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
 /// again; a finished child is noticed at once whatever the slice.
 const POLL_SLICE: Duration = Duration::from_millis(100);
+
+/// Items of a `bounded` loop between two polls of the run's limits.
+const BOUNDED_STRIDE: usize = 64;
+
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
 
@@ -220,6 +224,34 @@ impl Exec {
     /// `Err` at once when the run is already over, before any child starts.
     pub(crate) fn check(&self) -> Result<()> {
         self.limits().exhausted().map_or(Ok(()), Err)
+    }
+
+    /// `items`, each as `Ok`, ending with one `Err` at the first poll that finds
+    /// the run over: a loop over a repository-sized listing that does its own
+    /// work per item (a stat, a read) is bounded by being one, not by
+    /// remembering to poll. The poll is one per `BOUNDED_STRIDE` items, which
+    /// is microseconds of work between two.
+    pub(crate) fn bounded<'a, I>(&'a self, items: I) -> impl Iterator<Item = Result<I::Item>> + 'a
+    where
+        I: IntoIterator,
+        I::IntoIter: 'a,
+    {
+        let mut seen = 0usize;
+        let mut over = false;
+        items.into_iter().map_while(move |item| {
+            if over {
+                return None;
+            }
+            let poll = seen % BOUNDED_STRIDE == 0;
+            seen += 1;
+            match poll.then(|| self.check()) {
+                Some(Err(error)) => {
+                    over = true;
+                    Some(Err(error))
+                }
+                _ => Some(Ok(item)),
+            }
+        })
     }
 
     /// Runs a prepared git command (from [`git_command`]) to completion under
