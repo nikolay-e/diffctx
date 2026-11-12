@@ -14,10 +14,6 @@ impl EdgeWeightConfig {
             reverse_factor,
         }
     }
-
-    pub fn reverse(&self) -> f64 {
-        self.forward * self.reverse_factor
-    }
 }
 
 pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy::new(|| {

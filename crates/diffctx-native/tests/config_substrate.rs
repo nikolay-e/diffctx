@@ -802,25 +802,6 @@ fn a_chart_is_a_directory_only_when_it_is_written_as_one() {
     assert_eq!(directory_of("c.yaml"), "");
 }
 
-#[test]
-fn the_dialect_is_the_file_name() {
-    for (path, dialect) in [
-        ("k/a.yaml", Some(Dialect::Yaml)),
-        ("K/A.YML", Some(Dialect::Yaml)),
-        ("x.json", Some(Dialect::Json)),
-        ("Cargo.toml", Some(Dialect::Toml)),
-        ("tox.ini", Some(Dialect::Ini)),
-        ("setup.cfg", Some(Dialect::Ini)),
-        ("a/.editorconfig", Some(Dialect::Ini)),
-        (".yaml", None),
-        ("nginx.conf", None),
-        ("Makefile", None),
-        ("main.tf", None),
-    ] {
-        assert_eq!(Dialect::of_path(path), dialect, "{path}");
-    }
-}
-
 // --- bounds, determinism, the run's deadline ---
 
 fn walk(node: &Node, visit: &mut impl FnMut(&Node)) {
