@@ -1010,7 +1010,7 @@ fn a_call_through_a_supertype_stays_a_candidate_on_an_override() {
     );
 }
 
-const CLEANUP: &str = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\ncleanup now\necho cleanup\nsudo cleanup\ntrap cleanup EXIT\n";
+const CLEANUP: &str = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\ncleanup now\necho cleanup\nsudo cleanup\non_exit cleanup EXIT\n";
 
 #[test]
 fn a_word_after_a_command_that_names_no_function_is_no_call() {
@@ -1034,7 +1034,7 @@ fn a_function_name_inside_a_longer_word_is_no_call() {
         Lang::Shell,
         &[(
             "run.sh",
-            "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\nbash cleanup.sh\nmake cleanup-all\ntar --cleanup x\ntrap cleanup EXIT\n",
+            "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\nbash cleanup.sh\nmake cleanup-all\ntar --cleanup x\non_exit cleanup EXIT\n",
         )],
     );
     let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
@@ -1048,7 +1048,7 @@ fn a_function_name_inside_a_longer_word_is_no_call() {
     assert_eq!(
         on(&found, 8).outcome,
         Outcome::Candidate(Reason::Unexplained),
-        "`trap cleanup EXIT` names it whole: {found:#?}"
+        "`on_exit cleanup EXIT` names it whole: {found:#?}"
     );
 }
 
@@ -1059,7 +1059,7 @@ fn a_word_after_a_command_that_may_run_a_function_stays_a_candidate() {
     assert_eq!(
         on(&found, 8).outcome,
         Outcome::Candidate(Reason::Unexplained),
-        "`trap cleanup EXIT` calls it: {found:#?}"
+        "`on_exit cleanup EXIT` may call it: {found:#?}"
     );
     assert_eq!(
         shape(on(&found, 5)),
@@ -1569,7 +1569,7 @@ fn an_initializer_reads_the_outer_name_and_what_follows_reads_the_local() {
 
 #[test]
 fn a_name_read_where_the_local_is_not_in_force_stays_a_candidate() {
-    let source = "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\nother() {\n  trap total EXIT\n}\n";
+    let source = "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\nother() {\n  on_exit total EXIT\n}\n";
     let world = snapshot_in(Lang::Shell, &[("run.sh", source)]);
     let found = world.outcomes(world.def("run.sh", "total"), "run.sh", &["total"]);
     assert_eq!(
