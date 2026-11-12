@@ -51,7 +51,7 @@ fn is_generated(path: &Path) -> bool {
 /// Returns a map from path string to importance ∈ {GENERATED_CAP,
 /// PERIPHERAL_CAP, DEFAULT_IMPORTANCE}. Generated takes precedence over
 /// peripheral when both apply (a more conservative downweight).
-pub fn compute_file_importance(fragments: &[Fragment]) -> FxHashMap<Arc<str>, f64> {
+pub(crate) fn compute_file_importance(fragments: &[Fragment]) -> FxHashMap<Arc<str>, f64> {
     let mut seen: FxHashSet<Arc<str>> = FxHashSet::default();
     let mut out: FxHashMap<Arc<str>, f64> = FxHashMap::default();
     for f in fragments {
