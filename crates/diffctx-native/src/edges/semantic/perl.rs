@@ -90,7 +90,7 @@ fn extract_parents(content: &str) -> FxHashSet<String> {
     parents
 }
 
-pub struct PerlEdgeBuilder;
+pub(crate) struct PerlEdgeBuilder;
 
 impl EdgeBuilder for PerlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

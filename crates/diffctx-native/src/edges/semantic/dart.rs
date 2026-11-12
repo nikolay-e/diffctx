@@ -90,7 +90,7 @@ fn extract_calls(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct DartEdgeBuilder;
+pub(crate) struct DartEdgeBuilder;
 
 impl EdgeBuilder for DartEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

@@ -1,11 +1,11 @@
-pub mod base;
-pub mod cells;
-pub mod config_edges;
-pub mod document;
-pub mod history;
-pub mod semantic;
-pub mod similarity;
-pub mod structural;
+pub(crate) mod base;
+pub(crate) mod cells;
+pub(crate) mod config_edges;
+pub(crate) mod document;
+pub(crate) mod history;
+pub(crate) mod semantic;
+pub(crate) mod similarity;
+pub(crate) mod structural;
 
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
@@ -21,7 +21,7 @@ use crate::graph::{
 };
 use crate::types::FragmentId;
 
-pub type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
+pub(crate) type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 
 use crate::types::Fragment;
 
@@ -33,7 +33,7 @@ use self::base::EdgeBuilder;
 /// test_reverse at 0.30 and same-package/namespace markers at 0.05 stay
 /// diffuse — `naming_reachable_files` walks undirected, so the reverse arc
 /// adds nothing the forward one lacks).
-pub const NAMING_WEIGHT_FLOOR: f64 = 0.30;
+pub(crate) const NAMING_WEIGHT_FLOOR: f64 = 0.30;
 
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
 
@@ -75,7 +75,7 @@ fn builder_categories() -> Vec<BuilderCategory> {
 /// run. A measurement knife, not a tuning knob: the nightly builder-knife job
 /// disables one builder at a time and asserts the corpus notices, which is
 /// the only evidence a builder carries any case at all.
-pub fn disabled_builders() -> FxHashSet<String> {
+pub(crate) fn disabled_builders() -> FxHashSet<String> {
     std::env::var("DIFFCTX_DISABLE_BUILDERS")
         .unwrap_or_default()
         .split(',')
@@ -92,7 +92,7 @@ fn enabled_builders(cat: &BuilderCategory) -> Vec<Box<dyn EdgeBuilder>> {
         .collect()
 }
 
-pub fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
+pub(crate) fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut all = Vec::new();
     for cat in builder_categories() {
         all.extend(enabled_builders(&cat));
@@ -133,7 +133,7 @@ struct LoggedEmission {
 /// per-builder heap is outranked by K surviving same-source edges, so
 /// the final merge + dedup + cap over the survivors is bit-identical to
 /// capping the full materialized universe.
-pub fn collect_capped_edges(
+pub(crate) fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
@@ -481,7 +481,7 @@ fn collect_capped_edges_from(
     }
 }
 
-pub fn discover_all_related_files(
+pub(crate) fn discover_all_related_files(
     changed_files: &[PathBuf],
     all_candidates: &[PathBuf],
     repo_root: Option<&Path>,
@@ -504,7 +504,7 @@ pub fn discover_all_related_files(
 /// `max_depth` hops (#65 per-file admission). Diffuse channels (markers,
 /// tags, similarity, structural stars) do not open a file; a file whose only
 /// connection is proximity never enters the admissible set.
-pub fn naming_reachable_files(
+pub(crate) fn naming_reachable_files(
     capped: &CappedEdges,
     core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
     max_depth: usize,
@@ -527,7 +527,7 @@ pub fn naming_reachable_files(
 /// lowers, so they can never clear it — without the floor they made every
 /// same-package sibling "declared" and the gate admitted the same junk it
 /// exists to block (measured: 143 of 146 corpus improvements lost).
-pub fn declared_reachable_files(
+pub(crate) fn declared_reachable_files(
     capped: &CappedEdges,
     core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
     max_depth: usize,

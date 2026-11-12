@@ -101,7 +101,7 @@ fn extract_references(
     (calls, type_refs)
 }
 
-pub struct CFamilyEdgeBuilder;
+pub(crate) struct CFamilyEdgeBuilder;
 
 impl EdgeBuilder for CFamilyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

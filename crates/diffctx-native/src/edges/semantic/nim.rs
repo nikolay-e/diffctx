@@ -94,7 +94,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct NimEdgeBuilder;
+pub(crate) struct NimEdgeBuilder;
 
 impl EdgeBuilder for NimEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

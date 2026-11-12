@@ -95,7 +95,7 @@ fn ref_to_filename(r: &str) -> String {
         .to_lowercase()
 }
 
-pub struct BazelEdgeBuilder;
+pub(crate) struct BazelEdgeBuilder;
 
 impl EdgeBuilder for BazelEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

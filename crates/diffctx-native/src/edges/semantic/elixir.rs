@@ -51,7 +51,7 @@ fn extract_func_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&DEF_RE, content).collect()
 }
 
-pub struct ElixirEdgeBuilder;
+pub(crate) struct ElixirEdgeBuilder;
 
 impl EdgeBuilder for ElixirEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

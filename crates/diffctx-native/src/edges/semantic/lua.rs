@@ -49,7 +49,7 @@ fn extract_method_targets(content: &str) -> FxHashSet<String> {
     base::captures1(&METHOD_CALL_RE, content).collect()
 }
 
-pub struct LuaEdgeBuilder;
+pub(crate) struct LuaEdgeBuilder;
 
 impl EdgeBuilder for LuaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

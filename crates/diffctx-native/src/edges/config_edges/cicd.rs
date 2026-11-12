@@ -197,7 +197,7 @@ fn package_json_ref(content: &str) -> Option<String> {
         .then(|| "package.json".to_string())
 }
 
-pub struct CICDEdgeBuilder;
+pub(super) struct CICDEdgeBuilder;
 
 impl EdgeBuilder for CICDEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

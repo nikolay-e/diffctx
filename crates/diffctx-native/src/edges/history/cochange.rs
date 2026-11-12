@@ -9,7 +9,7 @@ use crate::types::{Fragment, FragmentId};
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
 
-pub struct CochangeEdgeBuilder;
+pub(crate) struct CochangeEdgeBuilder;
 
 impl CochangeEdgeBuilder {
     /// The commits up to the range's base — not whatever is checked out, and

@@ -41,7 +41,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct ZigEdgeBuilder;
+pub(crate) struct ZigEdgeBuilder;
 
 impl EdgeBuilder for ZigEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

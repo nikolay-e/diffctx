@@ -195,7 +195,7 @@ fn link_defs<'a>(
     }
 }
 
-pub struct DotNetEdgeBuilder;
+pub(crate) struct DotNetEdgeBuilder;
 
 impl EdgeBuilder for DotNetEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

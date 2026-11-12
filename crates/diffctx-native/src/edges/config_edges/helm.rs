@@ -271,7 +271,7 @@ fn add_template_edges(
     add_chart_file_edges(source, tmpl, &chart_root, chart_files, edges);
 }
 
-pub struct HelmEdgeBuilder;
+pub(super) struct HelmEdgeBuilder;
 
 impl EdgeBuilder for HelmEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

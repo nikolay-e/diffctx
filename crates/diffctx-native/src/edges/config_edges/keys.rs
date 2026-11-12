@@ -14,7 +14,7 @@ use crate::types::Fragment;
 #[cfg(test)]
 use crate::types::FragmentId;
 
-pub struct KeyTableEdgeBuilder;
+pub(super) struct KeyTableEdgeBuilder;
 
 impl EdgeBuilder for KeyTableEdgeBuilder {
     fn is_key_table(&self) -> bool {

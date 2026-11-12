@@ -1,48 +1,48 @@
-pub mod ansible;
-pub mod bazel;
-pub mod c_family;
-pub mod cargo_edges;
-pub mod clojure;
-pub mod css;
-pub mod dart;
-pub mod dbt;
-pub mod dotnet;
-pub mod elixir;
-pub mod erlang;
-pub mod go;
-pub mod graphql;
-pub mod haskell;
-pub mod javascript;
-pub mod julia;
-pub mod jvm;
-pub mod latex;
+pub(crate) mod ansible;
+pub(crate) mod bazel;
+pub(crate) mod c_family;
+pub(crate) mod cargo_edges;
+pub(crate) mod clojure;
+pub(crate) mod css;
+pub(crate) mod dart;
+pub(crate) mod dbt;
+pub(crate) mod dotnet;
+pub(crate) mod elixir;
+pub(crate) mod erlang;
+pub(crate) mod go;
+pub(crate) mod graphql;
+pub(crate) mod haskell;
+pub(crate) mod javascript;
+pub(crate) mod julia;
+pub(crate) mod jvm;
+pub(crate) mod latex;
 pub(in crate::edges) mod legacy;
-pub mod lua;
-pub mod nim;
-pub mod nix;
-pub mod ocaml;
-pub mod openapi;
-pub mod perl;
-pub mod php;
-pub mod prisma;
-pub mod protobuf;
-pub mod python;
-pub mod r_lang;
-pub mod ruby;
-pub mod rust_lang;
-pub mod shell;
-pub mod sql;
-pub mod swift;
-pub mod tags;
-pub mod terraform;
-pub mod zig;
+pub(crate) mod lua;
+pub(crate) mod nim;
+pub(crate) mod nix;
+pub(crate) mod ocaml;
+pub(crate) mod openapi;
+pub(crate) mod perl;
+pub(crate) mod php;
+pub(crate) mod prisma;
+pub(crate) mod protobuf;
+pub(crate) mod python;
+pub(crate) mod r_lang;
+pub(crate) mod ruby;
+pub(crate) mod rust_lang;
+pub(crate) mod shell;
+pub(crate) mod sql;
+pub(crate) mod swift;
+pub(crate) mod tags;
+pub(crate) mod terraform;
+pub(crate) mod zig;
 
 use super::base::EdgeBuilder;
 
 /// The cells' builders for the groups drawn from them (none by default), then
 /// the text builders, each narrowed to what the cells do not cover
 /// (`CELL_EDGES`).
-pub fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
+pub(crate) fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut builders = super::cells::builders();
     builders.extend(text_builders().into_iter().map(super::cells::beside));
     builders

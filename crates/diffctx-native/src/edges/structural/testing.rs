@@ -39,7 +39,7 @@ fn has_direct_import(test_imports: &FxHashSet<String>, src_module: &str) -> bool
         .any(|imp| imp == src_module || imp.ends_with(&suffix))
 }
 
-pub struct TestEdgeBuilder;
+pub(crate) struct TestEdgeBuilder;
 
 impl EdgeBuilder for TestEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

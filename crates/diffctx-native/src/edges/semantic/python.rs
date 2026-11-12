@@ -194,7 +194,7 @@ fn module_targets(
     (reps, defs)
 }
 
-pub struct PythonEdgeBuilder;
+pub(crate) struct PythonEdgeBuilder;
 
 impl EdgeBuilder for PythonEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -69,7 +69,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&DEFN_RE, content).collect()
 }
 
-pub struct ClojureEdgeBuilder;
+pub(crate) struct ClojureEdgeBuilder;
 
 impl EdgeBuilder for ClojureEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -43,7 +43,7 @@ const TYPE_KEYWORDS: &[&str] = &["class", "interface", "object", "typealias"];
 
 /// How a reference relates to the changed definition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Evidence {
+pub(crate) enum Evidence {
     /// Available binding evidence points elsewhere.
     Rejected,
     /// The reference may reach the definition; its binding or receiver is
@@ -66,13 +66,13 @@ impl Evidence {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Relation {
+pub(crate) enum Relation {
     Call,
     Reference,
 }
 
 #[derive(Debug, Clone)]
-pub struct Finding {
+pub(crate) struct Finding {
     pub evidence: Evidence,
     pub relation: Relation,
     pub lines: Vec<u32>,
@@ -110,7 +110,7 @@ fn absorb(best: &mut Option<Finding>, evidence: Evidence, relation: Relation, li
 
 /// A declaration and where it lives.
 #[derive(Clone, Debug)]
-pub struct KDef {
+pub(crate) struct KDef {
     pub path: String,
     pub decl: Declaration,
     pub package: Option<String>,
@@ -169,7 +169,7 @@ impl Walk {
     }
 }
 
-pub struct KotlinResolver<'a> {
+pub(crate) struct KotlinResolver<'a> {
     root: &'a Path,
     source: &'a Source,
     facts: RefCell<FxHashMap<String, Option<Arc<KotlinFacts>>>>,
@@ -180,7 +180,7 @@ pub struct KotlinResolver<'a> {
 }
 
 impl<'a> KotlinResolver<'a> {
-    pub fn new(root: &'a Path, source: &'a Source) -> Self {
+    pub(crate) fn new(root: &'a Path, source: &'a Source) -> Self {
         Self {
             root,
             source,
@@ -193,7 +193,7 @@ impl<'a> KotlinResolver<'a> {
     }
 
     /// The facts of a repository-relative Kotlin file at the run's snapshot.
-    pub fn facts(&self, rel: &str) -> Option<Arc<KotlinFacts>> {
+    pub(crate) fn facts(&self, rel: &str) -> Option<Arc<KotlinFacts>> {
         if let Some(known) = self.facts.borrow().get(rel) {
             return known.clone();
         }
@@ -210,7 +210,7 @@ impl<'a> KotlinResolver<'a> {
 
     /// The declaration a fragment of `rel` named `name` starting at `line`
     /// stands for.
-    pub fn definition(&self, rel: &str, name: &str, line: u32) -> Option<KDef> {
+    pub(crate) fn definition(&self, rel: &str, name: &str, line: u32) -> Option<KDef> {
         let facts = self.facts(rel)?;
         let decl = facts.declaration_named(name, line)?.clone();
         Some(KDef {
@@ -222,7 +222,7 @@ impl<'a> KotlinResolver<'a> {
 
     /// How the uses inside `lines` of `rel` relate to `def`: the strongest
     /// evidence any of them carries, with the lines that carry it.
-    pub fn classify(&self, rel: &str, lines: (u32, u32), def: &KDef) -> Option<Finding> {
+    pub(crate) fn classify(&self, rel: &str, lines: (u32, u32), def: &KDef) -> Option<Finding> {
         let facts = self.facts(rel)?;
         let names = self.names_for(&facts, def);
         let mut best: Option<Finding> = None;

@@ -53,7 +53,7 @@ fn extract_macro_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&MACRO_DEF_RE, content).collect()
 }
 
-pub struct DbtEdgeBuilder;
+pub(crate) struct DbtEdgeBuilder;
 
 impl EdgeBuilder for DbtEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

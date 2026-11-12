@@ -52,7 +52,7 @@ fn extract_calls(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct RLangEdgeBuilder;
+pub(crate) struct RLangEdgeBuilder;
 
 impl EdgeBuilder for RLangEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

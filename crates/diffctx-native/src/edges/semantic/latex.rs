@@ -46,7 +46,7 @@ fn extract_refs(content: &str) -> FxHashSet<String> {
     refs
 }
 
-pub struct LatexEdgeBuilder;
+pub(crate) struct LatexEdgeBuilder;
 
 impl EdgeBuilder for LatexEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

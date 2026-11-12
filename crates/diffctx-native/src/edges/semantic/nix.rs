@@ -36,7 +36,7 @@ fn extract_refs(content: &str) -> FxHashSet<String> {
 /// A Nix path names the file, or a directory whose `default.nix` it means.
 const NIX_SUFFIXES: &[&str] = &["", "/default.nix"];
 
-pub struct NixEdgeBuilder;
+pub(crate) struct NixEdgeBuilder;
 
 impl EdgeBuilder for NixEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

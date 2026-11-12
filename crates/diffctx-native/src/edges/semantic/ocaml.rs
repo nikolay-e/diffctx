@@ -47,7 +47,7 @@ fn extract_module_refs(content: &str) -> FxHashSet<String> {
     base::captures1(&MODULE_REF_RE, content).collect()
 }
 
-pub struct OCamlEdgeBuilder;
+pub(crate) struct OCamlEdgeBuilder;
 
 impl EdgeBuilder for OCamlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

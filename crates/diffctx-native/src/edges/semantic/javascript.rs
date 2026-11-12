@@ -120,7 +120,7 @@ fn resolve_relative_import(
     None
 }
 
-pub struct JavaScriptEdgeBuilder;
+pub(crate) struct JavaScriptEdgeBuilder;
 
 impl EdgeBuilder for JavaScriptEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

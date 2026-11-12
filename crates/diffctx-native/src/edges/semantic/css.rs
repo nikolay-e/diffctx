@@ -21,7 +21,7 @@ fn extract_imports(content: &str) -> FxHashSet<String> {
     base::captures1(&IMPORT_RE, content).collect()
 }
 
-pub struct CssEdgeBuilder;
+pub(crate) struct CssEdgeBuilder;
 
 impl EdgeBuilder for CssEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

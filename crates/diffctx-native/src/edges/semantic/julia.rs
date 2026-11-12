@@ -61,7 +61,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct JuliaEdgeBuilder;
+pub(crate) struct JuliaEdgeBuilder;
 
 impl EdgeBuilder for JuliaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

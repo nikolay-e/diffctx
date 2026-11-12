@@ -69,7 +69,7 @@ fn extract_inheritance(content: &str) -> FxHashSet<String> {
     refs
 }
 
-pub struct PhpEdgeBuilder;
+pub(crate) struct PhpEdgeBuilder;
 
 impl EdgeBuilder for PhpEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -65,7 +65,7 @@ fn extract_extensions(content: &str) -> FxHashSet<String> {
     base::captures1(&EXTENSION_RE, content).collect()
 }
 
-pub struct SwiftEdgeBuilder;
+pub(crate) struct SwiftEdgeBuilder;
 
 impl EdgeBuilder for SwiftEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

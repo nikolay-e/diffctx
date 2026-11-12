@@ -168,7 +168,7 @@ fn extract_config_keys(suffix: &str, content: &str) -> FxHashMap<String, bool> {
     keys
 }
 
-pub struct ConfigToCodeEdgeBuilder;
+pub(super) struct ConfigToCodeEdgeBuilder;
 
 impl EdgeBuilder for ConfigToCodeEdgeBuilder {
     fn category_label(&self) -> Option<&str> {

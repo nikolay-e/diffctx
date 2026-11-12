@@ -22,7 +22,7 @@ static SYNTAX_WORDS: once_cell::sync::Lazy<rustc_hash::FxHashSet<&'static str>> 
             .collect()
     });
 
-pub struct TagsEdgeBuilder;
+pub(crate) struct TagsEdgeBuilder;
 
 impl EdgeBuilder for TagsEdgeBuilder {
     fn is_fallback(&self) -> bool {

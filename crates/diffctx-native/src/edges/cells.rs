@@ -54,7 +54,7 @@ static GROUPS: [(&str, &[Family], &[&str]); 12] = [
 ];
 
 /// One builder per family of every group drawn from the cells.
-pub fn builders() -> Vec<Box<dyn EdgeBuilder>> {
+pub(crate) fn builders() -> Vec<Box<dyn EdgeBuilder>> {
     GROUPS
         .iter()
         .filter(|(group, _, _)| CELL_EDGES.draws(group))
@@ -82,7 +82,7 @@ impl Beside {
 
 /// `builder` as the cells leave it: unchanged when no group drawn from the cells
 /// replaces it, else narrowed to the files they do not cover.
-pub fn beside(builder: Box<dyn EdgeBuilder>) -> Box<dyn EdgeBuilder> {
+pub(crate) fn beside(builder: Box<dyn EdgeBuilder>) -> Box<dyn EdgeBuilder> {
     let name = builder.knife_name();
     match GROUPS
         .iter()
@@ -166,7 +166,7 @@ impl EdgeBuilder for Beside {
     }
 }
 
-pub struct CellEdgeBuilder {
+pub(crate) struct CellEdgeBuilder {
     pub family: Family,
 }
 

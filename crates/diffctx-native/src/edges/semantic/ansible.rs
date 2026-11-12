@@ -106,7 +106,7 @@ fn extract_role_refs(content: &str) -> FxHashSet<String> {
     roles
 }
 
-pub struct AnsibleEdgeBuilder;
+pub(crate) struct AnsibleEdgeBuilder;
 
 impl EdgeBuilder for AnsibleEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

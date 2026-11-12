@@ -47,7 +47,7 @@ fn extract_func_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&FUNC_DEF_RE, content).collect()
 }
 
-pub struct ErlangEdgeBuilder;
+pub(crate) struct ErlangEdgeBuilder;
 
 impl EdgeBuilder for ErlangEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

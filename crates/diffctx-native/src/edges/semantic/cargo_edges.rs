@@ -84,7 +84,7 @@ fn extract_entry_points(content: &str) -> Vec<String> {
     entries
 }
 
-pub struct CargoEdgeBuilder;
+pub(crate) struct CargoEdgeBuilder;
 
 impl EdgeBuilder for CargoEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

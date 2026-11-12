@@ -68,7 +68,7 @@ fn command_words(content: &str) -> FxHashSet<&str> {
     words
 }
 
-pub struct ShellEdgeBuilder;
+pub(crate) struct ShellEdgeBuilder;
 
 impl EdgeBuilder for ShellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
