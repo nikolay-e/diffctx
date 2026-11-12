@@ -69,8 +69,10 @@ pub(super) struct TestsReach<'a> {
     /// The source files no cell reads whose name a test file's asks for.
     named: FxHashSet<String>,
     test_fragments: Vec<&'a Fragment>,
-    /// Functions outside test files an attribute marks as tests: a Rust
-    /// `#[test]` in an inline `mod tests` (#528).
+    /// Fragments outside test files that sit in a test scope the framework
+    /// itself makes: a Rust `#[test]` in an inline `mod tests` (#528), Vitest's
+    /// in-source block, a `unittest.TestCase`, a `TEST_CASE` (the scope that holds
+    /// an occurrence decides, never the file's path).
     inline_tests: FxHashSet<&'a FragmentId>,
     /// Test files the size cap kept out.
     unread: Vec<String>,
@@ -132,6 +134,14 @@ impl<'a> TestsReach<'a> {
                 });
             }
         }
+        for (&spelled, shown) in &rel_of {
+            if !tests_at.contains_key(spelled) {
+                let scopes = in_source_scopes(state, cells, spelled, shown);
+                if !scopes.is_empty() {
+                    tests_at.insert(spelled, scopes);
+                }
+            }
+        }
         let inline_tests: FxHashSet<&FragmentId> = state
             .all_fragments
             .iter()
@@ -170,6 +180,7 @@ impl<'a> TestsReach<'a> {
         runs.extend(script_runs(state, diff_range, &spelled));
         runs.extend(framework_runs(state, cells, diff_range));
         runs.extend(literal_runs(state, diff_range));
+        runs.extend(doctest_runs(state));
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()
             && runs.is_empty()
@@ -547,6 +558,72 @@ impl<'a> TestsReach<'a> {
         self.named.contains(caller.path())
             || self.test_fragments.iter().any(|t| reaches_file(t, caller))
     }
+}
+
+/// The line spans of `spelled` (as the answer prints it, `shown`) that the
+/// framework's rule makes test scopes although the file is no test file by name.
+/// The token index says which files could hold one before any is read.
+fn in_source_scopes(
+    state: &ScoredState,
+    cells: &Cells,
+    spelled: &str,
+    shown: &str,
+) -> Vec<(u32, u32)> {
+    let path = Path::new(shown);
+    let markers = crate::testfiles::in_source_markers(path);
+    if markers.is_empty() || crate::testfiles::is_test_path(path) {
+        return Vec::new();
+    }
+    let names = Names::new(markers.iter().copied());
+    let spells = Group::of_path(shown)
+        .and_then(|group| cells.group_tokens(state, group))
+        .and_then(|tokens| tokens.spells(shown, &names));
+    if spells != Some(true) {
+        return Vec::new();
+    }
+    state
+        .run
+        .source()
+        .read_to_string(Path::new(spelled))
+        .map_or_else(Vec::new, |text| {
+            crate::testfiles::in_source_test_scopes(path, &text)
+        })
+}
+
+/// A doctest runs, in the file it documents, each function of that file its
+/// `>>>` examples call (`python -m doctest`, pytest's `--doctest-modules`): the
+/// test is the example's line.
+fn doctest_runs(state: &ScoredState) -> Vec<Run> {
+    let defined: FxHashSet<(&str, &str)> = state
+        .all_fragments
+        .iter()
+        .filter(|f| f.kind.is_definition_kind())
+        .filter_map(|f| f.symbol_name.as_deref().map(|n| (f.path(), base_symbol(n))))
+        .collect();
+    let mut runs = Vec::new();
+    for f in &state.all_fragments {
+        if !f.path().ends_with(".py")
+            || !f.content.contains(">>>")
+            || crate::testfiles::is_test_path(Path::new(f.path()))
+        {
+            continue;
+        }
+        let shown = rel(state, f.path());
+        for (row, names) in crate::testfiles::doctest_calls(&f.content) {
+            let line = f.start_line() + row as u32;
+            for name in names
+                .into_iter()
+                .filter(|n| defined.contains(&(f.path(), *n)))
+            {
+                runs.push(Run {
+                    file: f.path().to_string(),
+                    symbol: Some(name.to_string()),
+                    tests: vec![(shown.clone(), line)],
+                });
+            }
+        }
+    }
+    runs
 }
 
 /// The lines of `f` before its own `def`: its decorators, however they wrap.

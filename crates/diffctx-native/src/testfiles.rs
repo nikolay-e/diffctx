@@ -201,6 +201,162 @@ pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
     links
 }
 
+/// The words a source file spells when its language lets a test live beside the
+/// code it tests, as the token index asks for them before the file is read; none
+/// where the language has no such convention and the path alone decides. The
+/// scopes themselves are [`in_source_test_scopes`].
+pub(crate) fn in_source_markers(path: &Path) -> &'static [&'static str] {
+    match path
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs") => &["vitest"],
+        Some("py") => &["TestCase"],
+        Some("cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx") => {
+            &["TEST_CASE", "TEST_CASE_TEMPLATE", "SCENARIO", "TEST_SUITE"]
+        }
+        _ => &[],
+    }
+}
+
+/// The line spans (1-based, inclusive) of `text` that are test scopes by the
+/// framework's own rule although the file is no test file by name: Vitest's
+/// in-source block (`if (import.meta.vitest) {`), a `unittest.TestCase`
+/// subclass, a doctest or Catch2 `TEST_CASE`/`SCENARIO` block. A test context is
+/// the scope that holds an occurrence, not the file's path. Rust's inline
+/// `#[test]` functions are found by the Rust reader.
+pub(crate) fn in_source_test_scopes(path: &Path, text: &str) -> Vec<(u32, u32)> {
+    let lines: Vec<&str> = text.lines().collect();
+    match path
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs") => {
+            braced_scopes(&lines, |line| {
+                line.trim_start().starts_with("if") && line.contains("import.meta.vitest")
+            })
+        }
+        Some("py") => indented_scopes(&lines, |line| {
+            line.trim_start().starts_with("class ") && line.contains("TestCase")
+        }),
+        Some("cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx") => braced_scopes(&lines, |line| {
+            let line = line.trim_start();
+            [
+                "TEST_CASE(",
+                "TEST_CASE_TEMPLATE(",
+                "SCENARIO(",
+                "TEST_SUITE(",
+            ]
+            .iter()
+            .any(|opener| line.starts_with(*opener))
+        }),
+        _ => Vec::new(),
+    }
+}
+
+/// The spans that start at a line `opens` accepts and end where the brace the
+/// block opens is closed again. Braces in strings and comments count, so a block
+/// that never balances is no scope: a test is never claimed by guess.
+fn braced_scopes(lines: &[&str], opens: impl Fn(&str) -> bool) -> Vec<(u32, u32)> {
+    let mut scopes = Vec::new();
+    let mut at = 0;
+    while at < lines.len() {
+        if !opens(lines[at]) {
+            at += 1;
+            continue;
+        }
+        let mut depth = 0i32;
+        let mut opened = false;
+        let mut end = None;
+        for (offset, line) in lines[at..].iter().enumerate() {
+            for byte in line.bytes() {
+                match byte {
+                    b'{' => {
+                        depth += 1;
+                        opened = true;
+                    }
+                    b'}' => depth -= 1,
+                    _ => {}
+                }
+            }
+            if opened && depth <= 0 {
+                end = Some(at + offset);
+                break;
+            }
+        }
+        match end {
+            Some(last) => {
+                scopes.push((at as u32 + 1, last as u32 + 1));
+                at = last + 1;
+            }
+            None => at += 1,
+        }
+    }
+    scopes
+}
+
+/// The spans that start at a line `opens` accepts and last through every later
+/// line indented deeper than it (blank lines inside belong to it).
+fn indented_scopes(lines: &[&str], opens: impl Fn(&str) -> bool) -> Vec<(u32, u32)> {
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    let mut scopes = Vec::new();
+    let mut at = 0;
+    while at < lines.len() {
+        if !opens(lines[at]) {
+            at += 1;
+            continue;
+        }
+        let own = indent(lines[at]);
+        let mut last = at;
+        for (offset, line) in lines[at + 1..].iter().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if indent(*line) <= own {
+                break;
+            }
+            last = at + 1 + offset;
+        }
+        scopes.push((at as u32 + 1, last as u32 + 1));
+        at = last + 1;
+    }
+    scopes
+}
+
+/// The names the `>>>` examples of `text` call, with the 0-based line of each
+/// example: a doctest runs what it calls, in the file it documents. A name after
+/// a dot is a method of something else and is not taken.
+pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
+    let mut found = Vec::new();
+    for (row, line) in text.lines().enumerate() {
+        let Some(example) = line.trim_start().strip_prefix(">>>") else {
+            continue;
+        };
+        let bytes = example.as_bytes();
+        let mut names = Vec::new();
+        for (open, byte) in bytes.iter().enumerate() {
+            if *byte != b'(' {
+                continue;
+            }
+            let start = bytes[..open]
+                .iter()
+                .rposition(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+                .map_or(0, |at| at + 1);
+            let name = &example[start..open];
+            let after_a_dot = start > 0 && bytes[start - 1] == b'.';
+            if !name.is_empty() && !name.starts_with(|c: char| c.is_ascii_digit()) && !after_a_dot {
+                names.push(name);
+            }
+        }
+        if !names.is_empty() {
+            found.push((row, names));
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
