@@ -112,11 +112,6 @@ pub struct EdgeCapStats {
     /// Names the builder category responsible for near-dense emission
     /// blowups (#116). Empty on the materialized-edge path.
     pub emissions_by_category: Vec<(EdgeCategory, u64, u64)>,
-    /// The source nodes whose out-edges the cap truncated: a caller among
-    /// them may have lost its edge to the definition it calls, which impact
-    /// recovers rather than read as no caller (#446). Empty on the
-    /// materialized-edge path.
-    pub capped_sources: FxHashSet<FragmentId>,
 }
 
 /// A single node-interned edge. 24 bytes instead of a string-keyed
@@ -199,7 +194,6 @@ pub struct EdgeCategoryTable {
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     entries: Vec<(u32, u32, EdgeCategory)>,
-    sorted: bool,
 }
 
 impl EdgeCategoryTable {
@@ -217,54 +211,10 @@ impl EdgeCategoryTable {
             node_to_idx,
             idx_to_node,
             entries,
-            sorted: true,
         }
-    }
-
-    fn intern(&mut self, id: FragmentId) -> u32 {
-        if let Some(&i) = self.node_to_idx.get(&id) {
-            return i;
-        }
-        let i = self.idx_to_node.len() as u32;
-        self.idx_to_node.push(id.clone());
-        self.node_to_idx.insert(id, i);
-        i
-    }
-
-    pub fn insert(&mut self, src: FragmentId, dst: FragmentId, category: EdgeCategory) {
-        let s = self.intern(src);
-        let d = self.intern(dst);
-        self.entries.push((s, d, category));
-        self.sorted = false;
-    }
-
-    /// Stable-sort + last-wins dedup, matching hashmap overwrite
-    /// semantics for repeated `insert` of the same key.
-    pub fn ensure_sorted(&mut self) {
-        if self.sorted {
-            return;
-        }
-        self.entries.sort_by_key(|e| (e.0, e.1));
-        let mut out = 0usize;
-        let mut i = 0usize;
-        while i < self.entries.len() {
-            let mut j = i;
-            while j + 1 < self.entries.len()
-                && self.entries[j + 1].0 == self.entries[i].0
-                && self.entries[j + 1].1 == self.entries[i].1
-            {
-                j += 1;
-            }
-            self.entries[out] = self.entries[j];
-            out += 1;
-            i = j + 1;
-        }
-        self.entries.truncate(out);
-        self.sorted = true;
     }
 
     pub fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
-        debug_assert!(self.sorted, "EdgeCategoryTable queried before freeze");
         let s = *self.node_to_idx.get(src)?;
         let d = *self.node_to_idx.get(dst)?;
         self.entries
@@ -316,10 +266,6 @@ impl Graph {
         self.edge_categories.for_each(f)
     }
 
-    pub fn insert_edge_category(&mut self, src: FragmentId, dst: FragmentId, cat: EdgeCategory) {
-        self.edge_categories.insert(src, dst, cat);
-    }
-
     pub fn categorized_edge_count(&self) -> usize {
         self.edge_categories.entries.len()
     }
@@ -353,10 +299,6 @@ impl Graph {
         self.nodes.len()
     }
 
-    pub fn nodes(&self) -> impl Iterator<Item = &FragmentId> {
-        self.nodes.iter()
-    }
-
     pub fn edge_count(&self) -> usize {
         if let Some((fwd, _)) = &self.csr_cache {
             return fwd.indices.len();
@@ -367,7 +309,6 @@ impl Graph {
     /// Convert the build-time hashmap representation into CSR and drop the hashmaps.
     /// After freeze, fwd/rev are empty and all reads go through CSR.
     pub fn freeze(&mut self) {
-        self.edge_categories.ensure_sorted();
         if self.csr_cache.is_some() {
             return;
         }
@@ -397,10 +338,6 @@ impl Graph {
 
     pub fn fwd_csr(&self) -> Option<&CsrGraph> {
         self.csr_cache.as_ref().map(|(f, _)| f)
-    }
-
-    pub fn rev_csr(&self) -> Option<&CsrGraph> {
-        self.csr_cache.as_ref().map(|(_, r)| r)
     }
 
     /// Look up the weight of edge `src -> dst` in the forward CSR.
@@ -438,39 +375,6 @@ impl Graph {
             let dst_idx = fwd.indices[k] as usize;
             f(&fwd.idx_to_node[dst_idx], fwd.weights[k]);
         }
-    }
-
-    /// Invoke `f(source_id, weight)` for each node with an edge INTO `node`,
-    /// with the weight of that incoming edge.
-    pub fn for_each_reverse_neighbor<F: FnMut(&FragmentId, f64)>(
-        &self,
-        node: &FragmentId,
-        mut f: F,
-    ) {
-        let rev = match self.rev_csr() {
-            Some(c) => c,
-            None => return,
-        };
-        let idx = match rev.node_to_idx.get(node) {
-            Some(&i) => i as usize,
-            None => return,
-        };
-        let s = rev.indptr[idx] as usize;
-        let e = rev.indptr[idx + 1] as usize;
-        for k in s..e {
-            let src_idx = rev.indices[k] as usize;
-            f(&rev.idx_to_node[src_idx], rev.weights[k]);
-        }
-    }
-
-    /// Whether `a -> b` is the stronger direction of the pair. Every builder
-    /// writes the reverse of an edge at `weight * reverse_factor` with the
-    /// factor below one, so the comparison recovers the direction the builder
-    /// meant (caller -> callee, importer -> imported) without a second table.
-    pub fn is_forward(&self, a: &FragmentId, b: &FragmentId) -> bool {
-        let ab = self.forward_edge_weight(a, b).unwrap_or(0.0);
-        let ba = self.forward_edge_weight(b, a).unwrap_or(0.0);
-        ab > ba
     }
 
     pub fn ego_graph(
@@ -776,7 +680,6 @@ pub(crate) fn cap_out_edges_per_source(
         nodes_capped,
         max_out_edges_per_node: max_per_node,
         emissions_by_category: Vec::new(),
-        capped_sources: FxHashSet::default(),
     }
 }
 
