@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -127,6 +127,7 @@ impl ReadFault {
 pub(crate) struct Exec {
     timeout_secs: u64,
     budget: RunBudget,
+    stall_after: Option<u64>,
 }
 
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
@@ -135,13 +136,37 @@ const POLL_SLICE: Duration = Duration::from_millis(100);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
 
+/// Set once a test's stall knob has fired: from then on every git read of the
+/// process is out of time, as after a deadline. Only a run that set the knob
+/// ever reads it.
+static STALL_FIRED: AtomicBool = AtomicBool::new(false);
+
 struct Limits {
     deadline: Instant,
     cancel: Option<Arc<AtomicBool>>,
     timeout_secs: u64,
+    /// Test only (`DIFFCTX_TEST_GIT_STALL_AFTER_WAITS`): the empty waits this
+    /// read may sleep before it counts as out of time.
+    stall_after: Option<u64>,
+    empty_waits: AtomicU64,
 }
 
 impl Limits {
+    fn stalled(&self) -> bool {
+        let Some(after) = self.stall_after else {
+            return false;
+        };
+        if self.empty_waits.load(Ordering::Relaxed) >= after {
+            STALL_FIRED.store(true, Ordering::Relaxed);
+        }
+        STALL_FIRED.load(Ordering::Relaxed)
+    }
+
+    /// A wait for the child or its pipe that ended with nothing to read.
+    fn waited(&self) {
+        self.empty_waits.fetch_add(1, Ordering::Relaxed);
+    }
+
     fn exhausted(&self) -> Option<SnapshotError> {
         if self
             .cancel
@@ -149,7 +174,7 @@ impl Limits {
             .is_some_and(|c| c.load(Ordering::Relaxed))
         {
             Some(SnapshotError::Cancelled)
-        } else if Instant::now() >= self.deadline {
+        } else if Instant::now() >= self.deadline || self.stalled() {
             Some(SnapshotError::Timeout(self.timeout_secs))
         } else {
             None
@@ -177,6 +202,7 @@ impl Exec {
         Self {
             timeout_secs: GIT_TIMEOUT_SECS.with(Cell::get),
             budget,
+            stall_after: crate::resource::test_git_stall_after_waits(),
         }
     }
 
@@ -186,6 +212,8 @@ impl Exec {
             deadline: self.budget.deadline.map_or(ceiling, |d| d.min(ceiling)),
             cancel: self.budget.cancel.clone(),
             timeout_secs: self.timeout_secs,
+            stall_after: self.stall_after,
+            empty_waits: AtomicU64::new(0),
         }
     }
 
@@ -484,7 +512,7 @@ fn await_pipe(rx: Option<PipeRead>, limits: &Limits) -> Result<Vec<u8>> {
         }
         match rx.recv_timeout(limits.next_slice()) {
             Ok(read) => return read.map_err(SnapshotError::Io),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => limits.waited(),
             // A reader that vanished used to read as an empty buffer: an
             // unreadable `git diff` then looked exactly like an empty diff.
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -519,6 +547,7 @@ fn supervise(mut child: Child, limits: &Limits) -> Result<Output> {
         if let Some(status) = child.wait_timeout(limits.next_slice())? {
             break status;
         }
+        limits.waited();
     };
     let output = await_pipe(stdout, limits).and_then(|stdout| {
         await_pipe(stderr, limits).map(|stderr| Output {
@@ -813,7 +842,7 @@ impl CatBatch {
             }
             match conn.replies.recv_timeout(limits.next_slice()) {
                 Ok(reply) => break reply,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => limits.waited(),
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     break Raw::Broken("worker exited".into());
                 }
@@ -860,6 +889,8 @@ mod tests {
             deadline: Instant::now() + timeout,
             cancel: None,
             timeout_secs: 0,
+            stall_after: None,
+            empty_waits: AtomicU64::new(0),
         }
     }
 

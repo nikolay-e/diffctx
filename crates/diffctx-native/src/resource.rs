@@ -116,6 +116,19 @@ pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
 /// wall clock (#510, #489, #502). Semantic, like the expired deadline.
 pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POLLS";
 
+/// Test hook: a git read blocked on a child gives up as timed out after `n`
+/// empty waits, whatever the clock says, and every git read after it does too,
+/// as when the deadline passes. A stall test then ends its run without a short
+/// `--timeout` (fj#172). Semantic, like the expired deadline.
+pub const TEST_GIT_STALL_AFTER_WAITS_ENV: &str = "DIFFCTX_TEST_GIT_STALL_AFTER_WAITS";
+
+pub(crate) fn test_git_stall_after_waits() -> Option<u64> {
+    std::env::var(TEST_GIT_STALL_AFTER_WAITS_ENV)
+        .ok()?
+        .parse()
+        .ok()
+}
+
 /// Test hook: the hook's one wall-clock ceiling is spent before its analysis
 /// starts, as when an engine does not return in time, so a test reaches what
 /// the hook says then without waiting for a clock. Semantic, like the deadline.
