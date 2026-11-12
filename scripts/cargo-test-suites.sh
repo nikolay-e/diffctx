@@ -18,6 +18,12 @@
 # Every run of the suites appends where its time went to DIFFCTX_PROFILE (a
 # temporary file unless set; empty turns it off), summarized when they end.
 set -euo pipefail
+# The pre-commit hook runs this inside git's environment, and from a linked worktree a suite's
+# `git init` that inherited it rewrites the shared .git/config (fj#199). scripts/git-env-gate.sh
+# runs the suites without this line to show a spawn that scrubs nothing itself.
+# shellcheck source=scripts/repo-locating-env.sh
+source "$(dirname "$0")/repo-locating-env.sh"
+unset "${REPO_LOCATING_ENV[@]}"
 cd "$(dirname "$0")/../crates/diffctx-native"
 
 part=${1:-all}
