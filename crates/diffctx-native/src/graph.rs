@@ -546,14 +546,6 @@ fn apply_hub_suppression(edges: &mut [CompactEdge], idx_to_node: &[FragmentId]) 
     }
 }
 
-/// Default top-K out-edges per source node. Calibrated against the
-/// observed edge density distribution: typical Python file emits
-/// 5-20 semantic + 2-5 structural + ≤20 sibling edges (~30-50 normal),
-/// so K=64 preserves all legitimate edges while clamping pathological
-/// dense nodes (e.g. utility hubs in django/material-ui that radiate
-/// into thousands of dependents).
-pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
-
 /// Truncate each node's outgoing edge list to the top-K by weight.
 /// Run AFTER `apply_hub_suppression` so the suppression pass sees
 /// the true in-degree distribution; otherwise its IDF damping is
@@ -609,14 +601,6 @@ pub(crate) fn cap_out_edges_per_source(
         max_out_edges_per_node: max_per_node,
         emissions_by_category: Vec::new(),
     }
-}
-
-pub(crate) fn read_max_out_edges_per_node() -> usize {
-    std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
 }
 
 /// Candidate out-edge ranked by post-suppression weight. The ordering
@@ -773,7 +757,7 @@ fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
 
     apply_hub_suppression(&mut edges, &idx_to_node);
 
-    let max_per_node = read_max_out_edges_per_node();
+    let max_per_node = crate::config::limits::read_max_out_edges_per_node();
     let cap_stats = cap_out_edges_per_source(&mut edges, max_per_node);
     tracing::debug!(
         "edge cap K={}: {} -> {} (dropped {} from {} nodes)",
@@ -1361,7 +1345,7 @@ mod tests {
         let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
         let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
 
-        let n_leaves = DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
+        let n_leaves = crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
         for i in 0..n_leaves {
             let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
             frags.push(plain_fragment(leaf.clone()));

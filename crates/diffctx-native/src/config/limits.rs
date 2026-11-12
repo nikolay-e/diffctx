@@ -59,6 +59,22 @@ pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.05;
 pub const UNGATED_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 
+/// Default top-K out-edges per source node. Calibrated against the
+/// observed edge density distribution: typical Python file emits
+/// 5-20 semantic + 2-5 structural + ≤20 sibling edges (~30-50 normal),
+/// so K=64 preserves all legitimate edges while clamping pathological
+/// dense nodes (e.g. utility hubs in django/material-ui that radiate
+/// into thousands of dependents).
+pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
+
+pub(crate) fn read_max_out_edges_per_node() -> usize {
+    std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
+}
+
 pub struct PPRConfig {
     pub alpha: f64,
     pub default_seed_epsilon: f64,

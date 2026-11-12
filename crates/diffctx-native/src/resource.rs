@@ -143,7 +143,7 @@ impl ResourceBudget {
                 "DIFFCTX_MAX_EDGE_CONTRIBUTIONS",
                 DEFAULT_MAX_EDGE_CONTRIBUTIONS,
             ),
-            max_out_edges_per_node: crate::graph::read_max_out_edges_per_node(),
+            max_out_edges_per_node: crate::config::limits::read_max_out_edges_per_node(),
             max_needs: env_u64("DIFFCTX_MAX_NEEDS", DEFAULT_MAX_NEEDS as u64) as usize,
         }
     }
