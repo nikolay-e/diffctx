@@ -86,6 +86,11 @@ pub enum Loss {
     AmbiguousMatch {
         path: RepoPath,
     },
+    /// An untracked directory the collapsed read of a checkout did not enter:
+    /// what it holds was never listed, so a use of a name in it is unknown.
+    DirectoryUnread {
+        path: RepoPath,
+    },
 }
 
 impl Loss {
@@ -104,6 +109,7 @@ impl Loss {
             Self::Deadline { .. } => "deadline",
             Self::ExtractorFailed { .. } => "extractor_failed",
             Self::AmbiguousMatch { .. } => "ambiguous_match",
+            Self::DirectoryUnread { .. } => "directory_unread",
         }
     }
 
@@ -119,7 +125,8 @@ impl Loss {
             | Self::GrammarOutdated { path, .. }
             | Self::Unsupported { path }
             | Self::ExtractorFailed { path }
-            | Self::AmbiguousMatch { path } => Some(path),
+            | Self::AmbiguousMatch { path }
+            | Self::DirectoryUnread { path } => Some(path),
             Self::Withheld { .. } | Self::Deadline { .. } => None,
         }
     }
@@ -140,6 +147,7 @@ impl Loss {
             Self::Unsupported { .. } => Self::Unsupported { path },
             Self::ExtractorFailed { .. } => Self::ExtractorFailed { path },
             Self::AmbiguousMatch { .. } => Self::AmbiguousMatch { path },
+            Self::DirectoryUnread { .. } => Self::DirectoryUnread { path },
             other @ (Self::Withheld { .. } | Self::Deadline { .. }) => other,
         }
     }
@@ -186,6 +194,7 @@ impl Loss {
             },
             Self::ExtractorFailed { path: at() },
             Self::AmbiguousMatch { path: at() },
+            Self::DirectoryUnread { path: at() },
         ];
         debug_assert!(
             samples
@@ -210,6 +219,7 @@ impl Loss {
             Self::Deadline { .. } => 9,
             Self::ExtractorFailed { .. } => 10,
             Self::AmbiguousMatch { .. } => 11,
+            Self::DirectoryUnread { .. } => 12,
         }
     }
 }
@@ -261,6 +271,9 @@ impl fmt::Display for Loss {
                     f,
                     "{path}: a changed definition has more than one counterpart"
                 )
+            }
+            Self::DirectoryUnread { path } => {
+                write!(f, "{path}/: an untracked directory the read did not enter")
             }
         }
     }

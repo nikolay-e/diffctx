@@ -3615,6 +3615,7 @@ fn answer(
         return Err("retry-exhausted");
     }
     mark_seen_with(&prepared.tries_key, &(attempt + 1).to_string());
+    let unread = session_unread(&prepared.trigger, &prepared.unread);
     let Prepared {
         root,
         range,
@@ -3623,7 +3624,6 @@ fn answer(
         key,
         record_key,
         tries_key,
-        unread,
         ..
     } = prepared;
     let reviewed = range.clone();
@@ -3678,6 +3678,21 @@ fn answer(
             hook_json(event, &a.context, deny)
         }),
     }
+}
+
+/// The unread untracked directories this review's note is about: its own
+/// change set only. With a session's ledger, a directory it wrote nothing in
+/// is another session's pending work and the engine's coverage line says it;
+/// with none, nobody can tell, so every one is named.
+fn session_unread(trigger: &Trigger, unread: &[String]) -> Vec<String> {
+    let Trigger::Inspect { own: Some(own), .. } = trigger else {
+        return unread.to_vec();
+    };
+    unread
+        .iter()
+        .filter(|dir| own.files.iter().any(|file| file == &format!("{dir}/")))
+        .cloned()
+        .collect()
 }
 
 /// A review of a pending change that left untracked directories unread says

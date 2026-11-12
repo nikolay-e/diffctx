@@ -216,6 +216,10 @@ pub struct ImpactOutput {
     /// calls and tests were not read, so a zero says nothing about them
     /// (#392).
     pub withheld_files: usize,
+    /// Untracked directories the read of the checkout did not enter (a working
+    /// tree over its entry budget): callers in them are unknown, so the answer
+    /// is partial and names them.
+    pub unread_directories: Vec<String>,
     /// Changed code files whose definitions were not read — no grammar for
     /// the language in this build, or a parse that failed — so their callers
     /// and contracts are not counted, and `empty` is never claimed (#454).
@@ -587,6 +591,9 @@ fn search_coverage(
     }
 }
 
+/// Untracked directories the answer names in its coverage; the rest are counted.
+const MAX_UNREAD_DIRECTORIES_NAMED: usize = 10;
+
 /// What the run as a whole did not cover: a stop or limit that can have lost a
 /// caller, files withheld by ignore rules. A definition's own gaps are its own.
 pub(crate) fn scope_coverage(output: &ImpactOutput) -> decide::Coverage {
@@ -608,6 +615,17 @@ pub(crate) fn scope_coverage(output: &ImpactOutput) -> decide::Coverage {
     }
     if untracked > 0 {
         gaps.push(decide::Gap::Untracked { files: untracked });
+    }
+    if !output.unread_directories.is_empty() {
+        gaps.push(decide::Gap::UnreadDirectories {
+            directories: output
+                .unread_directories
+                .iter()
+                .take(MAX_UNREAD_DIRECTORIES_NAMED)
+                .cloned()
+                .collect(),
+            total: output.unread_directories.len(),
+        });
     }
     decide::Coverage::close(decide::Evidence::Run, gaps)
 }
@@ -4389,6 +4407,7 @@ pub fn build_impact(
         layout_only_omitted: 0,
         traced_definitions,
         withheld_files: state.policy_excluded_count + state.run.withheld_count(),
+        unread_directories: state.run.source().unread_directories(),
         unanalysed_files: unanalysed,
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,
@@ -5804,6 +5823,7 @@ pub(crate) fn symbol_named_output(
         layout_only_omitted: 0,
         traced_definitions: 0,
         withheld_files: 0,
+        unread_directories: Vec::new(),
         unanalysed_files: unread,
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,

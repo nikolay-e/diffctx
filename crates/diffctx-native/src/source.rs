@@ -353,6 +353,14 @@ impl Source {
         })
     }
 
+    /// The untracked directories the collapsed read of the checkout did not
+    /// enter: what they hold was never listed, so the search could not look.
+    pub fn unread_directories(&self) -> Vec<String> {
+        self.view.as_ref().map_or_else(Vec::new, |(analysis, _)| {
+            analysis.ctx.head.unread_directories().to_vec()
+        })
+    }
+
     /// The side the change started from.
     pub fn base(&self) -> Self {
         match &self.view {
