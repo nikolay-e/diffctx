@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use wait_timeout::ChildExt;
@@ -132,8 +132,6 @@ pub(crate) struct Exec {
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
 /// again; a finished child is noticed at once whatever the slice.
 const POLL_SLICE: Duration = Duration::from_millis(100);
-/// How long reaping a killed child may take before it is given up on.
-const REAP_GRACE: Duration = Duration::from_secs(2);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
 
@@ -359,6 +357,79 @@ pub fn git_command(root: &Path) -> Command {
     cmd
 }
 
+/// `cat-file --batch` children not yet handed to their owner's wait.
+/// `process::exit` skips destructors, and a run's worker thread may still hold
+/// a connection when the process ends (a watchdog, a hook past its ceiling):
+/// git then exits on its own as an orphan, and a PID 1 that never reaps keeps
+/// its zombie for ever (fj#168).
+static LIVE_BATCHES: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+/// Registers a connection's child; the first one installs the exit hook. The
+/// owner drops it before it waits, so the hook and a wait never race for one
+/// child.
+struct Live(u32);
+
+impl Live {
+    fn new(child: &Child) -> Self {
+        static HOOK: std::sync::Once = std::sync::Once::new();
+        #[cfg(unix)]
+        HOOK.call_once(|| {
+            // SAFETY: registers a plain `extern "C"` function; it touches no
+            // memory of ours until the process is ending.
+            #[allow(unsafe_code)]
+            unsafe {
+                libc::atexit(reap_live_batches);
+            }
+        });
+        let pid = child.id();
+        LIVE_BATCHES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(pid);
+        Self(pid)
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        LIVE_BATCHES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|pid| *pid != self.0);
+    }
+}
+
+/// The process is ending: the registry's lock is kept for good, so an owner
+/// that has not yet claimed its child blocks until the process is gone instead
+/// of waiting on one reaped under it.
+#[cfg(unix)]
+extern "C" fn reap_live_batches() {
+    let held = LIVE_BATCHES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    reap_all(&held);
+    std::mem::forget(held);
+}
+
+#[cfg(unix)]
+#[allow(unsafe_code)]
+fn reap_all(pids: &[u32]) {
+    for &pid in pids {
+        let Ok(pid) = i32::try_from(pid) else {
+            continue;
+        };
+        let mut status = 0;
+        // SAFETY: waitpid(2) writes into the local it is given; kill(2) with
+        // a negative pid signals the group the child leads.
+        unsafe {
+            if libc::waitpid(pid, &raw mut status, libc::WNOHANG) == 0 {
+                libc::kill(-pid, libc::SIGKILL);
+                libc::waitpid(pid, &raw mut status, 0);
+            }
+        }
+    }
+}
+
 /// Kills the child and everything it started: on Unix every git child leads
 /// its own process group, so a descendant holding the stdout pipe open dies
 /// with it instead of keeping a reader blocked.
@@ -375,7 +446,9 @@ fn kill_tree(child: &mut Child) {
         }
     }
     let _ = child.kill();
-    let _ = child.wait_timeout(REAP_GRACE);
+    // The kill is already delivered, so this returns at once; leaving the
+    // leader unreaped would keep a zombie for as long as we live.
+    let _ = child.wait();
 }
 
 type PipeRead = mpsc::Receiver<std::io::Result<Vec<u8>>>;
@@ -533,7 +606,8 @@ enum Raw {
 /// a deadline.
 struct BatchConn {
     child: Child,
-    requests: mpsc::SyncSender<Vec<u8>>,
+    live: Option<Live>,
+    requests: Option<mpsc::SyncSender<Vec<u8>>>,
     replies: mpsc::Receiver<Raw>,
 }
 
@@ -555,16 +629,25 @@ impl BatchConn {
         let (reply_tx, replies) = mpsc::sync_channel(1);
         std::thread::spawn(move || batch_worker(stdin, stdout, &request_rx, &reply_tx, max_bytes));
         Ok(Self {
+            live: Some(Live::new(&child)),
             child,
-            requests,
+            requests: Some(requests),
             replies,
         })
     }
 
+    fn send(&self, request: Vec<u8>) -> bool {
+        self.requests
+            .as_ref()
+            .is_some_and(|requests| requests.send(request).is_ok())
+    }
+
     /// A graceful close gives git the cleanup allowance to exit on EOF, cut to
-    /// what the run has left; a cancelled or expired run kills at once.
+    /// what the run has left; a cancelled or expired run kills at once. Either
+    /// way the child is reaped before this returns.
     fn shut_down(mut self, graceful: Option<&Limits>) {
-        drop(self.requests);
+        self.requests = None;
+        self.live = None;
         if let Some(limits) = graceful {
             let allowance = Duration::from_secs(CATFILE_TERMINATION_SECONDS)
                 .min(limits.deadline.saturating_duration_since(Instant::now()));
@@ -575,6 +658,26 @@ impl BatchConn {
             }
         }
         kill_tree(&mut self.child);
+    }
+}
+
+/// A connection that goes out of scope without `shut_down` — a panic, an early
+/// return — still closes git's stdin and reaps it: an unreaped child is a
+/// zombie for as long as this process lives, and a process that dies first
+/// leaves it to PID 1.
+impl Drop for BatchConn {
+    fn drop(&mut self) {
+        self.requests = None;
+        self.live = None;
+        if matches!(self.child.try_wait(), Ok(None))
+            && !matches!(
+                self.child
+                    .wait_timeout(Duration::from_secs(CATFILE_TERMINATION_SECONDS)),
+                Ok(Some(_))
+            )
+        {
+            kill_tree(&mut self.child);
+        }
     }
 }
 
@@ -697,7 +800,7 @@ impl CatBatch {
             Some(conn) => conn,
             None => BatchConn::start(&self.root, self.max_bytes)?,
         };
-        if conn.requests.send(format!("{oid}\n").into_bytes()).is_err() {
+        if !conn.send(format!("{oid}\n").into_bytes()) {
             conn.shut_down(None);
             return Ok(Raw::Broken(format!("connection closed before {oid}")));
         }
@@ -749,6 +852,8 @@ impl Drop for CatBatch {
 )]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::process::CommandExt;
 
     fn within(timeout: Duration) -> Limits {
         Limits {
@@ -825,5 +930,56 @@ mod tests {
             .expect("spawn true");
         let result = supervise(child, &within(Duration::from_secs(5)));
         assert!(matches!(result, Ok(ref out) if out.status.success()));
+    }
+
+    /// A zombie still answers `kill(pid, 0)`; only a reaped child is `ESRCH`.
+    #[cfg(unix)]
+    fn is_gone(pid: u32) -> bool {
+        let pid = i32::try_from(pid).unwrap();
+        // SAFETY: signal 0 only asks whether the pid exists.
+        #[allow(unsafe_code)]
+        let found = unsafe { libc::kill(pid, 0) };
+        found == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_batch_connection_is_reaped() {
+        let repo = tempfile::TempDir::new().unwrap();
+        let status = git_command(repo.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let conn = BatchConn::start(repo.path(), 1 << 20).unwrap();
+        let pid = conn.child.id();
+        drop(conn);
+        assert!(is_gone(pid), "cat-file {pid} outlived its connection");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_killed_tree_leaves_no_zombie() {
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        kill_tree(&mut child);
+        assert!(is_gone(pid), "sleep {pid} was killed and not reaped");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_exit_hook_reaps_a_child_nobody_waited_for() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        reap_all(&[pid]);
+        assert!(is_gone(pid), "sleep {pid} outlived the exit hook");
     }
 }
