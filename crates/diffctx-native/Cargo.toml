@@ -191,6 +191,10 @@ suboptimal_flops = "allow"
 # The ban on `Result::ok` and its kin is configured in clippy.toml and holds in
 # `snapshot` alone, which denies it in its own `mod.rs`.
 disallowed_methods = "allow"
+# Contradicts `unreachable_pub`: an item no outside crate can name is `pub(crate)`
+# by rule, and this nursery lint asks for `pub` back.
+redundant_pub_crate = "allow"
 
 [lints.rust]
 unsafe_code = "deny"
+unreachable_pub = "warn"
