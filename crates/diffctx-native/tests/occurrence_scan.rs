@@ -348,11 +348,11 @@ fn a_placed_identifier_is_found_by_the_place_it_was_put_in() {
                 .map(|hit| (hit.bytes.clone(), hit.line))
                 .collect()
         };
-        if seen(&found.code) != code || seen(&found.mentions) != mentions {
+        if seen(found.code.as_slice()) != code || seen(found.mentions.as_slice()) != mentions {
             return Err(TestCaseError::fail(format!(
                 "code {:?} want {code:?}, mentions {:?} want {mentions:?} in {text:?}",
-                seen(&found.code),
-                seen(&found.mentions)
+                seen(found.code.as_slice()),
+                seen(found.mentions.as_slice())
             )));
         }
         Ok(())
