@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import report
+from gates import GATES_FILE, load_gates
 
 
 def cell(**fields):
@@ -235,7 +236,7 @@ def verdicts(tmp_path: Path, cells: list[dict], gates: Path | None = None, extra
 
 
 def edited_gates(tmp_path: Path, old: str, new: str) -> Path:
-    text = report.GATES_FILE.read_text()
+    text = GATES_FILE.read_text()
     assert old in text
     copy = tmp_path / "gates.toml"
     copy.write_text(text.replace(old, new))
@@ -245,7 +246,7 @@ def edited_gates(tmp_path: Path, old: str, new: str) -> Path:
 def test_every_threshold_of_the_gates_file_gets_a_verdict_line_and_missing_input_is_not_a_pass(tmp_path: Path):
     lines = verdicts(tmp_path, [cell(truth=1, tp=1)])
 
-    assert {gate for gate, _ in lines} == set(report.load_gates())
+    assert {gate for gate, _ in lines} == set(load_gates())
     assert lines[("safety.false_fold", "oracle cells")]["status"] == "pass"
     assert lines[("safety.false_complete_negatives", "oracle cells")]["value"] == 0
     assert lines[("safety.silent_loss", "")]["status"] == "n/a"
@@ -317,4 +318,4 @@ def test_a_gates_file_key_that_is_no_threshold_is_refused(tmp_path: Path):
     bad.write_text("[safety]\nfalse_fold = 0\n")
 
     with pytest.raises(ValueError, match="is no threshold"):
-        report.load_gates(bad)
+        load_gates(bad)
