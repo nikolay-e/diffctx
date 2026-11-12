@@ -287,9 +287,11 @@ fn reference(
             ]
             .contains(&kind))
         || SKIP_PARENT.iter().any(|k| kind.contains(k));
-    // Of a member expression only its first operand is read as a name.
-    let member = MEMBER.iter().any(|k| kind.contains(k)) || kind.ends_with("suffix");
+    // Of a member expression only its first operand is read as a name; a suffix
+    // (Kotlin's `.name`) holds the member's name, never an operand.
+    let member = MEMBER.iter().any(|k| kind.contains(k));
     if skipped
+        || kind.ends_with("suffix")
         || (member && parent.named_child(0).map(|c| c.start_byte()) != Some(leaf.start_byte()))
     {
         return None;
