@@ -1530,23 +1530,26 @@ fn resolve_anchor(
     run: &crate::resource::RunContext,
     t_entry: Instant,
 ) -> Result<(Option<String>, Option<snapshot::StagedSnapshot>, ChangeSet)> {
-    let opened = match anchor {
-        Anchor::Diff(diff_range) => crate::source::Analysis::open(root_dir, diff_range, run),
-        Anchor::Range(range) => crate::source::Analysis::open_range(root_dir, range, run),
-        Anchor::Symbol(query) => {
-            run.set_source(crate::source::Analysis::at_working_tree(root_dir, run)?.head());
-            return Ok((
-                None,
-                None,
-                resolve_symbol_change_set(root_dir, scope, query, run, t_entry)?,
-            ));
-        }
+    let (opened, symbol) = match anchor {
+        Anchor::Diff(diff_range) => (
+            crate::source::Analysis::open(root_dir, diff_range, run),
+            None,
+        ),
+        Anchor::Range(range) => (
+            crate::source::Analysis::open_range(root_dir, range, run),
+            None,
+        ),
+        Anchor::Symbol(query) => (
+            crate::source::Analysis::at_working_tree(root_dir, run),
+            Some(query),
+        ),
     };
     let analysis = match opened {
         Ok(analysis) => analysis,
         // The deadline or a cancellation cut the snapshot's listing
         // short: nothing was read, so the answer is the partial one
-        // that names the limit, never a clean tree.
+        // that names the limit, never a clean tree (a `--symbol` run
+        // included: no definition was looked for, none is absent).
         Err(e) if e.is_interruption() => {
             run.note(crate::resource::reason_for(&e));
             return Ok((
@@ -1564,6 +1567,13 @@ fn resolve_anchor(
         Err(e) => return Err(e.into()),
     };
     run.set_source(analysis.head());
+    if let Some(query) = symbol {
+        return Ok((
+            None,
+            None,
+            resolve_symbol_change_set(root_dir, scope, query, run, t_entry)?,
+        ));
+    }
     let range = analysis.range();
     let change_set = resolve_change_set(
         root_dir,
