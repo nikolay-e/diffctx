@@ -1089,22 +1089,39 @@ impl Fnv {
 /// changes nothing; a read git refused is an error, never "nothing": an
 /// unknown set of files changed.
 pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silence> {
+    identity_of(root, range).map(|(identity, _)| identity)
+}
+
+/// `result_identity` and, for the working tree, the untracked directories
+/// its collapsed read left unread (a budget of entries bounds it, so a
+/// checkout of a million untracked files costs what its top levels cost):
+/// they are in the identity by name, and the review says it did not read them.
+fn identity_of(root: &Path, range: &str) -> Result<(Option<String>, Vec<String>), Silence> {
     let (base, head) = match snap::split_diff_range(range) {
         (Some(b), h) => (b, h),
         _ => (range.to_string(), None),
     };
     let mut entries = changed_blobs(root, &base, head.as_deref())?;
+    let mut unread = Vec::new();
     if head.is_none() {
-        let untracked = snap::run_git_z(root, &["ls-files", "-o", "--exclude-standard", "-z"])
-            .map_err(|_| "error:git")?;
+        let untracked = snap::untracked(root, &[]).map_err(|_| "error:git")?;
         entries.extend(
             untracked
+                .names
                 .into_iter()
                 .map(|p| (p, "100644".to_string(), String::new())),
         );
+        entries.extend(untracked.unread.iter().map(|dir| {
+            (
+                format!("{dir}/"),
+                "040000".to_string(),
+                "unread".to_string(),
+            )
+        }));
+        unread = untracked.unread;
     }
     if entries.is_empty() {
-        return Ok(None);
+        return Ok((None, unread));
     }
     hash_working_tree_blobs(root, &mut entries);
     entries.sort();
@@ -1125,7 +1142,7 @@ pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silen
             .feed(mode.as_bytes())
             .feed(oid.as_bytes());
     }
-    Ok(Some(format!("{:016x}", h.0)))
+    Ok((Some(format!("{:016x}", h.0)), unread))
 }
 
 /// `(path, mode, blob id)` of every path `base..head` changes (`head` absent:
@@ -1420,6 +1437,9 @@ struct Prepared {
     /// Delivered earlier for exactly this identity, on an inspection or by a
     /// manual run: a command recording it gets a one-line reminder (#346).
     shown: Option<Delivered>,
+    /// Untracked directories of a pending change that the collapsed read of
+    /// the checkout left unread: the answer names them.
+    unread: Vec<String>,
 }
 
 /// What one invocation learned about itself, for its line in the hook log.
@@ -1796,7 +1816,8 @@ fn prepared(
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
     trace.range = Some(range.clone());
-    let identity = result_identity(&root, &range)?.ok_or("clean")?;
+    let (identity, unread) = identity_of(&root, &range)?;
+    let identity = identity.ok_or("clean")?;
     let session = trace.session.as_deref();
     let key = session_key(&format!("id-{identity}"), session);
     let shown =
@@ -1810,6 +1831,7 @@ fn prepared(
         tries_key: session_key(&format!("try-{identity}"), session),
         key,
         shown,
+        unread,
     })
 }
 
@@ -1865,8 +1887,9 @@ fn own_changes(
 }
 
 /// Every path the inspected snapshot changes: the index against `HEAD`, or
-/// the working tree with its untracked files. A listing git refused is an
-/// error, not a smaller change.
+/// the working tree with its untracked files, read collapsed: a directory
+/// the read did not reach is one entry with a trailing `/`. A listing git
+/// refused is an error, not a smaller change.
 fn changed_paths(root: &Path, staged: bool) -> Result<Vec<String>, Silence> {
     let args: &[&str] = if staged {
         &["diff", "--cached", "--name-only", "-z", "--no-renames"]
@@ -1875,8 +1898,9 @@ fn changed_paths(root: &Path, staged: bool) -> Result<Vec<String>, Silence> {
     };
     let mut paths = snap::run_git_z(root, args).map_err(|_| "error:git")?;
     if !staged {
-        let untracked = ["ls-files", "-o", "--exclude-standard", "-z"];
-        paths.extend(snap::run_git_z(root, &untracked).map_err(|_| "error:git")?);
+        let untracked = snap::untracked(root, &[]).map_err(|_| "error:git")?;
+        paths.extend(untracked.names);
+        paths.extend(untracked.unread.into_iter().map(|dir| format!("{dir}/")));
     }
     Ok(paths)
 }
@@ -1906,6 +1930,7 @@ impl Writes {
                 .iter()
                 .any(|dir| rel.starts_with(dir.as_str()))
             || self.files.contains(&root.join(rel))
+            || (rel.ends_with('/') && self.files.iter().any(|f| f.starts_with(root.join(rel))))
     }
 
     /// One transcript entry: an edit tool's path, a Bash call starting, or
@@ -3598,6 +3623,7 @@ fn answer(
         key,
         record_key,
         tries_key,
+        unread,
         ..
     } = prepared;
     let reviewed = range.clone();
@@ -3607,6 +3633,7 @@ fn answer(
     let answer = within_budget(started, move |secs| {
         impact_context(event, &trigger, &root, &range, spec, secs, named.as_deref())
     });
+    let answer = with_unread(answer, &unread);
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
         Err("empty") => {
@@ -3650,6 +3677,34 @@ fn answer(
             }
             hook_json(event, &a.context, deny)
         }),
+    }
+}
+
+/// A review of a pending change that left untracked directories unread says
+/// so, naming them: what it found is a lower bound, and a change that sits
+/// only in them is no clean one.
+fn with_unread(answer: Result<Reply, Silence>, unread: &[String]) -> Result<Reply, Silence> {
+    if unread.is_empty() {
+        return answer;
+    }
+    let note = format!(
+        "diffctx did not read {} untracked director(y/ies) of this checkout, whose files are not part of this review: {}.",
+        unread.len(),
+        some_of(unread)
+    );
+    match answer {
+        Ok(mut reply) => {
+            reply.context.push('\n');
+            reply.context.push_str(&note);
+            reply.partial = true;
+            Ok(reply)
+        }
+        Err("empty") => Ok(Reply {
+            context: note.clone(),
+            headline: note,
+            partial: true,
+        }),
+        other => other,
     }
 }
 

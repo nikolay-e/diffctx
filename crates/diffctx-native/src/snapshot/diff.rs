@@ -1,4 +1,4 @@
-//! `git diff` and the untracked listing, asked the one safe way. Every
+//! `git diff`, asked the one safe way. Every
 //! argument that reaches git's argv from a caller (a range, a pathspec) passes
 //! its gate here, and the flags that pin the output's shape against a user's or
 //! a repository's own configuration are not the caller's to forget.
@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::repo::reject_option_like;
-use crate::snapshot::run::{run_git, run_git_z};
+use crate::snapshot::run::run_git;
 use crate::snapshot::types::contains_lexically;
 
 // The prefix and color flags are not cosmetic: the diff parser keys off the
@@ -123,19 +123,6 @@ pub fn diff_text(
 ) -> Result<String> {
     let args = diff_args(extra, diff_range, pathspec)?;
     run_git(root, &args)
-}
-
-/// The untracked, unignored files, as git names them (repo-relative, `/`
-/// separated, a nested repository as one `dir/` entry); the caller decides
-/// which of them are files of this repository.
-pub fn untracked_names(root: &Path, pathspec: &[String]) -> Result<Vec<String>> {
-    let mut args: Vec<&str> = vec!["ls-files", "--others", "--exclude-standard", "-z"];
-    if !pathspec.is_empty() {
-        validate_pathspec(pathspec)?;
-        args.push("--");
-        args.extend(pathspec.iter().map(String::as_str));
-    }
-    run_git_z(root, &args)
 }
 
 #[cfg(test)]
