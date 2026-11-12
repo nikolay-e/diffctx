@@ -23,11 +23,11 @@ use crate::config::edge_weights::{
 };
 use crate::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
 use crate::facts::{DefKey, Language};
-use crate::resolve::family::{self, Family, HeadFamily};
 use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
 use crate::resource::{LimitReason, current_source, note_current};
 use crate::snapshot::RepoPath;
 use crate::types::{Fragment, FragmentId};
+use crate::vocabulary::family::{self, Family, HeadFamily};
 
 use super::EdgeDict;
 use super::base::{self, EdgeBuilder, add_edge};

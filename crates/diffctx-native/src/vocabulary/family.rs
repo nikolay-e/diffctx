@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use super::{
+use crate::facts::{DefKey, FactsCache, Language};
+use crate::resolve::{
     Binding, CResolver, ConfigResolver, Definition, DockerfileResolver, GoResolver, JavaResolver,
     KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
     SwiftResolver, TerraformResolver, TypeScriptResolver,
 };
-use crate::facts::{DefKey, FactsCache, Language};
 use crate::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
     SideTag, WorkspaceModel,

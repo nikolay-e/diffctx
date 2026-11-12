@@ -44,6 +44,7 @@ decide -> run_provenance
 decide -> snapshot
 decide -> testfiles
 decide -> tokens
+decide -> vocabulary
 delivery -> answer
 delivery -> artifact
 delivery -> config
@@ -87,6 +88,7 @@ edges -> source
 edges -> stopwords
 edges -> testfiles
 edges -> types
+edges -> vocabulary
 effective_config -> config
 effective_config -> mode
 effective_config -> resource
@@ -295,11 +297,7 @@ render -> resource
 render -> run_provenance
 render -> sanitize
 render -> types
-resolve -> config
 resolve -> facts
-resolve -> languages
-resolve -> profile
-resolve -> resource
 resolve -> snapshot
 resource -> changed_lines
 resource -> config
@@ -352,11 +350,17 @@ tokens -> parsers
 tokens -> resolve
 tokens -> snapshot
 tokens -> testfiles
+tokens -> vocabulary
 utility -> config
 utility -> interval
 utility -> select
 utility -> stopwords
 utility -> testfiles
 utility -> types
+vocabulary -> config
+vocabulary -> facts
 vocabulary -> languages
+vocabulary -> profile
 vocabulary -> resolve
+vocabulary -> resource
+vocabulary -> snapshot

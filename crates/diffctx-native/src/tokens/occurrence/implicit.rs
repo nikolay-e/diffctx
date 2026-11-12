@@ -4,9 +4,9 @@ use std::path::Path;
 
 use crate::facts::lang::shell::SCRIPT;
 use crate::facts::{Def, EntryKind, Fact, FileFacts, Scope, UseKind};
-use crate::resolve::family::Family;
 use crate::testfiles::is_test_path;
 use crate::tokens::occurrence::Implicit;
+use crate::vocabulary::family::Family;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
 /// `consumed_outside` is `consumed_outside` of its family.
