@@ -131,15 +131,22 @@ def entry_for(target: Definition, answer: Answer) -> TargetAnswer | None:
     return found
 
 
-def silent_loss(target: Definition, answer: Answer) -> dict | None:
-    """The safety row for a changed definition the answer says nothing of: no entry, no count of definitions it shed
-    without naming them, no disclosure that the file went unanalysed.
+def _in_fold_row(target: Definition, answer: Answer) -> bool:
+    """The answer lists the definition as a row it folds: it names it, so it did not lose it."""
+    return any(
+        caller.folded_by and caller.from_key == target.key for entry in answer.targets.values() for caller in entry.callers
+    )
+
+
+def missing_definition(target: Definition, answer: Answer) -> dict | None:
+    """A changed definition the answer says nothing of: no entry, no fold row naming it, no disclosure that its file
+    went unanalysed. None where the answer names it.
 
     The record holds what classifies it: the answer's entries that may be the same definition under another key (an
     identity mismatch: same file, or the same name elsewhere) and what else the answer says about itself. With none, it is
     an engine loss.
     """
-    if entry_for(target, answer) is not None or answer.unnamed_omitted > 0 or target.path in answer.unanalysed:
+    if entry_for(target, answer) is not None or target.path in answer.unanalysed or _in_fold_row(target, answer):
         return None
     named = [key for key in answer.targets if without_span(key).rpartition("::")[2].split(".")[-1] == target.name]
     return {
@@ -150,6 +157,21 @@ def silent_loss(target: Definition, answer: Answer) -> dict | None:
         "entries_named_alike": sorted(named),
         "answer_empty": answer.empty,
         "limits": len(answer.limits),
+    }
+
+
+def silent_loss(missing: list[dict], answer: Answer) -> dict:
+    """The safety row of one answer: the definitions it lost without a word.
+
+    The answer counts the definitions it shed without naming them (`unnamed_omitted`); that many of the missing ones are
+    accounted for, though which ones it cannot say. The rest are silent. Every missing definition stays listed beside
+    the count, so a reader sees what the number was made of.
+    """
+    return {
+        "missing": len(missing),
+        "unnamed_omitted": answer.unnamed_omitted,
+        "silent": max(0, len(missing) - answer.unnamed_omitted),
+        "definitions": missing,
     }
 
 
