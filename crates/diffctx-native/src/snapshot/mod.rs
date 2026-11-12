@@ -40,7 +40,7 @@ pub use admission::{
     Admission, AdmissionPolicy, Decision, IgnoreSource, Meta, NotAnalysedReason, UntrackedPolicy,
     WithholdReason, is_secret_path,
 };
-pub use changes::{Change, ChangeKind, ChangeSet};
+pub use changes::{Change, ChangeKind, ChangeSet, NamedChanges};
 pub use context::{AnalysisContext, ToolchainId};
 pub use diff::{diff_text, validate_pathspec};
 pub use error::{Result, SnapshotError};
@@ -52,6 +52,7 @@ pub use grep::{
     Row, files_with_declaration, files_with_word, lines_matching, needle_lines, word_first_lines,
     word_lines,
 };
+pub use ignore::name_working_tree_changes;
 pub use loss::{Loss, SideTag, Stage};
 pub use range::{
     RangeSpec, commits, duration_base, is_staged_keyword, resolve, split_diff_range, staged,

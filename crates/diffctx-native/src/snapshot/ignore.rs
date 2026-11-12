@@ -12,6 +12,7 @@ use std::path::Path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::snapshot::admission::IgnoreSource;
+use crate::snapshot::changes::NamedChanges;
 use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::git::{Exec, Scratch, git_command};
 use crate::snapshot::types::RepoPath;
@@ -136,6 +137,46 @@ pub(crate) fn check(
         }
     };
     run(exec, &dir, &scratch, &patterns, own_excludes, paths)
+}
+
+/// `names` (paths; a directory as `dir/`) sorted into what may be named and what
+/// the checkout withholds by the secret floor or its `.diffctx/ignore`.
+///
+/// A path only `.gitignore` excludes keeps its name. Asked without a snapshot:
+/// a working-tree reader hashes every dirty file for its identity, which a
+/// surface that only names paths does not need.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a name no path can spell is not asked about: the engine names it too"
+)]
+pub fn name_working_tree_changes(root: &Path, names: Vec<String>) -> Result<NamedChanges> {
+    let exec = Exec::current();
+    let untracked = crate::snapshot::untracked::read(&exec, root, &[])?.names;
+    let asked = |name: &str| RepoPath::new(name.trim_end_matches('/')).ok();
+    let queries: Vec<&str> = names
+        .iter()
+        .filter_map(|n| asked(n).map(|_| n.trim_end_matches('/')))
+        .collect();
+    let hits = check(
+        &exec,
+        &Basis::WorkingTree {
+            root,
+            untracked: &untracked,
+        },
+        &queries,
+    )?;
+    let (withheld, named): (Vec<String>, Vec<String>) = names.into_iter().partition(|name| {
+        asked(name).is_some_and(|path| {
+            crate::snapshot::admission::floor(&path).is_some()
+                || hits
+                    .get(path.as_str())
+                    .is_some_and(|hit| hit.source == IgnoreSource::DiffctxPolicy)
+        })
+    });
+    Ok(NamedChanges {
+        named,
+        withheld: withheld.len(),
+    })
 }
 
 /// The `.diffctx/ignore` files of a checkout, tracked or among the untracked
