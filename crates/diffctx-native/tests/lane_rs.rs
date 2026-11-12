@@ -1006,7 +1006,7 @@ fn a_function_passed_by_name_is_a_use_with_its_test_reach() {
         "{md}"
     );
     assert!(
-        md.contains("referenced from src/locate.rs::Output (1-83) — reachable from tests: tests/schema.rs via schema"),
+        md.contains("referenced from src/locate.rs::Output (1-83) — reachable from tests: tests/schema.rs::schema_is_sized via schema"),
         "{md}"
     );
     assert!(

@@ -178,7 +178,7 @@ pub struct ImpactOutput {
     /// repository trips (#306), is not listed: a caller it cut an edge from
     /// is recovered by the same tests an edge faces.
     pub limits: Vec<crate::resource::LimitReason>,
-    /// Whether any test file was in view. Without one, an absent `tested_by`
+    /// Whether any test file was in view. Without one, an absent `tests`
     /// says nothing about the caller, and the text form does not call it
     /// untested.
     pub tests_known: bool,
@@ -433,18 +433,25 @@ pub enum Unknown {
     Uncovered { why: String },
 }
 
+/// A test that reaches a caller: its file, the test function where one is named,
+/// and the function between the caller and the test when the test calls through one.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TestLink {
+    pub path: String,
+    pub name: Option<String>,
+    pub via: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct Caller {
     pub path: String,
     pub symbol: Option<String>,
     pub lines: String,
     pub weight: f64,
-    /// A test file that calls this caller, directly or through `tested_via`.
-    pub tested_by: Option<String>,
-    /// The function between the caller and the test that reaches it.
-    pub tested_via: Option<String>,
+    /// The tests that reach this caller at the fewest hops, in path then name order.
+    pub tests: Vec<TestLink>,
     /// A test reaches the caller's file but none of the paths to this caller:
-    /// the one case where an absent `tested_by` is a finding, not a gap in
+    /// the one case where an absent `tests` is a finding, not a gap in
     /// what static analysis can see (a route hit over HTTP, a fixture).
     pub file_tested: bool,
     /// The decorator that registers the caller (`@register_node`,
@@ -452,7 +459,7 @@ pub struct Caller {
     /// no static test link follows, so its absence is no finding (#388).
     pub registered_by: Option<String>,
     /// A test file the size cap kept out that names this caller: an absent
-    /// `tested_by` says nothing about it (#542).
+    /// `tests` says nothing about it (#542).
     pub unread_test: Option<String>,
     /// `resolved`: a binding links the reference to the changed definition.
     /// `name`: a word match — the lexical model of a language without a
@@ -1826,12 +1833,11 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 if c.relation == "call" {
                     m.relation = "call";
                 }
-                if m.tested_by.is_none() {
-                    m.tested_by = c.tested_by;
-                    m.tested_via = c.tested_via;
+                if m.tests.is_empty() {
+                    m.tests = c.tests;
                 }
                 m.unread_test = m.unread_test.take().or(c.unread_test);
-                m.file_tested = m.tested_by.is_none() && (m.file_tested || c.file_tested);
+                m.file_tested = m.tests.is_empty() && (m.file_tested || c.file_tested);
             }
             None => merged.push(c),
         }
@@ -2615,8 +2621,7 @@ fn cell_row(u: &decide::Use) -> Caller {
         symbol: caller,
         lines: format!("{0}-{0}", u.line),
         weight: FINDING_WEIGHT,
-        tested_by: None,
-        tested_via: None,
+        tests: Vec::new(),
         file_tested: false,
         registered_by: None,
         unread_test: None,
@@ -3474,22 +3479,21 @@ pub fn build_impact(
             .flat_map(|frag| {
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 let found = findings.get(&frag.id);
-                let registered_by = tested.is_none().then(|| registration(frag)).flatten();
+                let registered_by = tested.is_empty().then(|| registration(frag)).flatten();
                 let row = Caller {
                     path: rel(state, frag.path()),
                     symbol: frag.symbol_name.clone(),
                     lines: lines_of(&frag.id),
                     weight: (weights[&frag.id] * 1e3).round() / 1e3,
-                    file_tested: tested.is_none()
+                    file_tested: tested.is_empty()
                         && registered_by.is_none()
                         && tests.file_tested(frag, &reaches_file),
                     unread_test: tested
-                        .is_none()
+                        .is_empty()
                         .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
                     registered_by,
-                    tested_by: tested.as_ref().map(|(p, _)| rel(state, p)),
-                    tested_via: tested.and_then(|(_, via)| via),
+                    tests: tested,
                     evidence: found.map_or("name", Reach::evidence),
                     reason: found.and_then(Reach::reason),
                     relation: found.map_or("call", |f| f.relation),
@@ -3593,15 +3597,8 @@ pub fn build_impact(
         // The role that gives the definition an implicit caller (R3): where a
         // static test link exists it is shown, otherwise the role is named.
         let test_link = |frag| {
-            tests
-                .tested_by(frag, state, &by_id, &link)
-                .map(|(test, via)| {
-                    let test = rel(state, &test);
-                    match via {
-                        Some(via) => format!("reachable from tests: {test} via {via}"),
-                        None => format!("reachable from tests: {test}"),
-                    }
-                })
+            let found = tests.tested_by(frag, state, &by_id, &link);
+            (!found.is_empty()).then(|| text::reachable_from_tests(&found))
         };
         let mut linkless_role = false;
         // A test helper the range's own tests call is traced like any definition:
@@ -3714,11 +3711,11 @@ pub fn build_impact(
             && verdict.as_ref().is_none_or(decide::Verdict::complete)
             && !callers
                 .iter()
-                .any(|c| c.tested_by.is_some() && c.tested_via.is_none())
-            && tests.tested_by(core, state, &by_id, &link).is_none()
+                .any(|c| c.tests.iter().any(|t| t.via.is_none()))
+            && tests.tested_by(core, state, &by_id, &link).is_empty()
             && !route
                 .and_then(|_| enclosing_class(core, file_of(core)))
-                .is_some_and(|class| tests.tested_by(class, state, &by_id, &link).is_some());
+                .is_some_and(|class| !tests.tested_by(class, state, &by_id, &link).is_empty());
         untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
             let n = callers
@@ -4090,9 +4087,8 @@ pub fn build_impact(
                     continue;
                 };
                 let tested = tests.tested_by(frag, state, &by_id, &link);
-                c.file_tested = tested.is_none() && tests.file_tested(frag, &reaches_file);
-                c.tested_by = tested.as_ref().map(|(p, _)| rel(state, p));
-                c.tested_via = tested.and_then(|(_, via)| via);
+                c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
+                c.tests = tested;
             }
             if let Some(c) =
                 contract.filter(|c| !crate::testfiles::is_test_path(Path::new(&c.path)))
@@ -4645,8 +4641,7 @@ fn removed_definitions(
                 symbol: holder.and_then(|f| f.symbol_name.clone()),
                 lines: holder.map_or_else(|| format!("{line}-{line}"), |f| lines_of(&f.id)),
                 weight: 1.0,
-                tested_by: None,
-                tested_via: None,
+                tests: Vec::new(),
                 file_tested: false,
                 registered_by: None,
                 unread_test: None,
@@ -5674,7 +5669,7 @@ const TOO_COMMON_NAMED: usize = 8;
 /// A caller no static test link reaches although one could have: the one
 /// predicate behind the header count, the folded count and the line (#386).
 pub(crate) fn without_test_link(c: &Caller) -> bool {
-    c.evidence == "resolved" && c.tested_by.is_none() && c.registered_by.is_none()
+    c.evidence == "resolved" && c.tests.is_empty() && c.registered_by.is_none()
 }
 
 /// A row that rests on a word match alone: listed as text, never counted or
@@ -5839,8 +5834,7 @@ pub(crate) fn symbol_local_output(
                     symbol: u.inside.clone(),
                     lines: format!("{0}-{0}", u.line),
                     weight: 1.0,
-                    tested_by: None,
-                    tested_via: None,
+                    tests: Vec::new(),
                     file_tested: false,
                     registered_by: None,
                     unread_test: None,

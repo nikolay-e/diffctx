@@ -510,16 +510,21 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
                 kind_stated: stated.is_some(),
             });
             if text(&row["guard"], "state") == Some("linked") {
-                if let Some(test) = text(&row["guard"], "test") {
-                    answer.relations.push(Relation {
-                        from: Node::new(test, None),
-                        to: from,
-                        kind: Kind::TestsReach,
-                        resolution: Resolution::Resolved,
-                        sites: Vec::new(),
-                        loose_kind: false,
-                        kind_stated: false,
-                    });
+                // The first test the guard names, then the others it lists.
+                for test in
+                    std::iter::once(&row["guard"]).chain(items(&row["guard"], "also").iter())
+                {
+                    if let Some(file) = text(test, "test") {
+                        answer.relations.push(Relation {
+                            from: Node::new(file, text(test, "name")),
+                            to: from.clone(),
+                            kind: Kind::TestsReach,
+                            resolution: Resolution::Resolved,
+                            sites: Vec::new(),
+                            loose_kind: false,
+                            kind_stated: false,
+                        });
+                    }
                 }
             }
         }

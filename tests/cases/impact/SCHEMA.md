@@ -115,7 +115,8 @@ Everything is optional; an absent field asserts nothing.
   argument; never `reads`), `configures` (from the configurer to the
   configured), `executes`, `references_path`, `tests_reach` (test function to
   its direct callee; transitive reach is asserted with `tested_by` or
-  `not_untested`).
+  `not_untested`; a `from` that names a test function is met only by an answer
+  that names that function, a bare file by either).
 - `resolution`: `resolved` (default), `candidate` ("possibly called"),
   `unresolved` (named only textually: a word match, or a file that spells the
   name but was not fully analysed).
