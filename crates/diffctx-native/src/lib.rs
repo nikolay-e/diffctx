@@ -33,6 +33,7 @@ pub(crate) mod edges;
 pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod keytable;
+pub mod occurrence;
 pub(crate) mod provenance;
 pub mod resolve;
 
