@@ -19,8 +19,6 @@ mod support;
 use support::fake_git::FAKE_GIT;
 use support::{diffctx, git};
 
-const TIMEOUT_SECS: &str = "3";
-
 fn repo(dir: &Path) {
     git(dir, &["init", "-q", "."]);
     git(dir, &["config", "user.email", "test@example.com"]);
@@ -129,7 +127,7 @@ fn a_run_leaves_no_git_child_behind() {
         ),
         ("symbol", None, &[".", "--symbol", "total", "-q"]),
         (
-            // The deadline kills a cat-file that never answers.
+            // The stall kills a cat-file that never answers.
             "stalled cat-file",
             Some(&stalled),
             &[
@@ -140,7 +138,7 @@ fn a_run_leaves_no_git_child_behind() {
                 "impact",
                 "-q",
                 "--timeout",
-                TIMEOUT_SECS,
+                "600",
             ],
         ),
     ];
@@ -157,6 +155,8 @@ fn a_run_leaves_no_git_child_behind() {
                 .env("FAKE_GIT_TARGET", "cat-file")
                 .env("FAKE_GIT_MODE", "stall_before_read")
                 .env("FAKE_GIT_PIDS", tmp.path().join("pids"))
+                .env("FAKE_GIT_STALLED", tmp.path().join("stalled"))
+                .env("DIFFCTX_TEST_GIT_STALL_FILE", tmp.path().join("stalled"))
                 .env("FAKE_GIT_CALLS", tmp.path().join("calls"));
         }
         command.output().expect("run diffctx");
