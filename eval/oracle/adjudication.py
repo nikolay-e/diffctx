@@ -12,6 +12,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from compare import false_complete_negative, incomplete_complete
+
 KIND_OF = {
     "call": "calls",
     "read": "reads",
@@ -82,19 +84,24 @@ def apply_to_rows(rows: list[dict], verdicts: dict[Key, dict]) -> list[dict]:
 
 
 def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
-    """Per (target, relation) cells rebuilt from the adjudicated rows, with the columns and the false-complete-negative
-    rule of the raw cell (`compare.compare`).
+    """Per (target, relation) cells rebuilt from the adjudicated rows, with the columns and the safety rows of the raw
+    cell, computed by the same functions (`compare.incomplete_complete`, `compare.false_complete_negative`).
 
     The rows give the counts, the affected and folded columns; what belongs to the answer rather than to a relation, its
-    abstention, whether it had an entry for the target and the kind mismatches, is carried from the raw cells. A cell
-    written before `reported` existed says it only where it already was a false complete negative.
+    abstention, whether it had an entry for the target or listed a caller, and the kind mismatches, is carried from the raw
+    cells. A cell written before `reported` existed says it only where the answer listed a row for the target or the cell already
+    was a false complete negative: such a measure undercounts the safety rows, never overcounts them.
     """
     abstained: dict[tuple, bool] = {}
     reported: dict[tuple, bool] = defaultdict(bool)
+    listed: dict[tuple, bool] = defaultdict(bool)
     for c in raw_cells:
         target = (c["repo"], c["commit"], c["mode"], c["target"])
         abstained[target] = c["abstained"]
-        reported[target] |= c.get("reported", c["fcn"])
+        reported[target] |= (
+            c["reported"] if "reported" in c else bool(c["fcn"] or c["tp"] + c["tp_weak"] + c["fp"] + c["fp_weak"])
+        )
+        listed[target] |= c.get("listed", False)
     mismatches = {(c["repo"], c["commit"], c["mode"], c["target"], c["kind"]): c["kind_mismatches"] for c in raw_cells}
     cells: dict[tuple, dict] = {}
     claimed: set[tuple] = set()
@@ -106,9 +113,9 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
             {
                 "repo": row["repo"], "language": row["language"], "commit": row["commit"], "mode": row["mode"], "target": row["to"],
                 "kind": row["kind"], "truth": 0, "tp": 0, "tp_weak": 0, "fn": 0, "fp": 0, "fp_weak": 0,
-                "truth_affected": 0, "tp_affected": 0, "folded": 0, "false_fold": 0, "fcn": False,
+                "truth_affected": 0, "tp_affected": 0, "folded": 0, "false_fold": 0, "incomplete_complete": 0, "fcn": False,
                 "kind_mismatches": mismatches.get((*target, row["kind"]), 0), "abstained": abstained.get(target, False),
-                "reported": reported.get(target, False),
+                "reported": reported.get(target, False), "listed": listed.get(target, False),
             },
         )  # fmt: skip
         cell[verdict] += 1
@@ -118,6 +125,8 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
             )  # a relation the oracle never classified is affected: nothing folds when unsure
             cell["truth"] += 1
             cell["truth_affected"] += affected
+            complete = cell["reported"] and not cell["abstained"]
+            cell["incomplete_complete"] += incomplete_complete(complete, verdict, affected)
             if verdict != "fn":
                 folded = bool(row.get("folded_by"))
                 cell["folded"] += folded
@@ -126,7 +135,7 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
         if verdict != "fn":
             claimed.add(target)
     for key, cell in cells.items():
-        cell["fcn"] = cell["reported"] and cell["truth_affected"] > 0 and key[:4] not in claimed and not cell["abstained"]
+        cell["fcn"] = false_complete_negative(cell["incomplete_complete"], cell["listed"] or key[:4] in claimed)
     return list(cells.values())
 
 
