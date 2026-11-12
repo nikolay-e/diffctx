@@ -24,7 +24,7 @@ from pathlib import Path
 
 import gitrepo
 from changed import ChangedDefinition, changed_definitions
-from compare import CONSTRUCTORS, compare, make_resolver, missing_definition, parse_answer, silent_loss
+from compare import CONSTRUCTORS, compare, make_resolver, missing_definition, parse_answer, silent_loss, unlisted_named
 from corpus import Corpus, Repo, load_corpus
 from delta import Delta, classify
 from folding import mark_folding
@@ -284,10 +284,11 @@ def measure_commit(run: RepoRun, sha: str, rng: random.Random) -> dict:
     if impact.ok and impact.data is not None:
         answer = parse_answer(impact.data, resolver)
         changed_keys = {c.target.key for c in prepared.changed}
+        filed = unlisted_named(impact.data, resolver)
         missing = [
             lost
             for item in prepared.changed
-            if (lost := _score_changed(run, prepared, item, changed_keys, answer, {**context, "mode": "impact"}, counts))
+            if (lost := _score_changed(run, prepared, item, changed_keys, answer, filed, {**context, "mode": "impact"}, counts))
         ]
         write_silent_loss(run.sink, {**context, "mode": "impact"}, missing, answer)
     candidates = symbol_candidates(prepared.changed)
@@ -309,7 +310,7 @@ def _delta(prepared: Prepared, item: ChangedDefinition, counts: dict) -> Delta:
 
 
 def _score_changed(
-    run: RepoRun, prepared: Prepared, item: ChangedDefinition, changed_keys, answer, context: dict, counts: dict
+    run: RepoRun, prepared: Prepared, item: ChangedDefinition, changed_keys, answer, filed, context: dict, counts: dict
 ) -> dict | None:
     """Scores one changed definition; returns its record when the answer lost it without a word (a silent loss)."""
     if item.status == "layout":
@@ -333,7 +334,7 @@ def _score_changed(
     relations = mark_folding(relations, _delta(prepared, item, counts), snapshot)
     counts["scored"] += 1
     _write_scored(run.sink, {**context, "status": item.status, "snapshot": item.snapshot}, target, relations, answer)
-    return missing_definition(target, answer)
+    return missing_definition(target, answer, filed)
 
 
 def write_silent_loss(sink: Sink, context: dict, missing: list[dict], answer) -> None:
