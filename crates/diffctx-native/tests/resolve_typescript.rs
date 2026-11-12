@@ -782,6 +782,12 @@ fn cases_root() -> PathBuf {
 /// the run, as does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
+        "impact/typescript/ts_removed_type_a_glob_re_exports_is_still_named_by_its_importer",
+        "the candidate is the removal side's: the importer's name binds to the type the glob \
+         re-exports, and decide() reports that rebound use as possibly meant for the removed one; \
+         the resolver's binding is to the new type",
+    ),
+    (
         "impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts",
         "gh#602: a classic script's global is bound by the page that loads the scripts in order; \
          the facts carry nothing of HTML, and a bare name no file binds is `NoBinding`",
