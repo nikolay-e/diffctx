@@ -15,7 +15,10 @@ pub mod envelope;
 pub mod render;
 pub mod v2;
 
-use v2::{Count, ImpactV2, ShedRows, Standing};
+use rustc_hash::FxHashSet;
+
+use crate::impact::UnanalysedFile;
+use v2::{Class, Count, Definition, ImpactV2, Row, ShedRows, Standing};
 
 /// What the text of an answer varies by, apart from the answer.
 #[derive(Clone, Debug, Default)]
@@ -86,6 +89,89 @@ impl Answer<'_> {
         self.reaches_nothing()
             && self.doc.coverage.scope.complete
             && self.doc.coverage.unanalysed.total == 0
+    }
+}
+
+/// What a row states, apart from the definition the document lists it under: two
+/// rows with one key are one fact said twice. The one place that says what a
+/// fact is; `tests/support/fact_keys.rs` states it again over the printed JSON.
+#[derive(PartialEq, Eq, Hash)]
+pub enum FactKey {
+    /// A line spells the name of a changed definition and no cell binds it: one
+    /// fact whichever of the definitions of that name it was found for.
+    Word {
+        word: String,
+        path: String,
+        at: String,
+    },
+    /// Files in view spell the name and were not read whole.
+    Unread {
+        word: String,
+        path: String,
+        at: Option<u32>,
+    },
+    /// A use of one definition.
+    Use {
+        definition: (String, Option<String>, String),
+        path: String,
+        symbol: Option<String>,
+        lines: String,
+        sites: Vec<u32>,
+        class: Class,
+        kind: Option<String>,
+        standing: Standing,
+    },
+}
+
+impl FactKey {
+    pub fn of_row(def: &Definition, row: &Row) -> Self {
+        if row.standing == Standing::Name {
+            // The line a word match cites: its first site, else where its function starts.
+            let at = row.sites.first().map_or_else(
+                || row.lines.split('-').next().unwrap_or("").to_string(),
+                ToString::to_string,
+            );
+            return Self::Word {
+                word: def.word().to_string(),
+                path: row.path.clone(),
+                at,
+            };
+        }
+        Self::Use {
+            definition: (def.path.clone(), def.symbol.clone(), def.lines.clone()),
+            path: row.path.clone(),
+            symbol: row.symbol.clone(),
+            lines: row.lines.clone(),
+            sites: row.sites.clone(),
+            class: row.class,
+            kind: row.kind.clone(),
+            standing: row.standing,
+        }
+    }
+
+    pub fn of_unread(def: &Definition, file: &UnanalysedFile) -> Self {
+        Self::Unread {
+            word: def.word().to_string(),
+            path: file.path.clone(),
+            at: file.lines.first().copied(),
+        }
+    }
+}
+
+/// Keeps the first row of each fact. The definitions of one name are searched
+/// one after the other, and the line that spells the name is found for each of
+/// them: the later rows are the same fact, with the same fragment and the same
+/// site, so the first definition's row stays and the rest are dropped (never at
+/// render: the totals count rows).
+pub fn one_row_per_fact(definitions: &mut [Definition]) {
+    let mut seen = FxHashSet::default();
+    for def in definitions {
+        let mut rows = std::mem::take(&mut def.rows);
+        rows.retain(|row| seen.insert(FactKey::of_row(def, row)));
+        def.rows = rows;
+        let mut unread = std::mem::take(&mut def.missed_in);
+        unread.retain(|file| seen.insert(FactKey::of_unread(def, file)));
+        def.missed_in = unread;
     }
 }
 
