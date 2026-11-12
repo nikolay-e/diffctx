@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::{children, lines_of, parse_tree, span};
+use super::{children, lines_of, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
     Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
@@ -159,23 +159,6 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
     }
     merged.truncate(ERROR_RANGES_KEPT);
     merged
-}
-
-/// The named children of a file or body in source order, those the grammar
-/// parked under an error node included: a stray token leaves the blocks
-/// around it whole inside the error, and their definitions and uses are
-/// still the file's.
-fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
-    let mut out = Vec::new();
-    let mut stack: Vec<Node<'t>> = children(parent).into_iter().rev().collect();
-    while let Some(node) = stack.pop() {
-        if node.is_error() {
-            stack.extend(children(node).into_iter().rev());
-        } else {
-            out.push(node);
-        }
-    }
-    out
 }
 
 /// What a walk of an expression carries: who owns the references and which names
