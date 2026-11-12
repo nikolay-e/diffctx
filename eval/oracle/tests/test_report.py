@@ -248,7 +248,6 @@ def test_every_threshold_of_the_gates_file_gets_a_verdict_line_and_missing_input
 
     assert {gate for gate, _ in lines} == set(load_gates())
     assert lines[("safety.false_fold", "oracle cells")]["status"] == "pass"
-    assert lines[("safety.false_complete_negatives", "oracle cells")]["value"] == 0
     assert lines[("safety.silent_loss", "")]["status"] == "n/a"
     assert lines[("precise.precision", "")]["status"] == "n/a"
     markdown = (tmp_path / "out" / "report.md").read_text()
@@ -266,7 +265,7 @@ def test_a_false_fold_fails_its_gate_and_the_threshold_comes_from_the_file_alone
     assert verdicts(tmp_path / "again", cells, relaxed)[("safety.false_fold", "oracle cells")]["status"] == "pass"
 
 
-def test_false_complete_negatives_are_judged_on_the_oracle_cells_the_fault_sweep_and_the_corpus_alike(tmp_path: Path):
+def test_the_false_complete_negative_has_no_verdict_line_of_its_own_and_the_suites_still_print_it(tmp_path: Path):
     faults = tmp_path / "faults.jsonl"
     faults.write_text('{"name": "x", "state": "fail", "false_complete_negative": true}\n')
     harness = tmp_path / "harness.json"
@@ -276,8 +275,9 @@ def test_false_complete_negatives_are_judged_on_the_oracle_cells_the_fault_sweep
 
     lines = verdicts(tmp_path, [cell(truth=1, tp=1)], extra=["--faults", str(faults), "--harness", str(harness)])
 
-    status = {source: line["status"] for (gate, source), line in lines.items() if gate == "safety.false_complete_negatives"}
-    assert status == {"oracle cells": "pass", "fault sweep": "fail", "YAML corpus": "fail"}
+    assert not [gate for gate, _ in lines if "false_complete" in gate]
+    assert "safety.incomplete_complete" in {gate for gate, _ in lines}
+    assert "false-complete-negatives 1, failing ['x']" in (tmp_path / "out" / "report.md").read_text()
 
 
 def test_the_impact_p95_is_judged_against_the_file(tmp_path: Path):
