@@ -153,6 +153,11 @@ proptest = { version = "1.12", default-features = false, features = ["std"] }
 name = "yaml_cases"
 harness = false
 
+# Reads the crate's own source with the Rust grammar.
+[[test]]
+name = "module_graph"
+required-features = ["lang-core"]
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }

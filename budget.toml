@@ -6,6 +6,10 @@
 product_lines = 144675
 allow_count = 138
 root_modules = 63
+# Module-graph caps (crates/diffctx-native/tests/module_graph.rs): the biggest knot of modules that reach each
+# other, and the edges pointing up its layers.
+largest_scc = 34
+against_order_edges = 9
 
 [big_files]
 "crates/diffctx-native/src/decide.rs" = 4027
