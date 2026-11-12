@@ -4261,3 +4261,169 @@ fn the_hooks_block_is_the_engines_render_of_the_same_change() {
     let cli = String::from_utf8(cli.stdout).unwrap();
     assert_eq!(block, after_header(&cli), "hook:\n{context}\ncli:\n{cli}");
 }
+
+/// fj#170: a checkout can hold a million untracked files, and listing them
+/// one by one took 20 s to 26 s of the hook's 30 s before anything was read.
+/// Whether a change is analysable never needs that listing: a collapsed
+/// directory entry names the untracked part. The property is the one the
+/// slow listing violates and no clock decides: the calls git was asked.
+#[cfg(unix)]
+mod untracked_listing {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+    use support::fake_git::FAKE_GIT;
+
+    /// Only a withheld Markdown file changes (modified, tracked), beside
+    /// untracked directories: nothing in the change is analysable.
+    pub fn repo_with_only_a_withheld_change() -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        git(repo, &["init", "-q", "."]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+        git(repo, &["config", "user.name", "diffctx tests"]);
+        write(repo, ".diffctx/ignore", "notes/\n");
+        write(repo, "notes/plan.md", "# plan\n");
+        write(
+            repo,
+            "shop/pricing.py",
+            "def total(items):\n    return sum(i.price for i in items)\n",
+        );
+        commit_all(repo, "initial");
+        write(repo, "notes/plan.md", "# plan\n\nmore\n");
+        for dir in 0..6 {
+            for file in 0..4 {
+                write(repo, &format!("bulk/d{dir}/f{file}.txt"), "x\n");
+            }
+        }
+        tmp
+    }
+
+    /// The git calls one hook event made, through the logging shim.
+    pub fn calls_of(repo: &Path, cache: &Path, shim: &Path, event: &str, line: &str) -> Calls {
+        let bin = shim.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let fake = bin.join("git");
+        std::fs::write(&fake, FAKE_GIT).unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let real = Command::new("sh")
+            .args(["-c", "command -v git"])
+            .output()
+            .expect("locate git");
+        let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let log = shim.join("calls");
+        let env = [
+            ("PATH", Path::new(&path)),
+            ("REAL_GIT", Path::new(&real)),
+            ("FAKE_GIT_CALLS", log.as_path()),
+        ];
+        let out = hook_in_env(
+            repo,
+            cache,
+            "posttooluse",
+            &[],
+            &env,
+            &payload_for(event, repo, line),
+        );
+        Calls {
+            hook_stdout: out.stdout,
+            lines: std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect(),
+        }
+    }
+
+    pub struct Calls {
+        pub hook_stdout: String,
+        pub lines: Vec<String>,
+    }
+
+    impl Calls {
+        /// Calls that list every untracked file instead of its directory.
+        pub fn per_file_listings(&self) -> Vec<&str> {
+            self.lines
+                .iter()
+                .map(String::as_str)
+                .filter(|call| {
+                    let words: Vec<&str> = call.split_whitespace().collect();
+                    let lists_untracked = words
+                        .iter()
+                        .any(|w| matches!(*w, "-o" | "--others" | "--untracked-files=all"));
+                    lists_untracked && !words.contains(&"--directory")
+                })
+                .collect()
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_pending_change_with_nothing_analysable_lists_no_untracked_file_one_by_one() {
+    let tmp = untracked_listing::repo_with_only_a_withheld_change();
+    let repo = tmp.path();
+    for (n, line) in ["git diff", "grep -rn total shop"].into_iter().enumerate() {
+        let cache = TempDir::new().unwrap();
+        let shim = TempDir::new().unwrap();
+        let calls =
+            untracked_listing::calls_of(repo, cache.path(), shim.path(), "PostToolUse", line);
+        assert_eq!(
+            calls.per_file_listings(),
+            Vec::<&str>::new(),
+            "entry {n} ({line}) asked git for every untracked file; calls:\n{}",
+            calls.lines.join("\n")
+        );
+        assert!(
+            !calls.hook_stdout.contains("partial"),
+            "entry {n} ({line}): {}",
+            calls.hook_stdout
+        );
+    }
+}
+
+/// The review of a pushed range reads no checkout listing at all; a push is
+/// reviewed from its trees, so a large untracked tree costs it nothing.
+#[cfg(unix)]
+#[test]
+fn a_push_review_lists_no_untracked_file_one_by_one() {
+    let tmp = untracked_listing::repo_with_only_a_withheld_change();
+    let repo = tmp.path();
+    let remote = TempDir::new().unwrap();
+    git(remote.path(), &["init", "-q", "--bare", "."]);
+    git(
+        repo,
+        &["remote", "add", "origin", &remote.path().to_string_lossy()],
+    );
+    git(repo, &["push", "-q", "-u", "origin", "HEAD"]);
+    git(repo, &["add", "notes/plan.md"]);
+    git(repo, &["commit", "-q", "-m", "plan", "--", "notes/plan.md"]);
+    let cache = TempDir::new().unwrap();
+    let shim = TempDir::new().unwrap();
+    let pre = hook_with(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &payload_in_session("s1", repo, "git push"),
+    );
+    assert_eq!(pre.stdout, "");
+    sh(repo, &[], "git push -q");
+    let calls =
+        untracked_listing::calls_of(repo, cache.path(), shim.path(), "PostToolUse", "git push");
+    assert_eq!(
+        calls.per_file_listings(),
+        Vec::<&str>::new(),
+        "calls:\n{}",
+        calls.lines.join("\n")
+    );
+    assert!(
+        !calls.hook_stdout.contains("partial"),
+        "{}",
+        calls.hook_stdout
+    );
+}
