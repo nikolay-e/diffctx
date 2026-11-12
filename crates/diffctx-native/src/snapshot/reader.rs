@@ -939,15 +939,6 @@ fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Oid>> {
         .collect()
 }
 
-/// The blob ids `git add` would store for these paths of the working tree.
-///
-/// In order: a dirty set's content identity without reading it back. The paths
-/// are those of regular files; a path that is not one is an error.
-pub fn hash_working_paths(root: &RepoRoot, paths: &[RepoPath]) -> Result<Vec<Oid>> {
-    let names: Vec<&str> = paths.iter().map(RepoPath::as_str).collect();
-    hash_objects(&Exec::ambient(), &root.work_tree, &names)
-}
-
 /// A digest of what the working tree holds beyond `HEAD`: the tree of `HEAD`
 /// and the content of every path `git status` reports. Cheap, and it does not
 /// change when nothing the analysis could read changed.

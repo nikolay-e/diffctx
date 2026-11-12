@@ -28,12 +28,6 @@ pub fn run_git_or_none(root: &Path, args: &[&str], no: i32) -> Result<Option<Str
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned()))
 }
 
-/// `run_git` for output that must reach git again byte for byte: a patch
-/// through a lossy decode no longer applies to a non-UTF-8 file.
-pub fn run_git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    Exec::current().bytes(root, args)
-}
-
 /// `run_git` for NUL-separated output (`-z`): the non-empty records.
 pub fn run_git_z(root: &Path, args: &[&str]) -> Result<Vec<String>> {
     Ok(run_git(root, args)?

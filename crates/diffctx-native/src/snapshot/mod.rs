@@ -57,14 +57,14 @@ pub use range::{
     RangeSpec, commits, duration_base, is_staged_keyword, resolve, split_diff_range, staged,
     working_tree,
 };
-pub use reader::{Entry, Listing, Side, SnapshotReader, hash_working_paths};
+pub use reader::{Entry, Listing, Side, SnapshotReader};
 pub use repo::{
     PlanStep, Refs, RepoRoot, StagedSnapshot, capture_planned, empty_tree_id, find_toplevel,
-    index_tree, is_ancestor, is_git_repo, merge_base, open, reflog_since, refs, rev_oid, worktrees,
+    index_tree, is_ancestor, is_git_repo, open, reflog_since, refs, rev_oid,
 };
 pub use run::{
-    commit_count, commit_message, commit_messages, hash_object_paths, run_git, run_git_bytes,
-    run_git_or_none, run_git_z,
+    commit_count, commit_message, commit_messages, hash_object_paths, run_git, run_git_or_none,
+    run_git_z,
 };
 pub use types::{
     Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath,
