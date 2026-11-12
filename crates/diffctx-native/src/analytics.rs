@@ -4,8 +4,8 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::analytics::ANALYTICS;
-use crate::graph::{EdgeCategory, Graph};
-use crate::types::{Fragment, FragmentId};
+use crate::graph::Graph;
+use crate::types::{EdgeCategory, Fragment, FragmentId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuotientLevel {

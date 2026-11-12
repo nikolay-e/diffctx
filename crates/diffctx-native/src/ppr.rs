@@ -421,8 +421,8 @@ mod tests {
     /// Expected: hub mass is materially reduced; non-hub mass is largely preserved.
     #[test]
     fn claim_7_hub_suppression_reduces_hub_mass_without_removal() {
-        use crate::graph::{EdgeCategory, build_graph};
-        use crate::types::{Fragment, FragmentKind};
+        use crate::graph::build_graph;
+        use crate::types::{EdgeCategory, Fragment, FragmentKind};
 
         let n_leaves = 20usize;
         let hub = fid("hub.rs", 1, 10);
@@ -794,8 +794,8 @@ mod tests {
 
     #[test]
     fn ppr_excludes_self_loop_and_infinite_weight_and_stays_finite() {
-        use crate::graph::{EdgeCategory, build_graph};
-        use crate::types::{Fragment, FragmentKind};
+        use crate::graph::build_graph;
+        use crate::types::{EdgeCategory, Fragment, FragmentKind};
 
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
