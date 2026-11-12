@@ -3642,12 +3642,18 @@ fn untracked_files_are_named_apart_and_binaries_are_not_changes() {
         "{out}"
     );
     let text = impact_markdown(repo, "HEAD");
-    assert!(text.contains("2 changed file(s), 1 untracked"), "{text}");
+    assert!(
+        text.contains("2 changed file(s), 1 untracked (analysed)"),
+        "{text}"
+    );
     // Untracked work alone is still work, never "the working tree matches HEAD".
     git(repo, &["stash", "-q"]);
     let alone = impact_markdown(repo, "HEAD");
     assert!(!alone.contains("No changes to analyse"), "{alone}");
-    assert!(alone.contains("0 changed file(s), 1 untracked"), "{alone}");
+    assert!(
+        alone.contains("0 changed file(s), 1 untracked (analysed)"),
+        "{alone}"
+    );
     git(repo, &["stash", "pop", "-q"]);
     write(
         repo,
