@@ -78,34 +78,52 @@ carries its commits, sites and the head's precision and recall.
 
 ## Cell states
 
-`cellstate.py` derives each (language, relation) cell's state from the
-measurement and never from a typed list. A cell is `precise` only when every
-row of it, in every mode and every paired run of the report, meets the
-`[precise]` floors of `gates.toml` (head precision and recall), has clean
-safety rows, is measured and does not fail against the base, and the cell has
-a fresh seed and its old path deleted. Any other cell is `heuristic`, with
-every missing condition named. A cell the facts name and the table lacks is
-`heuristic` ("no measured row"). Dropping a `[precise]` condition from
-`gates.toml` drops it from the rule.
+The engine declares each (language, relation) cell `precise`, `heuristic` or
+`none` (T16), and `cellstate.py` checks that each declared state is true
+against the measurement; nothing is derived from a typed list. A cell whose
+declaration is not true reads `untrue` with every reason named, and so does a
+measured cell no declaration names.
 
-The last two conditions are facts about the engine, not about a measurement.
-The orchestrator supplies them from the engine at the head as a JSON file
-(`tests/fixtures/cell_facts.json` is the example):
+- `precise` holds every `[precise]` condition of `gates.toml`: in every row of
+  the cell, each mode and each paired run, head precision and recall at the
+  floors and clean safety rows; a measured cell that does not fail against the
+  base; at least `true_relations_min` true relations per paired run (the sites
+  of all its modes: W7-D's floor of 30) and `decoys_min` decoys (10) in the
+  cell; a fresh seed for the language; the replaced path deleted. Dropping a
+  `[precise]` condition from `gates.toml` drops it from the rule.
+- `heuristic` answers as candidates: its rows break no safety row (a false
+  complete negative or a false fold is a claim a candidate does not make). The
+  oracle cannot see a row's label, so it does not check that.
+- `none` is a named unknown, never a zero: the facts name what is unknown, the
+  table shows no numbers for it, and its rows break no safety row.
+
+The facts are the engine's, not a measurement's. The orchestrator supplies them
+from the engine at the head as a JSON file (`tests/fixtures/cell_facts.json` is
+the example):
 
 ```json
 {
-  "schema": "diffctx.cell-facts.v1",
+  "schema": "diffctx.cell-facts.v2",
   "engine": "a label or commit of the engine the facts were read from",
   "fresh_seed": { "<language>": "the seed that is fresh, as a witness" },
-  "old_path_deleted": { "<language>/<relation>": "the commit that deleted it" }
+  "cells": {
+    "<language>/<relation>": {
+      "state": "precise",
+      "old_path_deleted": "the commit that deleted the path the resolver replaced",
+      "decoys": 14
+    },
+    "<language>/<relation>": { "state": "heuristic" },
+    "<language>/<relation>": { "state": "none", "unknown": "what is not traced" }
+  }
 }
 ```
 
 `fresh_seed` lists the languages whose measured run drew only commits made
-after the code freeze; `old_path_deleted` lists the cells whose replaced path
-is gone from the engine. Each entry carries its witness, and an empty one is
-refused: no claim is a bare yes. A language or cell not listed is not fresh or
-not deleted.
+after the code freeze. A witness is a non-empty string and is never a bare
+yes; `unknown` is required for `none`; `decoys` counts the decoys the cell's
+corpus cases hold. A language not in `fresh_seed` is not fresh; a precise cell
+without `old_path_deleted` or enough `decoys` is untrue. (v1, which had no
+declared state, is refused.)
 
 ```text
 python cellstate.py --report out/report.json --facts facts.json \
