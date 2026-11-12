@@ -520,16 +520,15 @@ mod tests {
         edges: &[(FragmentId, FragmentId, f64, EdgeCategory)],
         fragments: &[Fragment],
     ) -> Graph {
-        let mut g = Graph::new();
-        for f in fragments {
-            g.add_node(f.id.clone());
-        }
-        for (s, d, w, c) in edges {
-            g.add_edge(s.clone(), d.clone(), *w);
-            g.insert_edge_category(s.clone(), d.clone(), *c);
-        }
-        g.freeze();
-        g
+        let weights = edges
+            .iter()
+            .map(|(s, d, w, _)| ((s.clone(), d.clone()), *w))
+            .collect();
+        let categories = edges
+            .iter()
+            .map(|(s, d, _, c)| ((s.clone(), d.clone()), *c))
+            .collect();
+        crate::graph::build_graph(fragments, weights, categories)
     }
 
     #[test]
