@@ -804,6 +804,10 @@ const RED: &[(&str, &str)] = &[
         "impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it",
         "gh#304: open ticket; the case asserts what the engine does not yet answer",
     ),
+    (
+        "impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader",
+        "fj#186: open ticket; the case asserts what the engine does not yet answer",
+    ),
 ];
 
 #[test]
