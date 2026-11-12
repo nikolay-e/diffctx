@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -127,7 +127,7 @@ impl ReadFault {
 pub(crate) struct Exec {
     timeout_secs: u64,
     budget: RunBudget,
-    stall_after: Option<u64>,
+    stall_file: Option<PathBuf>,
 }
 
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
@@ -136,35 +136,25 @@ const POLL_SLICE: Duration = Duration::from_millis(100);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
 
-/// Set once a test's stall knob has fired: from then on every git read of the
-/// process is out of time, as after a deadline. Only a run that set the knob
-/// ever reads it.
-static STALL_FIRED: AtomicBool = AtomicBool::new(false);
-
 struct Limits {
     deadline: Instant,
     cancel: Option<Arc<AtomicBool>>,
     timeout_secs: u64,
-    /// Test only (`DIFFCTX_TEST_GIT_STALL_AFTER_WAITS`): the empty waits this
-    /// read may sleep before it counts as out of time.
-    stall_after: Option<u64>,
-    empty_waits: AtomicU64,
+    /// Test only (`DIFFCTX_TEST_GIT_STALL_FILE`): the file a stalled child
+    /// leaves; once it exists, this read is out of time if it has waited.
+    stall_file: Option<PathBuf>,
+    waited_empty: AtomicBool,
 }
 
 impl Limits {
     fn stalled(&self) -> bool {
-        let Some(after) = self.stall_after else {
-            return false;
-        };
-        if self.empty_waits.load(Ordering::Relaxed) >= after {
-            STALL_FIRED.store(true, Ordering::Relaxed);
-        }
-        STALL_FIRED.load(Ordering::Relaxed)
+        self.waited_empty.load(Ordering::Relaxed)
+            && self.stall_file.as_deref().is_some_and(Path::exists)
     }
 
     /// A wait for the child or its pipe that ended with nothing to read.
     fn waited(&self) {
-        self.empty_waits.fetch_add(1, Ordering::Relaxed);
+        self.waited_empty.store(true, Ordering::Relaxed);
     }
 
     fn exhausted(&self) -> Option<SnapshotError> {
@@ -202,7 +192,7 @@ impl Exec {
         Self {
             timeout_secs: GIT_TIMEOUT_SECS.with(Cell::get),
             budget,
-            stall_after: crate::resource::test_git_stall_after_waits(),
+            stall_file: crate::resource::test_git_stall_file(),
         }
     }
 
@@ -212,8 +202,8 @@ impl Exec {
             deadline: self.budget.deadline.map_or(ceiling, |d| d.min(ceiling)),
             cancel: self.budget.cancel.clone(),
             timeout_secs: self.timeout_secs,
-            stall_after: self.stall_after,
-            empty_waits: AtomicU64::new(0),
+            stall_file: self.stall_file.clone(),
+            waited_empty: AtomicBool::new(false),
         }
     }
 
@@ -889,31 +879,33 @@ mod tests {
             deadline: Instant::now() + timeout,
             cancel: None,
             timeout_secs: 0,
-            stall_after: None,
-            empty_waits: AtomicU64::new(0),
+            stall_file: None,
+            waited_empty: AtomicBool::new(false),
         }
     }
 
-    /// A deadline no runner reaches; the read gives up after `waits` empty
-    /// waits instead.
-    fn giving_up_after(waits: u64) -> Limits {
+    /// A deadline no runner reaches; the read gives up once `stall` exists.
+    fn giving_up_at(stall: &Path) -> Limits {
         Limits {
-            stall_after: Some(waits),
+            stall_file: Some(stall.to_path_buf()),
             ..within(Duration::from_secs(3600))
         }
     }
 
     #[test]
-    fn a_stalled_child_is_killed_after_its_empty_waits() {
-        let child = Command::new("sleep")
-            .arg("30")
+    fn a_child_that_records_its_stall_is_killed() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let stall = dir.path().join("stalled");
+        let child = Command::new("sh")
+            .args(["-c", r#"echo stalled >> "$1"; exec sleep 30"#, "sh"])
+            .arg(&stall)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawn sleep");
         let pid = child.id();
 
-        let result = supervise(child, &giving_up_after(2));
+        let result = supervise(child, &giving_up_at(&stall));
 
         assert!(
             matches!(result, Err(SnapshotError::Timeout(_))),
