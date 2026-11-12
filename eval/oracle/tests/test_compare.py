@@ -1,4 +1,4 @@
-from compare import compare, make_resolver, parse_answer
+from compare import compare, make_resolver, parse_answer, silent_loss
 from model import MODULE, Definition, Relation
 
 TARGET = Definition("shop/pricing.py", "function", "total", (), 1, 3, 0, 4, "()", "h", "s")
@@ -501,3 +501,48 @@ def test_no_incomplete_complete_where_the_answer_abstains_has_no_entry_or_the_ch
         assert (cell["fn"], cell["incomplete_complete"], cell["fcn"]) == (1, 0, False)
     [cell], _ = compare(TARGET, [folded], answer([]))
     assert (cell["fn"], cell["incomplete_complete"]) == (1, 0)
+
+
+def test_a_changed_definition_the_answer_has_no_record_of_is_a_silent_loss_and_names_what_classifies_it():
+    elsewhere = parse_answer(
+        {"changed": [{"path": "shop/checkout.py", "symbol": "charge", "lines": "1-3", "kind": "function", "callers": []}]},
+        RESOLVE,
+    )
+    nothing = parse_answer({"changed": []}, RESOLVE)
+
+    assert silent_loss(TARGET, nothing) == {
+        "target": TARGET.key, "path": "shop/pricing.py", "entries": 0, "entries_in_file": [], "entries_named_alike": [],
+        "answer_empty": False, "limits": 0,
+    }  # fmt: skip
+    assert silent_loss(TARGET, elsewhere)["entries"] == 1
+    assert silent_loss(TARGET, elsewhere)["entries_in_file"] == []
+
+
+def test_an_entry_under_another_key_of_the_same_file_or_name_is_the_candidate_of_an_identity_mismatch():
+    renamed = Definition("shop/pricing.py", "function", "total", ("Cart",), 5, 9, 4, 4, "()", "h", "s")
+    moved = Definition("shop/totals.py", "function", "total", (), 1, 3, 0, 4, "()", "h", "s")
+    defs = {**DEFS, "shop/pricing.py": [TARGET, renamed], "shop/totals.py": [moved]}
+    resolve = make_resolver(lambda path: defs.get(path, []))
+    entries = [
+        {"path": "shop/pricing.py", "symbol": "Cart.total", "lines": "5-9", "kind": "function", "callers": []},
+        {"path": "shop/totals.py", "symbol": "total", "lines": "1-3", "kind": "function", "callers": []},
+    ]
+
+    lost = silent_loss(TARGET, parse_answer({"changed": entries}, resolve))
+
+    assert lost["entries_in_file"] == ["shop/pricing.py::Cart.total"]
+    assert lost["entries_named_alike"] == ["shop/pricing.py::Cart.total", "shop/totals.py::total"]
+
+
+def test_no_silent_loss_where_the_answer_has_an_entry_a_count_of_omitted_definitions_or_names_the_file_unanalysed():
+    constructor = Definition("shop/pricing.py", "function", "__init__", ("Cart",), 5, 9, 4, 4, "()", "h", "s")
+    cart = {"path": "shop/pricing.py", "symbol": "Cart", "lines": "4-9", "kind": "class", "callers": []}
+    unanalysed = parse_answer({"changed": [], "unanalysed_files": [{"path": "shop/pricing.py"}]}, RESOLVE)
+    shed_without_names = parse_answer({"changed": []}, RESOLVE)
+    shed_without_names.unnamed_omitted = 2
+    defs = {**DEFS, "shop/pricing.py": [TARGET, constructor, caller_def("shop/pricing.py", "Cart", 4, 9)]}
+
+    assert silent_loss(TARGET, answer([])) is None
+    assert silent_loss(constructor, parse_answer({"changed": [cart]}, make_resolver(lambda path: defs.get(path, [])))) is None
+    assert silent_loss(TARGET, shed_without_names) is None
+    assert silent_loss(TARGET, unanalysed) is None

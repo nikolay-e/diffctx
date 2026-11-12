@@ -122,6 +122,37 @@ def false_complete_negative(incomplete: int, listed: bool) -> bool:
     return incomplete > 0 and not listed
 
 
+def entry_for(target: Definition, answer: Answer) -> TargetAnswer | None:
+    """The answer's entry for `target`; a constructor is reported as its class: its callers build the class."""
+    found = answer.targets.get(target.key)
+    constructor = next((name for name in CONSTRUCTORS if without_span(target.key).endswith(f".{name}")), None)
+    if found is None and constructor:
+        return answer.targets.get(without_span(target.key).removesuffix(f".{constructor}"))
+    return found
+
+
+def silent_loss(target: Definition, answer: Answer) -> dict | None:
+    """The safety row for a changed definition the answer says nothing of: no entry, no count of definitions it shed
+    without naming them, no disclosure that the file went unanalysed.
+
+    The record holds what classifies it: the answer's entries that may be the same definition under another key (an
+    identity mismatch: same file, or the same name elsewhere) and what else the answer says about itself. With none, it is
+    an engine loss.
+    """
+    if entry_for(target, answer) is not None or answer.unnamed_omitted > 0 or target.path in answer.unanalysed:
+        return None
+    named = [key for key in answer.targets if without_span(key).rpartition("::")[2].split(".")[-1] == target.name]
+    return {
+        "target": target.key,
+        "path": target.path,
+        "entries": len(answer.targets),
+        "entries_in_file": sorted(key for key in answer.targets if key.partition("::")[0] == target.path),
+        "entries_named_alike": sorted(named),
+        "answer_empty": answer.empty,
+        "limits": len(answer.limits),
+    }
+
+
 def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[list[dict], list[dict]]:
     """Per-kind cells for `target` and one detail row per relation pair, for adjudication.
 
@@ -133,11 +164,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         grouped.setdefault(relation.from_key, []).append(relation)
     ignored = {k for k, rels in grouped.items() if all(r.in_diff for r in rels)}
     scored = {k: [r for r in rels if not r.in_diff] for k, rels in grouped.items() if k not in ignored}
-    reported = answer.targets.get(target.key)
-    constructor = next((name for name in CONSTRUCTORS if without_span(target.key).endswith(f".{name}")), None)
-    if reported is None and constructor:
-        # A constructor is reported as its class: its callers build the class.
-        reported = answer.targets.get(without_span(target.key).removesuffix(f".{constructor}"))
+    reported = entry_for(target, answer)
     callers = _strongest(reported.callers) if reported else {}
     # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
     # is a partial answer: the listed callers count, the missing truth is abstention.
