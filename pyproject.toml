@@ -35,14 +35,13 @@ license = "Apache-2.0"
 authors = [
   { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -132,11 +131,11 @@ include = [
 features = [ "pyo3/extension-module", "python" ]
 
 [tool.black]
-target-version = [ "py310" ]
+target-version = [ "py311" ]
 line-length = 130
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 130
 lint.select = [ "C901", "E", "F", "I", "N", "RUF", "UP", "W" ]
 lint.ignore = [ "E501" ]  # Line length handled by black
@@ -149,7 +148,7 @@ max_supported_python = "3.14"
 
 [tool.mypy]
 files = [ "src" ]
-python_version = "3.10"
+python_version = "3.11"
 disallow_untyped_calls = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

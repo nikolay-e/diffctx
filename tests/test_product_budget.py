@@ -9,13 +9,8 @@ only while its row stands.
 
 import re
 import subprocess
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 ROOT = Path(__file__).parent.parent
 BUDGET = ROOT / "budget.toml"

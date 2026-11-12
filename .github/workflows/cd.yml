@@ -677,7 +677,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.14']
+        python-version: ['3.11', '3.14']
         # Windows on ARM has native CPython only from 3.11. macos-15-intel is
         # the only Intel-Mac pool GitHub still hosts (macos-13 retired).
         include:
