@@ -3834,6 +3834,18 @@ pub fn build_impact(
                     why: gap.to_string(),
                 })
         });
+        // A test that reaches a definition no caller does (a doctest runs it, a
+        // test in its own file spells it) is no caller: the definition is
+        // listed, its guard stated by the absence of the claim, not left to
+        // the lists of what is untested.
+        let tested_without_caller = || {
+            query.is_none()
+                && tests.any()
+                && !tests.is_test(core)
+                && entry.is_none()
+                && !untested
+                && !tests.tested_by(core, state, &by_id, &link).is_empty()
+        };
         // Nothing said of a definition needs every relation of it known.
         if let Some(complete) = coverage.all().witness().filter(|_| {
             callers.is_empty()
@@ -3842,6 +3854,7 @@ pub fn build_impact(
                 && query.is_none()
                 && also_changed.is_empty()
                 && possibly_also_changed.is_empty()
+                && !tested_without_caller()
         }) {
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
