@@ -7,7 +7,7 @@ use serde::Deserialize;
 use _diffctx::render::{DiffContextOutput, FragmentEntry};
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct TestCase {
+pub(crate) struct TestCase {
     // Shared with examples/diffctx-test.rs, which filters and labels by these.
     #[serde(default)]
     #[allow(dead_code, reason = "read by the diffctx-test example only")]
@@ -32,7 +32,7 @@ pub struct TestCase {
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct Repo {
+pub(crate) struct Repo {
     #[serde(default)]
     pub initial_files: BTreeMap<String, String>,
     #[serde(default)]
@@ -46,7 +46,7 @@ pub struct Repo {
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct Fixtures {
+pub(crate) struct Fixtures {
     #[serde(default)]
     pub auto_garbage: bool,
     #[serde(default)]
@@ -54,14 +54,14 @@ pub struct Fixtures {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct DeclaredFragment {
+pub(crate) struct DeclaredFragment {
     pub id: String,
     #[serde(default)]
     pub selector: Selector,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct Selector {
+pub(crate) struct Selector {
     pub path: Option<String>,
     pub symbol: Option<String>,
     pub kind: Option<String>,
@@ -70,7 +70,7 @@ pub struct Selector {
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
-pub struct Oracle {
+pub(crate) struct Oracle {
     #[serde(default)]
     pub required: Vec<String>,
     #[serde(default)]
@@ -78,7 +78,7 @@ pub struct Oracle {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Accept {
+pub(crate) struct Accept {
     #[serde(default = "default_symbol_match")]
     pub symbol_match: String,
     #[serde(default)]
@@ -95,7 +95,7 @@ impl Default for Accept {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct XFail {
+pub(crate) struct XFail {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
@@ -103,7 +103,7 @@ pub struct XFail {
 }
 
 impl XFail {
-    pub fn is_active(&self) -> bool {
+    pub(crate) fn is_active(&self) -> bool {
         self.reason.is_some() || self.category.is_some()
     }
 }
@@ -115,7 +115,7 @@ fn default_commit_message() -> String {
     "Update files".into()
 }
 
-pub fn match_path(candidate: &str, target: &str) -> bool {
+pub(crate) fn match_path(candidate: &str, target: &str) -> bool {
     candidate == target
         || candidate.ends_with(&format!("/{target}"))
         || candidate
@@ -123,7 +123,7 @@ pub fn match_path(candidate: &str, target: &str) -> bool {
             .ends_with(&format!("/{target}"))
 }
 
-pub fn symbol_matches(frag_symbol: &str, expected: &str, mode: &str) -> bool {
+pub(crate) fn symbol_matches(frag_symbol: &str, expected: &str, mode: &str) -> bool {
     match mode {
         "prefix" => frag_symbol.starts_with(expected),
         "substring" => frag_symbol.contains(expected),
@@ -131,7 +131,11 @@ pub fn symbol_matches(frag_symbol: &str, expected: &str, mode: &str) -> bool {
     }
 }
 
-pub fn matches_selector(fragment: &FragmentEntry, selector: &Selector, accept: &Accept) -> bool {
+pub(crate) fn matches_selector(
+    fragment: &FragmentEntry,
+    selector: &Selector,
+    accept: &Accept,
+) -> bool {
     if let Some(any) = &selector.any_of {
         return any.iter().any(|s| matches_selector(fragment, s, accept));
     }
@@ -160,7 +164,7 @@ pub fn matches_selector(fragment: &FragmentEntry, selector: &Selector, accept: &
     true
 }
 
-pub struct OracleResult {
+pub(crate) struct OracleResult {
     pub score: f64,
     pub recall: f64,
     pub forbidden_rate: f64,
@@ -168,7 +172,7 @@ pub struct OracleResult {
     pub hit_forbidden: Vec<String>,
 }
 
-pub fn evaluate_oracle(case: &TestCase, output: &DiffContextOutput) -> OracleResult {
+pub(crate) fn evaluate_oracle(case: &TestCase, output: &DiffContextOutput) -> OracleResult {
     let mut matched_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for entry in &output.fragments {
         for decl in &case.fragments {
@@ -217,7 +221,7 @@ pub fn evaluate_oracle(case: &TestCase, output: &DiffContextOutput) -> OracleRes
     }
 }
 
-pub fn calculate_budget(case: &TestCase) -> u32 {
+pub(crate) fn calculate_budget(case: &TestCase) -> u32 {
     let overhead = _diffctx::config::limits::LIMITS.overhead_per_fragment;
     let mut all_files: BTreeMap<String, String> = case.repo.initial_files.clone();
     for (k, v) in &case.repo.changed_files {
@@ -244,7 +248,7 @@ pub fn calculate_budget(case: &TestCase) -> u32 {
 
 static GARBAGE_CACHE: OnceLock<BTreeMap<String, String>> = OnceLock::new();
 
-pub fn garbage_files() -> &'static BTreeMap<String, String> {
+pub(crate) fn garbage_files() -> &'static BTreeMap<String, String> {
     GARBAGE_CACHE.get_or_init(|| {
         let mut m = BTreeMap::new();
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))

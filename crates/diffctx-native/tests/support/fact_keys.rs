@@ -30,7 +30,7 @@ fn cited(row: &Value) -> String {
 }
 
 // Every fact the answer states more than once, one line each.
-pub fn repeated_facts(doc: &Value) -> Vec<String> {
+pub(crate) fn repeated_facts(doc: &Value) -> Vec<String> {
     let mut seen = BTreeSet::new();
     let mut repeated = Vec::new();
     for def in items(doc, "definitions") {

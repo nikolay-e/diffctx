@@ -15,13 +15,13 @@ use super::world::{RepoState, World};
 
 const SESSION: &str = "prop-session";
 
-pub struct HookRun {
+pub(crate) struct HookRun {
     pub event: &'static str,
     pub code: Option<i32>,
     pub stdout: String,
 }
 
-pub struct Driven {
+pub(crate) struct Driven {
     pub shell: String,
     pub command: String,
     pub before: BTreeMap<Repo, RepoState>,
@@ -34,7 +34,7 @@ pub struct Driven {
 
 impl Driven {
     /// Everything the hook put in front of the agent, run by run.
-    pub fn printed(&self) -> String {
+    pub(crate) fn printed(&self) -> String {
         let mut out = Vec::new();
         for run in &self.runs {
             let Ok(doc) = serde_json::from_str::<serde_json::Value>(run.stdout.trim()) else {
@@ -50,7 +50,7 @@ impl Driven {
     }
 }
 
-pub fn hook_bin() -> PathBuf {
+pub(crate) fn hook_bin() -> PathBuf {
     std::env::var_os("DIFFCTX_HOOK_BIN").map_or_else(
         || PathBuf::from(env!("CARGO_BIN_EXE_diffctx")),
         PathBuf::from,
@@ -107,7 +107,7 @@ fn run_hook(world: &World, event: &'static str, cwd: &Path, stdin: &serde_json::
     }
 }
 
-pub fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
+pub(crate) fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
     let command = line.render(world);
     let cwd = match line.cwd {
         Cwd::In(repo) => world.path(repo),
@@ -233,7 +233,7 @@ fn background(world: &World, shell: &Shell, cwd: &Path, command: &str, runs: &mu
 }
 
 /// The files the engine reads a printed range to cover.
-pub fn covered_files(world: &World, repo: Repo, range: &str) -> BTreeSet<String> {
+pub(crate) fn covered_files(world: &World, repo: Repo, range: &str) -> BTreeSet<String> {
     let out = world
         .command(hook_bin())
         .arg(world.path(repo))

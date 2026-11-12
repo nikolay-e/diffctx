@@ -9,15 +9,15 @@ use std::fmt::Write as _;
 use super::world::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Repo {
+pub(crate) enum Repo {
     A,
     B,
 }
 
 impl Repo {
-    pub const BOTH: [Self; 2] = [Self::A, Self::B];
+    pub(crate) const BOTH: [Self; 2] = [Self::A, Self::B];
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::A => "A",
             Self::B => "B",
@@ -27,13 +27,13 @@ impl Repo {
 
 /// Where the Bash tool starts the line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Cwd {
+pub(crate) enum Cwd {
     In(Repo),
     Neutral,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Reach {
+pub(crate) enum Reach {
     /// The directory the shell is in; becomes `Cd` when it is another one.
     Here,
     Cd,
@@ -54,7 +54,7 @@ impl Reach {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Join {
+pub(crate) enum Join {
     And,
     Semi,
     Or,
@@ -73,7 +73,7 @@ impl Join {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Text {
+pub(crate) enum Text {
     Plain,
     Quotes,
     Apostrophe,
@@ -94,7 +94,7 @@ impl Text {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Message {
+pub(crate) enum Message {
     Plain(Text),
     /// `-F - <<'EOF'`, the body after the last line.
     Stdin(Text),
@@ -104,7 +104,7 @@ pub enum Message {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Stage {
+pub(crate) enum Stage {
     Add,
     AddAll,
     CommitAll,
@@ -114,7 +114,7 @@ pub enum Stage {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum PushForm {
+pub(crate) enum PushForm {
     Bare,
     Named,
     Head,
@@ -125,7 +125,7 @@ pub enum PushForm {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Force {
+pub(crate) enum Force {
     Short,
     Long,
     Lease,
@@ -133,27 +133,27 @@ pub enum Force {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum RebaseForm {
+pub(crate) enum RebaseForm {
     Switch,
     Checkout,
     Autostash,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Hidden {
+pub(crate) enum Hidden {
     BashC,
     Eval,
     Substitution,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Wrapper {
+pub(crate) enum Wrapper {
     Bash,
     Exec,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Op {
+pub(crate) enum Op {
     Commit {
         stage: Stage,
         message: Message,
@@ -183,7 +183,7 @@ pub enum Op {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Part {
+pub(crate) struct Part {
     pub repo: Repo,
     pub reach: Reach,
     /// `GIT_AUTHOR_NAME=… git commit`.
@@ -193,7 +193,7 @@ pub struct Part {
 
 /// Another process changing the same repository around the line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Peer {
+pub(crate) enum Peer {
     None,
     /// A commit in the checkout before the hook's `PreToolUse`.
     CommitBefore(Repo),
@@ -205,7 +205,7 @@ pub enum Peer {
 }
 
 #[derive(Clone, Debug)]
-pub struct Line {
+pub(crate) struct Line {
     pub cwd: Cwd,
     pub parts: Vec<Part>,
     pub joins: Vec<Join>,
@@ -217,7 +217,7 @@ pub struct Line {
 }
 
 impl Line {
-    pub fn new(cwd: Cwd, parts: Vec<Part>, joins: Vec<Join>) -> Self {
+    pub(crate) fn new(cwd: Cwd, parts: Vec<Part>, joins: Vec<Join>) -> Self {
         Self {
             cwd,
             parts,
@@ -228,22 +228,22 @@ impl Line {
         }
     }
 
-    pub fn failing(mut self) -> Self {
+    pub(crate) fn failing(mut self) -> Self {
         self.fails = true;
         self
     }
 
-    pub fn in_background(mut self) -> Self {
+    pub(crate) fn in_background(mut self) -> Self {
         self.background = true;
         self
     }
 
-    pub fn with_peer(mut self, peer: Peer) -> Self {
+    pub(crate) fn with_peer(mut self, peer: Peer) -> Self {
         self.peer = peer;
         self
     }
 
-    pub fn render(&self, world: &World) -> String {
+    pub(crate) fn render(&self, world: &World) -> String {
         let mut shell_in = match self.cwd {
             Cwd::In(repo) => Some(repo),
             Cwd::Neutral => None,
@@ -440,7 +440,7 @@ impl Op {
 }
 
 impl Part {
-    pub fn new(repo: Repo, reach: Reach, op: Op) -> Self {
+    pub(crate) fn new(repo: Repo, reach: Reach, op: Op) -> Self {
         Self {
             repo,
             reach,

@@ -162,7 +162,7 @@ fn commit_then_maybe_push() -> BoxedStrategy<Vec<Op>> {
 
 /// Commits in every spelling of staging, message, flag and way to the
 /// repository, one or two to a line.
-pub fn commit_forms() -> BoxedStrategy<Line> {
+pub(crate) fn commit_forms() -> BoxedStrategy<Line> {
     (
         cwds(),
         prop::collection::vec(part(commits(), named_reaches()), 1..=2),
@@ -173,7 +173,7 @@ pub fn commit_forms() -> BoxedStrategy<Line> {
 }
 
 /// Both repositories in one line: two parts, or a loop over literal paths.
-pub fn two_repositories() -> BoxedStrategy<Line> {
+pub(crate) fn two_repositories() -> BoxedStrategy<Line> {
     let pair = (
         cwds(),
         any::<bool>(),
@@ -213,7 +213,7 @@ pub fn two_repositories() -> BoxedStrategy<Line> {
 
 /// A commit, then a push in each form, with a fetch before and another
 /// checkout pushing to the remote's other branch meanwhile.
-pub fn push_forms() -> BoxedStrategy<Line> {
+pub(crate) fn push_forms() -> BoxedStrategy<Line> {
     (
         cwds(),
         repos(),
@@ -250,7 +250,7 @@ pub fn push_forms() -> BoxedStrategy<Line> {
 }
 
 /// What a merge, a pick, a revert and `git am` record, sometimes pushed.
-pub fn integration_verbs() -> BoxedStrategy<Line> {
+pub(crate) fn integration_verbs() -> BoxedStrategy<Line> {
     let verbs = prop_oneof![
         Just(Op::CherryPick),
         Just(Op::Revert),
@@ -269,20 +269,20 @@ pub fn integration_verbs() -> BoxedStrategy<Line> {
     sequence(named_reaches(), ops, cwds())
 }
 
-pub fn background_lines() -> BoxedStrategy<Line> {
+pub(crate) fn background_lines() -> BoxedStrategy<Line> {
     sequence(named_reaches(), commit_then_maybe_push(), cwds())
         .prop_map(Line::in_background)
         .boxed()
 }
 
-pub fn failing_lines() -> BoxedStrategy<Line> {
+pub(crate) fn failing_lines() -> BoxedStrategy<Line> {
     sequence(named_reaches(), commit_then_maybe_push(), cwds())
         .prop_map(Line::failing)
         .boxed()
 }
 
 /// A git only the shell runs: `bash -c`, `eval`, a substitution.
-pub fn hidden_git() -> BoxedStrategy<Line> {
+pub(crate) fn hidden_git() -> BoxedStrategy<Line> {
     let forms = prop_oneof![
         Just(Hidden::BashC),
         Just(Hidden::Eval),
@@ -301,7 +301,7 @@ pub fn hidden_git() -> BoxedStrategy<Line> {
 
 /// A commit in a repository the line names only by `--git-dir` or
 /// `GIT_DIR`, from a directory that is not that repository.
-pub fn git_dir_elsewhere() -> BoxedStrategy<Line> {
+pub(crate) fn git_dir_elsewhere() -> BoxedStrategy<Line> {
     (cwds(), part(commits(), git_dir_reaches()))
         .prop_map(|(cwd, part)| {
             let cwd = if cwd == Cwd::In(part.repo) {
@@ -315,7 +315,7 @@ pub fn git_dir_elsewhere() -> BoxedStrategy<Line> {
 }
 
 /// A rebase records new commits on the branch it rebases.
-pub fn rebases() -> BoxedStrategy<Line> {
+pub(crate) fn rebases() -> BoxedStrategy<Line> {
     let forms = prop_oneof![
         Just(RebaseForm::Switch),
         Just(RebaseForm::Checkout),
@@ -329,7 +329,7 @@ pub fn rebases() -> BoxedStrategy<Line> {
 }
 
 /// A script that commits: the line itself shows no git.
-pub fn scripts() -> BoxedStrategy<Line> {
+pub(crate) fn scripts() -> BoxedStrategy<Line> {
     let wrappers = prop_oneof![Just(Wrapper::Bash), Just(Wrapper::Exec)];
     (cwds(), repos(), wrappers)
         .prop_map(|(cwd, repo, wrapper)| {
@@ -343,7 +343,7 @@ pub fn scripts() -> BoxedStrategy<Line> {
 }
 
 /// A commit that changes no file.
-pub fn empty_commits() -> BoxedStrategy<Line> {
+pub(crate) fn empty_commits() -> BoxedStrategy<Line> {
     let ops = any::<bool>()
         .prop_map(|push| {
             let mut ops = vec![Op::Empty];
@@ -357,7 +357,7 @@ pub fn empty_commits() -> BoxedStrategy<Line> {
 }
 
 /// Amend the tip the remote has, then force it.
-pub fn force_pushes() -> BoxedStrategy<Line> {
+pub(crate) fn force_pushes() -> BoxedStrategy<Line> {
     sequence(
         named_reaches(),
         forces().prop_map(|f| vec![Op::ForcePush(f)]).boxed(),
@@ -366,13 +366,13 @@ pub fn force_pushes() -> BoxedStrategy<Line> {
 }
 
 /// A new branch on top of one the remote has, committed and pushed.
-pub fn new_branches() -> BoxedStrategy<Line> {
+pub(crate) fn new_branches() -> BoxedStrategy<Line> {
     sequence(named_reaches(), one(Op::ChildOfPushed), cwds())
 }
 
 /// Another session committed in the checkout and did not push; the line
 /// commits and pushes both.
-pub fn pushes_over_a_peer_commit() -> BoxedStrategy<Line> {
+pub(crate) fn pushes_over_a_peer_commit() -> BoxedStrategy<Line> {
     (cwds(), repos(), named_reaches(), commits())
         .prop_map(|(cwd, repo, reach, commit)| {
             let parts = vec![
@@ -386,7 +386,7 @@ pub fn pushes_over_a_peer_commit() -> BoxedStrategy<Line> {
 
 /// Another session commits in the checkout after the line ended and before
 /// its `PostToolUse`, whether the line committed or not.
-pub fn peer_commits_in_the_window() -> BoxedStrategy<Line> {
+pub(crate) fn peer_commits_in_the_window() -> BoxedStrategy<Line> {
     let ops = prop_oneof![commits().prop_map(|c| vec![c]), one(Op::Nothing)].boxed();
     sequence(named_reaches(), ops, cwds())
         .prop_map(|line| {

@@ -24,7 +24,7 @@ use super::world::{PEER_BRANCH, RepoState, World};
 /// (T19, gh#669).
 const HEDGES: [&str; 2] = ["during this call", "did not make"];
 
-pub fn judge(world: &World, driven: &Driven) -> Result<(), String> {
+pub(crate) fn judge(world: &World, driven: &Driven) -> Result<(), String> {
     let printed = driven.printed();
     let ranges = ranges_in(&printed);
     let mut found: Vec<String> = Vec::new();
