@@ -186,3 +186,12 @@ impact/typescript/ts_playwright_spec_reaches_a_component_through_its_route_and_i
 impact/typescript/ts_rewritten_exported_function_is_the_changed_definition_not_its_inner_method
 impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
 symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved
+
+# AC5 false-absence classes (tests stream, p5): the cases are red on the engine they were written
+# against and stay so until phase A and the hop bound of `tests` step 5 ("not established", never
+# "no tests"). They are the proof that step lands; each leaves this file when it passes.
+impact/python/py_class_attribute_holding_a_changed_class_is_a_caller  # fj#TBD open
+impact/python/py_method_a_protocol_hook_calls_is_reached_by_the_test_that_renders  # fj#TBD open
+impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#TBD open
+impact/typescript/ts_helper_three_calls_below_a_test_is_not_called_untested  # fj#TBD open
+impact/typescript/ts_hook_type_a_test_passes_by_option_key_has_a_test_link  # fj#TBD open
