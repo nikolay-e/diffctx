@@ -1,0 +1,43 @@
+# .github/workflows/oracle-tests.yml
+name: oracle-tests
+
+# The oracle's own test suite (eval/oracle/tests). oracle.yml measures only behind a label, so a gate that lived there
+# could not go red on an ordinary change; this one runs on every pull request and push that touches the oracle.
+
+'on':
+  pull_request:
+    paths:
+      - 'eval/oracle/**'
+      - .github/workflows/oracle-tests.yml
+  push:
+    branches: [main]
+    paths:
+      - 'eval/oracle/**'
+      - .github/workflows/oracle-tests.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  oracle-tests:
+    name: Oracle unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: eval/oracle/uv.lock
+
+      - name: Run the oracle's tests
+        run: uv run --frozen --directory eval/oracle pytest -q
