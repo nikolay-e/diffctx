@@ -309,7 +309,7 @@ fn a_nested_def_site_is_the_declaration_of_another_binding() {
     let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
     assert_eq!(
         shape(on(&found, 2)),
-        ("declaration", "local_site", None),
+        ("declaration", "definition_name", None),
         "{found:#?}"
     );
 }
