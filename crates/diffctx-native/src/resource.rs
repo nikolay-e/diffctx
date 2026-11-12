@@ -116,8 +116,9 @@ pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
 /// wall clock (#510, #489, #502). Semantic, like the expired deadline.
 pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POLLS";
 
-/// Test hook: the file a stalled child leaves when its output stops. A git
-/// read that has waited empty gives up as timed out once the file exists,
+/// Test hook: the file a stalled child leaves when its output stops.
+///
+/// A git read that has waited empty gives up as timed out once the file exists,
 /// whatever the clock says, so a stall test ends its run on the stall itself,
 /// not on a short `--timeout` or a count of waits (fj#172). Semantic, like the
 /// expired deadline.

@@ -94,7 +94,7 @@ pub fn is_test_path(path: &Path) -> bool {
 
 /// Whether `path` is a test file the way the test-naming convention reads one:
 /// `is_test_path`, and a Perl `.t` script.
-pub(crate) fn is_test_file(path: &Path) -> bool {
+pub fn is_test_file(path: &Path) -> bool {
     is_test_path(path)
         || path
             .extension()
@@ -103,10 +103,10 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
 
 /// The stem a test file's name asks for: `test_foo`, `foo_test`, `foo.spec`,
 /// `TestFoo`, `FooTests` all name `foo`.
-pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
+pub fn target_name_of_test(test_name: &str) -> Option<String> {
     let lower = test_name.to_lowercase();
-    if lower.starts_with("test_") {
-        return Some(lower[5..].to_string());
+    if let Some(rest) = lower.strip_prefix("test_") {
+        return Some(rest.to_string());
     }
     if lower.ends_with("_test") {
         return Some(lower[..lower.len() - 5].to_string());
@@ -144,9 +144,8 @@ pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
 
 /// JVM test classes are named after their subject: `FooTest`, `FooTests`,
 /// `FooSpec`, `FooIT` (stems lower-cased).
-pub(crate) const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
-pub(crate) const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] =
-    &[".java", ".kt", ".kts", ".scala", ".groovy"];
+pub const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
+pub const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] = &[".java", ".kt", ".kts", ".scala", ".groovy"];
 
 /// Same ambiguity bar as the c-family and path-reference caps: a stem carried
 /// by more files than this cannot name a target.
@@ -157,7 +156,7 @@ const MAX_GLOBAL_TARGET_FILES: usize = 8;
 /// test's own directory first, then anywhere while the stem stays rare enough to
 /// identify a file. `config_test` names `config`, but envoy holds 520 files with
 /// that stem. Files come in as the run lists them, and pairs go out in that order.
-pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
+pub fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
     let stem = |path: &str| {
         Path::new(path)
             .file_stem()
@@ -205,7 +204,7 @@ pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
 /// code it tests, as the token index asks for them before the file is read; none
 /// where the language has no such convention and the path alone decides. The
 /// scopes themselves are [`in_source_test_scopes`].
-pub(crate) fn in_source_markers(path: &Path) -> &'static [&'static str] {
+pub fn in_source_markers(path: &Path) -> &'static [&'static str] {
     match path
         .extension()
         .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
@@ -226,7 +225,7 @@ pub(crate) fn in_source_markers(path: &Path) -> &'static [&'static str] {
 /// subclass, a doctest or Catch2 `TEST_CASE`/`SCENARIO` block. A test context is
 /// the scope that holds an occurrence, not the file's path. Rust's inline
 /// `#[test]` functions are found by the Rust reader.
-pub(crate) fn in_source_test_scopes(path: &Path, text: &str) -> Vec<(u32, u32)> {
+pub fn in_source_test_scopes(path: &Path, text: &str) -> Vec<(u32, u32)> {
     let lines: Vec<&str> = text.lines().collect();
     match path
         .extension()
@@ -314,7 +313,7 @@ fn indented_scopes(lines: &[&str], opens: impl Fn(&str) -> bool) -> Vec<(u32, u3
             if line.trim().is_empty() {
                 continue;
             }
-            if indent(*line) <= own {
+            if indent(line) <= own {
                 break;
             }
             last = at + 1 + offset;
@@ -328,7 +327,7 @@ fn indented_scopes(lines: &[&str], opens: impl Fn(&str) -> bool) -> Vec<(u32, u3
 /// The names the `>>>` examples of `text` call, with the 0-based line of each
 /// example: a doctest runs what it calls, in the file it documents. A name after
 /// a dot is a method of something else and is not taken.
-pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
+pub fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
     let mut found = Vec::new();
     for (row, line) in text.lines().enumerate() {
         let Some(example) = line.trim_start().strip_prefix(">>>") else {
