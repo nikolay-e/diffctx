@@ -182,3 +182,25 @@ def test_unfold_is_passed_to_an_engine_that_knows_it_and_only_once(tmp_path: Pat
     assert measure.engine_arguments(knows, (), folded=True) == ()
     assert measure.engine_arguments(older, (), folded=False) == ()
     assert measure.engine_arguments(tmp_path / "missing", (), folded=False) == ()
+
+
+def test_a_scored_impact_answer_writes_one_silent_loss_row_with_every_missing_definition(tmp_path: Path):
+    from answer import Answer
+    from compare import missing_definition
+    from model import Definition
+
+    assert "silent_loss.jsonl" in measure.RESULT_FILES
+    lost = Definition("m.py", "function", "lost", (), 1, 3, 0, 2, "()", "h", "s")
+    other = Definition("m.py", "function", "other", (), 5, 7, 4, 2, "()", "h", "s")
+    answer = Answer({}, [], set(), False, unnamed_omitted=1)
+    sink = measure.Sink(tmp_path)
+
+    measure.write_silent_loss(
+        sink, {"repo": "r", "commit": "c1", "mode": "impact"}, [missing_definition(d, answer) for d in (lost, other)], answer
+    )
+    measure.write_silent_loss(sink, {"repo": "r", "commit": "c2", "mode": "impact"}, [], answer)
+
+    first, second = (json.loads(line) for line in (tmp_path / "silent_loss.jsonl").read_text().splitlines())
+    assert (first["commit"], first["missing"], first["unnamed_omitted"], first["silent"]) == ("c1", 2, 1, 1)
+    assert [d["target"] for d in first["definitions"]] == [lost.key, other.key]
+    assert (second["missing"], second["silent"], second["definitions"]) == (0, 0, [])  # a witnessed zero

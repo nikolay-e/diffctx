@@ -1,4 +1,4 @@
-from compare import compare, make_resolver, parse_answer, silent_loss
+from compare import compare, make_resolver, missing_definition, parse_answer, silent_loss
 from model import MODULE, Definition, Relation
 
 TARGET = Definition("shop/pricing.py", "function", "total", (), 1, 3, 0, 4, "()", "h", "s")
@@ -503,19 +503,22 @@ def test_no_incomplete_complete_where_the_answer_abstains_has_no_entry_or_the_ch
     assert (cell["fn"], cell["incomplete_complete"]) == (1, 0)
 
 
-def test_a_changed_definition_the_answer_has_no_record_of_is_a_silent_loss_and_names_what_classifies_it():
+DEFS_OF_CHECKOUT = DEFS["shop/checkout.py"]
+
+
+def test_a_changed_definition_the_answer_has_no_record_of_is_missing_and_the_record_names_what_classifies_it():
     elsewhere = parse_answer(
         {"changed": [{"path": "shop/checkout.py", "symbol": "charge", "lines": "1-3", "kind": "function", "callers": []}]},
         RESOLVE,
     )
     nothing = parse_answer({"changed": []}, RESOLVE)
 
-    assert silent_loss(TARGET, nothing) == {
+    assert missing_definition(TARGET, nothing) == {
         "target": TARGET.key, "path": "shop/pricing.py", "entries": 0, "entries_in_file": [], "entries_named_alike": [],
         "answer_empty": False, "limits": 0,
     }  # fmt: skip
-    assert silent_loss(TARGET, elsewhere)["entries"] == 1
-    assert silent_loss(TARGET, elsewhere)["entries_in_file"] == []
+    assert missing_definition(TARGET, elsewhere)["entries"] == 1
+    assert missing_definition(TARGET, elsewhere)["entries_in_file"] == []
 
 
 def test_an_entry_under_another_key_of_the_same_file_or_name_is_the_candidate_of_an_identity_mismatch():
@@ -528,21 +531,64 @@ def test_an_entry_under_another_key_of_the_same_file_or_name_is_the_candidate_of
         {"path": "shop/totals.py", "symbol": "total", "lines": "1-3", "kind": "function", "callers": []},
     ]
 
-    lost = silent_loss(TARGET, parse_answer({"changed": entries}, resolve))
+    lost = missing_definition(TARGET, parse_answer({"changed": entries}, resolve))
 
     assert lost["entries_in_file"] == ["shop/pricing.py::Cart.total"]
     assert lost["entries_named_alike"] == ["shop/pricing.py::Cart.total", "shop/totals.py::total"]
 
 
-def test_no_silent_loss_where_the_answer_has_an_entry_a_count_of_omitted_definitions_or_names_the_file_unanalysed():
+def test_no_definition_is_missing_where_the_answer_has_an_entry_a_fold_row_for_it_or_names_the_file_unanalysed():
     constructor = Definition("shop/pricing.py", "function", "__init__", ("Cart",), 5, 9, 4, 4, "()", "h", "s")
     cart = {"path": "shop/pricing.py", "symbol": "Cart", "lines": "4-9", "kind": "class", "callers": []}
     unanalysed = parse_answer({"changed": [], "unanalysed_files": [{"path": "shop/pricing.py"}]}, RESOLVE)
-    shed_without_names = parse_answer({"changed": []}, RESOLVE)
-    shed_without_names.unnamed_omitted = 2
     defs = {**DEFS, "shop/pricing.py": [TARGET, constructor, caller_def("shop/pricing.py", "Cart", 4, 9)]}
+    folded = parse_answer(
+        {
+            "changed": [
+                entry_of(
+                    "shop/checkout.py", "charge", "1-3", [caller("shop/pricing.py", "total", "1-3", folded_by="no-code-change")]
+                )
+            ]
+        },
+        RESOLVE,
+    )
 
-    assert silent_loss(TARGET, answer([])) is None
-    assert silent_loss(constructor, parse_answer({"changed": [cart]}, make_resolver(lambda path: defs.get(path, [])))) is None
-    assert silent_loss(TARGET, shed_without_names) is None
-    assert silent_loss(TARGET, unanalysed) is None
+    assert missing_definition(TARGET, answer([])) is None
+    assert (
+        missing_definition(constructor, parse_answer({"changed": [cart]}, make_resolver(lambda path: defs.get(path, [])))) is None
+    )
+    assert missing_definition(TARGET, unanalysed) is None
+    assert missing_definition(TARGET, folded) is None  # the answer lists it as a row it folds: named, not lost
+
+
+def test_a_definition_in_a_row_the_answer_does_not_fold_is_still_missing_from_it():
+    listed = parse_answer(
+        {"changed": [entry_of("shop/checkout.py", "charge", "1-3", [caller("shop/pricing.py", "total", "1-3")])]}, RESOLVE
+    )
+
+    assert missing_definition(TARGET, listed) is not None
+
+
+def entry_of(path, symbol, lines, callers):
+    return {"path": path, "symbol": symbol, "lines": lines, "kind": "function", "callers": callers}
+
+
+def test_one_definition_shed_without_a_name_no_longer_hides_the_others_the_answer_lost():
+    lost = [missing_definition(d, parse_answer({"changed": []}, RESOLVE)) for d in (TARGET, *DEFS_OF_CHECKOUT)]
+    assert all(lost)
+    shed = parse_answer({"changed": []}, RESOLVE)
+    shed.unnamed_omitted = 1
+
+    row = silent_loss(lost, shed)
+
+    assert (row["missing"], row["unnamed_omitted"], row["silent"]) == (3, 1, 2)
+    assert [d["target"] for d in row["definitions"]] == [d.key for d in (TARGET, *DEFS_OF_CHECKOUT)]  # every one listed
+
+
+def test_silent_loss_is_never_negative_and_an_answer_missing_nothing_has_none():
+    lost = [missing_definition(TARGET, parse_answer({"changed": []}, RESOLVE))]
+    shed = parse_answer({"changed": []}, RESOLVE)
+    shed.unnamed_omitted = 5
+
+    assert silent_loss(lost, shed)["silent"] == 0 and silent_loss(lost, shed)["definitions"] == lost
+    assert silent_loss([], shed) == {"missing": 0, "unnamed_omitted": 5, "silent": 0, "definitions": []}
