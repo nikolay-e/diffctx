@@ -95,7 +95,7 @@ fn python_assignments(text: &str) -> Vec<(Option<String>, (u32, u32), FragmentKi
 /// reader's budget, and an impact run lays these over them; a fragment
 /// spanning exactly the definition becomes it, and keeps its kind when it
 /// already is a definition's (an arrow assigned to `self.serveShell`).
-pub fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
+pub(crate) fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
     let mut paths: Vec<Arc<str>> = fragments
         .iter()
         .filter(|f| declarations_of(f.path()).is_some())
@@ -154,7 +154,7 @@ pub fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source) {
 /// shell functions (`fetch() {`), SQL routines and views, a Python module's
 /// assignments, a JavaScript module's definitions and the globals it sets
 /// (`self.serveShell = …`). Impact looks for the files that spell them.
-pub fn declared_names(path: &str, text: &str) -> Vec<String> {
+pub(crate) fn declared_names(path: &str, text: &str) -> Vec<String> {
     let reachable = |declared: &[Declaration]| {
         declared
             .iter()
@@ -185,7 +185,7 @@ pub fn declared_names(path: &str, text: &str) -> Vec<String> {
 /// Whether a `--symbol` qualifier names the owner a model states for a
 /// definition: a SQL schema (`lib.refresh_book`). `None` when the model
 /// states none.
-pub fn stated_owner(path: &str, line: u32, owner: &str, source: &Source) -> Option<bool> {
+pub(crate) fn stated_owner(path: &str, line: u32, owner: &str, source: &Source) -> Option<bool> {
     if !sql::is_sql(path) {
         return None;
     }
