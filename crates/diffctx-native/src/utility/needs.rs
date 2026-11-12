@@ -311,7 +311,7 @@ fn is_test_fragment(frag: &Fragment) -> bool {
     false
 }
 
-pub fn match_strength_typed(frag: &Fragment, need: &InformationNeed) -> f64 {
+pub(crate) fn match_strength_typed(frag: &Fragment, need: &InformationNeed) -> f64 {
     let sym = &need.symbol;
     let frag_sym = frag
         .symbol_name
@@ -599,7 +599,7 @@ fn collect_terraform_needs(
     }
 }
 
-pub fn concepts_from_diff_text(
+pub(crate) fn concepts_from_diff_text(
     diff_text: &str,
     changed_lines: Option<&[String]>,
 ) -> FxHashSet<String> {
@@ -625,7 +625,7 @@ pub fn concepts_from_diff_text(
         .collect()
 }
 
-pub fn needs_from_diff(
+pub(crate) fn needs_from_diff(
     all_fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     diff_text: &str,
