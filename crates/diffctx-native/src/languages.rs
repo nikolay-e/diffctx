@@ -242,11 +242,8 @@ pub(crate) fn get_language_for_file(path: &str) -> Option<&'static str> {
         }
     }
 
-    if let Some(ext) = p.extension() {
-        let ext_lower = format!(".{}", ext.to_string_lossy().to_lowercase());
-        if let Some(&lang) = EXTENSION_TO_LANGUAGE.get(ext_lower.as_str()) {
-            return Some(lang);
-        }
+    if let Some(&lang) = EXTENSION_TO_LANGUAGE.get(file_ext(p).as_str()) {
+        return Some(lang);
     }
 
     if let Some(name) = p.file_name() {

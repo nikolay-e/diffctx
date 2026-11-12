@@ -300,7 +300,7 @@ fn collect_capped_edges_from(
         let kind_of = |p: &str| -> Option<String> {
             let path = Path::new(p);
             if path.extension().is_some() {
-                return Some(crate::edges::base::file_ext(path));
+                return Some(crate::languages::file_ext(path));
             }
             crate::languages::get_language_for_file(p)
                 .or_else(|| shebang_languages.get(p).copied())

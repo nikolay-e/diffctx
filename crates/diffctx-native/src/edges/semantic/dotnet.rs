@@ -27,7 +27,7 @@ static EXTENDED_DOTNET_EXTENSIONS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 });
 
 fn is_dotnet_file(path: &Path) -> bool {
-    EXTENDED_DOTNET_EXTENSIONS.contains(base::file_ext(path).as_str())
+    EXTENDED_DOTNET_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 fn is_cs_file(path: &Path) -> bool {

@@ -37,7 +37,7 @@ fn is_cargo_toml(path: &Path) -> bool {
 }
 
 fn is_rust_source(path: &Path) -> bool {
-    base::file_ext(path) == ".rs"
+    crate::languages::file_ext(path) == ".rs"
 }
 
 fn extract_workspace_members(content: &str) -> Vec<String> {

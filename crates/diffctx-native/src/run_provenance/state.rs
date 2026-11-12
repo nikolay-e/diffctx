@@ -180,7 +180,7 @@ impl AnswerScope {
         if self.paths.contains(display_path) {
             return true;
         }
-        let ext = crate::edges::base::file_ext(Path::new(display_path));
+        let ext = crate::languages::file_ext(Path::new(display_path));
         if self.stems.is_empty()
             || !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
         {

@@ -22,12 +22,12 @@ use super::super::base::{self, EdgeBuilder};
 const SFC_EXTENSIONS: [&str; 2] = [".vue", ".svelte"];
 
 fn is_js_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     JS_TS_EXTENSIONS.contains(ext.as_str()) || SFC_EXTENSIONS.contains(&ext.as_str())
 }
 
 fn is_ts_file(path: &Path) -> bool {
-    TYPESCRIPT_EXTENSIONS.contains(base::file_ext(path).as_str())
+    TYPESCRIPT_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 static IMPORT_SOURCE_RE: Lazy<Regex> = Lazy::new(|| {

@@ -20,21 +20,21 @@ use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 const MAX_FILES_PER_NAME: usize = 8;
 
 fn is_jvm_file(path: &Path) -> bool {
-    JVM_EXTENSIONS.contains(base::file_ext(path).as_str())
+    JVM_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 fn is_java(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     JAVA_EXTENSIONS.contains(ext.as_str())
 }
 
 fn is_kotlin(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     KOTLIN_EXTENSIONS.contains(ext.as_str())
 }
 
 fn is_scala(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     SCALA_EXTENSIONS.contains(ext.as_str())
 }
 

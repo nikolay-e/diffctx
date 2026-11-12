@@ -12,7 +12,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
 
 fn is_ruby_file(path: &Path) -> bool {
-    RUBY_EXTENSIONS.contains(base::file_ext(path).as_str())
+    RUBY_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 const RUBY_SUFFIXES: &[&str] = &[".rb", ""];

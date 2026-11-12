@@ -17,7 +17,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_go_file(path: &Path) -> bool {
-    GO_EXTENSIONS.contains(base::file_ext(path).as_str())
+    GO_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 fn is_go_test_file(path: &Path) -> bool {

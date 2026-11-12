@@ -100,7 +100,7 @@ static XML_ELEMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<([a-zA-Z_][\w.-]*)[>\s/]").unwrap());
 
 fn is_config_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     if ext.is_empty() {
         return false;
     }
@@ -108,7 +108,7 @@ fn is_config_file(path: &Path) -> bool {
 }
 
 fn is_code_file(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     if ext.is_empty() {
         return false;
     }
@@ -197,7 +197,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         let mut key_to_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         let mut spelled_whole: FxHashSet<String> = FxHashSet::default();
         for (ci, cfg) in config_frags.iter().enumerate() {
-            let suffix = base::file_ext(Path::new(cfg.path()));
+            let suffix = crate::languages::file_ext(Path::new(cfg.path()));
             for (key, whole) in extract_config_keys(&suffix, &cfg.content) {
                 if key.len() < 4 || STOPWORDS.contains(key.as_str()) {
                     continue;
@@ -326,7 +326,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                 Some(c) => c,
                 None => continue,
             };
-            let suffix = base::file_ext(cfg_path);
+            let suffix = crate::languages::file_ext(cfg_path);
             all_keys.extend(
                 extract_config_keys(&suffix, &content)
                     .into_keys()

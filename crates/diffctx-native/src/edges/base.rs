@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::CODE_EXTENSIONS;
-pub(crate) use crate::languages::file_ext;
+use crate::languages::file_ext;
 use crate::types::{Fragment, FragmentId};
 
 use super::EdgeDict;

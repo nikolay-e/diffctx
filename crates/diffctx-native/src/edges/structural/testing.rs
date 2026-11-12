@@ -120,13 +120,13 @@ impl EdgeBuilder for TestEdgeBuilder {
         let mut discovered: Vec<PathBuf> = Vec::new();
 
         for changed_file in changed {
-            let ext = base::file_ext(changed_file);
+            let ext = crate::languages::file_ext(changed_file);
             let stem = base::file_stem_string(changed_file);
 
             if is_test_file(changed_file) {
                 if let Some(target) = target_name_of_test(&stem) {
                     for c in candidate_by_stem.get(&target).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext {
+                        if crate::languages::file_ext(c) == ext {
                             discovered.push(c.clone());
                         }
                     }
@@ -138,7 +138,7 @@ impl EdgeBuilder for TestEdgeBuilder {
                     format!("{}_test", stem_lower),
                 ] {
                     for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }
@@ -148,7 +148,7 @@ impl EdgeBuilder for TestEdgeBuilder {
                     for suffix in JVM_TEST_SUFFIXES {
                         let test_stem = format!("{stem_lower}{suffix}");
                         for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
-                            if base::file_ext(c) == ext && is_test_file(c) {
+                            if crate::languages::file_ext(c) == ext && is_test_file(c) {
                                 discovered.push(c.clone());
                             }
                         }
@@ -162,12 +162,12 @@ impl EdgeBuilder for TestEdgeBuilder {
                     let stem_test = format!("{stem_lower}.test");
                     let stem_spec = format!("{stem_lower}.spec");
                     for c in candidate_by_stem.get(&stem_test).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }
                     for c in candidate_by_stem.get(&stem_spec).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }

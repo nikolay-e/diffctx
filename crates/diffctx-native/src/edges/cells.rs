@@ -418,7 +418,7 @@ fn split(rel: &str) -> (&str, String, String) {
     (
         rel.rsplit_once('/').map_or("", |(dir, _)| dir),
         base::file_stem_lower(path),
-        base::file_ext(path),
+        crate::languages::file_ext(path),
     )
 }
 
