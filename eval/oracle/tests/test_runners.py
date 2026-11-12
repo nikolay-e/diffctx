@@ -311,3 +311,19 @@ def test_go_files_in_directories_the_go_tool_ignores_are_not_present_code_files(
         (tmp_path / path).write_text("package a\n")
 
     assert present_code_files(tmp_path, "go") == {"a.go", "pkg/b.go", "pkg/_x.go"}
+
+
+def test_a_failed_indexer_leaves_its_output_beside_the_slot_not_only_the_last_400_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    corpus = load_corpus()
+    repo = next(r for r in corpus.repos if r.language == "go")
+    script = "echo first-line >&2; i=0; while [ $i -lt 100 ]; do echo padding-$i; i=$((i+1)); done; echo last-line >&2; exit 3"
+    plan = runners.Plan(["sh", "-c", script], {"PATH": os.environ["PATH"]})
+    monkeypatch.setitem(runners.PLANNERS, "go", lambda ctx: plan)
+    slot = tmp_path / "slot"
+
+    failed = indexing._run_indexer(corpus, repo, "a" * 40, tmp_path, slot / "index.scip", tmp_path, {}, False)
+
+    assert not failed.ok and failed.reason.startswith("indexer exited 3") and "first-line" not in failed.reason
+    assert "first-line" in (slot / indexing.FAILURE_LOG).read_text()
