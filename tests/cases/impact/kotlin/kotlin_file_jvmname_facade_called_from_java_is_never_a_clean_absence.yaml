@@ -1,0 +1,36 @@
+name: kotlin_file_jvmname_facade_called_from_java_is_never_a_clean_absence
+mode: impact
+source: fj#159
+issue_state: open
+tags: [kotlin, java, jvm, absence-claim, neighbour-language, jvmname]
+repo:
+  initial_files:
+    src/main/kotlin/shop/Text.kt: |
+      @file:JvmName("TextUtil")
+      package shop
+
+      fun shout(text: String): String {
+          return text
+      }
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      public class Checkout {
+          public String announce(String text) {
+              return TextUtil.shout(text);
+          }
+      }
+  changed_files:
+    src/main/kotlin/shop/Text.kt: |
+      @file:JvmName("TextUtil")
+      package shop
+
+      fun shout(text: String): String {
+          return text + "!"
+      }
+  commit_message: "text: shout with an exclamation mark"
+expect:
+  changed: [src/main/kotlin/shop/Text.kt::shout]
+  exact: false
+  never_empty: true
+  no_negative_claims: true
