@@ -478,12 +478,16 @@ pub fn layout_only(out: &mut String, a: &Answer) {
 
 fn untested(out: &mut String, a: &Answer) {
     let doc = a.doc;
-    if !doc.tests.known {
-        return;
-    }
+    // With no test in view there is no link to be missing: the lists still name
+    // the definitions, and say only what the search found.
+    let link = if doc.tests.known {
+        ", no static test link"
+    } else {
+        ""
+    };
     // Without a complete scope, no caller found is all the run can say.
     let uncalled = if doc.coverage.scope.complete {
-        "Changed, nothing calls them, no static test link:".to_string()
+        format!("Changed, nothing calls them{link}:")
     } else {
         let why: Vec<String> = doc
             .coverage
@@ -493,7 +497,7 @@ fn untested(out: &mut String, a: &Answer) {
             .map(ToString::to_string)
             .collect();
         format!(
-            "Changed, no caller found in the analysed scope ({}), no static test link:",
+            "Changed, no caller found in the analysed scope ({}){link}:",
             why.join("; ")
         )
     };
@@ -506,7 +510,7 @@ fn untested(out: &mut String, a: &Answer) {
     );
     listed(
         out,
-        "Changed, called only from inside the diff, no static test link:",
+        &format!("Changed, called only from inside the diff{link}:"),
         &doc.unlisted.called_in_diff,
         MAX_UNTESTED_NAMED,
         unreached,

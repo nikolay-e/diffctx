@@ -2701,13 +2701,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
             .map(|u| label(&u.file, None, &u.line.to_string()))
             .collect()
     };
-    // A definition the range adds has no user outside the range that could depend
-    // on it: the users the range writes are the diff, named nowhere.
-    let (also_changed, possibly_also_changed) = if def.how == decide::How::Added {
-        (Vec::new(), Vec::new())
-    } else {
-        (users(true), users(false))
-    };
+    let (also_changed, possibly_also_changed) = (users(true), users(false));
     ChangedSymbol {
         path: def.file.clone(),
         symbol: def.symbol(),
@@ -3388,12 +3382,6 @@ pub fn build_impact(
         // definition nothing calls may take is not claimed over it. A possible one
         // proves nothing, and the route stands.
         let resolved_in_diff = !also_changed.is_empty();
-        // Called in the diff still, so never "nothing calls it": but a definition the
-        // range adds names no user of its own range (see `cell_symbol`).
-        if py.is_some_and(|def| def.how == decide::How::Added) {
-            also_changed.clear();
-            possibly_also_changed.clear();
-        }
         // A pytest fixture is called by the runner, for every test or fixture
         // that names it as a parameter — in its own file or under the
         // directory of the conftest that defines it (#401).
@@ -3750,6 +3738,12 @@ pub fn build_impact(
         // graph edge for the walk to take (#503). A candidate caller counts: a
         // test that reaches it may reach the definition, and an absence is
         // claimed only where nothing could.
+        let class_tested = || {
+            route
+                .as_ref()
+                .and_then(|_| enclosing_class(core, file_of(core)))
+                .is_some_and(|class| !tests.tested_by(class, state, &by_id, &link).is_empty())
+        };
         let untested = query.is_none()
             && tests.any()
             && !tests.is_test(core)
@@ -3759,9 +3753,7 @@ pub fn build_impact(
                 .iter()
                 .any(|c| c.tests.iter().any(|t| t.via.is_none()))
             && tests.tested_by(core, state, &by_id, &link).is_empty()
-            && !route
-                .and_then(|_| enclosing_class(core, file_of(core)))
-                .is_some_and(|class| !tests.tested_by(class, state, &by_id, &link).is_empty());
+            && !class_tested();
         untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
             let n = callers
@@ -3835,16 +3827,16 @@ pub fn build_impact(
                 })
         });
         // A test that reaches a definition no caller does (a doctest runs it, a
-        // test in its own file spells it) is no caller: the definition is
-        // listed, its guard stated by the absence of the claim, not left to
-        // the lists of what is untested.
+        // test in its own file spells it, a test of the class a dispatch route
+        // goes through) is no caller: the definition is listed, its guard stated
+        // by the absence of the claim, not left to the lists of what is untested.
         let tested_without_caller = || {
             query.is_none()
                 && tests.any()
                 && !tests.is_test(core)
                 && entry.is_none()
                 && !untested
-                && !tests.tested_by(core, state, &by_id, &link).is_empty()
+                && (class_tested() || !tests.tested_by(core, state, &by_id, &link).is_empty())
         };
         // Nothing said of a definition needs every relation of it known.
         if let Some(complete) = coverage.all().witness().filter(|_| {
@@ -3875,6 +3867,12 @@ pub fn build_impact(
                 }
             } else if let Some(role) = entry.as_ref() {
                 entry_unlisted.push(format!("{named} \u{2014} {role}"));
+            } else if called_in_diff {
+                untested_called_in_diff.push(named);
+            } else {
+                // No test is in view to claim a missing link against: the search
+                // still found no caller, and the definition is named for that.
+                untested_unlisted.push(absence(named, complete));
             }
             continue;
         }
@@ -4024,16 +4022,26 @@ pub fn build_impact(
             ));
             continue;
         }
+        traced_definitions += 1;
         let verdict = cell.verdict(entry);
         let sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
-        if sym.callers.is_empty()
+        let callerless = query.is_none()
+            && sym.callers.is_empty()
             && sym.also_changed.is_empty()
-            && sym.possibly_also_changed.is_empty()
-            && verdict.complete()
-        {
-            continue;
+            && sym.possibly_also_changed.is_empty();
+        // A definition with no fragment has no test link computed: with tests in
+        // view it keeps its row, which claims none; the list that says "no static
+        // test link" is for the answer that has no tests to say it against.
+        let named = label(&sym.path, sym.symbol.as_deref(), &sym.lines);
+        let in_a_test_file = crate::testfiles::is_test_path(Path::new(&sym.path));
+        let witness = sym.coverage.all().witness();
+        match witness.filter(|_| callerless && verdict.complete()) {
+            Some(_) if in_a_test_file => {
+                entry_unlisted.push(format!("{named} \u{2014} test (run by the test runner)"));
+            }
+            Some(complete) if !tests.any() => untested_unlisted.push(absence(named, complete)),
+            _ => changed.push(sym),
         }
-        changed.push(sym);
     }
     {
         let stops = state.run.stops();
