@@ -4,7 +4,7 @@ A commit is excluded when either of its two snapshots is not indexed ok, or it h
 `measure.prepare`, without asking the engine anything. The indexes land in the cache `measure` reads, so a later
 `measure --no-install` finds them. Each failure's full output is in `failure.log` beside its slot.
 
-  python indexshare.py --repo NAME... [--commits 24] [--seed N] [--retry-failed] [--out rows.jsonl]
+  python indexshare.py --repo NAME [--repo NAME]... [--commits 24] [--seed N] [--retry-failed] [--out rows.jsonl]
   python indexshare.py --adhoc NAME URL LANGUAGE [--sha SHA]     # a repository that is not in corpus.toml
 """
 
