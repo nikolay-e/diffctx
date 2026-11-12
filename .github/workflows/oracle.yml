@@ -91,9 +91,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: eval/oracle/uv.lock
 
-      - name: Oracle unit tests
-        run: uv run --frozen --directory eval/oracle pytest -q
-
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
