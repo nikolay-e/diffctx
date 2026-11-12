@@ -1,4 +1,4 @@
-pub(crate) mod cochange;
+mod cochange;
 
 use super::base::EdgeBuilder;
 

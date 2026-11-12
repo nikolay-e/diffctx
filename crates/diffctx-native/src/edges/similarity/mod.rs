@@ -1,4 +1,4 @@
-pub(crate) mod lexical;
+mod lexical;
 
 use super::base::EdgeBuilder;
 

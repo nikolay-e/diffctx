@@ -545,7 +545,7 @@ impl FragmentIndex {
 
     /// The representative of the file at the repo-relative `rel`, compared
     /// without case like every other path lookup here.
-    pub(crate) fn representative_of(&self, rel: &str) -> Option<&FragmentId> {
+    fn representative_of(&self, rel: &str) -> Option<&FragmentId> {
         let lower = rel.to_lowercase();
         let last = lower.rsplit('/').next()?;
         self.component_to_paths.get(last)?.iter().find_map(|&pi| {
@@ -577,11 +577,7 @@ impl FragmentIndex {
 /// repository root, with each suffix tried (`""` when the spec carries its
 /// own extension). A `..` was never folded, so such imports reached nothing
 /// (#285).
-pub(crate) fn module_path_candidates(
-    importer_rel: &str,
-    spec: &str,
-    suffixes: &[&str],
-) -> Vec<String> {
+fn module_path_candidates(importer_rel: &str, spec: &str, suffixes: &[&str]) -> Vec<String> {
     let dir = importer_rel.rsplit_once('/').map_or("", |(d, _)| d);
     let spec = spec.trim();
     let mut out = Vec::new();

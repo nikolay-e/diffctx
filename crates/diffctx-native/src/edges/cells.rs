@@ -166,7 +166,7 @@ impl EdgeBuilder for Beside {
     }
 }
 
-pub(crate) struct CellEdgeBuilder {
+struct CellEdgeBuilder {
     pub family: Family,
 }
 
