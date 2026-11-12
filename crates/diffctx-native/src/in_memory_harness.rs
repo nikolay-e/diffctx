@@ -329,8 +329,11 @@ pub fn build_diff_context_in_memory(
         &hunk_texts,
         &all_fragments,
     );
-    let fragmentless =
-        crate::pipeline::fragmentless_changed_files(dummy_root, &changed_files, &all_fragments);
+    let fragmentless = crate::run_provenance::state::fragmentless_changed_files(
+        dummy_root,
+        &changed_files,
+        &all_fragments,
+    );
 
     let crate::pipeline::PostpassOutcome {
         mut selected,

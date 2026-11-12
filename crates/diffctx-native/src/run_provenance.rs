@@ -3,6 +3,8 @@
 //! parameters, and the resource limits that were in force. Deterministic by
 //! construction — no timings live here, those stay in `latency`.
 
+pub mod state;
+
 use std::path::Path;
 
 use schemars::JsonSchema;

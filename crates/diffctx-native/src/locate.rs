@@ -6,8 +6,10 @@ use serde::Serialize;
 
 use crate::answer::envelope::{self, Inventory};
 use crate::answer::v2::{Fit, Listing, Range};
-use crate::pipeline::{ScoredState, SelectionOutcome};
 use crate::provenance::{incoming_attribution, seed_hops};
+use crate::run_provenance::state::{
+    ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files,
+};
 use crate::types::{Fragment, FragmentId};
 
 pub const LOCATE_SCHEMA: &str = "diffctx.locate.v2";
@@ -371,11 +373,8 @@ fn build_coverage(
         .iter()
         .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
         .collect();
-    let fragmentless = crate::pipeline::fragmentless_changed_files(
-        &state.root_dir,
-        &state.changed_files,
-        &state.all_fragments,
-    );
+    let fragmentless =
+        fragmentless_changed_files(&state.root_dir, &state.changed_files, &state.all_fragments);
 
     // One grouping pass, not one scan per changed file: the naive form is
     // O(changed x all_fragments) with a path allocation per pair, and both
@@ -429,7 +428,7 @@ fn build_coverage(
     zero_edge.sort();
     zero_edge.dedup();
 
-    let about = crate::pipeline::answer_paths(state, outcome.selected.iter());
+    let about = answer_paths(state, outcome.selected.iter());
     let (limits, capped, limited_files) =
         crate::resource::classify_limits(&state.run, &[], &|p| about.contains(p));
 

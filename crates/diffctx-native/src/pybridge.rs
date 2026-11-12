@@ -11,8 +11,9 @@ use crate::config::limits::{
 };
 use crate::delivery::{Delivery, Mode, Note, Request};
 use crate::mode::ScoringMode;
-use crate::pipeline::{self, ScoredState};
+use crate::pipeline;
 use crate::render::DiffContextOutput;
+use crate::run_provenance::state::ScoredState;
 use crate::snapshot::SnapshotError as RustGitError;
 
 #[pyclass(unsendable)]
