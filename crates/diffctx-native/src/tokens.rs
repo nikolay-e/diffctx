@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::decide::Group;
 use crate::facts::{FactsCache, expired};
+use crate::resolve::family::Group;
 use crate::snapshot::{AnalysisContext, Listing, Oid, RepoPath, Result, RunBudget, SnapshotReader};
 pub mod occurrence;
 

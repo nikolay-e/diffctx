@@ -1,8 +1,8 @@
 //! What the outcome of an occurrence reads per language: rows of data, never code.
 
-use crate::decide::Family;
 use crate::facts::LocalKind;
 use crate::resolve::CandidateReason;
+use crate::resolve::family::Family;
 
 /// The locals whose site is only the declaration of the name: no pattern shares it with a
 /// field read that has no binding of its own (`let Retry { attempt } = r;` is why Rust's

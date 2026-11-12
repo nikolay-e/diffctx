@@ -3,16 +3,16 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 144675
+product_lines = 144691
 allow_count = 138
 root_modules = 63
 # Module-graph caps (crates/diffctx-native/tests/module_graph.rs): the biggest knot of modules that reach each
 # other, and the edges pointing up its layers.
-largest_scc = 34
-against_order_edges = 9
+largest_scc = 12
+against_order_edges = 8
 
 [big_files]
-"crates/diffctx-native/src/decide.rs" = 4027
+"crates/diffctx-native/src/decide.rs" = 3594
 "crates/diffctx-native/src/facts/lang/c.rs" = 2011
 "crates/diffctx-native/src/facts/lang/php.rs" = 1930
 "crates/diffctx-native/src/facts/lang/python.rs" = 2680
