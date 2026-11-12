@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use super::rows::{BARE_HEADS, CLASS_CANDIDATES, DECLARING_LOCALS, MODULE_PATHS};
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
+use crate::decide::Standing;
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
 };
@@ -99,8 +100,8 @@ pub struct View<'a> {
     files: &'a [FileFacts],
     bindings: &'a [Binding],
     family_unproven: bool,
-    /// Where the base resolved a use to a removed definition.
-    stale: HashSet<Place>,
+    /// Where the base resolved a use to a removed definition, and how sure it was.
+    stale: HashMap<Place, Standing>,
 }
 
 /// Where a use is written, free of byte offsets: a changed file's differ by side.
@@ -129,7 +130,7 @@ impl<'a> View<'a> {
             files,
             bindings,
             family_unproven: false,
-            stale: HashSet::new(),
+            stale: HashMap::new(),
         }
     }
 
@@ -169,17 +170,40 @@ impl<'a> View<'a> {
     /// A removed member's family is what the base side bound at the places it resolved
     /// a use to it (no `@Override` needed); with no base read, a call resolved to a
     /// same-named member is a candidate.
-    pub fn removed_sites(mut self, base: Option<&[Binding]>, removed: &[DefKey]) -> Self {
+    pub fn removed_sites(
+        mut self,
+        base: Option<&[Binding]>,
+        removed: &[DefKey],
+        standing: impl Fn(&Binding) -> Standing,
+    ) -> Self {
         match base {
             Some(bindings) => {
                 let named = |binding: &&Binding| {
                     (binding.targets().into_iter()).any(|target| removed.contains(target))
                 };
-                self.stale = bindings.iter().filter(named).map(place).collect();
+                for binding in bindings.iter().filter(named) {
+                    let standing = standing(binding);
+                    (self.stale.entry(place(binding)))
+                        .and_modify(|known| {
+                            if standing == Standing::Resolved {
+                                *known = standing;
+                            }
+                        })
+                        .or_insert(standing);
+                }
             }
             None => self.family_unproven = true,
         }
         self
+    }
+
+    /// The head's bindings at the places the base resolved a use to a removed
+    /// definition, with how sure the base was: whatever the head lands them on, they
+    /// are the uses it had.
+    pub fn stranded(&self) -> impl Iterator<Item = (&'a Binding, Standing)> + '_ {
+        let files: HashSet<&RepoPath> = self.stale.keys().map(|(file, ..)| file).collect();
+        (files.into_iter().flat_map(|file| self.in_file(file)))
+            .filter_map(|binding| Some((binding, *self.stale.get(&place(binding))?)))
     }
 
     /// What `key` overrides or is overridden by, transitively; not `key`.
@@ -477,7 +501,7 @@ impl<'a> Reading<'a> {
         if *target == self.subject.key {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
         } else if binding.relation != Relation::Overrides
-            && (self.family.contains(target) || self.view.stale.contains(&place(binding)))
+            && (self.family.contains(target) || self.view.stale.contains_key(&place(binding)))
         {
             Claim::candidate(relation, Reason::Dispatch)
         } else if self.view.family_unproven

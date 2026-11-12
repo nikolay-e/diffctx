@@ -46,7 +46,7 @@ use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
     EvidenceKind, GoResolver, JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation,
     Resolution, RustResolver, ShellResolver, SqlResolver, SwiftResolver, TerraformResolver,
-    TypeScriptResolver,
+    TypeScriptResolver, UnresolvedReason,
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
@@ -73,6 +73,10 @@ const LABEL_SELECTOR: &str = "label_selector";
 const NO_RELEASE: &str = "no_release";
 const CASE_FOLD: &str = "case_fold";
 const SEARCH_PATH: &str = "search_path";
+const REBOUND: &str = "rebound";
+
+/// The most lines a removed name is listed at where nothing says they were its uses.
+const MAX_UNPLACED_LISTED: usize = 500;
 
 /// The languages one resolver reads: a cell answers for one family.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -700,8 +704,8 @@ fn stopped_by(losses: &[Loss]) -> Vec<LimitReason> {
 /// What a set of losses does, by where it lands.
 #[derive(Default)]
 struct Losses {
-    files: HashMap<String, Reason>,
-    subtrees: Vec<(String, Reason)>,
+    files: HashMap<String, (Reason, Loss)>,
+    subtrees: Vec<(String, Reason, Loss)>,
 }
 
 impl Losses {
@@ -711,28 +715,29 @@ impl Losses {
             match effect_of(loss) {
                 Effect::File(reason) => {
                     if let Some(path) = loss.path() {
-                        out.files.entry(path.as_str().to_string()).or_insert(reason);
+                        (out.files.entry(path.as_str().to_string()))
+                            .or_insert((reason, loss.clone()));
                     }
                 }
-                Effect::Subtree(reason, dir) => out.subtrees.push((dir, reason)),
+                Effect::Subtree(reason, dir) => out.subtrees.push((dir, reason, loss.clone())),
                 Effect::Run(_) => {}
             }
         }
         out
     }
 
-    /// Why a loss about `file` leaves it unaccounted: the first one's reason.
-    fn about(&self, file: &str) -> Option<Reason> {
-        self.files.get(file).copied().or_else(|| {
+    /// Why a loss about `file` leaves it unaccounted, and the loss: the first one.
+    fn about(&self, file: &str) -> Option<(Reason, &Loss)> {
+        (self.files.get(file).map(|(reason, loss)| (*reason, loss))).or_else(|| {
             self.subtrees
                 .iter()
-                .find(|(dir, _)| {
+                .find(|(dir, ..)| {
                     dir.is_empty()
                         || file
                             .strip_prefix(dir.as_str())
                             .is_some_and(|rest| rest.starts_with('/'))
                 })
-                .map(|(_, reason)| *reason)
+                .map(|(_, reason, loss)| (*reason, loss))
         })
     }
 }
@@ -2684,7 +2689,11 @@ impl Cell {
         let Some(fixed) = self.fixed_losses() else {
             return Some(Reason::NotRead);
         };
-        fixed.about(rel).or_else(|| self.moving_losses().about(rel))
+        let reason = |(reason, _): (Reason, &Loss)| reason;
+        fixed
+            .about(rel)
+            .map(reason)
+            .or_else(|| self.moving_losses().about(rel).map(reason))
     }
 
     /// What the run lost that stays what it is while the cell answers.
@@ -2846,6 +2855,10 @@ impl Cell {
             .then_some(Gap::Unpaired)
             .into_iter()
             .collect();
+        let overridden = self.overridden_via(changed);
+        let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
+        let (by_relation, found) = self.coverage(changed, lead, tail);
+        uses.extend(found.callers.iter().cloned());
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
                 b.file.as_str(),
@@ -2861,9 +2874,6 @@ impl Cell {
                 u.folded = fold::rule(basis, u.relation, candidate, runtime);
             }
         }
-        let overridden = self.overridden_via(changed);
-        let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
-        let (by_relation, found) = self.coverage(changed, lead, tail);
         Verdict {
             uses,
             by_relation,
@@ -2949,7 +2959,12 @@ impl Cell {
             }
         };
         if !changed.stale.is_empty() {
-            view = view.removed_sites(base.map(Resolver::bindings), &changed.stale);
+            view = view.removed_sites(base.map(Resolver::bindings), &changed.stale, |b| {
+                match (self.family, standing_of(&b.resolution)) {
+                    (Family::Python, _) | (_, None) => Standing::Resolved,
+                    (_, Some(standing)) => standing,
+                }
+            });
         }
         let names = self.reference_names(changed);
         let reach = |file: &str| {
@@ -2969,12 +2984,27 @@ impl Cell {
                 let verdict = self.verdict(inner);
                 verdict.complete() && verdict.unused()
             });
+        let (fixed, moving) = (self.fixed_losses(), self.moving_losses());
+        // A file the run lost is unread by the account, whatever its facts say.
+        let lost = |file: &RepoPath| {
+            let Some(fixed) = fixed else {
+                return Some(Loss::ReadFailed {
+                    path: file.clone(),
+                    side: SideTag::Head,
+                });
+            };
+            let found = fixed
+                .about(file.as_str())
+                .or_else(|| moving.about(file.as_str()));
+            found.map(|(_, loss)| loss.clone())
+        };
         let shadow = Shadow {
             ctx: &self.ctx,
             cache: &self.cache,
             family: self.family,
             view: &view,
             files,
+            lost: &lost,
             tokens: &self.tokens,
             embedded: OnceCell::new(),
             reach: &reach,
@@ -2998,6 +3028,7 @@ impl Cell {
             hedges: Vec::new(),
             unused: true,
             whole: true,
+            callers: self.stranded_uses(&view, changed),
         };
         for (definition, side) in heads.chain(removed) {
             let known = Known {
@@ -3011,6 +3042,98 @@ impl Cell {
             all.whole &= done.whole;
         }
         all
+    }
+
+    /// Where a removed definition's callers stand now. A head line at a place the base
+    /// resolved a use to it is a caller whatever the head lands it on: nothing (a
+    /// name that finds nothing) or another definition (a re-export, an inherited or
+    /// shadowing name, a candidate, unless the range's own new lines spell the name:
+    /// they moved the use themselves). An import is named only when no use is.
+    fn stranded_uses(&self, view: &View, changed: &Changed) -> Vec<Use> {
+        if changed.stale.is_empty() {
+            return Vec::new();
+        }
+        let ours: Vec<&DefKey> = changed.subjects.iter().map(|s| &s.key).collect();
+        let moved = |b: &Binding| {
+            self.added.get(b.file.as_str()).is_some_and(|lines| {
+                (lines.iter()).any(|(_, text)| {
+                    (text.split(|c: char| !(c.is_alphanumeric() || c == '_')))
+                        .any(|word| word == b.name.as_str())
+                })
+            })
+        };
+        let mut found: Vec<(&Binding, Standing)> = view
+            .stranded()
+            .filter(|(b, _)| {
+                strands(self.family, b.relation)
+                    && !b.entry_guard
+                    && within_scope(&self.scope, b.file.as_str())
+                    && !b.targets().iter().any(|target| ours.contains(target))
+            })
+            .filter_map(|(b, standing)| match b.resolution {
+                Resolution::Unresolved { .. } => Some((b, standing)),
+                _ if standing == Standing::Resolved && !moved(b) => {
+                    Some((b, Standing::Candidate(REBOUND)))
+                }
+                _ => None,
+            })
+            .collect();
+        // The base never placed these: lines that still spell the name where nothing
+        // lands it, in files that may reach it, may each be a use that broke. An
+        // untyped read of a top-level TypeScript name is none: only a member is read so.
+        let top_level = self.family == Family::TypeScript
+            && changed
+                .key()
+                .is_some_and(|key| key.local.container.is_empty());
+        let placed: HashSet<(&str, u32)> = (found.iter())
+            .map(|(b, _)| (b.file.as_str(), b.site.lines.0))
+            .collect();
+        let unplaced: Vec<&Binding> = (self.head.bindings().iter())
+            .filter(|b| {
+                let Resolution::Unresolved { reason } = b.resolution else {
+                    return false;
+                };
+                let read = reason == UnresolvedReason::UntypedRead
+                    || (self.family == Family::TypeScript
+                        && matches!(
+                            reason,
+                            UnresolvedReason::NoCandidates | UnresolvedReason::TooManyCandidates
+                        ));
+                !changed.unpaired
+                    && b.name.as_str() == changed.name
+                    && b.relation.uses()
+                    && reason.is_unknown()
+                    && !(top_level && read)
+                    && within_scope(&self.scope, b.file.as_str())
+                    && self
+                        .ctx
+                        .workspace
+                        .may_reference(b.file.as_str(), &changed.file)
+                    && !placed.contains(&(b.file.as_str(), b.site.lines.0))
+            })
+            .collect();
+        if unplaced.len() <= MAX_UNPLACED_LISTED {
+            let standing = Standing::Candidate(UNTYPED_RECEIVER);
+            found.extend(unplaced.into_iter().map(|b| (b, standing)));
+        }
+        let used: HashSet<(&RepoPath, &Name)> = (found.iter())
+            .filter(|(b, _)| b.relation != Relation::Imports)
+            .map(|(b, _)| (&b.file, &b.name))
+            .collect();
+        found
+            .into_iter()
+            .filter(|(b, _)| b.relation != Relation::Imports || !used.contains(&(&b.file, &b.name)))
+            .map(|(b, standing)| Use {
+                also_changed: false,
+                file: b.file.as_str().to_string(),
+                line: b.site.lines.0,
+                relation: b.relation,
+                standing,
+                scope: b.from.clone(),
+                folded: None,
+                sharing: 0,
+            })
+            .collect()
     }
 
     /// What kept the base side of the range from saying all of it: it was not
@@ -3761,6 +3884,22 @@ impl Cells {
     pub fn lost(&self, rel: &str) -> bool {
         self.lost.iter().any(|family| family.has_path(rel))
     }
+}
+
+/// Whether a line that names a definition the range removed is stranded by it: a
+/// use that now finds nothing, or an export that still offers the missing name. In
+/// the code families a name written where a type is expected, and an import of it,
+/// are the only uses a removed interface, class or alias may have: a file that still
+/// imports a removed type and annotates with it is broken, and without them the
+/// search of a removed type finds nothing and the answer says nothing references it.
+fn strands(family: Family, relation: Relation) -> bool {
+    relation.uses()
+        || relation == Relation::Reexports
+        || (matches!(relation, Relation::TypeUses | Relation::Imports)
+            && !matches!(
+                family,
+                Family::Config | Family::Terraform | Family::Dockerfile | Family::Shell
+            ))
 }
 
 /// Reports one definition once, with the subjects of every reason it is
