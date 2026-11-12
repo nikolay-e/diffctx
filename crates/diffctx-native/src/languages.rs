@@ -216,6 +216,12 @@ pub(crate) static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static st
         map
     });
 
+pub(crate) fn file_ext(path: &Path) -> String {
+    path.extension()
+        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+        .unwrap_or_default()
+}
+
 pub(crate) fn get_language_for_file(path: &str) -> Option<&'static str> {
     let p = Path::new(path);
 

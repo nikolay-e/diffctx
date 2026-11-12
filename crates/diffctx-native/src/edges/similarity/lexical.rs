@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::limits::LEXICAL;
 use crate::config::tokenization::TOKENIZATION;
 use crate::config::weights::{DEFAULT_LANG_WEIGHTS, LANG_WEIGHTS, LangWeights};
-use crate::languages::EXTENSION_TO_LANGUAGE;
+use crate::languages::{EXTENSION_TO_LANGUAGE, file_ext};
 use crate::stopwords::{filter_idents, profile_from_path};
 use crate::types::{Fragment, FragmentId, extract_identifier_list};
 
@@ -21,10 +21,7 @@ static LANG_ALIAS: &[(&str, &str)] = &[
 ];
 
 fn get_lang_weights(path: &Path) -> &LangWeights {
-    let ext = path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let ext = file_ext(path);
     let lang = EXTENSION_TO_LANGUAGE.get(ext.as_str()).copied();
     if let Some(lang) = lang {
         let aliased = LANG_ALIAS

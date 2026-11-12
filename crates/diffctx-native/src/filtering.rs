@@ -7,6 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::extensions::CODE_EXTENSIONS;
 use crate::config::filtering::FILTERING;
 use crate::graph::Graph;
+use crate::languages::file_ext;
 use crate::types::{DiffHunk, EdgeCategory, Fragment, FragmentId, FragmentKind};
 
 fn fragment_hunk_gap(frag_start: u32, frag_end: u32, hunk_start: u32, hunk_end: u32) -> u32 {
@@ -198,10 +199,7 @@ fn find_config_generic_code_files(
         .into_iter()
         .filter(|p| {
             let path = Path::new(p.as_ref());
-            let ext = path
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-                .unwrap_or_default();
+            let ext = file_ext(path);
             let stem = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_lowercase())
