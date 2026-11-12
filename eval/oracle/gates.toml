@@ -18,13 +18,20 @@ interval_width_max = 0.20
 lower_bound_min = -0.05
 
 [precise]
-# A cell is precise only with all four: its head numbers meet the floors on a fresh seed, it is measured, and the
-# path it replaced is deleted.
+# A cell declared precise holds all of these, or its declaration is untrue: its head numbers meet the floors on a fresh
+# seed, it is measured, the path it replaced is deleted, and the evidence is not thin (W7-D, Revision 14.5: at least 30
+# true relations in every measured row of the cell and 10 decoys, at T13's thresholds, every error read).
 precision_min = 0.95
 recall_min = 0.90
+true_relations_min = 30
+decoys_min = 10
 fresh_seed = true
 measured_cell = true
 old_path_deleted = true
+
+[declared]
+# T16: every cell is `precise`, `heuristic` or `none`, and each declared state is true (`cellstate.py`).
+every_state_true = true
 
 [ac5]
 head_not_below_recomputed_base = true

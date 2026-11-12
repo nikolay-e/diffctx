@@ -16,9 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import operator
 import re
-import tomllib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +24,9 @@ from pathlib import Path
 import adjudication
 import paired
 from corpus import ROOT
+from gates import Threshold, holds, limit_text, load_gates
 from model import UNCAPPED_BUDGET
+from tables import budget_label, table
 
 TIERS = {
     "python": 1,
@@ -42,37 +42,6 @@ TIERS = {
     "web": 2,
     "other": 3,
 }
-
-
-GATES_FILE = Path(__file__).with_name("gates.toml")
-SUFFIX_OPERATORS = {"_max": "max", "_min": "min", "_below": "below"}
-COMPARE = {"max": operator.le, "min": operator.ge, "below": operator.lt}
-OPERATOR_TEXT = {"max": "<=", "min": ">=", "below": "<"}
-
-
-@dataclass(frozen=True)
-class Threshold:
-    gate: str  # `section.name`: the key without its operator suffix
-    op: str  # max, min, below, require or read
-    limit: float | None
-
-
-def load_gates(path: Path = GATES_FILE) -> dict[str, Threshold]:
-    """Every threshold of the verdict by gate name: the file's `<name>_max|_min|_below` keys, `true` and "read"."""
-    found: dict[str, Threshold] = {}
-    for section, entries in tomllib.loads(path.read_text(encoding="utf-8")).items():
-        for key, limit in entries.items():
-            suffix = next((s for s in SUFFIX_OPERATORS if key.endswith(s)), None)
-            if limit == "read":
-                threshold = Threshold(f"{section}.{key}", "read", None)
-            elif limit is True:
-                threshold = Threshold(f"{section}.{key}", "require", None)
-            elif suffix and isinstance(limit, int | float) and not isinstance(limit, bool):
-                threshold = Threshold(f"{section}.{key.removesuffix(suffix)}", SUFFIX_OPERATORS[suffix], limit)
-            else:
-                raise ValueError(f"{path}: [{section}] {key} = {limit!r} is no threshold (_max, _min, _below, true or 'read')")
-            found[threshold.gate] = threshold
-    return found
 
 
 LIBTEST_LINE = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|ignored)")
@@ -171,10 +140,6 @@ def load_run(spec: str) -> LoadedRun:
     meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else {}
     budget = (UNCAPPED_BUDGET if given == "uncapped" else int(given)) if given else meta.get("budget")
     return LoadedRun(path, meta.get("engine"), budget)
-
-
-def budget_label(budget: int | None) -> str:
-    return "default" if budget is None else "uncapped" if budget >= UNCAPPED_BUDGET else str(budget)
 
 
 def curve_rows(runs: list[LoadedRun]) -> list[dict]:
@@ -350,15 +315,7 @@ def _status(gate: Threshold, value: object) -> str:
         return "info"
     if gate.op == "read":
         return "read"
-    if gate.op == "require":
-        return "pass" if value else "fail"
-    return "pass" if COMPARE[gate.op](value, gate.limit) else "fail"
-
-
-def _limit_text(gate: Threshold) -> str:
-    if gate.op in ("read", "require"):
-        return "every row read" if gate.op == "read" else "required"
-    return f"{OPERATOR_TEXT[gate.op]} {gate.limit}"
+    return "pass" if holds(gate, value) else "fail"
 
 
 def verdict_lines(report: dict, gates: dict[str, Threshold]) -> list[dict]:
@@ -370,21 +327,12 @@ def verdict_lines(report: dict, gates: dict[str, Threshold]) -> list[dict]:
             "source": source,
             "status": _status(gate, value),
             "value": value,
-            "limit": _limit_text(gate),
+            "limit": limit_text(gate),
             "detail": detail,
         }
         for gate in gates.values()
         for source, value, detail in seen.get(gate.gate) or [("", None, "")]
     ]
-
-
-def table(headers: list[str], rows: list[list]) -> str:
-    def cell(value: object) -> str:
-        return "n/a" if value is None else str(value)
-
-    lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
-    lines += ["| " + " | ".join(cell(v) for v in row) + " |" for row in rows]
-    return "\n".join(lines)
 
 
 SCIP_COLUMNS = [
