@@ -104,7 +104,7 @@ struct Reader<'a> {
     stages: Vec<Stage>,
     twins: HashMap<LocalKey, u16>,
     finished: Vec<Fact>,
-    /// Comment lines and the quoted values of `LABEL`: text, never code.
+    /// Comment lines and the quoted values of `LABEL` and `ENV`: text, never code.
     text: Vec<(Range<u32>, Lexical)>,
 }
 
@@ -211,8 +211,9 @@ impl<'a> Reader<'a> {
             }
             offset += line.len();
         }
-        let labels = parsed.instructions.iter().filter(|i| i.keyword == "LABEL");
-        for word in labels.flat_map(|i| &i.words) {
+        let valued =
+            (parsed.instructions.iter()).filter(|i| ["LABEL", "ENV"].contains(&&*i.keyword));
+        for word in valued.flat_map(|i| &i.words) {
             if let Some((key, value)) = word.text.split_once('=') {
                 if value.starts_with(['"', '\'']) && !value.contains('$') {
                     let start = word.span.bytes.start + key.len() as u32 + 1;

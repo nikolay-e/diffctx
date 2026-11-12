@@ -188,8 +188,8 @@ fn shell_keeps_only_its_comments_out_of_code() {
 }
 
 #[test]
-fn dockerfile_comment_lines_and_quoted_label_values_are_not_code() {
-    let source = "# df_note\nFROM alpine AS runtime\n# between_note\nRUN make \\\n  # inside_note\n  && make install\nRUN <<EOF\n# heredoc_line\nbuild\nEOF\nLABEL a.b=\"label_text here\"\nLABEL c.d=\"$kept_var\"\n";
+fn dockerfile_comment_lines_and_quoted_label_and_env_values_are_not_code() {
+    let source = "# df_note\nFROM alpine AS runtime\n# between_note\nRUN make \\\n  # inside_note\n  && make install\nRUN <<EOF\n# heredoc_line\nbuild\nEOF\nLABEL a.b=\"label_text here\"\nLABEL c.d=\"$kept_var\"\nENV e_a=\"env_text here\" e_b=plain_value e_c=\"$env_var\"\n";
     read(
         &DockerfileExtractor,
         source,
@@ -204,6 +204,10 @@ fn dockerfile_comment_lines_and_quoted_label_values_are_not_code() {
             ("a.b", CODE),
             ("label_text", STRING),
             ("kept_var", CODE),
+            ("e_a", CODE),
+            ("env_text", STRING),
+            ("plain_value", CODE),
+            ("env_var", CODE),
         ],
     );
 }
