@@ -1134,6 +1134,25 @@ fn a_shell_read_of_the_scripts_variable_is_ours_and_another_scripts_read_is_not(
     );
 }
 
+#[test]
+fn a_shell_array_read_through_its_subscript_is_a_read_of_the_array() {
+    let world = snapshot_in(
+        Lang::Shell,
+        &[(
+            "run.sh",
+            "#!/bin/bash\ngate=()\ngate=(--gate)\nrun \"${gate[@]}\"\nrun \"${#gate[@]}\"\n",
+        )],
+    );
+    let found = world.outcomes(world.def("run.sh", "gate"), "run.sh", &["gate"]);
+    for line in [4, 5] {
+        assert_eq!(
+            shape(on(&found, line)),
+            ("ours", "resolved", Some(Relation::Reads)),
+            "line {line}: {found:#?}"
+        );
+    }
+}
+
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]

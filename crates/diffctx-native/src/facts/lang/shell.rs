@@ -577,7 +577,11 @@ impl<'a> Walker<'a> {
     fn read(&mut self, node: TsNode<'a>, scope: &Scope, function: Option<&str>) {
         let Some(name_node) = syntax::children(node)
             .into_iter()
-            .find(|c| c.kind() == "variable_name")
+            .find_map(|c| match c.kind() {
+                "variable_name" => Some(c),
+                "subscript" => c.child_by_field_name("name"),
+                _ => None,
+            })
         else {
             return;
         };
