@@ -19,10 +19,16 @@ def eligible(commits: list[tuple[str, list[str]]], language: str, max_code_files
 
 
 def sample_commits(corpus: Corpus, repo: Repo, git_dir: Path, count: int) -> list[str]:
-    """The first `count` of one seeded draw of the full sample, so the fast subset is part of the full corpus."""
+    """The first `count` of one seeded draw of the repository's quota, so the fast subset is part of the full corpus.
+
+    A commit an earlier run sampled is not in the pool: its row was read, and a set whose rows were read is a tuning set.
+    The draw's size is fixed (the quota), never `count`: `random.sample` picks its algorithm by size, so a draw of another
+    size is not a prefix of this one.
+    """
     history = gitrepo.commits_with_paths(git_dir, repo.sha, corpus.sampling.history)
-    pool = eligible(history, repo.language, corpus.sampling.max_code_files)
+    spent = corpus.spent.get(repo.name, frozenset())
+    pool = [sha for sha in eligible(history, repo.language, corpus.sampling.max_code_files) if sha not in spent]
     order = {sha: position for position, (sha, _) in enumerate(history)}
     rng = random.Random(f"{corpus.sampling.seed}:{repo.name}")
-    drawn = rng.sample(pool, min(corpus.sampling.commits, len(pool)))[:count]
+    drawn = rng.sample(pool, min(corpus.quota(repo), len(pool)))[:count]
     return sorted(drawn, key=order.__getitem__)
