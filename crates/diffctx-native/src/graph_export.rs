@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn export_stays_cap_consistent_when_edge_cap_fires() {
-        use crate::graph::DEFAULT_MAX_OUT_EDGES_PER_NODE;
+        use crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE;
 
         let hub = make_fragment("hub.rs", 1, 10, Some("hub"));
         let mut frags = vec![hub.clone()];
