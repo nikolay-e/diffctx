@@ -1105,6 +1105,35 @@ fn a_scripts_name_after_a_command_the_table_does_not_list_stays_a_candidate() {
     }
 }
 
+#[test]
+fn a_shell_read_of_the_scripts_variable_is_ours_and_another_scripts_read_is_not() {
+    let world = snapshot_in(
+        Lang::Shell,
+        &[
+            (
+                "run.sh",
+                "#!/bin/bash\nbin=\"${HOOK_BIN:-}\"\nif [[ -z \"$bin\" ]]; then\n  bin=x\nfi\n\"$bin\" run\n",
+            ),
+            ("other.sh", "#!/bin/bash\nbin=y\necho \"$bin\"\n"),
+        ],
+    );
+    let subject = world.def("run.sh", "bin");
+    let found = world.outcomes(subject, "run.sh", &["bin"]);
+    for line in [3, 6] {
+        assert_eq!(
+            shape(on(&found, line)),
+            ("ours", "resolved", Some(Relation::Reads)),
+            "line {line}: {found:#?}"
+        );
+    }
+    let found = world.outcomes(subject, "other.sh", &["bin"]);
+    assert_eq!(
+        shape(on(&found, 3)),
+        ("not_ours", "other_definition", Some(Relation::Reads)),
+        "{found:#?}"
+    );
+}
+
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]
