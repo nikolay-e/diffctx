@@ -1329,6 +1329,20 @@ fn a_call_bound_to_a_definition_and_its_prototype_is_ours() {
 }
 
 #[test]
+fn a_segment_before_a_rust_path_separator_is_no_use_of_a_function_but_names_a_type() {
+    let source = "pub fn config() -> i64 {\n    1\n}\n\npub struct Reply;\n\nimpl Reply {\n    pub fn new() -> Reply {\n        Reply\n    }\n}\n\npub fn run() -> i64 {\n    let _ = Reply::new();\n    config::load()\n}\n";
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", source)]);
+    let found = world.outcomes(world.def("src/lib.rs", "config"), "src/lib.rs", &["config"]);
+    assert_eq!(
+        shape(on(&found, 15)),
+        ("not_ours", "other_module", None),
+        "{found:#?}"
+    );
+    let found = world.outcomes(world.def("src/lib.rs", "Reply"), "src/lib.rs", &["Reply"]);
+    assert_ne!(on(&found, 14).outcome, Outcome::NotOurs, "{found:#?}");
+}
+
+#[test]
 fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
     let source = "package shop\n\nfunc Total() int {\n\treturn 1\n}\n\nfunc Run(x any) int {\n\tTotal := 0\n\t_ = x.Total\n\treturn Total\n}\n";
     let world = snapshot_in(Lang::Go, &[("shop/total.go", source)]);
