@@ -8,20 +8,20 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-pub type Files = BTreeMap<String, String>;
+pub(crate) type Files = BTreeMap<String, String>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lang {
+pub(crate) enum Lang {
     Python,
     TypeScript,
     Rust,
     Kotlin,
 }
 
-pub const TIER1: [Lang; 4] = [Lang::Python, Lang::TypeScript, Lang::Rust, Lang::Kotlin];
+pub(crate) const TIER1: [Lang; 4] = [Lang::Python, Lang::TypeScript, Lang::Rust, Lang::Kotlin];
 
 impl Lang {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Python => "python",
             Self::TypeScript => "typescript",
@@ -34,14 +34,14 @@ impl Lang {
 // What the range's commit does to `total`: a new parameter, or a new body
 // behind the same signature.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Edit {
+pub(crate) enum Edit {
     Signature,
     Body,
 }
 
 // Everything a transformation may vary. The default is the plain seed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Knobs {
+pub(crate) struct Knobs {
     pub indent: usize,
     pub blank_lines: usize,
     pub trailing_comment: bool,
@@ -90,14 +90,14 @@ impl Default for Knobs {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Step {
+pub(crate) struct Step {
     pub renames: Vec<(String, String)>,
     pub removes: Vec<String>,
     pub writes: Files,
 }
 
 #[derive(Clone, Debug)]
-pub struct Seed {
+pub(crate) struct Seed {
     pub lang: Lang,
     pub steps: Vec<Step>,
     pub reverse_write_order: bool,
@@ -117,11 +117,11 @@ pub struct Seed {
     pub stale: Option<String>,
 }
 
-pub const RANGE: &str = "HEAD~1..HEAD";
+pub(crate) const RANGE: &str = "HEAD~1..HEAD";
 
 impl Seed {
     // The seed as a repository under `dir`, one commit per step.
-    pub fn commit_into(&self, dir: &Path) {
+    pub(crate) fn commit_into(&self, dir: &Path) {
         run_git(dir, &["init", "-q", "-b", "main", "."]);
         run_git(dir, &["config", "user.email", "test@example.com"]);
         run_git(dir, &["config", "user.name", "diffctx tests"]);
@@ -153,7 +153,7 @@ impl Seed {
     }
 
     // The path a name has at the head after the renames before the range.
-    pub fn renamed(&self, path: &str) -> String {
+    pub(crate) fn renamed(&self, path: &str) -> String {
         self.renames
             .iter()
             .find(|(old, _)| old == path)
@@ -162,7 +162,7 @@ impl Seed {
 }
 
 // A scratch repository must not depend on the machine's git configuration.
-pub fn run_git(dir: &Path, args: &[&str]) {
+pub(crate) fn run_git(dir: &Path, args: &[&str]) {
     let out = git_command(dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -176,7 +176,7 @@ pub fn run_git(dir: &Path, args: &[&str]) {
     );
 }
 
-pub fn seed(lang: Lang, edit: Edit, knobs: &Knobs) -> Seed {
+pub(crate) fn seed(lang: Lang, edit: Edit, knobs: &Knobs) -> Seed {
     Build {
         lang,
         edit,
@@ -926,7 +926,7 @@ fn pascal(stem: &str) -> String {
 // A definition the range removes while a file of the repository still spells
 // its name: the file the answer has to name, or else name a gap.
 #[derive(Clone, Debug)]
-pub struct Removal {
+pub(crate) struct Removal {
     pub label: &'static str,
     pub base: Files,
     pub head: Files,
@@ -935,7 +935,7 @@ pub struct Removal {
 }
 
 impl Removal {
-    pub fn commit_into(&self, dir: &Path) {
+    pub(crate) fn commit_into(&self, dir: &Path) {
         run_git(dir, &["init", "-q", "-b", "main", "."]);
         run_git(dir, &["config", "user.email", "test@example.com"]);
         run_git(dir, &["config", "user.name", "diffctx tests"]);
@@ -962,7 +962,7 @@ fn files(items: &[(&str, &str)]) -> Files {
 // One removal per family where the shape is expressible, and the one that
 // names a definition by a different one afterwards (a glob re-export), which
 // strands no reference and so reads as an absence.
-pub fn removals() -> Vec<Removal> {
+pub(crate) fn removals() -> Vec<Removal> {
     let plain = |label, removed, reader, stays: &[(&str, &str)], pricing: &str, head: &str| {
         let pricing_path = stays[0].0;
         let mut base = files(stays);

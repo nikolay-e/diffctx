@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Kind {
+pub(crate) enum Kind {
     Calls,
     Reads,
     Writes,
@@ -28,13 +28,13 @@ pub enum Kind {
 /// judged per family because today's engine does not say which kind it found
 /// (its `named_by` rows are always path references).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Class {
+pub(crate) enum Class {
     Code,
     Tests,
 }
 
 impl Kind {
-    pub const ALL: [Self; 13] = [
+    pub(crate) const ALL: [Self; 13] = [
         Self::Calls,
         Self::Reads,
         Self::Writes,
@@ -50,7 +50,7 @@ impl Kind {
         Self::TestsReach,
     ];
 
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Calls => "calls",
             Self::Reads => "reads",
@@ -68,11 +68,11 @@ impl Kind {
         }
     }
 
-    pub fn parse(name: &str) -> Option<Self> {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == name)
     }
 
-    pub const fn class(self) -> Class {
+    pub(crate) const fn class(self) -> Class {
         match self {
             Self::TestsReach => Class::Tests,
             _ => Class::Code,
@@ -82,14 +82,14 @@ impl Kind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Resolution {
+pub(crate) enum Resolution {
     Resolved,
     Candidate,
     Unresolved,
 }
 
 impl Resolution {
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Resolved => "resolved",
             Self::Candidate => "candidate",
@@ -101,7 +101,7 @@ impl Resolution {
 /// Why the analysis could not say who reaches a definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum UnknownClass {
+pub(crate) enum UnknownClass {
     NotModelled,
     Dispatched,
     Ambiguous,
@@ -111,7 +111,7 @@ pub enum UnknownClass {
 }
 
 impl UnknownClass {
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::NotModelled => "not_modelled",
             Self::Dispatched => "dispatched",
@@ -126,13 +126,13 @@ impl UnknownClass {
 /// A definition (`path::symbol`) or a file (`path`). A node with an empty
 /// path names a symbol wherever it is defined.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Node {
+pub(crate) struct Node {
     pub path: String,
     pub symbol: Option<String>,
 }
 
 impl Node {
-    pub fn new(path: &str, symbol: Option<&str>) -> Self {
+    pub(crate) fn new(path: &str, symbol: Option<&str>) -> Self {
         Self {
             path: path.to_string(),
             symbol: symbol.map(str::to_string),
@@ -140,7 +140,7 @@ impl Node {
     }
 
     /// `path::symbol`, or a bare `path`.
-    pub fn parse(text: &str) -> Self {
+    pub(crate) fn parse(text: &str) -> Self {
         match text.split_once("::") {
             Some((path, symbol)) => Self::new(path, Some(symbol)),
             None => Self::new(text, None),
@@ -149,7 +149,7 @@ impl Node {
 
     /// Where a target is named: a bare identifier is a symbol anywhere, the
     /// rest reads as `parse`.
-    pub fn target(text: &str) -> Self {
+    pub(crate) fn target(text: &str) -> Self {
         if !text.contains("::") && is_identifier(text) {
             Self::new("", Some(text))
         } else {
@@ -161,7 +161,7 @@ impl Node {
     /// or a missing symbol stands for any, but a symbol the expectation names
     /// is never satisfied by a node without one (an import line is not the
     /// function below it).
-    pub fn covers(&self, found: &Self) -> bool {
+    pub(crate) fn covers(&self, found: &Self) -> bool {
         (self.path.is_empty() || self.path == found.path)
             && self.symbol.as_ref().is_none_or(|wanted| {
                 found.symbol.as_ref().is_some_and(|have| {
@@ -200,7 +200,7 @@ fn is_identifier(text: &str) -> bool {
 }
 
 #[derive(Debug, Clone)]
-pub struct Relation {
+pub(crate) struct Relation {
     pub from: Node,
     pub to: Node,
     pub kind: Kind,
@@ -216,7 +216,7 @@ pub struct Relation {
 }
 
 impl Relation {
-    pub fn show(&self) -> String {
+    pub(crate) fn show(&self) -> String {
         let sites = if self.sites.is_empty() {
             String::new()
         } else {

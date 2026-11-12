@@ -14,7 +14,7 @@ use super::model::{Kind, Node, Relation, Resolution, UnknownClass};
 
 /// What the engine said, as relations and lists.
 #[derive(Default)]
-pub struct Answer {
+pub(crate) struct Answer {
     pub relations: Vec<Relation>,
     /// Definitions under `changed[]`: for `--symbol`, the ones it resolved.
     pub definitions: Vec<Node>,
@@ -77,7 +77,7 @@ const NOT_TRACED: &[&str] = &[
     "(partial",
 ];
 
-pub fn absence_claims(markdown: &str) -> Vec<String> {
+pub(crate) fn absence_claims(markdown: &str) -> Vec<String> {
     let mut claims: Vec<String> = ABSENCE_CLAIMS
         .iter()
         .filter(|phrase| markdown.contains(*phrase))
@@ -97,7 +97,7 @@ pub fn absence_claims(markdown: &str) -> Vec<String> {
     claims
 }
 
-pub fn run(case: &Case, name: &str) -> Result<Answer, String> {
+pub(crate) fn run(case: &Case, name: &str) -> Result<Answer, String> {
     let repo = materialise(case.mode, &case.repo)?;
     dump(name, "repo.txt", repo_summary(&repo).as_bytes());
     let json = ask(&repo, case, "json")?;
@@ -443,7 +443,7 @@ fn class_of_gap(gap: &Value) -> Option<UnknownClass> {
     }
 }
 
-pub fn extract(doc: &Value) -> Result<Answer, String> {
+pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
     let mut answer = Answer {
         empty: doc.get("empty").and_then(Value::as_bool).unwrap_or(false),
         truncated: count(&doc["summary"], "shed"),

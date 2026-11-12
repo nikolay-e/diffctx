@@ -14,15 +14,15 @@ use tempfile::TempDir;
 use super::line::Repo;
 
 /// The remote branch a peer pushes to; no line of the grammar pushes it.
-pub const PEER_BRANCH: &str = "refs/heads/peer-branch";
+pub(crate) const PEER_BRANCH: &str = "refs/heads/peer-branch";
 
-pub struct World {
+pub(crate) struct World {
     _tmp: TempDir,
     root: PathBuf,
 }
 
 /// What a repository holds, as git reports it.
-pub struct RepoState {
+pub(crate) struct RepoState {
     /// Every commit reachable from a ref.
     pub all: BTreeSet<String>,
     /// Every commit reachable from a remote-tracking ref.
@@ -33,7 +33,7 @@ pub struct RepoState {
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let tmp = TempDir::new().expect("HARNESS: tempdir");
         let root = std::fs::canonicalize(tmp.path()).expect("HARNESS: canonicalize");
         let world = Self { _tmp: tmp, root };
@@ -46,27 +46,27 @@ impl World {
         world
     }
 
-    pub fn root(&self) -> &Path {
+    pub(crate) fn root(&self) -> &Path {
         &self.root
     }
 
-    pub fn path(&self, repo: Repo) -> PathBuf {
+    pub(crate) fn path(&self, repo: Repo) -> PathBuf {
         self.root.join(repo.name())
     }
 
-    pub fn bare(&self, repo: Repo) -> PathBuf {
+    pub(crate) fn bare(&self, repo: Repo) -> PathBuf {
         self.root.join(format!("{}.git", repo.name()))
     }
 
-    pub fn neutral(&self) -> PathBuf {
+    pub(crate) fn neutral(&self) -> PathBuf {
         self.root.join("neutral")
     }
 
-    pub fn cache(&self) -> PathBuf {
+    pub(crate) fn cache(&self) -> PathBuf {
         self.root.join("cache")
     }
 
-    pub fn script(&self, repo: Repo) -> String {
+    pub(crate) fn script(&self, repo: Repo) -> String {
         self.root
             .join("scripts")
             .join(format!("{}.sh", repo.name()))
@@ -74,14 +74,14 @@ impl World {
             .into_owned()
     }
 
-    pub fn patch(&self, repo: Repo) -> String {
+    pub(crate) fn patch(&self, repo: Repo) -> String {
         self.root
             .join(format!("{}.patch", repo.name()))
             .to_string_lossy()
             .into_owned()
     }
 
-    pub fn command(&self, program: impl AsRef<OsStr>) -> Command {
+    pub(crate) fn command(&self, program: impl AsRef<OsStr>) -> Command {
         let mut command = Command::new(program);
         for (key, _) in std::env::vars_os() {
             let key = key.to_string_lossy().into_owned();
@@ -106,7 +106,7 @@ impl World {
     }
 
     /// git's stdout, trimmed; a failure is the harness's.
-    pub fn git(&self, dir: &Path, args: &[&str]) -> String {
+    pub(crate) fn git(&self, dir: &Path, args: &[&str]) -> String {
         let out = self
             .command("git")
             .current_dir(dir)
@@ -124,7 +124,7 @@ impl World {
     }
 
     /// git's stdout, trimmed, when it succeeded.
-    pub fn try_git(&self, dir: &Path, args: &[&str]) -> Option<String> {
+    pub(crate) fn try_git(&self, dir: &Path, args: &[&str]) -> Option<String> {
         let out = self
             .command("git")
             .current_dir(dir)
@@ -137,7 +137,7 @@ impl World {
             .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
-    pub fn tree_of(&self, repo: Repo, rev: &str) -> Option<String> {
+    pub(crate) fn tree_of(&self, repo: Repo, rev: &str) -> Option<String> {
         self.try_git(
             &self.path(repo),
             &[
@@ -149,7 +149,7 @@ impl World {
         )
     }
 
-    pub fn commit_of(&self, repo: Repo, rev: &str) -> Option<String> {
+    pub(crate) fn commit_of(&self, repo: Repo, rev: &str) -> Option<String> {
         self.try_git(
             &self.path(repo),
             &[
@@ -161,7 +161,7 @@ impl World {
         )
     }
 
-    pub fn state(&self, repo: Repo) -> RepoState {
+    pub(crate) fn state(&self, repo: Repo) -> RepoState {
         let work = self.path(repo);
         let lines = |out: String| -> BTreeSet<String> { out.lines().map(str::to_string).collect() };
         let heads = self.git(
@@ -184,12 +184,12 @@ impl World {
         }
     }
 
-    pub fn states(&self) -> BTreeMap<Repo, RepoState> {
+    pub(crate) fn states(&self) -> BTreeMap<Repo, RepoState> {
         Repo::BOTH.iter().map(|r| (*r, self.state(*r))).collect()
     }
 
     /// A commit another session makes in the same checkout.
-    pub fn peer_commit(&self, repo: Repo) -> String {
+    pub(crate) fn peer_commit(&self, repo: Repo) -> String {
         let work = self.path(repo);
         append(&work.join("peer.py"), "def peer():\n    return 1\n");
         self.git(&work, &["add", "peer.py"]);
@@ -199,7 +199,7 @@ impl World {
 
     /// A push another checkout of the repository makes to the remote's
     /// other branch.
-    pub fn peer_push(&self, repo: Repo) {
+    pub(crate) fn peer_push(&self, repo: Repo) {
         let clone = self.root.join(format!("peer-{}", repo.name()));
         if !clone.exists() {
             self.git(

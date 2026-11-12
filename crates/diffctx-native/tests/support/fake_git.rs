@@ -8,7 +8,7 @@
 //
 // A stalling mode records it in the file FAKE_GIT_STALLED names, when its output
 // stops: the event a run's stall knob (DIFFCTX_TEST_GIT_STALL_FILE) waits for.
-pub const FAKE_GIT: &str = r#"#!/bin/sh
+pub(crate) const FAKE_GIT: &str = r#"#!/bin/sh
 echo "$*" >> "$FAKE_GIT_CALLS"
 if [ -n "$FAKE_GIT_SLOTS" ]; then
   until mkdir "$FAKE_GIT_SLOTS/lock" 2>/dev/null; do :; done
@@ -48,7 +48,7 @@ exec "$REAL_GIT" "$@"
 // A `git` that runs the real one and says every refusal in another language:
 // the exit status and stdout are git's own, the stderr words are not English.
 // What the engine decides from git's words, this shim turns the wrong way.
-pub const TRANSLATED_GIT: &str = r#"#!/bin/sh
+pub(crate) const TRANSLATED_GIT: &str = r#"#!/bin/sh
 err=$(mktemp)
 "$REAL_GIT" "$@" 2>"$err"
 status=$?

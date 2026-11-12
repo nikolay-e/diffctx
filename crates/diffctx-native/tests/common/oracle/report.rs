@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::case::{Case, IssueState};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct TargetReport {
+pub(crate) struct TargetReport {
     pub target: String,
     pub relation: String,
     pub tp: usize,
@@ -18,7 +18,7 @@ pub struct TargetReport {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct CaseReport {
+pub(crate) struct CaseReport {
     pub case: String,
     pub mode: &'static str,
     pub language: String,
@@ -39,7 +39,7 @@ pub struct CaseReport {
 }
 
 impl CaseReport {
-    pub fn new(name: &str, case: &Case, language: &str) -> Self {
+    pub(crate) fn new(name: &str, case: &Case, language: &str) -> Self {
         Self {
             case: name.to_string(),
             mode: case.mode.name(),
@@ -64,14 +64,14 @@ impl CaseReport {
 
 static RECORDS: Mutex<Vec<CaseReport>> = Mutex::new(Vec::new());
 
-pub fn record(report: CaseReport) {
+pub(crate) fn record(report: CaseReport) {
     if let Ok(mut records) = RECORDS.lock() {
         records.push(report);
     }
 }
 
 /// Writes the report when `DIFFCTX_ORACLE_REPORT` names a path.
-pub fn write_if_requested() -> Result<(), String> {
+pub(crate) fn write_if_requested() -> Result<(), String> {
     let Some(path) = std::env::var_os("DIFFCTX_ORACLE_REPORT") else {
         return Ok(());
     };

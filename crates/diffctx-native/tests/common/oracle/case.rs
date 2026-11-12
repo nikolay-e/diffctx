@@ -9,13 +9,13 @@ use super::model::{Class, Kind, Node, Relation, Resolution, UnknownClass};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Mode {
+pub(crate) enum Mode {
     Impact,
     Symbol,
 }
 
 impl Mode {
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Impact => "impact",
             Self::Symbol => "symbol",
@@ -25,14 +25,14 @@ impl Mode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum IssueState {
+pub(crate) enum IssueState {
     Open,
     Closed,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Case {
+pub(crate) struct Case {
     #[serde(default)]
     pub name: String,
     pub mode: Mode,
@@ -51,7 +51,7 @@ pub struct Case {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Repo {
+pub(crate) struct Repo {
     #[serde(default)]
     pub initial_files: BTreeMap<String, String>,
     #[serde(default)]
@@ -74,7 +74,7 @@ fn default_commit_message() -> String {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Query {
+pub(crate) struct Query {
     #[serde(default)]
     pub symbol: Option<String>,
     #[serde(default)]
@@ -87,7 +87,7 @@ pub struct Query {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RelationSpec {
+pub(crate) struct RelationSpec {
     pub from: String,
     pub to: String,
     pub kind: Kind,
@@ -103,20 +103,20 @@ const fn resolved() -> Resolution {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Coverage {
+pub(crate) enum Coverage {
     Complete,
     Partial,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
-pub enum OneOrMany {
+pub(crate) enum OneOrMany {
     One(String),
     Many(Vec<String>),
 }
 
 impl OneOrMany {
-    pub fn items(&self) -> Vec<&str> {
+    pub(crate) fn items(&self) -> Vec<&str> {
         match self {
             Self::One(one) => vec![one.as_str()],
             Self::Many(many) => many.iter().map(String::as_str).collect(),
@@ -130,7 +130,7 @@ const fn yes() -> bool {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Expect {
+pub(crate) struct Expect {
     #[serde(default)]
     pub changed: Option<Vec<String>>,
     #[serde(default)]
@@ -190,13 +190,13 @@ pub struct Expect {
 
 /// The expectation as typed relations, plus the (target, family) pairs it
 /// lists: an empty set for a listed pair is an assertion of nothing.
-pub struct Compiled {
+pub(crate) struct Compiled {
     pub relations: Vec<Relation>,
     pub listed: BTreeSet<(Node, Class)>,
 }
 
 impl Expect {
-    pub fn compile(&self) -> Result<Compiled, String> {
+    pub(crate) fn compile(&self) -> Result<Compiled, String> {
         let mut relations = Vec::new();
         let mut listed = BTreeSet::new();
         for spec in &self.relations {
@@ -287,7 +287,7 @@ fn merge_sites(relations: Vec<Relation>) -> Vec<Relation> {
 
 /// Parses and validates a case file. `stem` is the file name without its
 /// extension; `dir_mode` is the corpus directory the file sits in.
-pub fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
+pub(crate) fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
     let case: Case = serde_yaml::from_str(raw).map_err(|e| format!("parse YAML: {e}"))?;
     if !case.name.is_empty() && case.name != stem {
         return Err(format!(
@@ -395,7 +395,7 @@ fn check_source(source: &str) -> Result<(), String> {
 
 /// Whether the case file at `path` carries `tag`; a file that does not parse
 /// has none (its own run reports the error).
-pub fn has_tag(path: &std::path::Path, tag: &str) -> bool {
+pub(crate) fn has_tag(path: &std::path::Path, tag: &str) -> bool {
     #[derive(Deserialize)]
     struct Tags {
         #[serde(default)]

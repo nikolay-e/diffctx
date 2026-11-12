@@ -6,7 +6,7 @@
 // Every suite compiles this module and uses a part of it.
 #![allow(dead_code)]
 
-pub mod corpus;
+pub(crate) mod corpus;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -20,21 +20,21 @@ use crate::support::families::{
     Family, Files, Planted, Query, Repo, discloses, names_link, says_empty,
 };
 
-pub const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
-pub const ALIASES: &str = include_str!("seeds/aliases.yaml");
-pub const LEAKS: &str = include_str!("seeds/leaks.yaml");
-pub const IMPLICIT: &str = include_str!("seeds/implicit.yaml");
-pub const ABSENCE: &str = include_str!("seeds/absence.yaml");
+pub(crate) const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
+pub(crate) const ALIASES: &str = include_str!("seeds/aliases.yaml");
+pub(crate) const LEAKS: &str = include_str!("seeds/leaks.yaml");
+pub(crate) const IMPLICIT: &str = include_str!("seeds/implicit.yaml");
+pub(crate) const ABSENCE: &str = include_str!("seeds/absence.yaml");
 
 #[derive(Deserialize)]
-pub struct Scaffold {
+pub(crate) struct Scaffold {
     pub definition: String,
     pub symbol: String,
     pub base: Files,
     pub change: Files,
 }
 
-pub fn scaffolds() -> &'static BTreeMap<String, Scaffold> {
+pub(crate) fn scaffolds() -> &'static BTreeMap<String, Scaffold> {
     static ALL: OnceLock<BTreeMap<String, Scaffold>> = OnceLock::new();
     ALL.get_or_init(|| serde_yaml::from_str(SCAFFOLDS).expect("scaffolds.yaml"))
 }
@@ -42,7 +42,7 @@ pub fn scaffolds() -> &'static BTreeMap<String, Scaffold> {
 // The families that have no scaffold, with the reason: a full match, so a
 // family added to the engine's list is a compile error here until it has a
 // scaffold or a reason.
-pub fn no_scaffold(family: Family) -> Option<&'static str> {
+pub(crate) fn no_scaffold(family: Family) -> Option<&'static str> {
     match family {
         Family::Python
         | Family::TypeScript
@@ -63,7 +63,7 @@ pub fn no_scaffold(family: Family) -> Option<&'static str> {
 // A row of a seed table. `family` seeds add `files` to that family's scaffold;
 // the others are whole repositories (`base`, then `change`).
 #[derive(Deserialize)]
-pub struct Seed {
+pub(crate) struct Seed {
     pub name: String,
     #[serde(default)]
     pub family: String,
@@ -82,13 +82,13 @@ pub struct Seed {
     pub change: Files,
 }
 
-pub fn load(table: &str) -> Vec<Seed> {
+pub(crate) fn load(table: &str) -> Vec<Seed> {
     serde_yaml::from_str(table).expect("a seed table")
 }
 
 impl Seed {
     // The changed definition's name: the scaffold's, unless the seed has its own.
-    pub fn symbol(&self) -> &str {
+    pub(crate) fn symbol(&self) -> &str {
         if self.symbol.is_empty() {
             &scaffolds()[&self.family].symbol
         } else {
@@ -96,7 +96,7 @@ impl Seed {
         }
     }
 
-    pub fn repo(&self) -> Repo {
+    pub(crate) fn repo(&self) -> Repo {
         if self.family.is_empty() {
             // The family names the group of a scaffold seed; an impact answer
             // reads none.
@@ -128,7 +128,7 @@ impl Seed {
 
 // Every scaffold family has a seed in the table, but the ones named in `except`
 // (each with its reason).
-pub fn covers(class: &str, seeds: &[Seed], except: &[(&str, &str)]) {
+pub(crate) fn covers(class: &str, seeds: &[Seed], except: &[(&str, &str)]) {
     let missing: Vec<&String> = scaffolds()
         .keys()
         .filter(|f| !except.iter().any(|(e, _)| e == f))
@@ -161,19 +161,19 @@ fn relation_incomplete(row: &Value) -> bool {
 }
 
 // The answer names the file, or says what it could not read: never silence.
-pub fn accounts_for(doc: &Value, file: &str) -> bool {
+pub(crate) fn accounts_for(doc: &Value, file: &str) -> bool {
     names_link(doc, file)
         || (!says_empty(doc)
             && (discloses(doc) || rows(&doc["definitions"]).iter().any(relation_incomplete)))
 }
 
-pub fn calls_complete(doc: &Value, symbol: &str) -> Option<bool> {
+pub(crate) fn calls_complete(doc: &Value, symbol: &str) -> Option<bool> {
     definition(doc, symbol)?["coverage"]["calls"]["complete"].as_bool()
 }
 
 // The answer says nothing reaches the definition: no caller, gap or partial
 // relation on its row, or, with no row, no list of entries that names it.
-pub fn says_nobody(doc: &Value, symbol: &str) -> bool {
+pub(crate) fn says_nobody(doc: &Value, symbol: &str) -> bool {
     match definition(doc, symbol) {
         Some(row) => {
             !["rows", "gaps", "missed_in"]
@@ -198,7 +198,7 @@ pub fn says_nobody(doc: &Value, symbol: &str) -> bool {
 
 // The kinds the engine's `Implicit` names, lowercased, once that type exists:
 // read from the source, so that this suite compiles without it.
-pub fn engine_implicit_kinds() -> Option<BTreeSet<String>> {
+pub(crate) fn engine_implicit_kinds() -> Option<BTreeSet<String>> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tokens/occurrence");
     for entry in WalkDir::new(src).into_iter().flatten() {
         let Ok(text) = std::fs::read_to_string(entry.path()) else {
@@ -243,7 +243,7 @@ fn sweep<T: Sync>(items: &[T], check: impl Fn(&T) -> Result<(), String> + Sync) 
 
 // Asks the impact question of every seed and fails with each seed `judge`
 // rejects, named with the start of its answer.
-pub fn run_seeds(
+pub(crate) fn run_seeds(
     class: &str,
     seeds: &[Seed],
     judge: impl Fn(&Seed, &Value) -> Result<(), String> + Sync,

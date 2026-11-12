@@ -32,7 +32,7 @@ fn evidence(row: &Value) -> &str {
 // gaps an answer says it could not close, and the stale references: the claims
 // an impact answer makes. Line numbers are left out, so a transformation that
 // moves code does not read as a changed answer.
-pub fn relations(doc: &Value) -> BTreeSet<String> {
+pub(crate) fn relations(doc: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for changed in rows(&doc["definitions"]) {
         let target = format!("{}::{}", text(&changed["path"]), text(&changed["symbol"]));
@@ -59,7 +59,7 @@ pub fn relations(doc: &Value) -> BTreeSet<String> {
 }
 
 // The definitions the answer lists, with their kind (or what became of them).
-pub fn changed_rows(doc: &Value) -> BTreeSet<String> {
+pub(crate) fn changed_rows(doc: &Value) -> BTreeSet<String> {
     rows(&doc["definitions"])
         .map(|c| {
             let kind = c["kind"]
@@ -71,7 +71,7 @@ pub fn changed_rows(doc: &Value) -> BTreeSet<String> {
 }
 
 // Definitions the answer says the change removed.
-pub fn removed_rows(doc: &Value) -> Vec<String> {
+pub(crate) fn removed_rows(doc: &Value) -> Vec<String> {
     rows(&doc["definitions"])
         .filter(|c| c["change"]["kind"] == "removed")
         .map(|c| format!("{}::{}", text(&c["path"]), text(&c["symbol"])))
@@ -79,7 +79,7 @@ pub fn removed_rows(doc: &Value) -> Vec<String> {
 }
 
 // Whether an impact answer said it did not see everything.
-pub fn impact_disclosed(doc: &Value) -> bool {
+pub(crate) fn impact_disclosed(doc: &Value) -> bool {
     doc["coverage"]["limits"]
         .as_array()
         .is_some_and(|a| !a.is_empty())
@@ -89,7 +89,7 @@ pub fn impact_disclosed(doc: &Value) -> bool {
 
 // What an impact answer says about its own completeness, in one comparable
 // line. Counts, not names: a renamed file keeps its disclosure.
-pub fn disclosure(doc: &Value) -> String {
+pub(crate) fn disclosure(doc: &Value) -> String {
     format!(
         "empty={} limits={} unanalysed={} withheld={}",
         doc["empty"],
@@ -101,7 +101,7 @@ pub fn disclosure(doc: &Value) -> String {
 
 // Whether a pack or locate answer carries a coverage block that owns up to a
 // loss. A clean run omits the block.
-pub fn coverage_disclosed(doc: &Value) -> bool {
+pub(crate) fn coverage_disclosed(doc: &Value) -> bool {
     let coverage = &doc["coverage"];
     let listed = |key: &str| coverage[key].as_array().is_some_and(|a| !a.is_empty());
     coverage.is_object()
@@ -113,14 +113,14 @@ pub fn coverage_disclosed(doc: &Value) -> bool {
 }
 
 // The fragments a pack answer selected.
-pub fn fragments(doc: &Value) -> BTreeSet<String> {
+pub(crate) fn fragments(doc: &Value) -> BTreeSet<String> {
     rows(&doc["fragments"])
         .map(|f| format!("{}:{}", text(&f["path"]), text(&f["lines"])))
         .collect()
 }
 
 // The items a locate answer ranked.
-pub fn items(doc: &Value) -> BTreeSet<String> {
+pub(crate) fn items(doc: &Value) -> BTreeSet<String> {
     rows(&doc["items"])
         .map(|i| format!("{}:{}", text(&i["path"]), text(&i["lines"])))
         .collect()
@@ -149,7 +149,7 @@ const SECTIONS: [(&str, &[&str]); 14] = [
 ];
 
 // How many entries each section of an impact answer holds, callers included.
-pub fn section_sizes(doc: &Value) -> Vec<(String, usize)> {
+pub(crate) fn section_sizes(doc: &Value) -> Vec<(String, usize)> {
     let mut sizes: Vec<(String, usize)> = SECTIONS
         .iter()
         .map(|(name, at)| {
@@ -171,7 +171,7 @@ pub fn section_sizes(doc: &Value) -> Vec<(String, usize)> {
 }
 
 // Lines of `want` and `got` that differ, for a failure message.
-pub fn difference(want: &BTreeSet<String>, got: &BTreeSet<String>) -> String {
+pub(crate) fn difference(want: &BTreeSet<String>, got: &BTreeSet<String>) -> String {
     let missing: Vec<&String> = want.difference(got).collect();
     let extra: Vec<&String> = got.difference(want).collect();
     format!("missing: {missing:#?}\nextra: {extra:#?}")

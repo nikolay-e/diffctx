@@ -301,7 +301,7 @@ fn reference(
 
 // For a family, up to PER_LAYER seeds per layer taken from distinct corpus
 // files; or the reason it has none.
-pub fn seeds(family: Family) -> Result<Vec<Seed>, &'static str> {
+pub(crate) fn seeds(family: Family) -> Result<Vec<Seed>, &'static str> {
     let grammar = grammar(family)?;
     let symbol = &scaffolds()[family.label()].symbol;
     let mut layers: BTreeMap<String, Vec<Seed>> = BTreeMap::new();

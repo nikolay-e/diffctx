@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 
 use crate::common::{Accept, Selector, TestCase, garbage_files, match_path, symbol_matches};
 
-pub struct Case {
+pub(crate) struct Case {
     pub name: String,
     pub test: TestCase,
     pub repo: MemoryRepo,
@@ -25,7 +25,7 @@ pub struct Case {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Label {
+pub(crate) enum Label {
     Right,
     Wrong,
     Unlabelled,
@@ -44,7 +44,7 @@ fn cases_root() -> PathBuf {
 /// The directories under `tests/cases/diff` that `variable` names
 /// (comma-separated), else `default`. A directory that does not exist is
 /// skipped: a gate may name a stratum another branch has not landed yet.
-pub fn case_dirs(variable: &str, default: &[&str]) -> Vec<PathBuf> {
+pub(crate) fn case_dirs(variable: &str, default: &[&str]) -> Vec<PathBuf> {
     let listed = std::env::var(variable)
         .ok()
         .filter(|v| !v.trim().is_empty());
@@ -59,7 +59,7 @@ pub fn case_dirs(variable: &str, default: &[&str]) -> Vec<PathBuf> {
         .collect()
 }
 
-pub fn load_cases(dirs: &[PathBuf]) -> Vec<Case> {
+pub(crate) fn load_cases(dirs: &[PathBuf]) -> Vec<Case> {
     let root = cases_root();
     let mut out = Vec::new();
     for dir in dirs {
@@ -209,7 +209,7 @@ impl Case {
     /// forbidden one, unlabelled otherwise. A file that is both is right: the
     /// case then asks for the file and names a part of it unwanted, which is
     /// the case's problem to settle, not this count's.
-    pub fn label(&self, path: &str) -> Label {
+    pub(crate) fn label(&self, path: &str) -> Label {
         let ids = self.declared_ids_in(path);
         if self
             .test
@@ -234,7 +234,7 @@ impl Case {
 
     /// The files a good selection must add: holding a required fragment, and
     /// not themselves changed.
-    pub fn required_files(&self) -> BTreeSet<String> {
+    pub(crate) fn required_files(&self) -> BTreeSet<String> {
         self.files
             .keys()
             .filter(|p| !self.changed.contains(*p) && self.label(p) == Label::Right)
@@ -244,7 +244,7 @@ impl Case {
 }
 
 /// The other end of a link with exactly one changed endpoint.
-pub fn far_end<'a>(case: &Case, a: &'a str, b: &'a str) -> Option<&'a str> {
+pub(crate) fn far_end<'a>(case: &Case, a: &'a str, b: &'a str) -> Option<&'a str> {
     match (case.changed.contains(a), case.changed.contains(b)) {
         (true, false) => Some(b),
         (false, true) => Some(a),
@@ -253,14 +253,14 @@ pub fn far_end<'a>(case: &Case, a: &'a str, b: &'a str) -> Option<&'a str> {
 }
 
 #[derive(Default, Clone, Copy, Debug)]
-pub struct Tally {
+pub(crate) struct Tally {
     pub right: usize,
     pub wrong: usize,
     pub unlabelled: usize,
 }
 
 impl Tally {
-    pub fn add(&mut self, label: Label) {
+    pub(crate) fn add(&mut self, label: Label) {
         match label {
             Label::Right => self.right += 1,
             Label::Wrong => self.wrong += 1,
@@ -268,16 +268,16 @@ impl Tally {
         }
     }
 
-    pub fn counted(&self) -> usize {
+    pub(crate) fn counted(&self) -> usize {
         self.right + self.wrong
     }
 
-    pub fn precision(&self) -> Option<f64> {
+    pub(crate) fn precision(&self) -> Option<f64> {
         (self.counted() > 0).then(|| self.right as f64 / self.counted() as f64)
     }
 
     /// Wilson 95% interval of the precision.
-    pub fn wilson(&self) -> Option<(f64, f64)> {
+    pub(crate) fn wilson(&self) -> Option<(f64, f64)> {
         let n = self.counted() as f64;
         if n == 0.0 {
             return None;
@@ -290,7 +290,7 @@ impl Tally {
         Some(((centre - half).max(0.0), (centre + half).min(1.0)))
     }
 
-    pub fn describe(&self) -> String {
+    pub(crate) fn describe(&self) -> String {
         match (self.precision(), self.wilson()) {
             (Some(p), Some((lo, hi))) => format!(
                 "right {:>3}  wrong {:>3}  unlabelled {:>3}  n {:>3}  precision {:.3}  wilson95 [{:.3}, {:.3}]",
