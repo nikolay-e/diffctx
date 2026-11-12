@@ -7,7 +7,7 @@
 /// candidates. Every other language is Tier 3: not modelled, and no answer about
 /// it claims an absence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Tier {
+enum Tier {
     One,
     Two,
 }
@@ -19,7 +19,7 @@ pub(crate) enum Tier {
     dead_code,
     reason = "tests/test_tiers_readme.py reads the README's table off this one"
 )]
-pub(crate) const TIERS: &[(Tier, &str, &[&str])] = &[
+const TIERS: &[(Tier, &str, &[&str])] = &[
     (Tier::One, "Python", &["python"]),
     (
         Tier::One,

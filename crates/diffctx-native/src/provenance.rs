@@ -7,7 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::pipeline::ScoredState;
 use crate::types::{Fragment, FragmentId};
 
-pub(crate) const PROVENANCE_ENV: &str = "DIFFCTX_PROVENANCE_DUMP";
+const PROVENANCE_ENV: &str = "DIFFCTX_PROVENANCE_DUMP";
 
 /// Env-gated per-candidate inclusion-provenance dump (#93). One JSONL line
 /// per scored candidate: relevance, seed distance in hops, per-edge-category

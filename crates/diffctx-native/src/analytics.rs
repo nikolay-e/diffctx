@@ -52,7 +52,7 @@ pub(crate) struct QuotientGraph {
 }
 
 impl QuotientGraph {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         Self {
             nodes: FxHashMap::default(),
             edges: FxHashMap::default(),

@@ -137,7 +137,7 @@ pub(crate) struct CompactEdge {
 /// deduplicated fragment-id universe, so CSR node indexing built from it
 /// is identical to the ordering `Graph::freeze` produces.
 #[cfg(test)]
-pub(crate) struct CompactEdges {
+struct CompactEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
@@ -190,7 +190,7 @@ pub(crate) fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
 /// Replaces the FragmentId-pair-keyed hashmap that used to retain the
 /// full uncapped edge universe for the lifetime of the pipeline.
 #[derive(Default)]
-pub(crate) struct EdgeCategoryTable {
+struct EdgeCategoryTable {
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     entries: Vec<(u32, u32, EdgeCategory)>,
@@ -214,7 +214,7 @@ impl EdgeCategoryTable {
         }
     }
 
-    pub(crate) fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
+    fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
         let s = *self.node_to_idx.get(src)?;
         let d = *self.node_to_idx.get(dst)?;
         self.entries
@@ -223,7 +223,7 @@ impl EdgeCategoryTable {
             .map(|k| self.entries[k].2)
     }
 
-    pub(crate) fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
+    fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
         for &(s, d, c) in &self.entries {
             f(
                 &self.idx_to_node[s as usize],
@@ -836,7 +836,7 @@ pub(crate) fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) ->
 /// inside `edges::collect_capped_edges` via `SuppressionFactors::from_counters`
 /// and enters at `build_graph_capped`.
 #[cfg(test)]
-pub(crate) fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
+fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,
         idx_to_node,

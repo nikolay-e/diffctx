@@ -1079,7 +1079,7 @@ impl Verdict {
     }
 
     /// What covered the search of one relation of use.
-    pub(crate) fn relation(&self, relation: Relation) -> &Coverage {
+    fn relation(&self, relation: Relation) -> &Coverage {
         self.by_relation
             .iter()
             .find(|(r, _)| *r == relation)
@@ -1095,17 +1095,17 @@ impl Verdict {
     }
 
     /// The calls of the definition: calls, constructions and overrides.
-    pub(crate) fn calls(&self) -> Coverage {
+    fn calls(&self) -> Coverage {
         self.merged([Relation::Calls, Relation::Instantiates, Relation::Overrides])
     }
 
     /// The reads of the definition: reads, writes and a value passed on.
-    pub(crate) fn reads(&self) -> Coverage {
+    fn reads(&self) -> Coverage {
         self.merged([Relation::Reads, Relation::Writes, Relation::PassesAsValue])
     }
 
     /// Every relation of use at once.
-    pub(crate) fn coverage(&self) -> Coverage {
+    fn coverage(&self) -> Coverage {
         self.calls().both(self.reads())
     }
 
@@ -2580,7 +2580,7 @@ impl Cell {
     /// What the cell could not read, for the run's limits: a read that failed or
     /// a deadline. Files it read in part are said by the answer's own
     /// unanalysed list.
-    pub(crate) fn stops(&self) -> Vec<LimitReason> {
+    fn stops(&self) -> Vec<LimitReason> {
         stopped_by(&self.losses)
     }
 

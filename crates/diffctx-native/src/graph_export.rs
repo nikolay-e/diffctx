@@ -15,7 +15,7 @@ pub(crate) struct ProjectGraphView<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct NodeRecord {
+struct NodeRecord {
     pub id: String,
     pub label: String,
     pub path: String,
@@ -26,7 +26,7 @@ pub(crate) struct NodeRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct EdgeRecord {
+struct EdgeRecord {
     pub source: String,
     pub source_symbol: String,
     pub target: String,
