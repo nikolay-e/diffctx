@@ -19,6 +19,9 @@ mod support;
 // Every impact and symbol answer the corpus builds is checked against it.
 #[path = "support/fact_keys.rs"]
 mod fact_keys;
+// ... and every one names each changed definition the engine took up.
+#[path = "support/accounting.rs"]
+mod accounting;
 use oracle::case::Mode;
 
 fn cases_root() -> PathBuf {
