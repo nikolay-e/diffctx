@@ -21,6 +21,8 @@ from toolbin import install_tool, tool_path
 
 CACHE = corpus_config.CACHE
 TOOLS = corpus_config.ROOT / "tools"
+FAILURE_LOG = "failure.log"  # beside the index slot: the end of what a failed indexer printed
+FAILURE_LOG_CHARS = 200_000
 EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target", ".gradle")
 
 
@@ -185,7 +187,10 @@ def _run_indexer(
         result.reason = "timeout"
         return result
     if done.returncode != 0 or not out.exists():
-        tail = (done.stderr + done.stdout).decode(errors="replace")[-400:].strip().replace("\n", " | ")
+        output = (done.stderr + done.stdout).decode(errors="replace")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")  # the reason keeps 400 characters
+        tail = output[-400:].strip().replace("\n", " | ")
         result.reason = f"indexer exited {done.returncode}: {tail}"
         return result
     result.ok, result.reason = True, "ok"
