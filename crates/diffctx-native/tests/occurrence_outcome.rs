@@ -1327,6 +1327,16 @@ fn a_trap_handler_names_the_function_it_runs() {
     );
 }
 
+#[test]
+fn a_single_quoted_sed_or_awk_program_is_text_not_code() {
+    let source = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\nsed -n 's/cleanup/done/p' log\nawk -F: '/cleanup/ {print}' log\ncleanup now\necho 'cleanup'\n";
+    let world = snapshot_in(Lang::Shell, &[("run.sh", source)]);
+    let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
+    let lines: Vec<u32> = found.entries.iter().map(|e| e.occurrence.line).collect();
+    assert_eq!(lines, [2, 7, 8], "{found:#?}");
+    assert_eq!(found.mentions, 2);
+}
+
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]
