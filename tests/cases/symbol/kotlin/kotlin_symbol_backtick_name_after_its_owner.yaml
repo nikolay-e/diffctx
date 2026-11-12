@@ -1,0 +1,32 @@
+name: kotlin_symbol_backtick_name_after_its_owner
+mode: symbol
+source: fj#173
+issue_state: closed
+tags:
+- kotlin
+- backticks
+repo:
+  initial_files:
+    src/main/kotlin/names/MemberNameTest.kt: |
+      package names
+
+      class MemberNameTest {
+          fun `N escapes MemberNames`() {
+              helper()
+          }
+
+          fun helper() {}
+      }
+    src/main/kotlin/names/Other.kt: |
+      package names
+
+      class Other {
+          fun `N escapes MemberNames`() {}
+      }
+  commit_message: Seed a Kotlin name with spaces in two classes
+query:
+  symbol: 'MemberNameTest.`N escapes MemberNames`'
+expect:
+  exact: false
+  definitions:
+  - src/main/kotlin/names/MemberNameTest.kt::MemberNameTest.N escapes MemberNames
