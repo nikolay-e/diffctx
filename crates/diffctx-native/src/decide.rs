@@ -41,12 +41,12 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::pipeline::ScoredState;
 use crate::resolve::family::{Family, Group, Resolver, context_in};
 use crate::resolve::{
     Binding, CandidateReason, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason,
 };
 use crate::resource::LimitReason;
+use crate::run_provenance::state::ScoredState;
 use crate::snapshot::{AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag};
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
 use crate::tokens::occurrence::{Hedge, Implicit, Index, Known, Reason as OccurrenceReason, View};

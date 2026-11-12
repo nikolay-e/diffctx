@@ -38,9 +38,9 @@ decide -> facts
 decide -> fold
 decide -> impact
 decide -> paths
-decide -> pipeline  # against order
 decide -> resolve
 decide -> resource
+decide -> run_provenance
 decide -> snapshot
 decide -> testfiles
 decide -> tokens
@@ -145,10 +145,10 @@ impact -> keytable
 impact -> languages
 impact -> parsers
 impact -> paths
-impact -> pipeline  # against order
 impact -> profile
 impact -> resolve
 impact -> resource
+impact -> run_provenance
 impact -> snapshot
 impact -> source
 impact -> stopwords
@@ -169,6 +169,7 @@ in_memory_harness -> pipeline
 in_memory_harness -> postpass
 in_memory_harness -> render
 in_memory_harness -> resource
+in_memory_harness -> run_provenance
 in_memory_harness -> snapshot
 in_memory_harness -> source
 in_memory_harness -> types
@@ -183,7 +184,6 @@ locate -> answer
 locate -> fit
 locate -> parsers
 locate -> paths
-locate -> pipeline  # against order
 locate -> provenance  # against order
 locate -> resource
 locate -> run_provenance
@@ -265,7 +265,7 @@ project_graph -> pipeline
 project_graph -> resource
 project_graph -> source
 project_graph -> types
-provenance -> pipeline
+provenance -> run_provenance
 provenance -> types
 pybridge -> analytics
 pybridge -> artifact
@@ -305,9 +305,18 @@ resource -> config
 resource -> graph  # against order
 resource -> snapshot
 resource -> source
+run_provenance -> change_class
+run_provenance -> config
+run_provenance -> edges
 run_provenance -> effective_config
+run_provenance -> mode
+run_provenance -> paths
 run_provenance -> resource
+run_provenance -> scoring
 run_provenance -> snapshot
+run_provenance -> source
+run_provenance -> types
+run_provenance -> utility
 scoring -> config
 scoring -> edges
 scoring -> filtering
