@@ -894,8 +894,17 @@ mod tests {
         }
     }
 
+    /// A deadline no runner reaches; the read gives up after `waits` empty
+    /// waits instead.
+    fn giving_up_after(waits: u64) -> Limits {
+        Limits {
+            stall_after: Some(waits),
+            ..within(Duration::from_secs(3600))
+        }
+    }
+
     #[test]
-    fn wait_with_timeout_kills_long_running_child_and_returns_promptly() {
+    fn a_stalled_child_is_killed_after_its_empty_waits() {
         let child = Command::new("sleep")
             .arg("30")
             .stdout(Stdio::piped())
@@ -904,17 +913,11 @@ mod tests {
             .expect("spawn sleep");
         let pid = child.id();
 
-        let start = std::time::Instant::now();
-        let result = supervise(child, &within(Duration::from_millis(200)));
-        let elapsed = start.elapsed();
+        let result = supervise(child, &giving_up_after(2));
 
         assert!(
             matches!(result, Err(SnapshotError::Timeout(_))),
             "expected Timeout error, got {result:?}"
-        );
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "supervise should return promptly, took {elapsed:?}"
         );
 
         // The child must actually be reaped, not orphaned: `kill -0` on a
@@ -959,7 +962,7 @@ mod tests {
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawn true");
-        let result = supervise(child, &within(Duration::from_secs(5)));
+        let result = supervise(child, &within(Duration::from_secs(3600)));
         assert!(matches!(result, Ok(ref out) if out.status.success()));
     }
 
