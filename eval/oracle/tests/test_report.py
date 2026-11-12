@@ -188,3 +188,98 @@ def test_false_folds_and_folded_rows_are_summed_per_relation():
 
     [row] = rows
     assert (row["folded"], row["false_fold"]) == (2, 1)
+
+
+def verdicts(tmp_path: Path, cells: list[dict], gates: Path | None = None, extra: list[str] = ()) -> dict[tuple, dict]:
+    tmp_path.mkdir(exist_ok=True)
+    run = write_run(tmp_path / "run", cells)
+    args = ["--run", str(run), "--out", str(tmp_path / "out"), *extra, *(["--gates", str(gates)] if gates else [])]
+    assert report.main(args) == 0
+    lines = json.loads((tmp_path / "out" / "report.json").read_text())["verdict"]
+    return {(line["gate"], line["source"]): line for line in lines}
+
+
+def edited_gates(tmp_path: Path, old: str, new: str) -> Path:
+    text = report.GATES_FILE.read_text()
+    assert old in text
+    copy = tmp_path / "gates.toml"
+    copy.write_text(text.replace(old, new))
+    return copy
+
+
+def test_every_threshold_of_the_gates_file_gets_a_verdict_line_and_missing_input_is_not_a_pass(tmp_path: Path):
+    lines = verdicts(tmp_path, [cell(truth=1, tp=1)])
+
+    assert {gate for gate, _ in lines} == set(report.load_gates())
+    assert lines[("safety.false_fold", "oracle cells")]["status"] == "pass"
+    assert lines[("safety.false_complete_negatives", "oracle cells")]["value"] == 0
+    assert lines[("safety.silent_loss", "")]["status"] == "n/a"
+    assert lines[("precise.precision", "")]["status"] == "n/a"
+    markdown = (tmp_path / "out" / "report.md").read_text()
+    assert "| safety.false_fold | oracle cells | 0 | <= 0 | PASS |" in markdown
+    assert "No threshold fails" in markdown
+
+
+def test_a_false_fold_fails_its_gate_and_the_threshold_comes_from_the_file_alone(tmp_path: Path):
+    cells = [cell(truth=2, tp=2, folded=1, false_fold=1)]
+
+    assert verdicts(tmp_path, cells)[("safety.false_fold", "oracle cells")]["status"] == "fail"
+    assert "Failing: safety.false_fold." in (tmp_path / "out" / "report.md").read_text()
+
+    relaxed = edited_gates(tmp_path, "false_fold_max = 0", "false_fold_max = 1")
+    assert verdicts(tmp_path / "again", cells, relaxed)[("safety.false_fold", "oracle cells")]["status"] == "pass"
+
+
+def test_false_complete_negatives_are_judged_on_the_oracle_cells_the_fault_sweep_and_the_corpus_alike(tmp_path: Path):
+    faults = tmp_path / "faults.jsonl"
+    faults.write_text('{"name": "x", "state": "fail", "false_complete_negative": true}\n')
+    harness = tmp_path / "harness.json"
+    harness.write_text(
+        json.dumps([{"mode": "impact", "language": "python", "state": "fail", "empty": True, "targets": [{"fn": 1}]}])
+    )
+
+    lines = verdicts(tmp_path, [cell(truth=1, tp=1)], extra=["--faults", str(faults), "--harness", str(harness)])
+
+    status = {source: line["status"] for (gate, source), line in lines.items() if gate == "safety.false_complete_negatives"}
+    assert status == {"oracle cells": "pass", "fault sweep": "fail", "YAML corpus": "fail"}
+
+
+def test_the_impact_p95_is_judged_against_the_file(tmp_path: Path):
+    bench = tmp_path / "bench.json"
+    bench.write_text(json.dumps({"all": {"impact": {"n": 9, "p50": 1.0, "p95": 5.5, "max": 6, "errors": 0}}}))
+    cells = [cell(truth=1, tp=1)]
+
+    assert verdicts(tmp_path, cells, extra=["--bench", str(bench)])[("speed.impact_p95_seconds", "bench")]["status"] == "fail"
+    relaxed = edited_gates(tmp_path, "impact_p95_seconds_max = 5.0", "impact_p95_seconds_max = 6.0")
+    assert (
+        verdicts(tmp_path / "again", cells, relaxed, ["--bench", str(bench)])[("speed.impact_p95_seconds", "bench")]["status"]
+        == "pass"
+    )
+
+
+def ac5_totals_file(path: Path, found: int, total: int, noise: float) -> Path:
+    path.write_text(json.dumps({"all": {"recall": {"all": {"found": found, "total": total}}, "noise": {"share": noise}}}))
+    return path
+
+
+def test_ac5_needs_the_head_not_below_the_base_scored_on_the_same_material_and_noise_under_the_ceiling(tmp_path: Path):
+    base = ac5_totals_file(tmp_path / "base.json", 33, 150, 0.83)
+    cells = [cell(truth=1, tp=1)]
+
+    def judged(name: str, found: int, total: int, noise: float) -> dict[str, str]:
+        head = ac5_totals_file(tmp_path / f"{name}.json", found, total, noise)
+        lines = verdicts(tmp_path / name, cells, extra=["--ac5-head", str(head), "--ac5-base", str(base)])
+        return {gate: line["status"] for (gate, _), line in lines.items() if gate.startswith("ac5.")}
+
+    assert judged("ok", 34, 150, 0.85) == {"ac5.head_not_below_recomputed_base": "pass", "ac5.noise": "pass"}
+    assert judged("lower", 32, 150, 0.85)["ac5.head_not_below_recomputed_base"] == "fail"
+    assert judged("noisy", 40, 150, 0.9)["ac5.noise"] == "fail"
+    assert judged("other", 40, 152, 0.85)["ac5.head_not_below_recomputed_base"] == "fail"
+
+
+def test_a_gates_file_key_that_is_no_threshold_is_refused(tmp_path: Path):
+    bad = tmp_path / "gates.toml"
+    bad.write_text("[safety]\nfalse_fold = 0\n")
+
+    with pytest.raises(ValueError, match="is no threshold"):
+        report.load_gates(bad)

@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import operator
 import re
+import tomllib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +42,37 @@ TIERS = {
     "web": 2,
     "other": 3,
 }
+
+
+GATES_FILE = Path(__file__).with_name("gates.toml")
+SUFFIX_OPERATORS = {"_max": "max", "_min": "min", "_below": "below"}
+COMPARE = {"max": operator.le, "min": operator.ge, "below": operator.lt}
+OPERATOR_TEXT = {"max": "<=", "min": ">=", "below": "<"}
+
+
+@dataclass(frozen=True)
+class Threshold:
+    gate: str  # `section.name`: the key without its operator suffix
+    op: str  # max, min, below, require or read
+    limit: float | None
+
+
+def load_gates(path: Path = GATES_FILE) -> dict[str, Threshold]:
+    """Every threshold of the verdict by gate name: the file's `<name>_max|_min|_below` keys, `true` and "read"."""
+    found: dict[str, Threshold] = {}
+    for section, entries in tomllib.loads(path.read_text(encoding="utf-8")).items():
+        for key, limit in entries.items():
+            suffix = next((s for s in SUFFIX_OPERATORS if key.endswith(s)), None)
+            if limit == "read":
+                threshold = Threshold(f"{section}.{key}", "read", None)
+            elif limit is True:
+                threshold = Threshold(f"{section}.{key}", "require", None)
+            elif suffix and isinstance(limit, int | float) and not isinstance(limit, bool):
+                threshold = Threshold(f"{section}.{key.removesuffix(suffix)}", SUFFIX_OPERATORS[suffix], limit)
+            else:
+                raise ValueError(f"{path}: [{section}] {key} = {limit!r} is no threshold (_max, _min, _below, true or 'read')")
+            found[threshold.gate] = threshold
+    return found
 
 
 LIBTEST_LINE = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|ignored)")
@@ -259,6 +292,80 @@ def outcome_summary(records: list[dict]) -> dict:
     }
 
 
+def ac5_totals(path: Path) -> dict:
+    """The AC5 scorer's `totals.json`: the facts found of those expected, and the share of answer rows that are noise."""
+    totals = json.loads(path.read_text(encoding="utf-8"))["all"]
+    recall = totals["recall"]["all"]
+    return {"found": recall["found"], "total": recall["total"], "noise_share": totals["noise"]["share"]}
+
+
+Observation = tuple[str, object, str]  # source, value, what the number is made of
+
+
+def observations(report: dict) -> dict[str, list[Observation]]:
+    """What this run measured for each gate; a gate with no entry here had no input."""
+    seen: dict[str, list[Observation]] = defaultdict(list)
+    if report["scip"]:
+        seen["safety.false_complete_negatives"].append(
+            ("oracle cells", sum(r["false_complete_negatives"] for r in report["scip"]), "")
+        )
+        seen["safety.false_fold"].append(("oracle cells", sum(r["false_fold"] for r in report["scip"]), ""))
+    for name, label in (("faults", "fault sweep"), ("metamorphic", "metamorphic suite")):
+        if report.get(name):
+            seen["safety.false_complete_negatives"].append((label, report[name]["false_complete_negatives"], ""))
+    if report.get("harness"):
+        found = sum(case["false_complete_negatives"] for case in report["harness"]["cases"])
+        seen["safety.false_complete_negatives"].append(("YAML corpus", found, ""))
+    impact = ((report.get("bench") or {}).get("all") or {}).get("impact") or {}
+    if impact.get("p95") is not None:
+        seen["speed.impact_p95_seconds"].append(("bench", impact["p95"], f"{impact.get('n')} runs"))
+    ac5 = report.get("ac5")
+    if ac5:
+        head, base = ac5["head"], ac5["base"]
+        seen["ac5.noise"].append(("head", head["noise_share"], f"{head['noise_share']:.1%} of answer rows"))
+        if base:
+            same = head["total"] == base["total"]
+            detail = f"head {head['found']}/{head['total']}, recomputed base {base['found']}/{base['total']}"
+            detail += "" if same else "; the two runs scored different materials"
+            seen["ac5.head_not_below_recomputed_base"].append(
+                ("head against base", same and head["found"] >= base["found"], detail)
+            )
+    return seen
+
+
+def _status(gate: Threshold, value: object) -> str:
+    if value is None:
+        return "n/a"
+    if gate.op == "read":
+        return "read"
+    if gate.op == "require":
+        return "pass" if value else "fail"
+    return "pass" if COMPARE[gate.op](value, gate.limit) else "fail"
+
+
+def _limit_text(gate: Threshold) -> str:
+    if gate.op in ("read", "require"):
+        return "every row read" if gate.op == "read" else "required"
+    return f"{OPERATOR_TEXT[gate.op]} {gate.limit}"
+
+
+def verdict_lines(report: dict, gates: dict[str, Threshold]) -> list[dict]:
+    """One line per observation of each threshold in `gates`, and one `n/a` line for a threshold the run gave no input."""
+    seen = observations(report)
+    return [
+        {
+            "gate": gate.gate,
+            "source": source,
+            "status": _status(gate, value),
+            "value": value,
+            "limit": _limit_text(gate),
+            "detail": detail,
+        }
+        for gate in gates.values()
+        for source, value, detail in seen.get(gate.gate) or [("", None, "")]
+    ]
+
+
 def table(headers: list[str], rows: list[list]) -> str:
     def cell(value: object) -> str:
         return "n/a" if value is None else str(value)
@@ -405,8 +512,31 @@ def table_of(columns: list[tuple[str, str]], rows: list[dict], empty: str) -> st
     return table([name for name, _ in columns], [[row.get(key) for _, key in columns] for row in rows])
 
 
+def render_verdict(lines: list[dict]) -> list[str]:
+    rows = [
+        [
+            line["gate"],
+            line["source"],
+            "n/a" if line["value"] is None else line["value"],
+            line["limit"],
+            line["status"].upper(),
+            line["detail"],
+        ]
+        for line in lines
+    ]
+    failed = [line["gate"] for line in lines if line["status"] == "fail"]
+    summary = f"Failing: {', '.join(failed)}." if failed else "No threshold fails; lines marked N/A had no input in this run."
+    return ["", "## Verdict", "", table(["Gate", "Source", "Value", "Limit", "Verdict", "Numbers"], rows), "", summary]
+
+
 def render(report: dict) -> str:
-    parts = ["# diffctx oracle report", "", "## SCIP truth (raw), by tier, language, mode and relation", ""]
+    parts = [
+        "# diffctx oracle report",
+        *render_verdict(report["verdict"]),
+        "",
+        "## SCIP truth (raw), by tier, language, mode and relation",
+        "",
+    ]
     parts.append(table_of(SCIP_COLUMNS, report["scip"], "No scored cells."))
     if report.get("scip_adjudicated") is not None:
         parts += ["", "## SCIP truth with the adjudicated overrides", ""]
@@ -451,6 +581,9 @@ def build(
     adjudicated: Path | None = None,
     curve: list[LoadedRun] | None = None,
     against: list[LoadedRun] | None = None,
+    gates: dict[str, Threshold] | None = None,
+    ac5_head: Path | None = None,
+    ac5_base: Path | None = None,
 ) -> dict:
     def optional(name: str) -> list[dict]:
         path = run / name
@@ -468,6 +601,7 @@ def build(
         "bench": json.loads(bench.read_text(encoding="utf-8")) if bench else None,
         "curve": curve_rows(curve) if curve else None,
         "paired": [paired_entry(run, other) for other in against or []],
+        "ac5": {"head": ac5_totals(ac5_head), "base": ac5_totals(ac5_base) if ac5_base else None} if ac5_head else None,
         "scip_adjudicated": None,
         "adjudication": None,
     }
@@ -476,6 +610,7 @@ def build(
         rows = adjudication.apply_to_rows(optional("relations.jsonl"), verdicts)
         report["scip_adjudicated"] = scip_rows(adjudication.cells_from_rows(rows, cells))
         report["adjudication"] = adjudication.summary(verdicts, repo_languages())
+    report["verdict"] = verdict_lines(report, gates if gates is not None else load_gates())
     return report
 
 
@@ -507,6 +642,14 @@ def main(argv: list[str] | None = None) -> int:
         metavar="DIR[@BUDGET]",
         help="a measure run on the same commits as --run (repeatable): adds the paired bootstrap of --run against it",
     )
+    parser.add_argument(
+        "--gates",
+        type=lambda text: load_gates(Path(text)),
+        metavar="FILE",
+        help="the thresholds (default: gates.toml beside this file)",
+    )
+    parser.add_argument("--ac5-head", type=Path, help="the AC5 scorer's totals.json for the head")
+    parser.add_argument("--ac5-base", type=Path, help="the same for the base, scored on the same material")
     parser.add_argument("--out", type=Path, help="directory for report.md and report.json (default: --run)")
     options = parser.parse_args(argv)
     report = build(
@@ -518,6 +661,9 @@ def main(argv: list[str] | None = None) -> int:
         options.adjudicated,
         options.curve,
         options.against,
+        options.gates,
+        options.ac5_head,
+        options.ac5_base,
     )
     out = options.out or options.run
     out.mkdir(parents=True, exist_ok=True)
