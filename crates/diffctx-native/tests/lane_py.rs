@@ -507,7 +507,7 @@ fn a_method_the_framework_dispatches_is_reached_through_its_class() {
     assert!(
         entries.contains(&serde_json::json!({
             "def": {"path": "server.py", "symbol": "do_GET", "lines": "5-7"},
-            "role": "dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via serve"
+            "role": "dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py::test_get via serve"
         })),
         "{doc}"
     );

@@ -56,17 +56,12 @@ pub fn judge(
 
 fn pairs(expected: &Relation, actual: &Relation) -> bool {
     let tests = expected.kind == Kind::TestsReach;
-    // The engine names the test file that reaches a caller, never the test
-    // function in it; a `named_by` row names a file, never a function. Their
-    // `from` is judged by the file.
-    let from_agrees = if tests {
-        expected.from.path.is_empty() || expected.from.path == actual.from.path
-    } else {
-        expected.from.covers(&actual.from)
-            || (actual.kind == Kind::ReferencesPath
-                && actual.from.symbol.is_none()
-                && expected.from.path == actual.from.path)
-    };
+    // A test link names the test file, and the test function where the engine
+    // resolved it: an expectation naming only the file is met by either.
+    let from_agrees = expected.from.covers(&actual.from)
+        || (actual.kind == Kind::ReferencesPath
+            && actual.from.symbol.is_none()
+            && expected.from.path == actual.from.path);
     // A test link carries no line: an expected site cannot be checked.
     let sites_agree = (tests && actual.sites.is_empty())
         || expected.sites.iter().all(|s| actual.sites.contains(s));
