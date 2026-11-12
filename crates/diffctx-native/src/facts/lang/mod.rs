@@ -236,7 +236,7 @@ fn span(node: Node) -> Span {
 pub(super) struct LineStarts(Vec<usize>);
 
 impl LineStarts {
-    pub fn new(text: &[u8]) -> Self {
+    pub(super) fn new(text: &[u8]) -> Self {
         let mut starts = vec![0];
         starts.extend(
             text.iter()
@@ -251,7 +251,7 @@ impl LineStarts {
         self.0.partition_point(|start| *start <= byte) as u32
     }
 
-    pub fn span(&self, range: std::ops::Range<usize>) -> Span {
+    pub(super) fn span(&self, range: std::ops::Range<usize>) -> Span {
         let first = self.line_at(range.start);
         let last = self.line_at(range.end.saturating_sub(1).max(range.start));
         Span::new(
