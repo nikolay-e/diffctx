@@ -79,6 +79,8 @@ pub struct Accounted {
     /// The lines that still spell what the range removed, at the places the base
     /// resolved a use to it: its callers whatever they land on now.
     pub callers: Vec<Use>,
+    /// One of them is at a place the base resolved a use to what the range removed.
+    pub stranded: bool,
 }
 
 #[derive(Default)]
@@ -243,6 +245,7 @@ impl Shadow<'_> {
             unused,
             whole,
             callers: Vec::new(),
+            stranded: false,
         }
     }
 
