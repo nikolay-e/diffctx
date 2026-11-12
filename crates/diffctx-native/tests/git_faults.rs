@@ -28,9 +28,10 @@ use support::{claims, diffctx, git};
 /// slow macOS runner cut the true answer short and the test read the
 /// disclosed partial as a changed answer (#502).
 const ANSWER_TIMEOUT_SECS: u64 = 600;
-/// The knob a stalled run ends by: a blocked git read gives up after this many
-/// empty waits, counted, not timed (fj#172).
-const STALL_KNOB: (&str, &str) = ("DIFFCTX_TEST_GIT_STALL_AFTER_WAITS", "10");
+/// The knob a stalled run ends by: the file the fake git leaves when its output
+/// stops. A blocked read gives up once it exists, an event of the stall itself
+/// (fj#172).
+const STALL_KNOB: &str = "DIFFCTX_TEST_GIT_STALL_FILE";
 
 fn real_git() -> String {
     let out = Command::new("sh")
@@ -52,6 +53,11 @@ impl Fixture {
 
     fn pids_file(&self) -> PathBuf {
         self.tmp.path().join("pids")
+    }
+
+    /// Where the fake git records that its output stopped.
+    fn stalled_file(&self) -> PathBuf {
+        self.tmp.path().join("stalled")
     }
 
     /// A FIFO every run holds open for writing from its first instruction, and
@@ -106,6 +112,7 @@ impl Fixture {
             .env("FAKE_GIT_TARGET", target)
             .env("FAKE_GIT_MODE", mode)
             .env("FAKE_GIT_PIDS", self.pids_file())
+            .env("FAKE_GIT_STALLED", self.stalled_file())
             .env("FAKE_GIT_CALLS", self.tmp.path().join("calls"))
             .env("DIFFCTX_NO_MARKER", "1");
         for (key, value) in extra_env {
@@ -116,7 +123,11 @@ impl Fixture {
 
     /// The run a stall ends: the knob stops the blocked read.
     fn impact(&self, target: &str, mode: &str) -> Output {
-        self.impact_with(target, mode, &[STALL_KNOB])
+        self.impact_with(
+            target,
+            mode,
+            &[(STALL_KNOB, self.stalled_file().to_str().unwrap())],
+        )
     }
 
     /// A run nothing stalls and nothing cuts short.
@@ -146,7 +157,8 @@ impl Fixture {
     }
 
     fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
-        self.pack_with(target, mode, extra, &[STALL_KNOB])
+        let file = self.stalled_file();
+        self.pack_with(target, mode, extra, &[(STALL_KNOB, file.to_str().unwrap())])
     }
 
     fn pack_whole(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
@@ -390,6 +402,8 @@ fn a_flood_on_stderr_neither_deadlocks_nor_changes_the_answer() {
 fn repeated_stalls_are_each_bounded_and_cleaned_up() {
     let fx = fixture();
     for _ in 0..3 {
+        // Each run ends on its own stall, not on the last one's record.
+        let _ = std::fs::remove_file(fx.stalled_file());
         let _ = fx.impact("cat-file", "stall_before_read");
     }
     fx.assert_no_survivors();
@@ -566,6 +580,22 @@ fn a_policy_the_deadline_left_unread_still_withholds() {
     ] {
         let doc = json(&out).to_string();
         assert!(!doc.contains("vault.py"), "{mode}: {doc}");
+    }
+    fx.assert_no_survivors();
+}
+
+/// The cut can also fall on the policy's own read: the listing it is read
+/// from stalls. The run ends there and publishes nothing of the withheld path.
+#[test]
+fn a_policy_read_the_stall_cut_still_withholds() {
+    let fx = withheld_change();
+    for (mode, out) in [
+        ("impact", fx.impact("ls-tree", "stall_before_read")),
+        ("pack", fx.pack("ls-tree", "stall_before_read", &[])),
+    ] {
+        let published = String::from_utf8_lossy(&out.stdout);
+        assert!(!published.contains("vault.py"), "{mode}: {published}");
+        let _ = std::fs::remove_file(fx.stalled_file());
     }
     fx.assert_no_survivors();
 }
