@@ -23,6 +23,8 @@
 
 use std::path::Path;
 
+use rustc_hash::FxHashMap;
+
 /// Directory names that mark everything beneath them as test material.
 const TEST_DIRS: &[&str] = &["test", "tests", "__tests__", "spec", "specs"];
 
@@ -88,6 +90,115 @@ pub fn is_test_path(path: &Path) -> bool {
         return false;
     };
     has_marker_segment(&stem) || has_camel_marker(&stem)
+}
+
+/// Whether `path` is a test file the way the test-naming convention reads one:
+/// `is_test_path`, and a Perl `.t` script.
+pub(crate) fn is_test_file(path: &Path) -> bool {
+    is_test_path(path)
+        || path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("t"))
+}
+
+/// The stem a test file's name asks for: `test_foo`, `foo_test`, `foo.spec`,
+/// `TestFoo`, `FooTests` all name `foo`.
+pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
+    let lower = test_name.to_lowercase();
+    if lower.starts_with("test_") {
+        return Some(lower[5..].to_string());
+    }
+    if lower.ends_with("_test") {
+        return Some(lower[..lower.len() - 5].to_string());
+    }
+    if lower.contains(".test") {
+        return Some(lower.split(".test").next()?.to_string());
+    }
+    if lower.contains(".spec") {
+        return Some(lower.split(".spec").next()?.to_string());
+    }
+    if test_name.starts_with("Test")
+        && test_name.len() > 4
+        && test_name.as_bytes()[4].is_ascii_uppercase()
+    {
+        return Some(test_name[4..].to_lowercase());
+    }
+    if test_name.ends_with("Tests") && test_name.len() > 5 {
+        return Some(test_name[..test_name.len() - 5].to_lowercase());
+    }
+    // Kotest/Spek `FooSpec`, Maven Failsafe `FooIT`.
+    if test_name.ends_with("Spec") && test_name.len() > 4 {
+        return Some(test_name[..test_name.len() - 4].to_lowercase());
+    }
+    if test_name.ends_with("IT")
+        && test_name.len() > 2
+        && test_name.as_bytes()[test_name.len() - 3].is_ascii_lowercase()
+    {
+        return Some(test_name[..test_name.len() - 2].to_lowercase());
+    }
+    if test_name.ends_with("Test") && test_name.len() > 4 {
+        return Some(test_name[..test_name.len() - 4].to_lowercase());
+    }
+    None
+}
+
+/// JVM test classes are named after their subject: `FooTest`, `FooTests`,
+/// `FooSpec`, `FooIT` (stems lower-cased).
+pub(crate) const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
+pub(crate) const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] =
+    &[".java", ".kt", ".kts", ".scala", ".groovy"];
+
+/// Same ambiguity bar as the c-family and path-reference caps: a stem carried
+/// by more files than this cannot name a target.
+const MAX_GLOBAL_TARGET_FILES: usize = 8;
+
+/// The (test file, source file) pairs the naming convention links, over the files
+/// in view: a test's target name picks the source files of that stem, in the
+/// test's own directory first, then anywhere while the stem stays rare enough to
+/// identify a file. `config_test` names `config`, but envoy holds 520 files with
+/// that stem. Files come in as the run lists them, and pairs go out in that order.
+pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
+    let stem = |path: &str| {
+        Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let mut tests: Vec<&str> = Vec::new();
+    let mut by_stem: FxHashMap<String, Vec<&str>> = FxHashMap::default();
+    for &path in paths {
+        if is_test_file(Path::new(path)) {
+            tests.push(path);
+        } else {
+            by_stem
+                .entry(stem(path).to_lowercase())
+                .or_default()
+                .push(path);
+        }
+    }
+    let mut links = Vec::new();
+    for test in tests {
+        let Some(target) = target_name_of_test(&stem(test)) else {
+            continue;
+        };
+        let candidates = by_stem.get(&target).map_or(&[][..], Vec::as_slice);
+        let dir = Path::new(test).parent();
+        let beside: Vec<&str> = candidates
+            .iter()
+            .copied()
+            .filter(|source| Path::new(source).parent() == dir)
+            .collect();
+        let chosen = if beside.is_empty() {
+            if candidates.len() > MAX_GLOBAL_TARGET_FILES {
+                continue;
+            }
+            candidates.to_vec()
+        } else {
+            beside
+        };
+        links.extend(chosen.into_iter().map(|source| (test, source)));
+    }
+    links
 }
 
 #[cfg(test)]
