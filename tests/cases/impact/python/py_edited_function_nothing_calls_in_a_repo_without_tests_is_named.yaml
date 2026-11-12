@@ -1,0 +1,31 @@
+name: py_edited_function_nothing_calls_in_a_repo_without_tests_is_named
+mode: impact
+source: fj#175
+issue_state: open
+tags:
+- python
+- silent-loss
+repo:
+  initial_files:
+    shop/price.py: |
+      def total(items):
+          return sum(items)
+
+
+      def tax(amount):
+          return amount * 2
+  changed_files:
+    shop/price.py: |
+      def total(items):
+          return sum(items)
+
+
+      def tax(amount):
+          return amount * 3
+  commit_message: Triple the tax
+expect:
+  # No test is in view, so no "no static test link" is claimed; the search found
+  # no caller, and the answer says that of the definition instead of nothing.
+  exact: false
+  changed:
+  - shop/price.py::tax

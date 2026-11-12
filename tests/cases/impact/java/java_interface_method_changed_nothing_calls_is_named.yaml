@@ -1,0 +1,29 @@
+name: java_interface_method_changed_nothing_calls_is_named
+mode: impact
+source: fj#175
+issue_state: open
+tags:
+- java
+- silent-loss
+repo:
+  initial_files:
+    src/main/java/shop/Engine.java: |
+      package shop;
+
+      public interface Engine {
+          String open();
+      }
+  changed_files:
+    src/main/java/shop/Engine.java: |
+      package shop;
+
+      public interface Engine {
+          int open();
+      }
+  commit_message: The engine opens to a number
+expect:
+  # A signature nothing calls and nothing implements yet: the definition the range
+  # changed is named with its absence of callers, never dropped.
+  exact: false
+  changed:
+  - src/main/java/shop/Engine.java::Engine.open
