@@ -732,6 +732,12 @@ fn cases_root() -> PathBuf {
 /// does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
+        "impact/python/py_removed_property_read_through_an_external_call_result_is_a_candidate",
+        "the candidate is the removal side's: a read through the result of a call into outside \
+         code is `UntypedRead` for the resolver, and decide() names the surviving read of a \
+         removed member's name as a possible use; no binding states it",
+    ),
+    (
         "impact/python/py_removed_field_lists_its_readers_only",
         "gh#400: the reader of a removed field is reported under the class, and the class's own \
          module-level instantiation is an extra caller; decide() maps a removed member to its \

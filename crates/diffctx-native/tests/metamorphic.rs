@@ -62,7 +62,7 @@ use support::families::{
     self, Break, Family, Neighbour, Planted, Query, Shape, discloses, names_link, queries,
     says_empty,
 };
-use support::seeds::{Edit, Knobs, Lang, RANGE, Seed, seed};
+use support::seeds::{Edit, Knobs, Lang, RANGE, Seed, removals, seed};
 
 const DEFAULT_CASES: u32 = 4;
 const DEFAULT_SEED: u64 = 0x00D1_FFC7_0000_0001;
@@ -958,6 +958,54 @@ fn every_family_has_a_seed_with_a_caller_and_a_control_without() {
             "{}: the control's change does not touch {}",
             family.label(),
             control.definition
+        );
+    }
+}
+
+// A range removes a definition and a file of the repository still spells its
+// name: the answer names that file or names a gap, never "nothing references
+// it". The same shape, with the name bound to another definition afterwards,
+// is the one that read as an absence.
+#[test]
+fn removed_definition_with_a_surviving_reference_is_never_an_absence() {
+    for removal in removals() {
+        let dir = TempDir::new().expect("tempdir");
+        removal.commit_into(dir.path());
+        let out = diffctx()
+            .current_dir(dir.path())
+            .args([".", "--diff", RANGE, "--mode", "impact"])
+            .args(["-f", "json", "-q", "--unfold"])
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("DIFFCTX_NO_MARKER", "1")
+            .output()
+            .expect("spawn diffctx");
+        assert!(out.status.success(), "{}: {:?}", removal.label, out.status);
+        let doc: Value = serde_json::from_slice(&out.stdout).expect("JSON");
+        let removed = removed_rows(&doc);
+        assert!(
+            removed.iter().any(|r| r.ends_with(removal.removed)),
+            "{}: {} is not listed as removed: {removed:?}",
+            removal.label,
+            removal.removed
+        );
+        let named = names_link(&doc, removal.reader);
+        let gap = doc["definitions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|row| row["symbol"].as_str() == Some(removal.removed))
+            .any(|row| {
+                let listed = |v: &Value| v.as_array().is_some_and(|rows| !rows.is_empty());
+                listed(&row["gaps"]) || listed(&row["missed_in"])
+            });
+        assert!(
+            !says_empty(&doc) && (named || gap),
+            "{}: {} still spells {} yet the answer names neither it nor a gap (empty: {})",
+            removal.label,
+            removal.reader,
+            removal.removed,
+            says_empty(&doc)
         );
     }
 }

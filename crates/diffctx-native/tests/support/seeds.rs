@@ -926,3 +926,175 @@ fn pascal(stem: &str) -> String {
         })
         .collect()
 }
+
+// A definition the range removes while a file of the repository still spells
+// its name: the file the answer has to name, or else name a gap.
+#[derive(Clone, Debug)]
+pub struct Removal {
+    pub label: &'static str,
+    pub base: Files,
+    pub head: Files,
+    pub removed: &'static str,
+    pub reader: &'static str,
+}
+
+impl Removal {
+    pub fn commit_into(&self, dir: &Path) {
+        run_git(dir, &["init", "-q", "-b", "main", "."]);
+        run_git(dir, &["config", "user.email", "test@example.com"]);
+        run_git(dir, &["config", "user.name", "diffctx tests"]);
+        run_git(dir, &["config", "commit.gpgsign", "false"]);
+        for (index, files) in [&self.base, &self.head].into_iter().enumerate() {
+            for (rel, content) in files {
+                let path = dir.join(rel);
+                std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+                std::fs::write(path, content).expect("write");
+            }
+            run_git(dir, &["add", "-A"]);
+            run_git(dir, &["commit", "-q", "-m", &format!("step {index}")]);
+        }
+    }
+}
+
+fn files(items: &[(&str, &str)]) -> Files {
+    items
+        .iter()
+        .map(|(rel, content)| (rel.to_string(), content.to_string()))
+        .collect()
+}
+
+// One removal per family where the shape is expressible, and the one that
+// names a definition by a different one afterwards (a glob re-export), which
+// strands no reference and so reads as an absence.
+pub fn removals() -> Vec<Removal> {
+    let plain = |label, removed, reader, stays: &[(&str, &str)], pricing: &str, head: &str| {
+        let pricing_path = stays[0].0;
+        let mut base = files(stays);
+        base.insert(pricing_path.to_string(), pricing.to_string());
+        let mut changed = Files::new();
+        changed.insert(pricing_path.to_string(), head.to_string());
+        Removal {
+            label,
+            base,
+            head: changed,
+            removed,
+            reader,
+        }
+    };
+    vec![
+        plain(
+            "python",
+            "legacy_rate",
+            "pkg/checkout.py",
+            &[
+                ("pkg/pricing.py", ""),
+                ("pkg/__init__.py", ""),
+                (
+                    "pkg/checkout.py",
+                    "from pkg.pricing import legacy_rate\n\n\ndef charge(cart):\n    return legacy_rate(cart)\n",
+                ),
+            ],
+            "def legacy_rate(x):\n    return x * 2\n\n\ndef rate(x):\n    return x * 3\n",
+            "def rate(x):\n    return x * 3\n",
+        ),
+        plain(
+            "typescript",
+            "legacyRate",
+            "src/checkout.ts",
+            &[
+                ("src/pricing.ts", ""),
+                (
+                    "src/checkout.ts",
+                    "import {legacyRate} from './pricing';\n\nexport function charge(cart: number): number {\n  return legacyRate(cart);\n}\n",
+                ),
+            ],
+            "export function legacyRate(x: number): number {\n  return x * 2;\n}\n\nexport function rate(x: number): number {\n  return x * 3;\n}\n",
+            "export function rate(x: number): number {\n  return x * 3;\n}\n",
+        ),
+        plain(
+            "rust",
+            "legacy_rate",
+            "src/checkout.rs",
+            &[
+                ("src/pricing.rs", ""),
+                (
+                    "Cargo.toml",
+                    "[package]\nname = \"shop\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                ),
+                ("src/lib.rs", "pub mod checkout;\npub mod pricing;\n"),
+                (
+                    "src/checkout.rs",
+                    "use crate::pricing::legacy_rate;\n\npub fn charge(cart: i64) -> i64 {\n    legacy_rate(cart)\n}\n",
+                ),
+            ],
+            "pub fn legacy_rate(x: i64) -> i64 {\n    x * 2\n}\n\npub fn rate(x: i64) -> i64 {\n    x * 3\n}\n",
+            "pub fn rate(x: i64) -> i64 {\n    x * 3\n}\n",
+        ),
+        plain(
+            "java",
+            "legacyRate",
+            "src/main/java/shop/Checkout.java",
+            &[
+                ("src/main/java/shop/Pricing.java", ""),
+                (
+                    "src/main/java/shop/Checkout.java",
+                    "package shop;\n\npublic class Checkout {\n    public int charge(int cart) {\n        return Pricing.legacyRate(cart);\n    }\n}\n",
+                ),
+            ],
+            "package shop;\n\npublic class Pricing {\n    public static int legacyRate(int x) {\n        return x * 2;\n    }\n\n    public static int rate(int x) {\n        return x * 3;\n    }\n}\n",
+            "package shop;\n\npublic class Pricing {\n    public static int rate(int x) {\n        return x * 3;\n    }\n}\n",
+        ),
+        plain(
+            "go",
+            "legacyRate",
+            "checkout.go",
+            &[
+                ("pricing.go", ""),
+                ("go.mod", "module shop\n\ngo 1.21\n"),
+                (
+                    "checkout.go",
+                    "package shop\n\nfunc charge(cart int) int {\n\treturn legacyRate(cart)\n}\n",
+                ),
+            ],
+            "package shop\n\nfunc legacyRate(x int) int {\n\treturn x * 2\n}\n\nfunc rate(x int) int {\n\treturn x * 3\n}\n",
+            "package shop\n\nfunc rate(x int) int {\n\treturn x * 3\n}\n",
+        ),
+        plain(
+            "kotlin",
+            "legacyRate",
+            "src/main/kotlin/shop/Checkout.kt",
+            &[
+                ("src/main/kotlin/shop/Pricing.kt", ""),
+                (
+                    "src/main/kotlin/shop/Checkout.kt",
+                    "package shop\n\nfun charge(cart: Int): Int = legacyRate(cart)\n",
+                ),
+            ],
+            "package shop\n\nfun legacyRate(x: Int): Int = x * 2\n\nfun rate(x: Int): Int = x * 3\n",
+            "package shop\n\nfun rate(x: Int): Int = x * 3\n",
+        ),
+        Removal {
+            label: "typescript-rebound",
+            base: files(&[
+                (
+                    "src/core.ts",
+                    "export interface Response {\n  body: string;\n}\n",
+                ),
+                (
+                    "src/types.ts",
+                    "import {Response as Base} from './core';\n\nexport interface Response extends Base {\n  retries: number;\n}\n\nexport type Mode = 'json' | 'text';\n",
+                ),
+                (
+                    "src/parse.ts",
+                    "import {Mode, Response} from './types';\n\nexport const parse = (r: Response, mode: Mode): string => r.body + mode;\n",
+                ),
+            ]),
+            head: files(&[(
+                "src/types.ts",
+                "export type Mode = 'json' | 'text';\n\nexport * from './core';\n",
+            )]),
+            removed: "Response",
+            reader: "src/parse.ts",
+        },
+    ]
+}

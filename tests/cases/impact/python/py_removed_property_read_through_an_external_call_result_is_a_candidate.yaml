@@ -1,0 +1,42 @@
+name: py_removed_property_read_through_an_external_call_result_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-definition, absence-claim, external-call]
+repo:
+  initial_files:
+    pkg/errors.py: |
+      class HTTPError(Exception):
+          def __init__(self, message, request=None):
+              super().__init__(message)
+              self._request = request
+
+          @property
+          def request(self):
+              return self._request
+    tests/test_errors.py: |
+      import pytest
+
+      from pkg.errors import HTTPError
+
+
+      def test_raise():
+          with pytest.raises(HTTPError) as exc_info:
+              raise HTTPError("boom", request="r")
+          assert exc_info.value.request == "r"
+  changed_files:
+    pkg/errors.py: |
+      class HTTPError(Exception):
+          def __init__(self, message, *, request):
+              super().__init__(message)
+              self.args = (message, request)
+  commit_message: "errors: request is a keyword-only argument"
+expect:
+  removed: [pkg/errors.py::request]
+  relations:
+  - from: tests/test_errors.py::test_raise
+    to: pkg/errors.py::request
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true
