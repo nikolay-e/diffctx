@@ -45,7 +45,31 @@ pub struct ChangeSet {
     pub gitignored: Vec<RepoPath>,
 }
 
+/// What a surface may say of a delta: the changed paths it may name and how
+/// many admission withheld, never named (#188).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct NamedChanges {
+    pub named: Vec<String>,
+    pub withheld: usize,
+}
+
+impl NamedChanges {
+    pub const NONE: Self = Self {
+        named: Vec::new(),
+        withheld: 0,
+    };
+}
+
 impl ChangeSet {
+    /// The paths of the changes and of those only `.gitignore` excludes.
+    pub fn named(&self) -> NamedChanges {
+        let paths = self.changes.iter().map(|c| &c.path).chain(&self.gitignored);
+        NamedChanges {
+            named: paths.map(|p| p.as_str().to_string()).collect(),
+            withheld: self.withheld,
+        }
+    }
+
     /// The changes to symlinks: links are not followed, so a retargeted one
     /// is reported as itself.
     pub fn symlinks(&self) -> impl Iterator<Item = &Change> {

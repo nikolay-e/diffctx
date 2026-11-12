@@ -1957,6 +1957,177 @@ fn a_gated_commit_whose_review_failed_names_the_files_it_did_not_review() {
     assert!(context.contains("--mode impact"), "{context}");
 }
 
+/// The pending edit of `repo_with_pending_change` plus two files the engine
+/// withholds, both committed before and both changed now: a private key by its
+/// name, and a note a `.diffctx/ignore` declares private. `git add -A` stages
+/// all three.
+fn staged_change_with_withheld_files() -> TempDir {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "deploy/server.key", "key v1\n");
+    write(repo, "private/notes.md", "# notes v1\n");
+    write(repo, ".diffctx/ignore", "private/\n");
+    git(repo, &["add", "deploy", "private", ".diffctx"]);
+    git(repo, &["commit", "-q", "-m", "seed"]);
+    write(repo, "deploy/server.key", "key v2\n");
+    write(repo, "private/notes.md", "# notes v2\n");
+    git(repo, &["add", "-A"]);
+    tmp
+}
+
+fn assert_withheld_counted_never_named(context: &str) {
+    assert!(!context.contains("server.key"), "{context}");
+    assert!(!context.contains("notes.md"), "{context}");
+    assert!(!context.contains("private/"), "{context}");
+    assert!(
+        context.contains("2 more changed file(s) are withheld by the ignore rules and not named")
+            || context.contains("withheld by the ignore rules and not named"),
+        "{context}"
+    );
+}
+
+/// #188, fj#194: the note a cut-short review adds lists the range's changed
+/// files, and a file admission withholds is counted there, never named.
+#[test]
+fn a_review_the_deadline_cut_counts_a_withheld_file_and_never_names_it() {
+    let tmp = staged_change_with_withheld_files();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let env = [("DIFFCTX_TEST_DEADLINE_EXPIRED", Path::new("1"))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let out = output_of(&h, "PreToolUse");
+    let context = out["additionalContext"].as_str().unwrap();
+    assert!(context.contains("partial"), "{context}");
+    assert!(
+        context.contains(" of the 1 changed file(s) list no caller above"),
+        "{context}"
+    );
+    assert!(context.contains("shop/pricing.py"), "{context}");
+    assert_withheld_counted_never_named(context);
+}
+
+/// The same for a review that failed outright: "It changes N file(s), none of
+/// them reviewed" names the files a reader may name.
+#[test]
+fn a_review_that_failed_counts_a_withheld_file_and_never_names_it() {
+    let tmp = staged_change_with_withheld_files();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let env = [
+        ("DIFFCTX_EVAL_STRICT", Path::new("1")),
+        ("DIFFCTX_NOT_A_SETTING", Path::new("1")),
+    ];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(
+        context.contains("It changes 1 file(s), none of them reviewed: shop/pricing.py."),
+        "{context}"
+    );
+    assert_withheld_counted_never_named(&context);
+}
+
+/// An inspection names the changed files no write of the session explains;
+/// a withheld one (an untracked private key) is neither named in the lead nor
+/// counted among them.
+#[test]
+fn an_inspection_names_no_withheld_file_among_the_other_changed_files() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "deploy/server.key", "key v1\n");
+    add_unrelated_edit(repo);
+    let inventory = repo.join("shop/inventory.py");
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[inventory], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+    assert!(!h.stdout.contains("server.key"), "{}", h.stdout);
+}
+
+/// The same where a `.diffctx/ignore` declares the file private: the working
+/// tree is judged by the rules in it, which need the reader.
+#[test]
+fn an_inspection_names_no_file_a_declared_policy_withholds() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "private/notes.md", "# notes v1\n");
+    write(repo, ".diffctx/ignore", "private/\n");
+    git(repo, &["add", "private", ".diffctx"]);
+    git(repo, &["commit", "-q", "-m", "seed"]);
+    write(repo, "private/notes.md", "# notes v2\n");
+    add_unrelated_edit(repo);
+    let inventory = repo.join("shop/inventory.py");
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[inventory], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+    assert!(!h.stdout.contains("notes.md"), "{}", h.stdout);
+}
+
+/// fj#170, fj#194: a commit's review reads a committed range, which has no
+/// untracked files in its diff, so it never lists the checkout's untracked
+/// files, however many there are.
+#[test]
+fn a_commit_review_lists_no_untracked_file_of_a_large_checkout() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let bulk = repo.join("bulk");
+    std::fs::create_dir(&bulk).unwrap();
+    for n in 0..20_000 {
+        std::fs::write(bulk.join(format!("f{n}.txt")), "x\n").unwrap();
+    }
+    git(repo, &["add", "shop/pricing.py"]);
+    let trace = repo.join(".git").join("trace.log");
+    let env = [("GIT_TRACE", trace.as_path())];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    assert!(
+        context_of(&h).contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    let calls = std::fs::read_to_string(&trace).expect("git wrote its trace");
+    assert!(
+        calls.contains("ls-tree"),
+        "the trace sees git calls: {calls}"
+    );
+    let listings: Vec<&str> = calls.lines().filter(|l| l.contains("--others")).collect();
+    assert!(listings.is_empty(), "{listings:#?}");
+}
+
 /// #612, #613: a commit whose review failed is said to be unreviewed, with
 /// the range to run by hand; silence there read as a clean review.
 #[test]
@@ -4076,7 +4247,7 @@ fn a_failed_review_says_when_its_changed_files_could_not_be_listed() {
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
     git(repo, &["add", "-A"]);
-    let path = path_refusing(tools.path(), "--name-only");
+    let path = path_refusing(tools.path(), "--no-commit-id");
     let env = [
         ("PATH", Path::new(&path)),
         ("DIFFCTX_EVAL_STRICT", Path::new("1")),
