@@ -32,6 +32,11 @@ use crate::snapshot::{Loss, RepoPath, RunBudget};
 
 pub struct DockerfileExtractor;
 
+fn part(span: &Span, offset: usize, len: usize) -> Span {
+    let start = span.bytes.start + offset as u32;
+    Span::new(start..start + len as u32, span.lines)
+}
+
 fn unbound() -> RepoPath {
     RepoPath::new("<blob>").expect("a valid path")
 }
@@ -298,9 +303,11 @@ impl<'a> Reader<'a> {
     }
 
     fn flag_ref(&mut self, value: &str, span: &Span) {
+        let flag = &self.source[span.bytes.start as usize..span.bytes.end as usize];
+        let at = flag.find("from=").map_or(0, |at| at + 5);
         let word = Word {
             text: value.to_string(),
-            span: span.clone(),
+            span: part(span, at, value.len()),
         };
         self.stage_ref(&word, "copy", value);
     }
@@ -318,7 +325,10 @@ impl<'a> Reader<'a> {
             .words
             .iter()
             .find(|w| w.text.starts_with(name))
-            .map_or_else(|| instruction.keyword_span.clone(), |w| w.span.clone());
+            .map_or_else(
+                || instruction.keyword_span.clone(),
+                |w| part(&w.span, 0, name.len()),
+            );
         self.facts.push(Fact::Definition(Def {
             local: key,
             kind: DefKind::Variable,
