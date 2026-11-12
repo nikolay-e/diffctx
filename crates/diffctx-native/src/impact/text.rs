@@ -16,7 +16,6 @@ use super::{
 use crate::answer::render::{self as rendered, gap_sentence, label, place};
 use crate::answer::v2::{
     Class, DefRef, Definition, Fold, Gap, GuardState, LocalOf, RangeKind, Row, Spelled, Standing,
-    TESTS_NAMED,
 };
 use crate::answer::{Answer, Page, RenderCtx};
 
@@ -410,12 +409,13 @@ fn named_list(symbols: &[&Definition]) -> String {
 /// The tests that reach a caller, as the entries print them: each `path::name`
 /// and `via` where known, the rest counted.
 pub(super) fn reachable_from_tests(tests: &[TestLink]) -> String {
+    let named = super::named_tests(tests);
+    let more = tests.len() - named.len();
     reachable(
-        tests
-            .iter()
-            .take(TESTS_NAMED)
+        named
+            .into_iter()
             .map(|t| (t.path.as_str(), t.name.as_deref(), t.via.as_deref())),
-        tests.len().saturating_sub(TESTS_NAMED),
+        more,
     )
 }
 

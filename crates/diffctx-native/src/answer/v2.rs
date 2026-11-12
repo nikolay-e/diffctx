@@ -463,8 +463,8 @@ pub struct Guard {
     /// The function between the caller and the test.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
-    /// The other tests that reach the caller at the same fewest hops, in path
-    /// then name order, three tests in all.
+    /// The other tests that reach the caller at the same fewest hops: the first
+    /// of each test file, then the rest, in path then name order, three tests in all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<GuardTest>,
     /// How many more reach it beyond those named.
@@ -486,22 +486,21 @@ impl Guard {
             more: 0,
             registrar: None,
         };
-        if let Some((first, rest)) = caller.tests.split_first() {
+        let named = crate::impact::named_tests(&caller.tests);
+        if let Some((first, rest)) = named.split_first() {
             return Self {
                 test: Some(first.path.clone()),
                 name: first.name.clone(),
                 via: first.via.clone(),
                 also: rest
                     .iter()
-                    .take(TESTS_NAMED - 1)
                     .map(|t| GuardTest {
                         test: t.path.clone(),
                         name: t.name.clone(),
                         via: t.via.clone(),
                     })
                     .collect(),
-                more: u32::try_from(caller.tests.len().saturating_sub(TESTS_NAMED))
-                    .unwrap_or(u32::MAX),
+                more: u32::try_from(caller.tests.len() - named.len()).unwrap_or(u32::MAX),
                 ..bare(GuardState::Linked)
             };
         }

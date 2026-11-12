@@ -37,11 +37,18 @@ use crate::tokens::Names;
 
 /// How a test runs code that no use of its own reaches: `file` as the fragments
 /// spell it, `symbol` the one function of the file that runs (none: the whole
-/// file runs), `test` the file of the test that runs it.
+/// file runs), `tests` the lines of the tests that run it, as (file, line).
 struct Run {
     file: String,
     symbol: Option<String>,
-    test: String,
+    tests: Vec<(String, u32)>,
+}
+
+/// The distinct (file, line) sites, in path then line order.
+fn ordered(mut sites: Vec<(String, u32)>) -> Vec<(String, u32)> {
+    sites.sort();
+    sites.dedup();
+    sites
 }
 
 /// What a use of a definition leads to one hop up: the fragments that hold it,
@@ -245,7 +252,15 @@ impl<'a> TestsReach<'a> {
                         .as_deref()
                         .is_none_or(|symbol| name == Some(symbol))
             })
-            .map(|run| (run.test.clone(), None))
+            .flat_map(|run| &run.tests)
+            .map(|(path, line)| {
+                let name = self
+                    .cells
+                    .of(path)
+                    .and_then(|cell| cell.function_at(path, *line))
+                    .map(str::to_string);
+                (path.clone(), name)
+            })
             .collect();
         // A test that does not spell the name cannot link to it.
         if let Some(name) = name.filter(|s| s.len() >= 3) {
@@ -619,21 +634,23 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     for (own, krate, name) in entries {
         let exe = format!("CARGO_BIN_EXE_{name}");
         let quoted = format!("\"{name}\"");
-        let test = grepped
-            .rows
-            .iter()
-            .filter(|(path, _, text)| {
-                path.starts_with(&format!("{krate}tests/"))
-                    && (names_word(text, &exe)
-                        || (text.contains("cargo_bin") && text.contains(&quoted)))
-            })
-            .map(|(path, _, _)| path.clone())
-            .min();
-        if let Some(test) = test {
+        let tests = ordered(
+            grepped
+                .rows
+                .iter()
+                .filter(|(path, _, text)| {
+                    path.starts_with(&format!("{krate}tests/"))
+                        && (names_word(text, &exe)
+                            || (text.contains("cargo_bin") && text.contains(&quoted)))
+                })
+                .map(|(path, line, _)| (path.clone(), *line))
+                .collect(),
+        );
+        if !tests.is_empty() {
             out.push(Run {
                 file: own,
                 symbol: Some("main".to_string()),
-                test,
+                tests,
             });
         }
     }
@@ -805,23 +822,25 @@ fn console_runs(
         let Some(file) = spelled.get(script.file.as_str()) else {
             continue;
         };
-        let test = grepped
-            .rows
-            .iter()
-            .filter(|(path, _, text)| {
-                crate::testfiles::is_test_path(Path::new(path))
-                    && *path != script.file
-                    && !commented(text)
-                    && starts_a_program(text)
-                    && spelled_as_command(text, &script.name)
-            })
-            .map(|(path, _, _)| path.clone())
-            .min();
-        if let Some(test) = test {
+        let tests = ordered(
+            grepped
+                .rows
+                .iter()
+                .filter(|(path, _, text)| {
+                    crate::testfiles::is_test_path(Path::new(path))
+                        && *path != script.file
+                        && !commented(text)
+                        && starts_a_program(text)
+                        && spelled_as_command(text, &script.name)
+                })
+                .map(|(path, line, _)| (path.clone(), *line))
+                .collect(),
+        );
+        if !tests.is_empty() {
             out.push(Run {
                 file: (*file).to_string(),
                 symbol: script.function,
-                test,
+                tests,
             });
         }
     }
@@ -885,7 +904,7 @@ fn script_runs(
     let mut out = Vec::new();
     for target in &targets {
         let basename = basename_of(target);
-        let test = grepped
+        let tests = grepped
             .rows
             .iter()
             .filter(|(path, _, text)| {
@@ -912,13 +931,14 @@ fn script_runs(
                             )
                     })
             })
-            .map(|(path, _, _)| path.clone())
-            .min();
-        if let (Some(test), Some(file)) = (test, spelled.get(target.as_str())) {
+            .map(|(path, line, _)| (path.clone(), *line))
+            .collect();
+        let tests = ordered(tests);
+        if let (false, Some(file)) = (tests.is_empty(), spelled.get(target.as_str())) {
             out.push(Run {
                 file: (*file).to_string(),
                 symbol: None,
-                test,
+                tests,
             });
         }
     }
@@ -1095,20 +1115,22 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
     entries
         .into_iter()
         .filter_map(|entry| {
-            let test = grepped
-                .rows
-                .iter()
-                .filter(|(path, _, text)| {
-                    crate::testfiles::is_test_path(Path::new(path))
-                        && !commented(text)
-                        && entry.spelling.spelled_by(text)
-                })
-                .map(|(path, _, _)| path.clone())
-                .min()?;
-            Some(Run {
+            let tests = ordered(
+                grepped
+                    .rows
+                    .iter()
+                    .filter(|(path, _, text)| {
+                        crate::testfiles::is_test_path(Path::new(path))
+                            && !commented(text)
+                            && entry.spelling.spelled_by(text)
+                    })
+                    .map(|(path, line, _)| (path.clone(), *line))
+                    .collect(),
+            );
+            (!tests.is_empty()).then(|| Run {
                 file: entry.file,
                 symbol: Some(entry.symbol),
-                test,
+                tests,
             })
         })
         .collect()
@@ -1218,7 +1240,7 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     held.into_iter()
         .filter_map(|(file, shown, symbol, literals)| {
             let shown = shown.as_str();
-            let test = literals
+            let tests = literals
                 .iter()
                 .filter(|literal| {
                     files_of
@@ -1235,14 +1257,14 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
                                 && !commented(text)
                                 && text.contains(literal.as_str())
                         })
-                        .map(|(path, _, _)| path.as_str())
+                        .map(|(path, line, _)| (path.clone(), *line))
                 })
-                .min()?
-                .to_string();
-            Some(Run {
+                .collect::<Vec<_>>();
+            let tests = ordered(tests);
+            (!tests.is_empty()).then(|| Run {
                 file,
                 symbol: Some(symbol),
-                test,
+                tests,
             })
         })
         .collect()
