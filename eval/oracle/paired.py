@@ -46,6 +46,8 @@ class Counts:
     truth_affected: int = 0
     tp_affected: int = 0
     false_fold: int = 0
+    incomplete_complete: int = 0
+    unrecorded: int = 0  # cells of a run that predates the count: a zero is not known there
 
 
 def _read_lines(path: Path) -> list[dict]:
@@ -82,6 +84,8 @@ def commit_counts(cells: list[dict], allowed: dict[str, set[CommitKey]]) -> dict
             before.truth_affected + cell.get("truth_affected", cell["truth"]),
             before.tp_affected + cell.get("tp_affected", cell["tp"]),
             before.false_fold + cell.get("false_fold", 0),
+            before.incomplete_complete + cell.get("incomplete_complete", 0),
+            before.unrecorded + ("incomplete_complete" not in cell),
         )
     return grouped
 
@@ -166,6 +170,7 @@ def _row(group: Group, base: dict[CommitKey, Counts], head: dict[CommitKey, Coun
         "fcn_base": b.fcn,
         "fcn_head": h.fcn,
         "false_fold_head": h.false_fold,
+        "incomplete_complete_head": None if h.unrecorded else h.incomplete_complete,
         "small": b.truth < SMALL_TRUTH,
     }
     intervals: dict[str, Interval | None] = {"precision": None, "recall": None}

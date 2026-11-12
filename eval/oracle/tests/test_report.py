@@ -422,7 +422,9 @@ def paired_runs(tmp_path: Path, truth: int = 8) -> tuple[Path, Path]:
         directory.mkdir()
         records = [{"repo": "r", "language": "python", "commit": c, "status": "measured"} for c in commits]
         (directory / "commits.jsonl").write_text("".join(json.dumps(x) + "\n" for x in records))
-        (directory / "cells.jsonl").write_text("".join(json.dumps(cell(commit=c, truth=truth, tp=truth)) + "\n" for c in commits))
+        (directory / "cells.jsonl").write_text(
+            "".join(json.dumps(cell(commit=c, truth=truth, tp=truth, incomplete_complete=0)) + "\n" for c in commits)
+        )
         (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
         made.append(directory)
     return made[0], made[1]

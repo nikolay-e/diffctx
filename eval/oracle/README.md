@@ -83,12 +83,16 @@ The engine declares each (language, relation) cell `precise`, `heuristic` or
 `none` (T16), and `cellstate.py` checks that each declared state is true
 against the measurement; nothing is derived from a typed list. A cell whose
 declaration is not true reads `untrue` with every reason named, and so does a
-measured cell no declaration names.
+measured cell no declaration names (reason `undeclared`: the facts must cover
+the registry).
 
 - `precise` holds every `[precise]` condition of `gates.toml`: in every row of
   the cell, each mode and each paired run, head precision and recall at the
-  floors and clean safety rows; a measured cell that does not fail against the
-  base; at least `true_relations_min` true relations per paired run (the sites
+  floors and no incomplete complete answer (`safety.incomplete_complete`; the
+  false complete negative is its special case, so `precise` names it no
+  further; a run that predates the count is not counted, never zero); a
+  measured cell that does not fail against the base; at least
+  `true_relations_min` true relations per paired run (the sites
   of all its modes: W7-D's floor of 30) and `decoys_min` decoys (10) in the
   cell; a fresh seed for the language; the replaced path deleted. Dropping a
   `[precise]` condition from `gates.toml` drops it from the rule.
