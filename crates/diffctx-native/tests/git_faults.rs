@@ -158,6 +158,27 @@ impl Fixture {
         )
     }
 
+    /// `--symbol` on the working tree, the stall knob set.
+    fn symbol(&self, target: &str, mode: &str, name: &str) -> Output {
+        let timeout = ANSWER_TIMEOUT_SECS.to_string();
+        let file = self.stalled_file();
+        self.run_with(
+            target,
+            mode,
+            &[
+                ".",
+                "--symbol",
+                name,
+                "-f",
+                "json",
+                "-q",
+                "--timeout",
+                &timeout,
+            ],
+            &[(STALL_KNOB, file.to_str().unwrap())],
+        )
+    }
+
     fn pack(&self, target: &str, mode: &str, extra: &[&str]) -> Output {
         let file = self.stalled_file();
         self.pack_with(target, mode, extra, &[(STALL_KNOB, file.to_str().unwrap())])
@@ -551,6 +572,27 @@ fn a_stalled_untracked_scan_is_disclosed_as_partial() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    fx.assert_no_survivors();
+}
+
+/// `--symbol` opens the working tree's reader like a pending change does, and
+/// a stall in that open is the deadline's, not an error: the answer is partial
+/// and names the limit, and claims neither a definition nor its absence.
+#[test]
+fn a_stalled_open_of_the_working_tree_is_a_partial_symbol_answer() {
+    let fx = fixture();
+    let out = fx.symbol("--others", "stall_before_read", "total");
+    assert!(
+        out.status.success(),
+        "an interrupted open is a partial answer, not an error: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc = json(&out);
+    assert!(
+        doc["coverage"]["limits"].to_string().contains("deadline"),
+        "{doc}"
+    );
+    assert!(callers_of_total(&doc).is_empty(), "{doc}");
     fx.assert_no_survivors();
 }
 
