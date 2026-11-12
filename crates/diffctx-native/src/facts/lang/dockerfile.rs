@@ -22,10 +22,11 @@
 //! - `ONBUILD` and heredoc bodies are not read.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
-use crate::facts::config::dockerfile::{Instruction, Word, parse, unquote};
+use crate::facts::config::dockerfile::{Dockerfile, Instruction, Word, parse, unquote};
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Lexical, LocalKey, Name,
     Namespace, PathMention, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
@@ -56,7 +57,7 @@ impl Extractor for DockerfileExtractor {
             blob.losses.push(Loss::Unsupported { path: unbound() });
             return blob;
         };
-        blob.facts = Reader::new(source).run();
+        (blob.facts, blob.lexical) = Reader::new(source).run();
         blob.in_source_order();
         blob
     }
@@ -103,6 +104,8 @@ struct Reader<'a> {
     stages: Vec<Stage>,
     twins: HashMap<LocalKey, u16>,
     finished: Vec<Fact>,
+    /// Comment lines and the quoted values of `LABEL`: text, never code.
+    text: Vec<(Range<u32>, Lexical)>,
 }
 
 fn key_in(container: &[String], name: &str) -> LocalKey {
@@ -121,6 +124,7 @@ impl<'a> Reader<'a> {
             stages: Vec::new(),
             twins: HashMap::new(),
             finished: Vec::new(),
+            text: Vec::new(),
         }
     }
 
@@ -147,7 +151,7 @@ impl<'a> Reader<'a> {
             .map_or_else(Vec::new, |s| vec![s.name.clone()])
     }
 
-    fn run(mut self) -> Vec<Fact> {
+    fn run(mut self) -> (Vec<Fact>, Vec<(Range<u32>, Lexical)>) {
         let parsed = parse(self.source);
         let mut on_build = false;
         for instruction in &parsed.instructions {
@@ -187,9 +191,36 @@ impl<'a> Reader<'a> {
             }
         }
         self.close_stages();
+        self.record_text(&parsed);
         let mut facts = std::mem::take(&mut self.facts);
         facts.extend(std::mem::take(&mut self.finished));
-        facts
+        (facts, self.text)
+    }
+
+    fn record_text(&mut self, parsed: &Dockerfile) {
+        let heredocs: Vec<_> = parsed.instructions.iter().filter(|i| i.heredoc).collect();
+        let mut offset = 0;
+        for line in self.source.split_inclusive('\n') {
+            let at = offset + line.len() - line.trim_start().len();
+            let within = |i: &&Instruction| {
+                (i.span.bytes.start as usize..i.span.bytes.end as usize).contains(&at)
+            };
+            if line[at - offset..].starts_with('#') && !heredocs.iter().any(within) {
+                let end = offset + line.trim_end().len();
+                self.text.push((at as u32..end as u32, Lexical::Comment));
+            }
+            offset += line.len();
+        }
+        let labels = parsed.instructions.iter().filter(|i| i.keyword == "LABEL");
+        for word in labels.flat_map(|i| &i.words) {
+            if let Some((key, value)) = word.text.split_once('=') {
+                if value.starts_with(['"', '\'']) && !value.contains('$') {
+                    let start = word.span.bytes.start + key.len() as u32 + 1;
+                    self.text
+                        .push((start..word.span.bytes.end, Lexical::String));
+                }
+            }
+        }
     }
 
     fn hash_in(&mut self, instruction: &Instruction) {
