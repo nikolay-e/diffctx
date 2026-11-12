@@ -24,7 +24,7 @@ from pathlib import Path
 
 import gitrepo
 from changed import ChangedDefinition, changed_definitions
-from compare import CONSTRUCTORS, compare, make_resolver, parse_answer
+from compare import CONSTRUCTORS, compare, make_resolver, missing_definition, parse_answer, silent_loss
 from corpus import Corpus, Repo, load_corpus
 from delta import Delta, classify
 from folding import mark_folding
@@ -36,7 +36,7 @@ from stale import pairing, renamed_answer, still_named
 from truth import Snapshot, relations_to
 
 SCORED_STATUSES = ("modified", "added", "moved", "renamed")
-RESULT_FILES = ("cells.jsonl", "relations.jsonl", "commits.jsonl", "indexes.jsonl", "unmapped.jsonl")
+RESULT_FILES = ("cells.jsonl", "relations.jsonl", "silent_loss.jsonl", "commits.jsonl", "indexes.jsonl", "unmapped.jsonl")
 RUN_FILE = "run.json"
 ANSWERS = "answers"  # the engine's raw answers, one file per query: a later scoring rule re-scores them with --replay
 
@@ -284,8 +284,12 @@ def measure_commit(run: RepoRun, sha: str, rng: random.Random) -> dict:
     if impact.ok and impact.data is not None:
         answer = parse_answer(impact.data, resolver)
         changed_keys = {c.target.key for c in prepared.changed}
-        for item in prepared.changed:
-            _score_changed(run, prepared, item, changed_keys, answer, {**context, "mode": "impact"}, counts)
+        missing = [
+            lost
+            for item in prepared.changed
+            if (lost := _score_changed(run, prepared, item, changed_keys, answer, {**context, "mode": "impact"}, counts))
+        ]
+        write_silent_loss(run.sink, {**context, "mode": "impact"}, missing, answer)
     candidates = symbol_candidates(prepared.changed)
     if candidates and run.symbols_left > 0:
         run.symbols_left -= 1
@@ -306,16 +310,17 @@ def _delta(prepared: Prepared, item: ChangedDefinition, counts: dict) -> Delta:
 
 def _score_changed(
     run: RepoRun, prepared: Prepared, item: ChangedDefinition, changed_keys, answer, context: dict, counts: dict
-) -> None:
+) -> dict | None:
+    """Scores one changed definition; returns its record when the answer lost it without a word (a silent loss)."""
     if item.status == "layout":
         counts["layout_only"] += 1
-        return
+        return None
     snapshot = prepared.head if item.snapshot == "head" else prepared.base
     target = item.target
     if not snapshot.symbols_of(target):
         counts["unmapped"] += 1
         run.sink.write("unmapped.jsonl", [{**context, "target": target.key, "status": item.status}])
-        return
+        return None
     relations = mark_in_diff(
         relations_to(snapshot, target), changed_keys, _hunk_lines(prepared.changes, item.snapshot), item.status == "added"
     )
@@ -328,6 +333,12 @@ def _score_changed(
     relations = mark_folding(relations, _delta(prepared, item, counts), snapshot)
     counts["scored"] += 1
     _write_scored(run.sink, {**context, "status": item.status, "snapshot": item.snapshot}, target, relations, answer)
+    return missing_definition(target, answer)
+
+
+def write_silent_loss(sink: Sink, context: dict, missing: list[dict], answer) -> None:
+    """One row per scored impact answer, losses or none: a zero is then a witnessed zero, not an absent file."""
+    sink.write("silent_loss.jsonl", [{**context, **silent_loss(missing, answer)}])
 
 
 def _score_symbol(
