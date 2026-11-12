@@ -62,6 +62,7 @@ diff_parse -> snapshot
 diff_parse -> types
 discovery -> config
 discovery -> edges
+discovery -> languages
 discovery -> overlay
 discovery -> paths
 discovery -> resource
@@ -96,11 +97,13 @@ facts -> parsers
 facts -> snapshot
 filtering -> config
 filtering -> graph
+filtering -> languages
 filtering -> types
 fold -> facts
 fold -> resolve
 fragmentation -> candidate_files
 fragmentation -> config
+fragmentation -> languages
 fragmentation -> parsers
 fragmentation -> paths
 fragmentation -> resource
@@ -124,6 +127,7 @@ hook -> config
 hook -> facts
 hook -> fragmentation
 hook -> impact
+hook -> languages
 hook -> mode
 hook -> pipeline
 hook -> profile
@@ -198,7 +202,6 @@ overlay -> parsers
 overlay -> source
 overlay -> types
 parsers -> config
-parsers -> edges  # against order
 parsers -> facts
 parsers -> languages
 parsers -> types
@@ -335,6 +338,7 @@ source -> paths
 source -> resource
 source -> snapshot
 stopwords -> config
+stopwords -> languages
 token_corpus -> config
 token_corpus -> discovery
 token_corpus -> paths

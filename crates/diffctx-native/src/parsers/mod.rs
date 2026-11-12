@@ -40,7 +40,7 @@ pub(crate) fn unanalysed_reason(
     has_definition: bool,
     content: impl FnOnce() -> Option<Vec<u8>>,
 ) -> Option<(&'static str, Vec<u32>)> {
-    let ext = crate::edges::base::file_ext(std::path::Path::new(path));
+    let ext = crate::languages::file_ext(std::path::Path::new(path));
     if !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
         return None;
     }

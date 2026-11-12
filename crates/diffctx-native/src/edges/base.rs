@@ -6,6 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::CODE_EXTENSIONS;
+pub(crate) use crate::languages::file_ext;
 use crate::types::{Fragment, FragmentId};
 
 use super::EdgeDict;
@@ -827,12 +828,6 @@ pub(crate) fn file_stem_lower(path: &Path) -> String {
 pub(crate) fn lower_file_name(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default()
-}
-
-pub(crate) fn file_ext(path: &Path) -> String {
-    path.extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
         .unwrap_or_default()
 }
 
