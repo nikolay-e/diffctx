@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -30,7 +31,6 @@ class TestSuiteTiming:
         # os._exit()s the xdist worker past the limit, and a slow test on a
         # loaded runner reads as an anonymous "worker crashed". A hang fails
         # the CI job's timeout-minutes instead.
-        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
         pytest_options = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]
         assert "timeout" not in pytest_options["ini_options"]
         marker = re.compile(r"^\s*@pytest\.mark\.timeout\(", re.MULTILINE)
@@ -93,7 +93,6 @@ class TestClaudePlugin:
         """The directory takes the uv.lock beside .mcp.json as the launcher's
         dependency tree: exact versions, a registry source and hashes for every
         package, the launched one at the version the launcher names."""
-        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
 
         plugin = PROJECT_ROOT / "plugin"
         project = tomllib.loads((plugin / "pyproject.toml").read_text(encoding="utf-8"))["project"]
