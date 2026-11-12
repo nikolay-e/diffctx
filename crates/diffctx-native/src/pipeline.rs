@@ -822,30 +822,105 @@ impl std::fmt::Display for SymbolQueryError {
 impl std::error::Error for SymbolQueryError {}
 
 /// `NAME`, `PATH:NAME`, or a qualified name: `Class.method`, `Class::method`,
-/// `module.func`, a Helm `chart.helper`.
+/// `module.func`, a Helm `chart.helper`. A Kotlin name may hold spaces and
+/// punctuation between backticks (`` `N escapes MemberNames` ``); there `.` and
+/// `:` belong to the name, and the segments come back without the backticks,
+/// as the facts layer names the definition.
 fn parse_symbol_query(query: &str) -> Option<(Option<&str>, Vec<&str>)> {
-    // The path ends at the last lone `:`; a `::` belongs to the name
-    // (`shop.py:Ledger::total`).
+    // The path ends at the last lone `:` outside backticks; a `::` belongs to
+    // the name (`shop.py:Ledger::total`).
     let bytes = query.as_bytes();
-    let lone = (0..bytes.len()).rev().find(|&i| {
-        bytes[i] == b':' && bytes.get(i + 1) != Some(&b':') && (i == 0 || bytes[i - 1] != b':')
-    });
+    let mut quoted = false;
+    let mut lone = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'`' => quoted = !quoted,
+            b':' if !quoted
+                && bytes.get(i + 1) != Some(&b':')
+                && (i == 0 || bytes[i - 1] != b':') =>
+            {
+                lone = Some(i);
+            }
+            _ => {}
+        }
+    }
+    if quoted {
+        return None;
+    }
     let (path, name) = match lone {
         Some(i) if i > 0 => (Some(&query[..i]), &query[i + 1..]),
         _ => (None, query),
     };
-    let segment = |s: &str| {
-        s.chars()
-            .next()
-            .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
-            && s.chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '-')
-    };
-    let segments: Vec<&str> = name.split("::").flat_map(|s| s.split('.')).collect();
+    let name_bytes = name.as_bytes();
+    let mut segments = Vec::new();
+    let (mut start, mut at) = (0, 0);
+    quoted = false;
+    while at < name_bytes.len() {
+        let separator = match name_bytes[at] {
+            b'`' => {
+                quoted = !quoted;
+                0
+            }
+            b'.' if !quoted => 1,
+            b':' if !quoted && name_bytes.get(at + 1) == Some(&b':') => 2,
+            _ => 0,
+        };
+        if separator > 0 {
+            segments.push(&name[start..at]);
+            at += separator;
+            start = at;
+        } else {
+            at += 1;
+        }
+    }
+    segments.push(&name[start..]);
     segments
-        .iter()
-        .all(|s| segment(s))
-        .then_some((path, segments))
+        .into_iter()
+        .map(segment_name)
+        .collect::<Option<Vec<_>>>()
+        .map(|segments| (path, segments))
+}
+
+/// What a segment names: the text between its backticks, or the segment itself
+/// when it has none of them, no `:`, no control character and no space at either
+/// end. An empty segment names nothing.
+fn segment_name(segment: &str) -> Option<&str> {
+    if let Some(inner) = segment
+        .strip_prefix('`')
+        .and_then(|rest| rest.strip_suffix('`'))
+    {
+        return (!inner.trim().is_empty()
+            && !inner.contains('`')
+            && !inner.chars().any(char::is_control))
+        .then_some(inner);
+    }
+    (!segment.is_empty()
+        && segment == segment.trim()
+        && !segment.contains(['`', ':'])
+        && !segment.chars().any(char::is_control))
+    .then_some(segment)
+}
+
+/// A name every language spells without quoting.
+fn is_identifier(segment: &str) -> bool {
+    segment
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$')
+        && segment
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '-')
+}
+
+fn malformed_symbol(query: &str) -> SymbolQueryError {
+    SymbolQueryError {
+        message: format!(
+            "--symbol takes NAME, PATH:NAME or a qualified Owner.NAME (a name with spaces or punctuation goes in backticks), got {query:?}"
+        ),
+        malformed: true,
+        named: None,
+        locals: Vec::new(),
+    }
 }
 
 /// The files naming a symbol that this build read as text: the definition may well
@@ -1105,15 +1180,7 @@ fn resolve_symbol_change_set(
     t_entry: Instant,
 ) -> Result<ChangeSet> {
     let Some((path, segments)) = parse_symbol_query(query) else {
-        return Err(SymbolQueryError {
-            message: format!(
-                "--symbol takes NAME, PATH:NAME or a qualified Owner.NAME, got {query:?}"
-            ),
-            malformed: true,
-            named: None,
-            locals: Vec::new(),
-        }
-        .into());
+        return Err(malformed_symbol(query).into());
     };
     let full = segments.join(".");
     let name = *segments.last().expect("split yields one segment");
@@ -1253,6 +1320,11 @@ fn resolve_symbol_change_set(
     // definition, whatever the fragmenter named.
     definitions.retain(|f| !is_local_fragment(f, name, run));
     if definitions.is_empty() {
+        // Written without backticks, a name that is no identifier is a query to
+        // correct, as it was before such names were looked up.
+        if !query.contains('`') && !segments.iter().all(|s| is_identifier(s)) {
+            return Err(malformed_symbol(query).into());
+        }
         if segments.len() == 1 {
             let locals = local_uses(root_dir, &files, name, run);
             if !locals.is_empty() {
