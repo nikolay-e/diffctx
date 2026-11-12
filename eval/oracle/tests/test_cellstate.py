@@ -12,10 +12,21 @@ RULE = paired.Measurability(width_max=0.20, lower_min=-0.05)
 COMMITS = [f"c{i}" for i in range(8)]
 
 
-def cell(commit: str, tp: int, fp: int = 0, truth: int = 10, kind: str = "calls", mode: str = "impact", fcn=False, false_fold=0):
+def cell(
+    commit: str,
+    tp: int,
+    fp: int = 0,
+    truth: int = 10,
+    kind: str = "calls",
+    mode: str = "impact",
+    fcn=False,
+    false_fold=0,
+    incomplete=0,
+):
     return {
         "language": "python", "mode": mode, "kind": kind, "repo": "r", "commit": commit, "target": "a::f", "truth": truth,
         "tp": tp, "fn": truth - tp, "fp": fp, "abstained": False, "fcn": fcn, "false_fold": false_fold,
+        "incomplete_complete": incomplete,
     }  # fmt: skip
 
 
@@ -71,7 +82,11 @@ def test_a_cell_declared_precise_that_meets_every_condition_is_precise(tmp_path:
     [
         pytest.param(same(tp=10, fp=2), "precision 0.833 under 0.95 at impact", id="precision"),
         pytest.param(same(tp=8), "recall 0.8 under 0.9 at impact", id="recall"),
-        pytest.param([cell(c, tp=10, fcn=c == "c0") for c in COMMITS], "1 false complete negatives at impact", id="fcn"),
+        pytest.param(
+            [cell(c, tp=10, fcn=c == "c0", incomplete=int(c == "c0")) for c in COMMITS],
+            "1 incomplete complete answers at impact",
+            id="incomplete complete, its special case the false complete negative named by it",
+        ),
         pytest.param([cell(c, tp=10, false_fold=1) for c in COMMITS], "8 false folds at impact", id="false fold"),
     ],
 )
@@ -85,6 +100,21 @@ def test_each_missed_floor_or_safety_row_alone_makes_a_precise_declaration_untru
     [only] = found.violations
     assert only.startswith(reason)
     assert found.reasons == found.violations
+
+
+def test_a_precise_cell_whose_run_predates_the_incomplete_complete_count_is_untrue_not_zero(
+    tmp_path: Path, facts: cellstate.Facts
+):
+    old = [{k: v for k, v in cell(c, tp=10).items() if k != "incomplete_complete"} for c in COMMITS]
+
+    found = state_of([entry(tmp_path, "run", old, old)], facts)
+
+    assert (found.state, found.violations) == (
+        "untrue",
+        ("incomplete complete answers not counted at impact (run-head, budget 2000)",),
+    )
+    heuristic = state_of([entry(tmp_path, "run2", old, old)], declare("heuristic"))
+    assert (heuristic.state, heuristic.violations) == ("heuristic", ())  # a candidate claims nothing complete
 
 
 def test_a_thin_cell_is_untrue_as_unmeasured_whatever_its_numbers(tmp_path: Path, facts: cellstate.Facts):
@@ -219,7 +249,7 @@ def test_a_measured_cell_no_declaration_names_is_untrue(tmp_path: Path, facts: c
     assert (only.declared, only.state, only.violations) == (
         None,
         "untrue",
-        ("the engine declares no state for this measured cell",),
+        ("undeclared: the engine's facts name no state for this measured cell",),
     )
 
 
