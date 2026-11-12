@@ -4506,7 +4506,9 @@ fn a_policy_in_an_expanded_untracked_directory_withholds_its_files() {
 
 /// An untracked directory whose entries do not fit the budget of the read is
 /// left unread, and the review says so by name: a smaller answer is never a
-/// clean one. (The budget is 5000 entries below the top level.)
+/// clean one. With no session ledger to tell whose change it is, the hook's
+/// note names every unread directory. (The budget is 5000 entries below the
+/// top level.)
 #[test]
 fn an_untracked_directory_over_the_budget_is_named_as_unread() {
     let tmp = repo_with_pending_change();
@@ -4526,4 +4528,41 @@ fn an_untracked_directory_over_the_budget_is_named_as_unread() {
     assert!(context.contains("1 untracked director"), "{context}");
     assert!(context.contains("bulk"), "{context}");
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
+}
+
+/// The hook's own note on an unread untracked directory is about the session's
+/// change: a directory this session wrote in is named, one it wrote nothing in
+/// is another session's pending work and left to the engine's coverage line.
+#[test]
+fn the_note_on_an_unread_directory_names_only_the_directories_this_session_wrote_in() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    for n in 0..5_100 {
+        write(repo, &format!("bulk/f{n}.txt"), "x\n");
+    }
+    let dir = TempDir::new().unwrap();
+    let pricing = repo.join("shop/pricing.py");
+
+    let elsewhere = transcript(dir.path(), std::slice::from_ref(&pricing), &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&elsewhere));
+    assert!(
+        h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        !h.stdout.contains("diffctx did not read"),
+        "a directory this session wrote nothing in is no note of its own: {}",
+        h.stdout
+    );
+
+    let wrote_in = transcript(dir.path(), &[pricing, repo.join("bulk/f0.txt")], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&wrote_in));
+    assert!(
+        h.stdout
+            .contains("diffctx did not read 1 untracked director"),
+        "{}",
+        h.stdout
+    );
+    assert!(h.stdout.contains("bulk"), "{}", h.stdout);
 }

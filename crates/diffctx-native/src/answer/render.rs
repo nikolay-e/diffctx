@@ -458,6 +458,11 @@ pub fn header(out: &mut String, a: &Answer) {
             reason_names(&doc.coverage.limits)
         );
     }
+    for gap in &doc.coverage.scope.gaps {
+        if matches!(gap, Gap::UnreadDirectories { .. }) {
+            let _ = writeln!(out, "({gap}: callers in them are not counted)");
+        }
+    }
 }
 
 /// Definitions only comments, formatting or position changed.

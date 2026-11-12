@@ -479,6 +479,12 @@ pub enum Gap {
     /// `files` run or read a path the shell computes at run time (`source
     /// "$x"`, `eval`): what they reach is not named in the text.
     SourceFlag { files: usize },
+    /// Untracked directories the read of the checkout did not enter, `total` of
+    /// them, `directories` the first named: a use in them is not known.
+    UnreadDirectories {
+        directories: Vec<String>,
+        total: usize,
+    },
 }
 
 impl std::fmt::Display for Gap {
@@ -542,6 +548,14 @@ impl std::fmt::Display for Gap {
             ),
             Self::SourceFlag { files } => {
                 write!(f, "{files} file(s) read a path computed at run time")
+            }
+            Self::UnreadDirectories { directories, total } => {
+                write!(f, "{total} untracked director(y/ies) not read: ")?;
+                f.write_str(&directories.join(", "))?;
+                match total.saturating_sub(directories.len()) {
+                    0 => Ok(()),
+                    more => write!(f, " and {more} more"),
+                }
             }
         }
     }
@@ -641,6 +655,9 @@ pub fn effect_of(loss: &Loss) -> Effect {
             reasons: vec![LimitReason::Deadline],
         }),
         Loss::Withheld { count } => Effect::Run(Gap::Withheld { files: *count }),
+        Loss::DirectoryUnread { .. } => Effect::Run(Gap::Stopped {
+            reasons: vec![LimitReason::DiscoveryTruncated],
+        }),
     }
 }
 

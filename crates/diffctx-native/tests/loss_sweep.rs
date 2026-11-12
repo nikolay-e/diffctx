@@ -28,7 +28,7 @@ use support::families::{
 };
 
 // The number of variants of `Loss`; `ordinal` is the check that it is right.
-const VARIANTS: usize = 12;
+const VARIANTS: usize = 13;
 
 fn ordinal(loss: &Loss) -> usize {
     match loss {
@@ -44,6 +44,7 @@ fn ordinal(loss: &Loss) -> usize {
         Loss::Deadline { .. } => 9,
         Loss::ExtractorFailed { .. } => 10,
         Loss::AmbiguousMatch { .. } => 11,
+        Loss::DirectoryUnread { .. } => 12,
     }
 }
 
@@ -82,6 +83,7 @@ fn samples() -> Vec<Loss> {
         },
         Loss::ExtractorFailed { path: path() },
         Loss::AmbiguousMatch { path: path() },
+        Loss::DirectoryUnread { path: path() },
     ]
 }
 
