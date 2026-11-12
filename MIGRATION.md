@@ -90,13 +90,16 @@ fields, one v2 field. Dropped = derived or internal, with the reason.
 `macros{files, what}`, `capped`, `not_traced`,
 `ambiguous{name, definitions, language}`, `not_modelled{language}`,
 `overridable{via}`, `templated{files}`, `context_unbound{files}`,
-`rendered_elsewhere{files}`, `external_source{pointers}`, `source_flag{files}`.
+`rendered_elsewhere{files}`, `external_source{pointers}`, `source_flag{files}`,
+`unread_directories{directories, total}`.
 `unaccounted` is the file account of the definition's interaction group: `files`
 of them could be neither bound by a cell nor ruled out by the names they spell,
 and `reason` says why (`read_failed`, `changed`, `too_large`, `not_read`,
 `unparsed`, `no_extractor`, `failed`, `ambiguous`, `manifest`, `other_language`,
-`no_group`). A search with no gap is `complete: true`; a count over an
-incomplete one is `{n, exact: false}`: at least `n`.
+`no_group`). `unread_directories` names the first ten untracked directories a
+working-tree read did not enter (over its entry budget), `total` counts them: a
+use of the name inside is unknown. A search with no gap is `complete: true`; a
+count over an incomplete one is `{n, exact: false}`: at least `n`.
 
 ## What locate and pack share with impact
 
