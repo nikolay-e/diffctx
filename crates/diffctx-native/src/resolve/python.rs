@@ -1311,8 +1311,10 @@ impl<'a> Engine<'a> {
     }
 
     /// What calling `callee` makes: the language's own object, an object of a
-    /// package outside the repository, an instance of a class of the repository,
-    /// or what a function returns.
+    /// class of a package outside the repository (a capitalised name: the type is
+    /// known and not ours), an instance of a class of the repository, or what a
+    /// function returns. What a function of outside code returns is unknown: it
+    /// may hand back an object of ours (`pytest.raises(E).value`).
     fn callee_result(
         &self,
         f: usize,
@@ -1327,7 +1329,9 @@ impl<'a> Engine<'a> {
             | Outcome::Found {
                 entity: Entity::External,
                 ..
-            } => Some((Entity::External, EvidenceKind::Constructed)),
+            } if callee.name.as_str().starts_with(char::is_uppercase) => {
+                Some((Entity::External, EvidenceKind::Constructed))
+            }
             Outcome::Found {
                 entity: Entity::Class(c),
                 ..

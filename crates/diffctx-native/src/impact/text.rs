@@ -436,6 +436,9 @@ fn reason_text(reason: Option<&str>) -> &'static str {
         Some("ambiguous_module") => "module ambiguous",
         Some("import_glob") => "loaded by an import glob",
         Some("search_path") => "schema left to the search path",
+        Some("rebound") => {
+            "the name now binds to another definition; this use may have meant the removed one"
+        }
         Some("global") => "a global; which scripts load it is not traced",
         _ => "binding unresolved",
     }
