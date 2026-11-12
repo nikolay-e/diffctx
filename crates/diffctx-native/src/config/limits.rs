@@ -36,12 +36,6 @@ impl Default for AlgorithmLimits {
     }
 }
 
-/// Hard ceiling for a single `git cat-file` blob read. Sized with headroom
-/// above `max_changed_file_size` (5 MB) so legitimate large changed files still
-/// load, while a pathological multi-hundred-MB blob is drained and rejected
-/// instead of allocated up front.
-pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
-
 /// The scoring mode every entry point ships. Named rather than repeated as a
 /// literal in the CLI arg, three pyo3 signatures and the Python layers: those
 /// copies are what would make a future default change land in some entry points

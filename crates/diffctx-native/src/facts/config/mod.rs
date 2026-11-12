@@ -61,37 +61,6 @@ pub enum Dialect {
     Ini,
 }
 
-impl Dialect {
-    /// By the file name: `.yaml`, `.yml`, `.json`, `.toml`, `.ini`, `.cfg` and
-    /// `.editorconfig`. `.conf` is no dialect: nginx, systemd and sshd share it.
-    pub fn of_path(path: &str) -> Option<Self> {
-        let name = path.rsplit('/').next()?.to_ascii_lowercase();
-        if name == ".editorconfig" {
-            return Some(Self::Ini);
-        }
-        let (stem, extension) = name.rsplit_once('.')?;
-        if stem.is_empty() {
-            return None;
-        }
-        Some(match extension {
-            "yaml" | "yml" => Self::Yaml,
-            "json" => Self::Json,
-            "toml" => Self::Toml,
-            "ini" | "cfg" => Self::Ini,
-            _ => return None,
-        })
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Yaml => "yaml",
-            Self::Json => "json",
-            Self::Toml => "toml",
-            Self::Ini => "ini",
-        }
-    }
-}
-
 /// How `{{ ... }}` in a YAML file is read. A Go template is not YAML; only the
 /// caller knows whether a file is one (a chart's `templates/`, a Helmfile's
 /// `.gotmpl`), because `{{ }}` is also ordinary text in an alert rule or a
