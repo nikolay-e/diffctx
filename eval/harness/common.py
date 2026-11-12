@@ -16,6 +16,7 @@ except ImportError:
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 
 WORKERS = int(os.environ.get("BENCH_WORKERS", "11"))
@@ -678,11 +679,11 @@ def _git_commit_sha() -> str:
 def save_results(results: list, tag: str, output_dir: Path = RESULTS_DIR, **meta) -> Path:
     import platform
     import sys
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     envelope = {
         "meta": {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "command": " ".join(sys.argv),
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),
