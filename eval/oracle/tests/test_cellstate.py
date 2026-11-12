@@ -212,11 +212,11 @@ def test_a_cell_declared_heuristic_answers_as_candidates_so_only_a_safety_row_ma
 
     assert (found.declared, found.state, found.violations) == ("heuristic", "heuristic", ())
     assert any(reason.startswith("precision 0.8 under 0.95") for reason in found.reasons)  # why it is not precise
-    wrong = [cell(c, tp=8, fp=2, fcn=c == "c0") for c in COMMITS]
+    wrong = [cell(c, tp=8, fp=2, fcn=c == "c0", incomplete=int(c == "c0")) for c in COMMITS]
     claimed = state_of([entry(tmp_path, "wrong", wrong, wrong)], declare("heuristic"))
     assert (claimed.state, claimed.violations) == (
         "untrue",
-        ("1 false complete negatives at impact (wrong-head, budget 2000), limit 0",),
+        ("1 incomplete complete answers at impact (wrong-head, budget 2000), limit 0",),
     )
 
 
@@ -229,7 +229,7 @@ def test_a_cell_declared_none_is_a_named_unknown_never_a_zero_and_claims_no_comp
         same(tp=0),
         same(tp=0),
     )
-    guessed = [cell(c, tp=0, fcn=c == "c0") for c in COMMITS]
+    guessed = [cell(c, tp=0, fcn=c == "c0", incomplete=int(c == "c0")) for c in COMMITS]
 
     found = state_of([silent], facts, relation="dispatch")
     assert (found.declared, found.state, found.violations) == ("none", "none", ())
@@ -238,7 +238,7 @@ def test_a_cell_declared_none_is_a_named_unknown_never_a_zero_and_claims_no_comp
 
     measured = state_of([entry(tmp_path, "wrong", guessed, guessed)], declare("none"))
     assert (measured.state, measured.head_recall) == ("untrue", None)  # it claimed an absence it said it did not know
-    assert measured.violations[0].startswith("1 false complete negatives")
+    assert measured.violations[0].startswith("1 incomplete complete answers")
 
 
 def test_a_measured_cell_no_declaration_names_is_untrue(tmp_path: Path, facts: cellstate.Facts):
