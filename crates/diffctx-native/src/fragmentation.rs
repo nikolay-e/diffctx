@@ -9,6 +9,7 @@ use crate::candidate_files::normalize_path;
 use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
+use crate::languages::file_ext;
 use crate::parsers::fragment_file;
 use crate::source::Source;
 use crate::tokenizer::count_tokens;
@@ -251,10 +252,7 @@ fn read_file_content(
     source: &Source,
     is_changed: bool,
 ) -> FileRead {
-    let ext = file_path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let ext = file_ext(file_path);
     if KNOWN_BINARY_EXTENSIONS.contains(ext.as_str()) {
         return FileRead::Unreadable;
     }

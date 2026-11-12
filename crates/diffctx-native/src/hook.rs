@@ -39,6 +39,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use crate::impact::AUTOMATIC_TOKEN_CAP;
+use crate::languages::file_ext;
 use crate::mode::ScoringMode;
 use crate::snapshot as snap;
 use intent::{Intent, Search, before_glob, is_absolute_dir};
@@ -2735,9 +2736,7 @@ impl Scope {
         !self.0.is_empty()
             && self.0.iter().all(|p| {
                 let path = root.join(p);
-                let ext = path.extension().map_or_else(String::new, |e| {
-                    format!(".{}", e.to_string_lossy().to_lowercase())
-                });
+                let ext = file_ext(&path);
                 !p.is_empty()
                     && path.is_file()
                     && crate::config::extensions::DOC_EXTENSIONS.contains(ext.as_str())

@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
 use crate::config::extensions::{CODE_EXTENSIONS, DOC_EXTENSIONS};
+use crate::languages::file_ext;
 
 fn set_from_list(list: &str) -> FxHashSet<String> {
     list.split_ascii_whitespace().map(str::to_string).collect()
@@ -37,10 +38,7 @@ fn get_stopwords(profile: &str) -> &FxHashSet<String> {
 
 pub(crate) fn profile_from_path(path: &str) -> &'static str {
     let p = std::path::Path::new(path);
-    let suffix = p
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let suffix = file_ext(p);
     let name_lower = p
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
