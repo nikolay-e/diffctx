@@ -11,7 +11,7 @@ use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
 use crate::types::Fragment;
 
-pub(crate) trait FragmentationStrategy: Send + Sync {
+trait FragmentationStrategy: Send + Sync {
     fn can_handle(&self, path: &str, content: &str) -> bool;
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment>;
 }
