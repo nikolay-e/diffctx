@@ -27,10 +27,10 @@ candidate_files -> languages
 candidate_files -> paths
 candidate_files -> resource
 candidate_files -> source
-change_class -> diff_parse
+change_class -> changed_lines
 change_class -> parsers
 change_class -> types
-changed_lines -> change_class
+changed_lines -> types
 config -> types
 container -> types
 core -> types
@@ -139,6 +139,7 @@ hook -> tokenizer
 hook -> types
 impact -> answer
 impact -> change_class
+impact -> changed_lines
 impact -> config
 impact -> container
 impact -> decide
@@ -301,11 +302,12 @@ resolve -> languages
 resolve -> profile
 resolve -> resource
 resolve -> snapshot
-resource -> changed_lines  # against order
+resource -> changed_lines
 resource -> config
 resource -> snapshot
 resource -> source
 run_provenance -> change_class
+run_provenance -> changed_lines
 run_provenance -> config
 run_provenance -> edges
 run_provenance -> effective_config
