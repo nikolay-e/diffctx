@@ -112,7 +112,7 @@ impl Family {
         self != Self::Config && self.by_extension(path)
     }
 
-    pub(crate) fn by_extension(self, path: &str) -> bool {
+    fn by_extension(self, path: &str) -> bool {
         RepoPath::new(path)
             .is_ok_and(|p| Language::from_path(&p).is_some_and(|language| self.has(language)))
     }

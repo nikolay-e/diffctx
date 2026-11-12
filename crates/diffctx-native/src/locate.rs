@@ -6,9 +6,9 @@ use serde::Serialize;
 
 use crate::answer::envelope::{self, Inventory};
 use crate::answer::v2::{Fit, Listing, Range};
-use crate::provenance::{incoming_attribution, seed_hops};
 use crate::run_provenance::state::{
-    ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files,
+    ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files, incoming_attribution,
+    seed_hops,
 };
 use crate::types::{Fragment, FragmentId};
 
