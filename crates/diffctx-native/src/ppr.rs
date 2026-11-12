@@ -178,7 +178,7 @@ fn ppr_push_csr(
 /// We surface this to Python so calibration / final-eval rows can be
 /// filtered in post-analysis (PolyBench / Multi-SWE-bench instances
 /// with >20k fragments are the primary suspects).
-pub struct PprResult {
+pub(crate) struct PprResult {
     pub scores: FxHashMap<FragmentId, f64>,
     pub truncated: bool,
     pub forward_pushes: usize,
@@ -195,7 +195,7 @@ pub struct PprResult {
     pub seeded: bool,
 }
 
-pub fn personalized_pagerank(
+pub(crate) fn personalized_pagerank(
     graph: &mut Graph,
     seeds: &FxHashSet<FragmentId>,
     alpha: f64,

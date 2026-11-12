@@ -31,7 +31,7 @@ fn is_candidate(
 /// size exclusion recorded on `ctx`. A listing that failed leaves the
 /// universe empty and says so: a walk of the disk in its place answered for
 /// a state nobody asked about (#443).
-pub fn collect_candidate_files(
+pub(crate) fn collect_candidate_files(
     root_dir: &Path,
     included_set: &FxHashSet<PathBuf>,
     scope: &[String],
@@ -76,7 +76,7 @@ pub fn collect_candidate_files(
         .collect()
 }
 
-pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
     if path.is_absolute() {
         dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
     } else {

@@ -151,14 +151,14 @@ fn sparse_excerpt(parent: &Fragment, hunks: &[DiffHunk]) -> Option<Fragment> {
 /// exactly the over-dump shape: the parent's remaining lines are unchanged
 /// context that the reader did not ask for. A change spread across most of the
 /// fragment keeps the fragment.
-pub fn is_downshift_worthwhile(parent: &Fragment, excerpt: &Fragment) -> bool {
+pub(crate) fn is_downshift_worthwhile(parent: &Fragment, excerpt: &Fragment) -> bool {
     f64::from(excerpt.line_count()) <= f64::from(parent.line_count()) * DOWNSHIFT_MAX_SHARE
 }
 
 /// Hunk-window stand-ins for core fragments, keyed by the core each replaces.
 /// Kept out of `all_fragments` on purpose: they must not become graph nodes or
 /// ordinary context candidates, only substitutes for their own core.
-pub fn generate_core_excerpts(
+pub(crate) fn generate_core_excerpts(
     all_fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     hunks: &[DiffHunk],

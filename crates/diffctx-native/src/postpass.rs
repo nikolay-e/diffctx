@@ -102,7 +102,7 @@ fn pick_smallest_fitting(
     None
 }
 
-pub fn coherence_post_pass(
+pub(crate) fn coherence_post_pass(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     graph: &Graph,
@@ -178,7 +178,7 @@ fn compute_rescue_threshold(
     context_scores[idx.min(context_scores.len() - 1)]
 }
 
-pub fn rescue_nontrivial_context(
+pub(crate) fn rescue_nontrivial_context(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     rel_scores: &FxHashMap<FragmentId, f64>,
@@ -290,7 +290,7 @@ fn rescue_score(
         .fold(own, f64::max)
 }
 
-pub fn ensure_changed_files_represented(
+pub(crate) fn ensure_changed_files_represented(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     changed_files: &[PathBuf],

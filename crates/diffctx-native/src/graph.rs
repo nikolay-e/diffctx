@@ -119,7 +119,7 @@ pub struct EdgeCapStats {
 /// multi-million-edge repositories (vendored Go monorepos, vscode),
 /// which is what used to OOM-kill memory-limited benchmark runners.
 #[derive(Clone, Copy)]
-pub struct CompactEdge {
+pub(crate) struct CompactEdge {
     pub src: u32,
     pub dst: u32,
     pub weight: f64,
@@ -137,13 +137,13 @@ pub struct CompactEdge {
 /// deduplicated fragment-id universe, so CSR node indexing built from it
 /// is identical to the ordering `Graph::freeze` produces.
 #[cfg(test)]
-pub struct CompactEdges {
+pub(crate) struct CompactEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
 }
 
-pub fn intern_fragment_nodes(
+pub(crate) fn intern_fragment_nodes(
     fragments: &[Fragment],
 ) -> (FxHashMap<FragmentId, u32>, Vec<FragmentId>) {
     let mut idx_to_node: Vec<FragmentId> = fragments.iter().map(|f| f.id.clone()).collect();
@@ -164,7 +164,7 @@ pub fn intern_fragment_nodes(
 /// `par_sort_by` is a stable parallel merge sort, so its output is
 /// bit-identical to `sort_by` while cutting the dominant serial phase of a
 /// tens-of-millions-edge build (#196).
-pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
+pub(crate) fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
     use rayon::prelude::*;
     edges.par_sort_by(|a, b| (a.src, a.dst).cmp(&(b.src, b.dst)));
     let mut out = 0usize;
@@ -190,7 +190,7 @@ pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
 /// Replaces the FragmentId-pair-keyed hashmap that used to retain the
 /// full uncapped edge universe for the lifetime of the pipeline.
 #[derive(Default)]
-pub struct EdgeCategoryTable {
+pub(crate) struct EdgeCategoryTable {
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     entries: Vec<(u32, u32, EdgeCategory)>,
@@ -214,7 +214,7 @@ impl EdgeCategoryTable {
         }
     }
 
-    pub fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
+    pub(crate) fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
         let s = *self.node_to_idx.get(src)?;
         let d = *self.node_to_idx.get(dst)?;
         self.entries
@@ -223,7 +223,7 @@ impl EdgeCategoryTable {
             .map(|k| self.entries[k].2)
     }
 
-    pub fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
+    pub(crate) fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
         for &(s, d, c) in &self.entries {
             f(
                 &self.idx_to_node[s as usize],
@@ -540,14 +540,14 @@ fn build_csr_owned(
 /// to the historical in-place suppression loops: at most one division,
 /// by `ln(1+in_degree)` for non-exempt edges into hub destinations or by
 /// `sqrt(fan)` for Semantic edges out of wide-fan sources.
-pub struct SuppressionFactors {
+pub(crate) struct SuppressionFactors {
     in_degree: Vec<u32>,
     d_p95: f64,
     sem_file_deg: Vec<u32>,
 }
 
 impl SuppressionFactors {
-    pub fn from_counters(in_degree: Vec<u32>, sem_file_deg: Vec<u32>) -> Self {
+    pub(crate) fn from_counters(in_degree: Vec<u32>, sem_file_deg: Vec<u32>) -> Self {
         let mut degrees_sorted: Vec<u32> = in_degree.iter().copied().filter(|&d| d > 0).collect();
         degrees_sorted.sort_unstable();
         let d_p95 = if degrees_sorted.is_empty() {
@@ -591,7 +591,7 @@ impl SuppressionFactors {
         Self::from_counters(in_degree, sem_file_deg)
     }
 
-    pub fn damp(&self, weight: f64, category: EdgeCategory, src: u32, dst: u32) -> f64 {
+    pub(crate) fn damp(&self, weight: f64, category: EdgeCategory, src: u32, dst: u32) -> f64 {
         let mut w = weight;
         let dst_deg = self.in_degree[dst as usize] as f64;
         if dst_deg > self.d_p95 && !category.is_suppression_exempt() {
@@ -696,7 +696,7 @@ pub(crate) fn read_max_out_edges_per_node() -> usize {
 /// ties by ascending dst index), so a bounded min-heap of these keeps
 /// exactly the edges the full sort-and-truncate would keep.
 #[derive(Clone, Copy)]
-pub struct RankedCandidate {
+pub(crate) struct RankedCandidate {
     pub weight: f64,
     pub dst: u32,
     pub category: EdgeCategory,
@@ -732,9 +732,9 @@ impl Ord for RankedCandidate {
     }
 }
 
-pub type SourceTopK = BinaryHeap<Reverse<RankedCandidate>>;
+pub(crate) type SourceTopK = BinaryHeap<Reverse<RankedCandidate>>;
 
-pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: usize) {
+pub(crate) fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: usize) {
     if heap.len() < k {
         heap.push(Reverse(candidate));
         return;
@@ -752,7 +752,7 @@ pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: 
 /// The category table is *not* carried here — `assemble_graph` derives it
 /// from this same post-cap `edges` vector, which is the only way to
 /// guarantee the exported category table and the CSR never disagree.
-pub struct CappedEdges {
+pub(crate) struct CappedEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
@@ -812,7 +812,7 @@ fn build_csr_from_pairs(
 /// Graph-construction path for pre-capped edges from the two-pass
 /// pipeline: suppression and the per-source cap already ran, so only
 /// the category table and CSR assembly remain.
-pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph {
+pub(crate) fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph {
     let CappedEdges {
         node_to_idx,
         idx_to_node,
@@ -836,7 +836,7 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
 /// inside `edges::collect_capped_edges` via `SuppressionFactors::from_counters`
 /// and enters at `build_graph_capped`.
 #[cfg(test)]
-pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
+pub(crate) fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,
         idx_to_node,
@@ -922,7 +922,7 @@ fn assemble_graph(
 /// builds every edge with `naming: false`, so graphs made this way never
 /// exercise the per-file naming-admission gate (#65).
 #[cfg(test)]
-pub fn build_graph(
+pub(crate) fn build_graph(
     fragments: &[Fragment],
     edges: FxHashMap<(FragmentId, FragmentId), f64>,
     categories: FxHashMap<(FragmentId, FragmentId), EdgeCategory>,

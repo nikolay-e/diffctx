@@ -4,24 +4,24 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::types::{Fragment, FragmentId};
 
-pub struct IntervalIndex {
+pub(crate) struct IntervalIndex {
     by_path: FxHashMap<Arc<str>, Vec<(u32, u32)>>,
     ids: FxHashSet<FragmentId>,
 }
 
 impl IntervalIndex {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             by_path: FxHashMap::default(),
             ids: FxHashSet::default(),
         }
     }
 
-    pub fn add(&mut self, frag: &Fragment) {
+    pub(crate) fn add(&mut self, frag: &Fragment) {
         self.add_id(&frag.id);
     }
 
-    pub fn add_id(&mut self, frag_id: &FragmentId) {
+    pub(crate) fn add_id(&mut self, frag_id: &FragmentId) {
         self.ids.insert(frag_id.clone());
         let intervals = self.by_path.entry(frag_id.path.clone()).or_default();
         let item = (frag_id.start_line, frag_id.end_line);
@@ -29,7 +29,7 @@ impl IntervalIndex {
         intervals.insert(pos, item);
     }
 
-    pub fn remove_id(&mut self, frag_id: &FragmentId) {
+    pub(crate) fn remove_id(&mut self, frag_id: &FragmentId) {
         if !self.ids.remove(frag_id) {
             return;
         }
@@ -41,11 +41,11 @@ impl IntervalIndex {
         }
     }
 
-    pub fn contains(&self, frag_id: &FragmentId) -> bool {
+    pub(crate) fn contains(&self, frag_id: &FragmentId) -> bool {
         self.ids.contains(frag_id)
     }
 
-    pub fn overlaps(&self, frag: &Fragment) -> bool {
+    pub(crate) fn overlaps(&self, frag: &Fragment) -> bool {
         let intervals = match self.by_path.get(&frag.id.path) {
             Some(v) => v,
             None => return false,
@@ -84,7 +84,7 @@ impl IntervalIndex {
         false
     }
 
-    pub fn is_superset_of(&self, frag: &Fragment) -> bool {
+    pub(crate) fn is_superset_of(&self, frag: &Fragment) -> bool {
         let intervals = match self.by_path.get(&frag.id.path) {
             Some(v) => v,
             None => return false,

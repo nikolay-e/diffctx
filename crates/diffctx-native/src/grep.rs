@@ -15,7 +15,7 @@ use crate::source::Source;
 /// and withheld (repo-relative): an answer built on `rows` counts `withheld`,
 /// since what those files say was never read (#392).
 #[derive(Default)]
-pub struct Grepped<T> {
+pub(crate) struct Grepped<T> {
     pub rows: Vec<T>,
     pub withheld: Vec<String>,
 }
@@ -54,7 +54,7 @@ fn admitted_files(source: &Source, repo_root: &Path, rels: Vec<String>) -> Grepp
 
 /// Every line matching the extended regex `pattern` at `rev` (the working
 /// tree when `None`) in the files `pathspec` names: (path, line, text).
-pub fn grep_lines_matching(
+pub(crate) fn grep_lines_matching(
     repo_root: &Path,
     source: &Source,
     pattern: &str,
@@ -66,7 +66,7 @@ pub fn grep_lines_matching(
 }
 
 /// Tracked and unignored untracked files holding `word` as a whole word.
-pub fn grep_files_with_word(
+pub(crate) fn grep_files_with_word(
     repo_root: &Path,
     source: &Source,
     word: &str,
@@ -77,7 +77,7 @@ pub fn grep_files_with_word(
 }
 
 /// The files with a line that declares `name`.
-pub fn grep_files_with_declaration(
+pub(crate) fn grep_files_with_declaration(
     repo_root: &Path,
     source: &Source,
     name: &str,
@@ -90,7 +90,7 @@ pub fn grep_files_with_declaration(
 /// Lines of code files at `rev` that hold one of `words` as a whole word, at
 /// most `per_file` per file: where a removed definition's callers are read
 /// from.
-pub fn grep_code_words(
+pub(crate) fn grep_code_words(
     repo_root: &Path,
     source: &Source,
     words: &[String],
@@ -110,7 +110,7 @@ pub fn grep_code_words(
 
 /// The first line of each file that holds `word` as a whole word, in the
 /// working tree: where a name nothing defines is spelled.
-pub fn grep_word_first_lines(
+pub(crate) fn grep_word_first_lines(
     repo_root: &Path,
     source: &Source,
     word: &str,
@@ -123,7 +123,7 @@ pub fn grep_word_first_lines(
 /// working tree when `rev` is `None`: (repo-relative path, line, text). Past
 /// the run's deadline the rows found are the answer, and the run says it is
 /// partial.
-pub fn grep_lines(
+pub(crate) fn grep_lines(
     repo_root: &Path,
     source: &Source,
     needles: &[String],

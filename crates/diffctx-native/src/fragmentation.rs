@@ -310,7 +310,7 @@ pub(crate) fn changed_text(file_path: &Path, root_dir: &Path, source: &Source) -
     }
 }
 
-pub fn process_files_for_fragments(
+pub(crate) fn process_files_for_fragments(
     files: &[PathBuf],
     root_dir: &Path,
     seen_frag_ids: &mut FxHashSet<FragmentId>,
@@ -325,7 +325,7 @@ pub fn process_files_for_fragments(
 /// of a 4000-function file is the changed fragment and not whichever of its
 /// neighbours the cap happened to keep (core identification would otherwise
 /// label the nearest survivor as the change).
-pub fn fragment_files(
+pub(crate) fn fragment_files(
     files: &[PathBuf],
     root_dir: &Path,
     seen_frag_ids: &mut FxHashSet<FragmentId>,
@@ -493,7 +493,7 @@ fn overlaps_hunk(fragment: &Fragment, hunk: &crate::types::DiffHunk) -> bool {
     fragment.start_line() <= end && fragment.end_line() >= start
 }
 
-pub fn create_whole_file_fragment(
+pub(crate) fn create_whole_file_fragment(
     path: &Path,
     root_dir: &Path,
     source: &Source,

@@ -7,14 +7,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::pipeline::ScoredState;
 use crate::types::{Fragment, FragmentId};
 
-pub const PROVENANCE_ENV: &str = "DIFFCTX_PROVENANCE_DUMP";
+pub(crate) const PROVENANCE_ENV: &str = "DIFFCTX_PROVENANCE_DUMP";
 
 /// Env-gated per-candidate inclusion-provenance dump (#93). One JSONL line
 /// per scored candidate: relevance, seed distance in hops, per-edge-category
 /// incoming mass (`weight x rel(src)` summed over incoming edges), and the
 /// selection verdict. The default path costs one env probe and nothing else,
 /// which is what keeps the instrumentation E-class.
-pub fn maybe_dump(state: &ScoredState, selected: &[Fragment]) {
+pub(crate) fn maybe_dump(state: &ScoredState, selected: &[Fragment]) {
     let Ok(path) = std::env::var(PROVENANCE_ENV) else {
         return;
     };
@@ -26,7 +26,7 @@ pub fn maybe_dump(state: &ScoredState, selected: &[Fragment]) {
     }
 }
 
-pub fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
+pub(crate) fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
     let graph = &state.scoring_result.graph;
     let mut hops: FxHashMap<FragmentId, u32> = FxHashMap::default();
     let mut queue: VecDeque<FragmentId> = VecDeque::new();
@@ -104,7 +104,7 @@ fn per_category_mass(
 /// mass descending: `(category, strongest_source_path, mass)`. Shared by the
 /// provenance dump and the locate renderer (#126) — one attribution pass,
 /// two consumers.
-pub fn incoming_attribution(
+pub(crate) fn incoming_attribution(
     state: &ScoredState,
 ) -> FxHashMap<FragmentId, Vec<(String, String, f64)>> {
     per_category_mass(state)
