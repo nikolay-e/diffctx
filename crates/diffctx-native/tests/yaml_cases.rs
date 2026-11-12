@@ -16,6 +16,9 @@ use common::{TestCase, XFail, calculate_budget, evaluate_oracle, garbage_files};
 #[path = "common/oracle/mod.rs"]
 mod oracle;
 mod support;
+// Every impact and symbol answer the corpus builds is checked against it.
+#[path = "support/fact_keys.rs"]
+mod fact_keys;
 use oracle::case::Mode;
 
 fn cases_root() -> PathBuf {
