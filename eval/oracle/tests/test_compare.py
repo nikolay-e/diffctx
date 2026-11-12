@@ -456,3 +456,48 @@ def test_same_named_overloads_are_scored_apart_by_their_spans():
     for target, user, site in ((first, "charge", 2), (second, "refund", 6)):
         cells, _ = compare(target, [Relation(f"shop/checkout.py::{user}", target.key, "calls", site)], found)
         assert (cells[0]["truth"], cells[0]["tp"], cells[0]["fp"], cells[0]["fn"]) == (1, 1, 0, 0)
+
+
+def test_a_complete_answer_that_lists_one_of_two_truth_callers_is_an_incomplete_complete_and_no_false_complete_negative():
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build")]
+
+    [cell], details = compare(TARGET, truth, answer([caller("shop/checkout.py", "charge", "1-3")]))
+
+    assert (cell["tp"], cell["fn"], cell["incomplete_complete"], cell["fcn"], cell["listed"]) == (1, 1, 1, False, True)
+    assert {d["from"]: d["incomplete_complete"] for d in details} == {
+        "shop/checkout.py::charge": False,
+        "shop/report.py::build": True,
+    }
+
+
+def test_a_candidate_is_a_truth_site_the_answer_lists_so_it_is_no_incomplete_complete():
+    truth = [relation("shop/checkout.py::charge")]
+
+    [cell], _ = compare(TARGET, truth, answer([caller("shop/checkout.py", "charge", "1-3", evidence="candidate")]))
+
+    assert (cell["tp_weak"], cell["fn"], cell["incomplete_complete"]) == (1, 0, 0)
+
+
+def test_a_false_complete_negative_is_the_incomplete_complete_where_the_answer_lists_no_caller_at_all():
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build")]
+
+    [cell], details = compare(TARGET, truth, answer([]))
+
+    assert (cell["fn"], cell["incomplete_complete"], cell["fcn"], cell["listed"]) == (2, 2, True, False)
+    assert all(d["incomplete_complete"] for d in details)
+
+
+def test_no_incomplete_complete_where_the_answer_abstains_has_no_entry_or_the_change_cannot_reach_the_site():
+    reach = relation("shop/checkout.py::charge")
+    folded = Relation("shop/report.py::build", TARGET.key, "calls", 3, rule="no-code-change")
+    abstaining = answer([], unresolved="`total` is ambiguous: 3 python definitions")
+    elsewhere = parse_answer(
+        {"changed": [{"path": "shop/checkout.py", "symbol": "charge", "lines": "1-3", "kind": "function", "callers": []}]},
+        RESOLVE,
+    )
+
+    for found in (abstaining, elsewhere):
+        [cell], _ = compare(TARGET, [reach], found)
+        assert (cell["fn"], cell["incomplete_complete"], cell["fcn"]) == (1, 0, False)
+    [cell], _ = compare(TARGET, [folded], answer([]))
+    assert (cell["fn"], cell["incomplete_complete"]) == (1, 0)

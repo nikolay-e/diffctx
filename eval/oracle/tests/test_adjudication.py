@@ -136,6 +136,31 @@ def test_the_affected_and_folded_columns_survive_the_rebuild_so_the_adjudicated_
     assert (cell["truth"], cell["truth_affected"], cell["tp_affected"], cell["folded"], cell["false_fold"]) == (4, 2, 1, 2, 1)
 
 
+def test_the_rebuilt_cell_counts_the_incomplete_complete_and_the_false_complete_negative_as_the_raw_cell_does():
+    rows = [row("a", "tp", affected=True), row("b", "fn", affected=True), row("c", "fn", affected=False)]
+    listed = [raw_cell(listed=True, reported=True)]
+
+    [cell] = adj.cells_from_rows(rows, listed)
+
+    assert (cell["incomplete_complete"], cell["fcn"]) == (
+        1,
+        False,
+    )  # one affected truth site unlisted, but the answer listed others
+    [silent] = adj.cells_from_rows([row("b", "fn", affected=True)], [raw_cell(listed=False, reported=True)])
+    assert (silent["incomplete_complete"], silent["fcn"]) == (1, True)
+    [no_entry] = adj.cells_from_rows([row("b", "fn", affected=True)], [raw_cell(reported=False)])
+    assert (no_entry["incomplete_complete"], no_entry["fcn"]) == (0, False)
+
+
+def test_an_adjudication_that_refutes_the_unlisted_site_takes_it_out_of_the_incomplete_complete():
+    rows = [row("a", "fn", affected=True), row("b", "fn", affected=True)]
+    verdicts = {key("a"): verdict("a", "none")}
+
+    [cell] = adj.cells_from_rows(adj.apply_to_rows(rows, verdicts), [raw_cell(reported=True)])
+
+    assert (cell["truth"], cell["incomplete_complete"]) == (1, 1)
+
+
 def test_load_verdicts_reads_final_sets_only_and_summary_counts_outcomes(tmp_path: Path):
     records = [
         {**verdict("a", "call"), "scip_kind": "calls", "sha": "git:c"},
