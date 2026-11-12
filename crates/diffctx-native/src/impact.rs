@@ -442,6 +442,34 @@ pub struct TestLink {
     pub via: Option<String>,
 }
 
+/// The tests an answer names for a caller whose tests are `tests` (path then name
+/// order): the first of each file, then the rest, [`crate::answer::v2::TESTS_NAMED`]
+/// at most, in path then name order. One file of many tests does not crowd out the
+/// others.
+pub fn named_tests(tests: &[TestLink]) -> Vec<&TestLink> {
+    let cap = crate::answer::v2::TESTS_NAMED;
+    let mut files = FxHashSet::default();
+    let mut picked: Vec<bool> = tests.iter().map(|t| files.insert(&t.path)).collect();
+    let mut room = cap.saturating_sub(picked.iter().filter(|p| **p).count());
+    let mut firsts = 0;
+    for p in &mut picked {
+        if *p {
+            firsts += 1;
+            if firsts > cap {
+                *p = false;
+            }
+        } else if room > 0 {
+            *p = true;
+            room -= 1;
+        }
+    }
+    tests
+        .iter()
+        .zip(picked)
+        .filter_map(|(t, p)| p.then_some(t))
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct Caller {
     pub path: String,
