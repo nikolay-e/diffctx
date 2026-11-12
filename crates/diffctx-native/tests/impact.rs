@@ -983,8 +983,12 @@ fn a_package_reexport_reaches_the_defining_module() {
         "{md}"
     );
     assert!(
-        !md.contains("reports/summary.py"),
+        !md.contains("reports/summary.py::"),
         "importing another name from the package is not a reference: {md}"
+    );
+    assert!(
+        md.contains("(reports/summary.py:5)"),
+        "the unbound `Steps` stays a named read the search could not settle: {md}"
     );
 }
 
@@ -3280,8 +3284,12 @@ fn local_functions_and_untyped_attribute_reads_are_not_callers() {
         "an untyped call in a module that imports `log` stays possible: {md}"
     );
     assert!(
-        !md.contains("stray.py"),
-        "a script that never imports `log` is no hedge (gh#666): {md}"
+        !md.contains("stray.py::"),
+        "a script that never imports `log` is no possible caller (gh#666): {md}"
+    );
+    assert!(
+        md.contains("possibly called from client.py:5, stray.py:2"),
+        "the gap names the two reads its count holds: {md}"
     );
 }
 
@@ -4205,7 +4213,7 @@ fn shedding_drops_guesses_before_contracts_and_the_header_counts_all() {
             header.contains("callers unresolved for") && header.ends_with(", 12 possible"),
             "{budget}: {md}"
         );
-        if md.contains("possibly called from") {
+        if md.contains("::nightly_") {
             with_guess += 1;
             assert!(md.contains("migrations/0002_add.sql"), "{budget}: {md}");
         } else {
