@@ -241,7 +241,7 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
     ),
     (
         "src/discovery.rs",
-        "for suffix in crate::edges::structural::testing::JVM_TEST_SUFFIXES",
+        "for suffix in crate::testfiles::JVM_TEST_SUFFIXES",
         "a constant",
     ),
     (

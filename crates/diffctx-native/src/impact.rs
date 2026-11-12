@@ -15,7 +15,6 @@ use crate::answer::{Answer, RenderCtx};
 use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells};
 use crate::facts::{EntryKind, framework};
-use crate::graph::EdgeCategory;
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
