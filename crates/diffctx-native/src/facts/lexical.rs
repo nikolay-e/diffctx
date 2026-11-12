@@ -14,7 +14,7 @@ type Ranges = Vec<(Range<u32>, Lexical)>;
 
 /// What one grammar calls the nodes of `lexical`, each a space-separated list of
 /// node kinds. A language with no row has every byte as code: no tree here, or
-/// strings that name things (Shell and HCL keep only their comments out).
+/// strings that name things (Shell and HCL keep their comments out, Shell its heredoc bodies).
 struct Row {
     languages: &'static [Language],
     comments: &'static str,
@@ -37,7 +37,8 @@ const TABLE: &[Row] = &[
     Row { languages: &[Language::Php], comments: "comment", strings: "string encapsed_string heredoc_body nowdoc_body", text: "string_content escape_sequence nowdoc_string", code_in: "" },
     Row { languages: &[Language::C, Language::Cpp], comments: "comment", strings: "string_literal raw_string_literal system_lib_string char_literal", text: "string_content raw_string_content raw_string_delimiter character escape_sequence", code_in: "" },
     Row { languages: &[Language::Swift], comments: "comment multiline_comment", strings: "line_string_literal multi_line_string_literal raw_string_literal", text: "line_str_text multi_line_str_text str_escaped_char raw_str_part raw_str_end_part raw_str_continuing_indicator", code_in: "" },
-    Row { languages: &[Language::Shell, Language::Terraform], comments: "comment", strings: "", text: "", code_in: "" },
+    Row { languages: &[Language::Shell], comments: "comment", strings: "heredoc_body", text: "heredoc_content", code_in: "" },
+    Row { languages: &[Language::Terraform], comments: "comment", strings: "", text: "", code_in: "" },
 ];
 
 fn listed(kinds: &str, kind: &str) -> bool {
