@@ -76,6 +76,13 @@ def test_a_container_is_detected_by_its_marker_file_or_its_cgroup(tmp_path: Path
     assert not runners.in_container(tmp_path / "none", tmp_path / "also-none")
 
 
+def test_a_kubernetes_pod_is_a_container_even_under_a_cgroup_namespace(tmp_path: Path):
+    cgroup = tmp_path / "cgroup"
+    cgroup.write_text("0::/\n")
+    assert not runners.in_container(tmp_path / "none", cgroup, {})
+    assert runners.in_container(tmp_path / "none", cgroup, {"KUBERNETES_SERVICE_HOST": "192.0.2.1"})
+
+
 def test_the_sandbox_variable_alone_vouches_for_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(runners, "in_container", lambda: False)
     monkeypatch.setenv(runners.SANDBOX_VARIABLE, "1")
