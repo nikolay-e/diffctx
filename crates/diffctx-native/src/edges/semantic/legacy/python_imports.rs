@@ -8,13 +8,13 @@ use rustc_hash::FxHashMap;
 /// What a local name is bound to by an import: a whole module, or one name
 /// a module exports.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Target {
+pub(crate) enum Target {
     Module(String),
     Member { module: String, name: String },
 }
 
 #[derive(Debug, Default)]
-pub struct FileBindings {
+pub(crate) struct FileBindings {
     pub names: FxHashMap<String, Target>,
 }
 
@@ -63,7 +63,7 @@ fn python_statements(text: &str) -> Vec<String> {
     out
 }
 
-pub fn python_bindings(text: &str) -> FileBindings {
+pub(crate) fn python_bindings(text: &str) -> FileBindings {
     let mut b = FileBindings::default();
     for stmt in python_statements(text) {
         let stmt = stmt.replace(['(', ')'], " ");

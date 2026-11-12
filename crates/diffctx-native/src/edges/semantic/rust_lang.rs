@@ -140,7 +140,7 @@ fn stem_to_mod_name(path: &Path) -> String {
     }
 }
 
-pub struct RustEdgeBuilder;
+pub(crate) struct RustEdgeBuilder;
 
 impl EdgeBuilder for RustEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

@@ -161,7 +161,7 @@ fn count_referencing_files<'a>(
         .collect()
 }
 
-pub struct GoEdgeBuilder;
+pub(crate) struct GoEdgeBuilder;
 
 impl GoEdgeBuilder {
     fn build_indices<'a>(

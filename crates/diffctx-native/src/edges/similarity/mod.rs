@@ -1,7 +1,7 @@
-pub mod lexical;
+pub(crate) mod lexical;
 
 use super::base::EdgeBuilder;
 
-pub fn get_similarity_builders() -> Vec<Box<dyn EdgeBuilder>> {
+pub(crate) fn get_similarity_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![Box::new(lexical::LexicalEdgeBuilder)]
 }

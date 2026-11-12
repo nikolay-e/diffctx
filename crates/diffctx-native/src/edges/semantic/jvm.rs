@@ -488,7 +488,7 @@ impl<'a> FileRelations<'a> {
     }
 }
 
-pub struct JVMEdgeBuilder;
+pub(crate) struct JVMEdgeBuilder;
 
 impl EdgeBuilder for JVMEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -56,7 +56,7 @@ fn extract_const_refs(content: &str) -> FxHashSet<String> {
     base::captures1(&CONST_REF_RE, content).collect()
 }
 
-pub struct RubyEdgeBuilder;
+pub(crate) struct RubyEdgeBuilder;
 
 impl EdgeBuilder for RubyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

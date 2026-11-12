@@ -78,7 +78,7 @@ fn extract_schema_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct OpenapiEdgeBuilder;
+pub(crate) struct OpenapiEdgeBuilder;
 
 impl EdgeBuilder for OpenapiEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

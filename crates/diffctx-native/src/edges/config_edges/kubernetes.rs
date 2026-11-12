@@ -592,7 +592,7 @@ fn build_selector_edges(
     }
 }
 
-pub struct KubernetesEdgeBuilder;
+pub(super) struct KubernetesEdgeBuilder;
 
 impl EdgeBuilder for KubernetesEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
