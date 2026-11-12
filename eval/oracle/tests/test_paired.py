@@ -182,6 +182,18 @@ def test_false_folds_of_the_head_are_summed_per_relation(tmp_path: Path):
     assert only(paired.compare_runs(base, head, RULE))["false_fold_head"] == 3
 
 
+def test_incomplete_complete_of_the_head_is_summed_and_unknown_where_a_run_predates_the_count(tmp_path: Path):
+    commits = [f"c{i}" for i in range(6)]
+    base = write_run(tmp_path / "base", commits, [cell(c, tp=2, truth=2) for c in commits])
+    counted = [{**cell(c, tp=2, truth=2), "incomplete_complete": 1} for c in commits[:2]]
+    counted += [{**cell(c, tp=2, truth=2), "incomplete_complete": 0} for c in commits[2:]]
+    head = write_run(tmp_path / "head", commits, counted)
+    old = write_run(tmp_path / "old", commits, [cell(c, tp=2, truth=2) for c in commits])
+
+    assert only(paired.compare_runs(base, head, RULE))["incomplete_complete_head"] == 2
+    assert only(paired.compare_runs(base, old, RULE))["incomplete_complete_head"] is None
+
+
 def test_a_thin_cell_with_a_bad_point_estimate_is_unmeasured_and_does_not_fail(tmp_path: Path):
     commits = [f"c{i}" for i in range(6)]
     base = write_run(tmp_path / "base", commits, [cell(c, tp=4, truth=4) for c in commits])
