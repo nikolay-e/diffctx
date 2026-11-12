@@ -1337,6 +1337,31 @@ fn a_single_quoted_sed_or_awk_program_is_text_not_code() {
     assert_eq!(found.mentions, 2);
 }
 
+#[test]
+fn a_heredoc_body_is_text_but_an_unquoted_one_reads_its_expansions() {
+    let source = "#!/bin/bash\nname=1\ncleanup() {\n  :\n}\ncat <<'EOF'\ncleanup $name\nEOF\ncat <<EOF\ncleanup $name\nEOF\n";
+    let world = snapshot_in(Lang::Shell, &[("run.sh", source)]);
+    let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
+    let lines: Vec<u32> = found.entries.iter().map(|e| e.occurrence.line).collect();
+    assert_eq!(lines, [3], "{found:#?}");
+    assert_eq!(found.mentions, 2);
+    let found = world.outcomes(world.def("run.sh", "name"), "run.sh", &["name"]);
+    let seen: Vec<_> = found
+        .entries
+        .iter()
+        .map(|e| (e.occurrence.line, shape(e)))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (2, ("declaration", "definition_name", None)),
+            (10, ("ours", "resolved", Some(Relation::Reads)))
+        ],
+        "{found:#?}"
+    );
+    assert_eq!(found.mentions, 1);
+}
+
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]
