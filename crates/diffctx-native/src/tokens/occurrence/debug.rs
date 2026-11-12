@@ -142,11 +142,19 @@ impl Shadow<'_> {
         found.entries.extend(self.unnamed(definition));
         let embedded = self.embedded.get_or_init(|| self.embedded_uses(definition));
         found.entries.extend_from_slice(embedded);
+        let admits_calls = admitted(definition.kind).contains(&Relation::Calls);
+        let consumed_by_reading =
+            definition.kind == DefKind::Object && self.family == Family::Config;
         let implicit = match facts_of(self.ctx, side, self.cache, &definition.file) {
             Ok(Some(home)) => home
                 .defs()
                 .find(|def| home.key(&def.local) == definition.key)
                 .map_or_else(Vec::new, |def| {
+                    let known = Known {
+                        consumed_outside: known.consumed_outside
+                            && (admits_calls || consumed_by_reading),
+                        ..known
+                    };
                     let mut kinds = implicit_kinds(&home, def, known);
                     if entered(&home, def) {
                         kinds.retain(|kind| *kind != Implicit::Entry);
@@ -200,8 +208,8 @@ impl Shadow<'_> {
             account.unread.clone_from(&unread);
             account.mentions = found.mentions;
             account.implicit.clone_from(&implicit);
-            account.admits_calls = admitted(definition.kind).contains(&Relation::Calls);
-            account.consumed_by_reading = definition.kind == DefKind::Object;
+            account.admits_calls = admits_calls;
+            account.consumed_by_reading = consumed_by_reading;
             account.alias_bound = alias_bound;
             let verdict = account.verdict();
             let complete = verdict.is_complete() && gaps.is_empty();

@@ -353,7 +353,8 @@ pub struct Account {
     /// (a property is read, never called).
     pub admits_calls: bool,
     /// A tool outside the repository consumes the definition by reading it (a
-    /// configuration object): `Outside` then stands against its `reads`.
+    /// configuration object, not a Dockerfile stage, which is built by name):
+    /// `Outside` then stands against its `reads`.
     pub consumed_by_reading: bool,
     pub alias_bound: Option<AliasBound>,
     /// A name too common to list: its occurrences, folded into one row.
