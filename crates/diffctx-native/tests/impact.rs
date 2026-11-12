@@ -5956,7 +5956,7 @@ fn a_body_only_change_folds_the_export_and_lists_the_modules_own_read_of_it() {
 /// An added helper that a changed, tested function calls from a local variable's
 /// initialiser (`const ok = a && this.passes()`) is reached by the test through
 /// that function: the use belongs to the function, not to the variable, so the
-/// helper is named untested nowhere (R14': it names no user of its own range).
+/// helper is named like any changed definition but never as an untested one.
 #[test]
 fn an_added_helper_used_in_a_local_of_a_tested_changed_function_is_tested_through_it() {
     let tmp = repo(
@@ -5981,9 +5981,10 @@ fn an_added_helper_used_in_a_local_of_a_tested_changed_function_is_tested_throug
         0,
         "{doc:#}"
     );
+    let unlisted = doc["unlisted"]["no_caller"].to_string();
     assert!(
-        !doc.to_string().contains("manager.ts::passes"),
-        "nothing names the added helper: {doc:#}"
+        !unlisted.contains("manager.ts::passes"),
+        "the helper is not claimed untested: {doc:#}"
     );
 }
 
@@ -6697,11 +6698,11 @@ fn a_field_used_only_by_changed_definitions_is_named_with_its_users() {
     );
 }
 
-/// A definition the range adds has no user outside the range that could depend on
-/// it, and the users the range writes are the diff: it is named nowhere, and never
-/// as one nothing calls.
+/// A definition the range adds is named like an edited one: `helper` is read only
+/// by `run`, which the range changes too, so it is a row and the answer says it is
+/// used only by a definition changed in this range.
 #[test]
-fn a_definition_the_range_adds_names_no_user_of_its_own_range() {
+fn a_definition_the_range_adds_is_named_with_the_changed_definitions_that_use_it() {
     let tmp = repo(
         &[
             ("app.py", "def run(x):\n    return x\n"),
@@ -6717,12 +6718,11 @@ fn a_definition_the_range_adds_names_no_user_of_its_own_range() {
     );
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
     assert!(
-        !changed_symbols(&doc).contains(&"helper".to_string()),
+        changed_symbols(&doc).contains(&"helper".to_string()),
         "{doc:#}"
     );
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    assert!(!md.contains("changed, used only by"), "{md}");
-    assert!(!md.contains("helper"), "{md}");
+    assert!(md.contains("helper"), "{md}");
 }
 
 /// A removed definition a line still names at the head is a broken reference
