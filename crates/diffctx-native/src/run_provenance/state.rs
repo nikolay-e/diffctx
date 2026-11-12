@@ -1,6 +1,7 @@
 //! The scored state of a run and what a selection over it returns: read by every
 //! renderer and answer, below the pipeline that builds them.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -226,4 +227,111 @@ pub(crate) fn answer_paths<'a>(
             .collect(),
         stems,
     }
+}
+
+pub(crate) fn seed_hops(state: &ScoredState) -> FxHashMap<FragmentId, u32> {
+    let graph = &state.scoring_result.graph;
+    let mut hops: FxHashMap<FragmentId, u32> = FxHashMap::default();
+    let mut queue: VecDeque<FragmentId> = VecDeque::new();
+    for core in &state.core_ids {
+        hops.insert(core.clone(), 0);
+        queue.push_back(core.clone());
+    }
+    // Relevance flows along edges in both directions (PPR blends forward and
+    // backward pushes), so distance is measured on the undirected graph.
+    let mut undirected: FxHashMap<FragmentId, Vec<FragmentId>> = FxHashMap::default();
+    graph.for_each_categorized_edge(|src, dst, _| {
+        undirected.entry(src.clone()).or_default().push(dst.clone());
+        undirected.entry(dst.clone()).or_default().push(src.clone());
+    });
+    while let Some(node) = queue.pop_front() {
+        let d = hops[&node];
+        if let Some(neighbors) = undirected.get(&node) {
+            for n in neighbors {
+                if !hops.contains_key(n) {
+                    hops.insert(n.clone(), d + 1);
+                    queue.push_back(n.clone());
+                }
+            }
+        }
+    }
+    hops
+}
+
+struct CatMass {
+    mass: f64,
+    top_source: FragmentId,
+    top_contribution: f64,
+}
+
+fn per_category_mass(
+    state: &ScoredState,
+) -> FxHashMap<FragmentId, FxHashMap<&'static str, CatMass>> {
+    let graph = &state.scoring_result.graph;
+    let rel = &state.scoring_result.rel_scores;
+    let mut mass: FxHashMap<FragmentId, FxHashMap<&'static str, CatMass>> = FxHashMap::default();
+    graph.for_each_categorized_edge(|src, dst, cat| {
+        let src_rel = rel.get(src).copied().unwrap_or(0.0);
+        if src_rel <= 0.0 {
+            return;
+        }
+        let w = graph.forward_edge_weight(src, dst).unwrap_or(0.0);
+        if w <= 0.0 {
+            return;
+        }
+        let contribution = w * src_rel;
+        let entry = mass
+            .entry(dst.clone())
+            .or_default()
+            .entry(cat.as_str())
+            .or_insert_with(|| CatMass {
+                mass: 0.0,
+                top_source: src.clone(),
+                top_contribution: 0.0,
+            });
+        entry.mass += contribution;
+        // Strict `>` with deterministic iteration would still tie-break by
+        // visit order; prefer the lexically-smaller source on equal
+        // contribution so the attribution is order-independent.
+        if contribution > entry.top_contribution
+            || (contribution == entry.top_contribution && src.path < entry.top_source.path)
+        {
+            entry.top_source = src.clone();
+            entry.top_contribution = contribution;
+        }
+    });
+    mass
+}
+
+/// Per-fragment incoming relevance mass grouped by edge category, sorted by
+/// mass descending: `(category, strongest_source_path, mass)`. Shared by the
+/// provenance dump and the locate renderer (#126) — one attribution pass,
+/// two consumers.
+pub(crate) fn incoming_attribution(
+    state: &ScoredState,
+) -> FxHashMap<FragmentId, Vec<(String, String, f64)>> {
+    per_category_mass(state)
+        .into_iter()
+        .map(|(id, cats)| {
+            let mut rows: Vec<(String, String, f64)> = cats
+                .into_iter()
+                .map(|(cat, m)| (cat.to_string(), m.top_source.path.to_string(), m.mass))
+                .collect();
+            rows.sort_by(|a, b| {
+                b.2.partial_cmp(&a.2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.0.cmp(&b.0))
+            });
+            (id, rows)
+        })
+        .collect()
+}
+
+pub(crate) fn incoming_mass(
+    state: &ScoredState,
+) -> FxHashMap<FragmentId, FxHashMap<&'static str, f64>> {
+    per_category_mass(state)
+        .into_iter()
+        .map(|(id, cats)| (id, cats.into_iter().map(|(c, m)| (c, m.mass)).collect()))
+        .collect()
 }
