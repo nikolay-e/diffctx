@@ -1,0 +1,52 @@
+name: py_method_a_protocol_hook_calls_is_reached_by_the_test_that_renders
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- protocol
+- dunder
+repo:
+  initial_files:
+    shop/console.py: |
+      class Console:
+          def render(self, renderable):
+              return renderable.__render__(self)
+
+          def print(self, renderable):
+              return "".join(self.render(renderable))
+    shop/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          def __render__(self, console):
+              return self._render(console)
+
+          def _render(self, console):
+              return [str(row) for row in self.rows]
+    tests/test_table.py: |
+      from shop.console import Console
+      from shop.table import Table
+
+
+      def test_table_prints_its_rows():
+          assert Console().print(Table([1, 2])) == "12"
+  changed_files:
+    shop/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          def __render__(self, console):
+              return self._render(console)
+
+          def _render(self, console):
+              return [str(row) for row in self.rows if row is not None]
+  commit_message: Skip empty rows
+expect:
+  changed:
+  - shop/table.py::_render
+  not_untested:
+  - _render
