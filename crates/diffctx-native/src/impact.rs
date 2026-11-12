@@ -195,7 +195,7 @@ pub struct ImpactOutput {
     pub untested_called_in_diff: Vec<String>,
     /// The changed definitions of that kind a runner or a framework enters
     /// without a caller (a script, a program's `main`, a registered or
-    /// dispatched handler), named by role: `path::symbol (lines) — role`.
+    /// dispatched handler, a test), named by role: `path::symbol (lines) — role`.
     pub entry_unlisted: Vec<String>,
     /// Changed definitions whose hunks are comments, formatting or a
     /// verbatim move only, which no caller sees, so their callers were not
@@ -3873,7 +3873,7 @@ pub fn build_impact(
                 } else {
                     untested_unlisted.push(absence(named, complete));
                 }
-            } else if let Some(role) = entry.as_ref().filter(|_| !tests.is_test(core)) {
+            } else if let Some(role) = entry.as_ref() {
                 entry_unlisted.push(format!("{named} \u{2014} {role}"));
             }
             continue;
