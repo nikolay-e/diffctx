@@ -637,8 +637,8 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     let section = "Named in code outside the diff (a textual match, not a resolved binding):";
     let (head, text) = md.split_once(section).unwrap_or_else(|| panic!("{md}"));
     assert!(head.contains("1 caller(s) outside the diff"), "{md}");
-    // Plan (Rev 17 stream 5, phase 1): a language without a cell never claims a
-    // complete set, so its definition carries the account's gap.
+    // A language without a cell never claims a complete set: its definition
+    // carries the gap that names it.
     let rates = json["definitions"]
         .as_array()
         .unwrap()
@@ -648,7 +648,7 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     assert!(
         rates["gaps"]
             .as_array()
-            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "unaccounted")),
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled")),
         "{json}"
     );
     for row in ["ops/run.sh.j2", "src/Invoice.cs:"] {
@@ -1893,13 +1893,18 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     assert!(!missed.contains("README.md"), "{doc:#}");
     // A plain word in a data file is no reader of a function named `total`.
     assert!(!missed.contains("data/labels.json"), "{doc:#}");
+    let dates = doc["definitions"]
+        .as_array()
+        .and_then(|d| d.iter().find(|d| d["symbol"] == "formatDate"))
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    assert_eq!(dates["coverage"]["calls"]["complete"], false, "{doc:#}");
     let text = impact_markdown(site.path());
     assert!(
-        text.contains(", 1 named only textually (not resolved)"),
+        text.contains("callers unresolved for `formatDate`"),
         "{text}"
     );
     assert!(
-        text.contains("src/pages/index.astro:2 names formatDate"),
+        text.contains("possibly called from src/pages/index.astro:4"),
         "{text}"
     );
     assert!(!text.contains("callers may be missing"), "{text}");
@@ -1970,13 +1975,17 @@ fn a_verdict_needs_a_model() {
         )],
     );
     let doc = impact_json(linked.path());
-    // Plan (Rev 17 stream 5, phase 1): a definition in a language without a cell
-    // carries the account's gap, which names the interaction group.
+    // A definition in a language without a cell carries the gap that names the
+    // language, and its calls are not complete.
     assert!(
         doc["definitions"][0]["gaps"]
             .as_array()
-            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "unaccounted")),
-        "a definition without a cell carries the account's gap: {doc:#}"
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled")),
+        "a definition without a cell carries the gap naming its language: {doc:#}"
+    );
+    assert_eq!(
+        doc["definitions"][0]["coverage"]["calls"]["complete"], false,
+        "{doc:#}"
     );
     assert!(
         doc["definitions"][0]["rows"][0]["path"] == "src/Report.cs",
@@ -2405,7 +2414,10 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
         "{md}"
     );
     assert!(!md.contains("referenced from api.py"), "{md}");
-    assert!(md.contains("0 caller(s) outside the diff"), "{md}");
+    // The registration passes the function as an argument: a leak, so its calls
+    // stay unresolved beside the role, and it is named, never read as absent.
+    assert!(md.contains("callers unresolved for `list_items`"), "{md}");
+    assert!(!md.contains("0 caller(s) outside the diff"), "{md}");
     // The negative control: a plain function keeps its claim.
     let (claims, roles) = md.split_once(ENTRY_LIST).unwrap_or_else(|| panic!("{md}"));
     assert!(
@@ -2414,7 +2426,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     );
     assert!(!roles.contains("api.py::plain"), "{md}");
     assert!(
-        !claims.contains("api.py::reviews") && !claims.contains("api.py::list_items"),
+        !claims.contains("api.py::reviews") && !claims.contains("  - api.py::list_items"),
         "{md}"
     );
 
