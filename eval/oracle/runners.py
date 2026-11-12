@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,9 +49,14 @@ class Plan:
 CONTAINER_MARKERS = ("docker", "containerd", "kubepods", "lxc", "podman")
 
 
-def in_container(dockerenv: Path = Path("/.dockerenv"), cgroup: Path = Path("/proc/self/cgroup")) -> bool:
-    """This process runs inside a container: Docker's marker file, or a container runtime in its cgroup path."""
-    if dockerenv.exists():
+def in_container(
+    dockerenv: Path = Path("/.dockerenv"),
+    cgroup: Path = Path("/proc/self/cgroup"),
+    environment: Mapping[str, str] = os.environ,
+) -> bool:
+    """This process runs inside a container: Docker's marker file, the variable the kubelet sets in every pod
+    (a pod under a cgroup namespace shows `0::/` and no marker file), or a container runtime in its cgroup path."""
+    if dockerenv.exists() or environment.get("KUBERNETES_SERVICE_HOST"):
         return True
     try:
         return any(marker in cgroup.read_text(encoding="utf-8", errors="replace") for marker in CONTAINER_MARKERS)
