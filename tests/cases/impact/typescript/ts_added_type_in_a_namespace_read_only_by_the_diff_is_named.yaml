@@ -1,0 +1,42 @@
+name: ts_added_type_in_a_namespace_read_only_by_the_diff_is_named
+mode: impact
+source: fj#175
+issue_state: open
+tags:
+- typescript
+- namespace
+- silent-loss
+repo:
+  initial_files:
+    src/types.ts: |
+      export type HookEvent = {
+        name: string;
+      };
+    src/use.ts: |
+      import { HookEvent } from './types';
+
+      export function describe(e: HookEvent): string {
+        return e.name;
+      }
+  changed_files:
+    src/types.ts: |
+      export namespace PromiseOnly {
+        export type HookEvent = {
+          name: string;
+          at: number;
+        };
+      }
+    src/use.ts: |
+      import { PromiseOnly } from './types';
+
+      export function describe(e: PromiseOnly.HookEvent): string {
+        return e.name;
+      }
+  commit_message: Move the hook event type into a namespace and widen it
+expect:
+  # The type the range adds is read only by the definition the range edits: it is
+  # named as one the diff itself reads, never left out of the answer.
+  exact: false
+  changed:
+  - src/types.ts::PromiseOnly.HookEvent
+  - src/use.ts::describe
