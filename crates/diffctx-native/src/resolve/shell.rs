@@ -40,7 +40,6 @@ use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, normalize_l
 pub struct ShellResolver {
     solved: Solved,
     unknown_sources: usize,
-    unread: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -284,7 +283,6 @@ impl ShellResolver {
         let mut files: Vec<FileFacts> = Vec::new();
         let mut losses = Vec::new();
         let mut read = Vec::new();
-        let mut unread = 0;
         for entry in &listing.entries {
             let language = Language::from_path(&entry.path);
             let script = matches!(language, Some(Language::Shell | Language::ShellUnread))
@@ -302,14 +300,7 @@ impl ShellResolver {
                 if !matches!(file.language(), Language::Shell | Language::ShellUnread) {
                     continue;
                 }
-                let file_losses = file.losses();
-                if file_losses
-                    .iter()
-                    .any(|loss| matches!(loss, Loss::Unsupported { .. }))
-                {
-                    unread += 1;
-                }
-                losses.extend(file_losses);
+                losses.extend(file.losses());
                 read.push(entry.path.clone());
                 files.push(file);
             }
@@ -492,7 +483,6 @@ impl ShellResolver {
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
             unknown_sources: unknown_files.len(),
-            unread,
         })
     }
 
@@ -500,12 +490,6 @@ impl ShellResolver {
     /// they source may define any name.
     pub fn unknown_sources(&self) -> usize {
         self.unknown_sources
-    }
-
-    /// The scripts the bash grammar does not read (a zsh, ksh or fish shebang):
-    /// they may call or define any name.
-    pub fn unread_scripts(&self) -> usize {
-        self.unread
     }
 }
 

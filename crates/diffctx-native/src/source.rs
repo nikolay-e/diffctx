@@ -59,7 +59,6 @@ pub struct Listing {
     /// Symlinks, which hold a target's name and are followed only inside the
     /// snapshot (`SnapshotReader::resolve_link`): files an import may name.
     pub links: Vec<PathBuf>,
-    pub withheld: usize,
 }
 
 impl Listing {
@@ -318,7 +317,6 @@ impl Analysis {
                 .filter(|(_, why)| matches!(why, snap::NotAnalysedReason::Symlink))
                 .map(|(p, _)| blob(p))
                 .collect(),
-            withheld: listed.withheld,
         });
         let _ = cell.set(listing.clone());
         Ok(listing)
@@ -461,7 +459,6 @@ impl Source {
                 blobs: Vec::new(),
                 too_large: Vec::new(),
                 links: Vec::new(),
-                withheld: 0,
             })),
         }
     }
