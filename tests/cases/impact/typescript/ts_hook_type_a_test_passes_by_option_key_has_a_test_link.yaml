@@ -1,0 +1,64 @@
+name: ts_hook_type_a_test_passes_by_option_key_has_a_test_link
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- type-alias
+- option-key
+repo:
+  initial_files:
+    src/options.ts: |
+      export type BeforeRetryHook = (error: Error) => void;
+
+      export interface Hooks {
+        beforeRetry: BeforeRetryHook[];
+      }
+
+      export interface Options {
+        hooks: Hooks;
+      }
+    src/retry.ts: |
+      import type {Options} from './options';
+
+      export function retry(options: Options, error: Error): void {
+        for (const hook of options.hooks.beforeRetry) {
+          hook(error);
+        }
+      }
+    src/client.ts: |
+      import type {Options} from './options';
+      import {retry} from './retry';
+
+      export function request(options: Options): void {
+        retry(options, new Error('retry'));
+      }
+    test/hooks.test.ts: |
+      import test from 'ava';
+      import {request} from '../src/client';
+
+      test('beforeRetry runs', t => {
+        let calls = 0;
+        request({hooks: {beforeRetry: [() => {
+          calls++;
+        }]}});
+        t.is(calls, 1);
+      });
+  changed_files:
+    src/options.ts: |
+      export type BeforeRetryHook = (error: Error, retryCount: number) => void;
+
+      export interface Hooks {
+        beforeRetry: BeforeRetryHook[];
+      }
+
+      export interface Options {
+        hooks: Hooks;
+      }
+  commit_message: Pass the retry count to the hook
+expect:
+  changed:
+  - src/options.ts::BeforeRetryHook
+  not_untested:
+  - BeforeRetryHook
