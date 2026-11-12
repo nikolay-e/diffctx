@@ -1039,7 +1039,7 @@ impl<'a> Reading<'a> {
         .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
-    /// A word after a listed command names no function (`trap` is unlisted); a script, only after a
+    /// A word after a listed command names no function (an unlisted command may run it); a script, only after a
     /// listed command that runs nothing (`cat check`, not `bash check`). Part of a longer word
     /// (`lint.sh`, `--lint`, `lint-all`) it is no function's name at all.
     fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
