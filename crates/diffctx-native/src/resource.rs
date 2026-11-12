@@ -116,18 +116,6 @@ pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
 /// wall clock (#510, #489, #502). Semantic, like the expired deadline.
 pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POLLS";
 
-/// Test hook: the file a stalled child leaves when its output stops.
-///
-/// A git read that has waited empty gives up as timed out once the file exists,
-/// whatever the clock says, so a stall test ends its run on the stall itself,
-/// not on a short `--timeout` or a count of waits (fj#172). Semantic, like the
-/// expired deadline.
-pub const TEST_GIT_STALL_FILE_ENV: &str = "DIFFCTX_TEST_GIT_STALL_FILE";
-
-pub(crate) fn test_git_stall_file() -> Option<std::path::PathBuf> {
-    std::env::var_os(TEST_GIT_STALL_FILE_ENV).map(Into::into)
-}
-
 /// Test hook: the hook's one wall-clock ceiling is spent before its analysis
 /// starts, as when an engine does not return in time, so a test reaches what
 /// the hook says then without waiting for a clock. Semantic, like the deadline.
