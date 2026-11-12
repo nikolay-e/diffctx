@@ -13,7 +13,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 use tempfile::TempDir;
 
@@ -31,10 +30,6 @@ const TIMEOUT_SECS: u64 = 3;
 /// the true answer short and the test read the disclosed partial as a
 /// changed answer (#502).
 const ANSWER_TIMEOUT_SECS: u64 = 600;
-/// How many times a recorded pid is looked at, a poll slice apart, before it
-/// counts as having outlived the run.
-const SURVIVOR_CHECKS: usize = 30;
-const CHECK_PAUSE: Duration = Duration::from_millis(100);
 
 fn real_git() -> String {
     let out = Command::new("sh")
@@ -58,6 +53,13 @@ impl Fixture {
         self.tmp.path().join("pids")
     }
 
+    /// A FIFO every run holds open for writing from its first instruction, and
+    /// so does everything the run starts: git, the fake's shell, its sleeps.
+    fn sentinel(&self) -> std::ffi::CString {
+        let path = self.tmp.path().join("sentinel");
+        std::ffi::CString::new(path.into_os_string().into_encoded_bytes()).unwrap()
+    }
+
     fn run(&self, target: &str, mode: &str, args: &[&str]) -> Output {
         self.run_with(target, mode, args, &[])
     }
@@ -75,7 +77,26 @@ impl Fixture {
             bin_dir.display(),
             std::env::var("PATH").unwrap_or_default()
         );
+        let sentinel = self.sentinel();
+        // SAFETY: mkfifo(2) only creates the path; an existing one is the
+        // earlier run's.
+        #[allow(unsafe_code)]
+        unsafe {
+            libc::mkfifo(sentinel.as_ptr(), 0o600);
+        }
         let mut command = diffctx();
+        // SAFETY: between fork and exec only open(2), which is async-signal
+        // safe, runs. O_RDWR, because a write-only open of a FIFO with no
+        // reader blocks; the descriptor is not close-on-exec, so it follows
+        // every descendant.
+        #[allow(unsafe_code)]
+        unsafe {
+            use std::os::unix::process::CommandExt as _;
+            command.pre_exec(move || {
+                libc::open(sentinel.as_ptr(), libc::O_RDWR);
+                Ok(())
+            });
+        }
         command
             .current_dir(self.repo())
             .args(args)
@@ -132,24 +153,36 @@ impl Fixture {
         self.run(target, mode, &args)
     }
 
-    /// The fake git reached its target, and every pid it recorded is gone:
-    /// killed and reaped, or re-parented and killed with its group — not left
-    /// stalling.
+    /// The fake git reached its target, and nothing the run started is left
+    /// running: killed and reaped, or re-parented and killed with its group —
+    /// not left stalling. The sentinel is held open by the run and all its
+    /// descendants, so the read ends exactly when the last of them has exited,
+    /// however long that takes; a stall the run left behind never ends, and the
+    /// job's own timeout fails the test (#510).
     fn assert_no_survivors(&self) {
         let pids = std::fs::read_to_string(self.pids_file()).unwrap_or_default();
         assert!(
             !pids.trim().is_empty(),
             "the fake git never reached its target: the test measured nothing"
         );
-        for pid in pids.split_whitespace() {
-            let gone = (0..SURVIVOR_CHECKS).any(|_| {
-                let dead = !running(pid);
-                if !dead {
-                    std::thread::sleep(CHECK_PAUSE);
+        let sentinel = self.sentinel();
+        // SAFETY: opens a path we created, then reads into a local buffer.
+        #[allow(unsafe_code)]
+        unsafe {
+            let fd = libc::open(sentinel.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK);
+            assert!(fd >= 0, "the sentinel cannot be opened");
+            libc::fcntl(fd, libc::F_SETFL, 0);
+            let mut byte = 0u8;
+            loop {
+                let n = libc::read(fd, (&raw mut byte).cast(), 1);
+                let interrupted =
+                    std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted;
+                if n > 0 || (n < 0 && interrupted) {
+                    continue;
                 }
-                dead
-            });
-            assert!(gone, "pid {pid} outlived the run");
+                break;
+            }
+            libc::close(fd);
         }
     }
 }
