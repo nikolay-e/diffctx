@@ -45,6 +45,8 @@ def index_sample(
             "commit": commit,
             "base": base,
             "date": gitrepo.git("log", "-1", "--format=%cs", commit, git_dir=git_dir).strip(),
+            "seed": corpus.sampling.seed,  # with the quota, the draw this row is a prefix of
+            "quota": corpus.quota(repo),
             "causes": {},
         }
         if base is None:
@@ -75,7 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--adhoc", nargs=3, metavar=("NAME", "URL", "LANGUAGE"), help="a repository that is not in corpus.toml")
     parser.add_argument("--sha", help="the pin of --adhoc (default: the remote's HEAD)")
     parser.add_argument(
-        "--commits", type=int, default=24, help="the first N of the seeded draw (default 24; the corpus draws 40)"
+        "--commits",
+        type=int,
+        default=24,
+        help="the first N commits of the seeded draw (default 24); `measure` takes the repository's whole quota, "
+        "its language's [sampling.commits] count split over the language's repositories",
     )
     parser.add_argument("--seed", type=int, help="replaces the corpus seed")
     parser.add_argument("--retry-failed", action="store_true", help="index again snapshots whose cached index failed")
