@@ -485,6 +485,12 @@ fn a_trait_method_reached_by_dynamic_dispatch_is_never_reported_as_uncalled() {
             .contains(&serde_json::json!({"kind": "dispatched", "via": "Builder"})),
         "{doc}"
     );
+    assert!(
+        !(build["coverage"]["calls"]["gaps"].as_array().unwrap())
+            .iter()
+            .any(|gap| gap["kind"] == "not_traced"),
+        "dispatch is the route named, not also an untraced one: {doc}"
+    );
     let text = markdown(tmp.path());
     assert!(!text.contains("No resolved static callers"), "{text}");
     assert!(text.contains("callers not resolved"), "{text}");
