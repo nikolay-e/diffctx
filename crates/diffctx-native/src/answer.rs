@@ -92,9 +92,10 @@ impl Answer<'_> {
     }
 }
 
-/// What a row states, apart from the definition the document lists it under: two
-/// rows with one key are one fact said twice. The one place that says what a
-/// fact is; `tests/support/fact_keys.rs` states it again over the printed JSON.
+/// What a row states, apart from the definition the document lists it under.
+///
+/// Two rows with one key are one fact said twice. The one place that says what
+/// a fact is; `tests/support/fact_keys.rs` states it again over the printed JSON.
 #[derive(PartialEq, Eq, Hash)]
 pub enum FactKey {
     /// A line spells the name of a changed definition and no cell binds it: one
@@ -158,8 +159,9 @@ impl FactKey {
     }
 }
 
-/// Keeps the first row of each fact. The definitions of one name are searched
-/// one after the other, and the line that spells the name is found for each of
+/// Keeps the first row of each fact.
+///
+/// The definitions of one name are searched one after the other, and the line that spells the name is found for each of
 /// them: the later rows are the same fact, with the same fragment and the same
 /// site, so the first definition's row stays and the rest are dropped (never at
 /// render: the totals count rows).

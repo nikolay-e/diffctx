@@ -602,7 +602,9 @@ fn doctest_runs(state: &ScoredState) -> Vec<Run> {
         .collect();
     let mut runs = Vec::new();
     for f in &state.all_fragments {
-        if !f.path().ends_with(".py")
+        if !Path::new(f.path())
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("py"))
             || !f.content.contains(">>>")
             || crate::testfiles::is_test_path(Path::new(f.path()))
         {
