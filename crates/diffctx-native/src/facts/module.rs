@@ -6,7 +6,7 @@ use crate::facts::ids::{ModulePath, ProjectId};
 use crate::facts::language::Language;
 use crate::snapshot::WorkspaceModel;
 
-pub fn locate(
+pub(super) fn locate(
     workspace: &WorkspaceModel,
     language: Language,
     path: &str,
