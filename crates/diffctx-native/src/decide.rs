@@ -889,14 +889,6 @@ impl Coverage {
             Self::Partial(gaps) => gaps,
         }
     }
-
-    /// `found` uses as the answer may count them: exactly only when nothing was
-    /// left unread, otherwise as the least there are.
-    pub fn count(&self, found: usize) -> Count {
-        self.witness().map_or(Count::AtLeast(found), |witness| {
-            Count::Exact(found, witness)
-        })
-    }
 }
 
 /// A number of uses, and whether it is the whole.

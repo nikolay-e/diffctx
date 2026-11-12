@@ -424,7 +424,7 @@ fn the_shed_ledger_is_filled_where_rows_are_shed() {
         "{:?}",
         edited.change
     );
-    _diffctx::impact::deliver(&mut v1, false, Some(400), true);
+    _diffctx::impact::deliver_framed(&mut v1, false, 400, true, "");
     assert!(v1.truncated > 0, "the budget must shed something");
     for c in v1.changed.iter().filter(|c| c.kind != "omitted") {
         assert_eq!(

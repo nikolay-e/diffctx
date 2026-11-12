@@ -143,31 +143,6 @@ fn validate_tau(tau: Option<f64>) -> Result<()> {
     }
 }
 
-pub fn build_diff_context(
-    root_dir: &Path,
-    diff_range: Option<&str>,
-    budget_tokens: Option<u32>,
-    alpha: f64,
-    tau: Option<f64>,
-    no_content: bool,
-    full: bool,
-    scoring_mode: ScoringMode,
-    timeout: u64,
-) -> Result<DiffContextOutput> {
-    build_diff_context_in(
-        root_dir,
-        diff_range,
-        &[],
-        budget_tokens,
-        alpha,
-        tau,
-        no_content,
-        full,
-        scoring_mode,
-        timeout,
-    )
-}
-
 /// `paths` narrow the change set and the discovery universe (repo-relative,
 /// or absolute under the repository). With none, a `root_dir` below the
 /// repository root narrows to that subtree — `cd pkg && diffctx .` and

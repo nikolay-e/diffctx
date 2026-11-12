@@ -5532,24 +5532,8 @@ fn shed_definition(output: &mut ImpactOutput, i: usize) {
 /// that very text. JSON was fitted while markdown was printed, so a 148-token
 /// answer cited a 2000-token cap and lost its contracts (#451); `--budget`
 /// and `budget_tokens` set the cap, which stayed 2000 whatever was asked
-/// (#466). `None` keeps the default.
-pub fn deliver(
-    output: &mut ImpactOutput,
-    markdown: bool,
-    cap: Option<u32>,
-    unfold: bool,
-) -> String {
-    deliver_framed(
-        output,
-        markdown,
-        cap.unwrap_or(IMPACT_TOKEN_CAP),
-        unfold,
-        "",
-    )
-}
-
-/// [`deliver`] with the text a door puts before the answer (the MCP's note that
-/// its ceiling lowered the budget) charged to `cap` with the rest. The returned
+/// (#466). The text a door puts before the answer (the MCP's note that its
+/// ceiling lowered the budget) is charged to `cap` with the rest. The returned
 /// text is the answer alone: the door puts its frame before it.
 pub fn deliver_framed(
     output: &mut ImpactOutput,
