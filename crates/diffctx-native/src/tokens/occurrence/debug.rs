@@ -17,7 +17,7 @@ use super::{
     Reason, Unread, Verdict, View, admitted, close_aliases, counts_against, entered,
     implicit_kinds, outcomes, value_use,
 };
-use crate::decide::{Family, Gap, Group, USES};
+use crate::decide::{Family, Gap, Group, USES, Use};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
@@ -50,6 +50,8 @@ pub struct Shadow<'a> {
     pub view: &'a View<'a>,
     /// The head's files the resolver read, by path.
     pub files: &'a [FileFacts],
+    /// What the run lost of a file: it is unread, whatever its facts say.
+    pub lost: &'a dyn Fn(&RepoPath) -> Option<Loss>,
     pub tokens: &'a TokenIndex,
     /// Uses named in code a shell script hands to the definition's runtime, found once.
     pub embedded: OnceCell<Vec<Entry>>,
@@ -74,6 +76,9 @@ pub struct Accounted {
     pub unused: bool,
     /// Every relation is complete and so is what the definition holds.
     pub whole: bool,
+    /// The lines that still spell what the range removed, at the places the base
+    /// resolved a use to it: its callers whatever they land on now.
+    pub callers: Vec<Use>,
 }
 
 #[derive(Default)]
@@ -237,6 +242,7 @@ impl Shadow<'_> {
             hedges,
             unused,
             whole,
+            callers: Vec::new(),
         }
     }
 
@@ -257,8 +263,9 @@ impl Shadow<'_> {
                 continue;
             }
             found.files.insert(file.clone());
-            let Some((facts, text)) = self.read(&file) else {
-                let loss = self.unread(&file);
+            let lost = (self.lost)(&file);
+            let Some((facts, text)) = self.read(&file).filter(|_| lost.is_none()) else {
+                let loss = lost.unwrap_or_else(|| self.unread(&file));
                 found.unread.entry(file).or_insert(loss);
                 continue;
             };
