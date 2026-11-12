@@ -81,6 +81,15 @@ fn dollar_joins_an_identifier_where_the_language_says() {
 }
 
 #[test]
+fn a_dockerfile_name_with_a_dash_is_one_identifier() {
+    let text = "AS rust-builder\nCOPY --from=builder x";
+    assert_eq!(
+        scan_names(Language::Dockerfile, text, &["builder"]),
+        vec![28..35]
+    );
+}
+
+#[test]
 fn php_names_match_whatever_their_case() {
     let text = "Foo foo FOO";
     assert_eq!(Case::of(Language::Php), Case::Insensitive);
