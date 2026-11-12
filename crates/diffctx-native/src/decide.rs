@@ -2900,12 +2900,11 @@ impl Cell {
         done
     }
 
-    /// Whether a head line still spells what `gone` removed and nothing explains
-    /// it: its occurrence account holds a candidate. Asked while the changes are
-    /// read, so nothing of it is memoized or written.
+    /// Whether a head line sits where the base resolved a use to what `gone`
+    /// removed. Asked while the changes are read, so nothing of it is memoized or
+    /// written.
     fn stranded(&self, gone: &Changed) -> bool {
-        let done = self.account_occurrences(gone, &[], false);
-        (done.hedges.iter()).any(|(_, hedge)| matches!(hedge, Hedge::Candidate { .. }))
+        self.account_occurrences(gone, &[], false).stranded
     }
 
     /// Whether the account holds a hedge, read like `stranded`: no write, no memo.
@@ -3024,11 +3023,13 @@ impl Cell {
             .flat_map(Resolver::definitions)
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
+        let (callers, stranded) = self.stranded_uses(&view, changed);
         let mut all = Accounted {
             hedges: Vec::new(),
             unused: true,
             whole: true,
-            callers: self.stranded_uses(&view, changed),
+            callers,
+            stranded,
         };
         for (definition, side) in heads.chain(removed) {
             let known = Known {
@@ -3049,9 +3050,9 @@ impl Cell {
     /// name that finds nothing) or another definition (a re-export, an inherited or
     /// shadowing name, a candidate, unless the range's own new lines spell the name:
     /// they moved the use themselves). An import is named only when no use is.
-    fn stranded_uses(&self, view: &View, changed: &Changed) -> Vec<Use> {
+    fn stranded_uses(&self, view: &View, changed: &Changed) -> (Vec<Use>, bool) {
         if changed.stale.is_empty() {
-            return Vec::new();
+            return (Vec::new(), false);
         }
         let ours: Vec<&DefKey> = changed.subjects.iter().map(|s| &s.key).collect();
         let moved = |b: &Binding| {
@@ -3085,6 +3086,7 @@ impl Cell {
             && changed
                 .key()
                 .is_some_and(|key| key.local.container.is_empty());
+        let stranded = !found.is_empty();
         let placed: HashSet<(&str, u32)> = (found.iter())
             .map(|(b, _)| (b.file.as_str(), b.site.lines.0))
             .collect();
@@ -3120,7 +3122,7 @@ impl Cell {
             .filter(|(b, _)| b.relation != Relation::Imports)
             .map(|(b, _)| (&b.file, &b.name))
             .collect();
-        found
+        let uses = found
             .into_iter()
             .filter(|(b, _)| b.relation != Relation::Imports || !used.contains(&(&b.file, &b.name)))
             .map(|(b, standing)| Use {
@@ -3133,7 +3135,8 @@ impl Cell {
                 folded: None,
                 sharing: 0,
             })
-            .collect()
+            .collect();
+        (uses, stranded)
     }
 
     /// What kept the base side of the range from saying all of it: it was not
