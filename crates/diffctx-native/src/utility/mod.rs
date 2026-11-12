@@ -1,8 +1,8 @@
-pub mod boltzmann;
-pub mod importance;
-pub mod needs;
-pub mod objective;
+pub(crate) mod boltzmann;
+pub(crate) mod importance;
+pub(crate) mod needs;
+pub(crate) mod objective;
 
-pub use boltzmann::{boltzmann_select, calibrate_beta};
-pub use importance::compute_file_importance;
-pub use needs::InformationNeed;
+pub(crate) use boltzmann::{boltzmann_select, calibrate_beta};
+pub(crate) use importance::compute_file_importance;
+pub(crate) use needs::InformationNeed;

@@ -9,7 +9,7 @@ use crate::types::Fragment;
 use crate::utility::needs::{InformationNeed, match_strength_typed};
 
 #[derive(Clone)]
-pub struct UtilityState {
+pub(crate) struct UtilityState {
     pub max_rel: FxHashMap<(String, String), f64>,
     pub priorities: FxHashMap<(String, String), f64>,
     pub structural_sum: f64,
@@ -166,7 +166,7 @@ fn compute_gain_core(
     result
 }
 
-pub fn marginal_gain(
+pub(crate) fn marginal_gain(
     frag: &Fragment,
     rel_score: f64,
     needs: &[InformationNeed],
@@ -176,7 +176,7 @@ pub fn marginal_gain(
     result.gain + result.diversity_bonus + result.structural_bonus
 }
 
-pub fn apply_fragment(
+pub(crate) fn apply_fragment(
     frag: &Fragment,
     rel_score: f64,
     needs: &[InformationNeed],
@@ -223,7 +223,7 @@ fn proximity_factor(frag_path: &str, changed_dirs: &FxHashSet<PathBuf>, alpha: f
     1.0 / (1.0 + alpha * min_dist as f64)
 }
 
-pub fn compute_density(
+pub(crate) fn compute_density(
     frag: &Fragment,
     rel_score: f64,
     needs: &[InformationNeed],
@@ -237,7 +237,7 @@ pub fn compute_density(
     gain * pf / frag.token_count as f64
 }
 
-pub fn utility_value(state: &UtilityState) -> f64 {
+pub(crate) fn utility_value(state: &UtilityState) -> f64 {
     let u1: f64 = state
         .max_rel
         .iter()
