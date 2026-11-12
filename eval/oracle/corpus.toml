@@ -153,27 +153,32 @@ language = "kotlin"
 license = "Apache-2.0"
 sha = "ebb7ad4d5bd25a41406323da8b507086fe92eb02"  # pragma: allowlist secret gitleaks:allow
 
+# Go repositories, chosen by Revision 18's C3 in a fixed order before any engine answer on them: more than 20 % of the
+# commits sampled from chi, cobra and testify were excluded before `go.mod` (no module file, nothing indexed). An index-only
+# round over each candidate measured the share: gin 0/24, urfave/cli 0/24, go-toml 1/24 (fasthttp 20/24 and lo 5/24 were
+# out: files built for another OS, a nested module).
+
 [[repo]]
-name = "chi"
-url = "https://github.com/go-chi/chi.git"
+name = "gin"
+url = "https://github.com/gin-gonic/gin.git"
 language = "go"
 license = "MIT"
-sha = "9f8adb1aabaa8a91180a821111d3f8e668d1c0bf"  # pragma: allowlist secret gitleaks:allow
+sha = "0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646"  # pragma: allowlist secret gitleaks:allow
 fast = true
 
 [[repo]]
-name = "cobra"
-url = "https://github.com/spf13/cobra.git"
-language = "go"
-license = "Apache-2.0"
-sha = "adbc8813901bba65827259daa8e22ff94ec1f30e"  # pragma: allowlist secret gitleaks:allow
-
-[[repo]]
-name = "testify"
-url = "https://github.com/stretchr/testify.git"
+name = "cli"
+url = "https://github.com/urfave/cli.git"
 language = "go"
 license = "MIT"
-sha = "87a7b9d57689f6579db2da795ab8deeab29cb724"  # pragma: allowlist secret gitleaks:allow
+sha = "d5c06cb04479eeacbbb9378ea26261b6be516320"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "go-toml"
+url = "https://github.com/pelletier/go-toml.git"
+language = "go"
+license = "MIT"
+sha = "686c980c47581bf19b6119b60e9a59f2aed04170"  # pragma: allowlist secret gitleaks:allow
 
 # Java is indexed by scip-java through the repository's Maven build, which runs in a container (see runners.py).
 # gson (Error Prone's flags) and javapoet (enforcer rules) do not build under scip-java's compiler plugin, and
