@@ -18,9 +18,10 @@
 //!
 //! The facts' conventions are in `facts::lang::go`.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use super::twins::{Outcome, Typed};
+use super::twins::{self, Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
@@ -30,7 +31,9 @@ use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver,
     Ref, Star, UseKind, Visibility, expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage, WorkspaceModel};
+use crate::snapshot::{
+    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
+};
 
 /// A call through an untyped receiver is a candidate for at most this many
 /// methods; past it the list says nothing a reader could use.
@@ -117,8 +120,13 @@ impl GoResolver {
         let engine = Engine {
             ix: index,
             workspace: &ctx.workspace,
+            reader,
+            side,
+            texts: RefCell::default(),
+            losses: RefCell::default(),
         };
         let (definitions, bindings) = engine.run();
+        losses.extend(engine.losses.take());
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
             public,
@@ -385,6 +393,10 @@ enum Want {
 struct Engine<'a> {
     ix: Index,
     workspace: &'a WorkspaceModel,
+    reader: &'a SnapshotReader,
+    side: SideTag,
+    texts: RefCell<HashMap<usize, Option<Bytes>>>,
+    losses: RefCell<Vec<Loss>>,
 }
 
 fn is_ident(token: &str) -> bool {
@@ -439,6 +451,8 @@ impl Engine<'_> {
             .collect();
         (definitions, bindings)
     }
+
+    file_text!();
 
     fn path_of(&self, f: usize) -> &RepoPath {
         &self.ix.files[f].facts.path
@@ -837,7 +851,7 @@ impl Engine<'_> {
     /// each is an untyped read like the last name; a type the repository does
     /// not hold says nothing of ours. A member its type lacks is the line a
     /// removal strands: it is bound to nothing, as the last name is.
-    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(usize, Name, Resolution)> {
         let (start, fields, evidence) = match &r.receiver {
             Receiver::Typed(t) => (
                 self.type_of_text(f, t.as_str()),
@@ -867,7 +881,9 @@ impl Engine<'_> {
         };
         let mut reads = Vec::new();
         let mut at = start;
+        let first = r.qualifier.len() - fields.len();
         for (i, field) in fields.iter().enumerate() {
+            let index = first + i;
             match at {
                 Typed::Def(t) | Typed::Dyn(t) => {
                     let found = self.find_member(t, field.as_str(), 0);
@@ -875,6 +891,7 @@ impl Engine<'_> {
                     else {
                         if found.is_none() {
                             reads.push((
+                                index,
                                 field.clone(),
                                 Resolution::Unresolved {
                                     reason: UnresolvedReason::NoMember,
@@ -887,6 +904,7 @@ impl Engine<'_> {
                         let inherited = self.ix.defs[m].def.local.container.first()
                             != Some(&self.ix.defs[t].def.local.name);
                         reads.push((
+                            index,
                             field.clone(),
                             Resolution::Resolved {
                                 target: self.ix.defs[m].key.clone(),
@@ -902,8 +920,9 @@ impl Engine<'_> {
                 }
                 Typed::External => break,
                 Typed::Unknown => {
-                    reads.extend(fields[i..].iter().map(|name| {
+                    reads.extend(fields[i..].iter().enumerate().map(|(at, name)| {
                         (
+                            index + at,
                             name.clone(),
                             Resolution::Unresolved {
                                 reason: UnresolvedReason::UntypedRead,
@@ -1014,10 +1033,16 @@ impl Engine<'_> {
             resolution,
             entry_guard: false,
         });
-        for (name, resolution) in self.chain_reads(f, r) {
+        let reads = self.chain_reads(f, r);
+        let sites = if reads.is_empty() {
+            Vec::new()
+        } else {
+            twins::qualifier_sites(self.text(f).as_deref(), r)
+        };
+        for (index, name, resolution) in reads {
             out.push(Binding {
                 file: self.path_of(f).clone(),
-                site: r.site.clone(),
+                site: sites[index].clone(),
                 from: r.enclosing.clone(),
                 relation: Relation::Reads,
                 name,

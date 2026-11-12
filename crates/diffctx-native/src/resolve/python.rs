@@ -282,13 +282,19 @@ impl<'a> Engine<'a> {
         // The facts keep the head of a chain out of the references: `limits.max`
         // is the name `max` with `limits` written before it, and reading `limits`
         // is part of it. The head's own binding is made here, at the chain's line.
+        // Each is read where it is written, not where the chain ends.
+        let sites = twins::qualifier_sites(self.text(f).as_deref(), r);
+        let at = |index: usize, binding: Binding| Binding {
+            site: sites[index].clone(),
+            ..binding
+        };
         if let Some((head, resolution)) = self.head_read(f, r) {
-            out.push(binding(&head, Relation::Reads, resolution));
+            out.push(at(0, binding(&head, Relation::Reads, resolution)));
         }
         // The same for the members in the middle of the chain: `self.decoder`
         // in `self.decoder.decode()` is read.
-        for (member, resolution) in self.chain_reads(f, r) {
-            out.push(binding(&member, Relation::Reads, resolution));
+        for (index, member, resolution) in self.chain_reads(f, r) {
+            out.push(at(index, binding(&member, Relation::Reads, resolution)));
         }
     }
 
@@ -360,15 +366,15 @@ impl<'a> Engine<'a> {
     /// `request`, which may be the property a change removed. A member the
     /// receiver's class lacks is bound to nothing, as the last name is: the line
     /// a removal strands.
-    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(Name, Resolution)> {
+    fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(usize, Name, Resolution)> {
         let mut reads = Vec::new();
         if r.qualifier.len() < 2 {
             return reads;
         }
         let scope = scope_path(&r.enclosing);
         let (mut entity, kind) = self.head_entity(f, &scope, &r.qualifier[0], 0);
-        let mut members = r.qualifier[1..].iter();
-        while let Some(member) = members.next() {
+        let mut members = r.qualifier.iter().enumerate().skip(1);
+        while let Some((index, member)) = members.next() {
             let (next, through, inherited) = match self.member(f, &entity, member) {
                 Lookup::Found {
                     entity,
@@ -376,19 +382,22 @@ impl<'a> Engine<'a> {
                     inherited,
                 } => (entity, through, inherited),
                 Lookup::Untyped | Lookup::Any | Lookup::Possible(_) => {
-                    reads.extend(std::iter::once(member).chain(members).map(|name| {
-                        (
-                            name.clone(),
-                            Resolution::Unresolved {
-                                reason: UnresolvedReason::UntypedRead,
-                            },
-                        )
-                    }));
+                    reads.extend(std::iter::once((index, member)).chain(members).map(
+                        |(index, name)| {
+                            (
+                                index,
+                                name.clone(),
+                                Resolution::Unresolved {
+                                    reason: UnresolvedReason::UntypedRead,
+                                },
+                            )
+                        },
+                    ));
                     break;
                 }
                 Lookup::Absent(reason) => {
                     if reason.is_ours() {
-                        reads.push((member.clone(), Resolution::Unresolved { reason }));
+                        reads.push((index, member.clone(), Resolution::Unresolved { reason }));
                     }
                     break;
                 }
@@ -405,6 +414,7 @@ impl<'a> Engine<'a> {
                         kind
                     };
                     reads.push((
+                        index,
                         member.clone(),
                         Resolution::Resolved {
                             target: self.ix.defs[id].key.clone(),

@@ -2743,7 +2743,7 @@ impl<'a> Engine<'a> {
         }
         if r.qualifier.len() > 1 || matches!(r.receiver, Receiver::CallResult(_) | Receiver::New(_))
         {
-            let sites = self.qualifier_sites(f, r);
+            let sites = twins::qualifier_sites(self.text(f).as_deref(), r);
             for (index, name, resolution) in self.chain_reads(f, r) {
                 let site = sites[index].clone();
                 out.push(Binding {
@@ -2752,32 +2752,6 @@ impl<'a> Engine<'a> {
                 });
             }
         }
-    }
-
-    /// Where each name of the qualifier is written, read back from the reference's own
-    /// site: a member in the middle of a chain is read where it stands, not where the
-    /// chain ends. A name the text does not show there keeps the reference's site.
-    fn qualifier_sites(&self, f: usize, r: &Ref) -> Vec<Span> {
-        let mut sites = vec![r.site.clone(); r.qualifier.len()];
-        let Some(text) = self.text(f) else {
-            return sites;
-        };
-        let (mut end, mut line) = (r.site.bytes.start as usize, r.site.lines.0);
-        for (index, name) in r.qualifier.iter().enumerate().rev() {
-            while end > 0
-                && (text[end - 1].is_ascii_whitespace() || b".?!".contains(&text[end - 1]))
-            {
-                end -= 1;
-                line -= u32::from(text[end] == b'\n');
-            }
-            let start = end.saturating_sub(name.as_str().len());
-            if text.get(start..end) != Some(name.as_str().as_bytes()) {
-                break;
-            }
-            sites[index] = Span::new(start as u32..end as u32, (line, line));
-            end = start;
-        }
-        sites
     }
 
     /// The variable, constant, field, class or enum a chain starts from, when it

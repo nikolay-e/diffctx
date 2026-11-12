@@ -6,6 +6,7 @@ mod facts_fixture;
 mod snapshot_fixture;
 
 use _diffctx::facts::lang::c::CExtractor;
+use _diffctx::facts::lang::dockerfile::DockerfileExtractor;
 use _diffctx::facts::lang::go::GoExtractor;
 use _diffctx::facts::lang::java::JavaExtractor;
 use _diffctx::facts::lang::kotlin::KotlinExtractor;
@@ -183,6 +184,27 @@ fn shell_keeps_only_its_comments_out_of_code() {
         &ShellExtractor,
         "# sh_note\necho \"sh_word $sh_var\"\n",
         &[("sh_note", COMMENT), ("sh_word", CODE), ("sh_var", CODE)],
+    );
+}
+
+#[test]
+fn dockerfile_comment_lines_and_quoted_label_values_are_not_code() {
+    let source = "# df_note\nFROM alpine AS runtime\n# between_note\nRUN make \\\n  # inside_note\n  && make install\nRUN <<EOF\n# heredoc_line\nbuild\nEOF\nLABEL a.b=\"label_text here\"\nLABEL c.d=\"$kept_var\"\n";
+    read(
+        &DockerfileExtractor,
+        source,
+        &[
+            ("df_note", COMMENT),
+            ("alpine", CODE),
+            ("runtime", CODE),
+            ("between_note", COMMENT),
+            ("inside_note", COMMENT),
+            ("install", CODE),
+            ("heredoc_line", CODE),
+            ("a.b", CODE),
+            ("label_text", STRING),
+            ("kept_var", CODE),
+        ],
     );
 }
 

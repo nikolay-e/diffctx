@@ -1360,13 +1360,28 @@ impl<'t> Walker<'t> {
                     let mut cursor = body.walk();
                     let list: Vec<Node<'t>> = body.named_children(&mut cursor).collect();
                     for init in list {
-                        match init.kind() {
-                            "field_initializer" => {
-                                if let Some(value) = init.child_by_field_name("value") {
-                                    self.expr(value, cx, depth + 1);
-                                }
+                        // `a: 1` and the shorthand `a` write the field `a` of the struct built.
+                        let label = match init.kind() {
+                            "field_initializer" => init
+                                .child_by_field_name("field")
+                                .filter(|label| label.kind() == "field_identifier"),
+                            "shorthand_field_initializer" => {
+                                let mut cursor = init.walk();
+                                init.named_children(&mut cursor)
+                                    .find(|kid| kid.kind() == "identifier")
                             }
-                            _ => self.expr(init, cx, depth + 1),
+                            _ => None,
+                        };
+                        if let (Some(label), Some(Ty::Named(owner))) =
+                            (label, self.built_ty(node, cx))
+                        {
+                            let receiver = Receiver::Typed(TypeName::new(owner.as_str()));
+                            let name = self.ident(label);
+                            self.emit(label, cx, receiver, UseKind::Write, name, Vec::new());
+                        }
+                        match init.child_by_field_name("value") {
+                            Some(value) => self.expr(value, cx, depth + 1),
+                            None => self.expr(init, cx, depth + 1),
                         }
                     }
                 }

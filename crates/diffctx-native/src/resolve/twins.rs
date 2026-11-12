@@ -2,6 +2,7 @@
 //! in their indexes, not in how they read a candidate list or a reach, or in what a name lands on.
 
 use super::{CandidateReason, Evidence, EvidenceKind, UnresolvedReason};
+use crate::facts::{Ref, Span};
 
 /// A type a value has, for the engines that follow a value to its type's methods.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -13,6 +14,30 @@ pub(super) enum Typed {
     /// A type the repository does not hold.
     External,
     Unknown,
+}
+
+/// Where each name of a reference's qualifier is written, read back from the reference's own
+/// site: a member in the middle of a chain is used where it stands, not where the chain ends.
+/// A name the text does not show there keeps the reference's site.
+pub(super) fn qualifier_sites(text: Option<&[u8]>, r: &Ref) -> Vec<Span> {
+    let mut sites = vec![r.site.clone(); r.qualifier.len()];
+    let Some(text) = text else {
+        return sites;
+    };
+    let (mut end, mut line) = (r.site.bytes.start as usize, r.site.lines.0);
+    for (index, name) in r.qualifier.iter().enumerate().rev() {
+        while end > 0 && (text[end - 1].is_ascii_whitespace() || b".?!:".contains(&text[end - 1])) {
+            end -= 1;
+            line -= u32::from(text[end] == b'\n');
+        }
+        let start = end.saturating_sub(name.as_str().len());
+        if text.get(start..end) != Some(name.as_str().as_bytes()) {
+            break;
+        }
+        sites[index] = Span::new(start as u32..end as u32, (line, line));
+        end = start;
+    }
+    sites
 }
 
 /// What a name lands on, before it is a binding.

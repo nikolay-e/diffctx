@@ -1153,6 +1153,123 @@ fn a_shell_array_read_through_its_subscript_is_a_read_of_the_array() {
     }
 }
 
+/// The use of `subject` on `line` of `file` is ours, resolved, with `relation`.
+fn assert_use(world: &World, subject: &Definition, file: &str, line: u32, relation: Relation) {
+    let found = world.outcomes(subject, file, &[subject.key.local.name.as_str()]);
+    assert_eq!(
+        shape(on(&found, line)),
+        ("ours", "resolved", Some(relation)),
+        "{}:{line}: {found:#?}",
+        subject.key.local.name.as_str()
+    );
+}
+
+#[test]
+fn a_python_chain_member_and_head_are_read_at_their_own_names() {
+    let world = snapshot(&[
+        (
+            "cart.py",
+            "class Items:\n    def total(self):\n        return 1\n\n\nclass Cart:\n    items: Items\n\n    def size(self):\n        return self.items.total()\n",
+        ),
+        (
+            "app.py",
+            "mcp = make()\n\n\n@mcp.tool()\ndef f():\n    return 1\n\n\nmcp.run()\n",
+        ),
+    ]);
+    assert_use(
+        &world,
+        world.def("cart.py", "Cart.items"),
+        "cart.py",
+        10,
+        Relation::Reads,
+    );
+    let mcp = world.def("app.py", "mcp");
+    for line in [4, 9] {
+        assert_use(&world, mcp, "app.py", line, Relation::Reads);
+    }
+}
+
+#[test]
+fn a_rust_chain_member_is_read_at_its_own_name_through_self_and_a_typed_local() {
+    let world = snapshot_in(
+        Lang::Rust,
+        &[(
+            "src/lib.rs",
+            "pub struct Inner {\n    pub v: Vec<u8>,\n}\n\npub struct Outer {\n    pub a: Inner,\n}\n\nimpl Outer {\n    pub fn size(&self) -> usize {\n        self.a.v.len()\n    }\n}\n\npub fn of(c: &Outer) -> usize {\n    c.a.v.len()\n}\n",
+        )],
+    );
+    for (owner, line) in [
+        ("Outer.a", 11),
+        ("Inner.v", 11),
+        ("Outer.a", 16),
+        ("Inner.v", 16),
+    ] {
+        assert_use(
+            &world,
+            world.def("src/lib.rs", owner),
+            "src/lib.rs",
+            line,
+            Relation::Reads,
+        );
+    }
+}
+
+#[test]
+fn a_rust_struct_literal_label_and_shorthand_write_the_field() {
+    let world = snapshot_in(
+        Lang::Rust,
+        &[(
+            "src/lib.rs",
+            "pub struct S {\n    pub a: u8,\n}\n\npub fn make() -> S {\n    S { a: 1 }\n}\n\npub fn from(a: u8) -> S {\n    S { a }\n}\n",
+        )],
+    );
+    for line in [6, 10] {
+        assert_use(
+            &world,
+            world.def("src/lib.rs", "S.a"),
+            "src/lib.rs",
+            line,
+            Relation::Writes,
+        );
+    }
+}
+
+#[test]
+fn a_rust_type_written_before_a_path_is_read_at_its_own_name() {
+    let world = snapshot_in(
+        Lang::Rust,
+        &[(
+            "src/lib.rs",
+            "pub struct S;\n\nimpl S {\n    pub fn zero() -> u8 {\n        0\n    }\n}\n\npub fn n() -> u8 {\n    S::zero()\n}\n",
+        )],
+    );
+    assert_use(
+        &world,
+        world.def("src/lib.rs", "S"),
+        "src/lib.rs",
+        10,
+        Relation::Reads,
+    );
+}
+
+#[test]
+fn a_go_chain_member_is_read_at_its_own_name() {
+    let world = snapshot_in(
+        Lang::Go,
+        &[(
+            "p.go",
+            "package p\n\ntype Inner struct{ N int }\n\ntype Outer struct{ In Inner }\n\nfunc size(c Outer) int {\n\treturn c.In.N\n}\n",
+        )],
+    );
+    assert_use(
+        &world,
+        world.def("p.go", "Outer.In"),
+        "p.go",
+        8,
+        Relation::Reads,
+    );
+}
+
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]
