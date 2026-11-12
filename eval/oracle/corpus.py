@@ -9,6 +9,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from adjudication import SHA_PREFIX
+
 ROOT = Path(__file__).resolve().parent
 # Mirrors, exported trees, work checkouts, indexes and release binaries. Outside every Cargo workspace by default:
 # a measured Rust project that finds our workspace root refuses to build, and the runner must not edit the project
@@ -53,11 +55,16 @@ class Repo:
 @dataclass(frozen=True)
 class Sampling:
     seed: int
-    commits: int
+    language_commits: dict[str, int]  # sampled commits per language, split over its repositories
     fast_commits: int
     history: int
     max_code_files: int
     definitions_per_repo: int
+
+    @property
+    def commits(self) -> int:
+        """The largest per-language count: the default `--commits`, which never cuts a repository's share."""
+        return max(self.language_commits.values())
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,14 @@ class Corpus:
     index_seconds: int
     diffctx_seconds: int
     tools: dict[str, Tool]
+    spent: dict[str, frozenset[str]]  # repository -> commits an earlier run sampled: never drawn again
+
+    def quota(self, repo: Repo) -> int:
+        """The commits `repo` draws: its language's count split evenly, the first repositories taking the remainder."""
+        siblings = [r.name for r in self.repos if r.language == repo.language]
+        position = siblings.index(repo.name) if repo.name in siblings else len(siblings)
+        share, extra = divmod(self.sampling.language_commits[repo.language], max(1, len(siblings)))
+        return share + (position < extra)
 
     def select(self, names: list[str] | None = None, fast: bool = False) -> list[Repo]:
         chosen = [r for r in self.repos if not names or r.name in names]
@@ -101,6 +116,20 @@ class Corpus:
             known = ", ".join(r.name for r in self.repos)
             raise SystemExit(f"unknown repository in {names}; the corpus has: {known}")
         return [r for r in chosen if r.fast] if fast and not names else chosen
+
+
+def load_spent(path: Path) -> dict[str, frozenset[str]]:
+    """`repo git:sha` lines (the stored form of a commit id, see adjudication.py); `#` starts a comment."""
+    spent: dict[str, set[str]] = {}
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        fields = line.split("#")[0].split()
+        if not fields:
+            continue
+        commit = fields[1].removeprefix(SHA_PREFIX) if len(fields) == 2 else ""
+        if len(commit) != 40:
+            raise ValueError(f"{path}:{number}: expected `repo {SHA_PREFIX}sha` with a full 40-character commit id")
+        spent.setdefault(fields[0], set()).add(commit)
+    return {repo: frozenset(shas) for repo, shas in spent.items()}
 
 
 def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
@@ -112,6 +141,9 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
         if len(repo.sha) != 40:
             raise ValueError(f"{repo.name}: sha must be a full 40-character commit id")
     s = raw["sampling"]
+    language_commits = s["commits"]
+    if set(language_commits) != set(LANGUAGES) or min(language_commits.values()) < 1:
+        raise ValueError(f"[sampling.commits] must give every indexed language {LANGUAGES} a positive count")
     tools = {name: Tool(name=name, **entry) for name, entry in raw["tools"].items()}
     missing = [tool for tool in INDEXER_TOOLS.values() if tool not in tools]
     if missing:
@@ -120,7 +152,7 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
         repos=repos,
         sampling=Sampling(
             seed=s["seed"],
-            commits=s["commits"],
+            language_commits=language_commits,
             fast_commits=s["fast_commits"],
             history=s["history"],
             max_code_files=s["max_code_files"],
@@ -130,6 +162,7 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
         index_seconds=raw["timeouts"]["index_seconds"],
         diffctx_seconds=raw["timeouts"]["diffctx_seconds"],
         tools=tools,
+        spent=load_spent(path.parent / s["spent"]),
     )
 
 
