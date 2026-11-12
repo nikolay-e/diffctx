@@ -1853,7 +1853,7 @@ fn own_changes(
     payload: &serde_json::Value,
     staged: bool,
 ) -> Result<Option<Owned>, Silence> {
-    let changed = changed_paths(root, staged)?;
+    let changed = changed_paths(root, staged)?.named;
     if changed.is_empty() {
         return Err("clean");
     }
@@ -1887,23 +1887,25 @@ fn own_changes(
     }))
 }
 
-/// Every path the inspected snapshot changes: the index against `HEAD`, or
-/// the working tree with its untracked files, read collapsed: a directory
-/// the read did not reach is one entry with a trailing `/`. A listing git
+/// Every path an answer may name that the inspected snapshot changes: the index
+/// against `HEAD`, or the working tree with its untracked files, read collapsed:
+/// an unreached directory is one entry with a trailing `/`. A listing git
 /// refused is an error, not a smaller change.
-fn changed_paths(root: &Path, staged: bool) -> Result<Vec<String>, Silence> {
-    let args: &[&str] = if staged {
-        &["diff", "--cached", "--name-only", "-z", "--no-renames"]
+fn changed_paths(root: &Path, staged: bool) -> Result<snap::NamedChanges, Silence> {
+    let changed = if staged {
+        snap::open(root)
+            .and_then(|repo| snap::staged(&repo))
+            .and_then(|spec| named_changes(root, spec))
     } else {
-        &["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]
+        let args = ["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"];
+        snap::run_git_z(root, &args).and_then(|mut paths| {
+            let untracked = snap::untracked(root, &[])?;
+            paths.extend(untracked.names);
+            paths.extend(untracked.unread.into_iter().map(|dir| format!("{dir}/")));
+            snap::name_working_tree_changes(root, paths)
+        })
     };
-    let mut paths = snap::run_git_z(root, args).map_err(|_| "error:git")?;
-    if !staged {
-        let untracked = snap::untracked(root, &[]).map_err(|_| "error:git")?;
-        paths.extend(untracked.names);
-        paths.extend(untracked.unread.into_iter().map(|dir| format!("{dir}/")));
-    }
-    Ok(paths)
+    changed.map_err(|_| "error:git")
 }
 
 /// What a session wrote, by its transcripts and by the calls the hook
@@ -2521,7 +2523,7 @@ fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
 fn stopped_note(
     output: &crate::impact::ImpactOutput,
     range: &str,
-    paths: Option<&[String]>,
+    paths: Option<&snap::NamedChanges>,
 ) -> String {
     if !output
         .limits
@@ -2555,6 +2557,7 @@ fn stopped_note(
         );
     };
     let unlisted: Vec<String> = paths
+        .named
         .iter()
         .filter(|p| !listed.contains(p.as_str()))
         .cloned()
@@ -2565,10 +2568,10 @@ fn stopped_note(
         format!(
             " {} of the {} changed file(s) list no caller above, because none was found or the run stopped before it reached them ({}).",
             unlisted.len(),
-            paths.len(),
+            paths.named.len(),
             some_of(&unlisted)
         )
-    };
+    } + &withheld_clause(paths);
     format!(
         "diffctx stopped at the hook's budget before it finished {range}.{which} `diffctx <repo> --diff {range} --mode impact` runs the review to the end.\n"
     )
@@ -2581,7 +2584,7 @@ fn impact_context(
     range: &str,
     spec: Option<snap::RangeSpec>,
     secs: u64,
-    paths: Option<&[String]>,
+    paths: Option<&snap::NamedChanges>,
 ) -> Result<Reply, Silence> {
     let mut output = run_impact(root, range, spec, secs)?;
     let hedge = match trigger {
@@ -3304,6 +3307,23 @@ fn within_budget<T: Send + 'static>(
     Err("timeout")
 }
 
+fn withheld_clause(paths: &snap::NamedChanges) -> String {
+    match paths.withheld {
+        0 => String::new(),
+        n => format!(" {n} more changed file(s) are withheld by the ignore rules and not named."),
+    }
+}
+
+fn named_changes(
+    root: &Path,
+    spec: snap::RangeSpec,
+) -> Result<snap::NamedChanges, snap::SnapshotError> {
+    let budget = snap::RunBudget::default();
+    Ok(snap::AnalysisContext::new(snap::open(root)?, spec, budget)?
+        .changes
+        .named())
+}
+
 /// The files a range changes, read before its review begins: past the
 /// ceiling the hook's own git calls are refused, and a review cut short must
 /// still name what it may have left. `None` when git refused the listing:
@@ -3312,9 +3332,20 @@ fn within_budget<T: Send + 'static>(
     clippy::disallowed_methods,
     reason = "None is a listing git refused, which the answer says: \"Its changed files could not be listed.\""
 )]
-fn range_paths(root: &Path, range: &str) -> Option<Vec<String>> {
-    let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
-    snap::run_git_z(root, &args).ok()
+fn range_paths(
+    root: &Path,
+    range: &str,
+    spec: Option<&snap::RangeSpec>,
+) -> Option<snap::NamedChanges> {
+    let spec = match spec {
+        Some(spec) => spec.clone(),
+        None => snap::resolve(&snap::open(root).ok()?, range).ok()?,
+    };
+    if matches!(spec, snap::RangeSpec::WorkingTree { .. }) {
+        let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
+        return snap::name_working_tree_changes(root, snap::run_git_z(root, &args).ok()?).ok();
+    }
+    named_changes(root, spec).ok()
 }
 
 /// The hook's whole decision on one stdin payload. An answer is marked
@@ -3475,7 +3506,13 @@ fn review(
                 .range
                 .clone()
                 .unwrap_or_else(|| "the pending change".into());
-            return Ok(not_reviewed(event, &range, why, Some(&[]), trace));
+            return Ok(not_reviewed(
+                event,
+                &range,
+                why,
+                Some(&snap::NamedChanges::NONE),
+                trace,
+            ));
         }
         Err(why) => return Err(why),
     };
@@ -3607,7 +3644,7 @@ fn answer(
                 event,
                 &prepared.range,
                 "retry-exhausted",
-                Some(&[]),
+                Some(&snap::NamedChanges::NONE),
                 trace,
             ));
         }
@@ -3626,11 +3663,11 @@ fn answer(
         ..
     } = prepared;
     let reviewed = range.clone();
-    let paths = range_paths(&root, &range);
+    let paths = range_paths(&root, &range, spec.as_ref());
     let named = paths.clone();
     let recorded = !matches!(trigger, Trigger::Inspect { .. });
     let answer = within_budget(started, move |secs| {
-        impact_context(event, &trigger, &root, &range, spec, secs, named.as_deref())
+        impact_context(event, &trigger, &root, &range, spec, secs, named.as_ref())
     });
     let answer = with_unread(answer, &unread);
     match &answer {
@@ -3650,7 +3687,7 @@ fn answer(
         // An inspection too says so when git or the engine failed: only a
         // limit it stopped at (a timeout) stays silent there.
         Err(why) if recorded || why.starts_with("error:") => {
-            return Ok(not_reviewed(event, &reviewed, why, paths.as_deref(), trace));
+            return Ok(not_reviewed(event, &reviewed, why, paths.as_ref(), trace));
         }
         Err(_) => return answer.map(|_| String::new()),
     }
@@ -3759,7 +3796,7 @@ fn not_reviewed(
     event: Event,
     range: &str,
     why: Silence,
-    paths: Option<&[String]>,
+    paths: Option<&snap::NamedChanges>,
     trace: &mut Trace,
 ) -> String {
     trace.noted = Some(why);
@@ -3773,11 +3810,12 @@ fn not_reviewed(
     };
     let unread = match paths {
         None => " Its changed files could not be listed.".to_string(),
-        Some([]) => String::new(),
+        Some(paths) if paths.named.is_empty() => withheld_clause(paths),
         Some(paths) => format!(
-            " It changes {} file(s), none of them reviewed: {}.",
-            paths.len(),
-            some_of(paths)
+            " It changes {} file(s), none of them reviewed: {}.{}",
+            paths.named.len(),
+            some_of(&paths.named),
+            withheld_clause(paths)
         ),
     };
     hook_json(
