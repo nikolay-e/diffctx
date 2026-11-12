@@ -1366,7 +1366,6 @@ impl<'t> Walker<'t> {
                                     self.expr(value, cx, depth + 1);
                                 }
                             }
-                            "shorthand_field_initializer" => {}
                             _ => self.expr(init, cx, depth + 1),
                         }
                     }
