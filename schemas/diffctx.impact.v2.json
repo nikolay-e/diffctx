@@ -607,6 +607,32 @@
             "kind",
             "files"
           ]
+        },
+        {
+          "description": "Untracked directories the read of the checkout did not enter: `total` of\nthem, `directories` the first named. A use of the name in them is unknown.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unread_directories"
+            },
+            "directories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "total": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "directories",
+            "total"
+          ]
         }
       ]
     },

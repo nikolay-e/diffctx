@@ -205,6 +205,12 @@ pub enum Gap {
     SourceFlag {
         files: usize,
     },
+    /// Untracked directories the read of the checkout did not enter: `total` of
+    /// them, `directories` the first named. A use of the name in them is unknown.
+    UnreadDirectories {
+        directories: Vec<String>,
+        total: usize,
+    },
 }
 
 impl From<crate::facts::Delta> for Delta {
@@ -303,6 +309,14 @@ impl std::fmt::Display for Gap {
             Self::SourceFlag { files } => {
                 write!(f, "{files} file(s) read a path computed at run time")
             }
+            Self::UnreadDirectories { directories, total } => {
+                write!(f, "{total} untracked director(y/ies) not read: ")?;
+                f.write_str(&directories.join(", "))?;
+                match total.saturating_sub(directories.len()) {
+                    0 => Ok(()),
+                    more => write!(f, " and {more} more"),
+                }
+            }
         }
     }
 }
@@ -339,6 +353,7 @@ impl Gap {
             Self::RenderedElsewhere { .. } => 17,
             Self::ExternalSource { .. } => 18,
             Self::SourceFlag { .. } => 19,
+            Self::UnreadDirectories { .. } => 21,
         }
     }
 
@@ -382,6 +397,10 @@ impl Gap {
                 pointers: *pointers,
             },
             decide::Gap::SourceFlag { files } => Self::SourceFlag { files: *files },
+            decide::Gap::UnreadDirectories { directories, total } => Self::UnreadDirectories {
+                directories: directories.clone(),
+                total: *total,
+            },
         }
     }
 }

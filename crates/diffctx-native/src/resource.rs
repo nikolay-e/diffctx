@@ -311,9 +311,17 @@ pub fn classify_limits(
             capped.push(reason);
         }
     }
-    let mut limited: Vec<LimitedFile> = limited
+    // An unread directory is no file the answer is about: it is named whenever
+    // the run was limited by it, whatever the answer holds.
+    let mut limited: Vec<LimitedFile> = ctx
+        .source()
+        .unread_directories()
         .into_iter()
-        .filter(|f| headline.contains(&f.reason))
+        .map(|path| LimitedFile {
+            path,
+            reason: LimitReason::DiscoveryTruncated,
+        })
+        .chain(limited.into_iter().filter(|f| headline.contains(&f.reason)))
         .collect();
     limited.truncate(MAX_LIMITED_FILES_LISTED);
     (headline, capped, limited)
@@ -613,8 +621,12 @@ impl RunContext {
     /// snapshot layer recorded even if its caller dropped the error.
     pub fn reasons(&self) -> Vec<LimitReason> {
         let mut all: BTreeSet<LimitReason> = self.inner.reasons.lock().unwrap().clone();
-        if self.source().lost_a_read() {
+        let source = self.source();
+        if source.lost_a_read() {
             all.insert(LimitReason::ReadFailed);
+        }
+        if !source.unread_directories().is_empty() {
+            all.insert(LimitReason::DiscoveryTruncated);
         }
         all.into_iter().collect()
     }

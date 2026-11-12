@@ -238,6 +238,7 @@ fn the_v2_impact_schema_has_the_shape_the_design_gives() {
         "unaccounted",
         "templated",
         "source_flag",
+        "unread_directories",
     ] {
         assert!(gap.contains(kind), "gap kind {kind}");
     }

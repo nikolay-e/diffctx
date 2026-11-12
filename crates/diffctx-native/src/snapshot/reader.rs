@@ -252,11 +252,15 @@ impl SnapshotReader {
             .failures
             .lock()
             .map_or(true, |failures| !failures.is_empty())
-            || self
-                .inner
-                .untracked
-                .as_ref()
-                .is_some_and(|found| !found.unread.is_empty())
+    }
+
+    /// The untracked directories a collapsed read of the checkout did not
+    /// enter, for a working-tree reader: what they hold was never listed.
+    pub fn unread_directories(&self) -> &[String] {
+        self.inner
+            .untracked
+            .as_ref()
+            .map_or(&[][..], |found| found.unread.as_slice())
     }
 
     /// What reads of this snapshot lost so far: every path whose bytes were
@@ -275,9 +279,8 @@ impl SnapshotReader {
             .untracked
             .iter()
             .flat_map(|found| &found.unread)
-            .map(|dir| Loss::ReadFailed {
+            .map(|dir| Loss::DirectoryUnread {
                 path: path_of(dir.as_bytes()).0,
-                side,
             });
         failures
             .into_iter()
