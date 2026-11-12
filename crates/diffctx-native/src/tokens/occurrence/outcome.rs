@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::rows::{
-    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS, MODULE_PATHS,
-    NAMED_LOCALS,
+    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS,
+    KEYWORD_ARGUMENTS, MODULE_PATHS, NAMED_LOCALS, PACKAGE_HEADS, PATH_SEPARATORS,
 };
 use super::scanner::dollar_joins;
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
@@ -595,7 +595,11 @@ impl<'a> Reading<'a> {
                 } else {
                     Basis::ExternalName
                 };
-                verified(basis, imported || bare)
+                // An override names its base by its declaration, whatever else shares the name.
+                verified(
+                    basis,
+                    imported || bare || binding.relation == Relation::Overrides,
+                )
             }
             UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => {
                 verified(Basis::Manifests, self.view.index.manifests_whole)
@@ -656,12 +660,17 @@ impl<'a> Reading<'a> {
     fn unbound(&self, occurrence: &Occurrence) -> Claim {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
-        if let Some(claim) = self.impl_type(occurrence) {
+        if let Some(claim) = self
+            .impl_type(occurrence)
+            .or_else(|| self.keyword_field(occurrence))
+        {
             return claim;
         }
         if let Some(basis) = self
             .bare_head(occurrence, spelled)
             .or_else(|| self.module_path(occurrence))
+            .or_else(|| self.package_clause(occurrence))
+            .or_else(|| self.path_qualifier(occurrence))
             .or_else(|| self.plain_read(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
         {
@@ -765,6 +774,80 @@ impl<'a> Reading<'a> {
         let words = split_words(&self.text[site.start as usize..at as usize]);
         (words.first() == Some(&opens.as_bytes()) && !words.contains(&closes.as_bytes()))
             .then_some(Basis::OtherModule)
+    }
+
+    /// The name a package clause gives the file's package names a module, never a definition.
+    fn package_clause(&self, occurrence: &Occurrence) -> Option<Basis> {
+        let (_, keyword) = PACKAGE_HEADS
+            .iter()
+            .find(|row| row.0.has(self.file.language()))?;
+        let before = &self.text[..occurrence.bytes.start as usize];
+        let line = before.rsplit(|b| *b == b'\n').next()?;
+        (split_words(line) == [keyword.as_bytes()]).then_some(Basis::OtherModule)
+    }
+
+    /// A segment before the `::` of a path names a namespace: a subject of another kind is not it.
+    fn path_qualifier(&self, occurrence: &Occurrence) -> Option<Basis> {
+        let (_, separator) = PATH_SEPARATORS
+            .iter()
+            .find(|row| row.0.has(self.file.language()))?;
+        let after = self.text[occurrence.bytes.end as usize..].trim_ascii_start();
+        let namespace = matches!(
+            self.subject.kind,
+            DefKind::Class
+                | DefKind::Struct
+                | DefKind::Enum
+                | DefKind::Trait
+                | DefKind::Interface
+                | DefKind::Object
+                | DefKind::TypeAlias
+                | DefKind::Module
+        );
+        (after.starts_with(separator.as_bytes()) && !namespace).then_some(Basis::OtherModule)
+    }
+
+    /// `Reply(url=...)` writes the field `url` of the class it builds: the keyword is a use
+    /// of that field when the callee, found at the call's opening parenthesis, is its class.
+    fn keyword_field(&self, occurrence: &Occurrence) -> Option<Claim> {
+        if !KEYWORD_ARGUMENTS
+            .iter()
+            .any(|f| f.has(self.file.language()))
+        {
+            return None;
+        }
+        let (start, end) = (
+            occurrence.bytes.start as usize,
+            occurrence.bytes.end as usize,
+        );
+        let before = self.text[..start].trim_ascii_end();
+        let after = self.text[end..].trim_ascii_start();
+        if !matches!(before.last(), Some(b'(' | b','))
+            || !after.starts_with(b"=")
+            || after.starts_with(b"==")
+        {
+            return None;
+        }
+        let mut depth = 0;
+        let open = before.iter().rposition(|b| match b {
+            b')' => {
+                depth += 1;
+                false
+            }
+            b'(' if depth > 0 => {
+                depth -= 1;
+                false
+            }
+            _ => *b == b'(',
+        })?;
+        let (name, owner) = self.subject.key.local.container.split_last()?;
+        let callee = self.view.in_file(&self.file.path).find(|binding| {
+            binding.site.bytes.end as usize == open
+                && matches!(&binding.resolution, Resolution::Resolved { target, .. }
+                    if target.module == self.subject.key.module
+                        && target.local.name == *name
+                        && target.local.container == owner)
+        });
+        callee.map(|_| Claim::new(Some(Relation::Writes), Outcome::Ours, Basis::Resolved))
     }
 
     /// The type an `impl` header names is declared there, unlike a return `impl Trait` or a bound.

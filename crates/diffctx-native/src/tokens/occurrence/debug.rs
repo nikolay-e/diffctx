@@ -18,7 +18,7 @@ use super::{
     implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Family, Gap, Group, USES, Use};
-use crate::facts::{FactsCache, FileFacts, Name, facts_of};
+use crate::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 use crate::tokens::{Names, TokenIndex};
@@ -201,6 +201,7 @@ impl Shadow<'_> {
             account.mentions = found.mentions;
             account.implicit.clone_from(&implicit);
             account.admits_calls = admitted(definition.kind).contains(&Relation::Calls);
+            account.consumed_by_reading = definition.kind == DefKind::Object;
             account.alias_bound = alias_bound;
             let verdict = account.verdict();
             let complete = verdict.is_complete() && gaps.is_empty();
