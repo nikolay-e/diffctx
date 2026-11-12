@@ -1,5 +1,5 @@
-pub(crate) mod boltzmann;
-pub(crate) mod importance;
+mod boltzmann;
+mod importance;
 pub(crate) mod needs;
 pub(crate) mod objective;
 
