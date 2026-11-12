@@ -591,7 +591,7 @@ impl<'a> Walker<'a> {
             return;
         }
         self.facts.push(Fact::Reference(Ref {
-            site: syntax::span(node),
+            site: syntax::span(name_node),
             enclosing: scope.clone(),
             receiver: Receiver::None,
             use_kind: UseKind::Read,
