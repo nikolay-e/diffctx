@@ -12,7 +12,7 @@ GATE = Path(__file__).resolve().parents[1] / "scripts/git-env-gate.sh"
 def test_suites_that_build_repositories_leave_the_enclosing_repository_alone():
     """A pre-commit hook in a linked worktree names the shared repository in GIT_DIR, and a
     `git init` that inherited it set core.bare = true there (fj#199). The Rust half of the
-    gate needs a build, so CI runs it beside the Rust suites."""
+    gate needs a build: run `scripts/git-env-gate.sh rust` by hand."""
     result = subprocess.run(
         ["bash", str(GATE), "python"],
         env={**os.environ, "GATE_PYTHON": sys.executable},
