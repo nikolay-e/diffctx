@@ -319,3 +319,164 @@ def test_a_gates_file_key_that_is_no_threshold_is_refused(tmp_path: Path):
 
     with pytest.raises(ValueError, match="is no threshold"):
         load_gates(bad)
+
+
+def run_with(path: Path, cells: list[dict], pairs: list[dict] = (), silent: list[dict] = ()) -> Path:
+    run = write_run(path, cells)
+    for name, rows in (("relations.jsonl", pairs), ("silent_loss.jsonl", silent)):
+        if rows:
+            (run / name).write_text("".join(json.dumps(row) + "\n" for row in rows))
+    return run
+
+
+def test_the_incomplete_complete_count_is_per_cell_with_every_pair_listed_and_judged_by_the_file(tmp_path: Path):
+    cells = [
+        cell(truth=2, tp=1, fn=1, incomplete_complete=1),
+        cell(commit="c2", kind="reads", truth=2, tp=0, fn=2, incomplete_complete=2),
+        cell(commit="c3", truth=1, tp=1, incomplete_complete=0),
+    ]
+    pair = {"repo": "r", "language": "python", "mode": "impact", "kind": "calls", "to": "a::f"}
+    pairs = [
+        {**pair, "commit": "c1" * 8, "from": "a::g", "verdict": "fn", "incomplete_complete": True},
+        {**pair, "commit": "c1" * 8, "from": "a::h", "verdict": "tp", "incomplete_complete": False},
+    ]
+    run = run_with(tmp_path / "run", cells, pairs)
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
+
+    found = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert {r["relation"]: r["incomplete_complete"] for r in found["scip"]} == {"calls": 1, "reads": 2}
+    assert found["incomplete_complete"]["count"] == 3
+    assert [(p["from"], p["commit"]) for p in found["incomplete_complete"]["listing"]] == [("a::g", "c1c1c1c1c1")]
+    verdict = {line["gate"]: line for line in found["verdict"]}["safety.incomplete_complete"]
+    assert (verdict["status"], verdict["value"], verdict["limit"]) == ("fail", 3, "<= 0")
+    markdown = (tmp_path / "out" / "report.md").read_text()
+    assert "| python | impact | calls | r | c1c1c1c1c1 | a::f | a::g |" in markdown
+    relaxed = edited_gates(tmp_path, "incomplete_complete_max = 0", "incomplete_complete_max = 3")
+    again = verdicts(tmp_path / "again", cells, relaxed)
+    assert again[("safety.incomplete_complete", "oracle cells")]["status"] == "pass"
+
+
+def test_cells_that_never_counted_an_incomplete_complete_are_n_a_not_zero(tmp_path: Path):
+    lines = verdicts(tmp_path, [cell(truth=1, tp=1)])
+
+    assert lines[("safety.incomplete_complete", "")]["status"] == "n/a"
+    assert report.scip_rows([cell(truth=1, tp=1)])[0]["incomplete_complete"] is None
+
+
+def test_the_silent_loss_is_counted_per_answer_with_every_missing_definition_listed_beside_what_it_shed(tmp_path: Path):
+    def answer(commit: str, lost: list[str], unnamed: int) -> dict:
+        return {
+            "repo": "r", "language": "python", "commit": commit * 12, "mode": "impact", "missing": len(lost), "unnamed_omitted": unnamed,
+            "silent": max(0, len(lost) - unnamed),
+            "definitions": [{"target": t, "entries_in_file": ["a.py::other"], "entries_named_alike": []} for t in lost],
+        }  # fmt: skip
+
+    rows = [answer("a", ["a.py::f", "a.py::g", "a.py::h"], 1), answer("b", [], 4), answer("c", ["b.py::k"], 0)]
+    run = run_with(tmp_path / "run", [cell(truth=1, tp=1)], silent=rows)
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
+
+    found = json.loads((tmp_path / "out" / "report.json").read_text())
+    silent = found["silent_loss"]
+    assert (silent["answers"], silent["missing"], silent["silent"]) == (3, 4, 3)  # 2 of the first answer, 1 of the last
+    assert [(x["target"], x["unnamed_omitted"], x["answer_silent"]) for x in silent["listing"]] == [
+        ("a.py::f", 1, 2), ("a.py::g", 1, 2), ("a.py::h", 1, 2), ("b.py::k", 0, 1),
+    ]  # fmt: skip
+    line = {line["gate"]: line for line in found["verdict"]}["safety.silent_loss"]
+    assert (line["status"], line["value"]) == ("read", 3)  # "read": the rows are the verdict
+    markdown = (tmp_path / "out" / "report.md").read_text()
+    assert "## Silent loss" in markdown and "| python | r | aaaaaaaaaa | a.py::g |" in markdown
+
+
+def test_an_answer_that_lost_nothing_is_a_witnessed_zero_and_a_run_without_the_file_is_n_a(tmp_path: Path):
+    clean = {
+        "repo": "r",
+        "language": "python",
+        "commit": "c" * 12,
+        "mode": "impact",
+        "missing": 0,
+        "unnamed_omitted": 0,
+        "silent": 0,
+        "definitions": [],
+    }
+    run = run_with(tmp_path / "run", [cell(truth=1, tp=1)], silent=[clean])
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
+
+    line = {line["gate"]: line for line in json.loads((tmp_path / "out" / "report.json").read_text())["verdict"]}[
+        "safety.silent_loss"
+    ]
+    assert (line["status"], line["value"]) == ("read", 0)
+    assert verdicts(tmp_path / "bare", [cell(truth=1, tp=1)])[("safety.silent_loss", "")]["status"] == "n/a"
+
+
+FACTS = Path(__file__).parent / "fixtures" / "cell_facts.json"
+
+
+def paired_runs(tmp_path: Path, truth: int = 8) -> tuple[Path, Path]:
+    commits = [f"c{i}" for i in range(8)]
+    made = []
+    for name in ("base", "head"):
+        directory = tmp_path / name
+        directory.mkdir()
+        records = [{"repo": "r", "language": "python", "commit": c, "status": "measured"} for c in commits]
+        (directory / "commits.jsonl").write_text("".join(json.dumps(x) + "\n" for x in records))
+        (directory / "cells.jsonl").write_text("".join(json.dumps(cell(commit=c, truth=truth, tp=truth)) + "\n" for c in commits))
+        (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+        made.append(directory)
+    return made[0], made[1]
+
+
+def test_the_cell_facts_add_the_precise_lines_and_the_cell_states_from_cellstate_and_without_them_they_stay_n_a(tmp_path: Path):
+    base, head = paired_runs(tmp_path)  # 64 true relations, every one found
+    out = tmp_path / "out"
+
+    assert report.main(["--run", str(head), "--against", str(base), "--cell-facts", str(FACTS), "--out", str(out)]) == 0
+
+    found = json.loads((out / "report.json").read_text())
+    lines = {line["gate"]: line for line in found["verdict"]}
+    assert {g: lines[g]["status"] for g in lines if g.startswith("precise.")} == {
+        "precise.precision": "pass", "precise.recall": "pass", "precise.true_relations": "pass", "precise.decoys": "pass",
+        "precise.fresh_seed": "pass", "precise.measured_cell": "fail", "precise.old_path_deleted": "pass",
+    }  # fmt: skip
+    assert lines["precise.true_relations"]["value"] == 64 and lines["precise.decoys"]["value"] == 12
+    assert "python/imports" in lines["precise.measured_cell"]["detail"]  # declared precise, no row
+    assert lines["declared.every_state_true"]["status"] == "fail"
+    assert {c["relation"]: c["state"] for c in found["cells"]} == {
+        "calls": "precise", "imports": "untrue", "reads": "heuristic", "dispatch": "none",
+    }  # fmt: skip
+    assert "## Cell states" in (out / "report.md").read_text()
+
+    assert report.main(["--run", str(head), "--against", str(base), "--out", str(tmp_path / "bare")]) == 0
+    bare = {line["gate"]: line["status"] for line in json.loads((tmp_path / "bare" / "report.json").read_text())["verdict"]}
+    assert {bare[g] for g in bare if g.startswith("precise.") or g.startswith("declared.")} == {"n/a"}
+
+
+def test_the_precise_lines_flip_with_gates_toml_alone_and_the_facts_need_a_paired_run(tmp_path: Path):
+    base, head = paired_runs(tmp_path, truth=3)  # 24 true relations
+    strict, relaxed = tmp_path / "strict", tmp_path / "relaxed"
+    args = ["--run", str(head), "--against", str(base), "--cell-facts", str(FACTS)]
+
+    assert report.main([*args, "--out", str(strict)]) == 0
+    assert (
+        report.main(
+            [
+                *args,
+                "--out",
+                str(relaxed),
+                "--gates",
+                str(edited_gates(tmp_path, "true_relations_min = 30", "true_relations_min = 20")),
+            ]
+        )
+        == 0
+    )
+
+    def status(directory: Path) -> str:
+        return {line["gate"]: line["status"] for line in json.loads((directory / "report.json").read_text())["verdict"]}[
+            "precise.true_relations"
+        ]
+
+    assert (status(strict), status(relaxed)) == ("fail", "pass")
+    with pytest.raises(SystemExit):
+        report.main(["--run", str(head), "--cell-facts", str(FACTS), "--out", str(tmp_path / "unpaired")])

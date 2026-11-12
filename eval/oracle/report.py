@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import adjudication
+import cellstate
 import paired
 from corpus import ROOT
 from gates import Threshold, holds, limit_text, load_gates
@@ -71,6 +72,13 @@ def read_records(path: Path) -> list[dict]:
     return [r for r in data if isinstance(r, dict)]
 
 
+def read_json_lines(path: Path) -> list[dict]:
+    """Strictly one JSON object per line: a file of one row holding a list is not the object-with-a-list `read_records` takes."""
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def _ratio(numerator: float, denominator: float) -> float | None:
     return None if denominator == 0 else round(numerator / denominator, 3)
 
@@ -87,6 +95,8 @@ def scip_rows(cells: list[dict]) -> list[dict]:
         total["tp_affected"] += cell.get("tp_affected", cell["tp"])
         total["folded"] += cell.get("folded", 0)
         total["false_fold"] += cell.get("false_fold", 0)
+        total["incomplete_complete"] += cell.get("incomplete_complete", 0)
+        total["counted_incomplete"] += "incomplete_complete" in cell
         total["cells"] += 1
         total["abstained"] += bool(cell["abstained"])
         total["fcn"] += bool(cell["fcn"])
@@ -108,6 +118,9 @@ def scip_rows(cells: list[dict]) -> list[dict]:
                 "recall_with_candidates": _ratio(t["tp"] + t["tp_weak"], t["truth"]),
                 "abstention_share": _ratio(t["abstained"], t["cells"]),
                 "false_complete_negatives": t["fcn"],
+                "incomplete_complete": (
+                    t["incomplete_complete"] if t["counted_incomplete"] else None
+                ),  # cells of older runs lack it
                 "folded": t["folded"],
                 "false_fold": t["false_fold"],
                 "weak_per_answer": _ratio(t["tp_weak"] + t["fp_weak"], len(answers[(language, mode, kind)])),
@@ -164,6 +177,59 @@ def paired_entry(run: Path, base: LoadedRun, rule: paired.Measurability) -> dict
         "head": head.path.name,
         "budgets": (base.budget, head.budget),
         "result": paired.compare_runs(base.path, head.path, rule),
+    }
+
+
+LISTED_PAIR = ("language", "mode", "kind", "repo", "commit", "from", "to")
+
+
+def incomplete_complete_report(scip: list[dict], relations: list[dict]) -> dict | None:
+    """The incomplete-complete count of the cells and every truth pair it is made of; None where no cell was counted."""
+    counted = [row["incomplete_complete"] for row in scip if row["incomplete_complete"] is not None]
+    if not counted:
+        return None
+    listing = [
+        {**{key: pair.get(key) for key in LISTED_PAIR}, "commit": str(pair.get("commit"))[:10]}
+        for pair in relations
+        if pair.get("incomplete_complete")
+    ]
+    return {"count": sum(counted), "listing": listing}
+
+
+def silent_loss_report(answers: list[dict]) -> dict | None:
+    """The silent-loss rows of a run per (language, mode) and every missing definition, with the answer's `unnamed_omitted`
+    beside it; None where the run kept no such rows."""
+    if not answers:
+        return None
+    groups: dict[tuple[str, str], Counter] = defaultdict(Counter)
+    listing = []
+    for answer in answers:
+        total = groups[(answer["language"], answer["mode"])]
+        for field in ("missing", "unnamed_omitted", "silent"):
+            total[field] += answer[field]
+        total["answers"] += 1
+        total["answers_losing"] += answer["missing"] > 0
+        listing += [
+            {
+                "language": answer["language"],
+                "repo": answer["repo"],
+                "commit": answer["commit"][:10],
+                "target": lost["target"],
+                "in_file": lost["entries_in_file"],
+                "named_alike": lost["entries_named_alike"],
+                "answer_missing": answer["missing"],
+                "unnamed_omitted": answer["unnamed_omitted"],
+                "answer_silent": answer["silent"],
+            }
+            for lost in answer["definitions"]
+        ]
+    return {
+        "answers": len(answers),
+        "missing": sum(total["missing"] for total in groups.values()),
+        "unnamed_omitted": sum(a["unnamed_omitted"] for a in answers if a["missing"]),
+        "silent": sum(total["silent"] for total in groups.values()),
+        "groups": [{"language": language, "mode": mode, **dict(total)} for (language, mode), total in sorted(groups.items())],
+        "listing": listing,
     }
 
 
@@ -267,7 +333,7 @@ def ac5_totals(path: Path) -> dict:
 Observation = tuple[str, object, str]  # source, value, what the number is made of
 
 
-def observations(report: dict) -> dict[str, list[Observation]]:
+def observations(report: dict, states: list[cellstate.CellState], gates: dict[str, Threshold]) -> dict[str, list[Observation]]:
     """What this run measured for each gate; a gate with no entry here had no input."""
     seen: dict[str, list[Observation]] = defaultdict(list)
     if report["scip"]:
@@ -275,6 +341,16 @@ def observations(report: dict) -> dict[str, list[Observation]]:
             ("oracle cells", sum(r["false_complete_negatives"] for r in report["scip"]), "")
         )
         seen["safety.false_fold"].append(("oracle cells", sum(r["false_fold"] for r in report["scip"]), ""))
+    if report.get("incomplete_complete"):
+        found = report["incomplete_complete"]
+        seen["safety.incomplete_complete"].append(("oracle cells", found["count"], f"{len(found['listing'])} pairs listed"))
+    if report.get("silent_loss"):
+        found = report["silent_loss"]
+        detail = (
+            f"{found['missing']} definitions missing from {found['answers']} answers, "
+            f"{found['missing'] - found['silent']} of them covered by an answer's count of definitions it shed unnamed"
+        )
+        seen["safety.silent_loss"].append(("oracle answers", found["silent"], detail))
     for name, label in (("faults", "fault sweep"), ("metamorphic", "metamorphic suite")):
         if report.get(name):
             seen["safety.false_complete_negatives"].append((label, report[name]["false_complete_negatives"], ""))
@@ -291,6 +367,8 @@ def observations(report: dict) -> dict[str, list[Observation]]:
         widest = f"widest decided interval {found['widest']}; {found['unmeasured']} cells judged on the safety rows alone"
         seen["measurability.interval_width"].append((source, counts, widest))
         seen["measurability.lower_bound"].append((source, found["lowest"], "; ".join(found["failing"])))
+    for gate, found in cellstate.observations(states, gates).items():
+        seen[gate] += found
     ac5 = report.get("ac5")
     if ac5:
         head, base = ac5["head"], ac5["base"]
@@ -318,9 +396,9 @@ def _status(gate: Threshold, value: object) -> str:
     return "pass" if holds(gate, value) else "fail"
 
 
-def verdict_lines(report: dict, gates: dict[str, Threshold]) -> list[dict]:
+def verdict_lines(report: dict, gates: dict[str, Threshold], states: list[cellstate.CellState]) -> list[dict]:
     """One line per observation of each threshold in `gates`, and one `n/a` line for a threshold the run gave no input."""
-    seen = observations(report)
+    seen = observations(report, states, gates)
     return [
         {
             "gate": gate.gate,
@@ -348,6 +426,7 @@ SCIP_COLUMNS = [
     ("Recall+cand.", "recall_with_candidates"),
     ("Abstention", "abstention_share"),
     ("FCN", "false_complete_negatives"),
+    ("Incompl. compl.", "incomplete_complete"),
     ("Folded", "folded"),
     ("False fold", "false_fold"),
     ("Weak/answer", "weak_per_answer"),
@@ -379,6 +458,35 @@ PAIRED_COLUMNS = [
     ("False fold", "false_fold_head"),
     ("State", "state"),
     ("Flag", "flag"),
+]
+INCOMPLETE_COLUMNS = [
+    ("Language", "language"),
+    ("Mode", "mode"),
+    ("Relation", "kind"),
+    ("Repo", "repo"),
+    ("Commit", "commit"),
+    ("Definition", "to"),
+    ("Truth site missing from the answer", "from"),
+]
+SILENT_GROUP_COLUMNS = [
+    ("Language", "language"),
+    ("Mode", "mode"),
+    ("Answers", "answers"),
+    ("With a missing definition", "answers_losing"),
+    ("Missing", "missing"),
+    ("Unnamed omitted", "unnamed_omitted"),
+    ("Silent", "silent"),
+]
+SILENT_LISTING_COLUMNS = [
+    ("Language", "language"),
+    ("Repo", "repo"),
+    ("Commit", "commit"),
+    ("Definition missing from the answer", "target"),
+    ("Entries in its file", "in_file"),
+    ("Entries named alike", "named_alike"),
+    ("Missing in the answer", "answer_missing"),
+    ("Unnamed omitted", "unnamed_omitted"),
+    ("Silent in the answer", "answer_silent"),
 ]
 SMALL_COLUMNS = [("From", "from"), ("To", "to"), ("Kind", "kind"), ("Commit", "commit"), ("Base", "base"), ("Head", "head")]
 ADJUDICATION_COLUMNS = [
@@ -503,6 +611,30 @@ def render_verdict(lines: list[dict]) -> list[str]:
     return ["", "## Verdict", "", table(["Gate", "Source", "Value", "Limit", "Verdict", "Numbers"], rows), "", summary]
 
 
+def render_safety_listings(report: dict) -> list[str]:
+    parts: list[str] = []
+    found = report.get("incomplete_complete")
+    if found:
+        parts += ["", "## Incomplete complete: the answer is complete for a definition and relation, a truth site is missing", ""]
+        parts += [f"{found['count']} truth pairs, by cell in the table above (Incompl. compl.); every pair:", ""]
+        parts += [table_of(INCOMPLETE_COLUMNS, found["listing"], "No pair listed (run without relations.jsonl).")]
+    silent = report.get("silent_loss")
+    if silent:
+        parts += ["", "## Silent loss: a changed definition the answer does not mention", ""]
+        parts.append(
+            f"{silent['missing']} definitions missing from {silent['answers']} answers; an answer's silent count is its missing "
+            f"definitions less the ones it says it shed without naming (`unnamed omitted`), never below 0: {silent['silent']} silent. "
+            "Every missing definition is listed with what classifies it: an entry of its file or of its name under another "
+            "key is an identity mismatch, none is an engine loss."
+        )
+        parts += ["", table_of(SILENT_GROUP_COLUMNS, silent["groups"], ""), ""]
+        parts += [table_of(SILENT_LISTING_COLUMNS, silent["listing"], "No definition missing.")]
+    if report.get("cells"):
+        states = [cellstate.CellState(**state) for state in report["cells"]]
+        parts += ["", "## Cell states (declared, then checked)", "", cellstate.render_table(states)]
+    return parts
+
+
 def render(report: dict) -> str:
     parts = [
         "# diffctx oracle report",
@@ -512,6 +644,7 @@ def render(report: dict) -> str:
         "",
     ]
     parts.append(table_of(SCIP_COLUMNS, report["scip"], "No scored cells."))
+    parts += render_safety_listings(report)
     if report.get("scip_adjudicated") is not None:
         parts += ["", "## SCIP truth with the adjudicated overrides", ""]
         parts += [table_of(SCIP_COLUMNS, report["scip_adjudicated"], "No scored cells.")]
@@ -558,6 +691,7 @@ def build(
     gates: dict[str, Threshold] | None = None,
     ac5_head: Path | None = None,
     ac5_base: Path | None = None,
+    cell_facts: Path | None = None,
 ) -> dict:
     def optional(name: str) -> list[dict]:
         path = run / name
@@ -566,8 +700,12 @@ def build(
     gates = load_gates() if gates is None else gates
     rule = paired.Measurability(gates["measurability.interval_width"].limit, gates["measurability.lower_bound"].limit)
     cells = optional("cells.jsonl")
+    relations = optional("relations.jsonl")
+    scip = scip_rows(cells)
     report = {
-        "scip": scip_rows(cells),
+        "scip": scip,
+        "incomplete_complete": incomplete_complete_report(scip, relations),
+        "silent_loss": silent_loss_report(read_json_lines(run / "silent_loss.jsonl")),
         "index_completeness": completeness_rows(optional("indexes.jsonl"), optional("commits.jsonl")),
         "unmapped_definitions": len(optional("unmapped.jsonl")),
         "filtered_references": dict(sum((Counter(c.get("filtered", {})) for c in optional("commits.jsonl")), Counter())),
@@ -583,10 +721,12 @@ def build(
     }
     verdicts = adjudication.load_verdicts(adjudicated) if adjudicated and adjudicated.is_dir() else {}
     if verdicts:
-        rows = adjudication.apply_to_rows(optional("relations.jsonl"), verdicts)
+        rows = adjudication.apply_to_rows(relations, verdicts)
         report["scip_adjudicated"] = scip_rows(adjudication.cells_from_rows(rows, cells))
         report["adjudication"] = adjudication.summary(verdicts, repo_languages())
-    report["verdict"] = verdict_lines(report, gates)
+    states = cellstate.classify(report["paired"], cellstate.load_facts(cell_facts), gates) if cell_facts else []
+    report["cells"] = [vars(state) for state in states] if cell_facts else None
+    report["verdict"] = verdict_lines(report, gates, states)
     return report
 
 
@@ -624,10 +764,19 @@ def main(argv: list[str] | None = None) -> int:
         metavar="FILE",
         help="the thresholds (default: gates.toml beside this file)",
     )
+    parser.add_argument(
+        "--cell-facts",
+        type=Path,
+        metavar="FILE",
+        help=f"the engine's declared state of each cell ({cellstate.FACTS_SCHEMA}): adds the precise.* verdict lines and the "
+        "cell-state table; without it those lines stay n/a",
+    )
     parser.add_argument("--ac5-head", type=Path, help="the AC5 scorer's totals.json for the head")
     parser.add_argument("--ac5-base", type=Path, help="the same for the base, scored on the same material")
     parser.add_argument("--out", type=Path, help="directory for report.md and report.json (default: --run)")
     options = parser.parse_args(argv)
+    if options.cell_facts and not options.against:
+        parser.error("--cell-facts needs --against: a cell is measured by a paired run")
     report = build(
         options.run,
         options.harness,
@@ -640,6 +789,7 @@ def main(argv: list[str] | None = None) -> int:
         options.gates,
         options.ac5_head,
         options.ac5_base,
+        options.cell_facts,
     )
     out = options.out or options.run
     out.mkdir(parents=True, exist_ok=True)
