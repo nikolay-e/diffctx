@@ -731,7 +731,10 @@ impl<'a> Reader<'a> {
 
     /// Whether the name is the target of an assignment.
     fn assigned(&self, u: &old::Use) -> bool {
-        let rest = self.slice(u.at + u.name.len()..self.bytes.len().min(u.at + u.name.len() + 8));
+        let end = u.at + u.name.len();
+        let rest = self.slice(end..self.bytes.len().min(end + 9));
+        // A quoted name's closing backtick is no part of the name the site reads.
+        let rest = rest.strip_prefix('`').unwrap_or(rest);
         let rest = rest.trim_start_matches([' ', '\t']);
         (rest.starts_with('=') && !rest.starts_with("=="))
             || ["+=", "-=", "*=", "/=", "%=", "++", "--"]

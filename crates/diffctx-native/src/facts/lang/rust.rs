@@ -324,6 +324,11 @@ impl<'t> Walker<'t> {
         std::str::from_utf8(&bytes[node.start_byte()..node.end_byte()]).unwrap_or("")
     }
 
+    /// The name an identifier node writes: `r#match` is `match`.
+    fn ident(&self, node: Node<'_>) -> &'t str {
+        unraw(self.text(node))
+    }
+
     fn deeper(&mut self, depth: u16) -> bool {
         if depth > MAX_DEPTH {
             self.too_deep = true;
@@ -492,7 +497,7 @@ impl<'t> Walker<'t> {
         shape: Shape,
     ) -> Option<LocalKey> {
         let name_node = node.child_by_field_name("name")?;
-        let name = self.text(name_node);
+        let name = self.ident(name_node);
         let key = self.key_for(cx, name, shape.ns, attrs);
         let members = members_of(node);
         let signature = self.signature(node, &members);
@@ -730,7 +735,7 @@ impl<'t> Walker<'t> {
                 }
                 if let Some(name) = parameter.child_by_field_name("name") {
                     let held = parameter.child_by_field_name("bounds").and_then(bound);
-                    found.insert(self.text(name).to_string(), held);
+                    found.insert(self.ident(name).to_string(), held);
                 }
             }
         }
@@ -751,7 +756,7 @@ impl<'t> Walker<'t> {
                 };
                 if left.kind() == "type_identifier" {
                     if let Some(held) = bound(bounds) {
-                        found.insert(self.text(left).to_string(), Some(held));
+                        found.insert(self.ident(left).to_string(), Some(held));
                     }
                 }
             }
@@ -1196,7 +1201,7 @@ impl<'t> Walker<'t> {
                 ) else {
                     return;
                 };
-                let alias = self.text(alias).to_string();
+                let alias = self.ident(alias).to_string();
                 if alias == "_" {
                     return;
                 }
@@ -1302,7 +1307,7 @@ impl<'t> Walker<'t> {
                     function = function.child_by_field_name("function")?;
                 }
                 if function.kind() == "field_expression" {
-                    let field = function.child_by_field_name("field").map(|n| self.text(n));
+                    let field = function.child_by_field_name("field").map(|n| self.ident(n));
                     return matches!(field, Some("unwrap" | "expect"))
                         .then(|| {
                             self.built_ty(function.child_by_field_name("value")?, cx)
@@ -1355,7 +1360,7 @@ impl<'t> Walker<'t> {
         }
         match node.kind() {
             "identifier" => {
-                let name = self.text(node);
+                let name = self.ident(node);
                 if name.starts_with(char::is_uppercase) {
                     self.emit(node, cx, Receiver::None, UseKind::Read, name, Vec::new());
                     return;
@@ -1393,7 +1398,7 @@ impl<'t> Walker<'t> {
                 if let Some(inner) = node.child_by_field_name("pattern") {
                     self.pattern(inner, None, cx, kind, depth + 1);
                 } else if let Some(name) = node.child_by_field_name("name") {
-                    let written = self.text(name);
+                    let written = self.ident(name);
                     self.facts.push(Fact::LocalBinding(Local {
                         name: Name::new(written),
                         site: span(name),
@@ -1659,7 +1664,7 @@ impl<'t> Walker<'t> {
         };
         if field.kind() == "field_identifier" {
             let (receiver, qualifier) = self.receiver(value, cx);
-            self.emit(field, cx, receiver, kind, self.text(field), qualifier);
+            self.emit(field, cx, receiver, kind, self.ident(field), qualifier);
             // The head of a chain that is no local and no `self` is a name read
             // (`LIMIT.len()`, `COUNTER.load()`).
             if let (Some(chain), Some(head)) = (self.field_chain(value), self.chain_head(value)) {
@@ -1693,14 +1698,14 @@ impl<'t> Walker<'t> {
     /// `a.b.c` as `[a, b, c]` when it is made of identifiers and `self` only.
     fn field_chain(&self, node: Node<'t>) -> Option<Vec<String>> {
         match node.kind() {
-            "identifier" | "self" => Some(vec![self.text(node).to_string()]),
+            "identifier" | "self" => Some(vec![self.ident(node).to_string()]),
             "field_expression" => {
                 let field = node.child_by_field_name("field")?;
                 if field.kind() != "field_identifier" && field.kind() != "integer_literal" {
                     return None;
                 }
                 let mut head = self.field_chain(node.child_by_field_name("value")?)?;
-                head.push(self.text(field).to_string());
+                head.push(self.ident(field).to_string());
                 Some(head)
             }
             _ => None,
@@ -1785,7 +1790,7 @@ impl<'t> Walker<'t> {
                         cx,
                         Receiver::Typed(TypeName::new(t.as_str())),
                         kind,
-                        self.text(name),
+                        self.ident(name),
                         Vec::new(),
                     );
                 }
@@ -1915,7 +1920,7 @@ impl<'t> Walker<'t> {
             let call = next.is_some_and(|n| {
                 n.kind() == "token_tree" && n.child(0).is_some_and(|c| c.kind() == "(")
             });
-            let names: Vec<String> = run.iter().map(|n| self.text(*n).to_string()).collect();
+            let names: Vec<String> = run.iter().map(|n| self.ident(*n).to_string()).collect();
             let previous = i.checked_sub(1).and_then(|p| toks.get(p));
             let last = run[run.len() - 1];
             if next.is_some_and(|n| n.kind() == "!") {
@@ -1931,7 +1936,7 @@ impl<'t> Walker<'t> {
                     let (receiver, qualifier) = match before {
                         Some(b) if b.kind() == "self" => (Receiver::SelfType, Vec::new()),
                         Some(b) if b.kind() == "identifier" => {
-                            let local = self.text(b).to_string();
+                            let local = self.ident(b).to_string();
                             match self.lookup(&local).cloned() {
                                 Some(Some(Ty::Named(t))) => {
                                     (Receiver::Typed(TypeName::new(t.as_str())), Vec::new())
@@ -2030,13 +2035,17 @@ fn members_of<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     }
 }
 
+/// The identifier a raw identifier writes: `r#match` is `match`, and `r#name`
+/// is `name`, one name to the language wherever the word is no keyword.
+fn unraw(written: &str) -> &str {
+    written.strip_prefix("r#").unwrap_or(written)
+}
+
 /// A path as the segments written: `a::b::C`, `Vec::<T>` is `Vec`. `$crate` is
 /// `crate`.
 fn path_of(bytes: &[u8], node: Node<'_>) -> Option<Vec<String>> {
     let text = |n: Node<'_>| {
-        std::str::from_utf8(&bytes[n.start_byte()..n.end_byte()])
-            .unwrap_or("")
-            .to_string()
+        unraw(std::str::from_utf8(&bytes[n.start_byte()..n.end_byte()]).unwrap_or("")).to_string()
     };
     match node.kind() {
         "identifier" | "type_identifier" | "crate" | "self" | "super" => Some(vec![text(node)]),
