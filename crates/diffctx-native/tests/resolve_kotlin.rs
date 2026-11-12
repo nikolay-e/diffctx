@@ -561,23 +561,39 @@ fn judge_decoys(fixture: &Fixture, expect: &Expect, changed: &Changed, failures:
     }
 }
 
-/// The definitions of the symbol the case asks for, by file and name; a member
-/// may be written `Class.name`. `PATH:NAME` names the definitions of that file
-/// alone (the query is qualified), a bare name every definition of it.
+/// The definitions of the symbol the case asks for, by file and name. The query
+/// reads as `--symbol` does: `PATH:NAME` names the definitions of that file
+/// alone, `Owner.NAME` those whose innermost container is `Owner`, a bare name
+/// every definition of it, and a Kotlin name may be written in backticks. The
+/// JVM allows none of `:` and `.` in a name, so the separators split it whole.
 fn judge_definitions(fixture: &Fixture, case: &Case, failures: &mut Vec<String>) {
     let (Some(expected), Some(symbol)) = (&case.expect.definitions, &case.query.symbol) else {
         return;
     };
-    let (only_in, asked) = match symbol.rsplit_once(':') {
-        Some((path, name)) => (Some(path), name),
+    let (only_in, rest) = match symbol.rsplit_once(':') {
+        Some((path, rest)) => (Some(path), rest),
         None => (None, symbol.as_str()),
     };
+    let (owner, name) = match rest.rsplit_once('.') {
+        Some((owner, name)) => (Some(owner.trim_matches('`')), name),
+        None => (None, rest),
+    };
+    let asked = name.trim_matches('`');
     let found: BTreeSet<String> = fixture
         .head
         .definitions()
         .iter()
         .filter(|d| d.key.local.name.as_str() == asked)
         .filter(|d| only_in.is_none_or(|path| d.file.as_str() == path))
+        .filter(|d| {
+            owner.is_none_or(|owner| {
+                d.key
+                    .local
+                    .container
+                    .last()
+                    .is_some_and(|c| c.as_str() == owner)
+            })
+        })
         .map(|d| format!("{}::{}", d.file, d.key.local.name))
         .collect();
     let wanted: BTreeSet<String> = expected
