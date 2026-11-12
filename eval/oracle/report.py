@@ -192,13 +192,13 @@ def curve_rows(runs: list[LoadedRun]) -> list[dict]:
     return rows
 
 
-def paired_entry(run: Path, base: LoadedRun) -> dict:
+def paired_entry(run: Path, base: LoadedRun, rule: paired.Measurability) -> dict:
     head = load_run(str(run))
     return {
         "base": base.path.name,
         "head": head.path.name,
         "budgets": (base.budget, head.budget),
-        "result": paired.compare_runs(base.path, head.path),
+        "result": paired.compare_runs(base.path, head.path, rule),
     }
 
 
@@ -319,6 +319,12 @@ def observations(report: dict) -> dict[str, list[Observation]]:
     impact = ((report.get("bench") or {}).get("all") or {}).get("impact") or {}
     if impact.get("p95") is not None:
         seen["speed.impact_p95_seconds"].append(("bench", impact["p95"], f"{impact.get('n')} runs"))
+    for entry in report["paired"]:
+        found = entry["result"]["measurability"]
+        source = f"{entry['head']} against {entry['base']}"
+        counts = f"{found['measured']} of {found['cells']} cells measured, {found['unmeasured']} judged on the safety rows alone"
+        seen["measurability.interval_width"].append((source, found["widest"], counts))
+        seen["measurability.lower_bound"].append((source, found["lowest"], "; ".join(found["failing"])))
     ac5 = report.get("ac5")
     if ac5:
         head, base = ac5["head"], ac5["base"]
@@ -409,12 +415,15 @@ PAIRED_COLUMNS = [
     ("Mode", "mode"),
     ("Relation", "relation"),
     ("Commits", "commits"),
-    ("Truth", "truth"),
+    ("Sites", "truth"),
+    ("Head P", "head_precision"),
+    ("Head R", "head_recall"),
     ("Precision", "precision_text"),
     ("Recall", "recall_text"),
     ("Recall (affected)", "recall_affected_text"),
     ("FCN", "fcn_text"),
     ("False fold", "false_fold_head"),
+    ("State", "state"),
     ("Flag", "flag"),
 ]
 SMALL_COLUMNS = [("From", "from"), ("To", "to"), ("Kind", "kind"), ("Commit", "commit"), ("Base", "base"), ("Head", "head")]
@@ -471,10 +480,11 @@ def _change(metric: dict) -> str:
 
 
 def _flag(row: dict) -> str:
-    marks = [
-        f"{name} {row[name]['verdict'].upper()}" for name in ("precision", "recall", "recall_affected") if row[name]["verdict"]
-    ]
-    return ", ".join([*marks, *(["read rows"] if row["small"] else []), *(["TRUTH DIFFERS"] if row["truth_differs"] else [])])
+    marks = [f"{name} {row[name]['verdict'].upper()}" for name in paired.METRICS if row[name]["verdict"]]
+    failing = [f"{name} FAILS" for name in row["failing"]]
+    return ", ".join(
+        [*failing, *marks, *(["read rows"] if row["small"] else []), *(["TRUTH DIFFERS"] if row["truth_differs"] else [])]
+    )
 
 
 def render_paired(entry: dict) -> list[str]:
@@ -483,19 +493,29 @@ def render_paired(entry: dict) -> list[str]:
     parts.append(
         f"Commits answered by both runs: impact {result['commits']['impact']}, symbol {result['commits']['symbol']}; dropped "
         f"(answered by one run only) base {result['dropped']['base']}, head {result['dropped']['head']}. "
-        f"{paired.RESAMPLES} resamples over commits, seed {paired.SEED}, 95 % percentile interval; a regression is an interval "
-        f"wholly below 0, and needs {paired.MIN_COMMITS}+ commits. Groups are not corrected for multiple comparisons."
+        f"{paired.RESAMPLES} resamples over commits, seed {paired.SEED}, 95 % percentile interval, which needs {paired.MIN_COMMITS}+ "
+        f"commits. Groups are not corrected for multiple comparisons."
+    )
+    rule = result["measurability"]
+    parts.append(
+        f"A cell is measured when its precision and recall intervals are at most {rule['width_max']} wide; a measured cell "
+        f"fails when the lower bound of a measured interval is under {rule['lower_min']}. An unmeasured cell is judged on the "
+        f"safety rows alone. WORSE and BETTER only say the whole interval lies below or above 0."
     )
     if entry["budgets"][0] != entry["budgets"][1]:
         parts += ["", f"**The runs used different budgets** (base {entry['budgets'][0]}, head {entry['budgets'][1]})."]
     rows = [
-        {**row, "precision_text": _change(row["precision"]), "recall_text": _change(row["recall"]),
+        {**row, "head_precision": row["precision"]["head"], "head_recall": row["recall"]["head"],
+            "precision_text": _change(row["precision"]), "recall_text": _change(row["recall"]),
             "recall_affected_text": _change(row["recall_affected"]),
          "fcn_text": f"{row['fcn_base']} → {row['fcn_head']}", "flag": _flag(row)}
         for row in result["rows"]
     ]  # fmt: skip
     parts += ["", table_of(PAIRED_COLUMNS, rows, "No paired cells."), ""]
-    parts.append(f"Regressions: {'; '.join(result['regressions']) or 'none'}.")
+    parts.append(
+        f"Cells: {rule['cells']}, measured {rule['measured']} (failing {len(rule['failing'])}), unmeasured {rule['unmeasured']}. "
+        f"Failing: {'; '.join(rule['failing']) or 'none'}."
+    )
     if result["small"]:
         parts += ["", f"### Relations with truth under {paired.SMALL_TRUTH}, row by row", ""]
         groups: dict[tuple, list[dict]] = defaultdict(list)
@@ -589,6 +609,8 @@ def build(
         path = run / name
         return read_records(path) if path.exists() else []
 
+    gates = load_gates() if gates is None else gates
+    rule = paired.Measurability(gates["measurability.interval_width"].limit, gates["measurability.lower_bound"].limit)
     cells = optional("cells.jsonl")
     report = {
         "scip": scip_rows(cells),
@@ -600,7 +622,7 @@ def build(
         "faults": outcome_summary(read_records(faults)) if faults else None,
         "bench": json.loads(bench.read_text(encoding="utf-8")) if bench else None,
         "curve": curve_rows(curve) if curve else None,
-        "paired": [paired_entry(run, other) for other in against or []],
+        "paired": [paired_entry(run, other, rule) for other in against or []],
         "ac5": {"head": ac5_totals(ac5_head), "base": ac5_totals(ac5_base) if ac5_base else None} if ac5_head else None,
         "scip_adjudicated": None,
         "adjudication": None,
@@ -610,7 +632,7 @@ def build(
         rows = adjudication.apply_to_rows(optional("relations.jsonl"), verdicts)
         report["scip_adjudicated"] = scip_rows(adjudication.cells_from_rows(rows, cells))
         report["adjudication"] = adjudication.summary(verdicts, repo_languages())
-    report["verdict"] = verdict_lines(report, gates if gates is not None else load_gates())
+    report["verdict"] = verdict_lines(report, gates)
     return report
 
 
