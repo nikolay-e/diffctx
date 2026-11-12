@@ -32,9 +32,9 @@ use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
     base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
 };
-use crate::resolve::family::Group;
 use crate::testfiles::naming_links;
 use crate::tokens::Names;
+use crate::vocabulary::family::Group;
 
 /// How a test runs code that no use of its own reaches: `file` as the fragments
 /// spell it, `symbol` the one function of the file that runs (none: the whole

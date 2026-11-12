@@ -1,5 +1,8 @@
 //! What the answer states of a language beyond the cells: the tier table the README
-//! reproduces, the relation kinds the case schema names, and the cells made precise.
+//! reproduces, the relation kinds the case schema names, the cells made precise, and
+//! the families of languages one resolver reads (`family`).
+
+pub(crate) mod family;
 
 /// How far an answer about a language is promised (T5). Tier 1 is the
 /// declared set whose definitions, callers and test reach are being made

@@ -33,7 +33,6 @@ mod c;
 mod chart;
 mod config;
 mod dockerfile;
-pub(crate) mod family;
 mod go;
 mod index;
 mod java;

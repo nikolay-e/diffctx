@@ -2,7 +2,7 @@
 
 use crate::facts::LocalKind;
 use crate::resolve::CandidateReason;
-use crate::resolve::family::Family;
+use crate::vocabulary::family::Family;
 
 /// The locals whose site is only the declaration of the name: no pattern shares it with a
 /// field read that has no binding of its own (`let Retry { attempt } = r;` is why Rust's
