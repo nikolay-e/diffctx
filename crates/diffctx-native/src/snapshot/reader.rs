@@ -19,6 +19,7 @@ use crate::snapshot::ignore::{self, Basis, Hit};
 use crate::snapshot::loss::{Loss, SideTag};
 use crate::snapshot::repo::{RepoRoot, index_tree_with, rev_to_oid, tree_of};
 use crate::snapshot::types::{Bytes, ContentId, Mode, Oid, RepoPath, digest};
+use crate::snapshot::untracked::{self, Found};
 
 /// Which state of the repository a reader serves.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -156,6 +157,9 @@ struct Inner {
     exec: Exec,
     batch: Mutex<CatBatch>,
     table: Mutex<Option<Arc<Table>>>,
+    /// What a collapsed read of the checkout's untracked files found, for a
+    /// working-tree reader: the directories it left unread are losses.
+    untracked: Option<Found>,
 }
 
 /// `Send + Sync` and cheap to clone: clones share the connection, the
@@ -194,18 +198,22 @@ impl SnapshotReader {
     ) -> Result<Self> {
         let exec = Exec::with_budget(budget);
         let work = &root.work_tree;
-        let (basis, id) = match side {
+        let (basis, id, untracked) = match side {
             Side::Tree(oid) => {
                 let tree = tree_of(&exec, work, &oid)?;
                 let id = ContentId(tree.to_string());
-                (Backing::Tree(tree), id)
+                (Backing::Tree(tree), id, None)
             }
             Side::Index => {
                 let tree = index_tree_with(&exec, work)?;
                 let id = ContentId(tree.to_string());
-                (Backing::Tree(tree), id)
+                (Backing::Tree(tree), id, None)
             }
-            Side::WorkingTree => (Backing::WorkingTree, working_tree_id(&exec, root)?),
+            Side::WorkingTree => {
+                let found = untracked::read(&exec, work, &[])?;
+                let id = working_tree_id(&exec, root, &found)?;
+                (Backing::WorkingTree, id, Some(found))
+            }
         };
         let cap = usize::try_from(admission.policy().size_cap).unwrap_or(usize::MAX);
         Ok(Self {
@@ -220,6 +228,7 @@ impl SnapshotReader {
                 admission,
                 exec,
                 table: Mutex::new(None),
+                untracked,
             }),
         })
     }
@@ -243,10 +252,16 @@ impl SnapshotReader {
             .failures
             .lock()
             .map_or(true, |failures| !failures.is_empty())
+            || self
+                .inner
+                .untracked
+                .as_ref()
+                .is_some_and(|found| !found.unread.is_empty())
     }
 
     /// What reads of this snapshot lost so far: every path whose bytes were
-    /// wanted and not produced. A caller that swallowed the `Err` has not
+    /// wanted and not produced, and every untracked directory a collapsed read
+    /// of the checkout left unread. A caller that swallowed the `Err` has not
     /// made the loss go away.
     pub fn losses(&self) -> Vec<Loss> {
         let side = self.role();
@@ -255,6 +270,15 @@ impl SnapshotReader {
             .failures
             .lock()
             .map_or_else(|poisoned| poisoned.into_inner().clone(), |f| f.clone());
+        let unread = self
+            .inner
+            .untracked
+            .iter()
+            .flat_map(|found| &found.unread)
+            .map(|dir| Loss::ReadFailed {
+                path: path_of(dir.as_bytes()).0,
+                side,
+            });
         failures
             .into_iter()
             .map(|(path, changed)| {
@@ -264,6 +288,7 @@ impl SnapshotReader {
                     Loss::ReadFailed { path, side }
                 }
             })
+            .chain(unread)
             .fold(Vec::new(), |mut losses, loss| {
                 if !losses.contains(&loss) {
                     losses.push(loss);
@@ -413,6 +438,7 @@ impl SnapshotReader {
                 &self.inner.exec,
                 &Basis::WorkingTree {
                     root: &self.inner.root.work_tree,
+                    untracked: self.untracked_names(),
                 },
                 &names,
             )?;
@@ -436,6 +462,14 @@ impl SnapshotReader {
 
     pub(crate) fn exec(&self) -> &Exec {
         &self.inner.exec
+    }
+
+    /// The untracked files a working-tree reader found, as git names them.
+    fn untracked_names(&self) -> &[Vec<u8>] {
+        match &self.inner.untracked {
+            Some(found) => found.names.as_slice(),
+            None => &[],
+        }
     }
 
     pub(crate) fn table(&self) -> Result<Arc<Table>> {
@@ -609,18 +643,8 @@ impl SnapshotReader {
     fn working_rows(&self) -> Result<Vec<Row>> {
         let exec = &self.inner.exec;
         let work = &self.inner.root.work_tree;
-        let records = exec.records(
-            work,
-            &[
-                "ls-files",
-                "-z",
-                "-t",
-                "--cached",
-                "--others",
-                "--exclude-standard",
-            ],
-        )?;
-        let mut rows: Vec<Row> = Vec::with_capacity(records.len());
+        let records = exec.records(work, &["ls-files", "-z", "-t", "--cached"])?;
+        let mut entries: Vec<(u8, &[u8])> = Vec::with_capacity(records.len());
         for record in &records {
             if record.len() < 3 {
                 return Err(SnapshotError::Git(format!(
@@ -628,7 +652,15 @@ impl SnapshotReader {
                     String::from_utf8_lossy(record)
                 )));
             }
-            let (tag, name) = (record[0], &record[2..]);
+            entries.push((record[0], &record[2..]));
+        }
+        entries.extend(
+            self.untracked_names()
+                .iter()
+                .map(|name| (b'?', name.as_slice())),
+        );
+        let mut rows: Vec<Row> = Vec::with_capacity(entries.len());
+        for (tag, name) in entries {
             // An untracked nested repository is one directory entry, not a
             // file of this repository.
             if name.ends_with(b"/") {
@@ -670,7 +702,14 @@ impl SnapshotReader {
             .filter(|row| row.decision == Decision::Admit)
             .map(|row| row.path.as_str())
             .collect();
-        let hits = ignore::check(exec, &Basis::WorkingTree { root: work }, &paths)?;
+        let hits = ignore::check(
+            exec,
+            &Basis::WorkingTree {
+                root: work,
+                untracked: self.untracked_names(),
+            },
+            &paths,
+        )?;
         self.decide_rows(&mut rows, &hits);
         Ok(rows)
     }
@@ -908,7 +947,7 @@ pub fn hash_working_paths(root: &RepoRoot, paths: &[RepoPath]) -> Result<Vec<Oid
 /// A digest of what the working tree holds beyond `HEAD`: the tree of `HEAD`
 /// and the content of every path `git status` reports. Cheap, and it does not
 /// change when nothing the analysis could read changed.
-fn working_tree_id(exec: &Exec, root: &RepoRoot) -> Result<ContentId> {
+fn working_tree_id(exec: &Exec, root: &RepoRoot, found: &Found) -> Result<ContentId> {
     let work = &root.work_tree;
     let head = rev_to_oid(exec, work, "HEAD^{tree}")?;
     let records = exec.records(
@@ -918,7 +957,7 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot) -> Result<ContentId> {
             "status",
             "--porcelain=v1",
             "-z",
-            "--untracked-files=all",
+            "--untracked-files=no",
             "--no-renames",
         ],
     )?;
@@ -926,6 +965,12 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot) -> Result<ContentId> {
         .iter()
         .filter(|record| record.len() > 3)
         .map(|record| String::from_utf8_lossy(&record[3..]).into_owned())
+        .chain(
+            found
+                .names
+                .iter()
+                .map(|name| String::from_utf8_lossy(name).into_owned()),
+        )
         .collect();
     names.sort();
     names.dedup();
@@ -960,6 +1005,14 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot) -> Result<ContentId> {
     for (name, mark) in names.iter().zip(&marks) {
         parts.push(name.as_bytes());
         parts.push(mark);
+    }
+    // What the read left unread is part of what the identity stands for: the
+    // same files read beside a different unread tree are another snapshot.
+    let mut unread: Vec<&str> = found.unread.iter().map(String::as_str).collect();
+    unread.sort_unstable();
+    for dir in unread {
+        parts.push(b"unread".as_slice());
+        parts.push(dir.as_bytes());
     }
     Ok(ContentId(format!("wt:{}", digest(&parts))))
 }
