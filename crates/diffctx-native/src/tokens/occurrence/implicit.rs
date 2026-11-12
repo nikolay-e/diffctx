@@ -186,6 +186,8 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
             _ => {}
         }
     }
+    // Only the root module is set from outside; a module in a directory is set by its caller.
+    let rooted = !file.path.as_str().contains('/');
     for (family, part, kind, patterns) in TABLE {
         let hit = patterns.split_ascii_whitespace().any(|pattern| {
             tags.iter().any(|(at, tag)| {
@@ -195,7 +197,7 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
                         .map_or(pattern == tag, |prefix| tag.starts_with(prefix))
             })
         });
-        if hit && family.has(file.language()) {
+        if hit && family.has(file.language()) && (rooted || *family != Family::Terraform) {
             found.push(*kind);
         }
     }

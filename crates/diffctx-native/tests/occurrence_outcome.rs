@@ -1276,6 +1276,59 @@ fn a_name_read_where_the_local_is_not_in_force_stays_a_candidate() {
 }
 
 #[test]
+fn a_jvm_parameter_and_a_declarator_are_declared_at_the_name_and_a_call_in_the_initializer_is_not()
+{
+    let file = "src/main/java/shop/Pricing.java";
+    let source = "package shop;\n\npublic class Pricing {\n    public static int total() {\n        return 1;\n    }\n\n    public static int add(int total) {\n        return total + 1;\n    }\n\n    public static int run() {\n        int total = total();\n        return total;\n    }\n}\n";
+    let world = snapshot_in(Lang::Java, &[(file, source)]);
+    let found = world.outcomes(world.def(file, "Pricing.total"), file, &["total"]);
+    assert_eq!(
+        shape(on(&found, 8)),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+    let line: Vec<&Entry> = (found.entries.iter())
+        .filter(|entry| entry.occurrence.line == 13)
+        .collect();
+    assert_eq!(line.len(), 2, "{found:#?}");
+    assert_eq!(
+        shape(line[0]),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+    assert!(
+        !matches!(line[1].outcome, Outcome::Declaration | Outcome::NotOurs),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_call_bound_to_a_definition_and_its_prototype_is_ours() {
+    let world = snapshot_in(
+        Lang::C,
+        &[
+            ("src/total.h", "int total(void);\n"),
+            (
+                "src/total.c",
+                "#include \"total.h\"\n\nint total(void) {\n    return 1;\n}\n",
+            ),
+            (
+                "src/run.c",
+                "#include \"total.h\"\n\nint run(void) {\n    return total();\n}\n",
+            ),
+        ],
+    );
+    for file in ["src/total.c", "src/total.h"] {
+        let found = world.outcomes(world.def(file, "total"), "src/run.c", &["total"]);
+        assert_eq!(
+            shape(on(&found, 4)),
+            ("ours", "resolved", Some(Relation::Calls)),
+            "{file}: {found:#?}"
+        );
+    }
+}
+
+#[test]
 fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
     let source = "package shop\n\nfunc Total() int {\n\treturn 1\n}\n\nfunc Run(x any) int {\n\tTotal := 0\n\t_ = x.Total\n\treturn Total\n}\n";
     let world = snapshot_in(Lang::Go, &[("shop/total.go", source)]);

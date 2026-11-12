@@ -168,7 +168,7 @@ pub enum Basis {
     BareName,
     /// `not_ours`: the file's project cannot reference the definition's, the manifests read whole.
     OtherProject,
-    /// `alias`: `import f as g`, `use m::f as g`.
+    /// `alias`: `import f as g`, `use m::f as g`; `declaration`: the new name `g`.
     RenamedImport,
     /// `alias`: `export { f as g }`, `pub use m::f as g`.
     RenamedExport,
@@ -349,8 +349,8 @@ pub struct Account {
     /// Occurrences in strings nobody explained: counted, never blocking.
     pub mentions: usize,
     pub implicit: Vec<Implicit>,
-    /// The definition's kind admits `calls`: only then a leak or an implicit
-    /// call stands against it (a property is read, never called).
+    /// The definition's kind admits `calls`: only then a leak stands against it
+    /// (a property is read, never called).
     pub admits_calls: bool,
     /// A tool outside the repository consumes the definition by reading it (a
     /// configuration object): `Outside` then stands against its `reads`.
@@ -414,15 +414,23 @@ impl Account {
                 loss: unread.loss.clone(),
             });
         }
-        if self.relation == Relation::Calls && self.admits_calls {
-            hedges.extend(self.implicit.iter().copied().map(Hedge::Implicit));
-        }
-        if self.relation == Relation::Reads && self.consumed_by_reading {
-            let outside = self
-                .implicit
-                .iter()
-                .filter(|kind| **kind == Implicit::Outside);
-            hedges.extend(outside.copied().map(Hedge::Implicit));
+        // An implicit kind stands where the definition is consumed: against `calls` for a
+        // kind that admits them; against `reads` for an object a tool outside reads
+        // (`Outside`); against any other read-only kind's `calls` only while nothing in
+        // the group uses it, so that the answer never says nobody does.
+        let used = self.entries.iter().any(|e| e.outcome == Outcome::Ours);
+        let standing = |kind: Implicit| {
+            self.admits_calls || !(used || self.consumed_by_reading && kind == Implicit::Outside)
+        };
+        let kinds = self.implicit.iter().copied();
+        match self.relation {
+            Relation::Calls => hedges.extend(kinds.filter(|k| standing(*k)).map(Hedge::Implicit)),
+            Relation::Reads if self.consumed_by_reading => hedges.extend(
+                kinds
+                    .filter(|kind| *kind == Implicit::Outside)
+                    .map(Hedge::Implicit),
+            ),
+            _ => {}
         }
         hedges.extend(self.alias_bound.map(Hedge::AliasBound));
         hedges.extend(
