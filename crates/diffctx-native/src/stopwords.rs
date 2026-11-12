@@ -18,15 +18,15 @@ pub(crate) static CODE_STOPWORDS: Lazy<FxHashSet<String>> =
 static DOCS_STOPWORDS: Lazy<FxHashSet<String>> =
     Lazy::new(|| set_from_list(include_str!("stopwords/docs.txt")));
 
-pub(crate) const PROFILE_CODE: &str = "code";
-pub(crate) const PROFILE_DOCS: &str = "docs";
-pub(crate) const PROFILE_LEGAL: &str = "legal";
-pub(crate) const PROFILE_DATA: &str = "data";
-pub(crate) const PROFILE_GENERIC: &str = "generic";
+const PROFILE_CODE: &str = "code";
+const PROFILE_DOCS: &str = "docs";
+const PROFILE_LEGAL: &str = "legal";
+const PROFILE_DATA: &str = "data";
+const PROFILE_GENERIC: &str = "generic";
 
 static EMPTY_STOPWORDS: Lazy<FxHashSet<String>> = Lazy::new(FxHashSet::default);
 
-pub(crate) fn get_stopwords(profile: &str) -> &FxHashSet<String> {
+fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     match profile {
         PROFILE_CODE | PROFILE_GENERIC => &CODE_STOPWORDS,
         PROFILE_DOCS | PROFILE_LEGAL => &DOCS_STOPWORDS,
@@ -88,7 +88,7 @@ pub(crate) fn profile_from_path(path: &str) -> &'static str {
     PROFILE_GENERIC
 }
 
-pub(crate) fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
+fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
     if ident.is_empty() || ident.len() < min_len {
         return false;
     }

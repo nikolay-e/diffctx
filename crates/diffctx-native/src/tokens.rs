@@ -35,7 +35,7 @@ const CACHE_CAP_BYTES: u64 = 128 * 1024 * 1024;
 /// collision between cases only over-hedges), each once, in order. An identifier
 /// is a run of ASCII letters, digits and `_`, and of non-ASCII bytes; `$`, `-`,
 /// `.` and `:` separate, so `$name` is `name` and a kebab-case key is its words.
-pub(crate) fn identifiers(bytes: &[u8]) -> Vec<Box<str>> {
+fn identifiers(bytes: &[u8]) -> Vec<Box<str>> {
     let lower = bytes.to_ascii_lowercase();
     let mut runs: Vec<&[u8]> = Vec::new();
     let mut start = None;

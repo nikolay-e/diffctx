@@ -15,8 +15,7 @@ use crate::snapshot;
 // its configuration, the stopword lists): it is part of the on-disk cache key,
 // so a build that tokenizes differently reads no entry of another instead of
 // silently poisoning results.
-pub(crate) const TOKENIZER_FINGERPRINT: u64 =
-    include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
+const TOKENIZER_FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
 
 // Size cap for the on-disk token cache, overridable with
 // DIFFCTX_TOKEN_CACHE_MAX_BYTES (0 = unlimited). The cache is a pure speedup,

@@ -34,7 +34,7 @@ impl DiscoveryContext {
         self.source.read_to_string(path).map(Cow::Owned)
     }
 
-    pub(crate) fn shared_corpus(&self) -> &TokenCorpus {
+    fn shared_corpus(&self) -> &TokenCorpus {
         self.token_corpus.get_or_init(|| TokenCorpus::build(self))
     }
 }

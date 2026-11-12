@@ -108,12 +108,12 @@ pub(crate) trait ScoringStrategy: Send + Sync {
     ) -> ScoringResult;
 }
 
-pub(crate) struct PPRScoring {
+struct PPRScoring {
     pub alpha: f64,
 }
 
 impl PPRScoring {
-    pub(crate) fn new(alpha: f64) -> Self {
+    fn new(alpha: f64) -> Self {
         Self { alpha }
     }
 }
@@ -172,12 +172,12 @@ impl ScoringStrategy for PPRScoring {
     }
 }
 
-pub(crate) struct EgoGraphScoring {
+struct EgoGraphScoring {
     pub max_depth: usize,
 }
 
 impl EgoGraphScoring {
-    pub(crate) fn new(max_depth: usize) -> Self {
+    fn new(max_depth: usize) -> Self {
         Self { max_depth }
     }
 }
@@ -276,7 +276,7 @@ impl ScoringStrategy for EgoGraphScoring {
     }
 }
 
-pub(crate) struct BM25Scoring;
+struct BM25Scoring;
 
 impl ScoringStrategy for BM25Scoring {
     fn score_and_filter(
@@ -388,13 +388,13 @@ impl ScoringStrategy for BM25Scoring {
 /// recall well above either — a miscalibrated-mixture signature. RRF
 /// fuses on ranks only, so neither component's score scale can dominate
 /// the other, which is exactly the failure the weighted mixture had.
-pub(crate) struct RrfFusionScoring {
+struct RrfFusionScoring {
     pub ego_depth: usize,
     pub k: f64,
 }
 
 impl RrfFusionScoring {
-    pub(crate) fn new(ego_depth: usize) -> Self {
+    fn new(ego_depth: usize) -> Self {
         Self {
             ego_depth,
             k: RRF.k,
@@ -614,7 +614,7 @@ impl ScoringStrategy for RrfFusionScoring {
 /// The agreement term is what fusion is actually for — a fragment both signals
 /// rank highly is more trustworthy than either alone — and it is additive and
 /// small so it breaks ties rather than deciding the ranking.
-pub(crate) struct PitFusionScoring {
+struct PitFusionScoring {
     pub ego_depth: usize,
     pub blend: f64,
     pub agreement_bonus: f64,
@@ -622,7 +622,7 @@ pub(crate) struct PitFusionScoring {
 }
 
 impl PitFusionScoring {
-    pub(crate) fn new(ego_depth: usize) -> Self {
+    fn new(ego_depth: usize) -> Self {
         let cfg = &*PIT;
         Self {
             ego_depth,
