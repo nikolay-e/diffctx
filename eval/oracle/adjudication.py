@@ -82,8 +82,19 @@ def apply_to_rows(rows: list[dict], verdicts: dict[Key, dict]) -> list[dict]:
 
 
 def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
-    """Per (target, relation) cells rebuilt from rows; abstention is a property of the answer and is kept from the raw cells."""
-    abstained = {(c["repo"], c["commit"], c["mode"], c["target"]): c["abstained"] for c in raw_cells}
+    """Per (target, relation) cells rebuilt from the adjudicated rows, with the columns and the false-complete-negative
+    rule of the raw cell (`compare.compare`).
+
+    The rows give the counts, the affected and folded columns; what belongs to the answer rather than to a relation, its
+    abstention, whether it had an entry for the target and the kind mismatches, is carried from the raw cells. A cell
+    written before `reported` existed says it only where it already was a false complete negative.
+    """
+    abstained: dict[tuple, bool] = {}
+    reported: dict[tuple, bool] = defaultdict(bool)
+    for c in raw_cells:
+        target = (c["repo"], c["commit"], c["mode"], c["target"])
+        abstained[target] = c["abstained"]
+        reported[target] |= c.get("reported", c["fcn"])
     mismatches = {(c["repo"], c["commit"], c["mode"], c["target"], c["kind"]): c["kind_mismatches"] for c in raw_cells}
     cells: dict[tuple, dict] = {}
     claimed: set[tuple] = set()
@@ -94,16 +105,28 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
             (*target, row["kind"]),
             {
                 "repo": row["repo"], "language": row["language"], "commit": row["commit"], "mode": row["mode"], "target": row["to"],
-                "kind": row["kind"], "truth": 0, "tp": 0, "tp_weak": 0, "fn": 0, "fp": 0, "fp_weak": 0, "fcn": False,
+                "kind": row["kind"], "truth": 0, "tp": 0, "tp_weak": 0, "fn": 0, "fp": 0, "fp_weak": 0,
+                "truth_affected": 0, "tp_affected": 0, "folded": 0, "false_fold": 0, "fcn": False,
                 "kind_mismatches": mismatches.get((*target, row["kind"]), 0), "abstained": abstained.get(target, False),
+                "reported": reported.get(target, False),
             },
         )  # fmt: skip
         cell[verdict] += 1
-        cell["truth"] += verdict in ("tp", "tp_weak", "fn")
+        if verdict in ("tp", "tp_weak", "fn"):
+            affected = (
+                row.get("affected") is not False
+            )  # a relation the oracle never classified is affected: nothing folds when unsure
+            cell["truth"] += 1
+            cell["truth_affected"] += affected
+            if verdict != "fn":
+                folded = bool(row.get("folded_by"))
+                cell["folded"] += folded
+                cell["false_fold"] += bool(row.get("false_fold"))
+                cell["tp_affected"] += affected and verdict == "tp" and not folded
         if verdict != "fn":
             claimed.add(target)
     for key, cell in cells.items():
-        cell["fcn"] = cell["truth"] > 0 and key[:4] not in claimed and not cell["abstained"]
+        cell["fcn"] = cell["reported"] and cell["truth_affected"] > 0 and key[:4] not in claimed and not cell["abstained"]
     return list(cells.values())
 
 

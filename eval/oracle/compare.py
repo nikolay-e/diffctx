@@ -104,6 +104,7 @@ def _blank_cell(target: str, kind: str) -> dict:
         "folded": 0,  # truth pairs the engine marked folded
         "false_fold": 0,  # ... of which the oracle says the change affects: the gate is 0
         "abstained": False,
+        "reported": False,  # the answer has an entry for the target: only then does its silence claim anything
         "fcn": False,
     }
 
@@ -179,6 +180,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     complete_negative = bool(scored) and reported is not None and not callers and not abstained
     for row in cells.values():
         row["abstained"] = abstained
+        row["reported"] = reported is not None
         row["fcn"] = (
             complete_negative and row["truth_affected"] > 0
         )  # silence about what the change cannot reach is no false claim

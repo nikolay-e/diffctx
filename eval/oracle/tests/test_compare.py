@@ -43,7 +43,7 @@ def test_exact_match_is_true_positive_and_extra_is_false_positive():
 def test_missing_caller_is_false_negative_and_empty_unexplained_answer_is_false_complete_negative():
     cells, _ = compare(TARGET, [relation("shop/checkout.py::charge")], answer([]))
 
-    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, True, False)
+    assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"], cells[0]["reported"]) == (1, True, False, True)
 
 
 def test_a_named_unknown_is_abstention_not_a_false_complete_negative():
@@ -433,7 +433,7 @@ def test_an_answer_with_no_entry_for_the_target_claims_no_absence():
 
     for found in (found_nothing, other_entry):
         cells, _ = compare(TARGET, [relation("shop/checkout.py::charge")], found)
-        assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"]) == (1, False, False)
+        assert (cells[0]["fn"], cells[0]["fcn"], cells[0]["abstained"], cells[0]["reported"]) == (1, False, False, False)
 
 
 def test_same_named_overloads_are_scored_apart_by_their_spans():
