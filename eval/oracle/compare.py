@@ -105,8 +105,21 @@ def _blank_cell(target: str, kind: str) -> dict:
         "false_fold": 0,  # ... of which the oracle says the change affects: the gate is 0
         "abstained": False,
         "reported": False,  # the answer has an entry for the target: only then does its silence claim anything
+        "listed": False,  # the answer lists a caller for the target, inside the diff or not
+        "incomplete_complete": 0,  # affected truth pairs of the cell an answer that calls itself complete lists nowhere
         "fcn": False,
     }
+
+
+def incomplete_complete(complete: bool, status: str, affected: bool) -> bool:
+    """The safety row: the answer is complete for (definition, relation) while a truth pair the change can reach is in
+    neither its rows nor its candidates (`fn`). Silence about what the change cannot reach is no false claim."""
+    return complete and status == "fn" and affected
+
+
+def false_complete_negative(incomplete: int, listed: bool) -> bool:
+    """A false complete negative is the special case of that row where the answer lists no caller of the definition."""
+    return incomplete > 0 and not listed
 
 
 def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[list[dict], list[dict]]:
@@ -138,6 +151,9 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     # `entry`, `truncated`, `callers_omitted` and `also_changed` disclose what the list leaves out: with nothing else
     # listed for the target, the answer abstains (R15). `callers_omitted` and `also_changed` are read above.
     abstained = abstained or (not callers and (answer.truncated > 0 or bool(reported and reported.entry)))
+    # An answer with no entry for the target says nothing of it: a symbol it found no definition of ("named in N file(s), a
+    # textual match"), a nested definition it reports under its container. Only an entry claims anything, so only one can be complete.
+    complete = reported is not None and not abstained
     cells: dict[str, dict] = {}
     details: list[dict] = []
 
@@ -164,7 +180,22 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
             row["kind_mismatches"] += _kind_mismatch(kind, caller)
         shown = next((r for r in relations if r.kind == kind), relations[0])
         folded_by = caller.folded_by if caller else None
-        details.append(_detail(status, from_key, target, shown, kind, evidence, reported, affected=affected, folded_by=folded_by))
+        incomplete = incomplete_complete(complete, status, affected)
+        row["incomplete_complete"] += incomplete
+        details.append(
+            _detail(
+                status,
+                from_key,
+                target,
+                shown,
+                kind,
+                evidence,
+                reported,
+                affected=affected,
+                folded_by=folded_by,
+                incomplete=incomplete,
+            )
+        )
     for from_key, caller in callers.items():
         if from_key in scored or from_key in ignored:
             continue
@@ -175,15 +206,11 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         status = "fp" if caller.evidence in SURE else "fp_weak"
         cell(kind)[status] += 1
         details.append(_detail(status, from_key, target, None, kind, caller.evidence, reported, moved))
-    # An answer with no entry for the target says nothing of it: a symbol it found no definition of ("named in N file(s), a
-    # textual match"), a nested definition it reports under its container. Only an entry that lists no caller claims there are none.
-    complete_negative = bool(scored) and reported is not None and not callers and not abstained
     for row in cells.values():
         row["abstained"] = abstained
         row["reported"] = reported is not None
-        row["fcn"] = (
-            complete_negative and row["truth_affected"] > 0
-        )  # silence about what the change cannot reach is no false claim
+        row["listed"] = bool(callers)
+        row["fcn"] = false_complete_negative(row["incomplete_complete"], bool(callers))
     return list(cells.values()), details
 
 
@@ -211,6 +238,7 @@ def _detail(
     moved: list[str] | None = None,
     affected: bool | None = None,
     folded_by: str | None = None,
+    incomplete: bool = False,
 ) -> dict:
     return {
         "verdict": status,
@@ -222,6 +250,7 @@ def _detail(
         "affected": affected,
         "folded_by": folded_by,
         "false_fold": bool(folded_by) and folded_by not in NOT_A_CLAIM and bool(affected),
+        "incomplete_complete": incomplete,
         "rule": relation.rule if relation else None,
         "evidence": evidence,
         "target_decorated": target.decorated,
