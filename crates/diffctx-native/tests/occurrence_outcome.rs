@@ -1311,6 +1311,53 @@ fn a_call_of_the_name_a_local_also_bears_is_no_read_of_the_local() {
     }
 }
 
+/// (language, file, the subject's name, source, the line of an initializer that reads the outer
+/// name as its own is written, the line of a read after the declaration)
+const SELF_READS: [(Lang, &str, &str, &str, u32, u32); 3] = [
+    (
+        Lang::Rust,
+        "src/lib.rs",
+        "total",
+        "pub fn total() -> i64 {\n    1\n}\n\npub struct Wrapper {\n    pub total: fn() -> i64,\n}\n\npub fn run() -> Wrapper {\n    let total =\n        Wrapper { total };\n    Wrapper { total }\n}\n",
+        11,
+        12,
+    ),
+    (
+        Lang::Rust,
+        "src/lib.rs",
+        "total",
+        "pub fn total() -> i64 {\n    1\n}\n\npub fn run() {\n    let total =\n        total;\n    let _ = total;\n}\n",
+        7,
+        8,
+    ),
+    (
+        Lang::Go,
+        "total.go",
+        "total",
+        "package shop\n\nfunc total() int {\n\treturn 1\n}\n\nfunc run() {\n\ttotal :=\n\t\ttotal\n\t_ = total\n}\n",
+        9,
+        10,
+    ),
+];
+
+#[test]
+fn an_initializer_reads_the_outer_name_and_what_follows_reads_the_local() {
+    for (lang, file, name, source, initializer, later) in SELF_READS {
+        let world = snapshot_in(lang, &[(file, source)]);
+        let found = world.outcomes(world.def(file, name), file, &[name]);
+        assert_eq!(
+            on(&found, initializer).outcome,
+            Outcome::Ours,
+            "{file}:{initializer}: {found:#?}"
+        );
+        assert_eq!(
+            shape(on(&found, later)),
+            ("not_ours", "local", None),
+            "{file}:{later}: {found:#?}"
+        );
+    }
+}
+
 #[test]
 fn a_name_read_where_the_local_is_not_in_force_stays_a_candidate() {
     let source = "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\nother() {\n  trap total EXIT\n}\n";
