@@ -17,9 +17,8 @@ repo:
       def run(x):
           return helper(x)
   commit_message: "app: a helper for run"
-# A definition the range adds has no user outside the range that could depend on
-# it; the user the range writes is the diff. Nothing is named. The standard header
-# ("No resolved static callers outside the diff in the analysed scope") is true here
-# and is no negative claim about `helper`, so it is not asserted away.
+# A definition the range adds is named like an edited one: `helper` is read only
+# by `run`, a definition the range changes too, so it is a row that says so.
 expect:
-  changed: []
+  exact: false
+  changed: [app.py::helper, app.py::run]
