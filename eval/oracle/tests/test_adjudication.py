@@ -69,6 +69,8 @@ def test_cells_are_rebuilt_from_rows_keeping_the_answers_abstention():
             "kind": "calls",
             "kind_mismatches": 2,
             "abstained": True,
+            "reported": True,
+            "fcn": False,
         }
     ]
 
@@ -84,10 +86,54 @@ def test_cells_are_rebuilt_from_rows_keeping_the_answers_abstention():
     assert not any(c["fcn"] for c in cells.values())
 
 
-def test_a_target_nothing_reported_and_nothing_explains_is_a_false_complete_negative_after_adjudication():
-    cells = adj.cells_from_rows([row("a", "fn")], [])
+def raw_cell(frm_kind="calls", **extra):
+    return {
+        "repo": "r", "commit": "c", "mode": "impact", "target": "q.py::g", "kind": frm_kind, "kind_mismatches": 0,
+        "abstained": False, "reported": True, "fcn": False, **extra,
+    }  # fmt: skip
+
+
+def test_a_target_the_answer_reported_and_listed_nothing_for_is_a_false_complete_negative_after_adjudication():
+    cells = adj.cells_from_rows([row("a", "fn", affected=True)], [raw_cell(fcn=True)])
 
     assert [(c["truth"], c["fcn"]) for c in cells] == [(1, True)]
+
+
+def test_a_language_with_no_adjudicated_verdict_keeps_the_raw_false_complete_negatives():
+    # The answer had no entry for the target (it found no definition of it) and truth lists a caller: the raw cell is no FCN.
+    # Rebuilding the table from rows alone used to turn every such target into one; it must not, verdicts or none.
+    silent = [row("a", "fn", affected=True, to="q.py::unreported")]
+    folded = [row("b", "fn", affected=False, to="q.py::cannot_reach")]
+    raw = [
+        raw_cell(target="q.py::unreported", reported=False),
+        raw_cell(target="q.py::cannot_reach"),
+    ]
+
+    cells = adj.cells_from_rows(adj.apply_to_rows([*silent, *folded], {}), raw)
+
+    assert [(c["target"], c["truth"], c["fcn"]) for c in cells] == [
+        ("q.py::unreported", 1, False),
+        ("q.py::cannot_reach", 1, False),
+    ]
+
+
+def test_an_abstaining_answer_is_no_false_complete_negative_after_adjudication_either():
+    cells = adj.cells_from_rows([row("a", "fn", affected=True)], [raw_cell(abstained=True)])
+
+    assert [(c["fcn"], c["abstained"]) for c in cells] == [(False, True)]
+
+
+def test_the_affected_and_folded_columns_survive_the_rebuild_so_the_adjudicated_table_reads_like_the_raw_one():
+    rows = [
+        row("a", "tp", affected=True),
+        row("b", "tp", affected=False, folded_by="check-the-default"),
+        row("c", "tp", affected=True, folded_by="imports-a-body", false_fold=True),
+        row("d", "fn", affected=False),
+    ]
+
+    (cell,) = adj.cells_from_rows(rows, [raw_cell()])
+
+    assert (cell["truth"], cell["truth_affected"], cell["tp_affected"], cell["folded"], cell["false_fold"]) == (4, 2, 1, 2, 1)
 
 
 def test_load_verdicts_reads_final_sets_only_and_summary_counts_outcomes(tmp_path: Path):
