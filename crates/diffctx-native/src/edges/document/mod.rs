@@ -31,7 +31,7 @@ fn is_document_fragment(kind: FragmentKind) -> bool {
     matches!(kind, FragmentKind::Section | FragmentKind::Chunk)
 }
 
-pub(crate) struct DocumentStructureEdgeBuilder;
+struct DocumentStructureEdgeBuilder;
 
 impl EdgeBuilder for DocumentStructureEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -58,7 +58,7 @@ impl EdgeBuilder for DocumentStructureEdgeBuilder {
     }
 }
 
-pub(crate) struct AnchorLinkEdgeBuilder;
+struct AnchorLinkEdgeBuilder;
 
 impl AnchorLinkEdgeBuilder {
     fn build_anchor_index<'a>(
@@ -103,7 +103,7 @@ impl EdgeBuilder for AnchorLinkEdgeBuilder {
     }
 }
 
-pub(crate) struct CitationEdgeBuilder;
+struct CitationEdgeBuilder;
 
 impl EdgeBuilder for CitationEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

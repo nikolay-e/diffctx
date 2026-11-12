@@ -1,6 +1,6 @@
-pub(crate) mod containment;
-pub(crate) mod sibling;
-pub(crate) mod testing;
+mod containment;
+mod sibling;
+mod testing;
 
 use super::base::EdgeBuilder;
 
