@@ -983,7 +983,7 @@ impl Files<'_> {
     /// spelling them.
     fn spells(&self, path: &str, words: &[&str]) -> bool {
         let shown = rel(self.state, path);
-        let Some(group) = decide::Group::of_path(&shown) else {
+        let Some(group) = crate::resolve::family::Group::of_path(&shown) else {
             return true;
         };
         let Some(tokens) = self.cells.group_tokens(self.state, group) else {
@@ -1514,8 +1514,8 @@ fn unaccounted_rows(verdict: &decide::Verdict) -> Vec<UnanalysedFile> {
 /// answer prints it: what the token index holds, whatever a builder linked. A file
 /// of no group, or a group the run could not read, has none.
 fn spelling_files(state: &ScoredState, cells: &Cells, file: &str, names: &[String]) -> Vec<String> {
-    let Some(tokens) =
-        decide::Group::of_path(file).and_then(|group| cells.group_tokens(state, group))
+    let Some(tokens) = crate::resolve::family::Group::of_path(file)
+        .and_then(|group| cells.group_tokens(state, group))
     else {
         return Vec::new();
     };
