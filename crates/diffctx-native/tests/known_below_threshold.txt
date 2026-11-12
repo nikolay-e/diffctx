@@ -142,13 +142,6 @@ symbol/other/erlang_symbol_type_alias_is_a_definition  # gh#616 open
 symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
 impact/swift/swift_executable_target_is_reached_by_tests_through_its_product  # gh#535 open
 symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
-
-# A member read through an untyped receiver is claimed as resolved where the case expects a
-# candidate: the file's typed reader of the same name makes the stale-use rule name the untyped
-# line with the typed one's standing.
-impact/c/c_removed_field_read_in_the_middle_of_a_chain_is_not_absent  # fj#176 open
-impact/cpp/cpp_removed_field_read_in_the_middle_of_a_chain_is_not_absent  # fj#176 open
-impact/php/php_removed_property_read_in_the_middle_of_a_chain_is_not_absent  # fj#176 open
 impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
 impact/config/config_bare_filename_resolves_to_the_file_beside_it  # gh#670 open
 impact/config/config_deleted_path_is_not_named_by_a_shared_module_name  # gh#660 open
@@ -192,6 +185,5 @@ symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved
 # search that ends at a root nothing calls is closed today). They are the proof that those land;
 # each leaves this file when it passes.
 impact/python/py_class_attribute_holding_a_changed_class_is_a_caller  # fj#186 open
-impact/python/py_method_a_protocol_hook_calls_is_reached_by_the_test_that_renders  # fj#166 open
 impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#186 open
 impact/typescript/ts_hook_type_a_test_passes_by_option_key_has_a_test_link  # fj#166 open
