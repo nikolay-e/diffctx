@@ -1,0 +1,26 @@
+name: kotlin_symbol_name_with_spaces_without_backticks
+mode: symbol
+source: fj#173
+issue_state: closed
+tags:
+- kotlin
+- backticks
+repo:
+  initial_files:
+    src/main/kotlin/names/MemberNameTest.kt: |
+      package names
+
+      class MemberNameTest {
+          fun `N escapes MemberNames`() {
+              helper()
+          }
+
+          fun helper() {}
+      }
+  commit_message: Seed a Kotlin name with spaces
+query:
+  symbol: N escapes MemberNames
+expect:
+  exact: false
+  definitions:
+  - src/main/kotlin/names/MemberNameTest.kt::MemberNameTest.N escapes MemberNames
