@@ -3,12 +3,24 @@
 # Indexers are pinned in tools/package.json (npm, with integrity hashes in tools/package-lock.json).
 
 [sampling]
-seed = 20261031
-commits = 40       # sampled commits per repository (the full corpus)
+# The fresh seed (Revision 18, C4). The earlier seed was 20261031: every commit its runs sampled is in spent_commits.txt.
+# A new seed is drawn after a defect is fixed from a row the previous draw produced, never before.
+seed = 20261112
+spent = "spent_commits.txt"  # commits never drawn again
 fast_commits = 10  # sampled commits per repository for the `oracle` label
 history = 800      # commits back from the pin the sample is drawn from
 max_code_files = 12  # a commit touching more code files says little about one definition
 definitions_per_repo = 40  # `--symbol` queries per repository
+
+# Sampled commits per language, split evenly over its repositories. Sized per (language, mode, relation) cell from the
+# paired intervals of the earlier runs: n = n0 * (w0 / 0.20)^2, capped to one quiet machine's eight hours.
+[sampling.commits]
+python = 132
+typescript = 345
+rust = 48
+kotlin = 48
+go = 253
+java = 108
 
 [completeness]
 min_file_ratio = 0.9  # an index covering fewer present code files than this is incomplete
