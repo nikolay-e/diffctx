@@ -99,7 +99,7 @@ fn creators<'a, T>(
     }
 }
 
-pub struct SqlEdgeBuilder;
+pub(crate) struct SqlEdgeBuilder;
 
 impl EdgeBuilder for SqlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

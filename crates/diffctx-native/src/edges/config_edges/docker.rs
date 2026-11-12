@@ -149,7 +149,7 @@ fn link_declared(
     link_by_name(src, reference, idx, edges, weight, reverse_factor);
 }
 
-pub struct DockerEdgeBuilder;
+pub(super) struct DockerEdgeBuilder;
 
 impl EdgeBuilder for DockerEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

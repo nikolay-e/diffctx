@@ -40,7 +40,7 @@ fn extract_type_refs(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct PrismaEdgeBuilder;
+pub(crate) struct PrismaEdgeBuilder;
 
 impl EdgeBuilder for PrismaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

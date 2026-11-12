@@ -39,7 +39,7 @@ fn extract_type_refs(content: &str) -> FxHashSet<String> {
     refs
 }
 
-pub struct ProtobufEdgeBuilder;
+pub(crate) struct ProtobufEdgeBuilder;
 
 impl EdgeBuilder for ProtobufEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -62,7 +62,7 @@ fn clamp_lexical_weight(raw_sim: f64, src_path: Option<&Path>, dst_path: Option<
     lex_min + normalized * (lex_max - lex_min)
 }
 
-pub struct LexicalEdgeBuilder;
+pub(crate) struct LexicalEdgeBuilder;
 
 /// Maps each unique term to a compact u32 id. Stores each term string exactly once.
 struct TermInterner {

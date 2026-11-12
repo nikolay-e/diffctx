@@ -109,7 +109,7 @@ fn extract_refs(path: &Path, content: &str) -> FxHashSet<String> {
     }
 }
 
-pub struct BuildSystemEdgeBuilder;
+pub(super) struct BuildSystemEdgeBuilder;
 
 impl EdgeBuilder for BuildSystemEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

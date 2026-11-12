@@ -63,7 +63,7 @@ fn extract_extends(content: &str) -> FxHashSet<String> {
     base::captures1(&EXTEND_RE, content).collect()
 }
 
-pub struct GraphqlEdgeBuilder;
+pub(crate) struct GraphqlEdgeBuilder;
 
 impl EdgeBuilder for GraphqlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
