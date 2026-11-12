@@ -4,14 +4,19 @@ use crate::decide::Family;
 use crate::facts::LocalKind;
 use crate::resolve::CandidateReason;
 
-/// The locals whose site is only the declaration of the name: no pattern shares it
-/// with a field read (`let Retry { attempt } = r;`, `const { attempt } = r;` is why
-/// TypeScript's `Variable` is not here). Java and Kotlin sites span the scope, not the name.
+/// The locals whose site is only the declaration of the name: no pattern shares it with a
+/// field read that has no binding of its own (`let Retry { attempt } = r;` is why Rust's
+/// `Variable` is not here; a TypeScript pattern's field read is bound).
 pub(super) const DECLARING_LOCALS: &[(Family, LocalKind)] = &[
     (Family::Python, LocalKind::Variable),
     (Family::Python, LocalKind::Closure),
+    (Family::TypeScript, LocalKind::Variable),
     (Family::TypeScript, LocalKind::Closure),
 ];
+
+/// Families whose local site starts where the local comes into force (after its declarator, or
+/// at the start of the scope of a parameter) and spans the scope: the name lies before it.
+pub(super) const SCOPED_LOCALS: &[Family] = &[Family::Java, Family::Kotlin, Family::Swift];
 
 /// Where a bare name heading a chain (`name.x`) can be shown to be no member, as (family,
 /// its locals reach the whole function and not a block, a class member needs a receiver).
@@ -59,3 +64,11 @@ pub(super) const NAMED_LOCALS: &[(Family, bool)] = &[
     (Family::C, false),
     (Family::Shell, true),
 ];
+
+/// Families whose resolver pairs a prototype with its definition: a call binds both, and
+/// each is the other's place (the header's declaration is the function itself).
+pub(super) const PAIRED_PROTOTYPES: &[Family] = &[Family::C];
+
+/// Families whose module offers every name it imports to its importers, so a renamed import
+/// is a name of the subject there too (`from a import f as g`, then `from m import g`).
+pub(super) const OFFERING_MODULES: &[Family] = &[Family::Python];

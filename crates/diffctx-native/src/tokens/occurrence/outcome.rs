@@ -9,10 +9,11 @@ use std::rc::Rc;
 
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS,
-    KEYWORD_ARGUMENTS, MODULE_PATHS, NAMED_LOCALS, PACKAGE_HEADS, PATH_SEPARATORS,
+    KEYWORD_ARGUMENTS, MODULE_PATHS, NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS,
+    PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
 };
 use super::scanner::dollar_joins;
-use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
+use super::{Alias, AliasScope, Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::decide::Standing;
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star, UseKind,
@@ -29,8 +30,11 @@ pub struct Index {
     by_file: HashMap<RepoPath, Vec<usize>>,
     exact: HashMap<(RepoPath, u32, u32), Vec<usize>>,
     definitions: HashSet<DefKey>,
-    /// The lower-cased names of the definitions that are members of a class.
-    members: HashSet<String>,
+    /// The lower-cased names of the definitions that are members of a class, and
+    /// how many are so named.
+    members: HashMap<String, usize>,
+    /// The definitions that state a function without its body.
+    prototypes: HashSet<DefKey>,
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
     /// The bindings of a use that spells no name (`$o->$m()`).
@@ -53,15 +57,27 @@ impl Index {
             by_file: HashMap::new(),
             exact: HashMap::new(),
             definitions: definitions.iter().map(|def| def.key.clone()).collect(),
-            members: (definitions.iter())
-                .filter(|def| !def.key.local.container.is_empty())
-                .map(|def| def.key.local.name.as_str().to_ascii_lowercase())
+            members: HashMap::new(),
+            prototypes: (files.iter())
+                .flat_map(|file| {
+                    file.defs()
+                        .filter(|def| def.body_hash == 0)
+                        .map(|def| file.key(&def.local))
+                })
                 .collect(),
             bases: HashMap::new(),
             overriders: HashMap::new(),
             unnamed: Vec::new(),
             manifests_whole,
         };
+        for def in definitions
+            .iter()
+            .filter(|def| !def.key.local.container.is_empty())
+        {
+            *(index.members)
+                .entry(def.key.local.name.as_str().to_ascii_lowercase())
+                .or_default() += 1;
+        }
         for (at, binding) in bindings.iter().enumerate() {
             let bytes = &binding.site.bytes;
             let file = &binding.file;
@@ -513,7 +529,7 @@ impl<'a> Reading<'a> {
 
     fn resolved(&self, target: &DefKey, binding: &Binding) -> Claim {
         let relation = Some(binding.relation);
-        if *target == self.subject.key {
+        if *target == self.subject.key || self.paired(target) {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
         } else if binding.relation != Relation::Overrides
             && (self.family.contains(target) || self.view.stale.contains_key(&place(binding)))
@@ -529,6 +545,18 @@ impl<'a> Reading<'a> {
         } else {
             Claim::candidate(relation, Reason::BasisUnverified)
         }
+    }
+
+    /// Whether `target` and the subject are a prototype and its definition.
+    fn paired(&self, target: &DefKey) -> bool {
+        let (subject, prototypes) = (&self.subject.key, &self.view.index.prototypes);
+        PAIRED_PROTOTYPES
+            .iter()
+            .any(|f| f.has(self.file.language()))
+            && target.project == subject.project
+            && target.language == subject.language
+            && target.local == subject.local
+            && (prototypes.contains(target) || prototypes.contains(subject))
     }
 
     fn module(&self, module: &RepoPath, relation: Option<Relation>) -> Claim {
@@ -587,9 +615,22 @@ impl<'a> Reading<'a> {
                         && !(self.view.files.iter()).any(|file| file.module == import.module)
                 });
                 // With no import of the name, an external call is no member of any
-                // class of the side: a same-named member anywhere keeps the candidate.
+                // class of the side: a same-named member anywhere but the subject
+                // keeps the candidate.
                 let lower = String::from_utf8_lossy(spelled).to_ascii_lowercase();
-                let bare = named.is_empty() && !self.view.index.members.contains(&lower);
+                let own = usize::from(
+                    !self.subject.key.local.container.is_empty()
+                        && self
+                            .subject
+                            .key
+                            .local
+                            .name
+                            .as_str()
+                            .eq_ignore_ascii_case(&lower),
+                );
+                let others =
+                    (self.view.index.members.get(&lower)).map_or(0, |n| n.saturating_sub(own));
+                let bare = named.is_empty() && others == 0;
                 let basis = if imported {
                     Basis::ExternalModule
                 } else {
@@ -663,6 +704,7 @@ impl<'a> Reading<'a> {
         if let Some(claim) = self
             .impl_type(occurrence)
             .or_else(|| self.keyword_field(occurrence))
+            .or_else(|| self.scoped_site(occurrence, spelled))
         {
             return claim;
         }
@@ -682,10 +724,56 @@ impl<'a> Reading<'a> {
                 && bytes.end <= site.end
                 && same(binding.name.as_str(), spelled, self.case)
         });
-        wide.map_or_else(
-            || Claim::candidate(None, Reason::Unexplained),
-            |binding| Claim::candidate(Some(binding.relation), Reason::WideBinding),
-        )
+        self.renamed(occurrence, spelled, wide).unwrap_or_else(|| {
+            wide.map_or_else(
+                || Claim::candidate(None, Reason::Unexplained),
+                |binding| Claim::candidate(Some(binding.relation), Reason::WideBinding),
+            )
+        })
+    }
+
+    /// In an import that renames (`import f as g`): `f`, when the import is the subject's, is
+    /// named `g` from there on; `g` itself is the declaration of that name.
+    fn renamed(
+        &self,
+        occurrence: &Occurrence,
+        spelled: &[u8],
+        wide: Option<&Binding>,
+    ) -> Option<Claim> {
+        let at = occurrence.bytes.start;
+        let import = (self.imports.iter()).find(|import| import.site.bytes.contains(&at))?;
+        let named = |name: &Name| same(name.as_str(), spelled, self.case);
+        let alias = import
+            .names
+            .iter()
+            .find_map(|(name, alias)| alias.as_ref().filter(|_| named(name)));
+        let binding = wide.filter(|binding| {
+            matches!(binding.relation, Relation::Imports | Relation::Reexports)
+                && binding.site.bytes == import.site.bytes
+        });
+        if let (Some(binding), Some(alias)) = (binding, alias) {
+            let ours = matches!(self.claim(binding, spelled).outcome, Outcome::Ours);
+            let scope = if OFFERING_MODULES.iter().any(|f| f.has(self.file.language())) {
+                AliasScope::Importers(self.file.module.clone())
+            } else {
+                AliasScope::File(self.file.path.clone())
+            };
+            let alias = Alias {
+                name: alias.clone(),
+                scope,
+                hops: 1,
+            };
+            return ours.then(|| {
+                Claim::new(
+                    Some(binding.relation),
+                    Outcome::Alias(alias),
+                    Basis::RenamedImport,
+                )
+            });
+        }
+        (import.names.iter())
+            .any(|(_, alias)| alias.as_ref().is_some_and(named))
+            .then(|| Claim::new(None, Outcome::Declaration, Basis::RenamedImport))
     }
 
     /// A bare name heading a chain (`name.x`) is a local, an import or the file's own
@@ -721,12 +809,54 @@ impl<'a> Reading<'a> {
         }
     }
 
-    /// Whether a local of that name, declared by `until`, is in a function enclosing `start`.
-    fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> bool {
-        let scope = (self.file.defs())
+    /// The innermost definition that holds `start`.
+    fn scope_at(&self, start: u32) -> Scope {
+        (self.file.defs())
             .filter(|def| def.span.bytes.contains(&start))
             .min_by_key(|def| def.span.bytes.len())
-            .map_or(Scope::Module, |def| Scope::Def(def.local.clone()));
+            .map_or(Scope::Module, |def| Scope::Def(def.local.clone()))
+    }
+
+    /// The declaring occurrence of a local whose site starts where it comes into force: the
+    /// name of a declarator (left of any `=`) before that start, or a parameter in the header
+    /// of its scope. A bare name only; a call or a member is another occurrence.
+    fn scoped_site(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Claim> {
+        if writable(self.subject) || !SCOPED_LOCALS.iter().any(|f| f.has(self.file.language())) {
+            return None;
+        }
+        let (start, end) = (occurrence.bytes.start, occurrence.bytes.end);
+        let (prior, after) = (&self.text[..start as usize], &self.text[end as usize..]);
+        let bare = !prior.last().is_some_and(|b| b".:>".contains(b))
+            && !after.trim_ascii_start().starts_with(b"(");
+        let statement = &prior[prior
+            .iter()
+            .rposition(|b| b"{};".contains(b))
+            .map_or(0, |at| at + 1)..];
+        let scope = self.scope_at(start);
+        let declares = self.locals.iter().any(|local| {
+            let site = &local.site.bytes;
+            let header = |from: u32, to: u32| {
+                self.text[from as usize..to as usize]
+                    .iter()
+                    .all(|b| !b"{;".contains(b))
+            };
+            let at_site = if local.kind == LocalKind::Parameter {
+                site.start <= start && start < site.end && header(site.start, start)
+            } else {
+                start <= site.start
+                    && !statement.contains(&b'=')
+                    && header(end.min(site.start), site.start)
+            };
+            at_site
+                && same(local.name.as_str(), spelled, self.case)
+                && encloses(&local.enclosing, &scope)
+        });
+        (bare && declares).then(|| Claim::new(None, Outcome::Declaration, Basis::LocalSite))
+    }
+
+    /// Whether a local of that name, declared by `until`, is in a function enclosing `start`.
+    fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> bool {
+        let scope = self.scope_at(start);
         let joins = dollar_joins(self.file.language());
         !writable(self.subject)
             && self.locals.iter().any(|local| {
@@ -759,7 +889,13 @@ impl<'a> Reading<'a> {
             .unwrap_or(prior)
             .last()
             .is_some_and(|b| b".:>".contains(b));
-        let read = mark.is_some() || !(*sigil || called);
+        // A sigil language writes a target and computes bare (`n=1`, `$((n + 1))`).
+        let line = prior.rsplit(|b| *b == b'\n').next().unwrap_or_default();
+        let opens = |pair: &[u8]| line.windows(2).filter(|w| *w == pair).count();
+        let rest = self.text[occurrence.bytes.end as usize..].trim_ascii_start();
+        let bare =
+            (rest.starts_with(b"=") && !rest.starts_with(b"==")) || opens(b"((") > opens(b"))");
+        let read = mark.is_some() || !(*sigil || called) || (*sigil && bare);
         (read && !after_path && self.shadowed(at, spelled, at)).then_some(Basis::Local)
     }
 

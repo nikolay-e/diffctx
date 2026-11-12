@@ -35,7 +35,7 @@ use tree_sitter::Node;
 use super::{children, lines_of, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
-    Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text,
+    Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -734,10 +734,7 @@ impl<'t> Walker<'t> {
         };
         let written = name_at(name);
         self.facts.push(Fact::Reference(Ref {
-            site: Span {
-                bytes: root.start_byte() as u32..name.end_byte() as u32,
-                lines: (lines_of(root).0, lines_of(name).1),
-            },
+            site: span(name),
             enclosing: cx.scope.clone(),
             receiver: Receiver::None,
             use_kind: UseKind::Read,

@@ -186,18 +186,6 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
         ),
         seed(
             Implicit::Outside,
-            &TerraformExtractor,
-            "variable \"n\" {\n  type = string\n}\n",
-            "var.n",
-        ),
-        seed(
-            Implicit::Outside,
-            &TerraformExtractor,
-            "output \"id\" {\n  value = 1\n}\n",
-            "output.id",
-        ),
-        seed(
-            Implicit::Outside,
             &ShellExtractor,
             "#!/bin/bash\necho hi\n",
             "<script>",
@@ -216,6 +204,18 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
             let found = kinds(*extractor, source, at);
             assert!(found.contains(&kind), "{at}: {kind:?} not in {found:?}");
         }
+    }
+}
+
+#[test]
+fn only_the_root_module_variable_and_output_are_set_from_outside() {
+    for (source, at) in [
+        ("variable \"n\" {\n  type = string\n}\n", "var.n"),
+        ("output \"id\" {\n  value = 1\n}\n", "output.id"),
+    ] {
+        let kinds = |path| kinds_in(path, &TerraformExtractor, source, at, Known::default());
+        assert_eq!(kinds("main.tf"), [Implicit::Outside], "{at} of the root");
+        assert!(kinds("modules/net/main.tf").is_empty(), "{at} of a module");
     }
 }
 
