@@ -1081,6 +1081,35 @@ fn java_calls_kotlin_under_the_names_the_compiler_gives_it() {
     }
 }
 
+/// `@file:JvmName("X")` renames the class Java reads a file's top-level
+/// declarations from; a file without it keeps `FKt`.
+#[test]
+fn java_calls_a_file_under_the_class_its_jvmname_gives() {
+    let fx = snapshot(&[
+        (
+            "src/main/kotlin/shop/Text.kt",
+            "@file:JvmName(\"TextUtil\")\npackage shop\n\nfun shout(text: String): String = text\n",
+        ),
+        (
+            "src/main/kotlin/shop/Other.kt",
+            "package shop\n\nfun plain(): String = \"p\"\n",
+        ),
+        (
+            "src/main/java/shop/Checkout.java",
+            "package shop;\n\npublic class Checkout {\n    public String announce(String text) {\n        String a = OtherKt.plain();\n        return TextUtil.shout(a + text);\n    }\n}\n",
+        ),
+    ]);
+    let call = "src/main/java/shop/Checkout.java";
+    assert_eq!(
+        fx.lands_at(call, "plain", 5),
+        "src/main/kotlin/shop/Other.kt::plain"
+    );
+    assert_eq!(
+        fx.lands_at(call, "shout", 6),
+        "src/main/kotlin/shop/Text.kt::shout"
+    );
+}
+
 /// A Kotlin definition used only by Java is no unused one: the resolver of the
 /// Kotlin cell holds the Java file's call among the references to it.
 #[test]
