@@ -336,8 +336,12 @@ impl Claim {
 
 /// The one claim of several on one span. A candidate is a hedge: an `ours` stays
 /// `ours` beside it (the resolver pairs a call through `self` with the overriders
-/// that may run), a `not_ours` beside it is a candidate. Definite outcomes that
-/// differ are a defect of the resolver and read as a candidate.
+/// that may run), a `not_ours` beside it is a candidate. A reference bound to
+/// another definition under another relation says nothing against one that
+/// resolves to the subject (`S { a }` writes the field `a` and reads the binding
+/// `a`); the same relation bound to two definitions is a disagreement. Other
+/// definite outcomes that differ are a defect of the resolver and read as a
+/// candidate.
 fn settle(mut claims: Vec<Claim>) -> Claim {
     let ours = claims
         .iter()
@@ -345,9 +349,14 @@ fn settle(mut claims: Vec<Claim>) -> Claim {
     let hedge = claims
         .iter()
         .position(|c| matches!(c.outcome, Outcome::Candidate(_)));
+    let elsewhere = |c: &Claim| {
+        matches!(c.outcome, Outcome::NotOurs)
+            && c.basis == Basis::OtherDefinition
+            && ours.is_some_and(|at| claims[at].relation != c.relation)
+    };
     let other = claims
         .iter()
-        .any(|c| !matches!(c.outcome, Outcome::Ours | Outcome::Candidate(_)));
+        .any(|c| !matches!(c.outcome, Outcome::Ours | Outcome::Candidate(_)) && !elsewhere(c));
     let pick = match (ours, hedge, other) {
         (Some(_), _, true) => None,
         (Some(at), _, false) | (None, Some(at), _) => Some(at),
@@ -684,7 +693,7 @@ impl<'a> Reading<'a> {
         let claim = match declared {
             Some((basis, _)) if claims.is_empty() => Claim::new(None, Outcome::Declaration, basis),
             _ if claims.is_empty() => self.unbound(&occurrence),
-            _ => settle(claims),
+            _ => self.settled(&occurrence, claims),
         };
         // A declaration needs no basis, so it is the better statement of a
         // `not_ours` at the place that declares.
@@ -694,6 +703,21 @@ impl<'a> Reading<'a> {
             }
             _ => claim.at(occurrence),
         }
+    }
+
+    /// The claim of the bindings at a span. Bound only to other definitions, a span that is also
+    /// a plain read of a local of its name is that read (`S { a }` after `let a`).
+    fn settled(&self, occurrence: &Occurrence, claims: Vec<Claim>) -> Claim {
+        let bound_elsewhere = claims
+            .iter()
+            .all(|c| matches!(c.outcome, Outcome::NotOurs) && c.basis == Basis::OtherDefinition);
+        let local = bound_elsewhere
+            .then(|| self.plain_read(occurrence, self.spelled(occurrence)))
+            .flatten();
+        local.map_or_else(
+            || settle(claims),
+            |basis| Claim::new(None, Outcome::NotOurs, basis),
+        )
     }
 
     /// No binding at the span: a basis shows it is no use of the subject, a wider

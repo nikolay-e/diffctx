@@ -1234,6 +1234,39 @@ fn a_rust_struct_literal_label_and_shorthand_write_the_field() {
     }
 }
 
+/// A shorthand initializer writes the field and reads the binding it names: each reference is
+/// judged against the subject on its own, so neither hides the other.
+#[test]
+fn a_shorthand_site_is_ours_through_whichever_reference_resolves_to_the_subject() {
+    let rust = "pub fn total() -> i64 {\n    1\n}\n\npub struct Wrapper {\n    pub total: fn() -> i64,\n}\n\npub fn run() -> Wrapper {\n    let total =\n        Wrapper { total };\n    Wrapper { total }\n}\n";
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", rust)]);
+    for line in [11, 12] {
+        assert_use(
+            &world,
+            world.def("src/lib.rs", "Wrapper.total"),
+            "src/lib.rs",
+            line,
+            Relation::Writes,
+        );
+    }
+    let ts = "export interface Options {\n  total: number;\n}\n\nexport const total = 1;\n\nexport const options: Options = { total };\n";
+    let world = snapshot_in(Lang::TypeScript, &[("src/options.ts", ts)]);
+    assert_use(
+        &world,
+        world.def("src/options.ts", "Options.total"),
+        "src/options.ts",
+        7,
+        Relation::Writes,
+    );
+    assert_use(
+        &world,
+        world.def("src/options.ts", "total"),
+        "src/options.ts",
+        7,
+        Relation::Reads,
+    );
+}
+
 #[test]
 fn a_rust_type_written_before_a_path_is_read_at_its_own_name() {
     let world = snapshot_in(
