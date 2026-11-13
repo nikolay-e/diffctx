@@ -3821,6 +3821,103 @@ fn a_stopped_run_reads_no_line_of_its_stale_reference_search() {
     assert_eq!(read(&stopped), 0, "a stopped run read on: {stopped}");
 }
 
+/// What a run's profile line counted under `name`, as the profile telemetry
+/// records it: the run's own work, which no clock enters.
+fn profiled(repo: &Path, range: &str, polls: u64, name: &str) -> (serde_json::Value, u64) {
+    let dir = TempDir::new().expect("profile dir");
+    let profile = dir.path().join("run.jsonl");
+    let polls = polls.to_string();
+    let doc = impact_env(
+        repo,
+        range,
+        &[
+            ("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", polls.as_str()),
+            ("DIFFCTX_PROFILE", profile.to_str().expect("utf8")),
+        ],
+    );
+    let line = std::fs::read_to_string(&profile).expect("a profile line");
+    let counted = serde_json::from_str::<serde_json::Value>(line.lines().next().expect("a line"))
+        .expect("profile JSON")["counts"][name]
+        .as_u64()
+        .unwrap_or(0);
+    (doc, counted)
+}
+
+fn stopped_by_the_deadline(doc: &serde_json::Value) -> bool {
+    doc["coverage"]["limits"].to_string().contains("deadline")
+}
+
+/// A run stopped before it searched most of its definitions names them as one
+/// count, in one step of the fit: a step for each rescanned the whole answer,
+/// and 7 500 definitions ran a deadline of 60 s to 70 s. Counted in steps,
+/// whatever the stop poll.
+#[test]
+fn a_stopped_run_sheds_the_definitions_it_never_searched_in_one_step() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for factor in [1, 2] {
+        let rates: String = (0..80)
+            .map(|i| format!("def rate_{i:03}(x):\n    return x * {factor}\n\n\n"))
+            .collect();
+        write(repo, "shop/rates.py", &rates);
+        commit_all(repo, "rates");
+    }
+    let sweep = support::sweep_polls(
+        |n| profiled(repo, "HEAD~1..HEAD", n, "fit.steps"),
+        |(doc, _)| !stopped_by_the_deadline(doc),
+    );
+    let stopped: Vec<(u64, u64)> = sweep
+        .iter()
+        .filter(|(_, (doc, _))| stopped_by_the_deadline(doc))
+        .map(|(polls, (_, steps))| (*polls, *steps))
+        .collect();
+    assert!(
+        stopped.iter().any(|&(_, steps)| steps > 0),
+        "no stopped run was fitted: {stopped:?}"
+    );
+    assert!(
+        stopped.iter().all(|&(polls, steps)| steps <= polls + 30),
+        "a step per definition it never searched: {stopped:?}"
+    );
+}
+
+/// The definitions the facts layer reports that no fragment stands for (the
+/// fields of one struct) are traced one at a time, and one more poll lets one
+/// more of them be traced: the loop had none, so a run stopped before it traced
+/// them all. Counted in definitions traced, not timed.
+#[test]
+fn a_stopped_run_traces_one_more_definition_per_poll() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for wide in ["i32", "i64"] {
+        let fields: String = (0..60)
+            .map(|i| format!("    pub f{i:02}: {wide},\n"))
+            .collect();
+        write(
+            repo,
+            "src/config.rs",
+            &format!("pub struct Config {{\n{fields}}}\n"),
+        );
+        commit_all(repo, "config");
+    }
+    let sweep = support::sweep_polls(
+        |n| profiled(repo, "HEAD~1..HEAD", n, "impact.traced_apart"),
+        |(doc, _)| !stopped_by_the_deadline(doc),
+    );
+    let traced: Vec<u64> = sweep.iter().map(|(_, (_, traced))| *traced).collect();
+    assert!(traced.last().is_some_and(|&t| t >= 30), "{traced:?}");
+    assert!(
+        traced.first().is_some_and(|&t| t < 30),
+        "a run stopped at once still traced them: {traced:?}"
+    );
+    assert!(
+        traced.windows(2).all(|w| w[1] <= w[0] + 1),
+        "a poll let more than one definition be traced: {traced:?}"
+    );
+}
+
 /// #460, #475: a call inside an f-string replacement field or a template
 /// literal substitution is code, and is a caller; the same name in a plain
 /// string or a comment is not. Strings and comments are read off the

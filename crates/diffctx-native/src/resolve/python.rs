@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 use super::index::{ImportRec, Index, Path, Spec, join, scope_path};
 use super::modules::ModuleRes;
+use super::solved::before_deadline;
 use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -84,7 +85,7 @@ impl PythonResolver {
             reader,
             side,
         );
-        let (definitions, bindings) = engine.run();
+        let (definitions, bindings) = engine.run(ctx);
         losses.extend(engine.losses.take());
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
@@ -210,10 +211,10 @@ impl<'a> Engine<'a> {
         }
     }
 
-    fn run(&self) -> (Vec<Definition>, Vec<Binding>) {
+    fn run(&self, ctx: &AnalysisContext) -> (Vec<Definition>, Vec<Binding>) {
         let mut bindings = Vec::new();
         for (f, file) in self.ix.files.iter().enumerate() {
-            for fact in &file.facts.blob.facts {
+            for fact in before_deadline(ctx, &self.losses, &file.facts.blob.facts) {
                 match fact {
                     Fact::Reference(r) => self.reference(f, r, &mut bindings),
                     Fact::Import(import) => self.import(f, import, &mut bindings),
