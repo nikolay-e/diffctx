@@ -1,0 +1,44 @@
+name: fj183_alert_rule_is_tested_by_the_rule_test_that_asserts_it
+mode: impact
+source: fj#183
+issue_state: open
+tags: [config, prometheus, tests]
+repo:
+  initial_files:
+    monitoring/rules.yml: |
+      groups:
+        - name: backup
+          rules:
+            - alert: BackupStale
+              expr: time() - backup_last_success > 86400
+              for: 10m
+            - alert: DiskFull
+              expr: disk_free_ratio < 0.05
+              for: 5m
+    monitoring/tests/rules_test.yml: |
+      rule_files:
+        - ../rules.yml
+      tests:
+        - interval: 1m
+          input_series:
+            - series: backup_last_success
+              values: '0x100'
+          alert_rule_test:
+            - eval_time: 30h
+              alertname: BackupStale
+              exp_alerts:
+                - exp_labels: {}
+  changed_files:
+    monitoring/rules.yml: |
+      groups:
+        - name: backup
+          rules:
+            - alert: BackupStale
+              expr: time() - backup_last_success > 172800
+              for: 10m
+            - alert: DiskFull
+              expr: disk_free_ratio < 0.05
+              for: 5m
+  commit_message: "monitoring: backups may be two days old"
+expect:
+  tested_by: {monitoring/rules.yml: monitoring/tests/rules_test.yml}

@@ -240,7 +240,10 @@ pub(super) fn naming(
         return Some(Naming::FullPath);
     }
     let dir = referrer.rsplit_once('/').map_or("", |(d, _)| d);
-    if token.contains('/') {
+    // A bare file name is first the file beside the mention, as a relative link
+    // reads it (#670); a name ending in `/` is a directory and no file (#725).
+    let beside = !token.contains('/') && token == target.rsplit('/').next().unwrap_or(target);
+    if !token.ends_with('/') && (token.contains('/') || beside) {
         let joined = normalize_rel(&format!("{dir}/{token}"));
         if joined == target || joined == without_extension(target) {
             return Some(Naming::RelativePath);
@@ -286,6 +289,7 @@ pub(super) fn naming(
 /// change leaves behind: the range's head, or the working tree.
 pub(super) fn stale_references(
     state: &ScoredState,
+    cells: &Cells,
     diff_range: Option<&str>,
 ) -> (Vec<StaleReference>, usize) {
     let mut targets: Vec<(String, String)> = state
@@ -311,6 +315,23 @@ pub(super) fn stale_references(
             .into_iter()
             .filter_map(|p| p.rsplit('/').next().map(str::to_string))
             .collect();
+    let mut sharing: FxHashMap<&str, usize> = FxHashMap::default();
+    for (target, _) in &targets {
+        *sharing
+            .entry(target.rsplit('/').next().unwrap_or(target))
+            .or_default() += 1;
+    }
+    // The files the family's own base bindings land on each target: what its
+    // import resolver found there, which no spelling of the module name decides.
+    let landed: FxHashMap<&str, FxHashSet<String>> = targets
+        .iter()
+        .filter_map(|(target, _)| {
+            let found = cells
+                .of(target)?
+                .importers_of(target, &state.deleted_files)?;
+            Some((target.as_str(), found.into_iter().collect()))
+        })
+        .collect();
     let mut needles: Vec<String> = Vec::new();
     for (target, _) in &targets {
         needles.push(target.clone());
@@ -369,7 +390,13 @@ pub(super) fn stale_references(
         }
         let surviving = &surviving;
         let targets = &targets;
+        let sharing = &sharing;
+        let landed = &landed;
         let root = root.as_str();
+        // A module name in a file the family binds is that family's: it names the
+        // deleted module only where the family's imports landed on it, and
+        // `app.config` of an object is no module (#660).
+        let bound = cells.of(path).is_some_and(|cell| cell.is_bound(path));
         let best = token_re
             .find_iter(text)
             .flat_map(|m| {
@@ -380,7 +407,12 @@ pub(super) fn stale_references(
                         let basename = t.rsplit('/').next().unwrap_or(t);
                         // A path that ends a sentence carries its full stop.
                         let token = m.as_str().trim_end_matches('.');
-                        naming(token, path, t, !surviving.contains(basename), root)
+                        let unique = !surviving.contains(basename) && sharing[basename] == 1;
+                        naming(token, path, t, unique, root)
+                            .filter(|n| {
+                                !(bound && *n == Naming::Module)
+                                    || landed.get(t.as_str()).is_some_and(|f| f.contains(path))
+                            })
                             .map(|n| (n, std::cmp::Reverse(t.len()), t, kind))
                     })
             })
@@ -524,7 +556,22 @@ fn is_prose_about(text: &str, token: &str) -> bool {
     if rest.contains([';', '|', '&', '$', '<', '>', '`']) || rest.contains(" -") {
         return false;
     }
-    let plain: Vec<String> = rest
+    is_sentence(&rest)
+}
+
+/// Whether `token` is the key of the mapping entry the line writes (`key: value`,
+/// `- key: value`).
+fn is_mapping_key(line: &str, token: &str) -> bool {
+    let entry = line.trim_start().trim_start_matches("- ").trim_start();
+    entry
+        .strip_prefix(token)
+        .is_some_and(|rest| rest.trim_start().starts_with(':'))
+}
+
+/// Plain words around a function word: a sentence, which only a reader of
+/// prose reads.
+pub(super) fn is_sentence(text: &str) -> bool {
+    let plain: Vec<String> = text
         .split_whitespace()
         .map(|w| {
             w.trim_matches(|c: char| !c.is_alphanumeric())
@@ -641,6 +688,11 @@ pub(super) fn named_by_path(
         let Some((target, token)) = hit else {
             continue;
         };
+        // A mapping key spelled as a bare filename (`alerts.yaml: |`) labels a
+        // value; it points at no file (#658).
+        if !token.contains('/') && is_mapping_key(text, token) {
+            continue;
+        }
         // A sentence in a config's string (a dump, a description) is not a
         // reader; code is judged by its comments above.
         let class = class_of(&state.root_dir, &source, path, text, Some(token));
@@ -651,8 +703,8 @@ pub(super) fn named_by_path(
         // `COPY other/run.sh` is no mention of `scripts/run.sh` whatever the
         // basenames say.
         if cells
-            .of(path)
-            .is_some_and(|cell| cell.points_elsewhere(path, *line, target))
+            .iter()
+            .any(|cell| cell.points_elsewhere(path, *line, target))
         {
             continue;
         }

@@ -198,17 +198,15 @@ impl FieldPath {
     pub fn parse(path: &str) -> Option<Self> {
         let mut segments = Vec::new();
         for part in path.split('.') {
-            let (key, each) = match part.strip_suffix("[]") {
-                Some(key) => (key, true),
-                None => (part, false),
-            };
+            let key = part.trim_end_matches("[]");
             if key.is_empty() {
                 return None;
             }
             segments.push(Segment::Key(key.to_string()));
-            if each {
-                segments.push(Segment::Each);
-            }
+            segments.extend(std::iter::repeat_n(
+                Segment::Each,
+                (part.len() - key.len()) / 2,
+            ));
         }
         Some(Self(segments))
     }

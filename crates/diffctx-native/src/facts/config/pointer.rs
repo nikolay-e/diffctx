@@ -11,6 +11,10 @@ use crate::facts::Span;
 pub enum PointerKind {
     /// A file or a directory of the repository.
     Path,
+    /// A file or a directory a list includes (a Kustomize `resources` entry, a
+    /// promtool `rule_files` entry): the entry names it and reads none of what it
+    /// says, which flows on through the objects it holds. Resolved as a `Path`.
+    Listed,
     /// A chart: a directory of the repository when it is written as one
     /// (`./`, `../`, `/`, `file://`), else a name in a repository of charts or
     /// an OCI reference.
@@ -61,7 +65,7 @@ impl SourcePointer {
         }
         match self.kind {
             PointerKind::Repo | PointerKind::Image => Resolved::External,
-            PointerKind::Path => resolve_text(&self.text, base),
+            PointerKind::Path | PointerKind::Listed => resolve_text(&self.text, base),
             PointerKind::Chart => {
                 // `./charts/app`, `../app`, `/app` and `file://../app` are
                 // directories; `stable/nginx` and `oci://...` are not.

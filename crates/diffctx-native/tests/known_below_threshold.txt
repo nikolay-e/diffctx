@@ -120,7 +120,6 @@ synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_rep
 # Each lists its issue; T21 dispositions every line before the release.
 impact/python/py_generated_file_is_not_a_separate_consumer_of_its_source  # fj#110 open
 impact/python/py_known_caller_inside_the_diff_is_not_unresolved  # fj#124: the caller is listed as also changed, not as a caller (decision, wave 4); the case reads callers
-impact/python/py_stale_reference_needs_the_path_not_a_module_name  # gh#660 open
 impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts  # gh#602 open
 impact/python/py_new_script_module_level_names_are_one_change  # gh#647 open
 impact/python/py_attribute_assignment_is_not_a_changed_definition  # gh#672 open: `self.workdir =` is named as a changed definition; the test file no longer drops it
@@ -139,16 +138,12 @@ symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
 impact/swift/swift_executable_target_is_reached_by_tests_through_its_product  # gh#535 open
 symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
 impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
-impact/config/config_bare_filename_resolves_to_the_file_beside_it  # gh#670 open
-impact/config/config_deleted_path_is_not_named_by_a_shared_module_name  # gh#660 open
 impact/config/config_glob_now_selects_an_added_path  # gh#522 open
 impact/config/config_image_digest_pin_names_the_manifest  # fj#128 open
-impact/config/config_kustomize_inclusion_entry_for_a_content_edit  # gh#564 open
 impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
 impact/config/config_pure_rename_is_no_changed_contract  # gh#593 open
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
 impact/config/config_shell_script_naming_changed_files_by_path  # gh#609 open
-impact/config/config_yaml_key_with_a_files_basename_is_no_path_reference  # gh#658 open
 symbol/config/config_symbol_helm_named_template_and_its_includes  # gh#378 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # gh#602 open
@@ -157,18 +152,16 @@ impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
 impact/web/web_test_that_evaluates_a_pages_script_reaches_its_functions  # gh#695 open
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
+symbol/config/gh675_symbol_lists_scripts_that_run_its_file_by_path  # gh#675 open
 # Open tickets, cases added 2026-11-10 (each names its ticket in source:).
-impact/config/config_argo_template_ref_names_the_workflow_template_it_runs
-impact/config/config_changed_image_tag_is_searched_whole_not_as_version_fragments
-impact/config/config_k8s_selector_match_expressions_reads_the_labels_it_matches
+impact/config/fj183_alert_rule_is_tested_by_the_rule_test_that_asserts_it  # fj#183 open
+impact/config/gh610_metric_rename_names_the_promql_rule  # gh#610 open
 impact/config/config_nginx_include_glob_names_the_snippet_of_its_own_app
-impact/config/config_prose_values_of_a_data_json_are_not_searched_as_contract_literals
 impact/config/config_scheduler_unit_running_a_changed_script_by_its_installed_basename_is_named
 impact/kotlin/kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none
 impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
 impact/python/py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link
-impact/python/py_stale_reference_ignores_the_directory_a_deleted_module_sits_in
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
 impact/typescript/ts_playwright_spec_reaches_a_component_through_its_route_and_its_test_id
 impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it

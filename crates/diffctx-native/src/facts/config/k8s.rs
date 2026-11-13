@@ -125,6 +125,21 @@ fn build() -> Vec<Row> {
             "spec.templates[].dag.tasks[].templateRef.name",
             "WorkflowTemplate",
         ),
+        Row::new(
+            &["Workflow", "WorkflowTemplate", "ClusterWorkflowTemplate"],
+            "spec.templates[].steps[][].templateRef.name",
+            "WorkflowTemplate",
+        ),
+        Row::new(
+            &["CronWorkflow"],
+            "spec.workflowSpec.templates[].steps[][].templateRef.name",
+            "WorkflowTemplate",
+        ),
+        Row::new(
+            &["CronWorkflow"],
+            "spec.workflowSpec.templates[].dag.tasks[].templateRef.name",
+            "WorkflowTemplate",
+        ),
         // Flux.
         Row::new(&["Kustomization"], "spec.sourceRef.name", "")
             .kind_from("kind")
@@ -225,43 +240,48 @@ const SELECTABLE_WORKLOADS: &[&str] = &[
 
 /// The selectors: the map at the path selects objects whose labels hold every
 /// pair. A Service selects pods by the pairs of `spec.selector`; the other
-/// selectors by their `matchLabels` (their expressions are not read, which is one
-/// more reason a match is a candidate). A workload selects the pods its own
+/// selectors by their `matchLabels` and `matchExpressions`. A workload selects the pods its own
 /// template makes, and any other pod that carries the labels.
 static SELECTORS: &[SelectorRow] = &[
     SelectorRow {
         kinds: &["Service"],
         path: "spec.selector",
+        label_selector: false,
         matches: LabelSet::Pod,
         target_kinds: &[],
     },
     SelectorRow {
         kinds: &["PodDisruptionBudget"],
-        path: "spec.selector.matchLabels",
+        path: "spec.selector",
+        label_selector: true,
         matches: LabelSet::Pod,
         target_kinds: &[],
     },
     SelectorRow {
         kinds: &["NetworkPolicy"],
-        path: "spec.podSelector.matchLabels",
+        path: "spec.podSelector",
+        label_selector: true,
         matches: LabelSet::Pod,
         target_kinds: &[],
     },
     SelectorRow {
         kinds: SELECTABLE_WORKLOADS,
-        path: "spec.selector.matchLabels",
+        path: "spec.selector",
+        label_selector: true,
         matches: LabelSet::Pod,
         target_kinds: &[],
     },
     SelectorRow {
         kinds: &["ServiceMonitor"],
-        path: "spec.selector.matchLabels",
+        path: "spec.selector",
+        label_selector: true,
         matches: LabelSet::Own,
         target_kinds: &["Service"],
     },
     SelectorRow {
         kinds: &["PodMonitor"],
-        path: "spec.selector.matchLabels",
+        path: "spec.selector",
+        label_selector: true,
         matches: LabelSet::Pod,
         target_kinds: &[],
     },
