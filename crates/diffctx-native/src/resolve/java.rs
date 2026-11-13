@@ -28,7 +28,7 @@ use super::index::{Path, scope_path};
 use super::jvm::{self, Ent, Found, Head, ImportRec, Super, relation_for};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
-    UnresolvedReason, is_callable, plain_relation,
+    UnresolvedReason, is_callable, is_value, plain_relation, unresolved,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Fact, FactsCache, FileFacts, ImportKind, Language, Name, Receiver, Ref,
@@ -320,17 +320,6 @@ fn is_type(kind: DefKind) -> bool {
     )
 }
 
-fn is_value(kind: DefKind) -> bool {
-    matches!(
-        kind,
-        DefKind::Property
-            | DefKind::Variable
-            | DefKind::Constant
-            | DefKind::Field
-            | DefKind::EnumMember
-    )
-}
-
 impl Index {
     fn build(files: Vec<FileFacts>, foreign: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
         let mut index = Self::default();
@@ -516,24 +505,7 @@ impl<'w> Engine<'w> {
     ground_methods!();
     jvm_engine_methods!();
 
-    fn text(&self, f: usize) -> Option<Bytes> {
-        if let Some(known) = self.texts.borrow().get(&f) {
-            return known.clone();
-        }
-        let path = &self.ix.files[f].facts.path;
-        let read = match self.reader.read(path) {
-            Ok(read) => read,
-            Err(_) => {
-                self.losses.borrow_mut().push(Loss::ReadFailed {
-                    path: path.clone(),
-                    side: self.side,
-                });
-                None
-            }
-        };
-        self.texts.borrow_mut().insert(f, read.clone());
-        read
-    }
+    file_text!();
 
     // ---- reach
 
@@ -1562,10 +1534,6 @@ fn generic_open(text: &[u8], at: usize) -> bool {
         && text
             .get(at + 1)
             .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'?')
-}
-
-fn unresolved(reason: UnresolvedReason) -> Resolution {
-    Resolution::Unresolved { reason }
 }
 
 #[cfg(test)]

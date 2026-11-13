@@ -34,7 +34,7 @@ use crate::facts::shell::{PathHead, PathUse};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, UseKind, expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's shell scripts.
 pub struct ShellResolver {

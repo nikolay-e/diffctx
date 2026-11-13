@@ -34,7 +34,7 @@ use std::rc::Rc;
 use super::index::{Path, dir_of, normalise, scope_path};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
-    UnresolvedReason, is_callable,
+    UnresolvedReason, is_callable, is_value, unresolved,
 };
 use crate::facts::lang::php::PROPERTIES;
 use crate::facts::{
@@ -480,17 +480,6 @@ fn is_type(kind: DefKind) -> bool {
     )
 }
 
-fn is_value(kind: DefKind) -> bool {
-    matches!(
-        kind,
-        DefKind::Property
-            | DefKind::Variable
-            | DefKind::Constant
-            | DefKind::Field
-            | DefKind::EnumMember
-    )
-}
-
 fn qualified(namespace: &str, name: &str) -> String {
     if namespace.is_empty() {
         name.to_string()
@@ -675,10 +664,6 @@ struct Engine<'w> {
     composer: Composer,
     workspace: &'w WorkspaceModel,
     supers: RefCell<HashMap<usize, Rc<Vec<Super>>>>,
-}
-
-fn unresolved(reason: UnresolvedReason) -> Resolution {
-    Resolution::Unresolved { reason }
 }
 
 fn plain_relation(use_kind: UseKind) -> Relation {
