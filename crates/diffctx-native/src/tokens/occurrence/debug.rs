@@ -180,6 +180,7 @@ impl Shadow<'_> {
             account.unread.clone_from(&unread);
             account.mentions = found.mentions;
             account.implicit.clone_from(&implicit);
+            account.admits_calls = admitted(definition.kind).contains(&Relation::Calls);
             account.alias_bound = alias_bound;
             let verdict = account.verdict();
             let complete = verdict.is_complete() && gaps.is_empty();
