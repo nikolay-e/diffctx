@@ -3,7 +3,7 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 141536
+product_lines = 141544
 allow_count = 139
 root_modules = 63
 
@@ -29,7 +29,7 @@ root_modules = 63
 "crates/diffctx-native/src/select.rs" = 2015
 
 [debt.phase-a-shadow]
-lines = 2542
+lines = 2550
 repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
 due_when = "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },"
 covers = ["crates/diffctx-native/src/tokens/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
@@ -50,12 +50,12 @@ deletes = [
 "crates/diffctx-native/src/facts/lang/c.rs" = { base = 2011, plus = 1 }
 "crates/diffctx-native/src/facts/lang/go.rs" = { base = 1474, plus = 1 }
 "crates/diffctx-native/src/facts/lang/java.rs" = { base = 602, plus = 1 }
-"crates/diffctx-native/src/facts/lang/kotlin.rs" = { base = 681, plus = 1 }
+"crates/diffctx-native/src/facts/lang/kotlin.rs" = { base = 683, plus = 3 }
 "crates/diffctx-native/src/facts/lang/php.rs" = { base = 1930, plus = 1 }
 "crates/diffctx-native/src/facts/lang/python.rs" = { base = 2680, plus = 1 }
 "crates/diffctx-native/src/facts/lang/rust.rs" = { base = 1963, plus = 1 }
 "crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
-"crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 751, plus = 1 }
+"crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 757, plus = 7 }
 "crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }
 
 [debt.phase-b-tests]
