@@ -3,19 +3,6 @@
 //! has one outcome and none is a candidate. A reader finds the occurrences, never
 //! a resolver; a resolver only explains them.
 //!
-//! Nothing here is read on the answer path yet. Who fills what, by segment of
-//! phase A step 2:
-//!
-//! - A2.1 (this file and `scanner`): the types, the verdict of [`Account`], and
-//!   [`scan`], which finds the occurrences of names in one file.
-//! - A2.2 (`facts::lexical`): one pass over each parsed tree fills `BlobFacts::lexical`.
-//! - A2.3 (`outcome`): a `Binding`, a declaration or an import name becomes an
-//!   [`Outcome`] with its [`Basis`]; a binding that gives none is a candidate.
-//! - A2.4 (`alias`, `implicit`): the alias closure within [`MAX_ALIAS_HOPS`] and
-//!   [`MAX_ALIAS_NAMES`], value leaks, and the [`Implicit`] kinds of a definition.
-//! - A2.5 (`debug`): the [`Account`] of each (definition, relation) beside today's
-//!   verdict, and the `DIFFCTX_DEBUG_OCCURRENCES` writer.
-//!
 //! Every `match` over these enums names each variant, so a new one does not compile
 //! until it is decided.
 
@@ -147,6 +134,8 @@ pub enum Reason {
     BasisUnverified,
     /// The file was read with a loss: every occurrence in it is a candidate.
     FileLost,
+    /// In code a script hands to the definition's runtime: nothing reads it.
+    Embedded,
 }
 
 /// The row of the contract that gave an outcome: the debug line prints it, and

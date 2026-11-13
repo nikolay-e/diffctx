@@ -3,6 +3,7 @@
 //! (`Coverage::close`). Under `DIFFCTX_DEBUG_OCCURRENCES=<file>` it also appends
 //! one JSON line per occurrence and per (definition, relation).
 
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -16,11 +17,11 @@ use super::{
     Reason, Unread, Verdict, View, admitted, close_aliases, counts_against, entered,
     implicit_kinds, outcomes, value_use,
 };
-use crate::decide::{Family, Gap, USES};
+use crate::decide::{Family, Gap, Group, USES};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
-use crate::tokens::{GroupTokens, Names};
+use crate::tokens::{Names, TokenIndex};
 
 const ENV: &str = "DIFFCTX_DEBUG_OCCURRENCES";
 
@@ -49,7 +50,9 @@ pub struct Shadow<'a> {
     pub view: &'a View<'a>,
     /// The head's files the resolver read, by path.
     pub files: &'a [FileFacts],
-    pub tokens: &'a GroupTokens,
+    pub tokens: &'a TokenIndex,
+    /// Uses named in code a shell script hands to the definition's runtime, found once.
+    pub embedded: OnceCell<Vec<Entry>>,
     pub reach: &'a dyn Fn(&str) -> bool,
     /// Files the resolver read that no extension puts in the group.
     pub outside: &'a [RepoPath],
@@ -130,6 +133,8 @@ impl Shadow<'_> {
             self.account_name(&mut found, definition, name, scope)
         });
         found.entries.extend(self.unnamed(definition));
+        let embedded = self.embedded.get_or_init(|| self.embedded_uses(definition));
+        found.entries.extend_from_slice(embedded);
         let implicit = match facts_of(self.ctx, side, self.cache, &definition.file) {
             Ok(Some(home)) => home
                 .defs()
@@ -326,14 +331,51 @@ impl Shadow<'_> {
             })
     }
 
+    /// The shell scripts that run the definition's runtime on code naming it
+    /// (`python - <<EOF`, `node -e`), each at its command: nothing reads that code,
+    /// so the use is a candidate (#427).
+    fn embedded_uses(&self, definition: &Definition) -> Vec<Entry> {
+        let runtime = crate::impact::runtime_of(definition.file.as_str());
+        if !matches!(runtime.as_str(), "python" | "js") {
+            return Vec::new();
+        }
+        let scripts = self.tokens.group(Group::Family(Family::Shell));
+        let spelling = scripts.spelling(&Names::new(self.names.iter().map(String::as_str)));
+        // A read past the run's deadline fails: the walk ends there at no cost.
+        (spelling.into_iter())
+            .map(|at| &scripts.files()[at as usize])
+            .filter(|file| (self.reach)(file.as_str()))
+            .filter_map(|file| {
+                let Ok(Some(text)) = self.ctx.head.read(file) else {
+                    return None;
+                };
+                let text = String::from_utf8_lossy(&text);
+                let (line, bytes) = (self.names.iter())
+                    .find_map(|name| crate::impact::embedded_naming(&text, &runtime, name))?;
+                Some(Entry {
+                    occurrence: Occurrence {
+                        file: file.clone(),
+                        bytes,
+                        line,
+                        class: Class::Code,
+                    },
+                    relation: None,
+                    outcome: Outcome::Candidate(Reason::Embedded),
+                    basis: Basis::Unproven,
+                })
+            })
+            .collect()
+    }
+
     /// The files of the group in reach that spell `name`, or could not be tokenised.
     fn spelling(&self, name: &Name) -> Vec<RepoPath> {
-        let mut at = self.tokens.spelling(&Names::new([name.as_str()]));
-        at.extend_from_slice(self.tokens.unread());
+        let tokens = self.tokens.group(self.family.group());
+        let mut at = tokens.spelling(&Names::new([name.as_str()]));
+        at.extend_from_slice(tokens.unread());
         at.sort_unstable();
         at.dedup();
         at.into_iter()
-            .map(|at| &self.tokens.files()[at as usize])
+            .map(|at| &tokens.files()[at as usize])
             .chain(self.outside)
             .filter(|file| (self.reach)(file.as_str()))
             .cloned()

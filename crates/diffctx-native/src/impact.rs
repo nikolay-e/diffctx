@@ -18,7 +18,7 @@ use crate::decide::{self, Cells, Effect};
 use crate::facts::{EntryKind, framework};
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
-use crate::tokens::occurrence::Hedge;
+use crate::tokens::occurrence::{Hedge, Reason};
 use crate::types::{Fragment, FragmentId, FragmentKind};
 use crate::vocabulary;
 
@@ -1470,47 +1470,6 @@ impl UntracedNamers {
     }
 }
 
-/// The scripts that run code of the definition's own runtime embedded in them
-/// (`python - <<EOF`, `node -e '…'`) and name it there. Nothing reads that code:
-/// a script whose embedded code names the definition is said, not left out (#427).
-/// The candidates are the shell scripts that spell the name at all.
-fn missed_namers(state: &ScoredState, cells: &Cells, name: &str, own: &str) -> Vec<UnanalysedFile> {
-    let runtime = runtime_of(own);
-    if !matches!(runtime.as_str(), "python" | "js") {
-        return Vec::new();
-    }
-    let Some(scripts) = cells.group_tokens(state, decide::Group::Family(decide::Family::Shell))
-    else {
-        return Vec::new();
-    };
-    let own = rel(state, own);
-    let candidates: Vec<String> = scripts
-        .spelling(&Names::new([name]))
-        .into_iter()
-        .map(|at| scripts.files()[at as usize].as_str().to_string())
-        .filter(|path| {
-            *path != own && crate::languages::get_language_for_file(path) == Some("bash")
-        })
-        .collect();
-    let source = state.run.source();
-    let mut out: Vec<UnanalysedFile> = Vec::new();
-    for path in state.run.bounded(candidates) {
-        let Some(line) = source
-            .read_to_string(&state.root_dir.join(&path))
-            .and_then(|text| embedded_naming(&text, &runtime, name))
-        else {
-            continue;
-        };
-        out.push(UnanalysedFile {
-            language: Some("bash"),
-            path,
-            reason: "embedded_code",
-            lines: vec![line],
-        });
-    }
-    out
-}
-
 /// The most files of a definition's group the account could not place that are
 /// listed in `missed_in`: the gap carries the count, the rows are a sample.
 const MAX_UNACCOUNTED_ROWS: usize = 20;
@@ -1518,17 +1477,27 @@ const MAX_UNACCOUNTED_ROWS: usize = 20;
 /// The files the account could not read, as the answer's rows: by path, the first few.
 fn unaccounted_rows(verdict: &decide::Verdict) -> Vec<UnanalysedFile> {
     let mut rows: Vec<UnanalysedFile> = (verdict.hedges().iter())
-        .filter_map(|(_, hedge)| match hedge {
-            Hedge::Unread { file, loss } => match decide::effect_of(loss) {
-                Effect::File(reason) | Effect::Subtree(reason, _) => Some(UnanalysedFile {
-                    language: crate::languages::get_language_for_file(file.as_str()),
-                    path: file.as_str().to_string(),
-                    reason: reason.row_reason(),
-                    lines: Vec::new(),
-                }),
-                Effect::Run(_) => None,
-            },
-            _ => None,
+        .filter_map(|(_, hedge)| {
+            let (file, reason, lines) = match hedge {
+                Hedge::Candidate {
+                    file,
+                    line,
+                    reason: Reason::Embedded,
+                } => (file, "embedded_code", vec![*line]),
+                Hedge::Unread { file, loss } => match decide::effect_of(loss) {
+                    Effect::File(reason) | Effect::Subtree(reason, _) => {
+                        (file, reason.row_reason(), Vec::new())
+                    }
+                    Effect::Run(_) => return None,
+                },
+                _ => return None,
+            };
+            Some(UnanalysedFile {
+                language: crate::languages::get_language_for_file(file.as_str()),
+                path: file.as_str().to_string(),
+                reason,
+                lines,
+            })
         })
         .collect();
     rows.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1570,7 +1539,7 @@ fn names_of(symbol: &str) -> Vec<String> {
 /// their own boundary: JVM languages call each other, JavaScript runs the
 /// HTML and single-file components that embed it, Swift, Objective-C, C and
 /// C++ bridge and link. Anything else is its own runtime.
-fn runtime_of(path: &str) -> String {
+pub(crate) fn runtime_of(path: &str) -> String {
     let language = crate::languages::get_language_for_file(path).unwrap_or("");
     match language {
         "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
@@ -1583,10 +1552,21 @@ fn runtime_of(path: &str) -> String {
     .to_string()
 }
 
+fn children_of<'t>(node: tree_sitter::Node<'t>, kind: &str) -> Vec<tree_sitter::Node<'t>> {
+    let mut cursor = node.walk();
+    (node.named_children(&mut cursor))
+        .filter(|child| child.kind() == kind)
+        .collect()
+}
+
 /// The line of the first command in `script` that runs `runtime`'s
 /// interpreter on code naming `name`: a heredoc fed to it, or its `-c`/`-e`
-/// argument.
-fn embedded_naming(script: &str, runtime: &str, name: &str) -> Option<u32> {
+/// argument. The line, and the bytes of the command.
+pub(crate) fn embedded_naming(
+    script: &str,
+    runtime: &str,
+    name: &str,
+) -> Option<(u32, std::ops::Range<u32>)> {
     let (interpreters, as_file): (&[&str], &str) = match runtime {
         "python" => (&["python", "pypy"], "embedded.py"),
         "js" => (&["node", "deno", "bun"], "embedded.js"),
@@ -1606,11 +1586,10 @@ fn embedded_naming(script: &str, runtime: &str, name: &str) -> Option<u32> {
         }
         let mut cursor = node.walk();
         let words: Vec<&str> = node.named_children(&mut cursor).map(text).collect();
-        let runs = words.iter().any(|w| {
+        if !words.iter().any(|w| {
             let base = w.rsplit('/').next().unwrap_or(w);
             interpreters.iter().any(|i| base.starts_with(i))
-        });
-        if !runs {
+        }) {
             continue;
         }
         let inline = words
@@ -1619,25 +1598,17 @@ fn embedded_naming(script: &str, runtime: &str, name: &str) -> Option<u32> {
             .and_then(|i| words.get(i + 1))
             .is_some_and(|code| names(code.trim_matches(['\'', '"'])));
         let fed = node.parent().is_some_and(|p| {
-            p.kind() == "redirected_statement" && {
-                let mut cursor = p.walk();
-                let redirects: Vec<tree_sitter::Node> = p.named_children(&mut cursor).collect();
-                redirects
-                    .into_iter()
-                    .filter(|r| r.kind() == "heredoc_redirect")
-                    .any(|r| {
-                        let mut cursor = r.walk();
-                        let bodies: Vec<tree_sitter::Node> =
-                            r.named_children(&mut cursor).collect();
-                        bodies
-                            .into_iter()
-                            .filter(|b| b.kind() == "heredoc_body")
-                            .any(|b| names(text(b)))
-                    })
-            }
+            p.kind() == "redirected_statement"
+                && children_of(p, "heredoc_redirect")
+                    .iter()
+                    .any(|r| (children_of(*r, "heredoc_body").iter()).any(|b| names(text(*b))))
         });
         if inline || fed {
-            return Some(u32::try_from(node.start_position().row + 1).unwrap_or(u32::MAX));
+            let at = |offset: usize| u32::try_from(offset).unwrap_or(u32::MAX);
+            return Some((
+                at(node.start_position().row + 1),
+                at(node.start_byte())..at(node.end_byte()),
+            ));
         }
     }
     None
@@ -3831,16 +3802,7 @@ pub fn build_impact(
         };
         let mut missed_in: Vec<UnanalysedFile> =
             verdict.as_ref().map_or_else(Vec::new, unaccounted_rows);
-        // A script of the definition's runtime embedded in a shell script names it
-        // beyond the group, and so does a file outside code that spells it.
-        let embedded: Vec<UnanalysedFile> = symbol
-            .map_or_else(Vec::new, |s| {
-                missed_namers(state, &cells, base_symbol(s), core.path())
-            })
-            .into_iter()
-            .collect();
-        let mut outside = embedded.len();
-        missed_in.extend(embedded);
+        let mut outside = 0;
         if callers.is_empty()
             && compatible_callers == 0
             && (unresolved.is_none()

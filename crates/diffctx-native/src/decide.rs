@@ -2913,7 +2913,6 @@ impl Cell {
             view = view.removed_sites(base.map(Resolver::bindings), &changed.stale);
         }
         let names = self.reference_names(changed);
-        let tokens = self.tokens.group(self.family.group());
         let reach = |file: &str| {
             within_scope(&self.scope, file) && (!changed.local || file == changed.file)
         };
@@ -2937,7 +2936,8 @@ impl Cell {
             family: self.family,
             view: &view,
             files,
-            tokens: &tokens,
+            tokens: &self.tokens,
+            embedded: OnceCell::new(),
             reach: &reach,
             outside: &outside,
             names: &names,
