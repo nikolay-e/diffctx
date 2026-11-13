@@ -542,6 +542,7 @@ fn only_the_bases_the_accounting_checks_prove_not_ours() {
         Basis::Builtin,
         Basis::OtherDefinition,
         Basis::Manifests,
+        Basis::BareName,
     ] {
         assert!(basis.proves_not_ours(), "{basis:?}");
     }

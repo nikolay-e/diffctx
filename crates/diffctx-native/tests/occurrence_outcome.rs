@@ -521,6 +521,112 @@ fn a_spelling_no_binding_names_is_unexplained() {
     assert_eq!(member.basis, Basis::Unproven);
 }
 
+const CONFIG: &str = "def config():\n    return {}\n";
+
+#[test]
+fn a_bare_name_heading_a_chain_is_the_local_of_that_name() {
+    let world = snapshot(&[
+        ("lib.py", CONFIG),
+        (
+            "app.py",
+            "def g(load):\n    config = load()\n    return config.get(\"a\")\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        shape(on(&found, 3)),
+        ("not_ours", "local", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_member_spelled_like_a_local_is_no_bare_name() {
+    let world = snapshot(&[
+        ("lib.py", CONFIG),
+        (
+            "app.py",
+            "def g(a):\n    config = 2\n    return a.config.get(\"a\")\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        on(&found, 3).outcome,
+        Outcome::Candidate(Reason::Unexplained),
+        "the middle of a chain is an attribute of another object: {found:#?}"
+    );
+}
+
+#[test]
+fn a_bare_name_heading_a_chain_is_what_an_import_binds_it_to_elsewhere() {
+    let world = snapshot(&[
+        ("lib.py", CONFIG),
+        ("other.py", CONFIG),
+        (
+            "app.py",
+            "from other import config\n\n\ndef g():\n    return config.get(\"a\")\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        shape(on(&found, 5)),
+        ("not_ours", "other_definition", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_bare_name_heading_a_chain_stays_a_candidate_where_the_import_binds_the_subject() {
+    let world = snapshot(&[
+        (
+            "lib.py",
+            "class Foo:\n    @staticmethod\n    def bar():\n        return 1\n",
+        ),
+        (
+            "app.py",
+            "from lib import Foo\n\n\ndef g():\n    return Foo.bar()\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "Foo"), "app.py", &["Foo"]);
+    let head = on(&found, 5);
+    assert!(
+        matches!(head.outcome, Outcome::Ours | Outcome::Candidate(_)),
+        "the import binds the name to the subject: {found:#?}"
+    );
+}
+
+#[test]
+fn a_bare_name_heading_a_chain_is_no_member_of_a_class_it_is_written_outside_of() {
+    let world = snapshot(&[
+        (
+            "lib.py",
+            "class Runner:\n    def run(self):\n        return 1\n",
+        ),
+        ("app.py", "def g(items):\n    return run.x(items)\n"),
+    ]);
+    let subject = world.def("lib.py", "Runner.run");
+    let found = world.outcomes(subject, "app.py", &["run"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("not_ours", "bare_name", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_bare_name_heading_a_chain_in_the_class_body_stays_a_candidate() {
+    let world = snapshot(&[(
+        "lib.py",
+        "class Runner:\n    def run(self):\n        return 1\n\n    doc = run.__doc__\n",
+    )]);
+    let found = world.outcomes(world.def("lib.py", "Runner.run"), "lib.py", &["run"]);
+    let head = on(&found, 5);
+    assert!(
+        matches!(head.outcome, Outcome::Ours | Outcome::Candidate(_)),
+        "inside the class a bare name is the member: {found:#?}"
+    );
+}
+
 #[test]
 fn a_binding_to_a_module_is_ours_for_its_own_module_or_one_that_offers_it_on() {
     let own = snapshot(&[
