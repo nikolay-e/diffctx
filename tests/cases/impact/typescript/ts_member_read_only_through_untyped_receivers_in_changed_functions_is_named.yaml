@@ -31,4 +31,4 @@ repo:
 # types: no resolved use, so the method is named with that function as a possible
 # user, never left out and never a caller.
 expect:
-  changed: [src/retry.ts::RetryObject.computeDelay]
+  changed: [src/retry.ts::RetryObject.computeDelay, src/delay.ts::calculateRetryDelay]

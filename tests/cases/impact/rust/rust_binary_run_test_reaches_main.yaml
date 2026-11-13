@@ -52,6 +52,7 @@ repo:
 expect:
   changed:
   - src/main.rs::greet
+  - tests/cli.rs::greets
   relations:
   - from: src/main.rs::main
     to: src/main.rs::greet
