@@ -20,6 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use super::index::scope_path;
+use super::twins::{Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
@@ -689,24 +690,6 @@ enum Want {
     Any,
 }
 
-/// A type a value has.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Typed {
-    /// A struct, enum or alias definition.
-    Def(usize),
-    /// A trait object, `impl Tr` or a generic with a bound: any implementer.
-    Dyn(usize),
-    /// A type the repository does not hold.
-    External,
-    Unknown,
-}
-
-enum Outcome {
-    Found(usize, EvidenceKind),
-    Candidates(Vec<usize>, CandidateReason),
-    Unresolved(UnresolvedReason),
-}
-
 /// Where a name is asked: the file, the module and the scope path in it.
 #[derive(Clone)]
 struct Site {
@@ -797,15 +780,7 @@ impl<'a> Engine<'a> {
         &self.ix.files[f].facts.path
     }
 
-    /// Whether a name used in file `f` may refer to the definition: one
-    /// project, a declared dependency, or no project at all.
-    fn reachable(&self, f: usize, def: usize) -> bool {
-        let used = self.ix.defs[def].file;
-        used == f
-            || self
-                .workspace
-                .may_reference(self.path_of(f).as_str(), self.path_of(used).as_str())
-    }
+    reachable_by_project!();
 
     fn site(&self, f: usize, scope: &Scope) -> Site {
         let path = scope_path(scope);
