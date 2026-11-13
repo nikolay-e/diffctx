@@ -131,7 +131,6 @@ impact/python/py_flask_route_helper_is_reached_by_the_test_that_posts_to_it  # f
 
 # Other languages (W1-C), triaged at integration 1.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
-impact/rust/rust_unchanged_integration_test_is_in_view  # fj#123 open
 impact/go/go_new_with_an_expression_parses  # gh#690 open: tree-sitter-go 0.25 reads `new(` as a type argument list, so Go 1.26 `new(42)` is a parse error and the file is honestly analysed in part; waits on a grammar that parses it
 impact/other/dart_changed_method_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/elixir_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
