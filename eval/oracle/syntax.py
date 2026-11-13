@@ -359,6 +359,8 @@ class _ScriptWalker(_Collector):
             self.declaration(node, extent, container)
         elif kind in ("lexical_declaration", "variable_declaration"):
             self.declarators(node, extent, container, in_function)
+        elif kind in TS_NAMESPACES:  # `export namespace N {}` arrives here, not through `visit`
+            self.visit(node, container, in_function)
         else:
             self.children(node, container, in_function)
 

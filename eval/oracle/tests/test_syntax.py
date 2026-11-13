@@ -277,3 +277,13 @@ def test_comment_only_lines_cover_every_line_of_a_doc_comment_and_not_a_trailing
 )
 def test_an_export_statement_naming_a_definition_of_its_own_module_is_a_reexport(path, text, nth, expected):
     assert kind_at(path, text, 1, "foo", nth=nth) == expected
+
+
+def test_an_exported_namespace_qualifies_its_members_as_a_plain_one_does():
+    source = b"export type HookEvent = string;\nexport namespace PromiseOnly {\n  export type HookEvent = number;\n}\nnamespace Plain { export const a = 1; }\n"
+
+    assert [d.key for d in definitions("types.ts", source)] == [
+        "types.ts::HookEvent",
+        "types.ts::PromiseOnly.HookEvent",
+        "types.ts::Plain.a",
+    ]
