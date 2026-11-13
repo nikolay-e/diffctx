@@ -497,16 +497,29 @@ fn the_main_guard_is_module_scope_and_an_entry_not_a_caller() {
     assert_eq!(lines_of_defs(source), ["Function main"]);
 }
 
-/// Python has no block scope: a name bound in a module-level `if`, `for`,
-/// `while`, `with`, `try` or `match` (a script's main guard among them) is a
-/// module variable, and a read of it resolves to that definition instead of
-/// passing as a local.
+/// A name a loop body binds is rebound on every pass: a local of the loop, not
+/// a name another file imports, and no definition to report a change of (fj#94).
+#[test]
+fn a_binding_in_a_loop_body_is_a_local_not_a_definition() {
+    for source in [
+        "for n in range(3):\n    b = n\n",
+        "while go():\n    c = 1\n",
+        "for n in range(3):\n    if n:\n        d = n\n",
+    ] {
+        assert_eq!(lines_of_defs(source), Vec::<String>::new(), "{source}");
+        assert!(!locals(&extract(source)).is_empty(), "{source}");
+    }
+    let kept = "for n in range(3):\n    def f(): pass\n";
+    assert_eq!(lines_of_defs(kept), ["Function f"]);
+}
+
+/// Python has no block scope: a name bound in a module-level `if`, `with`,
+/// `try` or `match` (a script's main guard among them) is a module variable, and
+/// a read of it resolves to that definition instead of passing as a local.
 #[test]
 fn a_binding_in_a_module_level_compound_statement_is_a_module_definition() {
     let table: &[(&str, &str)] = &[
         ("if ready:\n    a = 1\nelse:\n    a = 2\n", "Variable a"),
-        ("for n in range(3):\n    b = n\n", "Variable b"),
-        ("while go():\n    c = 1\n", "Variable c"),
         ("with open(p) as f:\n    d = f.read()\n", "Variable d"),
         (
             "try:\n    e = load()\nexcept OSError:\n    e = None\n",

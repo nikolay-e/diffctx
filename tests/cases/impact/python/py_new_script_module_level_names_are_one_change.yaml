@@ -26,5 +26,8 @@ repo:
 
       print(summarize(ROWS))
   commit_message: "analysis: one-off threshold study"
+# gh#647: a new script's constants and loop variables are the script, not
+# definitions anything is expected to call. `summarize` is a function the range
+# adds, named like any other added definition.
 expect:
-  changed: [analysis/one_off.py]
+  changed: [analysis/one_off.py::summarize]

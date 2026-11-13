@@ -400,6 +400,9 @@ struct Ix {
     container: Vec<String>,
     in_class: bool,
     in_fn: bool,
+    /// Inside the body of a `for` or `while`: a name bound there is rebound on
+    /// each pass, a local of the loop and not a definition.
+    in_loop: bool,
     type_checking: bool,
     /// Inside an `except` handler: the names its `try` body imports, which
     /// a definition here stands behind (`except ImportError: def main()`).
@@ -434,6 +437,7 @@ impl Cand {
 struct Cx {
     scope: Scope,
     in_fn: bool,
+    in_loop: bool,
     type_only: bool,
     receiver: Option<String>,
     read: UseKind,
@@ -484,6 +488,7 @@ impl<'t> Walker<'t> {
         let cx = Cx {
             scope: Scope::Module,
             in_fn: false,
+            in_loop: false,
             type_only: false,
             receiver: None,
             read: UseKind::Read,
@@ -1056,9 +1061,13 @@ impl<'t> Walker<'t> {
                 }
             }
             kind if is_container(kind) => {
+                let looped = Ix {
+                    in_loop: ix.in_loop || matches!(kind, "for_statement" | "while_statement"),
+                    ..ix.clone()
+                };
                 let mut cursor = node.walk();
                 for child in node.named_children(&mut cursor) {
-                    self.collect(child, ix, out, depth + 1);
+                    self.collect(child, &looped, out, depth + 1);
                 }
             }
             _ => {}
@@ -1167,6 +1176,7 @@ impl<'t> Walker<'t> {
             container: ix.container.clone(),
             in_class: is_class,
             in_fn: ix.in_fn || !is_class,
+            in_loop: false,
             type_checking: false,
             fallback_for: None,
             leaving,
@@ -1238,7 +1248,7 @@ impl<'t> Walker<'t> {
     }
 
     fn collect_assignment(&mut self, statement: Node<'t>, ix: &Ix, out: &mut Vec<Cand>) {
-        if ix.in_fn {
+        if ix.in_fn || ix.in_loop {
             return;
         }
         let Some(assignment) = statement
@@ -1796,7 +1806,18 @@ impl<'t> Walker<'t> {
                 if let Some(left) = left {
                     self.bind_targets(left, cx, d);
                 }
-                self.children_but(node, left, cx, d);
+                let body = Cx {
+                    in_loop: cx.in_loop || node.kind() == "for_statement",
+                    ..cx.clone()
+                };
+                self.children_but(node, left, &body, d);
+            }
+            "while_statement" => {
+                let body = Cx {
+                    in_loop: true,
+                    ..cx.clone()
+                };
+                self.children(node, &body, d);
             }
             "as_pattern" => {
                 let alias = node.child_by_field_name("alias");
@@ -1862,6 +1883,7 @@ impl<'t> Walker<'t> {
         let inner = Cx {
             scope: Scope::Def(known.key.clone()),
             in_fn: cx.in_fn || !is_class,
+            in_loop: false,
             type_only: cx.type_only,
             receiver: known.receiver.clone().or_else(|| cx.receiver.clone()),
             read: UseKind::Read,
@@ -2059,7 +2081,7 @@ impl<'t> Walker<'t> {
             "identifier" => {
                 if let Some(known) = self.vars.get(&node.id()).cloned() {
                     self.emit_binding(node, statement, value, annotation, &known);
-                } else if cx.in_fn {
+                } else if cx.in_fn || cx.in_loop {
                     self.local(node, LocalKind::Variable, cx);
                 } else {
                     self.emit_ref(node, cx, Receiver::None, UseKind::Write, &[]);
