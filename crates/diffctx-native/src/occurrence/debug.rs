@@ -149,6 +149,7 @@ impl Shadow<'_> {
                 .filter(|gap| !matches!(gap, Gap::Unaccounted { .. } | Gap::Unlanded { .. }))
                 .map(ToString::to_string)
                 .collect();
+            let complete = matches!(verdict, Verdict::Complete) && gaps.is_empty();
             let today = coverage.map(|coverage| {
                 if coverage.witness().is_some() {
                     "complete"
@@ -161,6 +162,7 @@ impl Shadow<'_> {
                     "def": def, "side": side_text, "relation": relation.name(),
                     "today": today,
                     "occurrences": verdict.as_str(), "reasons": reasons, "gaps": gaps,
+                    "complete": complete,
                 })
                 .to_string(),
             );
