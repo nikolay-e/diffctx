@@ -1,8 +1,9 @@
 // What an impact answer says of the tests of a changed definition has three
 // values: the tests named, "no static test link" (the search up the uses ended
-// and no test is on it), and "tests not established" (the search stopped at its
-// hop bound with uses left above, so a test may be there). An absence is
-// claimed from a closed search only, whichever the hop bound is.
+// and every definition on it is accounted for), and "tests not established" (a
+// test is further up than the hop bound names, or a definition on the way holds
+// a use no binding explains, so a test may be there). An absence is claimed from
+// a closed search only, whichever the hop bound is.
 //
 // The seeds share one shape: `leaf` changes, `run` or `m1` calls it, and the
 // test file sits at a different height above it.
@@ -86,6 +87,26 @@ const SEEDS: &[Seed] = &[
         ),
         definition: "not_established",
         rows: &[("m1", "not_established")],
+    },
+    Seed {
+        name: "a use no binding explains is above the caller",
+        files: &[
+            PACKAGE,
+            (
+                "pkg/service.py",
+                "def leaf(x):\n    return x + 1\n\n\ndef run(x):\n    return leaf(x)\n",
+            ),
+            (
+                "tests/test_service.py",
+                "def test_run(client):\n    assert client.run(1) == 2\n",
+            ),
+        ],
+        changed: (
+            "pkg/service.py",
+            "def leaf(x):\n    return x + 2\n\n\ndef run(x):\n    return leaf(x)\n",
+        ),
+        definition: "not_established",
+        rows: &[("run", "not_established")],
     },
 ];
 
