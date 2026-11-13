@@ -23,7 +23,7 @@
 
 use std::collections::HashMap;
 
-use crate::facts::config::dockerfile::{Instruction, Word, parse};
+use crate::facts::config::dockerfile::{Instruction, Word, parse, unquote};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
     Namespace, PathMention, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text,
@@ -485,19 +485,6 @@ fn is_name(text: &str) -> bool {
     !text.is_empty()
         && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         && !text.starts_with(|c: char| c.is_ascii_digit())
-}
-
-fn unquote(word: &str) -> String {
-    let trimmed = word.trim();
-    for quote in ['"', '\''] {
-        if let Some(inner) = trimmed
-            .strip_prefix(quote)
-            .and_then(|r| r.strip_suffix(quote))
-        {
-            return inner.to_string();
-        }
-    }
-    trimmed.to_string()
 }
 
 /// `<<EOF` is a file the instruction writes, no path.

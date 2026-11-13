@@ -128,7 +128,7 @@ fn words_of(line: &Line<'_>, from: usize, to: usize) -> Vec<Word> {
     found
 }
 
-fn unquote(word: &str) -> String {
+pub(crate) fn unquote(word: &str) -> String {
     let trimmed = word.trim();
     for quote in ['"', '\''] {
         if let Some(inner) = trimmed
