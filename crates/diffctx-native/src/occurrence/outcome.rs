@@ -7,7 +7,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
-use crate::facts::{DefKey, DefKind, Export, Fact, FileFacts, Import, Local, Name, Scope, Star};
+use crate::facts::{
+    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
+};
 use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use crate::snapshot::RepoPath;
 
@@ -270,10 +272,14 @@ impl<'a> Reading<'a> {
                     at.1 |= file.key(&def.local) == subject.key;
                 }
                 Fact::LocalBinding(local) => {
-                    let site = &local.site.bytes;
-                    declared
-                        .entry((site.start, site.end))
-                        .or_insert((Basis::LocalSite, false));
+                    // Only a parameter's span is surely no use: a pattern's binding
+                    // may be a field read too (`let Retry { attempt } = r;`).
+                    if local.kind == LocalKind::Parameter {
+                        let site = &local.site.bytes;
+                        declared
+                            .entry((site.start, site.end))
+                            .or_insert((Basis::LocalSite, false));
+                    }
                     locals.push(local);
                 }
                 Fact::Import(import) => imports.push(import),
