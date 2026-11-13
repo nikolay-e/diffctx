@@ -76,7 +76,7 @@ fn standing(lexical: Option<Lexical>) -> Standing {
 }
 
 /// Whether the language reads `$` as part of an identifier.
-const fn dollar_joins(language: Language) -> bool {
+pub(super) const fn dollar_joins(language: Language) -> bool {
     match language {
         Language::JavaScript
         | Language::TypeScript
