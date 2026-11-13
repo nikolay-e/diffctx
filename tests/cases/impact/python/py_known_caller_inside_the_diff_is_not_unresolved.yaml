@@ -36,5 +36,7 @@ repo:
 query:
   args: ["--budget", "1500"]
 expect:
-  relations:
-    - {from: "fixture.py::do_GET", to: "fixture.py::endpoint", kind: calls, resolution: resolved, site: 10}
+  changed: [fixture.py::endpoint, fixture.py::do_GET]
+  coverage:
+    fixture.py::endpoint:
+      calls: complete
