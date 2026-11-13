@@ -8,6 +8,7 @@ import sampling
 from corpus import LANGUAGES, ROOT, Repo, load_corpus
 
 EARLIER_SEED = 20261031  # the seed of every run before the fresh one: its commits are in spent_commits.txt
+INDEX_ROUND_SEED = 20261112  # the index-only rounds that chose the corpus read its first commits: a tuning set
 
 
 def history(path: Path, count: int) -> str:
@@ -57,7 +58,7 @@ def test_the_fresh_seed_is_recorded_and_is_not_an_earlier_one():
     raw = tomllib.loads((ROOT / "corpus.toml").read_text(encoding="utf-8"))
 
     assert isinstance(raw["sampling"]["seed"], int)
-    assert raw["sampling"]["seed"] != EARLIER_SEED
+    assert raw["sampling"]["seed"] not in {EARLIER_SEED, INDEX_ROUND_SEED}
     assert load_corpus().sampling.seed == raw["sampling"]["seed"]
 
 
@@ -111,7 +112,8 @@ def test_the_counts_per_language_follow_the_sizing_input(tmp_path: Path):
     assert [len(sampling.sample_commits(sized, r, git_dir, 1)) for r in repos] == [1, 1, 1]
 
 
-NEVER_MEASURED = {"gin", "cli", "go-toml"}  # Go repositories added in Revision 18: no engine answer on them yet
+# Repositories added in Revision 18 and 20: no engine answer on them yet
+NEVER_MEASURED = {"gin", "cli", "echo", "github-workflows-kt", "github-api", "HikariCP"}
 
 
 def test_the_real_corpus_sizes_every_indexed_language_and_spends_every_earlier_commit_list():
