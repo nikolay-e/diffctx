@@ -82,6 +82,11 @@ def _compare(tmp_path, legacy, cells, bench_legacy=None, bench_cells=None, ids=I
     )
 
 
+def _verdict(result):
+    """The verdict line itself: the rule printed above it also names INVALID, WORSE and NOT WORSE."""
+    return next(line for line in result.stdout.splitlines() if line.startswith("## Verdict:"))
+
+
 def _legacy_rows():
     return [_row(i, 1.0, 1.0, ["a.py"]) for i in IDS]
 
@@ -99,7 +104,7 @@ def test_two_runs_that_selected_identically_are_no_measurement(tmp_path):
     result = _compare(tmp_path, legacy, cells)
 
     assert result.returncode == 2, result.stdout + result.stderr
-    assert "INVALID" in result.stdout
+    assert _verdict(result) == "## Verdict: INVALID"
     assert "no effect" in result.stdout
 
 
@@ -153,7 +158,7 @@ def test_the_rule_is_printed_before_any_verdict(tmp_path):
 
     result = _compare(tmp_path, legacy, cells)
 
-    assert result.stdout.index("Decision rule") < result.stdout.index("INVALID")
+    assert result.stdout.index("Decision rule") < result.stdout.index("## Verdict:")
     assert "-0.05" in result.stdout and "1.10" in result.stdout
 
 
@@ -171,7 +176,7 @@ class TestWithBootstrap:
         result = _compare(tmp_path, legacy, cells)
 
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "NOT WORSE" in result.stdout
+        assert _verdict(result) == "## Verdict: NOT WORSE"
 
     def test_lost_recall_is_worse_and_names_the_language_that_lost_it(self, tmp_path):
         legacy_rows = [_row(i, 1.0, 1.0, ["a.py"], "go" if n % 4 == 0 else "python") for n, i in enumerate(IDS)]
@@ -185,7 +190,7 @@ class TestWithBootstrap:
         result = _compare(tmp_path, legacy, cells)
 
         assert result.returncode == 1, result.stdout + result.stderr
-        assert "WORSE" in result.stdout and "NOT WORSE" not in result.stdout
+        assert _verdict(result) == "## Verdict: WORSE"
         go_row = next(line for line in result.stdout.splitlines() if line.startswith("| go "))
         assert "-1.000" in go_row
 
