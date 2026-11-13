@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use super::index::{Path, dir_of, join, scope_path};
+use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
@@ -953,11 +954,7 @@ enum Entity {
     Unknown,
 }
 
-struct Hit {
-    entity: Entity,
-    kind: EvidenceKind,
-    through: Vec<usize>,
-}
+type Hit = twins::Hit<Entity>;
 
 enum Named {
     Local(usize),
@@ -979,17 +976,7 @@ enum Lookup {
     Any,
 }
 
-enum Outcome {
-    Found {
-        entity: Entity,
-        evidence: Evidence,
-    },
-    Candidates {
-        ids: Vec<usize>,
-        reason: CandidateReason,
-    },
-    Unresolved(UnresolvedReason),
-}
+type Outcome = twins::EntityOutcome<Entity>;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum ModRes {

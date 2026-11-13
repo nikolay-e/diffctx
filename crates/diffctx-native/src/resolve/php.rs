@@ -755,27 +755,7 @@ impl<'w> Engine<'w> {
         }
     }
 
-    fn reachable(
-        &self,
-        f: usize,
-        ids: Vec<usize>,
-    ) -> std::result::Result<Vec<usize>, UnresolvedReason> {
-        let mut blocked = None;
-        let kept: Vec<usize> = ids
-            .into_iter()
-            .filter(|id| match self.reach(f, *id) {
-                Ok(()) => true,
-                Err(reason) => {
-                    blocked = Some(reason);
-                    false
-                }
-            })
-            .collect();
-        match (kept.is_empty(), blocked) {
-            (true, Some(reason)) => Err(reason),
-            _ => Ok(kept),
-        }
-    }
+    reachable_by_reach!();
 
     // ---- names
 
