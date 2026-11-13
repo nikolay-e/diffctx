@@ -24,10 +24,7 @@ static SOURCE_FILE_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 fn is_makefile(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "makefile"
         || name == "gnumakefile"
         || name.ends_with(".mk")
