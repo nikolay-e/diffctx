@@ -221,6 +221,87 @@ pub(super) fn declare_packages(packages: &mut HashSet<String>, package: &str) {
     }
 }
 
+/// Where the two languages read a header differently.
+pub(super) struct Syntax {
+    /// A `>` right after a `-` is an arrow, not the end of a type argument list.
+    arrow: bool,
+    /// A comma separates the words of a header.
+    comma: bool,
+}
+
+pub(super) const JAVA: Syntax = Syntax {
+    arrow: false,
+    comma: true,
+};
+pub(super) const KOTLIN: Syntax = Syntax {
+    arrow: true,
+    comma: false,
+};
+
+/// The header with everything inside brackets blanked, brackets that open kept:
+/// what is written at the top of the declaration, in the same positions.
+pub(super) struct Flat {
+    pub chars: Vec<char>,
+    pub depth: Vec<usize>,
+    pub top: Vec<char>,
+    comma: bool,
+}
+
+impl Flat {
+    pub fn new(text: &str, syntax: Syntax) -> Self {
+        let chars: Vec<char> = text.chars().collect();
+        let mut depth = vec![0usize; chars.len() + 1];
+        let mut d = 0usize;
+        for (i, c) in chars.iter().enumerate() {
+            depth[i] = d;
+            match c {
+                '(' | '[' | '{' | '<' => d += 1,
+                ')' | ']' | '}' => d = d.saturating_sub(1),
+                '>' if !(syntax.arrow && i > 0 && chars[i - 1] == '-') => {
+                    d = d.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+        let top = chars
+            .iter()
+            .enumerate()
+            .map(|(i, c)| match c {
+                '(' | '[' | '{' | '<' if depth[i] == 0 => *c,
+                _ if depth[i] == 0 && !matches!(c, ')' | ']' | '}' | '>') => *c,
+                _ => ' ',
+            })
+            .collect();
+        Self {
+            chars,
+            depth,
+            top,
+            comma: syntax.comma,
+        }
+    }
+
+    /// The top-level words, with where each starts and ends.
+    pub fn tokens(&self) -> Vec<(usize, usize, String)> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        let separator = |c: char| {
+            c.is_whitespace() || matches!(c, '(' | '[' | '{' | '<') || (self.comma && c == ',')
+        };
+        while at < self.top.len() {
+            if separator(self.top[at]) {
+                at += 1;
+                continue;
+            }
+            let start = at;
+            while at < self.top.len() && !separator(self.top[at]) {
+                at += 1;
+            }
+            out.push((start, at, self.top[start..at].iter().collect()));
+        }
+        out
+    }
+}
+
 /// A definition as the neighbouring language reads it, and the key of the
 /// definition it stands for.
 pub(super) struct Projected {
