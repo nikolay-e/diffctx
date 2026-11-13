@@ -2686,6 +2686,19 @@ fn cell_row(u: &decide::Use) -> Caller {
     }
 }
 
+/// A holder nothing uses itself is changed through what it holds: the use of a
+/// held definition, or what the search could not tell of it, is that row's to
+/// say. "Nothing calls it" of the holder would be an all-clear the held row's
+/// gap contradicts.
+fn held_has_users(cell: &decide::Cell, holder: &decide::Changed) -> bool {
+    cell.changed().iter().any(|held| {
+        holder.holds(held) && {
+            let verdict = cell.verdict(held);
+            !verdict.uses.is_empty() || !verdict.complete()
+        }
+    })
+}
+
 /// A definition the answer reports without a fragment to hang the roles
 /// and test links on: its callers are the resolver's rows as they stand.
 fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -> ChangedSymbol {
@@ -3848,6 +3861,16 @@ pub fn build_impact(
                 && possibly_also_changed.is_empty()
                 && !tested_without_caller()
         }) {
+            if entry.is_none()
+                && py.is_some_and(|def| {
+                    cells
+                        .of(&def.file)
+                        .is_some_and(|cell| held_has_users(cell, def))
+                })
+            {
+                traced_definitions -= 1;
+                continue;
+            }
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
             let named = label(
@@ -4022,13 +4045,16 @@ pub fn build_impact(
             ));
             continue;
         }
-        traced_definitions += 1;
         let verdict = cell.verdict(entry);
         let sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
         let callerless = query.is_none()
             && sym.callers.is_empty()
             && sym.also_changed.is_empty()
             && sym.possibly_also_changed.is_empty();
+        if callerless && verdict.complete() && held_has_users(cell, entry) {
+            continue;
+        }
+        traced_definitions += 1;
         // A definition with no fragment has no test link computed: with tests in
         // view it keeps its row, which claims none; the list that says "no static
         // test link" is for the answer that has no tests to say it against.
