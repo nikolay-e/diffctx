@@ -87,8 +87,10 @@ pub(super) struct TestsReach<'a> {
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: RefCell<FxHashMap<FragmentId, Vec<TestLink>>>,
-    /// Whether a use of the fragment is left unexplained, per fragment.
-    accounts: RefCell<FxHashMap<FragmentId, bool>>,
+    /// Whether the fragment ends the search above it, per fragment.
+    stops: RefCell<FxHashMap<FragmentId, bool>>,
+    /// Whether the search above the fragment is open, per fragment.
+    above: RefCell<FxHashMap<FragmentId, bool>>,
 }
 
 impl<'a> TestsReach<'a> {
@@ -200,7 +202,8 @@ impl<'a> TestsReach<'a> {
             runs,
             repo_tests,
             memo: RefCell::default(),
-            accounts: RefCell::default(),
+            stops: RefCell::default(),
+            above: RefCell::default(),
         }
     }
 
@@ -545,52 +548,68 @@ impl<'a> TestsReach<'a> {
         Vec::new()
     }
 
-    /// Whether the occurrence account of `f` holds a hedge: a test may use it
-    /// unseen. A file no cell reads has no account.
-    fn unexplained(&self, f: &Fragment) -> bool {
-        if let Some(&known) = self.accounts.borrow().get(&f.id) {
+    /// Ends the search above it: a test, one that names it, or a definition whose
+    /// occurrence account holds a hedge (a file no cell reads has none).
+    fn stops(&self, f: &Fragment, link: &Link) -> bool {
+        if let Some(&known) = self.stops.borrow().get(&f.id) {
             return known;
         }
         let name = f.symbol_name.as_deref().map(base_symbol);
-        let open = self
-            .cell_of(f)
-            .zip(name)
-            .is_some_and(|((cell, shown), name)| {
+        let hedged = || {
+            (self.cell_of(f).zip(name)).is_some_and(|((cell, shown), name)| {
                 cell.define(shown, name, (f.start_line(), f.end_line()))
                     .iter()
-                    .any(|changed| !cell.verdict(changed).hedges().is_empty())
-            });
-        self.accounts.borrow_mut().insert(f.id.clone(), open);
-        open
+                    .any(|changed| cell.hedged(changed))
+            })
+        };
+        let stops = self.is_test(f) || !self.direct(f, link).is_empty() || hedged();
+        self.stops.borrow_mut().insert(f.id.clone(), stops);
+        stops
     }
 
     /// Whether a test could reach `f` unnamed: the uses above it hold a test past
-    /// the hop bound or a definition with a hedge (`f` too when `own`), or the run
-    /// stopped. An absence is claimed only from a closed search.
+    /// the hop bound or a use that stops the search (`f` too when `own`: a caller
+    /// no test names), or the run stopped. An absence needs a closed search.
     pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
-        if own && self.unexplained(f) {
-            return true;
+        (own && self.stops(f, link)) || self.reaches_open(f, link)
+    }
+
+    /// The search above `f`, once per fragment: a closed search closes everything it
+    /// visited, an open one the path to its find.
+    fn reaches_open(&self, f: &'a Fragment, link: &Link) -> bool {
+        if let Some(&open) = self.above.borrow().get(&f.id) {
+            return open || !self.state.run.check();
         }
-        let mut seen: FxHashSet<&FragmentId> = std::iter::once(&f.id).collect();
+        let mut parent = FxHashMap::from_iter([(&f.id, &f.id)]);
         let mut todo = vec![f];
-        while let Some(at) = todo.pop() {
+        let mut found = None;
+        'walk: while let Some(at) = todo.pop() {
             let up = self.up(at, self.state, link);
             if !self.state.run.check() || up.test.is_some() {
-                return true;
+                found = Some(at);
+                break;
             }
             for user in up.fragments {
-                if self.is_test(user)
-                    || !self.direct(user, link).is_empty()
-                    || self.unexplained(user)
-                {
-                    return true;
+                let known = self.above.borrow().get(&user.id).copied();
+                if self.stops(user, link) || known == Some(true) {
+                    found = Some(at);
+                    break 'walk;
                 }
-                if seen.insert(&user.id) {
+                if known.is_none() && !parent.contains_key(&user.id) {
+                    parent.insert(&user.id, &at.id);
                     todo.push(user);
                 }
             }
         }
-        false
+        let mut above = self.above.borrow_mut();
+        let Some(mut at) = found.map(|at| &at.id) else {
+            above.extend(parent.keys().map(|&id| (id.clone(), false)));
+            return false;
+        };
+        while above.insert(at.clone(), true).is_none() {
+            at = parent[at];
+        }
+        true
     }
 
     pub(super) fn file_tested(

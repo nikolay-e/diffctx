@@ -2859,6 +2859,12 @@ impl Cell {
         (done.hedges.iter()).any(|(_, hedge)| matches!(hedge, Hedge::Candidate { .. }))
     }
 
+    /// Whether the account holds a hedge, read like `stranded`: no write, no memo.
+    pub fn hedged(&self, changed: &Changed) -> bool {
+        let done = self.account_occurrences(changed, &[], false);
+        !done.hedges.is_empty()
+    }
+
     fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounted {
         let mut out = sink().filter(|_| write);
         let files = self.shadow_files.get_or_init(|| {
