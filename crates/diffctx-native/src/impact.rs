@@ -3763,9 +3763,12 @@ pub fn build_impact(
             || symbol.map(base_symbol).unwrap_or("").to_string(),
             |def| def.name.clone(),
         );
+        // A route no model traces is named by the answer's own reason when it has one.
+        let routed = matches!(unresolved, Some(Unknown::Overridable { .. }));
         let unresolved = verdict
             .as_ref()
             .and_then(decide::Verdict::gap)
+            .filter(|gap| !(routed && *gap == decide::Gap::NotTraced))
             .map(|gap| cell_unknown(&gap, &shown))
             .or(unresolved);
         // Read after the search: a stop noted while it ran, or before it
