@@ -24,10 +24,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Binding, Definition, Relation, Resolution, java, kotlin};
+use super::{
+    Binding, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason, is_callable, java,
+    kotlin, plain_relation,
+};
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, Language, LocalKey, Name,
-    Namespace, Visibility, expired, facts_of,
+    Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
@@ -156,6 +159,72 @@ impl Jvm {
 pub(super) struct Projected {
     pub def: Def,
     pub key: DefKey,
+}
+
+/// An import: its full dotted path, split.
+pub(super) struct ImportRec {
+    /// The name it brings into the file; none for a wildcard.
+    pub local: Option<Name>,
+    pub path: Vec<String>,
+    pub wildcard: bool,
+    pub site: Span,
+    pub scope: Scope,
+}
+
+/// What a name, or a step of a chain, stands for.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(super) enum Ent {
+    /// A type named as a qualifier: its nested types and the members reached
+    /// through it (the statics, or those of the object or companion it is).
+    Type(usize),
+    /// A value of a type declared in the repository.
+    Instance(usize),
+    /// A value of a type the repository does not declare, by name.
+    Foreign(Name),
+    /// A package, by dotted name.
+    Package(String),
+    /// A package or type that exists in the repository, out of reach.
+    Outside,
+    /// Nothing outside the repository can be told of it.
+    External,
+    Unknown,
+}
+
+pub(super) enum Found {
+    /// The definitions the name lands on, with how.
+    Defs(Vec<usize>, EvidenceKind),
+    /// The name is imported from outside the repository, or is a builtin.
+    External,
+    /// It exists, out of reach.
+    Blocked(UnresolvedReason),
+    Nothing,
+}
+
+/// A supertype of a type.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(super) enum Super {
+    Repo(usize),
+    Foreign(Name),
+}
+
+pub(super) enum Head {
+    /// The chain's head, and how it was reached.
+    Resolved(Ent, EvidenceKind),
+    /// A name written alone.
+    Bare,
+}
+
+/// A call of a class makes an object; a callable passed on is passed on, any
+/// other definition named as a value is read.
+pub(super) fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
+    match (use_kind, target) {
+        (
+            UseKind::Call,
+            DefKind::Class | DefKind::Enum | DefKind::Struct | DefKind::Constructor,
+        ) => Relation::Instantiates,
+        (UseKind::PassAsValue, k) if !is_callable(k) => Relation::Reads,
+        _ => plain_relation(use_kind),
+    }
 }
 
 // ---- reading written declarations
