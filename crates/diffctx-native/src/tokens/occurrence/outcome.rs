@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use super::rows::DECLARING_LOCALS;
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
@@ -339,6 +340,7 @@ impl<'a> Reading<'a> {
         let mut declared = HashMap::new();
         let mut locals = Vec::new();
         let mut imports = Vec::new();
+        let writable = admitted(subject.kind).contains(&Relation::Writes);
         for fact in &file.blob.facts {
             match fact {
                 Fact::Definition(def) => {
@@ -349,9 +351,15 @@ impl<'a> Reading<'a> {
                     at.1 |= file.key(&def.local) == subject.key;
                 }
                 Fact::LocalBinding(local) => {
-                    // Only a parameter's span is surely no use: a pattern's binding
-                    // may be a field read too (`let Retry { attempt } = r;`).
-                    if local.kind == LocalKind::Parameter {
+                    // A parameter's span is surely no use, and a declarator's where its
+                    // language's row says so. A value a name may be written through
+                    // (`global`) keeps its hedge at a local of its own name.
+                    let declares = local.kind == LocalKind::Parameter
+                        || (!writable
+                            && DECLARING_LOCALS.iter().any(|(family, kind)| {
+                                *kind == local.kind && family.has(file.language())
+                            }));
+                    if declares {
                         let site = &local.site.bytes;
                         declared
                             .entry((site.start, site.end))
