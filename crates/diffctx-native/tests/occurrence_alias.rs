@@ -120,7 +120,7 @@ fn each_value_position_the_python_facts_tell_is_named() {
         (9, alias("x", inside(&file, "m"), Basis::Assignment)),
         (10, unplaced()),
         (11, None),
-        (13, alias("p", inside(&file, "C"), Basis::Assignment)),
+        (13, leak(ValuePlace::Store)),
         (15, leak(ValuePlace::Store)),
     ];
     assert_eq!(found, expected);
@@ -142,7 +142,7 @@ fn an_import_or_a_re_export_is_no_value_position() {
     let found = scan(&file, source.as_bytes(), &["f"], Case::Sensitive);
     let at = &found.code[0].bytes;
     let bytes = source.as_bytes();
-    for relation in [Relation::Imports, Relation::Reexports] {
+    for relation in [Relation::Imports, Relation::Reexports, Relation::Overrides] {
         assert_eq!(
             value_use(&file, bytes, at, DefKind::Function, Some(relation)),
             None

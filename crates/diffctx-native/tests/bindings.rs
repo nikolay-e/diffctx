@@ -566,7 +566,10 @@ fn an_unresolved_receiver_is_a_possible_caller_and_counted_as_one() {
         text.contains("possibly called from jobs.py::nightly"),
         "{text}"
     );
-    assert!(text.contains("0 caller(s) outside the diff"), "{text}");
+    assert!(
+        text.contains("callers unresolved for `reconcile_all`"),
+        "{text}"
+    );
     assert!(text.contains("1 possible"), "{text}");
 }
 

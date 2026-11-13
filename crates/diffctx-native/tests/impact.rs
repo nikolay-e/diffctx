@@ -4199,14 +4199,12 @@ fn shedding_drops_guesses_before_contracts_and_the_header_counts_all() {
     for budget in (100..=200).step_by(10) {
         let md = impact_budget_md(repo, &budget.to_string());
         let header = md.lines().next().unwrap_or("");
-        // The migration is a change outside any tracked definition, so the scope is
-        // not whole and a count of nothing is said as "no caller found", not as a
-        // zero: the twelve guesses are counted either way.
+        // A guess keeps the callers of `reconcile_all` unresolved: the header says
+        // so and counts the twelve guesses either way.
         assert!(
-            header.contains("outside the diff") && header.ends_with(", 12 possible"),
+            header.contains("callers unresolved for") && header.ends_with(", 12 possible"),
             "{budget}: {md}"
         );
-        assert!(!header.contains("unresolved"), "{budget}: {md}");
         if md.contains("possibly called from") {
             with_guess += 1;
             assert!(md.contains("migrations/0002_add.sql"), "{budget}: {md}");
@@ -6143,7 +6141,7 @@ fn a_candidate_folds_under_the_untyped_receiver_and_stays_counted() {
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     // A candidate may be affected: the line says what it is, never "not affected".
     assert!(
-        md.contains("possible calls through an untyped receiver (not resolved): 1"),
+        md.contains("possible calls through an untyped receiver (not resolved): at least 1"),
         "{md}"
     );
     assert!(!md.contains("not affected (untyped-receiver)"), "{md}");

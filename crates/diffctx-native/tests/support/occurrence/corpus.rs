@@ -279,7 +279,13 @@ fn reference(
         || (kind == "expression_list" && parent_field == Some("left"))
         || (family == Family::Shell && kind != "command_name")
         || (family == Family::Rust && kind == "attribute")
-        || (family == Family::Kotlin && ["variable_declaration", "for_statement"].contains(&kind))
+        || (family == Family::Kotlin
+            && [
+                "variable_declaration",
+                "for_statement",
+                "function_declaration",
+            ]
+            .contains(&kind))
         || SKIP_PARENT.iter().any(|k| kind.contains(k));
     // Of a member expression only its first operand is read as a name.
     let member = MEMBER.iter().any(|k| kind.contains(k)) || kind.ends_with("suffix");

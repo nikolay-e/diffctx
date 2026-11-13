@@ -466,9 +466,30 @@ fn a_name_an_import_binds_to_a_module_outside_the_repository_is_not_ours() {
 }
 
 #[test]
-fn a_not_ours_the_accounting_cannot_verify_stays_a_candidate() {
+fn an_external_call_no_member_of_the_name_can_be_is_not_ours() {
     let world = snapshot(&[
         ("lib.py", "def join(a):\n    return a\n"),
+        (
+            "app.py",
+            "import os\n\n\ndef here():\n    return os.join(\"a\")\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "join"), "app.py", &["join"]);
+    assert_eq!(
+        shape(on(&found, 5)),
+        ("not_ours", "external_name", Some(Relation::Calls)),
+        "no import binds `join` and no class has a member of that name"
+    );
+}
+
+#[test]
+fn an_external_call_a_member_of_the_name_could_be_stays_a_candidate() {
+    let world = snapshot(&[
+        ("lib.py", "def join(a):\n    return a\n"),
+        (
+            "path.py",
+            "class Path:\n    def join(self, a):\n        return a\n",
+        ),
         (
             "app.py",
             "import os\n\n\ndef here():\n    return os.join(\"a\")\n",
@@ -479,10 +500,9 @@ fn a_not_ours_the_accounting_cannot_verify_stays_a_candidate() {
     assert_eq!(
         call.outcome,
         Outcome::Candidate(Reason::BasisUnverified),
-        "the resolver says External, but no import binds `join` itself: the head of the chain is not carried"
+        "`Path.join` is a member of that name: the head of the chain is not carried"
     );
     assert_eq!(call.relation, Some(Relation::Calls));
-    assert_ne!(call.outcome.as_str(), "not_ours");
 }
 
 #[test]
