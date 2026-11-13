@@ -436,8 +436,12 @@ pub enum Unknown {
     },
     /// A removed name on too many lines of code to trace by name.
     CommonWord { name: String, lines: usize },
-    /// Reads of a member through a receiver nothing types.
-    UnresolvedReads { name: String, reads: usize },
+    /// Uses of the name no binding settles, the first of them named.
+    Candidates {
+        name: String,
+        uses: usize,
+        sites: Vec<decide::Site>,
+    },
     /// A member with no direct caller that a supertype, an interface or the
     /// runtime can call: `via` names that route, which nothing traces.
     Overridable { via: String },
@@ -2652,16 +2656,19 @@ fn reach_of(u: &decide::Use) -> Reach {
 
 /// What the answer says of a gap in the resolver's reach: a name on more lines
 /// than can be told apart is too common to trace (#413), any other count is
-/// reads through a receiver nothing types (#399).
+/// candidates, each at its site (#399).
 fn cell_unknown(gap: &decide::Gap, name: &str) -> Unknown {
     match gap {
-        decide::Gap::Unlanded { uses } if *uses > MAX_REMOVED_NAME_HITS => Unknown::CommonWord {
+        decide::Gap::Candidates { uses, .. } if *uses > MAX_REMOVED_NAME_HITS => {
+            Unknown::CommonWord {
+                name: name.to_string(),
+                lines: *uses,
+            }
+        }
+        decide::Gap::Candidates { uses, sites } => Unknown::Candidates {
             name: name.to_string(),
-            lines: *uses,
-        },
-        decide::Gap::Unlanded { uses } => Unknown::UnresolvedReads {
-            name: name.to_string(),
-            reads: *uses,
+            uses: *uses,
+            sites: sites.clone(),
         },
         decide::Gap::Unpaired => Unknown::Unpaired {
             name: name.to_string(),
@@ -5868,7 +5875,7 @@ pub(crate) fn symbol_local_output(
 }
 
 /// Candidates shown per changed symbol before they are counted instead.
-const MAX_CANDIDATES_SHOWN: usize = 3;
+pub(crate) const MAX_CANDIDATES_SHOWN: usize = 3;
 
 /// Changed callers named per symbol before the rest are counted.
 const MAX_ALSO_CHANGED_SHOWN: usize = 3;

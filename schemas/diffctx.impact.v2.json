@@ -228,7 +228,7 @@
       "description": "Why a search of a definition's uses is not complete: the closed vocabulary that\nreplaces v1's sentence in `unresolved`.",
       "oneOf": [
         {
-          "description": "Uses of the name that could be of the definition landed on nothing the model\ncould name: an untyped read, a name no import binds.",
+          "description": "Uses of the name that nothing resolves or rules out: an untyped receiver, a\nname no import binds.",
           "type": "object",
           "properties": {
             "kind": {
@@ -236,13 +236,19 @@
               "const": "unlanded"
             },
             "name": {
-              "description": "The name that landed on nothing.",
               "type": "string"
             },
             "uses": {
               "type": "integer",
               "format": "uint",
               "minimum": 0
+            },
+            "sites": {
+              "description": "The first of them; the rest are counted in `uses`.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Site"
+              }
             }
           },
           "required": [
@@ -634,6 +640,37 @@
             "total"
           ]
         }
+      ]
+    },
+    "Site": {
+      "description": "A candidate use: where it is, and what it may be.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "via": {
+          "$ref": "#/$defs/Via"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "via"
+      ]
+    },
+    "Via": {
+      "description": "How the answer words a candidate use.",
+      "type": "string",
+      "enum": [
+        "call",
+        "read",
+        "embedded"
       ]
     },
     "LimitReason": {

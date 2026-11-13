@@ -121,12 +121,14 @@ impl DefRef {
 #[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Gap {
-    /// Uses of the name that could be of the definition landed on nothing the model
-    /// could name: an untyped read, a name no import binds.
+    /// Uses of the name that nothing resolves or rules out: an untyped receiver, a
+    /// name no import binds.
     Unlanded {
-        /// The name that landed on nothing.
         name: String,
         uses: usize,
+        /// The first of them; the rest are counted in `uses`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sites: Vec<decide::Site>,
     },
     /// The two sides of the range pair the definition in more than one way.
     Unpaired {
@@ -245,7 +247,7 @@ impl std::fmt::Display for Gap {
     /// A gap in words, as a sentence about what was not covered.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unlanded { uses, .. } => write!(f, "{uses} use(s) that landed on nothing"),
+            Self::Unlanded { uses, .. } => write!(f, "{uses} use(s) no binding settles"),
             Self::Unpaired { .. } => f.write_str("its two sides of the range pair ambiguously"),
             Self::BaseUnresolved { reason } => {
                 write!(f, "the base side of the range was not resolved ({reason})")
@@ -360,9 +362,10 @@ impl Gap {
     /// A gap of the cell's search, with the name of the definition it is about.
     pub fn of(gap: &decide::Gap, name: &str) -> Self {
         match gap {
-            decide::Gap::Unlanded { uses } => Self::Unlanded {
+            decide::Gap::Candidates { uses, sites } => Self::Unlanded {
                 name: name.to_string(),
                 uses: *uses,
+                sites: sites.clone(),
             },
             decide::Gap::Unpaired => Self::Unpaired {
                 name: name.to_string(),
@@ -1376,15 +1379,17 @@ fn definition(c: &ChangedSymbol, tests_known: bool) -> Definition {
             name: Some(name.clone()),
         }),
         // The answer's own reasons that no cell gap carries: a name on too many
-        // lines to trace, reads through a receiver nothing types, a member of a
-        // trait, a run stopped before the search.
+        // lines to trace, candidates at their sites, a member of a trait, a run
+        // stopped before the search.
         Some(Unknown::CommonWord { name, lines }) => Some(Gap::Unlanded {
             name: name.clone(),
             uses: *lines,
+            sites: Vec::new(),
         }),
-        Some(Unknown::UnresolvedReads { name, reads }) => Some(Gap::Unlanded {
+        Some(Unknown::Candidates { name, uses, sites }) => Some(Gap::Unlanded {
             name: name.clone(),
-            uses: *reads,
+            uses: *uses,
+            sites: sites.clone(),
         }),
         Some(Unknown::Dispatched { trait_name }) => Some(Gap::Dispatched {
             via: trait_name.clone(),

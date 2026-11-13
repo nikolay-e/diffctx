@@ -54,7 +54,7 @@ use crate::snapshot::{
     RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::tokens::occurrence::{Hedge, Index, Known, View};
+use crate::tokens::occurrence::{Hedge, Index, Known, Reason as CandidateReason, View};
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 
 /// The reasons a candidate row carries in the answer.
@@ -424,12 +424,31 @@ impl Resolver {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Complete(());
 
+/// How the answer words a candidate use.
+#[derive(
+    serde::Serialize, schemars::JsonSchema, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Via {
+    Call,
+    Read,
+    Embedded,
+}
+
+/// A candidate use: where it is, and what it may be.
+#[derive(serde::Serialize, schemars::JsonSchema, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Site {
+    pub path: String,
+    pub line: u32,
+    pub via: Via,
+}
+
 /// Why a definition's answer is incomplete.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Gap {
-    /// `uses` of the name that could be a use of the definition landed on
-    /// nothing the model could name: an untyped read, a name no import binds.
-    Unlanded { uses: usize },
+    /// `uses` of the name that nothing resolves or rules out may be uses of the
+    /// definition: `sites` are the first of them, the rest are counted.
+    Candidates { uses: usize, sites: Vec<Site> },
     /// The range pairs the definition's two sides ambiguously.
     Unpaired,
     /// The base side of the range could not be resolved: what still names a
@@ -488,7 +507,7 @@ pub enum Gap {
 impl std::fmt::Display for Gap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unlanded { uses } => write!(f, "{uses} use(s) that landed on nothing"),
+            Self::Candidates { uses, .. } => write!(f, "{uses} use(s) no binding settles"),
             Self::Unpaired => f.write_str("its two sides of the range pair ambiguously"),
             Self::BaseUnresolved { reason } => {
                 write!(f, "the base side of the range was not resolved ({reason})")
@@ -721,26 +740,42 @@ impl Losses {
 /// What a coverage rests on besides the gaps the search found.
 #[derive(Clone, Copy)]
 pub enum Evidence<'a> {
-    /// A definition's occurrence account: what stands in the way of its absence.
-    Occurrences(&'a [Hedge]),
+    /// A definition's occurrence account of one relation: what stands in the way of
+    /// its absence.
+    Occurrences(Relation, &'a [Hedge]),
     /// Not a definition: the run's own limits, the files it withheld, code it left
     /// untraced.
     Run,
 }
 
-/// What each hedge of an occurrence account says in the answer's words: an
-/// occurrence nothing explains is a use that landed on nothing, a file lost is
-/// unaccounted for by its loss, the rest are routes no model traces.
-fn hedge_gaps(hedges: &[Hedge]) -> Vec<Gap> {
-    let (mut landed, mut lost, mut rest) = (0, BTreeMap::<Reason, usize>::new(), Vec::new());
+/// What each hedge of an occurrence account of `relation` says in the answer's
+/// words: a candidate occurrence names its site, a file lost is unaccounted for by
+/// its loss, the rest are routes no model traces.
+fn hedge_gaps(relation: Relation, hedges: &[Hedge]) -> Vec<Gap> {
+    let (mut common, mut sites) = (0, Vec::new());
+    let (mut lost, mut rest) = (BTreeMap::<Reason, usize>::new(), Vec::new());
+    let reads = matches!(
+        relation,
+        Relation::Reads | Relation::Writes | Relation::PassesAsValue
+    );
     for hedge in hedges {
         let gap = match hedge {
-            Hedge::Candidate { .. } => {
-                landed += 1;
+            Hedge::Candidate { file, line, reason } => {
+                let via = match (*reason == CandidateReason::Embedded, reads) {
+                    (true, _) => Via::Embedded,
+                    (false, true) => Via::Read,
+                    (false, false) => Via::Call,
+                };
+                let path = file.as_str().to_string();
+                sites.push(Site {
+                    path,
+                    line: *line,
+                    via,
+                });
                 continue;
             }
             Hedge::TooCommon { occurrences } => {
-                landed += occurrences;
+                common += occurrences;
                 continue;
             }
             Hedge::Unread { loss, .. } => match effect_of(loss) {
@@ -759,8 +794,12 @@ fn hedge_gaps(hedges: &[Hedge]) -> Vec<Gap> {
     let lost = lost
         .into_iter()
         .map(|(reason, files)| Gap::Unaccounted { reason, files });
-    let landed = (landed > 0).then_some(Gap::Unlanded { uses: landed });
-    lost.chain(landed).chain(rest).collect()
+    sites.sort();
+    sites.dedup();
+    let uses = sites.len() + common;
+    sites.truncate(crate::impact::MAX_CANDIDATES_SHOWN);
+    let candidates = (uses > 0).then_some(Gap::Candidates { uses, sites });
+    lost.chain(candidates).chain(rest).collect()
 }
 
 /// What the search for a definition's uses covered.
@@ -776,8 +815,8 @@ impl Coverage {
     /// the search's own gaps, so that a partial coverage always says what stood in
     /// the way).
     pub fn close(evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self {
-        if let Evidence::Occurrences(hedges) = evidence {
-            for gap in hedge_gaps(hedges) {
+        if let Evidence::Occurrences(relation, hedges) = evidence {
+            for gap in hedge_gaps(relation, hedges) {
                 if !gaps.contains(&gap) {
                     gaps.push(gap);
                 }
@@ -1082,7 +1121,7 @@ impl Verdict {
             match self.relation(relation) {
                 Coverage::Complete(witness) => Claim::Absent(*witness),
                 Coverage::Partial(gaps) => match gaps.first() {
-                    Some(Gap::Unlanded { .. }) => Claim::Unresolved,
+                    Some(Gap::Candidates { .. }) => Claim::Unresolved,
                     _ => Claim::Partial,
                 },
             }
@@ -3194,7 +3233,7 @@ impl Cell {
                 .filter(|(own, _)| *own == relation)
                 .map(|(_, hedge)| hedge.clone())
                 .collect();
-            let coverage = Coverage::close(Evidence::Occurrences(&hedges), gaps.clone());
+            let coverage = Coverage::close(Evidence::Occurrences(relation, &hedges), gaps.clone());
             (relation, coverage)
         });
         (by_relation, found)
