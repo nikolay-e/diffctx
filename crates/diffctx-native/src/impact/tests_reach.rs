@@ -731,6 +731,43 @@ fn repo_holds_test_file(state: &ScoredState) -> bool {
     }
 }
 
+/// The curried registration calls of `f`, one per statement: the call and the
+/// name of the definition of its own file it registers (`tool("name")(fn)`).
+pub(super) fn curried_registrations(f: &Fragment) -> impl Iterator<Item = (&str, &str)> {
+    static CURRIED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^\s*([A-Za-z_][\w.]*\([^()]*\))\(\s*([A-Za-z_][\w.]*)\s*\)\s*$")
+            .expect("curried registration regex")
+    });
+    let python = f.path().ends_with(".py") || f.path().ends_with(".pyi");
+    f.content
+        .lines()
+        .take_while(move |_| python)
+        .filter_map(|l| {
+            let caps = CURRIED.captures(l)?;
+            Some((caps.get(1)?.as_str(), caps.get(2)?.as_str()))
+        })
+}
+
+/// The lines of the tree at the range's head that spell one of `needles`.
+fn spelled_in_tests(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    needles: &[String],
+) -> crate::grep::Grepped<crate::snapshot::Row> {
+    let head = diff_range
+        .map(crate::snapshot::split_diff_range)
+        .and_then(|(_, head)| head);
+    read_or_note(
+        state,
+        crate::grep::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            needles,
+            head.as_deref(),
+        ),
+    )
+}
+
 /// The Rust binaries in the analysed fragments, keyed by their entry file
 /// as fragments spell it, each run by one test of its crate that runs
 /// the built binary. `src/main.rs` is the package's binary, named in
@@ -767,19 +804,8 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     if entries.is_empty() {
         return Vec::new();
     }
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
     let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_in_tests(state, diff_range, &needles);
     let mut out = Vec::new();
     for (own, krate, name) in entries {
         let exe = format!("CARGO_BIN_EXE_{name}");
@@ -955,18 +981,7 @@ fn console_runs(
     let mut needles: Vec<String> = scripts.iter().map(|s| s.name.clone()).collect();
     needles.sort();
     needles.dedup();
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_in_tests(state, diff_range, &needles);
     let mut out = Vec::new();
     for script in scripts {
         let Some(file) = spelled.get(script.file.as_str()) else {
@@ -1038,18 +1053,7 @@ fn script_runs(
         .collect();
     needles.sort();
     needles.dedup();
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_in_tests(state, diff_range, &needles);
     let token_re = once_cell::sync::Lazy::force(&super::mentions::PATH_TOKEN);
     let mut out = Vec::new();
     for target in &targets {
@@ -1097,14 +1101,13 @@ fn script_runs(
 
 /// How a test spells the key of an entry a framework makes: the request of a
 /// route (a quoted path that ends in the route's, on a line that names its verb,
-/// the path's parameters open), the name of a command a program starts, the name
-/// of a tool, the quoted name of a job on a line that speaks of schedulers.
+/// the path's parameters open), the name of a command a program starts, or a
+/// quoted name on a line that speaks of what registers it (a tool, a scheduled
+/// job, whatever a registration call is named).
 enum Spelling {
     Route(regex::Regex, Option<String>),
     Command(String),
-    Tool(String),
-    /// A scheduled job, named to the scheduler by its function's name.
-    Job(String),
+    Keyed(String, Vec<String>),
 }
 
 impl Spelling {
@@ -1135,8 +1138,8 @@ impl Spelling {
                     .map(|re| Self::Route(re, verb.map(str::to_string)))
             }
             EntryKind::Command => Some(Self::Command(label.to_string())),
-            EntryKind::Tool => Some(Self::Tool(label.to_string())),
-            EntryKind::Scheduled => Some(Self::Job(label.to_string())),
+            EntryKind::Tool => Some(Self::keyed(label, &["tool"])),
+            EntryKind::Scheduled => Some(Self::keyed(label, &["job", "schedul", "cron"])),
             _ => None,
         }
     }
@@ -1151,17 +1154,18 @@ impl Spelling {
                     })
             }
             Self::Command(name) => starts_a_program(text) && spelled_as_command(text, name),
-            Self::Tool(name) => {
-                spelled_as_command(text, name) && text.to_lowercase().contains("tool")
-            }
-            Self::Job(name) => {
+            Self::Keyed(key, words) => {
                 let line = text.to_lowercase();
-                spelled_as_command(text, name)
-                    && ["job", "schedul", "cron"]
-                        .iter()
-                        .any(|word| line.contains(word))
+                spelled_as_command(text, key) && words.iter().any(|word| line.contains(word))
             }
         }
+    }
+
+    fn keyed(key: &str, words: &[&str]) -> Self {
+        Self::Keyed(
+            key.to_string(),
+            words.iter().map(ToString::to_string).collect(),
+        )
     }
 }
 
@@ -1181,15 +1185,11 @@ fn route_needle(label: &str) -> String {
 }
 
 /// The tests that reach the routes, commands and tools the facts state for the
-/// definitions of the changed files: a test file with a line that spells the
-/// entry's key as a caller of it does. The framework's name is nobody's concern
+/// analysed definitions, whatever the diff touched, since the walk up from a
+/// change enters them: a test file with a line that spells the entry's key as a
+/// caller of it does. The framework's name is nobody's concern
 /// here (`facts::framework`); only `kind`, `verb` and `label` are read.
 fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) -> Vec<Run> {
-    let changed: FxHashSet<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .collect();
     struct Entry {
         file: String,
         symbol: String,
@@ -1200,7 +1200,7 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
     let mut seen: FxHashSet<(String, String, EntryKind, String)> = FxHashSet::default();
     for f in &state.all_fragments {
         let shown = rel(state, f.path());
-        if !changed.contains(&shown) || !f.kind.is_definition_kind() {
+        if !f.kind.is_definition_kind() {
             continue;
         }
         let Some(name) = f.symbol_name.as_deref().map(base_symbol) else {
@@ -1244,24 +1244,41 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
             }
         }
     }
+    // A registration call no facts rule knows (`tool("name")(fn)`) is keyed by its
+    // first string and spelled beside the callee's name.
+    for f in &state.all_fragments {
+        for (call, symbol) in curried_registrations(f) {
+            let Some((callee, arguments)) = call.split_once('(') else {
+                continue;
+            };
+            let Some(key) = arguments.split(['"', '\'']).nth(1) else {
+                continue;
+            };
+            let word = callee.rsplit('.').next().unwrap_or(callee).to_lowercase();
+            if key.len() >= 3
+                && seen.insert((
+                    f.path().to_string(),
+                    symbol.to_string(),
+                    EntryKind::Tool,
+                    key.to_string(),
+                ))
+            {
+                entries.push(Entry {
+                    file: f.path().to_string(),
+                    symbol: symbol.to_string(),
+                    spelling: Spelling::keyed(key, &[&word]),
+                    needle: key.to_string(),
+                });
+            }
+        }
+    }
     if entries.is_empty() {
         return Vec::new();
     }
     let mut needles: Vec<String> = entries.iter().map(|e| e.needle.clone()).collect();
     needles.sort();
     needles.dedup();
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_in_tests(state, diff_range, &needles);
     entries
         .into_iter()
         .filter_map(|entry| {
@@ -1364,18 +1381,7 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     if needles.is_empty() {
         return Vec::new();
     }
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_in_tests(state, diff_range, &needles);
     let mut files_of: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
     for (path, _, text) in &grepped.rows {
         for needle in &needles {

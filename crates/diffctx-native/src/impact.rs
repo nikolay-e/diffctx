@@ -2293,27 +2293,19 @@ enum Entered {
 /// the module's `if __name__ == "__main__":` guard calling it, or a curried
 /// registration call naming it. Both are how it is run, not who calls it.
 fn entered_by(f: &Fragment, name: &str) -> Option<Entered> {
-    static CURRIED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-        regex::Regex::new(r"^\s*([A-Za-z_][\w.]*\([^()]*\))\(\s*([A-Za-z_][\w.]*)\s*\)\s*$")
-            .expect("curried registration regex")
-    });
-    if !f.path().ends_with(".py") && !f.path().ends_with(".pyi") {
-        return None;
-    }
     let first = f.content.lines().find(|l| !l.trim().is_empty())?.trim();
     let guard = first.starts_with("if __name__ ==")
         && (first.contains("\"__main__\"") || first.contains("'__main__'"));
-    if guard {
+    if guard && (f.path().ends_with(".py") || f.path().ends_with(".pyi")) {
         return f
             .content
             .lines()
             .any(|l| calls_word(l, name))
             .then_some(Entered::Script);
     }
-    f.content.lines().find_map(|l| {
-        let caps = CURRIED.captures(l)?;
-        (&caps[2] == name).then(|| Entered::Registered(caps[1].to_string()))
-    })
+    tests_reach::curried_registrations(f)
+        .find(|(_, registered)| *registered == name)
+        .map(|(call, _)| Entered::Registered(call.to_string()))
 }
 
 /// The class of a `do_<METHOD>` handler a standard-library HTTP server

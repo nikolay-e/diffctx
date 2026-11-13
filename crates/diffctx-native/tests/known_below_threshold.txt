@@ -126,9 +126,6 @@ impact/python/py_new_script_module_level_names_are_one_change  # gh#647 open
 impact/python/py_attribute_assignment_is_not_a_changed_definition  # gh#672 open: `self.workdir =` is named as a changed definition; the test file no longer drops it
 impact/python/py_namedtuple_fields_are_not_changed_definitions  # fj#129 open: the NamedTuple field `unit` is named as a changed definition; a callerless one was dropped before
 
-# Closed issues whose case is red with a right expectation: regressions to file (R2).
-impact/python/py_flask_route_helper_is_reached_by_the_test_that_posts_to_it  # fj#67 regression
-
 # Other languages (W1-C), triaged at integration 1.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
 impact/go/go_new_with_an_expression_parses  # gh#690 open: tree-sitter-go 0.25 reads `new(` as a type argument list, so Go 1.26 `new(42)` is a parse error and the file is honestly analysed in part; waits on a grammar that parses it
@@ -172,7 +169,6 @@ impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_
 impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
 impact/python/py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link
 impact/python/py_stale_reference_ignores_the_directory_a_deleted_module_sits_in
-impact/python/py_tool_registered_under_a_name_is_reached_by_the_test_that_calls_the_name
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
 impact/typescript/ts_playwright_spec_reaches_a_component_through_its_route_and_its_test_id
 impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
