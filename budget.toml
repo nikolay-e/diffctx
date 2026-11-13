@@ -3,7 +3,7 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 142234
+product_lines = 142227
 allow_count = 139
 root_modules = 63
 
@@ -29,7 +29,7 @@ root_modules = 63
 "crates/diffctx-native/src/select.rs" = 2015
 
 [debt.phase-a-shadow]
-lines = 2301
+lines = 2293
 repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
 due_when = "crates/diffctx-native/src/decide.rs::fn status("
 covers = ["crates/diffctx-native/src/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
