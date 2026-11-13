@@ -9,12 +9,12 @@ use std::collections::BTreeSet;
 use _diffctx::facts::EntryKind;
 
 mod support;
-use support::families::{Family, says_empty};
+use support::families::{Family, discloses, says_empty};
 #[path = "support/occurrence/mod.rs"]
 mod occurrence;
 use occurrence::{
-    ALIASES, IMPLICIT, LEAKS, accounts_for, calls_complete, corpus, covers, engine_implicit_kinds,
-    load, no_scaffold, run_seeds, says_nobody, scaffolds,
+    ABSENCE, ALIASES, IMPLICIT, LEAKS, accounts_for, calls_complete, corpus, covers,
+    engine_implicit_kinds, load, no_scaffold, run_seeds, says_nobody, scaffolds,
 };
 
 #[test]
@@ -174,6 +174,26 @@ fn an_implicit_call_is_never_nobody() {
             Err(format!("the answer says nothing calls {}", seed.symbol()))
         } else {
             Ok(())
+        }
+    });
+}
+
+// Class 5. The name is spelled in a file of the group, and every spelling is
+// one the contract explains (a comment, a string, a local that shadows it):
+// the answer is still a clean absence. The class guards the switch's
+// decisiveness: an engine that hedges at every spelling passes the other four.
+#[test]
+fn a_clean_absence_stays_clean() {
+    let seeds = load(ABSENCE);
+    covers("absence", &seeds, &[]);
+    run_seeds("an absence", &seeds, |seed, doc| {
+        if says_empty(doc) && !discloses(doc) {
+            Ok(())
+        } else {
+            Err(format!(
+                "a {} of the name is not a clean absence",
+                seed.kind
+            ))
         }
     });
 }
