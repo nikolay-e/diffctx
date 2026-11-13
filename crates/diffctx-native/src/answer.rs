@@ -17,7 +17,6 @@ pub mod v2;
 
 use rustc_hash::FxHashSet;
 
-use crate::impact::UnanalysedFile;
 use v2::{Class, Count, Definition, ImpactV2, Row, ShedRows, Standing};
 
 /// What the text of an answer varies by, apart from the answer.
@@ -97,35 +96,35 @@ impl Answer<'_> {
 /// Two rows with one key are one fact said twice. The one place that says what
 /// a fact is; `tests/support/fact_keys.rs` states it again over the printed JSON.
 #[derive(PartialEq, Eq, Hash)]
-pub enum FactKey {
+pub enum FactKey<'a> {
     /// A line spells the name of a changed definition and no cell binds it: one
     /// fact whichever of the definitions of that name it was found for.
     Word {
-        word: String,
-        path: String,
+        word: &'a str,
+        path: &'a str,
         at: String,
     },
     /// Files in view spell the name and were not read whole.
     Unread {
-        word: String,
-        path: String,
+        word: &'a str,
+        path: &'a str,
         at: Option<u32>,
     },
     /// A use of one definition.
     Use {
-        definition: (String, Option<String>, String),
-        path: String,
-        symbol: Option<String>,
-        lines: String,
-        sites: Vec<u32>,
+        definition: (&'a str, Option<&'a str>, &'a str),
+        path: &'a str,
+        symbol: Option<&'a str>,
+        lines: &'a str,
+        sites: &'a [u32],
         class: Class,
-        kind: Option<String>,
+        kind: Option<&'a str>,
         standing: Standing,
     },
 }
 
-impl FactKey {
-    pub fn of_row(def: &Definition, row: &Row) -> Self {
+impl<'a> FactKey<'a> {
+    pub fn of_row(def: &'a Definition, row: &'a Row) -> Self {
         if row.standing == Standing::Name {
             // The line a word match cites: its first site, else where its function starts.
             let at = row.sites.first().map_or_else(
@@ -133,28 +132,20 @@ impl FactKey {
                 ToString::to_string,
             );
             return Self::Word {
-                word: def.word().to_string(),
-                path: row.path.clone(),
+                word: def.word(),
+                path: &row.path,
                 at,
             };
         }
         Self::Use {
-            definition: (def.path.clone(), def.symbol.clone(), def.lines.clone()),
-            path: row.path.clone(),
-            symbol: row.symbol.clone(),
-            lines: row.lines.clone(),
-            sites: row.sites.clone(),
+            definition: (&def.path, def.symbol.as_deref(), &def.lines),
+            path: &row.path,
+            symbol: row.symbol.as_deref(),
+            lines: &row.lines,
+            sites: &row.sites,
             class: row.class,
-            kind: row.kind.clone(),
+            kind: row.kind.as_deref(),
             standing: row.standing,
-        }
-    }
-
-    pub fn of_unread(def: &Definition, file: &UnanalysedFile) -> Self {
-        Self::Unread {
-            word: def.word().to_string(),
-            path: file.path.clone(),
-            at: file.lines.first().copied(),
         }
     }
 }
@@ -166,14 +157,23 @@ impl FactKey {
 /// site, so the first definition's row stays and the rest are dropped (never at
 /// render: the totals count rows).
 pub fn one_row_per_fact(definitions: &mut [Definition]) {
-    let mut seen = FxHashSet::default();
+    let (mut seen, mut first) = (FxHashSet::default(), Vec::new());
+    for def in definitions.iter() {
+        for row in &def.rows {
+            first.push(seen.insert(FactKey::of_row(def, row)));
+        }
+        for file in &def.missed_in {
+            first.push(seen.insert(FactKey::Unread {
+                word: def.word(),
+                path: &file.path,
+                at: file.lines.first().copied(),
+            }));
+        }
+    }
+    let mut first = first.into_iter();
     for def in definitions {
-        let mut rows = std::mem::take(&mut def.rows);
-        rows.retain(|row| seen.insert(FactKey::of_row(def, row)));
-        def.rows = rows;
-        let mut unread = std::mem::take(&mut def.missed_in);
-        unread.retain(|file| seen.insert(FactKey::of_unread(def, file)));
-        def.missed_in = unread;
+        def.rows.retain(|_| first.next() == Some(true));
+        def.missed_in.retain(|_| first.next() == Some(true));
     }
 }
 
@@ -262,10 +262,7 @@ impl Tally {
             untested_callers: rows().filter(|r| r.without_link()).count() + shed(|s| s.untested),
             folded_callers,
             textual: rows().filter(|r| r.standing == Standing::Name).count()
-                + defs
-                    .iter()
-                    .map(|d| d.missed_in.iter().count())
-                    .sum::<usize>()
+                + defs.iter().map(|d| d.missed_in.len()).sum::<usize>()
                 + shed(|s| s.name),
             shed_textual: shed(|s| s.name),
             undetermined: defs
