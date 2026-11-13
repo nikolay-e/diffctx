@@ -2802,6 +2802,42 @@ fn a_stopped_run_names_the_definitions_it_did_not_finish_never_a_count_of_nothin
     }
 }
 
+/// fj#157: the fit polled nothing, so limits that ended inside it ran on past them.
+/// A stop on one of its polls sheds what is left at once and names itself: every
+/// caller counted, none listed. A stop before the fit never gives that answer.
+#[test]
+fn a_stop_inside_the_fit_sheds_the_rest_at_once_and_names_it() {
+    let users: String = (0..150)
+        .map(|i| format!("\n\ndef use_{i}(x):\n    return target(x) + {i}\n"))
+        .collect();
+    let users = format!("from core import target\n{users}");
+    let base = [
+        ("core.py", "def target(x):\n    return x\n"),
+        ("users.py", users.as_str()),
+    ];
+    let tmp = repo(&base, &[("core.py", "def target(x):\n    return x + 1\n")]);
+    // (stopped, callers counted, rows listed) of the answer cut at poll `n`.
+    let at = |n: u64| {
+        let out = diffctx()
+            .current_dir(tmp.path())
+            .env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string())
+            .args("--diff HEAD~1..HEAD --mode impact -q --unfold -f json".split(' '))
+            .output()
+            .expect("run diffctx");
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
+        let listed = doc["definitions"][0]["rows"].as_array().map_or(0, Vec::len);
+        let stopped = doc["coverage"].to_string().contains("deadline");
+        (stopped, doc["summary"]["callers"]["n"].as_u64(), listed)
+    };
+    let sweep = support::sweep_polls(at, |answer| !answer.0);
+    let last = &sweep[sweep.len().saturating_sub(17)..];
+    assert!(
+        last.iter()
+            .any(|(_, answer)| *answer == (true, Some(150), 0)),
+        "{last:?}"
+    );
+}
+
 /// A nested `Builder` whose qualified supertypes all end in `.Builder<Builder>`
 /// resolves, by its last segment, to the class itself: nine of them made the
 /// supertype walks `9^7` steps long and a Kotlin run never finished. The walks

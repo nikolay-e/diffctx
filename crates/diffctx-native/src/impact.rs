@@ -231,6 +231,8 @@ pub struct ImpactOutput {
     /// Changed definitions shed whole from `changed` while their callers were
     /// still not determined (the run stopped first); the header counts them.
     pub unfinished_omitted: usize,
+    /// The run that built it: its limits end the fit too.
+    pub run: Option<crate::resource::RunContext>,
     /// The token cap the answer was fitted to.
     pub cap: u32,
     /// Set when the least the answer can say still outgrows the budget asked:
@@ -4492,6 +4494,7 @@ pub fn build_impact(
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,
         unfinished_omitted: 0,
+        run: Some(state.run.clone()),
         cap: IMPACT_TOKEN_CAP,
         budget_needed: None,
     };
@@ -5257,8 +5260,18 @@ impl crate::fit::Shed for ImpactOutput {
         shed_one(self)
     }
 
-    fn settle(&mut self) {
+    fn settle(&mut self) -> bool {
+        let stopped = self.run.clone().filter(|run| !run.check());
+        for reason in stopped
+            .iter()
+            .flat_map(|run| crate::resource::classify_limits(run, &[], &|_| false).0)
+        {
+            if let Err(at) = self.limits.binary_search(&reason) {
+                self.limits.insert(at, reason);
+            }
+        }
         self.empty = proves_empty(self);
+        stopped.is_some()
     }
 }
 
@@ -5328,11 +5341,9 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     }
     // The definitions of test files rank last among the targets: they go first,
     // whole, into the entry that names what the cap shed.
-    if let Some(i) = output
-        .changed
-        .iter()
-        .rposition(|c| in_test_file(c) && !is_unfinished(c))
-    {
+    if let Some(i) = output.changed.iter().rposition(|c| {
+        !is_omitted(c) && crate::testfiles::is_test_path(Path::new(&c.path)) && !is_unfinished(c)
+    }) {
         shed_definition(output, i);
         return true;
     }
@@ -5381,8 +5392,13 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     if shed_weakest_caller(output) {
         return true;
     }
-    if trim_omitted(output) {
-        return true;
+    // When even the entry outgrows the cap, its list gives up the names with the
+    // fewest callers; the count and the callers stay whole, and the first name,
+    // the definition with the most callers, stays: the least the answer can say.
+    if let Some(entry) = output.changed.iter_mut().find(|c| is_omitted(c)) {
+        if entry.omitted.len() > 1 && entry.omitted.pop().is_some() {
+            return true;
+        }
     }
     // A file still naming a deleted or renamed path is a defect, not a
     // caller to check: it outlives every caller row, first entries kept
@@ -5484,18 +5500,6 @@ fn omit(output: &mut ImpactOutput, i: usize) {
     }
 }
 
-/// When even the entry outgrows the cap, its list gives up the names with the
-/// fewest callers; the count and the callers stay whole, and the first name, the
-/// definition with the most callers, stays: it is part of the least the answer
-/// can say.
-fn trim_omitted(output: &mut ImpactOutput) -> bool {
-    output
-        .changed
-        .iter_mut()
-        .find(|c| is_omitted(c))
-        .is_some_and(|entry| entry.omitted.len() > 1 && entry.omitted.pop().is_some())
-}
-
 /// The order a symbol's relation kinds are dealt in and listed.
 fn relation_rank(relation: &str) -> u8 {
     match relation {
@@ -5591,12 +5595,6 @@ fn shed_definition(output: &mut ImpactOutput, i: usize) {
     omit(output, i);
 }
 
-/// A definition of a test file: it ranks after every other target, so the cap
-/// sheds it first.
-fn in_test_file(c: &ChangedSymbol) -> bool {
-    !is_omitted(c) && crate::testfiles::is_test_path(Path::new(&c.path))
-}
-
 /// The answer as the reader receives it, fitted to `cap` tokens measured on
 /// that very text. JSON was fitted while markdown was printed, so a 148-token
 /// answer cited a 2000-token cap and lost its contracts (#451); `--budget`
@@ -5641,7 +5639,12 @@ pub fn deliver_framed(
         &json_tokens
     };
     fit_with(output, cap, measure);
-    declare_budget_too_small(output, cap, measure);
+    // The least the answer can say may outgrow the budget: it names the tokens
+    // that take, cutting nothing more, and a budget of that size delivers it.
+    let least = measure(output);
+    if least > cap {
+        output.budget_needed = Some(least);
+    }
     if markdown {
         render(output, false)
     } else {
@@ -5724,21 +5727,6 @@ fn fold_rows(output: &mut ImpactOutput) {
         }
     }
     output.empty = output.empty && proves_empty(output);
-}
-
-/// When the least the answer can say (the header, the omitted entry with its
-/// first name, the counts) still outgrows `cap`, the answer says so and names
-/// the tokens it takes, cutting nothing more: a budget of that size delivers it
-/// without this declaration.
-fn declare_budget_too_small(
-    output: &mut ImpactOutput,
-    cap: u32,
-    measure: &dyn Fn(&ImpactOutput) -> u32,
-) {
-    let tokens = measure(output);
-    if tokens > cap {
-        output.budget_needed = Some(tokens);
-    }
 }
 
 /// The automatic answer's size, limits and notes included. An explicit
@@ -5879,6 +5867,7 @@ pub(crate) fn symbol_named_output(
         unanalysed_files_omitted: 0,
         untraced_omitted: 0,
         unfinished_omitted: 0,
+        run: None,
         cap: IMPACT_TOKEN_CAP,
         budget_needed: None,
     }
