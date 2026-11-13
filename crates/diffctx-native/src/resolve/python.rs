@@ -21,7 +21,7 @@ use super::index::{ImportRec, Index, Path, Spec, join, scope_path};
 use super::modules::ModuleRes;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
-    UnresolvedReason,
+    UnresolvedReason, plain_relation,
 };
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref, Scope,
@@ -1948,18 +1948,6 @@ fn module_failure(found: &ModuleRes) -> Resolution {
         }
     };
     Resolution::Unresolved { reason }
-}
-
-fn plain_relation(use_kind: UseKind) -> Relation {
-    match use_kind {
-        UseKind::Call | UseKind::Decorate => Relation::Calls,
-        UseKind::Read => Relation::Reads,
-        UseKind::Write => Relation::Writes,
-        UseKind::TypeUse => Relation::TypeUses,
-        UseKind::PassAsValue => Relation::PassesAsValue,
-        UseKind::Instantiate => Relation::Instantiates,
-        UseKind::Override => Relation::Overrides,
-    }
 }
 
 /// A call of a class makes an object; a variable passed as an argument is read.

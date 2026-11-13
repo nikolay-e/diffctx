@@ -24,10 +24,11 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
+use super::index::{Path, scope_path};
 use super::jvm::{self, Jvm};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
-    UnresolvedReason,
+    UnresolvedReason, is_callable, plain_relation,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Fact, FactsCache, FileFacts, ImportKind, Language, Name, Receiver, Ref,
@@ -293,8 +294,6 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
 
 // ---- the index
 
-type Path = Vec<Name>;
-
 struct DefRec {
     file: usize,
     def: Def,
@@ -348,13 +347,6 @@ fn is_type(kind: DefKind) -> bool {
     matches!(
         kind,
         DefKind::Class | DefKind::Interface | DefKind::Enum | DefKind::Struct
-    )
-}
-
-fn is_callable(kind: DefKind) -> bool {
-    matches!(
-        kind,
-        DefKind::Function | DefKind::Method | DefKind::Constructor
     )
 }
 
@@ -1199,7 +1191,7 @@ impl<'w> Engine<'w> {
 
     fn reference(&self, f: usize, r: &Ref, out: &mut Vec<Binding>) {
         let file = &self.ix.files[f];
-        let scope = scope_names(&r.enclosing);
+        let scope = scope_path(&r.enclosing);
         let (relation, resolution) = match r.use_kind {
             UseKind::Override => self.override_of(f, r),
             UseKind::TypeUse => self.type_use(f, &scope, r),
@@ -1826,31 +1818,6 @@ fn generic_open(text: &[u8], at: usize) -> bool {
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {
     Resolution::Unresolved { reason }
-}
-
-/// The names from the outermost definition to the one that owns the scope.
-fn scope_names(scope: &Scope) -> Path {
-    match scope {
-        Scope::Module => Vec::new(),
-        Scope::Def(key) => {
-            let mut path = key.container.clone();
-            path.push(key.name.clone());
-            path
-        }
-        Scope::Callback { parent, .. } => scope_names(parent),
-    }
-}
-
-fn plain_relation(use_kind: UseKind) -> Relation {
-    match use_kind {
-        UseKind::Call | UseKind::Decorate => Relation::Calls,
-        UseKind::Read => Relation::Reads,
-        UseKind::Write => Relation::Writes,
-        UseKind::TypeUse => Relation::TypeUses,
-        UseKind::PassAsValue => Relation::PassesAsValue,
-        UseKind::Instantiate => Relation::Instantiates,
-        UseKind::Override => Relation::Overrides,
-    }
 }
 
 /// A call of a class makes an object; a method passed on is passed on, a type

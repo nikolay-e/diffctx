@@ -19,6 +19,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
+use super::index::scope_path;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
     UnresolvedReason,
@@ -711,19 +712,6 @@ impl Index {
                 }
             }
         }
-    }
-}
-
-/// The definitions a scope can name, outermost first; empty for a module.
-fn scope_path(scope: &Scope) -> Vec<Name> {
-    match scope {
-        Scope::Module => Vec::new(),
-        Scope::Def(key) => {
-            let mut path = key.container.clone();
-            path.push(key.name.clone());
-            path
-        }
-        Scope::Callback { parent, .. } => scope_path(parent),
     }
 }
 

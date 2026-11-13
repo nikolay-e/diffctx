@@ -23,9 +23,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use super::index::{Path, dir_of, join, scope_path};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
-    UnresolvedReason,
+    UnresolvedReason, plain_relation,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Language,
@@ -202,22 +203,6 @@ fn reads_inside_exports_are_the_export(bindings: &mut Vec<Binding>) {
 
 // ---- the index
 
-/// The names from the outermost definition to the one in question.
-type Path = Vec<Name>;
-
-/// The definitions a scope can name, outermost first; empty for a module.
-fn scope_path(scope: &Scope) -> Path {
-    match scope {
-        Scope::Module => Vec::new(),
-        Scope::Def(key) => {
-            let mut path = key.container.clone();
-            path.push(key.name.clone());
-            path
-        }
-        Scope::Callback { parent, .. } => scope_path(parent),
-    }
-}
-
 /// The scope and the callback scopes around it, innermost first, up to the
 /// definition or module that holds them: the places a local can be bound.
 fn ancestors(scope: &Scope) -> Vec<&Scope> {
@@ -314,18 +299,6 @@ struct Index {
     defaults: Vec<usize>,
     /// The top-level definitions of classic scripts, by name.
     globals: HashMap<Name, Vec<usize>>,
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
-}
-
-fn join(dir: &str, rest: &str) -> String {
-    match (dir.is_empty(), rest.is_empty()) {
-        (_, true) => dir.to_string(),
-        (true, false) => rest.to_string(),
-        (false, false) => format!("{dir}/{rest}"),
-    }
 }
 
 /// The path with its `.` and `..` steps taken; none when it climbs out of the
@@ -3615,18 +3588,6 @@ fn module_failure(found: &ModRes) -> Resolution {
         ModRes::File(_) => UnresolvedReason::Opaque,
     };
     Resolution::Unresolved { reason }
-}
-
-fn plain_relation(use_kind: UseKind) -> Relation {
-    match use_kind {
-        UseKind::Call | UseKind::Decorate => Relation::Calls,
-        UseKind::Read => Relation::Reads,
-        UseKind::Write => Relation::Writes,
-        UseKind::TypeUse => Relation::TypeUses,
-        UseKind::PassAsValue => Relation::PassesAsValue,
-        UseKind::Instantiate => Relation::Instantiates,
-        UseKind::Override => Relation::Overrides,
-    }
 }
 
 /// A call of a class makes an object, and so does a JSX element of a component;

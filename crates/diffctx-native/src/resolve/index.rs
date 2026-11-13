@@ -109,6 +109,21 @@ pub(super) fn join(dir: &str, rest: &str) -> String {
     }
 }
 
+/// A path without `.` and `..` segments.
+pub(super) fn normalise(path: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out.join("/")
+}
+
 impl Index {
     pub(super) fn build(files: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
         let mut index = Self::default();
