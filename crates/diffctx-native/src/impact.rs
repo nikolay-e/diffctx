@@ -5996,51 +5996,47 @@ pub(crate) fn symbol_module_output(
     root_dir: &Path,
     query: &str,
     deadline: Instant,
-) -> Option<ImpactOutput> {
+) -> anyhow::Result<Option<ImpactOutput>> {
     let limits = (
         Some(deadline),
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     );
-    let modules = decide::modules_named(root_dir, limits, query).unwrap_or_default();
+    let modules = decide::modules_named(root_dir, limits, query)?;
     if modules.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut output = symbol_blocks_output(root_dir, query);
     output.changed = modules
         .into_iter()
-        .map(|module| {
-            let lines = std::fs::read_to_string(root_dir.join(&module.file))
-                .map_or(1, |text| text.lines().count().max(1));
-            ChangedSymbol {
-                callers: module
-                    .importers
-                    .into_iter()
-                    .map(|importer| Caller {
-                        kind: vocabulary::stated_kind_of(
-                            &importer.file,
-                            vocabulary::RelationKind::Imports,
-                        ),
-                        ..Caller::at_line(
-                            importer.file,
-                            importer.inside,
-                            format!("{0}-{0}", importer.line),
-                            "resolved",
-                            "reference",
-                            importer.line,
-                        )
-                    })
-                    .collect(),
-                ..ChangedSymbol::bare(
-                    module.file,
-                    None,
-                    format!("1-{lines}"),
-                    "module",
-                    decide::Coverages::unowned(Vec::new()),
-                )
-            }
+        .map(|module| ChangedSymbol {
+            callers: module
+                .importers
+                .into_iter()
+                .map(|importer| Caller {
+                    kind: vocabulary::stated_kind_of(
+                        &importer.file,
+                        vocabulary::RelationKind::Imports,
+                    ),
+                    ..Caller::at_line(
+                        importer.file,
+                        importer.inside,
+                        format!("{0}-{0}", importer.line),
+                        "resolved",
+                        "reference",
+                        importer.line,
+                    )
+                })
+                .collect(),
+            ..ChangedSymbol::bare(
+                module.file,
+                None,
+                format!("1-{}", module.lines),
+                "module",
+                decide::Coverages::unowned(Vec::new()),
+            )
         })
         .collect();
-    Some(output)
+    Ok(Some(output))
 }
 
 /// A `--symbol` query that names only locals: one block each, never "no

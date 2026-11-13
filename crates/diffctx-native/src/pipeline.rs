@@ -230,9 +230,11 @@ pub fn build_symbol_impact(
                     Ok(crate::impact::symbol_local_output(root_dir, query, locals))
                 }
                 Ok(mut q) => {
-                    let module = (!q.malformed)
-                        .then(|| crate::impact::symbol_module_output(root_dir, query, deadline))
-                        .flatten();
+                    let module = if q.malformed {
+                        None
+                    } else {
+                        crate::impact::symbol_module_output(root_dir, query, deadline)?
+                    };
                     match (module, q.named.take()) {
                         (Some(output), _) => Ok(output),
                         (None, Some(named)) => {
