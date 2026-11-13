@@ -19,6 +19,7 @@ use crate::support::families::{
 };
 
 pub const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
+pub const ALIASES: &str = include_str!("seeds/aliases.yaml");
 
 #[derive(Deserialize)]
 pub struct Scaffold {
