@@ -13,7 +13,7 @@ use tree_sitter::Tree;
 
 use super::{
     Account, Alias, AliasScope, Basis, Entry, Known, Occurrence, Outcome, Unread, Verdict, View,
-    close_aliases, counts_against, implicit_kinds, outcomes, value_use,
+    admitted, close_aliases, counts_against, implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Coverage, Family, Gap};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
@@ -112,15 +112,24 @@ impl Shadow<'_> {
             );
             lines.push('\n');
         }
-        for (relation, coverage) in self.today {
-            let mut account = Account::new(definition.key.clone(), *relation, side);
+        // The relations the answer covers, then those an unexplained occurrence may
+        // be a use through that it has no coverage of.
+        let unanswered = admitted(definition.kind)
+            .iter()
+            .filter(|relation| self.today.iter().all(|(known, _)| known != *relation))
+            .map(|relation| (*relation, None));
+        let pairs = (self.today.iter())
+            .map(|(relation, coverage)| (*relation, Some(coverage)))
+            .chain(unanswered);
+        for (relation, coverage) in pairs {
+            let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
             account.entries = found
                 .entries
                 .iter()
                 .filter(|entry| {
                     !matches!(entry.outcome, Outcome::Candidate(_))
-                        || counts_against(entry, definition.kind, *relation)
+                        || counts_against(entry, definition.kind, relation)
                 })
                 .cloned()
                 .collect();
@@ -135,17 +144,18 @@ impl Shadow<'_> {
             };
             // What the answer was also held by, besides the file status and the
             // unplaced uses that occurrences replace.
-            let gaps: Vec<String> = coverage
-                .gaps()
-                .iter()
+            let gaps: Vec<String> = (coverage.into_iter())
+                .flat_map(|coverage| coverage.gaps())
                 .filter(|gap| !matches!(gap, Gap::Unaccounted { .. } | Gap::Unlanded { .. }))
                 .map(ToString::to_string)
                 .collect();
-            let today = if coverage.witness().is_some() {
-                "complete"
-            } else {
-                "partial"
-            };
+            let today = coverage.map(|coverage| {
+                if coverage.witness().is_some() {
+                    "complete"
+                } else {
+                    "partial"
+                }
+            });
             lines.push_str(
                 &json!({
                     "def": def, "side": side_text, "relation": relation.name(),
