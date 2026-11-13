@@ -3,7 +3,6 @@
 //! hand. Regenerate with `DIFFCTX_UPDATE_SCHEMAS=1 cargo test --test context_schema`.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 mod support;
 

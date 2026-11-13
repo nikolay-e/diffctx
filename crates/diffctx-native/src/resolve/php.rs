@@ -178,7 +178,6 @@ impl PhpResolver {
 /// What one `composer.json` says about where classes live.
 #[derive(Default, Debug)]
 struct ComposerRec {
-    dir: String,
     /// `(namespace prefix without the trailing backslash, directories)`.
     psr4: Vec<(String, Vec<String>)>,
     psr0: Vec<(String, Vec<String>)>,
@@ -230,10 +229,7 @@ impl Composer {
                 continue;
             };
             let dir = dir_of(path.as_str()).to_string();
-            let mut rec = ComposerRec {
-                dir: dir.clone(),
-                ..ComposerRec::default()
-            };
+            let mut rec = ComposerRec::default();
             for section in ["autoload", "autoload-dev"] {
                 let Some(autoload) = root.get(section) else {
                     continue;

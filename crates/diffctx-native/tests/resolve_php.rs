@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use _diffctx::facts::{DefKey, Disambig, FactsCache, LocalKey, Name, Scope, semantic_changes};
+use _diffctx::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_changes};
 use _diffctx::resolve::{
     Binding, CandidateReason, EvidenceKind, PhpResolver, Relation, Resolution,
 };

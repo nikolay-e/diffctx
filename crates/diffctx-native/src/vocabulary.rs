@@ -10,7 +10,6 @@
 pub enum Tier {
     One,
     Two,
-    Three,
 }
 
 /// The README's Tier table: a row per language as the README names it, with

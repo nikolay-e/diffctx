@@ -22,7 +22,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use _diffctx::facts::{DefKey, Disambig, FactsCache, LocalKey, Name, Scope, semantic_changes};
-use _diffctx::resolve::{Binding, CResolver, CandidateReason, EvidenceKind, Relation, Resolution};
+use _diffctx::resolve::{Binding, CResolver, CandidateReason, Relation, Resolution};
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree};
 use serde::Deserialize;
 use snapshot_fixture::Repo;
@@ -99,18 +99,6 @@ impl Fixture {
         found[0]
     }
 
-    /// The imports and re-exports of a file, in source order.
-    fn imports_of(&self, file: &str) -> Vec<&Binding> {
-        self.head
-            .bindings()
-            .iter()
-            .filter(|b| {
-                b.file.as_str() == file
-                    && matches!(b.relation, Relation::Imports | Relation::Reexports)
-            })
-            .collect()
-    }
-
     /// What the binding lands on, as one line.
     fn lands(&self, binding: &Binding) -> String {
         match &binding.resolution {
@@ -127,16 +115,6 @@ impl Fixture {
 
     fn lands_at(&self, file: &str, name: &str, line: u32) -> String {
         self.lands(self.at(file, name, line))
-    }
-}
-
-fn evidence(binding: &Binding) -> (EvidenceKind, Vec<String>) {
-    match &binding.resolution {
-        Resolution::Resolved { evidence, .. } | Resolution::Module { evidence, .. } => (
-            evidence.kind,
-            evidence.through.iter().map(|p| p.to_string()).collect(),
-        ),
-        other => panic!("no evidence on {other:?}"),
     }
 }
 
