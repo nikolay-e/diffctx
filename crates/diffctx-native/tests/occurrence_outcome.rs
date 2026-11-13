@@ -1201,6 +1201,44 @@ fn a_local_is_declared_where_its_name_is_written_and_a_plain_read_of_it_is_not_o
     }
 }
 
+/// (language, file, the subject's name, source, the line calling the subject)
+const SHADOWS: [(Lang, &str, &str, &str, u32); 3] = [
+    (
+        Lang::Rust,
+        "src/lib.rs",
+        "path",
+        "pub fn path() -> i64 {\n    1\n}\n\npub fn run() -> i64 {\n    let path =\n        path();\n    path\n}\n",
+        7,
+    ),
+    (
+        Lang::Php,
+        "src/config.php",
+        "config",
+        "<?php\n\nfunction config() {\n    return 1;\n}\n\nfunction run() {\n    $config =\n        config();\n    return $config;\n}\n",
+        9,
+    ),
+    (
+        Lang::Shell,
+        "run.sh",
+        "helper",
+        "#!/bin/bash\nhelper() {\n  echo 1\n}\nrun() {\n  local helper=1\n  helper\n  echo \"$helper\"\n}\n",
+        7,
+    ),
+];
+
+#[test]
+fn a_call_of_the_name_a_local_also_bears_is_no_read_of_the_local() {
+    for (lang, file, name, source, call) in SHADOWS {
+        let world = snapshot_in(lang, &[(file, source)]);
+        let found = world.outcomes(world.def(file, name), file, &[name]);
+        assert_ne!(
+            on(&found, call).outcome,
+            Outcome::NotOurs,
+            "{file}: {found:#?}"
+        );
+    }
+}
+
 #[test]
 fn a_name_read_where_the_local_is_not_in_force_stays_a_candidate() {
     let source = "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\nother() {\n  trap total EXIT\n}\n";

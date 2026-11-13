@@ -40,11 +40,11 @@ pub(super) const COMMAND_ARGUMENTS: &[(Family, &str, bool)] = &[
 /// The keyword that opens a block declaring the members of the type it names.
 pub(super) const IMPL_HEADS: &[(Family, &str)] = &[(Family::Rust, "impl")];
 
-/// Families whose variable locals declare at the name's span and whose local reads are unbound.
-pub(super) const NAMED_LOCALS: &[Family] = &[
-    Family::Rust,
-    Family::Go,
-    Family::Php,
-    Family::C,
-    Family::Shell,
+/// Families whose variable locals declare at the name and are read unbound; `true`: as `$name`.
+pub(super) const NAMED_LOCALS: &[(Family, bool)] = &[
+    (Family::Rust, false),
+    (Family::Go, false),
+    (Family::Php, true),
+    (Family::C, false),
+    (Family::Shell, true),
 ];
