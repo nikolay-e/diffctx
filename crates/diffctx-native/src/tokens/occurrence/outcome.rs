@@ -7,12 +7,14 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use super::rows::{BARE_HEADS, DECLARING_LOCALS, MODULE_PATHS};
+use super::rows::{BARE_HEADS, CLASS_CANDIDATES, DECLARING_LOCALS, MODULE_PATHS};
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
 };
-use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
+use crate::resolve::{
+    Binding, CandidateReason, Definition, Relation, Resolution, UnresolvedReason,
+};
 use crate::snapshot::RepoPath;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and
@@ -411,10 +413,37 @@ impl<'a> Reading<'a> {
         match &binding.resolution {
             Resolution::Resolved { target, .. } => self.resolved(target, binding),
             Resolution::Module { file, .. } => self.module(file, relation),
-            Resolution::Candidate { reason, .. } => {
-                Claim::candidate(relation, Reason::Resolver(*reason))
-            }
+            Resolution::Candidate { targets, reason } => self.candidate(targets, *reason, relation),
             Resolution::Unresolved { reason } => self.unresolved(*reason, binding, spelled),
+        }
+    }
+
+    /// A head definition of the class the candidates were read from, left out of them and
+    /// no override of one, is not called; any other subject may be.
+    fn candidate(
+        &self,
+        targets: &[DefKey],
+        reason: CandidateReason,
+        relation: Option<Relation>,
+    ) -> Claim {
+        let subject = &self.subject.key;
+        let class = |a: &DefKey, b: &DefKey| {
+            a.project == b.project && a.module == b.module && a.local.container == b.local.container
+        };
+        let left_out = CLASS_CANDIDATES
+            .iter()
+            .any(|(family, kind)| *kind == reason && family.has(self.file.language()))
+            && self.view.index.definitions.contains(subject)
+            && targets.iter().any(|key| class(key, subject))
+            && targets.iter().all(|key| {
+                key != subject
+                    && !self.family.contains(key)
+                    && self.view.index.definitions.contains(key)
+            });
+        if left_out {
+            Claim::new(relation, Outcome::NotOurs, Basis::OtherDefinition)
+        } else {
+            Claim::candidate(relation, Reason::Resolver(reason))
         }
     }
 
