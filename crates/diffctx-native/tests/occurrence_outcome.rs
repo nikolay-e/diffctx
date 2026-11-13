@@ -11,7 +11,7 @@ use std::sync::Arc;
 use _diffctx::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use _diffctx::resolve::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, PythonResolver, Relation,
-    Resolution, UnresolvedReason,
+    Resolution, TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use _diffctx::tokens::occurrence::{
@@ -35,7 +35,36 @@ fn repo_path(name: &str) -> RepoPath {
 
 /// `base` committed, then `head` written over it and committed: the files of the
 /// head side are the union, `head` winning. An empty `base` is one snapshot.
+#[derive(Clone, Copy)]
+enum Lang {
+    Python,
+    TypeScript,
+}
+
+/// What the language's resolver says of one side.
+fn resolved(
+    lang: Lang,
+    ctx: &AnalysisContext,
+    side: SideTag,
+    cache: &FactsCache,
+) -> (Vec<Binding>, Vec<Definition>) {
+    match lang {
+        Lang::Python => {
+            let it = PythonResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::TypeScript => {
+            let it = TypeScriptResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+    }
+}
+
 fn build(base: &[(&str, &str)], head: &[(&str, &str)]) -> World {
+    build_in(Lang::Python, base, head)
+}
+
+fn build_in(lang: Lang, base: &[(&str, &str)], head: &[(&str, &str)]) -> World {
     let repo = Repo::init();
     let mut texts: Vec<(String, String)> = Vec::new();
     let put = |texts: &mut Vec<(String, String)>, path: &str, text: &str| {
@@ -66,8 +95,8 @@ fn build(base: &[(&str, &str)], head: &[(&str, &str)]) -> World {
     let ctx = AnalysisContext::new(repo.root.clone(), range, RunBudget::default())
         .expect("an analysis context");
     let cache = FactsCache::disabled();
-    let head_side = PythonResolver::open(&ctx, SideTag::Head, &cache).expect("the head resolves");
-    let base_side = PythonResolver::open(&ctx, SideTag::Base, &cache).expect("the base resolves");
+    let (bindings, definitions) = resolved(lang, &ctx, SideTag::Head, &cache);
+    let (_, base_definitions) = resolved(lang, &ctx, SideTag::Base, &cache);
     let files = texts
         .iter()
         .map(|(path, _)| {
@@ -77,9 +106,9 @@ fn build(base: &[(&str, &str)], head: &[(&str, &str)]) -> World {
         })
         .collect();
     World {
-        bindings: head_side.bindings().to_vec(),
-        definitions: head_side.definitions().to_vec(),
-        base_definitions: base_side.definitions().to_vec(),
+        bindings,
+        definitions,
+        base_definitions,
         files,
         texts,
         _repo: repo,
@@ -88,6 +117,10 @@ fn build(base: &[(&str, &str)], head: &[(&str, &str)]) -> World {
 
 fn snapshot(files: &[(&str, &str)]) -> World {
     build(&[], files)
+}
+
+fn snapshot_in(lang: Lang, files: &[(&str, &str)]) -> World {
+    build_in(lang, &[], files)
 }
 
 impl World {
@@ -211,7 +244,7 @@ fn a_parameter_is_a_declaration_and_a_use_of_it_is_not_ours_by_its_scope() {
 }
 
 #[test]
-fn a_local_variable_site_stays_a_candidate_no_binding_proves_it_no_use() {
+fn a_local_variable_site_is_the_declaration_of_another_binding() {
     let world = snapshot(&[
         ("lib.py", LIB_F),
         ("app.py", "def g():\n    f = 2\n    return f\n"),
@@ -219,10 +252,61 @@ fn a_local_variable_site_stays_a_candidate_no_binding_proves_it_no_use() {
     let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
     assert_eq!(
         shape(on(&found, 2)),
-        ("candidate", "unproven", None),
+        ("declaration", "local_site", None),
         "{found:#?}"
     );
     assert_eq!(on(&found, 3).outcome, Outcome::NotOurs);
+}
+
+#[test]
+fn a_nested_def_site_is_the_declaration_of_another_binding() {
+    let world = snapshot(&[
+        ("lib.py", LIB_F),
+        (
+            "app.py",
+            "def g():\n    def f():\n        return 2\n    return f\n",
+        ),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_typescript_closure_site_is_the_declaration_of_another_binding() {
+    let world = snapshot_in(
+        Lang::TypeScript,
+        &[
+            ("lib.ts", "export function f() {\n  return 1;\n}\n"),
+            (
+                "app.ts",
+                "export function g() {\n  const f = () => 2;\n  return 1;\n}\n",
+            ),
+        ],
+    );
+    let found = world.outcomes(world.def("lib.ts", "f"), "app.ts", &["f"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_value_a_name_is_written_through_keeps_its_hedge_at_a_local_site() {
+    let world = snapshot(&[(
+        "lib.py",
+        "counter = 0\n\n\ndef bump():\n    global counter\n    counter = 5\n",
+    )]);
+    let found = world.outcomes(world.def("lib.py", "counter"), "lib.py", &["counter"]);
+    let write = on(&found, 6);
+    assert!(
+        matches!(write.outcome, Outcome::Ours | Outcome::Candidate(_)),
+        "a write to the module's variable is no declaration of a local: {found:#?}"
+    );
 }
 
 #[test]
