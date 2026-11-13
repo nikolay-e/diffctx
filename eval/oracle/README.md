@@ -66,10 +66,10 @@ a body-only edit, a deletion and a move.
 code. `report.py` prints one verdict line per threshold with the numbers behind
 it (a threshold with no input in the run is `not measured`, never a pass;
 `--gates FILE` reads another file, `--ac5-head` and `--ac5-base` the AC5
-scorer's `totals.json`). A run made with `--replay` records `replayed_from` in
-`run.json`, and its `safety.*` lines read `not decided: replayed answers`
-whatever the rows say; a replay made before the mark cannot be told from a fresh
-run, so decide on fresh answers only.
+scorer's `totals.json`). A `measure` run that asked the engine itself writes
+`"fresh": true` into `run.json`; a replay copies the record without it. Every
+`safety.*` line of a run without the mark reads `not decided: no fresh mark`
+whatever the rows say, so old runs and replays decide nothing.
 
 `--against DIR` pairs the run with another on the same commits and resamples
 over commits. A cell, one (language, mode, relation), is *measured* when the
