@@ -1250,12 +1250,7 @@ impl<'w> Engine<'w> {
         )
     }
 
-    fn resolved(&self, id: usize, how: EvidenceKind) -> Resolution {
-        Resolution::Resolved {
-            target: self.ix.defs[id].key.clone(),
-            evidence: Evidence::new(how),
-        }
-    }
+    ground_methods!();
 
     fn resolved_or_candidates(&self, ids: &[usize], how: EvidenceKind) -> Resolution {
         match ids {
@@ -1263,17 +1258,6 @@ impl<'w> Engine<'w> {
             [] => unresolved(UnresolvedReason::NoBinding),
             many => self.candidates(many, CandidateReason::Overloaded),
         }
-    }
-
-    fn candidates(&self, ids: &[usize], reason: CandidateReason) -> Resolution {
-        let mut targets: Vec<DefKey> = Vec::new();
-        for id in ids {
-            let key = self.ix.defs[*id].key.clone();
-            if !targets.contains(&key) {
-                targets.push(key);
-            }
-        }
-        Resolution::Candidate { targets, reason }
     }
 
     fn value_use(&self, f: usize, scope: &[Name], r: &Ref) -> (Relation, Resolution) {

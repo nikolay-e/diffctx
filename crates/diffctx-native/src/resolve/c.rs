@@ -772,23 +772,7 @@ impl<'w> Engine<'w> {
             .collect()
     }
 
-    fn resolved(&self, id: usize, how: EvidenceKind) -> Resolution {
-        Resolution::Resolved {
-            target: self.ix.defs[id].key.clone(),
-            evidence: Evidence::new(how),
-        }
-    }
-
-    fn candidates(&self, ids: &[usize], reason: CandidateReason) -> Resolution {
-        let mut targets: Vec<DefKey> = Vec::new();
-        for id in ids {
-            let key = self.ix.defs[*id].key.clone();
-            if !targets.contains(&key) {
-                targets.push(key);
-            }
-        }
-        Resolution::Candidate { targets, reason }
-    }
+    ground_methods!();
 
     /// Of definitions of one name, the ones that are the same thing in a
     /// different place: a definition under `#if` stands beside the others.
