@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_erlang_file(path: &Path) -> bool {
     base::has_ext(path, &[".erl", ".hrl"])
@@ -62,12 +62,8 @@ impl EdgeBuilder for ErlangEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["erlang_include"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut mod_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        let mut fn_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut mod_to_frags, extract_modules(&f.content), &f.id);
-            base::index_lower(&mut fn_to_frags, extract_func_defs(&f.content), &f.id);
-        }
+        let mods = base::DefIndex::new(&frags, reverse_factor, extract_modules);
+        let fns = base::DefIndex::new(&frags, reverse_factor, extract_func_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -76,30 +72,17 @@ impl EdgeBuilder for ErlangEdgeBuilder {
             for cap in INCLUDE_RE.captures_iter(&f.content) {
                 base::link_by_name(&f.id, &cap[1], &idx, &mut edges, include_w, reverse_factor);
             }
-            for cap in BEHAVIOUR_RE.captures_iter(&f.content) {
-                if let Some(targets) = mod_to_frags.get(&cap[1].to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, behaviour_w, reverse_factor);
-                }
-            }
-            for cap in IMPORT_RE.captures_iter(&f.content) {
-                if let Some(targets) = mod_to_frags.get(&cap[1].to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, include_w, reverse_factor);
-                }
-            }
-            for cap in REMOTE_CALL_RE.captures_iter(&f.content) {
-                let module = &cap[1];
-                if let Some(targets) = mod_to_frags.get(&module.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, call_w, reverse_factor);
-                }
-            }
-            for id in &f.identifiers {
-                if self_fns.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = fn_to_frags.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, call_w, reverse_factor);
-                }
-            }
+            let behaviours = base::captures1(&BEHAVIOUR_RE, &f.content);
+            mods.link(&mut edges, &f.id, behaviours, behaviour_w);
+            mods.link(
+                &mut edges,
+                &f.id,
+                base::captures1(&IMPORT_RE, &f.content),
+                include_w,
+            );
+            let remote = base::captures1(&REMOTE_CALL_RE, &f.content);
+            mods.link(&mut edges, &f.id, remote, call_w);
+            fns.link_except(&mut edges, &f.id, &f.identifiers, &self_fns, call_w);
         }
         edges
     }

@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_openapi_candidate(path: &Path) -> bool {
     let ext = base::file_ext(path);
@@ -93,19 +93,13 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["openapi_internal_ref"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut schema_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut schema_to_frags, extract_schema_defs(&f.content), &f.id);
-        }
+        let schemas = base::DefIndex::new(&frags, reverse_factor, extract_schema_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
         for f in &frags {
-            for iref in extract_internal_refs(&f.content) {
-                if let Some(targets) = schema_to_frags.get(&iref.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, internal_w, reverse_factor);
-                }
-            }
+            let irefs = extract_internal_refs(&f.content);
+            schemas.link(&mut edges, &f.id, irefs, internal_w);
             for eref in extract_external_refs(&f.content) {
                 base::link_by_name(&f.id, &eref, &idx, &mut edges, external_w, reverse_factor);
             }
