@@ -1,0 +1,39 @@
+name: fj188_call_in_a_file_whose_import_list_holds_a_parse_error_is_resolved
+mode: symbol
+source: fj#188
+issue_state: open
+tags: [go, parse-error]
+repo:
+  initial_files:
+    go.mod: |
+      module example.invalid/shop
+
+      go 1.22
+    price/price.go: |
+      package price
+
+      func Total(n int) int {
+      	return n * 2
+      }
+    cmd/main.go: |
+      package main
+
+      import (
+      	"fmt"
+      	"example.invalid/shop/price" $
+      )
+
+      func main() {
+      	fmt.Println(price.Total(3))
+      }
+query:
+  symbol: Total
+expect:
+  definitions:
+  - price/price.go::Total
+  relations:
+  - from: cmd/main.go::main
+    to: price/price.go::Total
+    kind: calls
+    resolution: resolved
+    site: 9

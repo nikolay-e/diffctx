@@ -1,0 +1,43 @@
+name: go_parse_loss_in_the_defining_file_is_disclosed_not_listed_as_a_caller
+mode: impact
+source: gh#690
+issue_state: open
+tags: [go, parse, coverage, own-file]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/p
+
+      go 1.22
+    p.go: |
+      package p
+
+      func F() int { return 1 }
+    q.go: |
+      package p
+
+      func G() int {
+          return F()
+      }
+  changed_files:
+    p.go: |
+      package p
+
+      func F() int { return 2 }
+
+      func Broken( {
+  commit_message: "p: change F, leave a parse error in its file"
+expect:
+  changed:
+  - p.go::F
+  relations:
+  - from: q.go::G
+    to: p.go::F
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: true
+  coverage:
+    p.go::F:
+      calls: partial
+  discloses: true
