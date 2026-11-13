@@ -223,14 +223,6 @@ impl KotlinFacts {
         !self.error_lines.is_empty()
     }
 
-    /// The innermost declaration holding a byte.
-    pub fn declaration_at_byte(&self, at: usize) -> Option<&Declaration> {
-        self.declarations
-            .iter()
-            .filter(|d| d.span.contains(&at))
-            .min_by_key(|d| d.span.len())
-    }
-
     /// The declaration a fragment starting at `line` stands for.
     pub fn declaration_named(&self, name: &str, line: u32) -> Option<&Declaration> {
         self.declarations
