@@ -101,7 +101,8 @@ fn assigned_to(file: &FileFacts, text: &[u8], at: &Range<u32>) -> Option<(Name, 
                 ) =>
             {
                 let scope = declared_in(file, &def.local);
-                (&def.local.name, scope, &def.name_span.bytes, false)
+                let field = matches!(def.kind, DefKind::Property | DefKind::Field);
+                (&def.local.name, scope, &def.name_span.bytes, field)
             }
             Fact::LocalBinding(local) if local.site.bytes.len() == local.name.as_str().len() => (
                 &local.name,
@@ -133,7 +134,7 @@ fn assigned_to(file: &FileFacts, text: &[u8], at: &Range<u32>) -> Option<(Name, 
 /// `kind` is where the definition is not called: an alias, a leak at a place the
 /// facts tell, or, for a callable, a candidate; `None` leaves it `ours`. The
 /// occurrence is matched to its reference by span equality. `relation` is the
-/// binding's: an import or a re-export is no value position.
+/// binding's: an import, a re-export or an override is no value position.
 pub fn value_use(
     file: &FileFacts,
     text: &[u8],
@@ -141,7 +142,10 @@ pub fn value_use(
     kind: DefKind,
     relation: Option<Relation>,
 ) -> Option<(Outcome, Basis)> {
-    if matches!(relation, Some(Relation::Imports | Relation::Reexports)) {
+    if matches!(
+        relation,
+        Some(Relation::Imports | Relation::Reexports | Relation::Overrides)
+    ) {
         return None;
     }
     let unplaced = || {

@@ -271,6 +271,9 @@ impl Shadow<'_> {
                     {
                         entry.outcome = outcome;
                         entry.basis = basis;
+                        if matches!(entry.outcome, Outcome::Candidate(_)) {
+                            entry.relation = Some(Relation::Calls);
+                        }
                     }
                 }
                 if let Outcome::Alias(alias) = &entry.outcome {
