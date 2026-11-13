@@ -3,16 +3,16 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 142435
+product_lines = 142382
 allow_count = 139
 root_modules = 63
 
 [big_files]
 "crates/diffctx-native/src/decide.rs" = 4304
-"crates/diffctx-native/src/facts/lang/c.rs" = 2033
-"crates/diffctx-native/src/facts/lang/php.rs" = 1955
+"crates/diffctx-native/src/facts/lang/c.rs" = 2011
+"crates/diffctx-native/src/facts/lang/php.rs" = 1930
 "crates/diffctx-native/src/facts/lang/python.rs" = 2680
-"crates/diffctx-native/src/facts/lang/rust.rs" = 1985
+"crates/diffctx-native/src/facts/lang/rust.rs" = 1963
 "crates/diffctx-native/src/facts/lang/typescript.rs" = 4340
 "crates/diffctx-native/src/graph.rs" = 1564
 "crates/diffctx-native/src/hook.rs" = 4163
@@ -57,13 +57,13 @@ deletes = [
 "crates/diffctx-native/src/facts/mod.rs" = { base = 49, plus = 1 }
 "crates/diffctx-native/src/facts/model.rs" = { base = 575, plus = 28 }
 "crates/diffctx-native/src/lib.rs" = { base = 91, plus = 1 }
-"crates/diffctx-native/src/facts/lang/c.rs" = { base = 2033, plus = 1 }
+"crates/diffctx-native/src/facts/lang/c.rs" = { base = 2011, plus = 1 }
 "crates/diffctx-native/src/facts/lang/go.rs" = { base = 1474, plus = 1 }
 "crates/diffctx-native/src/facts/lang/java.rs" = { base = 609, plus = 1 }
 "crates/diffctx-native/src/facts/lang/kotlin.rs" = { base = 688, plus = 1 }
-"crates/diffctx-native/src/facts/lang/php.rs" = { base = 1955, plus = 1 }
+"crates/diffctx-native/src/facts/lang/php.rs" = { base = 1930, plus = 1 }
 "crates/diffctx-native/src/facts/lang/python.rs" = { base = 2680, plus = 1 }
-"crates/diffctx-native/src/facts/lang/rust.rs" = { base = 1985, plus = 1 }
+"crates/diffctx-native/src/facts/lang/rust.rs" = { base = 1963, plus = 1 }
 "crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
 "crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 751, plus = 1 }
 "crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }
