@@ -21,6 +21,7 @@ pub mod go;
 pub mod helm;
 pub mod html;
 pub mod java;
+mod jvm;
 pub mod kotlin;
 pub mod php;
 pub mod python;
