@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use super::rows::{BARE_HEADS, DECLARING_LOCALS};
+use super::rows::{BARE_HEADS, DECLARING_LOCALS, MODULE_PATHS};
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
@@ -549,7 +549,10 @@ impl<'a> Reading<'a> {
     fn unbound(&self, occurrence: &Occurrence) -> Claim {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
-        if let Some(basis) = self.bare_head(occurrence, spelled) {
+        if let Some(basis) = self
+            .bare_head(occurrence, spelled)
+            .or_else(|| self.module_path(occurrence))
+        {
             return Claim::new(None, Outcome::NotOurs, basis);
         }
         let wide = self.view.in_file(&occurrence.file).find(|binding| {
@@ -605,6 +608,22 @@ impl<'a> Reading<'a> {
         } else {
             (*receiver && self.outside_class(start)).then_some(Basis::BareName)
         }
+    }
+
+    /// A segment of the module path an import names is a module, never a definition.
+    fn module_path(&self, occurrence: &Occurrence) -> Option<Basis> {
+        let (_, opens, closes) = MODULE_PATHS
+            .iter()
+            .find(|row| row.0.has(self.file.language()))?;
+        let at = occurrence.bytes.start;
+        let import = (self.imports.iter()).find(|import| import.site.bytes.contains(&at))?;
+        let site = &import.site.bytes;
+        let words: Vec<&[u8]> = self.text[site.start as usize..at as usize]
+            .split(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+            .filter(|word| !word.is_empty())
+            .collect();
+        (words.first() == Some(&opens.as_bytes()) && !words.contains(&closes.as_bytes()))
+            .then_some(Basis::OtherModule)
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body.

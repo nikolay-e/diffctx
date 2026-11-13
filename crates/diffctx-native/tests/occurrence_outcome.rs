@@ -832,3 +832,36 @@ fn an_unbound_spelling_counts_against_the_relations_the_kind_admits() {
         Relation::Calls
     ));
 }
+
+#[test]
+fn a_segment_of_an_import_module_path_is_no_reference() {
+    let world = snapshot(&[
+        ("pricing.py", "def pricing():\n    return 1\n"),
+        ("app.py", "from pricing import total\n"),
+    ]);
+    let found = world.outcomes(world.def("pricing.py", "pricing"), "app.py", &["pricing"]);
+    assert_eq!(
+        shape(on(&found, 1)),
+        ("not_ours", "other_module", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn the_name_an_import_takes_from_a_module_of_its_own_name_stays_a_reference() {
+    let world = snapshot(&[
+        ("pricing.py", "def pricing():\n    return 1\n"),
+        ("app.py", "from pricing import (\n    pricing,\n)\n"),
+    ]);
+    let found = world.outcomes(world.def("pricing.py", "pricing"), "app.py", &["pricing"]);
+    assert_eq!(
+        shape(on(&found, 1)),
+        ("not_ours", "other_module", None),
+        "{found:#?}"
+    );
+    let name = on(&found, 2);
+    assert!(
+        matches!(name.outcome, Outcome::Ours | Outcome::Candidate(_)),
+        "the imported name is the subject: {found:#?}"
+    );
+}
