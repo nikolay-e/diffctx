@@ -151,16 +151,18 @@ edited by hand) after the fresh seed.
 `report.py` counts an *incomplete complete* per cell (an answer complete for a
 definition and relation that lists none of a truth site it can reach; a false
 complete negative is the case where it lists no caller at all) and lists every
-pair. A *silent loss* is a changed definition with no entry, no fold row naming
-it and no disclosure of its file; `measure.py` writes one `silent_loss.jsonl` row
-per scored impact answer, counted per answer: the definitions it lost, less the
-`unnamed_omitted` it says it shed without a name (never below 0). Every missing
-definition is listed with that count beside it and with what classifies it, an
-entry of its file or name under another key being an identity mismatch and none
-an engine loss. A run without `silent_loss.jsonl` or the `incomplete_complete`
-column (an older run) leaves those lines `N/A`; an answer that lost nothing
-still has its row, so a zero is a witnessed zero. The silent-loss gate is `read`:
-each row is read and classified.
+pair. Complete is counted per changed definition and relation group (calls,
+reads), not per answer, and every printed count says so
+(`compare.COUNTING_BASIS`). A *silent loss* is a changed definition with no
+entry, no fold row naming it and no disclosure of its file; `measure.py` writes
+one `silent_loss.jsonl` row per scored impact answer, counted per answer: the
+definitions it lost, less the `unnamed_omitted` it says it shed without a name
+(never below 0). Every missing definition is listed with that count beside it
+and with what classifies it, an entry of its file or name under another key
+being an identity mismatch and none an engine loss. A run without
+`silent_loss.jsonl` or the `incomplete_complete` column (an older run) leaves
+those lines `N/A`; an answer that lost nothing still has its row, so a zero is a
+witnessed zero. The silent-loss gate is `read`: each row is read and classified.
 
 ## Pins and isolation
 

@@ -24,6 +24,7 @@ from pathlib import Path
 import adjudication
 import cellstate
 import paired
+from compare import COUNTING_BASIS
 from corpus import ROOT
 from gates import Threshold, holds, limit_text, load_gates
 from model import UNCAPPED_BUDGET
@@ -177,6 +178,7 @@ def paired_entry(run: Path, base: LoadedRun, rule: paired.Measurability) -> dict
         "head": head.path.name,
         "budgets": (base.budget, head.budget),
         "result": paired.compare_runs(base.path, head.path, rule),
+        "complete_basis": COUNTING_BASIS,
     }
 
 
@@ -193,7 +195,7 @@ def incomplete_complete_report(scip: list[dict], relations: list[dict]) -> dict 
         for pair in relations
         if pair.get("incomplete_complete")
     ]
-    return {"count": sum(counted), "listing": listing}
+    return {"count": sum(counted), "basis": COUNTING_BASIS, "listing": listing}
 
 
 def silent_loss_report(answers: list[dict]) -> dict | None:
@@ -340,7 +342,9 @@ def observations(report: dict, states: list[cellstate.CellState], gates: dict[st
         seen["safety.false_fold"].append(("oracle cells", sum(r["false_fold"] for r in report["scip"]), ""))
     if report.get("incomplete_complete"):
         found = report["incomplete_complete"]
-        seen["safety.incomplete_complete"].append(("oracle cells", found["count"], f"{len(found['listing'])} pairs listed"))
+        seen["safety.incomplete_complete"].append(
+            ("oracle cells", found["count"], f"{len(found['listing'])} pairs listed; {COUNTING_BASIS}")
+        )
     if report.get("silent_loss"):
         found = report["silent_loss"]
         detail = (
@@ -607,7 +611,7 @@ def render_safety_listings(report: dict) -> list[str]:
     found = report.get("incomplete_complete")
     if found:
         parts += ["", "## Incomplete complete: the answer is complete for a definition and relation, a truth site is missing", ""]
-        parts += [f"{found['count']} truth pairs, by cell in the table above (Incompl. compl.); every pair:", ""]
+        parts += [f"{found['count']} truth pairs, by cell above (Incompl. compl.); {found['basis']}. Every pair:", ""]
         parts += [table_of(INCOMPLETE_COLUMNS, found["listing"], "No pair listed (run without relations.jsonl).")]
     silent = report.get("silent_loss")
     if silent:
@@ -637,7 +641,13 @@ def render(report: dict) -> str:
     parts.append(table_of(SCIP_COLUMNS, report["scip"], "No scored cells."))
     parts += render_safety_listings(report)
     if report.get("scip_adjudicated") is not None:
-        parts += ["", "## SCIP truth with the adjudicated overrides", "", report["scip_adjudicated_note"], ""]
+        parts += [
+            "",
+            "## SCIP truth with the adjudicated overrides",
+            "",
+            f"{report['scip_adjudicated_note']} {COUNTING_BASIS}.",
+            "",
+        ]
         parts += [table_of(SCIP_COLUMNS, report["scip_adjudicated"], "No scored cells.")]
         parts += ["", "### SCIP against the adjudicated set", "", table_of(ADJUDICATION_COLUMNS, report["adjudication"], "")]
     if report.get("curve"):
