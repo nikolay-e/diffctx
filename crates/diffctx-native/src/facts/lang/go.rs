@@ -43,11 +43,12 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use super::walker::hash_outside;
 use super::{children, lines_of, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
-    Scope, Star, TypeName, UseKind, Visibility, expired, hash_text,
+    Scope, Star, TypeName, UseKind, Visibility, expired,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -247,26 +248,9 @@ impl<'t> Walker<'t> {
         }
     }
 
-    fn tick(&mut self) -> bool {
-        if self.ticks % POLL_EVERY == 0 && expired(self.budget) {
-            self.halted = true;
-        }
-        self.ticks += 1;
-        !self.halted
-    }
-
-    fn deeper(&mut self, depth: u16) -> bool {
-        if depth > MAX_DEPTH {
-            self.too_deep = true;
-            return false;
-        }
-        self.tick()
-    }
-
-    fn text(&self, node: Node<'_>) -> &'t str {
-        let bytes: &'t [u8] = self.bytes;
-        std::str::from_utf8(&bytes[node.start_byte()..node.end_byte()]).unwrap_or("")
-    }
+    walker_methods!();
+    walker_depth!();
+    walker_emit!();
 
     // ---- locals
 
@@ -456,7 +440,7 @@ impl<'t> Walker<'t> {
             decorators: Vec::new(),
             visibility: Self::visibility(name),
             body_hash,
-            text_hash: self.text_hash(span_node, members),
+            text_hash: hash_outside(self.bytes, span_node, members),
             doc_hash,
         }));
         key
@@ -514,25 +498,6 @@ impl<'t> Walker<'t> {
             }
         }
         hash.finish().unwrap_or(0)
-    }
-
-    fn text_hash(&self, node: Node<'t>, members: &[Node<'t>]) -> u64 {
-        let mut cuts: Vec<(usize, usize)> = members
-            .iter()
-            .map(|m| (m.start_byte(), m.end_byte()))
-            .collect();
-        cuts.sort_unstable();
-        let mut pieces: Vec<&[u8]> = Vec::new();
-        let mut at = node.start_byte();
-        for (from, to) in cuts {
-            if from >= at {
-                pieces.push(self.bytes[at..from].trim_ascii());
-                at = to;
-            }
-        }
-        pieces.push(self.bytes[at..node.end_byte()].trim_ascii());
-        let joined: Vec<u8> = pieces.join(&b'\n');
-        hash_text(&joined)
     }
 
     // ---- functions and methods
@@ -953,25 +918,6 @@ impl<'t> Walker<'t> {
     }
 
     // ---- statements and expressions
-
-    fn emit(
-        &mut self,
-        site: Node<'t>,
-        cx: &Cx,
-        receiver: Receiver,
-        use_kind: UseKind,
-        name: &str,
-        qualifier: Vec<Name>,
-    ) {
-        self.facts.push(Fact::Reference(Ref {
-            site: span(site),
-            enclosing: cx.scope.clone(),
-            receiver,
-            use_kind,
-            name: Name::new(name),
-            qualifier,
-        }));
-    }
 
     /// `a`, `a.b`, `a.b.c` as `[a, b, c]` when it is made of identifiers only.
     fn chain(&self, node: Node<'t>) -> Option<Vec<String>> {
