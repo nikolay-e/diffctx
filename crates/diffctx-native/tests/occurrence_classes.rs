@@ -4,13 +4,17 @@
 // that breaks it is printed with the seed's name. A class fails on a build
 // whose "complete" does not come from explained occurrences.
 
+use std::collections::BTreeSet;
+
+use _diffctx::facts::EntryKind;
+
 mod support;
 use support::families::{Family, says_empty};
 #[path = "support/occurrence/mod.rs"]
 mod occurrence;
 use occurrence::{
-    ALIASES, LEAKS, accounts_for, calls_complete, corpus, covers, load, no_scaffold, run_seeds,
-    scaffolds,
+    ALIASES, IMPLICIT, LEAKS, accounts_for, calls_complete, corpus, covers, engine_implicit_kinds,
+    load, no_scaffold, run_seeds, says_nobody, scaffolds,
 };
 
 #[test]
@@ -100,6 +104,76 @@ fn a_value_leak_makes_the_calls_relation_partial() {
                 "a {} use leaves the calls relation complete = {found:?}, expected {expected}",
                 seed.kind
             )),
+        }
+    });
+}
+
+// The kinds of the contract's table of implicit calls. A kind of the engine's
+// `Implicit` that has no row here, or a row the engine lacks, fails the suite.
+const IMPLICIT_KINDS: [&str; 6] = [
+    "operator", "protocol", "override", "entry", "test", "outside",
+];
+
+// The seed of each way the engine knows a framework or a language enters a
+// definition: a full match, so a new `EntryKind` stops this file compiling
+// until it has a seed.
+fn entry_seed(kind: EntryKind) -> &'static str {
+    match kind {
+        EntryKind::Main => "rust_main",
+        EntryKind::ScriptGuard => "python_script_guard",
+        EntryKind::Test => "python_test_function",
+        EntryKind::Command => "python_click_command",
+        EntryKind::Route => "python_flask_route",
+        EntryKind::Scheduled => "java_spring_scheduled",
+        EntryKind::Tool => "python_mcp_tool",
+        EntryKind::Fixture => "python_pytest_fixture",
+    }
+}
+
+// Class 4. A definition invoked without its name written (an operator, a
+// protocol method, an override of an outside base, an entry, a test, an
+// export) is never reported as called by nobody: the answer names it with the
+// kind of the unknown or lists the entry that reaches it.
+#[test]
+fn an_implicit_call_is_never_nobody() {
+    let seeds = load(IMPLICIT);
+    let kinds: BTreeSet<&str> = seeds.iter().map(|s| s.kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        BTreeSet::from(IMPLICIT_KINDS),
+        "a kind has no seed, or a seed has no kind"
+    );
+    if let Some(engine) = engine_implicit_kinds() {
+        assert_eq!(
+            engine,
+            IMPLICIT_KINDS
+                .iter()
+                .map(|k| (*k).to_string())
+                .collect::<BTreeSet<String>>(),
+            "the engine's `Implicit` and the seeds' kinds differ"
+        );
+    }
+    for kind in [
+        EntryKind::Main,
+        EntryKind::ScriptGuard,
+        EntryKind::Test,
+        EntryKind::Command,
+        EntryKind::Route,
+        EntryKind::Scheduled,
+        EntryKind::Tool,
+        EntryKind::Fixture,
+    ] {
+        let name = entry_seed(kind);
+        assert!(
+            seeds.iter().any(|s| s.name == name),
+            "{kind:?}: no seed named {name}"
+        );
+    }
+    run_seeds("an implicit call", &seeds, |seed, doc| {
+        if says_nobody(doc, seed.symbol()) {
+            Err(format!("the answer says nothing calls {}", seed.symbol()))
+        } else {
+            Ok(())
         }
     });
 }
