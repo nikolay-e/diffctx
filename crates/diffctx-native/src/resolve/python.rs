@@ -20,7 +20,7 @@ use std::rc::Rc;
 use super::index::{ImportRec, Index, Path, Spec, join, scope_path};
 use super::modules::ModuleRes;
 use super::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
 };
 use crate::facts::{
@@ -41,11 +41,7 @@ const MAX_HOPS: usize = 8;
 
 /// The bindings of one snapshot's Python files.
 pub struct PythonResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
+    solved: Solved,
 }
 
 impl PythonResolver {
@@ -88,52 +84,13 @@ impl PythonResolver {
         );
         let (definitions, bindings) = engine.run();
         losses.extend(engine.losses.take());
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
         Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
+            solved: Solved::new(definitions, bindings, losses, read),
         })
     }
-
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
-    }
-
-    /// What the answer is partial for: files the extractor could not fully read,
-    /// reads that failed, a run cut short.
-    pub fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
-    }
 }
+
+solved_by!(PythonResolver);
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum Entity {

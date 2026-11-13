@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::index::scope_path;
 use super::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
 use crate::facts::FileFacts;
@@ -130,11 +130,7 @@ const STD_CRATES: &[&str] = &["std", "core", "alloc", "proc_macro", "test"];
 
 /// The bindings of one snapshot's Rust files.
 pub struct RustResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
+    solved: Solved,
     /// Files of a library crate that a module path declared `pub` from the
     /// crate's root leads to.
     public: HashSet<String>,
@@ -191,56 +187,15 @@ impl RustResolver {
                 "the trait table was read while it was being built".into(),
             ));
         }
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
         let owners = owned
             .into_iter()
             .map(|(owner, member, _)| (member, owner))
             .collect();
         Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
+            solved: Solved::new(definitions, bindings, losses, read),
             public,
             owners,
         })
-    }
-
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
-    }
-
-    /// What the answer is partial for: files the extractor could not fully
-    /// read, a run cut short.
-    pub fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
     }
 
     /// Whether the file is a module of a library crate that every `mod` from
@@ -255,6 +210,8 @@ impl RustResolver {
         self.owners.get(member)
     }
 }
+
+solved_by!(RustResolver);
 
 // ---- the index
 
