@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use _diffctx::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use _diffctx::resolve::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, PythonResolver, Relation,
-    Resolution, TypeScriptResolver, UnresolvedReason,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, JavaResolver, PythonResolver,
+    Relation, Resolution, TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use _diffctx::tokens::occurrence::{
@@ -39,6 +39,7 @@ fn repo_path(name: &str) -> RepoPath {
 enum Lang {
     Python,
     TypeScript,
+    Java,
 }
 
 /// What the language's resolver says of one side.
@@ -55,6 +56,10 @@ fn resolved(
         }
         Lang::TypeScript => {
             let it = TypeScriptResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Java => {
+            let it = JavaResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
     }
@@ -174,6 +179,14 @@ fn find<'a>(definitions: &'a [Definition], file: &str, dotted: &str) -> &'a Defi
                     .eq(parts.iter().copied())
         })
         .unwrap_or_else(|| panic!("no definition {dotted} in {file}"))
+}
+
+/// The definition of `file` declared at `line`: overloads share a name.
+fn declared_at<'a>(definitions: &'a [Definition], file: &str, line: u32) -> &'a Definition {
+    definitions
+        .iter()
+        .find(|def| def.file.as_str() == file && def.span.lines.0 == line)
+        .unwrap_or_else(|| panic!("no definition at {file}:{line}"))
 }
 
 /// The one entry on `line`.
@@ -863,5 +876,85 @@ fn the_name_an_import_takes_from_a_module_of_its_own_name_stays_a_reference() {
     assert!(
         matches!(name.outcome, Outcome::Ours | Outcome::Candidate(_)),
         "the imported name is the subject: {found:#?}"
+    );
+}
+
+const OVER: &str = "package o;\n\nclass Over {\n    int add(int a) {\n        return a;\n    }\n\n    int add(long a) {\n        return 0;\n    }\n\n    int add(int a, int b) {\n        return a + b;\n    }\n\n    void use() {\n        add(1);\n    }\n}\n";
+
+const OVERLOADED: Outcome = Outcome::Candidate(Reason::Resolver(CandidateReason::Overloaded));
+
+#[test]
+fn an_overload_the_argument_count_leaves_out_of_the_candidates_is_not_called() {
+    let world = snapshot_in(Lang::Java, &[("o/Over.java", OVER)]);
+    let subject = declared_at(&world.definitions, "o/Over.java", 12);
+    let found = world.outcomes(subject, "o/Over.java", &["add"]);
+    assert_eq!(
+        shape(on(&found, 17)),
+        ("not_ours", "other_definition", Some(Relation::Calls)),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn an_overload_among_the_candidates_stays_a_candidate() {
+    let world = snapshot_in(Lang::Java, &[("o/Over.java", OVER)]);
+    let subject = declared_at(&world.definitions, "o/Over.java", 4);
+    let found = world.outcomes(subject, "o/Over.java", &["add"]);
+    assert_eq!(on(&found, 17).outcome, OVERLOADED, "{found:#?}");
+}
+
+#[test]
+fn an_overload_of_a_base_class_stays_a_candidate() {
+    let world = snapshot_in(
+        Lang::Java,
+        &[(
+            "o/Over.java",
+            "package o;\n\nclass Base {\n    int add(int a, int b) {\n        return a + b;\n    }\n}\n\nclass Over extends Base {\n    int add(int a) {\n        return a;\n    }\n\n    int add(long a) {\n        return 0;\n    }\n\n    void use() {\n        add(1);\n    }\n}\n",
+        )],
+    );
+    let subject = declared_at(&world.definitions, "o/Over.java", 4);
+    let found = world.outcomes(subject, "o/Over.java", &["add"]);
+    assert_eq!(on(&found, 19).outcome, OVERLOADED, "{found:#?}");
+}
+
+#[test]
+fn a_removed_overload_stays_a_candidate_where_its_neighbours_are() {
+    let head = OVER.replace(
+        "    int add(int a, int b) {\n        return a + b;\n    }\n\n",
+        "",
+    );
+    let world = build_in(
+        Lang::Java,
+        &[("o/Over.java", OVER)],
+        &[("o/Over.java", head.as_str())],
+    );
+    let removed = declared_at(&world.base_definitions, "o/Over.java", 12);
+    let found = world.outcomes(removed, "o/Over.java", &["add"]);
+    assert_eq!(on(&found, 13).outcome, OVERLOADED, "{found:#?}");
+}
+
+const DISP: &str = "package d;\n\ninterface Repo {\n    String find(int id);\n\n    String find(int id, int page);\n}\n\nclass Mem implements Repo {\n    @Override public String find(int id) {\n        return \"m\";\n    }\n\n    public String find(int id, int page) {\n        return \"p\";\n    }\n}\n\nclass Use {\n    String through(Repo repo) {\n        return repo.find(1);\n    }\n}\n";
+
+#[test]
+fn a_call_through_a_supertype_is_not_to_an_overload_of_another_arity() {
+    let world = snapshot_in(Lang::Java, &[("d/Disp.java", DISP)]);
+    let subject = declared_at(&world.definitions, "d/Disp.java", 6);
+    let found = world.outcomes(subject, "d/Disp.java", &["find"]);
+    assert_eq!(
+        shape(on(&found, 21)),
+        ("not_ours", "other_definition", Some(Relation::Calls)),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_call_through_a_supertype_stays_a_candidate_on_an_override() {
+    let world = snapshot_in(Lang::Java, &[("d/Disp.java", DISP)]);
+    let subject = declared_at(&world.definitions, "d/Disp.java", 10);
+    let found = world.outcomes(subject, "d/Disp.java", &["find"]);
+    assert_eq!(
+        on(&found, 21).outcome,
+        Outcome::Candidate(Reason::Resolver(CandidateReason::Dispatch)),
+        "{found:#?}"
     );
 }
