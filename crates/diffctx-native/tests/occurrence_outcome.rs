@@ -14,7 +14,7 @@ use _diffctx::occurrence::{
 };
 use _diffctx::resolve::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, JavaResolver, PythonResolver,
-    Relation, Resolution, ShellResolver, TypeScriptResolver, UnresolvedReason,
+    Relation, Resolution, RustResolver, ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
@@ -40,6 +40,7 @@ enum Lang {
     Python,
     TypeScript,
     Java,
+    Rust,
     Shell,
 }
 
@@ -61,6 +62,10 @@ fn resolved(
         }
         Lang::Java => {
             let it = JavaResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Rust => {
+            let it = RustResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
         Lang::Shell => {
@@ -1038,4 +1043,35 @@ fn a_scripts_own_name_after_another_command_is_no_run_unless_the_command_runs_it
         Outcome::Candidate(Reason::Unexplained),
         "`sudo check` runs a program of that name: {found:#?}"
     );
+}
+
+const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
+
+#[test]
+fn the_type_an_impl_header_names_is_where_its_members_are_declared() {
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", IMPLS)]);
+    let found = world.outcomes(
+        world.def("src/lib.rs", "QueryError"),
+        "src/lib.rs",
+        &["QueryError"],
+    );
+    for line in [3, 7, 13] {
+        assert_eq!(
+            shape(on(&found, line)),
+            ("declaration", "definition_name", None),
+            "line {line}: {found:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_name_in_an_impl_trait_argument_is_no_impl_header_type() {
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", IMPLS)]);
+    let found = world.outcomes(
+        world.def("src/lib.rs", "QueryError"),
+        "src/lib.rs",
+        &["QueryError"],
+    );
+    assert_ne!(on(&found, 15).outcome, Outcome::Declaration, "{found:#?}");
+    assert_ne!(on(&found, 9).outcome, Outcome::Declaration, "{found:#?}");
 }
