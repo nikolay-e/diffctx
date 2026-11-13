@@ -40,7 +40,6 @@ mod yaml;
 
 use serde::{Deserialize, Serialize};
 
-use crate::facts::Span;
 use crate::snapshot::RunBudget;
 
 pub use candidates::{Candidate, candidates};
@@ -161,13 +160,6 @@ impl Reading {
     /// what is not in the documents not in the file.
     pub fn is_whole(&self) -> bool {
         self.errors.is_empty() && self.flaws.is_empty()
-    }
-
-    /// The templates read around inside a region of the file.
-    pub fn templates_in<'a>(&'a self, span: &'a Span) -> impl Iterator<Item = &'a Template> + 'a {
-        self.templates.iter().filter(move |t| {
-            t.span.bytes.start < span.bytes.end && span.bytes.start < t.span.bytes.end
-        })
     }
 }
 

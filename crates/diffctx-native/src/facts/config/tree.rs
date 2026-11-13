@@ -53,8 +53,7 @@ pub struct Node {
     pub value: Value,
     /// A scalar whose text a template wrote (see [`crate::facts::config::Templating`]):
     /// its `text` is a filler of the same length, never a literal. Always false
-    /// for a sequence or a map; the templates inside one are
-    /// [`crate::facts::config::Reading::templates_in`].
+    /// for a sequence or a map.
     pub templated: bool,
 }
 

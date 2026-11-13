@@ -57,7 +57,6 @@ pub(crate) struct Rec {
     key: String,
     strength: Strength,
     role: Role,
-    #[allow(dead_code, reason = "read by the typed-link report")]
     mechanism: &'static str,
     /// 1-based; 0 stands for the file as a whole.
     line: usize,

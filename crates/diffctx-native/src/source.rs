@@ -57,7 +57,7 @@ pub struct Listing {
     pub blobs: Vec<ListedBlob>,
     pub too_large: Vec<PathBuf>,
     /// Symlinks, which hold a target's name and are followed only inside the
-    /// snapshot (`Source::link_target`): files an import may name.
+    /// snapshot (`SnapshotReader::resolve_link`): files an import may name.
     pub links: Vec<PathBuf>,
     pub withheld: usize,
 }
@@ -451,22 +451,6 @@ impl Source {
 
     pub fn read_to_string(&self, abs_path: &Path) -> Option<String> {
         String::from_utf8(self.read_bytes(abs_path)?).ok()
-    }
-
-    /// Where an import of `rel` lands when `rel` is a symlink of this side:
-    /// Node and Vite load a module by its real path (#372). The snapshot
-    /// layer follows the link inside the snapshot only; `None` when `rel` is
-    /// no link, or the chain leaves the snapshot or ends at no file.
-    pub fn link_target(&self, rel: &str) -> Option<String> {
-        let (analysis, end) = self.view.as_ref()?;
-        let path = snap::RepoPath::new(rel).ok()?;
-        match analysis.reader(*end).resolve_link(&path) {
-            Ok(target) => target.map(|t| t.to_string()),
-            Err(e) => {
-                self.note(crate::resource::reason_for(&e));
-                None
-            }
-        }
     }
 
     /// Every admitted blob of this side, once per run.
