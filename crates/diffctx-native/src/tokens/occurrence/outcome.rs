@@ -9,7 +9,9 @@ use std::rc::Rc;
 
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS, MODULE_PATHS,
+    NAMED_LOCALS,
 };
+use super::scanner::dollar_joins;
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::decide::Standing;
 use crate::facts::{
@@ -404,6 +406,9 @@ impl<'a> Reading<'a> {
         let mut declared = HashMap::new();
         let mut locals = Vec::new();
         let mut imports = Vec::new();
+        let named = NAMED_LOCALS
+            .iter()
+            .any(|family| family.has(file.language()));
         for fact in &file.blob.facts {
             match fact {
                 Fact::Definition(def) => {
@@ -419,13 +424,15 @@ impl<'a> Reading<'a> {
                     // (`global`) keeps its hedge at a local of its own name.
                     let declares = local.kind == LocalKind::Parameter
                         || (!writable(subject)
-                            && DECLARING_LOCALS.iter().any(|(family, kind)| {
+                            && (DECLARING_LOCALS.iter().any(|(family, kind)| {
                                 *kind == local.kind && family.has(file.language())
-                            }));
+                            }) || (local.kind == LocalKind::Variable && named)));
                     if declares {
                         let site = &local.site.bytes;
+                        let sigil = !dollar_joins(file.language())
+                            && text.get(site.start as usize) == Some(&b'$');
                         declared
-                            .entry((site.start, site.end))
+                            .entry((site.start + u32::from(sigil), site.end))
                             .or_insert((Basis::LocalSite, false));
                     }
                     locals.push(local);
@@ -655,6 +662,7 @@ impl<'a> Reading<'a> {
         if let Some(basis) = self
             .bare_head(occurrence, spelled)
             .or_else(|| self.module_path(occurrence))
+            .or_else(|| self.plain_read(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
         {
             return Claim::new(None, Outcome::NotOurs, basis);
@@ -684,17 +692,7 @@ impl<'a> Reading<'a> {
             return None;
         }
         let named = |name: &Name| same(name.as_str(), spelled, self.case);
-        let scope = (self.file.defs())
-            .filter(|def| def.span.bytes.contains(&start))
-            .min_by_key(|def| def.span.bytes.len())
-            .map_or(Scope::Module, |def| Scope::Def(def.local.clone()));
-        let local = *scoped
-            && !writable(self.subject)
-            && self.locals.iter().any(|local| {
-                named(&local.name)
-                    && matches!(local.enclosing, Scope::Def(_))
-                    && encloses(&local.enclosing, &scope)
-            });
+        let local = *scoped && self.shadowed(start, spelled);
         let imports = (self.view.in_file(&self.file.path))
             .filter(|binding| binding.relation == Relation::Imports && named(&binding.name));
         let claims: Vec<Claim> = imports
@@ -714,6 +712,41 @@ impl<'a> Reading<'a> {
         }
     }
 
+    /// Whether a local of that name is declared in a function enclosing `start`.
+    fn shadowed(&self, start: u32, spelled: &[u8]) -> bool {
+        let scope = (self.file.defs())
+            .filter(|def| def.span.bytes.contains(&start))
+            .min_by_key(|def| def.span.bytes.len())
+            .map_or(Scope::Module, |def| Scope::Def(def.local.clone()));
+        let joins = dollar_joins(self.file.language());
+        !writable(self.subject)
+            && self.locals.iter().any(|local| {
+                let name = local.name.as_str();
+                same(
+                    if joins {
+                        name
+                    } else {
+                        name.trim_start_matches('$')
+                    },
+                    spelled,
+                    self.case,
+                ) && matches!(local.enclosing, Scope::Def(_))
+                    && encloses(&local.enclosing, &scope)
+            })
+    }
+
+    /// A read of a local that has no binding: not a member or path segment (`x.name`).
+    fn plain_read(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Basis> {
+        NAMED_LOCALS
+            .iter()
+            .find(|family| family.has(self.file.language()))?;
+        let at = occurrence.bytes.start;
+        let after_path = at
+            .checked_sub(1)
+            .is_some_and(|i| b".:>".contains(&self.text[i as usize]));
+        (!after_path && self.shadowed(at, spelled)).then_some(Basis::Local)
+    }
+
     /// A segment of the module path an import names is a module, never a definition.
     fn module_path(&self, occurrence: &Occurrence) -> Option<Basis> {
         let (_, opens, closes) = MODULE_PATHS
@@ -727,9 +760,7 @@ impl<'a> Reading<'a> {
             .then_some(Basis::OtherModule)
     }
 
-    /// The type an `impl` header names (`impl Display for T`, `impl<U> T<U>`) is where the
-    /// block declares its members. The keyword opens the header (`unsafe` may come first);
-    /// a bound or a where clause names no type.
+    /// The type an `impl` header names is declared there, unlike a return `impl Trait` or a bound.
     fn impl_type(&self, occurrence: &Occurrence) -> Option<Claim> {
         let (_, keyword) = IMPL_HEADS
             .iter()
@@ -738,23 +769,15 @@ impl<'a> Reading<'a> {
         let at = before.iter().rposition(|b| b"\n;{}".contains(b));
         let header = &before[at.map_or(0, |at| at + 1)..];
         let words = split_words(header);
-        let opens = |word: &&[u8]| *word == keyword.as_bytes();
-        let named = words
-            .last()
-            .is_some_and(|word| opens(word) || *word == b"for")
+        let opens = keyword.as_bytes();
+        let named = [opens, b"for".as_slice()].contains(words.last()?)
             || header.trim_ascii_end().ends_with(b">");
-        let declares = words
-            .iter()
-            .position(|word| opens(word))
-            .is_some_and(|at| at < 2)
-            && !words.contains(&b"where".as_slice());
-        (named && declares).then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
+        let first = words.iter().position(|word| *word == opens);
+        (named && first.is_some_and(|at| at < 2) && !words.contains(&b"where".as_slice()))
+            .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
-    /// A word after a command word, in the same command, is text to the commands the row
-    /// lists: a function is never named by it, and a script's own name (a module of the
-    /// row's language) is run only by a command that runs its argument. Any other command
-    /// may run a function (`trap`).
+    /// A word after a listed command names no function (`trap` is unlisted); a script, only a runner.
     fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
         let language = self.file.language();
         let family = COMMAND_ARGUMENTS.iter().find(|row| row.0.has(language))?.0;
@@ -770,9 +793,6 @@ impl<'a> Reading<'a> {
             })
             .max_by_key(|call| call.site.bytes.end)?;
         let between = &self.text[call.site.bytes.end as usize..at as usize];
-        if between.iter().any(|b| b"\n;&|(){}`".contains(b)) {
-            return None;
-        }
         let row = COMMAND_ARGUMENTS.iter().find(|(of, commands, _)| {
             of.has(language) && commands.split(' ').any(|word| word == call.name.as_str())
         });
@@ -781,7 +801,7 @@ impl<'a> Reading<'a> {
         } else {
             row.is_some() && !writable(self.subject)
         };
-        plain.then_some(Basis::Builtin)
+        (plain && !between.iter().any(|b| b"\n;&|(){}`".contains(b))).then_some(Basis::Builtin)
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body.

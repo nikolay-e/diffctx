@@ -31,20 +31,20 @@ pub(super) const CLASS_CANDIDATES: &[(Family, CandidateReason)] = &[
     (Family::Java, CandidateReason::Dispatch),
 ];
 
-/// The commands a shell word follows without naming a function: (family, the commands,
-/// whether they run the program their argument names, so `sudo check` may run a script).
+/// Commands whose arguments name no function; `true`: they run the program named (`sudo check`).
 pub(super) const COMMAND_ARGUMENTS: &[(Family, &str, bool)] = &[
-    (
-        Family::Shell,
-        "echo printf cat grep ls cd rm mkdir sleep",
-        false,
-    ),
-    (
-        Family::Shell,
-        "sudo env exec nohup xargs command nice",
-        true,
-    ),
+    (Family::Shell, "echo printf cat grep ls cd rm mkdir", false),
+    (Family::Shell, "sudo env exec nohup xargs command", true),
 ];
 
-/// The keyword that opens a block declaring the members of the type it names (`impl T`).
+/// The keyword that opens a block declaring the members of the type it names.
 pub(super) const IMPL_HEADS: &[(Family, &str)] = &[(Family::Rust, "impl")];
+
+/// Families whose variable locals declare at the name's span and whose local reads are unbound.
+pub(super) const NAMED_LOCALS: &[Family] = &[
+    Family::Rust,
+    Family::Go,
+    Family::Php,
+    Family::C,
+    Family::Shell,
+];

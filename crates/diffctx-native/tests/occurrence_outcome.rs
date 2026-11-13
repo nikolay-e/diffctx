@@ -13,8 +13,9 @@ use _diffctx::occurrence::{
     Basis, Entry, FileOutcomes, Outcome, Reason, View, admitted, counts_against, outcomes,
 };
 use _diffctx::resolve::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, JavaResolver, PythonResolver,
-    Relation, Resolution, RustResolver, ShellResolver, TypeScriptResolver, UnresolvedReason,
+    Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
+    JavaResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver, ShellResolver,
+    TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
@@ -41,6 +42,9 @@ enum Lang {
     TypeScript,
     Java,
     Rust,
+    Go,
+    Php,
+    C,
     Shell,
 }
 
@@ -66,6 +70,18 @@ fn resolved(
         }
         Lang::Rust => {
             let it = RustResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Go => {
+            let it = GoResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Php => {
+            let it = PhpResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::C => {
+            let it = CResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
         Lang::Shell => {
@@ -1074,4 +1090,90 @@ fn a_name_in_an_impl_trait_argument_is_no_impl_header_type() {
     );
     assert_ne!(on(&found, 15).outcome, Outcome::Declaration, "{found:#?}");
     assert_ne!(on(&found, 9).outcome, Outcome::Declaration, "{found:#?}");
+}
+
+/// (language, file, the subject's name, source, the line declaring the local, a plain read of it)
+const LOCALS: [(Lang, &str, &str, &str, u32, u32); 5] = [
+    (
+        Lang::Rust,
+        "src/lib.rs",
+        "total",
+        "pub fn total() -> i64 {\n    1\n}\n\npub fn run(n: i64) -> i64 {\n    let mut total = 0;\n    total += n;\n    total\n}\n",
+        6,
+        8,
+    ),
+    (
+        Lang::Go,
+        "shop/total.go",
+        "Total",
+        "package shop\n\nfunc Total() int {\n\treturn 1\n}\n\nfunc Run(n int) int {\n\tTotal := 0\n\tTotal += n\n\treturn Total\n}\n",
+        8,
+        10,
+    ),
+    (
+        Lang::Php,
+        "src/total.php",
+        "total",
+        "<?php\n\nfunction total() {\n    return 1;\n}\n\nfunction run($n) {\n    $total = 0;\n    $total += $n;\n    return $total;\n}\n",
+        8,
+        10,
+    ),
+    (
+        Lang::C,
+        "src/total.c",
+        "total",
+        "int total(void) {\n    return 1;\n}\n\nint run(const int *items, int n)\n{\n    int total = 0;\n    for (int i = 0; i < n; i++) {\n        total += items[i];\n    }\n    return total;\n}\n",
+        7,
+        11,
+    ),
+    (
+        Lang::Shell,
+        "run.sh",
+        "total",
+        "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\n",
+        6,
+        7,
+    ),
+];
+
+#[test]
+fn a_local_is_declared_where_its_name_is_written_and_a_plain_read_of_it_is_not_ours() {
+    for (lang, file, name, source, declared, read) in LOCALS {
+        let world = snapshot_in(lang, &[(file, source)]);
+        let found = world.outcomes(world.def(file, name), file, &[name]);
+        assert_eq!(
+            shape(on(&found, declared)),
+            ("declaration", "local_site", None),
+            "{file}: {found:#?}"
+        );
+        assert_eq!(
+            shape(on(&found, read)),
+            ("not_ours", "local", None),
+            "{file}: {found:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_name_read_where_the_local_is_not_in_force_stays_a_candidate() {
+    let source = "#!/bin/bash\ntotal() {\n  echo 1\n}\nrun() {\n  local total=0\n  echo \"$total\"\n}\nother() {\n  trap total EXIT\n}\n";
+    let world = snapshot_in(Lang::Shell, &[("run.sh", source)]);
+    let found = world.outcomes(world.def("run.sh", "total"), "run.sh", &["total"]);
+    assert_eq!(
+        on(&found, 10).outcome,
+        Outcome::Candidate(Reason::Unexplained),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
+    let source = "package shop\n\nfunc Total() int {\n\treturn 1\n}\n\nfunc Run(x any) int {\n\tTotal := 0\n\t_ = x.Total\n\treturn Total\n}\n";
+    let world = snapshot_in(Lang::Go, &[("shop/total.go", source)]);
+    let found = world.outcomes(
+        world.def("shop/total.go", "Total"),
+        "shop/total.go",
+        &["Total"],
+    );
+    assert_ne!(on(&found, 9).outcome, Outcome::NotOurs, "{found:#?}");
 }
