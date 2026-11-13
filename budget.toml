@@ -1,4 +1,8 @@
 # Product size ratchet (tests/test_product_budget.py). Only goes down; growth needs a `Budget-raise:` trailer.
+# A [debt.*] row is growth on loan, only where named: `covers` (new paths; `dir/**` or a file) hold at most `lines`
+# together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
+# and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
+# gone the row must be removed and every `deletes` entry gone, in the same commit.
 product_lines = 144336
 allow_count = 156
 root_modules = 63
@@ -25,3 +29,40 @@ root_modules = 63
 "crates/diffctx-native/src/resolve/rust.rs" = 2256
 "crates/diffctx-native/src/resolve/typescript.rs" = 3914
 "crates/diffctx-native/src/select.rs" = 2015
+
+[debt.phase-a-shadow]
+lines = 2171
+repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
+due_when = "crates/diffctx-native/src/decide.rs::fn status("
+covers = ["crates/diffctx-native/src/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
+deletes = [
+  "crates/diffctx-native/src/decide.rs::enum Status {",
+  "crates/diffctx-native/src/decide.rs::fn status(",
+  "crates/diffctx-native/src/decide.rs::fn account_of(",
+  "crates/diffctx-native/src/decide.rs::Group(&'a Account),",
+  "crates/diffctx-native/src/decide.rs::fn stale_uses(",
+  "crates/diffctx-native/src/decide.rs::const MAX_UNPLACED_LISTED",
+  "crates/diffctx-native/src/decide.rs::let top_level_only",
+  "crates/diffctx-native/src/decide.rs::fn unplaced(",
+  "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },",
+  "crates/diffctx-native/src/decide.rs::fn lost_namers(",
+  "crates/diffctx-native/src/impact.rs::fn missed_namers(",
+  "crates/diffctx-native/src/decide.rs::fn spelled_lines(",
+]
+
+[debt.phase-a-shadow.grows]
+"crates/diffctx-native/src/decide.rs" = { base = 4304, plus = 83 }
+"crates/diffctx-native/src/facts/cache.rs" = { base = 447, plus = 5 }
+"crates/diffctx-native/src/facts/mod.rs" = { base = 49, plus = 1 }
+"crates/diffctx-native/src/facts/model.rs" = { base = 575, plus = 28 }
+"crates/diffctx-native/src/lib.rs" = { base = 91, plus = 1 }
+"crates/diffctx-native/src/facts/lang/c.rs" = { base = 2143, plus = 1 }
+"crates/diffctx-native/src/facts/lang/go.rs" = { base = 1588, plus = 1 }
+"crates/diffctx-native/src/facts/lang/java.rs" = { base = 834, plus = 1 }
+"crates/diffctx-native/src/facts/lang/kotlin.rs" = { base = 885, plus = 1 }
+"crates/diffctx-native/src/facts/lang/php.rs" = { base = 2063, plus = 1 }
+"crates/diffctx-native/src/facts/lang/python.rs" = { base = 2746, plus = 1 }
+"crates/diffctx-native/src/facts/lang/rust.rs" = { base = 2094, plus = 1 }
+"crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
+"crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 829, plus = 1 }
+"crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }
