@@ -1410,15 +1410,7 @@ impl<'a> Engine<'a> {
 
     /// The object a variable, constant or field holds, when its annotation or
     /// the call it is assigned says which class.
-    fn var_instance(&self, id: usize) -> Entity {
-        if let Some(known) = self.instances.borrow().get(&id) {
-            return known.clone();
-        }
-        self.instances.borrow_mut().insert(id, Entity::Unknown);
-        let found = self.compute_var_instance(id);
-        self.instances.borrow_mut().insert(id, found.clone());
-        found
-    }
+    var_instance_memo!();
 
     fn compute_var_instance(&self, id: usize) -> Entity {
         let rec = &self.ix.defs[id];
