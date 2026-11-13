@@ -1,0 +1,768 @@
+# A definition invoked without its name written: nothing in the repository
+# spells a call to `symbol`, and a language construct, a framework, a runner or
+# a consumer outside the repository reaches it. The answer is never "nobody
+# calls it": it names the definition with the kind of the unknown, or lists it
+# as an entry. Kinds are those of the `Implicit` table of the contract note;
+# a kind with no seed here fails the suite.
+- name: python_dunder_add
+  kind: operator
+  symbol: __add__
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/money.py: |
+      class Money:
+          def __init__(self, cents):
+              self.cents = cents
+
+          def __add__(self, other):
+              return Money(self.cents + other.cents)
+    shop/checkout.py: |
+      from shop.money import Money
+
+
+      def charge(a, b):
+          return Money(a) + Money(b)
+  change:
+    shop/money.py: |
+      class Money:
+          def __init__(self, cents):
+              self.cents = cents
+
+          def __add__(self, other):
+              return Money(self.cents + other.cents + 0)
+- name: kotlin_operator_plus
+  kind: operator
+  symbol: plus
+  base:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+    src/main/kotlin/shop/Money.kt: |
+      package shop
+
+      class Money(val c: Int) {
+          operator fun plus(o: Money): Money = Money(c + o.c)
+      }
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun charge(a: Money, b: Money): Money = a + b
+  change:
+    src/main/kotlin/shop/Money.kt: |
+      package shop
+
+      class Money(val c: Int) {
+          operator fun plus(o: Money): Money = Money(c + o.c + 0)
+      }
+- name: rust_add_trait
+  kind: operator
+  symbol: add
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod money;
+    src/money.rs: |
+      use std::ops::Add;
+
+      pub struct Money(pub i64);
+
+      impl Add for Money {
+          type Output = Money;
+          fn add(self, other: Money) -> Money {
+              Money(self.0 + other.0)
+          }
+      }
+    src/checkout.rs: |
+      use crate::money::Money;
+
+      pub fn charge(a: Money, b: Money) -> Money {
+          a + b
+      }
+  change:
+    src/money.rs: |
+      use std::ops::Add;
+
+      pub struct Money(pub i64);
+
+      impl Add for Money {
+          type Output = Money;
+          fn add(self, other: Money) -> Money {
+              Money(self.0 + other.0 + 0)
+          }
+      }
+- name: swift_operator_function
+  kind: operator
+  symbol: +
+  base:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "Fixture",
+          targets: [.target(name: "Shop")]
+      )
+    Sources/Shop/Money.swift: |
+      struct Money {
+          var c: Int
+
+          static func + (a: Money, b: Money) -> Money {
+              return Money(c: a.c + b.c)
+          }
+      }
+    Sources/Shop/Checkout.swift: |
+      func charge(_ a: Money, _ b: Money) -> Money {
+          return a + b
+      }
+  change:
+    Sources/Shop/Money.swift: |
+      struct Money {
+          var c: Int
+
+          static func + (a: Money, b: Money) -> Money {
+              return Money(c: a.c + b.c + 0)
+          }
+      }
+- name: python_dunder_str
+  kind: protocol
+  symbol: __str__
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/money.py: |
+      class Money:
+          def __init__(self, cents):
+              self.cents = cents
+
+          def __str__(self):
+              return str(self.cents)
+    shop/checkout.py: |
+      from shop.money import Money
+
+
+      def label(a):
+          return f"{Money(a)}"
+  change:
+    shop/money.py: |
+      class Money:
+          def __init__(self, cents):
+              self.cents = cents
+
+          def __str__(self):
+              return str(self.cents) + "c"
+- name: rust_display_trait
+  kind: protocol
+  symbol: fmt
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod money;
+    src/money.rs: |
+      use std::fmt;
+
+      pub struct Money(pub i64);
+
+      impl fmt::Display for Money {
+          fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+              write!(f, "{}", self.0)
+          }
+      }
+    src/checkout.rs: |
+      use crate::money::Money;
+
+      pub fn label(m: Money) -> String {
+          format!("{}", m)
+      }
+  change:
+    src/money.rs: |
+      use std::fmt;
+
+      pub struct Money(pub i64);
+
+      impl fmt::Display for Money {
+          fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+              write!(f, "{}c", self.0)
+          }
+      }
+- name: swift_description
+  kind: protocol
+  symbol: description
+  base:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "Fixture",
+          targets: [.target(name: "Shop")]
+      )
+    Sources/Shop/Money.swift: |
+      struct Money: CustomStringConvertible {
+          var description: String { return "a" }
+      }
+    Sources/Shop/Checkout.swift: |
+      func label(_ m: Money) -> String {
+          return "\(m)"
+      }
+  change:
+    Sources/Shop/Money.swift: |
+      struct Money: CustomStringConvertible {
+          var description: String { return "b" }
+      }
+- name: php_to_string
+  kind: protocol
+  symbol: __toString
+  base:
+    src/Money.php: |
+      <?php
+
+      class Money
+      {
+          public function __toString(): string
+          {
+              return 'a';
+          }
+      }
+    src/Checkout.php: |
+      <?php
+
+      function label(Money $m): string
+      {
+          return "$m";
+      }
+  change:
+    src/Money.php: |
+      <?php
+
+      class Money
+      {
+          public function __toString(): string
+          {
+              return 'b';
+          }
+      }
+- name: go_init
+  kind: protocol
+  symbol: init
+  base:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    app/init.go: |
+      package app
+
+      func init() {
+          println("a")
+      }
+  change:
+    app/init.go: |
+      package app
+
+      func init() {
+          println("b")
+      }
+- name: java_close_in_try_with_resources
+  kind: protocol
+  symbol: close
+  base:
+    src/main/java/shop/Handle.java: |
+      package shop;
+
+      public class Handle implements AutoCloseable {
+          @Override
+          public void close() {
+              System.out.println("a");
+          }
+      }
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      public class Checkout {
+          public void run() {
+              try (Handle h = new Handle()) {
+                  System.out.println(h);
+              }
+          }
+      }
+  change:
+    src/main/java/shop/Handle.java: |
+      package shop;
+
+      public class Handle implements AutoCloseable {
+          @Override
+          public void close() {
+              System.out.println("b");
+          }
+      }
+- name: java_override_of_an_external_base
+  kind: override
+  symbol: run
+  base:
+    src/main/java/shop/Job.java: |
+      package shop;
+
+      public class Job extends Thread {
+          @Override
+          public void run() {
+              System.out.println("a");
+          }
+      }
+  change:
+    src/main/java/shop/Job.java: |
+      package shop;
+
+      public class Job extends Thread {
+          @Override
+          public void run() {
+              System.out.println("b");
+          }
+      }
+- name: go_method_that_satisfies_an_interface_of_the_standard_library
+  kind: override
+  symbol: String
+  base:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    money/money.go: |
+      package money
+
+      type Money int
+
+      func (m Money) String() string {
+          return "a"
+      }
+    checkout/checkout.go: |
+      package checkout
+
+      import (
+          "fmt"
+
+          "example.com/app/money"
+      )
+
+      func Label(m money.Money) string {
+          return fmt.Sprint(m)
+      }
+  change:
+    money/money.go: |
+      package money
+
+      type Money int
+
+      func (m Money) String() string {
+          return "b"
+      }
+- name: kotlin_override_of_an_external_interface
+  kind: override
+  symbol: run
+  base:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+    src/main/kotlin/shop/Job.kt: |
+      package shop
+
+      class Job : Runnable {
+          override fun run() {
+              println("a")
+          }
+      }
+  change:
+    src/main/kotlin/shop/Job.kt: |
+      package shop
+
+      class Job : Runnable {
+          override fun run() {
+              println("b")
+          }
+      }
+- name: python_override_of_an_external_base
+  kind: override
+  symbol: do_GET
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/server.py: |
+      from http.server import BaseHTTPRequestHandler
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+  change:
+    shop/server.py: |
+      from http.server import BaseHTTPRequestHandler
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(204)
+- name: python_click_command
+  kind: entry
+  symbol: serve
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/cli.py: |
+      import click
+
+
+      @click.command()
+      def serve():
+          print("a")
+  change:
+    shop/cli.py: |
+      import click
+
+
+      @click.command()
+      def serve():
+          print("b")
+- name: python_flask_route
+  kind: entry
+  symbol: index
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+
+
+      @app.route("/x")
+      def index():
+          return "a"
+  change:
+    shop/app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+
+
+      @app.route("/x")
+      def index():
+          return "b"
+- name: python_pytest_fixture
+  kind: entry
+  symbol: client
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    tests/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def client():
+          return object()
+  change:
+    tests/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture
+      def client():
+          return dict()
+- name: rust_main
+  kind: entry
+  symbol: main
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/main.rs: |
+      fn main() {
+          println!("a");
+      }
+  change:
+    src/main.rs: |
+      fn main() {
+          println!("b");
+      }
+- name: go_main
+  kind: entry
+  symbol: main
+  base:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    main.go: |
+      package main
+
+      func main() {
+          println("a")
+      }
+  change:
+    main.go: |
+      package main
+
+      func main() {
+          println("b")
+      }
+- name: c_constructor_attribute
+  kind: entry
+  symbol: setup
+  base:
+    src/init.c: |
+      __attribute__((constructor))
+      static void setup(void)
+      {
+          int x = 1;
+      }
+  change:
+    src/init.c: |
+      __attribute__((constructor))
+      static void setup(void)
+      {
+          int x = 2;
+      }
+- name: python_test_function
+  kind: test
+  symbol: test_money
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    tests/test_money.py: |
+      def test_money():
+          assert 1 == 1
+  change:
+    tests/test_money.py: |
+      def test_money():
+          assert 2 == 2
+- name: rust_test_function
+  kind: test
+  symbol: sums
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn sums() {
+              assert_eq!(1 + 1, 2);
+          }
+      }
+  change:
+    src/lib.rs: |
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn sums() {
+              assert_eq!(2 + 2, 4);
+          }
+      }
+- name: go_test_function
+  kind: test
+  symbol: TestTotal
+  base:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    pricing/pricing_test.go: |
+      package pricing
+
+      import "testing"
+
+      func TestTotal(t *testing.T) {
+          if 1+1 != 2 {
+              t.Fatal("a")
+          }
+      }
+  change:
+    pricing/pricing_test.go: |
+      package pricing
+
+      import "testing"
+
+      func TestTotal(t *testing.T) {
+          if 2+2 != 4 {
+              t.Fatal("b")
+          }
+      }
+- name: java_junit_test
+  kind: test
+  symbol: sums
+  base:
+    src/test/java/shop/PricingTest.java: |
+      package shop;
+
+      import org.junit.jupiter.api.Test;
+
+      class PricingTest {
+          @Test
+          void sums() {
+              System.out.println("a");
+          }
+      }
+  change:
+    src/test/java/shop/PricingTest.java: |
+      package shop;
+
+      import org.junit.jupiter.api.Test;
+
+      class PricingTest {
+          @Test
+          void sums() {
+              System.out.println("b");
+          }
+      }
+- name: terraform_root_variable
+  kind: outside
+  symbol: region
+  base:
+    main.tf: |
+      variable "region" {
+        type = string
+      }
+  change:
+    main.tf: |
+      variable "region" {
+        type = number
+      }
+- name: terraform_root_output
+  kind: outside
+  symbol: addr
+  base:
+    main.tf: |
+      output "addr" {
+        value = "a"
+      }
+  change:
+    main.tf: |
+      output "addr" {
+        value = "b"
+      }
+- name: rust_no_mangle_export
+  kind: outside
+  symbol: shop_total
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      #[no_mangle]
+      pub extern "C" fn shop_total(a: i32) -> i32 {
+          a
+      }
+  change:
+    src/lib.rs: |
+      #[no_mangle]
+      pub extern "C" fn shop_total(a: i32) -> i32 {
+          a + 1
+      }
+- name: python_mcp_tool
+  kind: entry
+  symbol: lookup
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/srv.py: |
+      from mcp.server.fastmcp import FastMCP
+
+      mcp = FastMCP("shop")
+
+
+      @mcp.tool()
+      def lookup(q):
+          return q
+  change:
+    shop/srv.py: |
+      from mcp.server.fastmcp import FastMCP
+
+      mcp = FastMCP("shop")
+
+
+      @mcp.tool()
+      def lookup(q):
+          return q + "x"
+- name: python_script_guard
+  kind: entry
+  symbol: x
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/run.py: |
+      def f(n):
+          return n
+
+
+      if __name__ == "__main__":
+          x = f(1)
+          print(x)
+  change:
+    shop/run.py: |
+      def f(n):
+          return n
+
+
+      if __name__ == "__main__":
+          x = f(2)
+          print(x)
+- name: java_spring_scheduled
+  kind: entry
+  symbol: tick
+  base:
+    src/main/java/shop/Jobs.java: |
+      package shop;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+
+      public class Jobs {
+          @Scheduled(fixedRate = 1000)
+          public void tick() {
+              System.out.println("a");
+          }
+      }
+  change:
+    src/main/java/shop/Jobs.java: |
+      package shop;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+
+      public class Jobs {
+          @Scheduled(fixedRate = 1000)
+          public void tick() {
+              System.out.println("b");
+          }
+      }
