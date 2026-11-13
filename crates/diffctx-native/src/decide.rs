@@ -1107,6 +1107,7 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
 /// A module a `--symbol` name names and the imports that land on it.
 pub(crate) struct ModuleOf {
     pub file: String,
+    pub lines: usize,
     pub importers: Vec<Importer>,
 }
 
@@ -1131,29 +1132,35 @@ pub(crate) fn modules_named(
     let cache = FactsCache::user();
     let resolver = Resolver::open(Family::Python, &ctx, SideTag::Head, &cache)?;
     let modules = resolver.modules_named(name);
-    Ok(modules
+    modules
         .iter()
-        .map(|module| ModuleOf {
-            file: module.as_str().to_string(),
-            importers: resolver
-                .bindings()
-                .iter()
-                .filter(|b| b.relation == Relation::Imports)
-                .filter(|b| {
-                    matches!(&b.resolution, Resolution::Module { file, evidence }
+        .map(|module| {
+            let lines = ctx.head.read(module)?.map_or(1, |bytes| {
+                String::from_utf8_lossy(&bytes).lines().count().max(1)
+            });
+            Ok(ModuleOf {
+                file: module.as_str().to_string(),
+                lines,
+                importers: resolver
+                    .bindings()
+                    .iter()
+                    .filter(|b| b.relation == Relation::Imports)
+                    .filter(|b| {
+                        matches!(&b.resolution, Resolution::Module { file, evidence }
                         if file == module && evidence.kind != EvidenceKind::AmbiguousModule)
-                })
-                .map(|b| Importer {
-                    file: b.file.as_str().to_string(),
-                    line: b.site.lines.0,
-                    inside: match &b.from {
-                        Scope::Def(local) => Some(local.name.as_str().to_string()),
-                        _ => None,
-                    },
-                })
-                .collect(),
+                    })
+                    .map(|b| Importer {
+                        file: b.file.as_str().to_string(),
+                        line: b.site.lines.0,
+                        inside: match &b.from {
+                            Scope::Def(local) => Some(local.name.as_str().to_string()),
+                            _ => None,
+                        },
+                    })
+                    .collect(),
+            })
         })
-        .collect())
+        .collect()
 }
 
 impl Cell {
