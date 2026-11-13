@@ -139,6 +139,8 @@ fn the_shadow_names_each_occurrence_and_leaves_the_answer_alone() {
             let said = pair[key].as_str().expect("a verdict");
             assert!(matches!(said, "complete" | "partial"), "{key}: {said}");
         }
+        let both = pair["occurrences"] == "complete" && pair["gaps"] == serde_json::json!([]);
+        assert_eq!(pair["complete"], both, "{pair}");
     }
 }
 
