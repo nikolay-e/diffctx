@@ -1463,13 +1463,26 @@ impl Changed {
         (!(self.kind == DefKind::Module && self.name == self.file)).then(|| self.display_name())
     }
 
-    pub fn display_name(&self) -> String {
-        let key = self
-            .subjects
+    fn key(&self) -> Option<&DefKey> {
+        self.subjects
             .first()
             .map(|s| &s.key)
-            .or_else(|| self.stale.first());
-        match (self.kind, key.and_then(|k| k.local.container.last())) {
+            .or_else(|| self.stale.first())
+    }
+
+    /// Whether `inner` is a definition nested in this one, in the same file.
+    pub fn holds(&self, inner: &Self) -> bool {
+        let (Some(outer_key), Some(inner_key)) = (self.key(), inner.key()) else {
+            return false;
+        };
+        let path = &outer_key.local.container;
+        self.file == inner.file
+            && inner_key.local.container.starts_with(path)
+            && inner_key.local.container.get(path.len()) == Some(&outer_key.local.name)
+    }
+
+    pub fn display_name(&self) -> String {
+        match (self.kind, self.key().and_then(|k| k.local.container.last())) {
             (DefKind::Field | DefKind::Variable | DefKind::Constant, Some(class)) => {
                 format!("{}.{}", class.as_str(), self.name)
             }
