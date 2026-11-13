@@ -8,11 +8,13 @@
 
 pub mod corpus;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
 use serde_json::Value;
+use walkdir::WalkDir;
 
 use crate::support::families::{
     Family, Files, Planted, Query, Repo, discloses, names_link, says_empty,
@@ -21,6 +23,7 @@ use crate::support::families::{
 pub const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
 pub const ALIASES: &str = include_str!("seeds/aliases.yaml");
 pub const LEAKS: &str = include_str!("seeds/leaks.yaml");
+pub const IMPLICIT: &str = include_str!("seeds/implicit.yaml");
 
 #[derive(Deserialize)]
 pub struct Scaffold {
@@ -190,6 +193,29 @@ pub fn says_nobody(doc: &Value, symbol: &str) -> bool {
                 })
             }),
     }
+}
+
+// The kinds the engine's `Implicit` names, lowercased, once that type exists:
+// read from the source, so that this suite compiles without it.
+pub fn engine_implicit_kinds() -> Option<BTreeSet<String>> {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/occurrence");
+    for entry in WalkDir::new(src).into_iter().flatten() {
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Some((_, rest)) = text.split_once("enum Implicit {") else {
+            continue;
+        };
+        let body = rest.split_once("\n}")?.0;
+        return Some(
+            body.lines()
+                .filter_map(|line| line.trim().split([',', ' ', '(', '{']).next())
+                .filter(|word| word.starts_with(char::is_uppercase))
+                .map(str::to_lowercase)
+                .collect(),
+        );
+    }
+    None
 }
 
 // ---- running seeds ----
