@@ -30,7 +30,7 @@ use std::rc::Rc;
 use super::index::{Path, dir_of, join, normalise};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
-    UnresolvedReason,
+    UnresolvedReason, unresolved,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, LocalKey,
@@ -534,10 +534,6 @@ struct Engine<'w> {
     side: SideTag,
     texts: RefCell<HashMap<usize, Option<Bytes>>>,
     losses: RefCell<Vec<Loss>>,
-}
-
-fn unresolved(reason: UnresolvedReason) -> Resolution {
-    Resolution::Unresolved { reason }
 }
 
 fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
@@ -1253,24 +1249,7 @@ fn cpp_relation(use_kind: UseKind, target: DefKind) -> Relation {
 }
 
 impl Engine<'_> {
-    fn text(&self, f: usize) -> Option<Bytes> {
-        if let Some(known) = self.texts.borrow().get(&f) {
-            return known.clone();
-        }
-        let path = &self.ix.files[f].facts.path;
-        let read = match self.reader.read(path) {
-            Ok(read) => read,
-            Err(_) => {
-                self.losses.borrow_mut().push(Loss::ReadFailed {
-                    path: path.clone(),
-                    side: self.side,
-                });
-                None
-            }
-        };
-        self.texts.borrow_mut().insert(f, read.clone());
-        read
-    }
+    file_text!();
 
     /// The arguments the call at `r` passes, read off the text; none where no
     /// parenthesis follows the name.

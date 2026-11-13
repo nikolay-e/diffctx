@@ -193,3 +193,27 @@ macro_rules! jvm_engine_methods {
         }
     };
 }
+
+/// The text of a file of the index, read once; a failed read is a loss, and no text.
+macro_rules! file_text {
+    () => {
+        fn text(&self, f: usize) -> Option<Bytes> {
+            if let Some(known) = self.texts.borrow().get(&f) {
+                return known.clone();
+            }
+            let path = &self.ix.files[f].facts.path;
+            let read = match self.reader.read(path) {
+                Ok(read) => read,
+                Err(_) => {
+                    self.losses.borrow_mut().push(Loss::ReadFailed {
+                        path: path.clone(),
+                        side: self.side,
+                    });
+                    None
+                }
+            };
+            self.texts.borrow_mut().insert(f, read.clone());
+            read
+        }
+    };
+}

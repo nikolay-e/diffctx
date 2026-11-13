@@ -140,6 +140,21 @@ fn plain_relation(use_kind: UseKind) -> Relation {
     }
 }
 
+fn unresolved(reason: UnresolvedReason) -> Resolution {
+    Resolution::Unresolved { reason }
+}
+
+fn is_value(kind: DefKind) -> bool {
+    matches!(
+        kind,
+        DefKind::Property
+            | DefKind::Variable
+            | DefKind::Constant
+            | DefKind::Field
+            | DefKind::EnumMember
+    )
+}
+
 fn is_callable(kind: DefKind) -> bool {
     matches!(
         kind,
