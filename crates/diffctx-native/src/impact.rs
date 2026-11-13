@@ -350,6 +350,40 @@ pub struct ChangedSymbol {
     pub(crate) new_parameters: Vec<String>,
 }
 
+impl ChangedSymbol {
+    /// A definition with nothing found yet; a caller states what it did find.
+    fn bare(
+        path: String,
+        symbol: Option<String>,
+        lines: String,
+        kind: impl Into<String>,
+        coverage: decide::Coverages,
+    ) -> Self {
+        Self {
+            path,
+            symbol,
+            lines,
+            kind: kind.into(),
+            commits: 0,
+            callers: Vec::new(),
+            entry: None,
+            unresolved: None,
+            untested: false,
+            compatible_callers: 0,
+            missed_in: Vec::new(),
+            also_changed: Vec::new(),
+            possibly_also_changed: Vec::new(),
+            shed: crate::answer::v2::ShedRows::default(),
+            change: None,
+            callers_omitted: 0,
+            omitted: Vec::new(),
+            folded: Vec::new(),
+            new_parameters: Vec::new(),
+            coverage,
+        }
+    }
+}
+
 /// Rows of one changed definition folded under one rule of the folding table.
 #[derive(Clone)]
 pub struct Folded {
@@ -521,6 +555,37 @@ pub struct Caller {
     pub sites: Vec<u32>,
 }
 
+impl Caller {
+    /// A row at one line that no folding rule, kind or test link qualifies.
+    fn at_line(
+        path: String,
+        symbol: Option<String>,
+        lines: String,
+        evidence: &'static str,
+        relation: &'static str,
+        site: u32,
+    ) -> Self {
+        Self {
+            path,
+            symbol,
+            lines,
+            weight: 1.0,
+            tests: Vec::new(),
+            file_tested: false,
+            registered_by: None,
+            unread_test: None,
+            evidence,
+            reason: None,
+            relation,
+            kind: None,
+            folded_by: None,
+            fold_kind: None,
+            fold_share: 0,
+            sites: vec![site],
+        }
+    }
+}
+
 /// The limits among `limits` that leave a count of callers a lower bound.
 pub(crate) fn stops_of(
     limits: &[crate::resource::LimitReason],
@@ -644,30 +709,18 @@ fn unfinished_symbol(
     stops: &[crate::resource::LimitReason],
 ) -> ChangedSymbol {
     ChangedSymbol {
-        path,
-        symbol,
-        lines,
-        kind,
-        commits: 0,
-        callers: Vec::new(),
-        entry: None,
         unresolved: Some(Unknown::Unfinished {
             stops: stops.to_vec(),
         }),
-        untested: false,
-        compatible_callers: 0,
-        missed_in: Vec::new(),
-        also_changed: Vec::new(),
-        possibly_also_changed: Vec::new(),
-        shed: crate::answer::v2::ShedRows::default(),
-        change: None,
-        callers_omitted: 0,
-        omitted: Vec::new(),
-        folded: Vec::new(),
-        new_parameters: Vec::new(),
-        coverage: decide::Coverages::partial(decide::Gap::Stopped {
-            reasons: stops.to_vec(),
-        }),
+        ..ChangedSymbol::bare(
+            path,
+            symbol,
+            lines,
+            kind,
+            decide::Coverages::partial(decide::Gap::Stopped {
+                reasons: stops.to_vec(),
+            }),
+        )
     }
 }
 
@@ -2716,30 +2769,24 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
     };
     let (also_changed, possibly_also_changed) = (users(true), users(false));
     ChangedSymbol {
-        path: def.file.clone(),
-        symbol: def.symbol(),
-        lines: format!("{}-{}", def.lines.0, def.lines.1),
-        kind,
-        commits: 0,
         callers: {
             let mut merged = merge_by_symbol(callers);
             merged.sort_by_key(|c| relation_rank(c.relation));
             merged
         },
-        entry: None,
         unresolved: verdict.gap().map(|gap| cell_unknown(&gap, &def.name)),
-        untested: false,
-        compatible_callers: 0,
         missed_in: unaccounted_rows(verdict.unaccounted()),
         also_changed,
         possibly_also_changed,
-        shed: crate::answer::v2::ShedRows::default(),
         change: Some(crate::answer::v2::Change::of(def)),
-        callers_omitted: 0,
-        omitted: Vec::new(),
-        folded: Vec::new(),
         new_parameters: def.new_parameters(),
-        coverage: decide::Coverages::of_verdict(verdict),
+        ..ChangedSymbol::bare(
+            def.file.clone(),
+            def.symbol(),
+            format!("{}-{}", def.lines.0, def.lines.1),
+            kind,
+            decide::Coverages::of_verdict(verdict),
+        )
     }
 }
 
@@ -3943,28 +3990,16 @@ pub fn build_impact(
     for core in cell_untracked {
         let name = core.symbol_name.as_deref().map_or("", base_symbol);
         changed.push(ChangedSymbol {
-            path: rel(state, core.path()),
-            symbol: Some(name.to_string()),
-            lines: lines_of(&core.id),
-            kind: "variable".to_string(),
-            commits: 0,
-            callers: Vec::new(),
-            entry: None,
             unresolved: Some(Unknown::Untracked {
                 name: name.to_string(),
             }),
-            untested: false,
-            compatible_callers: 0,
-            missed_in: Vec::new(),
-            also_changed: Vec::new(),
-            possibly_also_changed: Vec::new(),
-            shed: crate::answer::v2::ShedRows::default(),
-            change: None,
-            callers_omitted: 0,
-            omitted: Vec::new(),
-            folded: Vec::new(),
-            new_parameters: Vec::new(),
-            coverage: decide::Coverages::partial(decide::Gap::NotTraced),
+            ..ChangedSymbol::bare(
+                rel(state, core.path()),
+                Some(name.to_string()),
+                lines_of(&core.id),
+                "variable",
+                decide::Coverages::partial(decide::Gap::NotTraced),
+            )
         });
     }
     // A name asked for that no cell read a definition of, in a group whose file
@@ -3980,28 +4015,16 @@ pub fn build_impact(
         for (path, reason) in cells.iter().flat_map(|cell| cell.lost_namers(name)) {
             let gap = decide::Gap::Unaccounted { reason, files: 1 };
             changed.push(ChangedSymbol {
-                path: path.as_str().to_string(),
-                symbol: Some(name.to_string()),
-                lines: String::new(),
-                kind: "function".to_string(),
-                commits: 0,
-                callers: Vec::new(),
-                entry: None,
                 unresolved: Some(Unknown::Uncovered {
                     why: gap.to_string(),
                 }),
-                untested: false,
-                compatible_callers: 0,
-                missed_in: Vec::new(),
-                also_changed: Vec::new(),
-                possibly_also_changed: Vec::new(),
-                shed: crate::answer::v2::ShedRows::default(),
-                change: None,
-                callers_omitted: 0,
-                omitted: Vec::new(),
-                folded: Vec::new(),
-                new_parameters: Vec::new(),
-                coverage: decide::Coverages::partial(gap),
+                ..ChangedSymbol::bare(
+                    path.as_str().to_string(),
+                    Some(name.to_string()),
+                    String::new(),
+                    "function",
+                    decide::Coverages::partial(gap),
+                )
             });
         }
     }
@@ -4009,28 +4032,16 @@ pub fn build_impact(
         let name = core.symbol_name.as_deref().map_or("", base_symbol);
         let gap = decide::Gap::Unaccounted { reason, files: 1 };
         changed.push(ChangedSymbol {
-            path: rel(state, core.path()),
-            symbol: Some(name.to_string()),
-            lines: lines_of(&core.id),
-            kind: format!("{:?}", core.kind).to_lowercase(),
-            commits: 0,
-            callers: Vec::new(),
-            entry: None,
             unresolved: Some(Unknown::Uncovered {
                 why: gap.to_string(),
             }),
-            untested: false,
-            compatible_callers: 0,
-            missed_in: Vec::new(),
-            also_changed: Vec::new(),
-            possibly_also_changed: Vec::new(),
-            shed: crate::answer::v2::ShedRows::default(),
-            change: None,
-            callers_omitted: 0,
-            omitted: Vec::new(),
-            folded: Vec::new(),
-            new_parameters: Vec::new(),
-            coverage: decide::Coverages::partial(gap),
+            ..ChangedSymbol::bare(
+                rel(state, core.path()),
+                Some(name.to_string()),
+                lines_of(&core.id),
+                format!("{:?}", core.kind).to_lowercase(),
+                decide::Coverages::partial(gap),
+            )
         });
     }
     for entry in &cell_apart {
@@ -4730,28 +4741,18 @@ fn removed_definitions(
                 continue;
             }
             let next = code[at + name.len()..].trim_start();
-            callers.push(Caller {
-                path: path.clone(),
-                symbol: holder.and_then(|f| f.symbol_name.clone()),
-                lines: holder.map_or_else(|| format!("{line}-{line}"), |f| lines_of(&f.id)),
-                weight: 1.0,
-                tests: Vec::new(),
-                file_tested: false,
-                registered_by: None,
-                unread_test: None,
-                evidence: "name",
-                reason: None,
-                relation: if next.starts_with('(') || next.starts_with("?.(") {
+            callers.push(Caller::at_line(
+                path.clone(),
+                holder.and_then(|f| f.symbol_name.clone()),
+                holder.map_or_else(|| format!("{line}-{line}"), |f| lines_of(&f.id)),
+                "name",
+                if next.starts_with('(') || next.starts_with("?.(") {
                     "call"
                 } else {
                     "reference"
                 },
-                kind: None,
-                folded_by: None,
-                fold_kind: None,
-                fold_share: 0,
-                sites: vec![line],
-            });
+                line,
+            ));
         }
         let callers = merge_by_symbol(callers);
         let contract = exported.then(|| Contract {
@@ -4761,26 +4762,15 @@ fn removed_definitions(
         });
         out.push((
             ChangedSymbol {
-                path: path_at_base,
-                symbol: Some(name),
-                lines,
-                kind: "removed".to_string(),
-                commits: 0,
                 callers,
-                entry: None,
                 unresolved,
-                untested: false,
-                compatible_callers: 0,
-                missed_in: Vec::new(),
-                also_changed: Vec::new(),
-                possibly_also_changed: Vec::new(),
-                shed: crate::answer::v2::ShedRows::default(),
-                change: None,
-                callers_omitted: 0,
-                omitted: Vec::new(),
-                folded: Vec::new(),
-                new_parameters: Vec::new(),
-                coverage: decide::Coverages::partial(decide::Gap::NotTraced),
+                ..ChangedSymbol::bare(
+                    path_at_base,
+                    Some(name),
+                    lines,
+                    "removed",
+                    decide::Coverages::partial(decide::Gap::NotTraced),
+                )
             },
             contract,
         ));
@@ -5452,30 +5442,22 @@ fn omit(output: &mut ImpactOutput, i: usize) {
             entry.omitted.truncate(MAX_OMITTED_NAMED);
         }
         None => output.changed.push(ChangedSymbol {
-            path: "(changed definitions)".to_string(),
-            symbol: None,
-            lines: String::new(),
-            kind: "omitted".to_string(),
-            commits: 0,
-            callers: Vec::new(),
-            entry: None,
             unresolved: Some(Unknown::Omitted {
                 needs,
                 count: 1,
                 incomplete: usize::from(gone.incomplete),
             }),
-            untested: false,
-            compatible_callers: 0,
-            missed_in: Vec::new(),
-            also_changed: Vec::new(),
-            possibly_also_changed: Vec::new(),
             shed: gone.shed,
-            change: None,
             callers_omitted: gone.callers_omitted,
             omitted: vec![gone],
             folded,
-            new_parameters: Vec::new(),
-            coverage: decide::Coverages::partial(decide::Gap::Capped),
+            ..ChangedSymbol::bare(
+                "(changed definitions)".to_string(),
+                None,
+                String::new(),
+                "omitted",
+                decide::Coverages::partial(decide::Gap::Capped),
+            )
         }),
     }
 }
@@ -5924,47 +5906,28 @@ pub(crate) fn symbol_local_output(
             callers: local
                 .uses
                 .iter()
-                .map(|u| Caller {
-                    path: local.path.clone(),
-                    symbol: u.inside.clone(),
-                    lines: format!("{0}-{0}", u.line),
-                    weight: 1.0,
-                    tests: Vec::new(),
-                    file_tested: false,
-                    registered_by: None,
-                    unread_test: None,
-                    evidence: "resolved",
-                    reason: None,
-                    relation: if u.call { "call" } else { "reference" },
-                    kind: None,
-                    sites: vec![u.line],
-                    folded_by: None,
-                    fold_kind: None,
-                    fold_share: 0,
+                .map(|u| {
+                    Caller::at_line(
+                        local.path.clone(),
+                        u.inside.clone(),
+                        format!("{0}-{0}", u.line),
+                        "resolved",
+                        if u.call { "call" } else { "reference" },
+                        u.line,
+                    )
                 })
                 .collect(),
-            path: local.path,
-            symbol: Some(local.name.clone()),
-            lines: format!("{0}-{0}", local.line),
-            kind: "local".to_string(),
-            commits: 0,
-            entry: None,
             unresolved: Some(Unknown::LocalOf {
-                name: local.name,
+                name: local.name.clone(),
                 enclosing: local.enclosing,
             }),
-            untested: false,
-            compatible_callers: 0,
-            missed_in: Vec::new(),
-            also_changed: Vec::new(),
-            possibly_also_changed: Vec::new(),
-            shed: crate::answer::v2::ShedRows::default(),
-            change: None,
-            callers_omitted: 0,
-            omitted: Vec::new(),
-            folded: Vec::new(),
-            new_parameters: Vec::new(),
-            coverage: decide::Coverages::partial(decide::Gap::NotTraced),
+            ..ChangedSymbol::bare(
+                local.path,
+                Some(local.name),
+                format!("{0}-{0}", local.line),
+                "local",
+                decide::Coverages::partial(decide::Gap::NotTraced),
+            )
         })
         .collect();
     output
