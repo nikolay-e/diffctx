@@ -10,13 +10,13 @@ use std::path::Path;
 use serde_json::Value;
 
 mod support;
-use support::{diffctx, repo};
+use support::{NO_WALL_DEADLINE, diffctx, repo};
 
 fn run(repo: &Path, args: &[&str]) -> Value {
     let out = diffctx()
         .current_dir(repo)
         .args(args)
-        .args(["-q", "--timeout", "600"])
+        .args(["-q", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(

@@ -30,6 +30,20 @@ pub(crate) fn diffctx() -> Command {
     cmd
 }
 
+/// A `--timeout` no run reaches, in seconds (ten years): a suite that drives the
+/// binary on a generated fixture asserts what it answers, never how fast. The CLI
+/// rejects `0` and cannot take `u64::MAX` (its git ceiling adds the value to `now`).
+pub(crate) const NO_WALL_DEADLINE: &str = "315360000";
+
+/// [`diffctx`] under no wall-clock deadline: a gate at load measured one run of
+/// 30 000 definitions at 300 s against 48 s alone (fj#207). A test that stops a
+/// run does it with `DIFFCTX_TEST_DEADLINE_EXPIRED` or `_AFTER_POLLS`.
+pub(crate) fn diffctx_unclocked() -> Command {
+    let mut cmd = diffctx();
+    cmd.args(["--timeout", NO_WALL_DEADLINE]);
+    cmd
+}
+
 /// The `PATH` that puts [`fake_git::TRANSLATED_GIT`] ahead of the real git.
 #[cfg(unix)]
 pub(crate) fn path_with_translated_git(dir: &Path) -> std::ffi::OsString {

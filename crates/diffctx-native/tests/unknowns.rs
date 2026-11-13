@@ -6,10 +6,10 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{commit_all, diffctx, fill, fill_steps, repo, write};
+use support::{commit_all, diffctx, diffctx_unclocked, fill, fill_steps, repo, write};
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([".", "--symbol", name, "-q", "-f", "md"])
         .output()
@@ -23,7 +23,7 @@ fn symbol_markdown(repo: &Path, name: &str) -> String {
 }
 
 fn impact_markdown_within(repo: &Path, budget: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -49,7 +49,7 @@ fn impact_markdown_within(repo: &Path, budget: &str) -> String {
 }
 
 fn impact_markdown(repo: &Path) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -805,7 +805,7 @@ fn named_by_never_displaces_a_caller() {
 }
 
 fn impact_json(repo: &Path) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",

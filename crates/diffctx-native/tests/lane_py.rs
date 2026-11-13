@@ -8,10 +8,10 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 mod support;
-use support::{diffctx, repo, set};
+use support::{diffctx_unclocked, repo, set};
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         // The suite asserts relations, whatever the answer folds.
         .arg("--unfold")

@@ -8,13 +8,13 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 mod support;
-use support::{diffctx, repo_steps, set};
+use support::{NO_WALL_DEADLINE, diffctx, repo_steps, set};
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
         .current_dir(repo)
         .args(args)
-        .args(["-q", "-f", "json", "--timeout", "600"])
+        .args(["-q", "-f", "json", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(

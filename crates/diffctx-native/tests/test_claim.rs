@@ -12,7 +12,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, fill_steps};
+use support::{NO_WALL_DEADLINE, diffctx, fill_steps};
 
 struct Seed {
     name: &'static str,
@@ -119,7 +119,7 @@ fn answer(seed: &Seed) -> (Value, String) {
         let out = diffctx()
             .current_dir(root)
             .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-f", format])
-            .args(["-q", "--timeout", "600"])
+            .args(["-q", "--timeout", NO_WALL_DEADLINE])
             .output()
             .expect("run diffctx");
         assert!(

@@ -15,7 +15,7 @@ use tempfile::TempDir;
 /// reaches a user passes this suite on its own platform.
 mod support;
 use _diffctx::snapshot::git_command;
-use support::{commit_all, diffctx, git, init_repo};
+use support::{NO_WALL_DEADLINE, commit_all, diffctx, diffctx_unclocked, git, init_repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()
@@ -886,7 +886,7 @@ fn a_closed_stdout_pipe_exits_quietly() {
     std::fs::write(repo.join("big.py"), body).expect("write");
     commit_all(repo, "big");
 
-    let mut child = diffctx()
+    let mut child = diffctx_unclocked()
         .current_dir(repo)
         .args([".", "--diff", "HEAD~1..HEAD", "--full", "-q"])
         .stdout(Stdio::piped())
@@ -1059,7 +1059,16 @@ fn the_fragment_cap_never_drops_the_edited_function() {
     commit_all(repo, "edit f2500");
     let doc = json_doc(&run(
         repo,
-        &[".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"],
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "-f",
+            "json",
+            "-q",
+            "--timeout",
+            NO_WALL_DEADLINE,
+        ],
     ));
     let changed: Vec<&serde_json::Value> = doc["fragments"]
         .as_array()
@@ -1240,7 +1249,19 @@ fn a_per_file_limit_raises_the_headline_only_where_the_answer_is() {
     .expect("write");
     commit_all(repo, "flip sub");
     let json = |range: &str| -> serde_json::Value {
-        let out = run(repo, &[".", "--diff", range, "--format", "json", "--quiet"]);
+        let out = run(
+            repo,
+            &[
+                ".",
+                "--diff",
+                range,
+                "--format",
+                "json",
+                "--quiet",
+                "--timeout",
+                NO_WALL_DEADLINE,
+            ],
+        );
         assert!(
             out.status.success(),
             "{}",

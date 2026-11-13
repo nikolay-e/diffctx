@@ -9,7 +9,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, git};
+use support::{NO_WALL_DEADLINE, diffctx, git};
 
 const MANIFEST: (&str, &str) = (
     "Cargo.toml",
@@ -47,7 +47,7 @@ fn run(repo: &Path, args: &[&str]) -> String {
         // The suite asserts relations, whatever the answer folds.
         .arg("--unfold")
         .args(args)
-        .args(["-q", "--timeout", "600"])
+        .args(["-q", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(

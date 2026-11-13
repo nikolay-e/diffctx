@@ -8,14 +8,14 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{claims, commit_all, diffctx, git, init_repo, repo, write};
+use support::{claims, commit_all, diffctx_unclocked, git, init_repo, repo, write};
 
 fn impact(repo: &Path, range: &str) -> serde_json::Value {
     impact_env(repo, range, &[])
 }
 
 fn impact_env(repo: &Path, range: &str, env: &[(&str, &str)]) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .envs(env.iter().copied())
         .args(["--diff", range, "--mode", "impact", "-q"])
@@ -35,7 +35,7 @@ fn omitted_of(listing: &serde_json::Value) -> u64 {
 }
 
 fn impact_markdown(repo: &Path, range: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args(["--diff", range, "--mode", "impact", "-q", "-f", "md"])
         .output()
@@ -321,7 +321,7 @@ fn a_run_that_hit_a_limit_says_so_and_is_never_empty() {
         "{doc}"
     );
     assert_eq!(doc["empty"], false);
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .env("DIFFCTX_MAX_CANDIDATE_FILES", "1")
         .args([
@@ -365,7 +365,7 @@ fn a_cap_every_repository_trips_does_not_make_an_empty_answer_speak() {
     write(repo, "lone.py", "def lone():\n    return 3\n");
     commit_all(repo, "lone: 3");
     let cap = [("DIFFCTX_MAX_EDGES_PER_NODE", "1")];
-    let pack = diffctx()
+    let pack = diffctx_unclocked()
         .current_dir(repo)
         .envs(cap)
         .args(["--diff", "HEAD~1..HEAD", "-q", "-f", "json"])
@@ -812,7 +812,7 @@ fn the_working_tree_is_a_valid_range() {
         "shop/pricing.py",
         "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
     );
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args(["--mode", "impact", "-q"])
         .output()
@@ -848,7 +848,7 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
     commit_all(repo, "initial");
     write(repo, "svc/core.py", "def core(x):\n    return x * 2\n");
     commit_all(repo, "double");
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q"])
         .output()
@@ -869,7 +869,7 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
 #[test]
 fn md_is_rejected_outside_impact_mode() {
     let tmp = repo_with_callers();
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--diff", "HEAD~1..HEAD", "-f", "md"])
         .output()
@@ -1432,7 +1432,7 @@ fn no_mode_names_a_withheld_file_that_references_the_change() {
         &["--diff", "HEAD~1..HEAD", "--full", "-q", "-f", "md"],
         &["-q", "-f", "json"],
     ] {
-        let out = diffctx()
+        let out = diffctx_unclocked()
             .current_dir(repo)
             .arg(".")
             .args(args)
@@ -1699,7 +1699,7 @@ fn markdown_is_fitted_on_markdown_and_keeps_its_contracts() {
 #[test]
 fn the_budget_sets_the_impact_cap() {
     let tmp = wide_change();
-    let small = diffctx()
+    let small = diffctx_unclocked()
         .current_dir(tmp.path())
         .args([
             "--diff",
@@ -1717,7 +1717,7 @@ fn the_budget_sets_the_impact_cap() {
     let md = String::from_utf8_lossy(&small.stdout);
     assert!(omitted_in(&md) > 0, "{md}");
     assert!(md.contains("a larger budget (--budget"), "{md}");
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args([
             "--diff",
@@ -2139,7 +2139,7 @@ fn a_qualified_symbol_names_its_owner_and_takes_a_path() {
         &[],
     );
     let symbol = |query: &str| {
-        diffctx()
+        diffctx_unclocked()
             .current_dir(tmp.path())
             .args(["--symbol", query, "-q", "-f", "md"])
             .output()
@@ -2196,7 +2196,7 @@ fn files_withheld_by_ignore_rules_are_counted_not_hidden() {
         "{md}"
     );
     assert!(md.contains("were not read"), "{md}");
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "workers", "-q", "-f", "md"])
         .output()
@@ -2228,7 +2228,7 @@ fn a_symbol_with_callers_does_not_count_withheld_files() {
             "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 2\n",
         )],
     );
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "workers", "-q", "-f", "md"])
         .output()
@@ -2743,7 +2743,7 @@ fn a_removed_optional_member_names_its_remaining_call_site() {
 }
 
 fn change_class_of(repo: &Path, path: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args(["--diff", "HEAD~1..HEAD", "-f", "json", "-q"])
         .output()
@@ -3381,7 +3381,7 @@ fn a_symbol_named_only_in_unparsed_files_is_not_said_to_be_missing() {
         &[],
     );
     let symbol = |name: &str| {
-        diffctx()
+        diffctx_unclocked()
             .current_dir(tmp.path())
             .args(["--symbol", name, "-q", "-f", "md"])
             .output()
@@ -3429,7 +3429,7 @@ fn a_class_whose_header_is_its_signature_keeps_its_definition() {
         ],
         &[],
     );
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "Turns", "-q", "-f", "md"])
         .output()
@@ -3467,7 +3467,7 @@ fn a_test_in_another_runtime_does_not_guard_a_namesake() {
         ],
         &[],
     );
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "UserPreferences", "-q", "-f", "md"])
         .output()
@@ -3527,7 +3527,7 @@ fn a_range_whose_base_moved_on_is_measured_from_the_fork() {
             "{range}: {out}"
         );
         for mode in [&["--mode", "pack"][..], &["--mode", "locate"], &["--full"]] {
-            let out = diffctx()
+            let out = diffctx_unclocked()
                 .current_dir(repo)
                 .args(["--diff", range, "-q", "-f", "json"])
                 .args(mode)
@@ -3592,7 +3592,7 @@ fn a_range_reads_its_snapshot_whatever_the_disk_holds() {
     commit_all(repo, "B");
     let modes = ["impact", "locate", "pack"];
     let answer = |mode: &str| {
-        let out = diffctx()
+        let out = diffctx_unclocked()
             .current_dir(repo)
             .args(["--diff", "HEAD~1..HEAD", "-q", "-f", "json", "--mode", mode])
             .output()
@@ -4065,7 +4065,7 @@ fn a_file_with_its_own_definition_of_the_name_is_no_caller_of_the_removed_one() 
 }
 
 fn impact_budget_md(repo: &Path, budget: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -4577,7 +4577,7 @@ fn an_answer_at_a_tight_budget_sheds_its_names_to_fit() {
     write(repo, "app/engine.py", &engine_version(2));
     commit_all(repo, "bump the helpers, rewrite plan");
     for budget in ["150", "200", "300"] {
-        let out = diffctx()
+        let out = diffctx_unclocked()
             .current_dir(repo)
             .args([
                 "--diff",
@@ -4819,7 +4819,7 @@ fn a_cap_keeps_the_strongest_row_of_each_relation_a_symbol_has() {
     // one row, the strongest, and not one of each relation.
     let mut bitten = 0;
     for budget in ["400", "500", "600", "800", "1000"] {
-        let out = diffctx()
+        let out = diffctx_unclocked()
             .current_dir(repo)
             .args([
                 "--diff",
@@ -5224,7 +5224,7 @@ fn a_stale_reference_outlives_routine_callers_under_the_budget() {
         );
     }
     git(repo, &["mv", "src/old_helper.ts", "src/helper.ts"]);
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff", "--mode", "impact", "-q", "-f", "md", "--budget", "600",
@@ -5278,7 +5278,7 @@ fn a_cap_deals_rows_round_robin_and_a_larger_budget_lists_a_superset() {
     write(repo, "pkg/calc.py", "def compute(x):\n    return x + 1\n");
     commit_all(repo, "change");
     let answer = |budget: u32| {
-        let out = diffctx()
+        let out = diffctx_unclocked()
             .current_dir(repo)
             .args([
                 "--diff",
@@ -5532,7 +5532,7 @@ fn impact_and_symbol_name_the_same_callers_of_a_definition() {
         &[("src/base.ts", &base("x + 0"))],
     );
     let from_impact = impact(tmp.path(), "HEAD~1..HEAD");
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "normalize", "-q"])
         .output()
@@ -5587,7 +5587,7 @@ fn a_definition_whose_callers_the_cap_dropped_counts_them() {
 }
 
 fn symbol_doc(repo: &Path, name: &str) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args(["--symbol", name, "-q"])
         .output()
@@ -5663,7 +5663,7 @@ fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
         "{doc:#}"
     );
     assert_eq!(untracked["rows"], serde_json::json!([]), "{doc:#}");
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(tmp.path())
         .args(["--symbol", "options", "-q", "-f", "md"])
         .output()
@@ -5678,7 +5678,7 @@ fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
 // ---- the folding table (Revision 12.1): what a change cannot affect is counted
 
 fn impact_unfolded(repo: &Path) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -6542,7 +6542,7 @@ fn a_decorated_docstring_change_is_not_set_aside() {
 }
 
 fn impact_budget(repo: &Path, budget: u32) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
