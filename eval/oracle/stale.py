@@ -13,12 +13,35 @@ from model import MODULE, Definition, Relation
 from truth import Snapshot
 
 
-def _named_in(head: Snapshot, path: str, first: int, last: int, names: set[str], skip: set[int] = frozenset()) -> bool:
-    """Some line of the span, a comment aside, names one of `names` as a whole word."""
+def _named_in(
+    head: Snapshot,
+    path: str,
+    first: int,
+    last: int,
+    names: set[str],
+    skip: set[int] = frozenset(),
+    shadows: set[str] = frozenset(),
+) -> bool:
+    """Some line of the span, a comment aside, names one of `names` as a whole word, not as the member of a `shadows` container."""
     lines = head.source(path).decode("utf-8", "replace").split("\n")
     inert = head.inert_lines(path) | skip
-    pattern = re.compile(rf"\b(?:{'|'.join(re.escape(n) for n in names)})\b")
-    return any(pattern.search(lines[n - 1]) for n in range(first, min(last, len(lines)) + 1) if n not in inert)
+    pattern = re.compile(rf"(?:\b(?P<qualifier>\w+)\.)?\b(?:{'|'.join(re.escape(n) for n in names)})\b")
+    return any(
+        m["qualifier"] not in shadows
+        for n in range(first, min(last, len(lines)) + 1)
+        if n not in inert
+        for m in pattern.finditer(lines[n - 1])
+    )
+
+
+def _shadowing_containers(head: Snapshot, relations: list[Relation], names: set[str]) -> set[str]:
+    """The containers that hold a head definition of one of the names where a removed definition stood: `Container.Name`
+    there names that one, whatever the removed definition's readers named."""
+    removed = {r.to_key for r in relations}
+    paths = {key.partition("::")[0] for key in removed}
+    return {
+        d.container[-1] for p in paths for d in head.definitions(p) if d.name in names and d.container and d.key not in removed
+    }
 
 
 def _ancestors(key: str) -> list[str]:
@@ -31,19 +54,22 @@ def still_named(relations: list[Relation], head: Snapshot, changed: list[Changed
     """The base users of a removed definition that still name it at head: the user is not changed by the range, or its
     head version (or its changed enclosing definition's) does."""
     by_base = {c.base.key: c for c in changed if c.base is not None}
+    shadows = _shadowing_containers(head, relations, names)
     kept = []
     for relation in relations:
         path, _, qualname = relation.from_key.rpartition("::")
         if qualname == MODULE:
             lines = head.source(path).decode("utf-8", "replace").count("\n") + 1
             inside = {n for d in head.definitions(path) for n in range(d.start, d.end + 1)}
-            if _named_in(head, path, 1, lines, names, inside):  # module code: the lines no definition holds
+            if _named_in(head, path, 1, lines, names, inside, shadows):  # module code: the lines no definition holds
                 kept.append(relation)
             continue
         owner = next((by_base[k] for k in _ancestors(relation.from_key) if k in by_base), None)
         if owner is None:
             kept.append(relation)  # nothing in the range touched the user
-        elif owner.head is not None and _named_in(head, owner.head.path, owner.head.start, owner.head.end, names):
+        elif owner.head is not None and _named_in(
+            head, owner.head.path, owner.head.start, owner.head.end, names, shadows=shadows
+        ):
             kept.append(relation)
     return kept
 

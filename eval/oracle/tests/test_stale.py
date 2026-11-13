@@ -106,3 +106,41 @@ def test_a_removal_whose_body_differs_once_the_name_is_set_aside_is_not_paired(t
     removed = next(d for d in base.definitions("m.py") if d.name == "ResponseClosed" and d.kind == "class")
 
     assert pairing(head, base, removed, ["m.py::StreamClosed"]) is None
+
+
+NAMESPACED = {
+    "base": {
+        "types.ts": "export type HookEvent = { name: string };\n",
+        "use.ts": "import { HookEvent } from './types';\n\nexport function f(e: HookEvent) {\n  return e.name;\n}\n",
+    },
+    "head": {
+        "types.ts": "export namespace PromiseOnly {\n  export type HookEvent = { name: string; async: boolean };\n}\n",
+        "use.ts": "import { PromiseOnly } from './types';\n\nexport function f(e: PromiseOnly.HookEvent) {\n  return e.name;\n}\n",
+    },
+}
+
+
+def removed_hook_event_readers(tmp_path: Path, use_head: str) -> list[str]:
+    snapshots = {}
+    for side, files in NAMESPACED.items():
+        (tmp_path / side).mkdir(parents=True)
+        for name, text in files.items():
+            (tmp_path / side / name).write_text(use_head if (side, name) == ("head", "use.ts") else text)
+        snapshots[side] = Snapshot(tmp_path / side, Index(), "typescript")
+    base, head = snapshots["base"], snapshots["head"]
+    removed = base.definitions("types.ts")[0]
+    f_base, f_head = base.definitions("use.ts")[0], head.definitions("use.ts")[0]
+    truth = [Relation(f_base.key, removed.key, "type_use", 3)]
+    return [r.from_key for r in still_named(truth, head, [ChangedDefinition("modified", f_head, f_base)], {removed.name})]
+
+
+def test_a_use_qualified_by_the_namespace_that_now_holds_the_name_does_not_keep_the_removed_top_level_one(tmp_path: Path):
+    assert removed_hook_event_readers(tmp_path, NAMESPACED["head"]["use.ts"]) == []
+
+
+def test_an_unqualified_use_and_a_use_qualified_by_a_module_still_keep_it(tmp_path: Path):
+    bare = NAMESPACED["head"]["use.ts"].replace("PromiseOnly.HookEvent", "HookEvent")
+    module = NAMESPACED["head"]["use.ts"].replace("PromiseOnly.HookEvent", "types.HookEvent")
+
+    assert removed_hook_event_readers(tmp_path / "a", bare) == ["use.ts::f"]
+    assert removed_hook_event_readers(tmp_path / "b", module) == ["use.ts::f"]
