@@ -34,6 +34,7 @@ use crate::facts::shell::{PathHead, PathUse};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, UseKind, expired, facts_of,
 };
+use crate::paths::normalize_lexical;
 use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's shell scripts.
@@ -87,21 +88,6 @@ enum Reach {
     None,
 }
 
-/// `a/./b/../c` as `a/c`; `None` when it climbs out of the repository.
-fn normalize(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
-}
-
 struct Index<'a> {
     paths: HashSet<&'a str>,
     /// Every file of the repository by its file name.
@@ -134,7 +120,7 @@ impl Index<'_> {
         let file_name = tail.rsplit('/').next().unwrap_or("");
         match head {
             _ if file_name.is_empty() => Target::Unknown,
-            PathHead::ScriptDir => match normalize(&format!("{dir}/{tail}")) {
+            PathHead::ScriptDir => match normalize_lexical(&format!("{dir}/{tail}")) {
                 Some(p) if self.exists(&p) => Target::File(p),
                 _ => Target::Outside,
             },
@@ -143,7 +129,7 @@ impl Index<'_> {
             PathHead::Literal if !tail.starts_with(['/', '~']) => {
                 [format!("{dir}/{tail}"), tail.to_string()]
                     .iter()
-                    .filter_map(|p| normalize(p))
+                    .filter_map(|p| normalize_lexical(p))
                     .find(|p| self.exists(p))
                     .map_or_else(|| self.by_file_name(tail), Target::File)
             }

@@ -12,17 +12,8 @@ macro_rules! shared_reader_methods {
             self.halted
         }
 
-        fn line_at(&self, byte: usize) -> u32 {
-            self.line_starts.partition_point(|start| *start <= byte) as u32
-        }
-
         fn span(&self, range: Range<usize>) -> Span {
-            let first = self.line_at(range.start);
-            let last = self.line_at(range.end.saturating_sub(1).max(range.start));
-            Span::new(
-                range.start as u32..range.end as u32,
-                (first, last.max(first)),
-            )
+            self.line_starts.span(range)
         }
 
         fn slice(&self, range: Range<usize>) -> &'a str {

@@ -47,7 +47,7 @@ use tree_sitter::Node;
 
 use super::jvm::shared_reader_methods;
 use super::kotlin::{Leaf, POLL_EVERY, UNBOUND_PATH, error_ranges, has_word};
-use super::parse_tree;
+use super::{LineStarts, parse_tree};
 use crate::facts::framework;
 use crate::facts::kotlin as old;
 use crate::facts::{
@@ -195,7 +195,7 @@ struct Reader<'a> {
     read: &'a old::KotlinFacts,
     budget: &'a RunBudget,
     leaves: Vec<Leaf>,
-    line_starts: Vec<usize>,
+    line_starts: LineStarts,
     keys: Vec<LocalKey>,
     facts: Vec<Fact>,
     halted: bool,
@@ -209,14 +209,7 @@ impl<'a> Reader<'a> {
         read: &'a old::KotlinFacts,
         budget: &'a RunBudget,
     ) -> Self {
-        let mut line_starts = vec![0];
-        line_starts.extend(
-            bytes
-                .iter()
-                .enumerate()
-                .filter(|(_, b)| **b == b'\n')
-                .map(|(at, _)| at + 1),
-        );
+        let line_starts = LineStarts::new(bytes);
         let mut leaves = Vec::new();
         let mut cursor = root.walk();
         let mut descending = true;

@@ -152,7 +152,7 @@ fn join_tokens(tokens: &[&str]) -> String {
     out
 }
 
-fn is_dotted_name(text: &str) -> bool {
+pub(crate) fn is_dotted_name(text: &str) -> bool {
     !text.is_empty()
         && text.split('.').all(|part| {
             let mut chars = part.chars();

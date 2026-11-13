@@ -24,6 +24,7 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
 };
+use crate::facts::lang::python::is_dotted_name;
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref, Scope,
     UseKind, expired, facts_of,
@@ -1450,7 +1451,7 @@ impl<'a> Engine<'a> {
         ) {
             return Entity::Dynamic;
         }
-        if !is_dotted(text) {
+        if !is_dotted_name(text) {
             return Entity::Unknown;
         }
         match self.resolve_dotted(f, scope, text) {
@@ -1881,15 +1882,6 @@ fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
     }
 }
 
-fn is_dotted(text: &str) -> bool {
-    !text.is_empty()
-        && text.split('.').all(|part| {
-            let mut chars = part.chars();
-            chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
-                && chars.all(|c| c.is_alphanumeric() || c == '_')
-        })
-}
-
 /// The base classes a `class Name(A, b.B[int], metaclass=M)` signature names.
 fn base_names(signature: &str) -> Vec<String> {
     let Some(rest) = signature.strip_prefix("class ") else {
@@ -1922,7 +1914,7 @@ fn base_names(signature: &str) -> Vec<String> {
         .filter_map(|item| {
             let item = item.trim();
             let head = item.split('[').next().unwrap_or(item).trim();
-            (!item.contains('=') && is_dotted(head)).then(|| head.to_string())
+            (!item.contains('=') && is_dotted_name(head)).then(|| head.to_string())
         })
         .collect()
 }
