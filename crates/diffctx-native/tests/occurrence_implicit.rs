@@ -19,8 +19,8 @@ use _diffctx::facts::lang::sql::SqlExtractor;
 use _diffctx::facts::lang::terraform::TerraformExtractor;
 use _diffctx::facts::lang::typescript::TypeScript;
 use _diffctx::facts::{Extractor, FileFacts, ModulePath, ProjectId};
+use _diffctx::occurrence::{Implicit, Known, implicit_kinds};
 use _diffctx::snapshot::{RepoPath, RunBudget};
-use _diffctx::tokens::occurrence::{Implicit, Known, implicit_kinds};
 
 fn kinds_in(
     path: &str,

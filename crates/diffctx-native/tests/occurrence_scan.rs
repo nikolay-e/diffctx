@@ -10,13 +10,13 @@ use _diffctx::facts::lang::python::PythonExtractor;
 use _diffctx::facts::{
     BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, ProjectId,
 };
-use _diffctx::resolve::{CandidateReason, Relation};
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget, SideTag};
-use _diffctx::tokens::occurrence::{
+use _diffctx::occurrence::{
     Account, Alias, AliasBound, AliasScope, Basis, Case, Class, Entry, Hedge, Implicit,
     MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Occurrence, Outcome, Reason, Unread, ValuePlace, Verdict,
     scan,
 };
+use _diffctx::resolve::{CandidateReason, Relation};
+use _diffctx::snapshot::{Loss, RepoPath, RunBudget, SideTag};
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use regex::Regex;
 
