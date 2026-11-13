@@ -1161,24 +1161,7 @@ impl<'a> Engine<'a> {
         self.reaches(f, self.ix.defs[def].file)
     }
 
-    fn text(&self, f: usize) -> Option<Bytes> {
-        if let Some(known) = self.texts.borrow().get(&f) {
-            return known.clone();
-        }
-        let path = self.path_of(f);
-        let read = match self.reader.read(path) {
-            Ok(read) => read,
-            Err(_) => {
-                self.losses.borrow_mut().push(Loss::ReadFailed {
-                    path: path.clone(),
-                    side: self.side,
-                });
-                None
-            }
-        };
-        self.texts.borrow_mut().insert(f, read.clone());
-        read
-    }
+    file_text!();
 
     // ---- where a specifier lands
 

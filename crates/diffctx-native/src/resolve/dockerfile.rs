@@ -26,7 +26,7 @@ use std::collections::HashSet;
 use super::index::dir_of;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
-    UnresolvedReason,
+    UnresolvedReason, unresolved,
 };
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, expired, facts_of,
@@ -145,10 +145,6 @@ impl DockerfileResolver {
 }
 
 solved_by!(DockerfileResolver);
-
-fn unresolved(reason: UnresolvedReason) -> Resolution {
-    Resolution::Unresolved { reason }
-}
 
 fn read(file: &FileFacts) -> FileRec {
     let mut stages = Vec::new();
