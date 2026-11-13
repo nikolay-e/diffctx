@@ -3173,7 +3173,8 @@ impl Cell {
             manifests_whole,
         );
         if !changed.stale.is_empty() {
-            view = view.removed_family(self.override_pairs());
+            let base = self.base().ok().map(Resolver::bindings);
+            view = view.removed_sites(base, &changed.stale);
         }
         let names = self.reference_names(changed);
         let tokens = self.tokens.group(self.family.group());
@@ -3231,22 +3232,6 @@ impl Cell {
             (whole, unused) = (whole && complete, unused && bare);
         }
         Some((whole, unused))
-    }
-
-    /// The base side's resolved overrides as (overrider, target) keys; none if a read failed.
-    fn override_pairs(&self) -> Option<Vec<(DefKey, DefKey)>> {
-        let Ok(base) = self.base() else { return None };
-        let pair = |binding: &Binding| match (binding.relation, &binding.from, &binding.resolution)
-        {
-            (Relation::Overrides, Scope::Def(local), Resolution::Resolved { target, .. }) => {
-                match facts_of(&self.ctx, SideTag::Base, &self.cache, &binding.file) {
-                    Ok(Some(facts)) => Some(Some((facts.key(local), target.clone()))),
-                    _ => Some(None),
-                }
-            }
-            _ => None,
-        };
-        base.bindings().iter().filter_map(pair).collect()
     }
 
     /// Whether a head file of the family holds an import whose target the code

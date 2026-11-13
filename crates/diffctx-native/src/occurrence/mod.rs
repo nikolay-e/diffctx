@@ -133,7 +133,8 @@ pub enum Reason {
     WideBinding,
     /// Two outcomes claim one span: a defect of the resolver.
     Conflict,
-    /// A target in the definition's override family: a call through a supertype.
+    /// A target in the definition's override family, or a head binding at a place the
+    /// base resolved to a removed definition: a call through a supertype.
     Dispatch,
     /// A removed member's call through a same-named member, its base family unread.
     OverrideUnproven,
