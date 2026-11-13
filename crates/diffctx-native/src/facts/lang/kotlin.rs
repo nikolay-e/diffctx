@@ -53,8 +53,8 @@ use crate::facts::{
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
-const UNBOUND_PATH: &str = "<blob>";
-const POLL_EVERY: usize = 256;
+pub(super) const UNBOUND_PATH: &str = "<blob>";
+pub(super) const POLL_EVERY: usize = 256;
 const MAX_ERROR_RANGES: usize = 32;
 /// Names an unwrapped binding is followed back through to the one that types it.
 const MAX_ALIAS_HOPS: usize = 4;
@@ -135,7 +135,7 @@ pub(super) fn blob_of(
 }
 
 /// The error lines (sorted, distinct) as merged ranges.
-fn error_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
+pub(super) fn error_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
     let mut ranges: Vec<(u32, u32)> = Vec::new();
     for &line in lines {
         match ranges.last_mut() {
@@ -168,10 +168,10 @@ fn jvm_name(annotation: &str) -> Option<&str> {
 }
 
 /// A leaf of the tree: its bytes, and whether it is a comment.
-struct Leaf {
-    start: usize,
-    end: usize,
-    comment: bool,
+pub(super) struct Leaf {
+    pub start: usize,
+    pub end: usize,
+    pub comment: bool,
 }
 
 struct Reader<'a> {
@@ -842,7 +842,7 @@ fn visibility_of(d: &old::Declaration) -> Visibility {
     }
 }
 
-fn has_word(text: &str, word: &str) -> bool {
+pub(super) fn has_word(text: &str, word: &str) -> bool {
     text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .any(|w| w == word)
 }
