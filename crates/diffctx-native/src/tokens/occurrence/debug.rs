@@ -12,12 +12,13 @@ use serde_json::json;
 use tree_sitter::Tree;
 
 use super::{
-    Account, Alias, AliasScope, Basis, Entry, Hedge, Known, Occurrence, Outcome, Unread, Verdict,
-    View, admitted, close_aliases, counts_against, implicit_kinds, outcomes, value_use,
+    Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Known, Occurrence, Outcome, Reason,
+    Unread, Verdict, View, admitted, close_aliases, counts_against, implicit_kinds, outcomes,
+    value_use,
 };
 use crate::decide::{Family, Gap, USES};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
-use crate::resolve::{Definition, Relation};
+use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 use crate::tokens::{GroupTokens, Names};
 
@@ -128,6 +129,7 @@ impl Shadow<'_> {
         let (_, alias_bound) = close_aliases(&names, |name, scope| {
             self.account_name(&mut found, definition, name, scope)
         });
+        found.entries.extend(self.unnamed(definition));
         let implicit = match facts_of(self.ctx, side, self.cache, &definition.file) {
             Ok(Some(home)) => home
                 .defs()
@@ -290,6 +292,32 @@ impl Shadow<'_> {
             }
         }
         aliases
+    }
+
+    /// A candidate at each use that spells no name, in files in reach that may
+    /// reference the definition.
+    fn unnamed<'s>(&'s self, definition: &'s Definition) -> impl Iterator<Item = Entry> + 's {
+        let may = |file: &RepoPath| {
+            (self.reach)(file.as_str())
+                && self
+                    .ctx
+                    .workspace
+                    .may_reference(file.as_str(), definition.file.as_str())
+        };
+        self.view
+            .unnamed(definition.kind)
+            .filter(move |binding| may(&binding.file))
+            .map(|binding| Entry {
+                occurrence: Occurrence {
+                    file: binding.file.clone(),
+                    bytes: binding.site.bytes.clone(),
+                    line: binding.site.lines.0,
+                    class: Class::Code,
+                },
+                relation: Some(binding.relation),
+                outcome: Outcome::Candidate(Reason::Unresolved(UnresolvedReason::Opaque)),
+                basis: Basis::Unproven,
+            })
     }
 
     /// The files of the group in reach that spell `name`, or could not be tokenised.

@@ -13,7 +13,7 @@ use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
 };
 use crate::resolve::{
-    Binding, CandidateReason, Definition, Relation, Resolution, UnresolvedReason,
+    Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
 };
 use crate::snapshot::RepoPath;
 
@@ -26,6 +26,8 @@ pub struct Index {
     definitions: HashSet<DefKey>,
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
+    /// The bindings of a use that spells no name (`$o->$m()`).
+    unnamed: Vec<usize>,
     manifests_whole: bool,
 }
 
@@ -46,12 +48,16 @@ impl Index {
             definitions: definitions.iter().map(|def| def.key.clone()).collect(),
             bases: HashMap::new(),
             overriders: HashMap::new(),
+            unnamed: Vec::new(),
             manifests_whole,
         };
         for (at, binding) in bindings.iter().enumerate() {
             let bytes = &binding.site.bytes;
             let file = &binding.file;
             index.by_file.entry(file.clone()).or_default().push(at);
+            if binding.name.as_str() == DYNAMIC {
+                index.unnamed.push(at);
+            }
             index
                 .exact
                 .entry((file.clone(), bytes.start, bytes.end))
@@ -119,6 +125,14 @@ impl<'a> View<'a> {
             family_unproven: false,
             stale: HashSet::new(),
         }
+    }
+
+    /// The uses that spell no name and whose relation reaches a definition of `kind`:
+    /// each may be a use of any such definition.
+    pub fn unnamed(&self, kind: DefKind) -> impl Iterator<Item = &'a Binding> + '_ {
+        let reaches = admitted(kind);
+        self.picked(Some(&self.index.unnamed))
+            .filter(move |binding| reaches.contains(&binding.relation))
     }
 
     /// Whether the workspace manifests were read without a loss.
