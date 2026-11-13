@@ -1,0 +1,552 @@
+# The definition is handed on as a value: passed as an argument, returned,
+# put in a collection, stored in a field. The place that receives it can call
+# it under no name the index can see, so the relation `calls` is never
+# complete, however many direct calls the answer also lists.
+- name: python_argument
+  family: python
+  kind: argument
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def apply(fn, cart):
+          return fn(cart)
+
+
+      def charge(cart):
+          return apply(total, cart)
+- name: python_returned
+  family: python
+  kind: returned
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def pricer():
+          return total
+- name: python_collection
+  family: python
+  kind: collection
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+      PRICERS = {"default": total}
+- name: python_field
+  family: python
+  kind: field
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      class Cart:
+          def __init__(self):
+              self.pricer = total
+- name: typescript_argument
+  family: typescript
+  kind: argument
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export function apply(fn: (items: number[]) => number, cart: number[]) {
+        return fn(cart);
+      }
+
+      export function charge(cart: number[]) {
+        return apply(total, cart);
+      }
+- name: typescript_returned
+  family: typescript
+  kind: returned
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export function pricer() {
+        return total;
+      }
+- name: typescript_collection
+  family: typescript
+  kind: collection
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export const pricers = { default: total };
+- name: typescript_field
+  family: typescript
+  kind: field
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export class Cart {
+        pricer = total;
+      }
+- name: rust_argument
+  family: rust
+  kind: argument
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn apply(f: fn(&[i64]) -> i64, cart: &[i64]) -> i64 {
+          f(cart)
+      }
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          apply(total, cart)
+      }
+- name: rust_returned
+  family: rust
+  kind: returned
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn pricer() -> fn(&[i64]) -> i64 {
+          total
+      }
+- name: rust_collection
+  family: rust
+  kind: collection
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn pricers() -> Vec<fn(&[i64]) -> i64> {
+          vec![total]
+      }
+- name: rust_field
+  family: rust
+  kind: field
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub struct Cart {
+          pub pricer: fn(&[i64]) -> i64,
+      }
+
+      pub fn cart() -> Cart {
+          Cart { pricer: total }
+      }
+- name: kotlin_argument
+  family: kotlin
+  kind: argument
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun apply(fn: (List<Int>) -> Int, cart: List<Int>): Int {
+          return fn(cart)
+      }
+
+      fun charge(cart: List<Int>): Int {
+          return apply(::total, cart)
+      }
+- name: kotlin_returned
+  family: kotlin
+  kind: returned
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun pricer(): (List<Int>) -> Int {
+          return ::total
+      }
+- name: kotlin_collection
+  family: kotlin
+  kind: collection
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      val pricers = listOf(::total)
+- name: kotlin_field
+  family: kotlin
+  kind: field
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      class Cart {
+          val pricer: (List<Int>) -> Int = ::total
+      }
+- name: java_argument
+  family: java
+  kind: argument
+  user: src/main/java/shop/Checkout.java
+  files:
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      import java.util.function.ToIntFunction;
+
+      public class Checkout {
+          static int apply(ToIntFunction<int[]> fn, int[] items) {
+              return fn.applyAsInt(items);
+          }
+
+          public int charge(int[] items) {
+              return apply(Pricing::total, items);
+          }
+      }
+- name: java_returned
+  family: java
+  kind: returned
+  user: src/main/java/shop/Checkout.java
+  files:
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      import java.util.function.ToIntFunction;
+
+      public class Checkout {
+          public ToIntFunction<int[]> pricer() {
+              return Pricing::total;
+          }
+      }
+- name: java_collection
+  family: java
+  kind: collection
+  user: src/main/java/shop/Checkout.java
+  files:
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      import java.util.List;
+      import java.util.function.ToIntFunction;
+
+      public class Checkout {
+          public List<ToIntFunction<int[]>> pricers() {
+              return List.of(Pricing::total);
+          }
+      }
+- name: go_argument
+  family: go
+  kind: argument
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      func apply(fn func([]int) int, items []int) int {
+          return fn(items)
+      }
+
+      func Charge(items []int) int {
+          return apply(pricing.Total, items)
+      }
+- name: go_returned
+  family: go
+  kind: returned
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      func Pricer() func([]int) int {
+          return pricing.Total
+      }
+- name: go_collection
+  family: go
+  kind: collection
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      var pricers = map[string]func([]int) int{"default": pricing.Total}
+- name: go_field
+  family: go
+  kind: field
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      type Cart struct {
+          Pricer func([]int) int
+      }
+
+      func New() Cart {
+          return Cart{Pricer: pricing.Total}
+      }
+- name: php_argument
+  family: php
+  kind: argument
+  user: src/Shop/Checkout.php
+  files:
+    src/Shop/Checkout.php: |
+      <?php
+
+      namespace Shop;
+
+      class Checkout
+      {
+          public function charge(array $items): array
+          {
+              return array_map(Pricing::total(...), [$items]);
+          }
+      }
+- name: php_returned
+  family: php
+  kind: returned
+  user: src/Shop/Checkout.php
+  files:
+    src/Shop/Checkout.php: |
+      <?php
+
+      namespace Shop;
+
+      class Checkout
+      {
+          public function pricer(): callable
+          {
+              return Pricing::total(...);
+          }
+      }
+- name: php_collection
+  family: php
+  kind: collection
+  user: src/Shop/Checkout.php
+  files:
+    src/Shop/Checkout.php: |
+      <?php
+
+      namespace Shop;
+
+      class Checkout
+      {
+          public function pricers(): array
+          {
+              return ['default' => Pricing::total(...)];
+          }
+      }
+- name: c_argument
+  family: c
+  kind: argument
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      int apply(int (*fn)(const int *, int), const int *items, int n)
+      {
+          return fn(items, n);
+      }
+
+      int charge(const int *items, int n)
+      {
+          return apply(total, items, n);
+      }
+- name: c_returned
+  family: c
+  kind: returned
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      int (*pricer(void))(const int *, int)
+      {
+          return total;
+      }
+- name: c_collection
+  family: c
+  kind: collection
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      int (*pricers[])(const int *, int) = {total};
+- name: swift_argument
+  family: swift
+  kind: argument
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      func apply(_ fn: ([Int]) -> Int, _ items: [Int]) -> Int {
+          return fn(items)
+      }
+
+      func charge(_ items: [Int]) -> Int {
+          return apply(Pricing.total, items)
+      }
+- name: swift_returned
+  family: swift
+  kind: returned
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      func pricer() -> ([Int]) -> Int {
+          return Pricing.total
+      }
+- name: swift_collection
+  family: swift
+  kind: collection
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      let pricers: [([Int]) -> Int] = [Pricing.total]
+- name: python_direct_call
+  family: python
+  kind: direct
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(cart):
+          return total(cart)
+- name: typescript_direct_call
+  family: typescript
+  kind: direct
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export function charge(cart: number[]) {
+        const result = total(cart);
+        return result;
+      }
+- name: rust_direct_call
+  family: rust
+  kind: direct
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          let result = total(cart);
+          result
+      }
+- name: kotlin_direct_call
+  family: kotlin
+  kind: direct
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun charge(cart: List<Int>): Any {
+          val result = total(cart)
+          return result
+      }
+- name: java_direct_call
+  family: java
+  kind: direct
+  user: src/main/java/shop/Checkout.java
+  files:
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      public class Checkout {
+          public int charge(int[] items) {
+              return Pricing.total(items);
+          }
+      }
+- name: go_direct_call
+  family: go
+  kind: direct
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      func Charge(items []int) int {
+          return pricing.Total(items)
+      }
+- name: php_direct_call
+  family: php
+  kind: direct
+  user: src/Shop/Checkout.php
+  files:
+    src/Shop/Checkout.php: |
+      <?php
+
+      namespace Shop;
+
+      class Checkout
+      {
+          public function charge(array $items): int
+          {
+              return Pricing::total($items);
+          }
+      }
+- name: c_direct_call
+  family: c
+  kind: direct
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      int charge(const int *items, int n)
+      {
+          return total(items, n);
+      }
+- name: swift_direct_call
+  family: swift
+  kind: direct
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      func charge(_ items: [Int]) -> Int {
+          return Pricing.total(items)
+      }
