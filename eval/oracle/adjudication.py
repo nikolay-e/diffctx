@@ -12,7 +12,7 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from compare import false_complete_negative, incomplete_complete
+from compare import false_complete_negative, incomplete_complete, relation_group
 
 KIND_OF = {
     "call": "calls",
@@ -97,7 +97,8 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
     listed: dict[tuple, bool] = defaultdict(bool)
     for c in raw_cells:
         target = (c["repo"], c["commit"], c["mode"], c["target"])
-        abstained[target] = c["abstained"]
+        abstained[(*target, relation_group(c["kind"]))] = c["abstained"]
+        abstained[target] = abstained.get(target, False) or c["abstained"]  # for a kind relabelled into a group no raw cell has
         reported[target] |= (
             c["reported"] if "reported" in c else bool(c["fcn"] or c["tp"] + c["tp_weak"] + c["fp"] + c["fp_weak"])
         )
@@ -114,7 +115,8 @@ def cells_from_rows(rows: list[dict], raw_cells: list[dict]) -> list[dict]:
                 "repo": row["repo"], "language": row["language"], "commit": row["commit"], "mode": row["mode"], "target": row["to"],
                 "kind": row["kind"], "truth": 0, "tp": 0, "tp_weak": 0, "fn": 0, "fp": 0, "fp_weak": 0,
                 "truth_affected": 0, "tp_affected": 0, "folded": 0, "false_fold": 0, "incomplete_complete": 0, "fcn": False,
-                "kind_mismatches": mismatches.get((*target, row["kind"]), 0), "abstained": abstained.get(target, False),
+                "kind_mismatches": mismatches.get((*target, row["kind"]), 0),
+                "abstained": abstained.get((*target, relation_group(row["kind"])), abstained.get(target, False)),
                 "reported": reported.get(target, False), "listed": listed.get(target, False),
             },
         )  # fmt: skip

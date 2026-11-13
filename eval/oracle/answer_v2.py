@@ -47,11 +47,13 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         key = resolve(definition["path"], definition.get("symbol"), definition.get("lines"))
         target = targets.setdefault(key, TargetAnswer(key))
         coverage = definition.get("coverage", {})
-        searched = [*coverage.get("calls", {}).get("gaps", []), *coverage.get("reads", {}).get("gaps", [])]
-        gaps = [*definition.get("gaps", []), *searched]
+        searched = {group: coverage.get(group, {}).get("gaps", []) for group in ("calls", "reads")}
+        # The definition's own `gaps` repeat both groups' (the engine's `coverage()`); one the groups do not name is about
+        # every relation. A group's gap leaves only that group's relations open (`compare.relation_group`).
+        gaps = [gap for gap in definition.get("gaps", []) if all(gap not in found for found in searched.values())]
         if gaps:  # a search that left a gap says what it did not cover, in the words of the closed vocabulary
             target.unresolved = target.unresolved or ", ".join(sorted({gap["kind"] for gap in gaps}))
-        target.missed_in += [f"{gap.get('files', 0)} unread file(s)" for gap in searched if gap["kind"] == "unaccounted"]
+        target.gapped |= {group for group, found in searched.items() if found}
         shed = _shed_total(definition.get("shed", {}))
         target.callers_omitted += shed
         attributed = attributed or shed > 0
