@@ -981,6 +981,7 @@ struct Engine<'a> {
     imported: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
     linked: RefCell<HashMap<usize, Rc<HashSet<usize>>>>,
     subtype_map: OnceCell<HashMap<usize, Vec<usize>>>,
+    co_loaded: OnceCell<HashMap<usize, Vec<usize>>>,
     globs: RefCell<HashMap<usize, Rc<Vec<GlobSet>>>>,
     wrapped: RefCell<HashMap<usize, Option<Entity>>>,
     losses: RefCell<Vec<Loss>>,
@@ -1014,6 +1015,7 @@ impl<'a> Engine<'a> {
             imported: RefCell::default(),
             linked: RefCell::default(),
             subtype_map: OnceCell::new(),
+            co_loaded: OnceCell::new(),
             globs: RefCell::default(),
             wrapped: RefCell::default(),
             losses: RefCell::default(),
@@ -2529,24 +2531,58 @@ impl<'a> Engine<'a> {
         self.probe(&base)
     }
 
+    /// The scripts a page or worker loads, and for a script the page loads, the
+    /// others loaded beside it: a script and the scripts of its page share one
+    /// global scope.
+    fn co_loaded(&self, f: usize) -> &[usize] {
+        let map = self.co_loaded.get_or_init(|| {
+            let mut map: HashMap<usize, Vec<usize>> = HashMap::new();
+            for (page, file) in self.ix.files.iter().enumerate() {
+                let loaded: Vec<usize> = file
+                    .scripts
+                    .iter()
+                    .filter_map(|written| self.script_file(page, written))
+                    .collect();
+                for script in &loaded {
+                    let beside = map.entry(*script).or_default();
+                    for other in &loaded {
+                        if other != script && !beside.contains(other) {
+                            beside.push(*other);
+                        }
+                    }
+                }
+            }
+            map
+        });
+        map.get(&f).map_or(&[], Vec::as_slice)
+    }
+
     /// What a classic script or a worker names without defining it: a worker
-    /// reads the scripts it loads and no others; a classic script that loads
-    /// none may mean any script's.
+    /// reads the scripts it loads and no others, a script a page loads those its
+    /// page loads, and a classic script that is loaded by none may mean any
+    /// script's.
     fn global_outcome(&self, f: usize, name: &Name) -> Option<Outcome> {
         let file = &self.ix.files[f];
-        if !file.scripts.is_empty() {
+        let beside = if file.classic { self.co_loaded(f) } else { &[] };
+        if !file.scripts.is_empty() || !beside.is_empty() {
+            let loaded_files: Vec<usize> = if file.scripts.is_empty() {
+                beside.to_vec()
+            } else {
+                file.scripts
+                    .iter()
+                    .filter_map(|written| self.script_file(f, written))
+                    .collect()
+            };
             let mut loaded: Vec<usize> = Vec::new();
-            for written in &file.scripts {
-                if let Some(g) = self.script_file(f, written) {
-                    for id in self.ix.files[g]
-                        .children
-                        .get(&Vec::new())
-                        .into_iter()
-                        .flatten()
-                    {
-                        if self.ix.defs[*id].def.local.name == *name {
-                            loaded.push(*id);
-                        }
+            for g in loaded_files {
+                for id in self.ix.files[g]
+                    .children
+                    .get(&Vec::new())
+                    .into_iter()
+                    .flatten()
+                {
+                    if self.ix.defs[*id].def.local.name == *name {
+                        loaded.push(*id);
                     }
                 }
             }
