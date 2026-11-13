@@ -3173,7 +3173,7 @@ impl Cell {
             manifests_whole,
         );
         if !changed.stale.is_empty() {
-            view = view.removed_family(self.base().ok().map(|base| self.override_pairs(base)));
+            view = view.removed_family(self.override_pairs());
         }
         let names = self.reference_names(changed);
         let tokens = self.tokens.group(self.family.group());
@@ -3234,20 +3234,20 @@ impl Cell {
         Some((whole, unused))
     }
 
-    /// The base side's resolved overrides, as (overrider, target) keys.
-    fn override_pairs(&self, base: &Resolver) -> Vec<(DefKey, DefKey)> {
-        let pair = |binding: &Binding| {
-            let (Scope::Def(local), Resolution::Resolved { target, .. }) =
-                (&binding.from, &binding.resolution)
-            else {
-                return None;
-            };
-            let facts = facts_of(&self.ctx, SideTag::Base, &self.cache, &binding.file);
-            Some((facts.ok()??.key(local), target.clone()))
+    /// The base side's resolved overrides as (overrider, target) keys; none if a read failed.
+    fn override_pairs(&self) -> Option<Vec<(DefKey, DefKey)>> {
+        let Ok(base) = self.base() else { return None };
+        let pair = |binding: &Binding| match (binding.relation, &binding.from, &binding.resolution)
+        {
+            (Relation::Overrides, Scope::Def(local), Resolution::Resolved { target, .. }) => {
+                match facts_of(&self.ctx, SideTag::Base, &self.cache, &binding.file) {
+                    Ok(Some(facts)) => Some(Some((facts.key(local), target.clone()))),
+                    _ => Some(None),
+                }
+            }
+            _ => None,
         };
-        let overrides = base.bindings().iter();
-        let overrides = overrides.filter(|binding| binding.relation == Relation::Overrides);
-        overrides.filter_map(pair).collect()
+        base.bindings().iter().filter_map(pair).collect()
     }
 
     /// Whether a head file of the family holds an import whose target the code
