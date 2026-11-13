@@ -1,0 +1,29 @@
+name: py_module_body_loop_local_is_not_a_changed_definition
+mode: impact
+source: fj#94
+issue_state: open
+tags: [python, module-level, loop-variable, changed-definition]
+repo:
+  initial_files:
+    report.py: |
+      rows = [("x", 1), ("y", 2)]
+      tot = 0
+      for g, amt in rows:
+          cur = amt * 2
+          tot += cur
+      print(tot)
+  changed_files:
+    report.py: |
+      rows = [("x", 1), ("y", 2)]
+      tot = 0
+      for g, amt in rows:
+          cur = amt * 3
+          tot += cur
+      print(tot)
+  commit_message: "report: triple the amounts"
+# `cur` is rebound on every pass of the loop: a local of the loop, not a name
+# another file imports. The edit is code outside every definition, which the
+# answer discloses; it names no definition and claims no caller.
+expect:
+  changed: []
+  discloses: true
