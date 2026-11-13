@@ -408,7 +408,7 @@ impl<'a> Reading<'a> {
         let mut imports = Vec::new();
         let named = NAMED_LOCALS
             .iter()
-            .any(|family| family.has(file.language()));
+            .any(|(family, _)| family.has(file.language()));
         for fact in &file.blob.facts {
             match fact {
                 Fact::Definition(def) => {
@@ -692,7 +692,7 @@ impl<'a> Reading<'a> {
             return None;
         }
         let named = |name: &Name| same(name.as_str(), spelled, self.case);
-        let local = *scoped && self.shadowed(start, spelled);
+        let local = *scoped && self.shadowed(start, spelled, u32::MAX);
         let imports = (self.view.in_file(&self.file.path))
             .filter(|binding| binding.relation == Relation::Imports && named(&binding.name));
         let claims: Vec<Claim> = imports
@@ -712,8 +712,8 @@ impl<'a> Reading<'a> {
         }
     }
 
-    /// Whether a local of that name is declared in a function enclosing `start`.
-    fn shadowed(&self, start: u32, spelled: &[u8]) -> bool {
+    /// Whether a local of that name, declared by `until`, is in a function enclosing `start`.
+    fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> bool {
         let scope = (self.file.defs())
             .filter(|def| def.span.bytes.contains(&start))
             .min_by_key(|def| def.span.bytes.len())
@@ -730,21 +730,28 @@ impl<'a> Reading<'a> {
                     },
                     spelled,
                     self.case,
-                ) && matches!(local.enclosing, Scope::Def(_))
+                ) && local.site.bytes.end <= until
+                    && matches!(local.enclosing, Scope::Def(_))
                     && encloses(&local.enclosing, &scope)
             })
     }
 
-    /// A read of a local that has no binding: not a member or path segment (`x.name`).
+    /// A read of a local without a binding: no member (`x.name`), the sigil or no call, after it.
     fn plain_read(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Basis> {
-        NAMED_LOCALS
-            .iter()
-            .find(|family| family.has(self.file.language()))?;
+        let (_, sigil) = (NAMED_LOCALS.iter()).find(|row| row.0.has(self.file.language()))?;
         let at = occurrence.bytes.start;
-        let after_path = at
-            .checked_sub(1)
-            .is_some_and(|i| b".:>".contains(&self.text[i as usize]));
-        (!after_path && self.shadowed(at, spelled)).then_some(Basis::Local)
+        let prior = &self.text[..at as usize];
+        let sign = prior.strip_suffix(b"{").unwrap_or(prior).strip_suffix(b"$");
+        let mark = sign.filter(|_| *sigil);
+        let called = self.text[occurrence.bytes.end as usize..]
+            .trim_ascii_start()
+            .starts_with(b"(");
+        let after_path = mark
+            .unwrap_or(prior)
+            .last()
+            .is_some_and(|b| b".:>".contains(b));
+        let read = mark.is_some() || !(*sigil || called);
+        (read && !after_path && self.shadowed(at, spelled, at)).then_some(Basis::Local)
     }
 
     /// A segment of the module path an import names is a module, never a definition.
