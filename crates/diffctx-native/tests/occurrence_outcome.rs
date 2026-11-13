@@ -211,6 +211,21 @@ fn a_parameter_is_a_declaration_and_a_use_of_it_is_not_ours_by_its_scope() {
 }
 
 #[test]
+fn a_local_variable_site_stays_a_candidate_no_binding_proves_it_no_use() {
+    let world = snapshot(&[
+        ("lib.py", LIB_F),
+        ("app.py", "def g():\n    f = 2\n    return f\n"),
+    ]);
+    let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("candidate", "unproven", None),
+        "{found:#?}"
+    );
+    assert_eq!(on(&found, 3).outcome, Outcome::NotOurs);
+}
+
+#[test]
 fn a_resolution_to_another_definition_of_the_side_is_not_ours() {
     let world = snapshot(&[
         ("lib.py", LIB_F),
