@@ -41,11 +41,11 @@
 //!   name, owned by itself; `@Test`-like annotations and `public static void
 //!   main` are entry points.
 
-use std::cell::RefCell;
 use std::ops::Range;
 
-use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
+use tree_sitter::Node;
 
+use super::parse_tree;
 use crate::facts::framework;
 use crate::facts::kotlin as old;
 use crate::facts::{
@@ -84,47 +84,9 @@ fn unbound() -> RepoPath {
     RepoPath::new(UNBOUND_PATH).expect("a valid path")
 }
 
-#[cfg(feature = "tree-sitter-java")]
-fn grammar() -> Option<Grammar> {
-    Some(Grammar::new(tree_sitter_java::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-java"))]
-fn grammar() -> Option<Grammar> {
-    None
-}
-
-thread_local! {
-    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
-)]
-fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
-    let language = grammar()?;
-    PARSER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let parser = slot.get_or_insert_with(Parser::new);
-        parser.set_language(&language).ok()?;
-        let mut progress = |_: &ParseState| expired(budget);
-        let len = text.len();
-        let tree = parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
-            None,
-            Some(ParseOptions::new().progress_callback(&mut progress)),
-        );
-        if tree.is_none() {
-            parser.reset();
-        }
-        tree
-    })
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Java);
-    let Some(tree) = parse(text, budget) else {
+    let Some(tree) = parse_tree(Language::Java, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
