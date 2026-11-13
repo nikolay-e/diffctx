@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use super::index::{Path, dir_of, join, scope_path};
+use super::index::{DefRec, Path, dir_of, join, scope_path};
 use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -33,6 +33,7 @@ use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Language,
     LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
+use crate::paths::normalize_lexical;
 use crate::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,
@@ -173,15 +174,6 @@ fn ancestors(scope: &Scope) -> Vec<&Scope> {
     found
 }
 
-struct DefRec {
-    file: usize,
-    def: Def,
-    path: Path,
-    key: DefKey,
-    /// Where the definition sits among its file's facts.
-    fact: usize,
-}
-
 /// What an import binds.
 enum Spec {
     /// The module as a whole: `import * as ns`, `import x = require()`,
@@ -257,22 +249,6 @@ struct Index {
     defaults: Vec<usize>,
     /// The top-level definitions of classic scripts, by name.
     globals: HashMap<Name, Vec<usize>>,
-}
-
-/// The path with its `.` and `..` steps taken; none when it climbs out of the
-/// repository.
-fn normalize(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            other => parts.push(other),
-        }
-    }
-    Some(parts.join("/"))
 }
 
 fn is_relative(specifier: &str) -> bool {
@@ -1180,7 +1156,7 @@ impl<'a> Engine<'a> {
             written.split('?').next().unwrap_or(written)
         };
         if is_relative(specifier) {
-            let Some(base) = normalize(&join(&file.dir, specifier)) else {
+            let Some(base) = normalize_lexical(&join(&file.dir, specifier)) else {
                 return ModRes::Missing;
             };
             return match self.probe(&base) {
@@ -1190,7 +1166,7 @@ impl<'a> Engine<'a> {
             };
         }
         if let Some(from_root) = specifier.strip_prefix('/') {
-            return match normalize(from_root).and_then(|base| self.probe(&base)) {
+            return match normalize_lexical(from_root).and_then(|base| self.probe(&base)) {
                 Some(g) => ModRes::File(g),
                 None => ModRes::Unplaced,
             };
@@ -1212,7 +1188,7 @@ impl<'a> Engine<'a> {
                     .map(|r| join(&r.dir, specifier)),
             );
             for target in targets {
-                let Some(base) = normalize(&target) else {
+                let Some(base) = normalize_lexical(&target) else {
                     continue;
                 };
                 if let Some(g) = self.probe(&base) {
@@ -2546,8 +2522,8 @@ impl<'a> Engine<'a> {
     fn script_file(&self, f: usize, written: &str) -> Option<usize> {
         let written = written.split('?').next().unwrap_or(written);
         let base = match written.strip_prefix('/') {
-            Some(root) => normalize(root)?,
-            None => normalize(&join(&self.ix.files[f].dir, written))?,
+            Some(root) => normalize_lexical(root)?,
+            None => normalize_lexical(&join(&self.ix.files[f].dir, written))?,
         };
         self.probe(&base)
     }
@@ -2641,8 +2617,8 @@ impl<'a> Engine<'a> {
             }
         }
         let anchored = |pattern: &str| match pattern.strip_prefix('/') {
-            Some(root) => normalize(root),
-            None => normalize(&join(&file.dir, pattern)),
+            Some(root) => normalize_lexical(root),
+            None => normalize_lexical(&join(&file.dir, pattern)),
         };
         let mut sets = Vec::new();
         for (site, scope, patterns) in sites {
