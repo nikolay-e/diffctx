@@ -82,7 +82,6 @@ fn uses(facts: &BlobFacts, name: &str) -> Vec<String> {
                     let path: Vec<&str> = path.iter().map(|n| n.as_str()).collect();
                     format!("call-result {}", path.join("."))
                 }
-                other => format!("{other:?}"),
             };
             format!(
                 "{:?} {receiver} [{}] in {}",

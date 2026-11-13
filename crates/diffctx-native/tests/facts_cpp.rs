@@ -3,8 +3,8 @@
 
 use _diffctx::facts::lang::c::CppExtractor;
 use _diffctx::facts::{
-    BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
-    LocalKind, Namespace, Receiver, Ref, Scope, Visibility,
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Import, LocalKey, Namespace, Receiver, Ref,
+    Scope, Visibility,
 };
 use _diffctx::snapshot::RunBudget;
 
@@ -84,7 +84,6 @@ fn uses(facts: &BlobFacts, name: &str) -> Vec<String> {
                     let path: Vec<&str> = path.iter().map(|n| n.as_str()).collect();
                     format!("call-result {}", path.join("."))
                 }
-                other => format!("{other:?}"),
             };
             format!(
                 "{:?} {receiver} [{}] in {}",
