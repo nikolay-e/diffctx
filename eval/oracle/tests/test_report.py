@@ -482,3 +482,29 @@ def test_the_precise_lines_flip_with_gates_toml_alone_and_the_facts_need_a_paire
     assert (status(strict), status(relaxed)) == ("fail", "pass")
     with pytest.raises(SystemExit):
         report.main(["--run", str(head), "--cell-facts", str(FACTS), "--out", str(tmp_path / "unpaired")])
+
+
+def test_the_safety_columns_replayed_from_adjudicated_rows_are_labelled_a_lower_bound(tmp_path: Path):
+    run, adjudicated = tmp_path / "run", tmp_path / "adjudicated"
+    run.mkdir()
+    adjudicated.mkdir()
+    (run / "cells.jsonl").write_text(json.dumps(cell(truth=1, tp=1)) + "\n")
+    relation = {
+        "repo": "r",
+        "commit": "c1",
+        "language": "python",
+        "mode": "impact",
+        "from": "a::g",
+        "to": "a::f",
+        "kind": "calls",
+    }
+    (run / "relations.jsonl").write_text(json.dumps({**relation, "verdict": "tp", "site": 1}) + "\n")
+    (adjudicated / "python.jsonl").write_text(
+        json.dumps({"repo": "r", "sha": "git:c1", "from": "a::g", "def": "a::f", "final": "call", "scip_kind": "call"}) + "\n"
+    )
+
+    assert report.main(["--run", str(run), "--adjudicated", str(adjudicated)]) == 0
+
+    text = (run / "report.md").read_text()
+    assert "a lower bound that undercounts the safety rows" in text
+    assert json.loads((run / "report.json").read_text())["scip_adjudicated_note"] in text

@@ -26,6 +26,10 @@ KIND_OF = {
     "type_use": "type_use",
 }
 DECIDED = set(KIND_OF) | {"none", "unresolved"}
+LOWER_BOUND = (
+    "Incompl. compl. and FCN of this table are replayed from the adjudicated rows, not measured: a lower bound that undercounts "
+    "the safety rows, never a number to decide on (the raw table above is)."
+)
 Key = tuple[str, str, str, str]
 SHA_PREFIX = "git:"  # the stored form of a commit id: a bare 40-hex string reads as a secret to the repository's scanners
 
