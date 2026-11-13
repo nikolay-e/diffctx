@@ -18,3 +18,7 @@ pub(super) const BARE_HEADS: &[(Family, bool, bool)] = &[
     (Family::Python, true, true),
     (Family::TypeScript, false, true),
 ];
+
+/// The keywords that open and close the module path of an import (`from a.b import c`):
+/// what lies between them names modules, never a definition.
+pub(super) const MODULE_PATHS: &[(Family, &str, &str)] = &[(Family::Python, "from", "import")];
