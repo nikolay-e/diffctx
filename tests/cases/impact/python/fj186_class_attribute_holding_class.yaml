@@ -6,6 +6,7 @@ tags:
 - python
 - callers
 - class-attribute
+- alias
 repo:
   initial_files:
     shop/highlight.py: |
@@ -15,6 +16,13 @@ repo:
 
       class ReprHighlighter(Highlighter):
           highlights = [r"(?P<url>https?://[a-z]*)"]
+
+          def highlight(self, text):
+              return text
+
+          @classmethod
+          def default(cls):
+              return cls()
     shop/handler.py: |
       from typing import ClassVar, Type
 
@@ -26,12 +34,19 @@ repo:
 
           def __init__(self):
               self.highlighter = self.HIGHLIGHTER_CLASS()
+
+          def run(self, text):
+              return self.highlighter.highlight(text)
+
+          @classmethod
+          def make(cls):
+              return cls.HIGHLIGHTER_CLASS.default()
     tests/test_handler.py: |
       from shop.handler import Handler
 
 
-      def test_handler_builds_a_highlighter():
-          assert Handler().highlighter is not None
+      def test_handler_runs():
+          assert Handler().run("x") == "x"
   changed_files:
     shop/highlight.py: |
       class Highlighter:
@@ -40,11 +55,29 @@ repo:
 
       class ReprHighlighter(Highlighter):
           highlights = [r"(?P<url>https?://[a-z~]*)"]
-  commit_message: Allow a tilde in a url
+
+          def highlight(self, text):
+              return text.strip()
+
+          @classmethod
+          def default(cls):
+              return cls() or None
+  commit_message: Strip the text and allow a tilde in a url
 expect:
   changed:
-  - shop/highlight.py::highlights
+  - shop/highlight.py::highlight
+  - shop/highlight.py::default
   exact: false
-  callers:
-    highlights:
-    - shop/handler.py::HIGHLIGHTER_CLASS
+  relations:
+  - from: shop/handler.py::run
+    to: shop/highlight.py::highlight
+    kind: calls
+    resolution: resolved
+    site: 13
+  - from: shop/handler.py::make
+    to: shop/highlight.py::default
+    kind: calls
+    resolution: resolved
+    site: 17
+  not_untested:
+  - highlight
