@@ -3710,6 +3710,64 @@ fn a_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
     }
 }
 
+/// fj#157: the needle searches of an impact run poll the run's limits, so one
+/// more poll lets one more search start. They ran outside the run's scope: a
+/// stopped run still started every chunk. Counted in git calls, not timed.
+#[cfg(unix)]
+#[test]
+fn a_stopped_impact_run_starts_one_needle_search_per_poll() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for factor in [1, 2] {
+        let rates: String = (0..120)
+            .map(|i| format!("def rate_{i:03}(x):\n    return x * {factor}\n\n\n"))
+            .collect();
+        write(repo, "shop/rates.py", &rates);
+        commit_all(repo, "rates");
+    }
+    let dir = TempDir::new().expect("shim dir");
+    let shim = dir.path().join("git");
+    std::fs::write(&shim, support::fake_git::FAKE_GIT).expect("write shim");
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let real = support::scrubbed_sh(repo, "command -v git")
+        .output()
+        .expect("git");
+    let real = String::from_utf8(real.stdout).expect("utf8");
+    let path = format!(
+        "{}:{}",
+        dir.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let sweep = support::sweep_polls(
+        |n| {
+            let log = dir.path().join(format!("calls-{n}"));
+            let polls = n.to_string();
+            let env = [
+                ("PATH", path.as_str()),
+                ("REAL_GIT", real.trim()),
+                ("FAKE_GIT_CALLS", log.to_str().expect("utf8")),
+                ("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", polls.as_str()),
+            ];
+            let doc = impact_env(repo, "HEAD~1..HEAD", &env);
+            let calls = std::fs::read_to_string(&log).unwrap_or_default();
+            let searches = calls.lines().filter(|l| l.contains("-I -F -f")).count();
+            (
+                doc["coverage"]["limits"].to_string().contains("deadline"),
+                searches,
+            )
+        },
+        |(stopped, _)| !stopped,
+    );
+    let searches: Vec<usize> = sweep.iter().map(|(_, (_, count))| *count).collect();
+    assert!(searches.last().is_some_and(|&c| c >= 3), "{searches:?}");
+    assert!(
+        searches.windows(2).all(|w| w[1] <= w[0] + 1),
+        "{searches:?}"
+    );
+}
+
 /// #510: a run whose deadline has passed stops its input-sized loops. The
 /// stale-reference loop, targets times lines, had no poll: stopped before
 /// it began, it still read every line git grep returned, and ran a

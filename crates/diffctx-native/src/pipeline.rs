@@ -313,6 +313,7 @@ fn impact_of(
         compute_scored_state_anchored(root_dir, anchor, paths, alpha, scoring_mode, timeout, true)?;
     // A range handed in as a value names itself by what the run resolved.
     let label = label.or(state.analysed_range.as_deref());
+    let _in_run = state.run.enter();
     Ok(crate::impact::build_impact(
         &state,
         label,
@@ -356,6 +357,7 @@ pub fn build_symbol_impact(
             };
         }
     };
+    let _in_run = state.run.enter();
     Ok(crate::impact::build_impact(
         &state,
         None,
@@ -1485,31 +1487,6 @@ pub fn compute_scored_state(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<ScoredState> {
-    compute_scored_state_with(
-        root_dir,
-        diff_range,
-        paths,
-        alpha,
-        scoring_mode,
-        timeout,
-        false,
-    )
-}
-
-/// `reverse_references` widens discovery to the files that name what the
-/// change defines. Impact mode alone asks for it: the wider universe moves
-/// selection, and it is deliberately outside `PipelineConfig` so the
-/// effective-config hash every evaluation row carries stays what it was.
-#[allow(clippy::too_many_arguments)]
-pub fn compute_scored_state_with(
-    root_dir: &Path,
-    diff_range: Option<&str>,
-    paths: &[String],
-    alpha: f64,
-    scoring_mode: ScoringMode,
-    timeout: u64,
-    reverse_references: bool,
-) -> Result<ScoredState> {
     compute_scored_state_anchored(
         root_dir,
         Anchor::Diff(diff_range),
@@ -1517,7 +1494,7 @@ pub fn compute_scored_state_with(
         alpha,
         scoring_mode,
         timeout,
-        reverse_references,
+        false,
     )
 }
 
@@ -1591,6 +1568,10 @@ fn resolve_anchor(
     ))
 }
 
+/// `reverse_references` widens discovery to the files that name what the
+/// change defines. Impact mode alone asks for it: the wider universe moves
+/// selection, and it is deliberately outside `PipelineConfig` so the
+/// effective-config hash every evaluation row carries stays what it was.
 #[allow(clippy::too_many_arguments)]
 pub fn compute_scored_state_anchored(
     root_dir: &Path,
