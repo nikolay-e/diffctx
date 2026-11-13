@@ -31,6 +31,7 @@ use super::{
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, expired, facts_of,
 };
+use crate::paths::normalize_lexical;
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's Dockerfiles.
@@ -296,7 +297,7 @@ fn place(
     if text.contains(['*', '?', '[']) {
         return unresolved(UnresolvedReason::Opaque);
     }
-    let Some(path) = normalise(text.trim_start_matches('/')) else {
+    let Some(path) = normalize_lexical(text.trim_start_matches('/')) else {
         return unresolved(UnresolvedReason::External);
     };
     if path.is_empty() {
@@ -329,28 +330,13 @@ fn place(
     unresolved(UnresolvedReason::MissingModule)
 }
 
-/// A relative path without `.` and `..` segments; none when it climbs out.
-fn normalise(path: &str) -> Option<String> {
-    let mut out: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                out.pop()?;
-            }
-            other => out.push(other),
-        }
-    }
-    Some(out.join("/"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_path_is_normalised_or_climbs_out() {
-        assert_eq!(normalise("./a/../b/c").as_deref(), Some("b/c"));
-        assert_eq!(normalise("../x"), None);
+        assert_eq!(normalize_lexical("./a/../b/c").as_deref(), Some("b/c"));
+        assert_eq!(normalize_lexical("../x"), None);
     }
 }
