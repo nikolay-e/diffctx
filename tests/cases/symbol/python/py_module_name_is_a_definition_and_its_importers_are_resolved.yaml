@@ -36,7 +36,7 @@ expect:
   definitions: [pkg/report_tools.py]
   relations:
     - {from: pkg/main.py, to: pkg/report_tools.py, kind: imports, resolution: resolved, site: 1}
+    - {from: tests/test_report.py, to: pkg/report_tools.py, kind: imports, resolution: resolved, site: 1}
   exact: false
-  tested_by: {pkg/report_tools.py: tests/test_report.py}
   decoys:
     pkg/report_tools.py: [pkg/other_main.py, pkg/other_tools.py]
