@@ -3093,15 +3093,28 @@ pub fn build_impact(
     // A queried name in a file its cell lost (a syntax error, a read): the
     // definition is not in the facts, and the file's loss is the answer.
     let mut cell_unread: Vec<(&Fragment, decide::Reason)> = Vec::new();
+    let asked = query
+        .and_then(parse_symbol_query)
+        .and_then(|(_, segments)| segments.last().copied());
     for cell in cells.iter() {
         let mut entries: Vec<decide::Changed> = Vec::new();
         if query.is_some() {
             for core in cores.iter().filter(|c| cell.owns(&rel(state, c.path()))) {
-                let defined = cell.define(
-                    &rel(state, core.path()),
-                    core.symbol_name.as_deref().map_or("", base_symbol),
+                let (file, lines) = (
+                    rel(state, core.path()),
                     (core.start_line(), core.end_line()),
                 );
+                let mut defined = cell.define(
+                    &file,
+                    core.symbol_name.as_deref().map_or("", base_symbol),
+                    lines,
+                );
+                // A second declarator on the fragment's lines is the queried
+                // name, which the fragment is not named for.
+                let own = asked.map_or_else(Vec::new, |name| cell.define(&file, name, lines));
+                if !own.is_empty() {
+                    defined = own;
+                }
                 // A name asked for that no definition stands for is said, not
                 // left out: an empty answer would read as "no callers".
                 if defined.is_empty() && is_module_block_binding(core, file_of(core)) {
@@ -5752,6 +5765,86 @@ pub(crate) fn is_textual(c: &Caller) -> bool {
 
 /// What every row built from a word match is labelled with.
 pub(crate) const TEXTUAL_MATCH: &str = "a textual match, not a resolved binding";
+
+/// `NAME`, `PATH:NAME`, or a qualified name: `Class.method`, `Class::method`,
+/// `module.func`, a Helm `chart.helper`. A Kotlin name may hold spaces and
+/// punctuation between backticks (`` `N escapes MemberNames` ``); there `.` and
+/// `:` belong to the name, and the segments come back without the backticks,
+/// as the facts layer names the definition.
+pub(crate) fn parse_symbol_query(query: &str) -> Option<(Option<&str>, Vec<&str>)> {
+    // The path ends at the last lone `:` outside backticks; a `::` belongs to
+    // the name (`shop.py:Ledger::total`).
+    let bytes = query.as_bytes();
+    let mut quoted = false;
+    let mut lone = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'`' => quoted = !quoted,
+            b':' if !quoted
+                && bytes.get(i + 1) != Some(&b':')
+                && (i == 0 || bytes[i - 1] != b':') =>
+            {
+                lone = Some(i);
+            }
+            _ => {}
+        }
+    }
+    if quoted {
+        return None;
+    }
+    let (path, name) = match lone {
+        Some(i) if i > 0 => (Some(&query[..i]), &query[i + 1..]),
+        _ => (None, query),
+    };
+    let name_bytes = name.as_bytes();
+    let mut segments = Vec::new();
+    let (mut start, mut at) = (0, 0);
+    quoted = false;
+    while at < name_bytes.len() {
+        let separator = match name_bytes[at] {
+            b'`' => {
+                quoted = !quoted;
+                0
+            }
+            b'.' if !quoted => 1,
+            b':' if !quoted && name_bytes.get(at + 1) == Some(&b':') => 2,
+            _ => 0,
+        };
+        if separator > 0 {
+            segments.push(&name[start..at]);
+            at += separator;
+            start = at;
+        } else {
+            at += 1;
+        }
+    }
+    segments.push(&name[start..]);
+    segments
+        .into_iter()
+        .map(segment_name)
+        .collect::<Option<Vec<_>>>()
+        .map(|segments| (path, segments))
+}
+
+/// What a segment names: the text between its backticks, or the segment itself
+/// when it has none of them, no `:`, no control character and no space at either
+/// end. An empty segment names nothing.
+fn segment_name(segment: &str) -> Option<&str> {
+    if let Some(inner) = segment
+        .strip_prefix('`')
+        .and_then(|rest| rest.strip_suffix('`'))
+    {
+        return (!inner.trim().is_empty()
+            && !inner.contains('`')
+            && !inner.chars().any(char::is_control))
+        .then_some(inner);
+    }
+    (!segment.is_empty()
+        && segment == segment.trim()
+        && !segment.contains(['`', ':'])
+        && !segment.chars().any(char::is_control))
+    .then_some(segment)
+}
 
 /// Textual rows shown before they are counted.
 pub(crate) const MAX_TEXTUAL_SHOWN: usize = 12;
