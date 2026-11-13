@@ -31,9 +31,10 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
+use super::index::{Path, dir_of, normalise, scope_path};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
-    UnresolvedReason,
+    UnresolvedReason, is_callable,
 };
 use crate::facts::lang::php::PROPERTIES;
 use crate::facts::{
@@ -199,10 +200,6 @@ fn join(dir: &str, rest: &str) -> String {
         (true, false) => rest.to_string(),
         (false, false) => format!("{dir}/{rest}"),
     }
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
 fn strings(value: Option<&serde_json::Value>) -> Vec<String> {
@@ -449,8 +446,6 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
 
 // ---- the index
 
-type Path = Vec<Name>;
-
 struct DefRec {
     file: usize,
     def: Def,
@@ -525,13 +520,6 @@ fn is_type(kind: DefKind) -> bool {
     matches!(
         kind,
         DefKind::Class | DefKind::Interface | DefKind::Trait | DefKind::Enum
-    )
-}
-
-fn is_callable(kind: DefKind) -> bool {
-    matches!(
-        kind,
-        DefKind::Function | DefKind::Method | DefKind::Constructor
     )
 }
 
@@ -734,18 +722,6 @@ struct Engine<'w> {
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {
     Resolution::Unresolved { reason }
-}
-
-fn scope_names(scope: &Scope) -> Path {
-    match scope {
-        Scope::Module => Vec::new(),
-        Scope::Def(key) => {
-            let mut path = key.container.clone();
-            path.push(key.name.clone());
-            path
-        }
-        Scope::Callback { parent, .. } => scope_names(parent),
-    }
 }
 
 fn plain_relation(use_kind: UseKind) -> Relation {
@@ -1258,7 +1234,7 @@ impl<'w> Engine<'w> {
 
     fn reference(&self, f: usize, r: &Ref, out: &mut Vec<Binding>) {
         let file = &self.ix.files[f];
-        let scope = scope_names(&r.enclosing);
+        let scope = scope_path(&r.enclosing);
         let (relation, resolution, name) = if r.name.as_str().starts_with('$') {
             (
                 plain_relation(r.use_kind),
@@ -1725,21 +1701,6 @@ impl<'w> Engine<'w> {
     }
 }
 
-/// A path without `.` and `..` segments.
-fn normalise(path: &str) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    out.join("/")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1806,10 +1767,5 @@ mod tests {
         assert!(composer.autoloads("App\\A", "svc/src/A.php"));
         assert!(composer.autoloads("Nope\\A", "svc/boot.php"));
         assert!(!composer.autoloads("Nope\\A", "svc/other.php"));
-    }
-
-    #[test]
-    fn paths_lose_their_dot_segments() {
-        assert_eq!(normalise("a/./b/../c.php"), "a/c.php");
     }
 }

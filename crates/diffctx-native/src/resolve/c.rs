@@ -27,6 +27,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use super::index::{Path, dir_of, join, normalise};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
     UnresolvedReason,
@@ -332,8 +333,6 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
 
 // ---- the index
 
-type Path = Vec<Name>;
-
 struct DefRec {
     file: usize,
     def: Def,
@@ -393,33 +392,6 @@ fn is_cpp_path(path: &str) -> bool {
         path.rsplit_once('.').map(|(_, e)| e),
         Some("cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "c++" | "h++" | "ipp" | "tpp")
     )
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
-}
-
-fn join(dir: &str, rest: &str) -> String {
-    match (dir.is_empty(), rest.is_empty()) {
-        (_, true) => dir.to_string(),
-        (true, false) => rest.to_string(),
-        (false, false) => format!("{dir}/{rest}"),
-    }
-}
-
-/// A path without `.` and `..` segments.
-fn normalise(path: &str) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    out.join("/")
 }
 
 fn is_header(path: &str) -> bool {
