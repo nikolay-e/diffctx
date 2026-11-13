@@ -55,20 +55,20 @@ pub fn path_with_translated_git(dir: &Path) -> std::ffi::OsString {
     std::env::join_paths(paths).unwrap()
 }
 
+/// A shell line run in `cwd` the way a test's own git is: a pre-commit hook
+/// exports `GIT_INDEX_FILE` and kin, and a line that inherits them writes the
+/// hook's repository instead of the temporary one.
+pub fn scrubbed_sh(cwd: &Path, line: &str) -> Command {
+    let mut command = Command::new("sh");
+    command.current_dir(cwd).args(["-c", line]);
+    for name in _diffctx::snapshot::REPO_LOCATING_ENV {
+        command.env_remove(name);
+    }
+    command
+}
+
 pub fn git(repo: &Path, args: &[&str]) {
-    // Scrub the same vars git_command() scrubs: under `git commit -a` the
-    // pre-commit hook runs with GIT_INDEX_FILE pointing at the MAIN repo's
-    // in-progress index, and an unscrubbed child git in a temp repo locks
-    // that index instead ("index.lock.lock: File exists").
-    let out = Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_COMMON_DIR")
-        .env_remove("GIT_OBJECT_DIRECTORY")
-        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-        .env_remove("GIT_PREFIX")
+    let out = _diffctx::snapshot::git_command(repo)
         .args(args)
         .output()
         .expect("run git");

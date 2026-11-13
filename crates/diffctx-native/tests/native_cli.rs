@@ -6,7 +6,7 @@
 // that gap.
 
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use tempfile::TempDir;
 
@@ -14,6 +14,7 @@ use tempfile::TempDir;
 /// job — the shipped artifact for a target, so every standalone binary that
 /// reaches a user passes this suite on its own platform.
 mod support;
+use _diffctx::snapshot::git_command;
 use support::{commit_all, diffctx, git, init_repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {
@@ -1396,11 +1397,7 @@ fn a_historical_range_ignores_history_after_its_head() {
     std::fs::write(repo.join("ledger.py"), "def post(x):\n    return x + 1\n").expect("write");
     commit_all(repo, "the change");
     let range = {
-        let out = Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
+        let out = git_command(repo)
             .args(["rev-parse", "HEAD~1", "HEAD"])
             .output()
             .expect("rev-parse");

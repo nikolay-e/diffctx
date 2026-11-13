@@ -627,15 +627,7 @@ fn every_registered_extractors_facts_equal_themselves_after_the_caches_round_tri
 
 fn answer(repo: &Repo, cache: &Path) -> Vec<u8> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_diffctx"));
-    for name in [
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_INDEX_FILE",
-        "GIT_COMMON_DIR",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_PREFIX",
-    ] {
+    for name in _diffctx::snapshot::REPO_LOCATING_ENV {
         command.env_remove(name);
     }
     let out = command

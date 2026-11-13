@@ -76,3 +76,34 @@ fn a_run_inside_a_hook_reads_its_own_repository_not_the_hooks() {
         "the hook's repository answered: {stdout}"
     );
 }
+
+const PROBE: &str = "DIFFCTX_FIXTURE_GIT_PROBE";
+
+/// The fixtures a suite builds repositories with run under the pre-commit hook:
+/// a `git add -A` that inherited `GIT_INDEX_FILE` wrote the temporary
+/// repository's files into the enclosing repository's index. The test runs
+/// itself with the hook's variables pointing nowhere; the inner run builds a
+/// repository with the shared fixture and only commits if it ignored them.
+#[test]
+fn the_fixture_builds_its_repository_whatever_the_environment_names() {
+    if std::env::var_os(PROBE).is_some() {
+        let dir = repo_with("a.py", "x = 1\n", "x = 2\n");
+        assert!(dir.path().join(".git").is_dir());
+        return;
+    }
+    let out = std::process::Command::new(std::env::current_exe().expect("this test binary"))
+        .args([
+            "--exact",
+            "the_fixture_builds_its_repository_whatever_the_environment_names",
+        ])
+        .env(PROBE, "1")
+        .env("GIT_INDEX_FILE", "/nonexistent/index")
+        .env("GIT_DIR", "/nonexistent/git")
+        .output()
+        .expect("run the probe");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
