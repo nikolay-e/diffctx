@@ -1,8 +1,11 @@
 //! The [`Implicit`] kinds of one definition, from its facts and one table.
 
+use std::path::Path;
+
 use crate::decide::Family;
 use crate::facts::lang::shell::SCRIPT;
 use crate::facts::{Def, EntryKind, Fact, FileFacts, Scope, UseKind};
+use crate::testfiles::is_test_path;
 use crate::tokens::occurrence::Implicit;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
@@ -196,8 +199,11 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
             found.push(*kind);
         }
     }
+    // The answer lists a test of a test file as entered by the test runner, which
+    // names the entry: only a test the runner is not known to enter stays a hedge.
+    let run_by_runner = is_test_path(Path::new(file.path.as_str()));
     Implicit::ALL
         .into_iter()
-        .filter(|kind| found.contains(kind))
+        .filter(|kind| found.contains(kind) && !(*kind == Implicit::Test && run_by_runner))
         .collect()
 }
