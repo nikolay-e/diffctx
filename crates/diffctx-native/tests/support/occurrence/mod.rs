@@ -24,6 +24,7 @@ pub const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
 pub const ALIASES: &str = include_str!("seeds/aliases.yaml");
 pub const LEAKS: &str = include_str!("seeds/leaks.yaml");
 pub const IMPLICIT: &str = include_str!("seeds/implicit.yaml");
+pub const ABSENCE: &str = include_str!("seeds/absence.yaml");
 
 #[derive(Deserialize)]
 pub struct Scaffold {
