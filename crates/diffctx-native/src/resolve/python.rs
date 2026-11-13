@@ -1287,10 +1287,22 @@ impl<'a> Engine<'a> {
             Outcome::Found {
                 entity: Entity::Def(id),
                 ..
-            } => match self.return_instance(id) {
-                Entity::Unknown => None,
-                entity => Some((entity, EvidenceKind::FactoryReturn)),
-            },
+            } => {
+                // A variable that holds a class makes an instance of it when called.
+                let made = match self.ix.defs[id].def.kind {
+                    DefKind::Variable | DefKind::Constant | DefKind::Field => {
+                        match self.var_instance(id) {
+                            Entity::Class(c) => Entity::Instance(c),
+                            _ => Entity::Unknown,
+                        }
+                    }
+                    _ => self.return_instance(id),
+                };
+                match made {
+                    Entity::Unknown => None,
+                    entity => Some((entity, EvidenceKind::FactoryReturn)),
+                }
+            }
             _ => None,
         }
     }
@@ -1421,13 +1433,32 @@ impl<'a> Engine<'a> {
             return Entity::Builtin;
         }
         let after = rec.def.name_span.bytes.end;
+        let value = self.value_fact(rec.file, rec.fact + 1, after);
         match self
-            .call_assigned_after(rec.file, rec.fact + 1, after, 0)
-            .or_else(|| self.alias_after(rec.file, rec.fact + 1, after, 0))
+            .call_assigned_after(rec.file, value, after, 0)
+            .or_else(|| self.alias_after(rec.file, value, after, 0))
         {
             Some((entity, _)) => entity,
             None => Entity::Unknown,
         }
+    }
+
+    /// The fact that starts the value a declaration assigns: the facts the
+    /// annotation between the name and the `=` holds are the type's, not the value's.
+    fn value_fact(&self, f: usize, next: usize, after: u32) -> usize {
+        let Some(text) = self.text(f) else {
+            return next;
+        };
+        let line = text.get(after as usize..).map_or(&[][..], |tail| {
+            tail.split(|b| *b == b'\n').next().unwrap_or(tail)
+        });
+        let Some(equals) = line.iter().position(|b| *b == b'=') else {
+            return next;
+        };
+        let start = after + equals as u32 + 1;
+        let facts = &self.ix.files[f].facts.blob.facts;
+        next + facts[next.min(facts.len())..]
+            .partition_point(|fact| fact.site().bytes.start < start)
     }
 
     /// The instance a type written in code stands for.
