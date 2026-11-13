@@ -549,7 +549,7 @@ impl Guard {
         }
         bare(if !tests_known {
             GuardState::NoTests
-        } else if caller.tests_cut {
+        } else if caller.tests_open {
             GuardState::NotEstablished
         } else if caller.file_tested {
             GuardState::FileOnly

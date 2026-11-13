@@ -3,7 +3,7 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 141544
+product_lines = 141614
 allow_count = 139
 root_modules = 63
 
@@ -16,7 +16,7 @@ root_modules = 63
 "crates/diffctx-native/src/facts/lang/typescript.rs" = 4341
 "crates/diffctx-native/src/graph.rs" = 1564
 "crates/diffctx-native/src/hook.rs" = 4163
-"crates/diffctx-native/src/impact.rs" = 5926
+"crates/diffctx-native/src/impact.rs" = 5928
 "crates/diffctx-native/src/keytable/extract.rs" = 2174
 "crates/diffctx-native/src/parsers/tree_sitter_strategy.rs" = 2661
 "crates/diffctx-native/src/pipeline.rs" = 3443
@@ -57,22 +57,3 @@ deletes = [
 "crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
 "crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 757, plus = 7 }
 "crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }
-
-[debt.phase-b-tests]
-lines = 28
-repaid_at = "phase A step 4, the switch commit: the occurrence accounting of test scopes closes the search, no cut walk is recorded"
-due_when = "crates/diffctx-native/src/impact/tests_reach.rs::fn cut("
-covers = []
-deletes = [
-  "crates/diffctx-native/src/impact/tests_reach.rs::fn cut(",
-  "crates/diffctx-native/src/impact/tests_reach.rs::cut: RefCell",
-  "crates/diffctx-native/src/impact.rs::tests_cut: bool",
-  "crates/diffctx-native/src/impact.rs::&& !c.tests_cut",
-  "crates/diffctx-native/src/answer/v2.rs::caller.tests_cut",
-]
-
-[debt.phase-b-tests.grows]
-"crates/diffctx-native/src/impact.rs" = { base = 5926, plus = 0 }
-"crates/diffctx-native/src/impact/tests_reach.rs" = { base = 1350, plus = 12 }
-"crates/diffctx-native/src/impact/text.rs" = { base = 747, plus = 12 }
-"crates/diffctx-native/src/answer/v2.rs" = { base = 1465, plus = 4 }
