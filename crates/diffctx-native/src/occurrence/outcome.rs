@@ -475,11 +475,7 @@ impl<'a> Reading<'a> {
                 self.imports.iter().any(|import| {
                     import.relative == 0
                         && self.binds(import, spelled)
-                        && !self
-                            .view
-                            .files
-                            .values()
-                            .any(|file| file.module == import.module)
+                        && !(self.view.files.iter()).any(|file| file.module == import.module)
                 }),
             ),
             UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => {
