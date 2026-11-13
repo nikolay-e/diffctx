@@ -17,9 +17,9 @@
 //!
 //! An absence is never a default. [`Complete`] is the witness that the search for
 //! a definition's uses left nothing unread, and [`Coverage::close`] is the one place
-//! that makes it: from the gaps the search found and, for a definition, from an
-//! [`Account`] of every file of its interaction group ([`Group`]), each one read
-//! by the cell without a loss, or spelling none of the names a use could carry.
+//! that makes it: from the gaps the search found and, for a definition, from the
+//! occurrence account of its names ([`crate::occurrence::Account`]): every
+//! occurrence in the files of its interaction group ([`Group`]) is explained.
 //! An absence claim ([`Claim::Absent`]) or an exact count ([`Count::Exact`]) holds
 //! the witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
 //! or a gap here, never an empty value: the lint that says so is denied in this
@@ -48,7 +48,7 @@ use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
     EvidenceKind, GoResolver, JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation,
     Resolution, RustResolver, ShellResolver, SqlResolver, SwiftResolver, TerraformResolver,
-    TypeScriptResolver, UnresolvedReason,
+    TypeScriptResolver,
 };
 use crate::resource::LimitReason;
 use crate::snapshot::{
@@ -56,10 +56,6 @@ use crate::snapshot::{
     RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
 use crate::tokens::{GroupTokens, Names, TokenIndex};
-
-/// Uses of a name that left, or moved, listed one by one up to this many; past
-/// it the name is too common to say which lines were meant.
-const MAX_UNPLACED_LISTED: usize = 500;
 
 /// The reasons a candidate row carries in the answer.
 const UNTYPED_RECEIVER: &str = "receiver_unresolved";
@@ -76,7 +72,6 @@ const NAME_SUFFIX: &str = "name_suffix";
 const LABEL_SELECTOR: &str = "label_selector";
 const NO_RELEASE: &str = "no_release";
 const CASE_FOLD: &str = "case_fold";
-const REBOUND: &str = "rebound";
 const SEARCH_PATH: &str = "search_path";
 
 /// The languages one resolver reads: a cell answers for one family.
@@ -688,7 +683,6 @@ fn stopped_by(losses: &[Loss]) -> Vec<LimitReason> {
 struct Losses {
     files: HashMap<String, Reason>,
     subtrees: Vec<(String, Reason)>,
-    run: Vec<Gap>,
 }
 
 impl Losses {
@@ -702,11 +696,7 @@ impl Losses {
                     }
                 }
                 Effect::Subtree(reason, dir) => out.subtrees.push((dir, reason)),
-                Effect::Run(gap) => {
-                    if !out.run.contains(&gap) {
-                        out.run.push(gap);
-                    }
-                }
+                Effect::Run(_) => {}
             }
         }
         out
@@ -726,250 +716,6 @@ impl Losses {
                 .map(|(_, reason)| *reason)
         })
     }
-}
-
-/// What a cell read of its group's files, at the side or sides a question needs.
-struct Bound<'a> {
-    family: Family,
-    /// The paths the head resolver read.
-    read: &'a HashSet<String>,
-    /// What the base resolver read and what the base lists, when the definition's
-    /// old name is asked for too: such a file is bound only if both sides read it.
-    /// A file the base does not hold has nothing to read there.
-    base: Option<(&'a HashSet<String>, &'a HashSet<String>)>,
-    scope: &'a [String],
-    /// Files the head resolver read that no extension puts in the group (a script
-    /// named by its shebang).
-    outside: &'a [String],
-}
-
-impl Bound<'_> {
-    /// The files outside the group's extensions that the cell read as its own:
-    /// the scripts a shebang names.
-    fn scripts(&self) -> usize {
-        self.outside
-            .iter()
-            .filter(|file| RepoPath::new(file).is_ok_and(|path| Language::needs_shebang(&path)))
-            .count()
-    }
-
-    fn reads(&self, file: &str) -> bool {
-        within_scope(self.scope, file)
-            && self.read.contains(file)
-            && self
-                .base
-                .is_none_or(|(read, listed)| read.contains(file) || !listed.contains(file))
-    }
-}
-
-/// What one file of a group is to a definition's absence.
-enum Status {
-    /// Read by the cell without a loss: its resolver answers for it.
-    Bound,
-    /// Tokenised, and none of the names a use could carry occurs in it: it cannot
-    /// change the answer.
-    NameAbsent,
-    /// Everything else.
-    Unaccounted(Reason),
-}
-
-/// The status of `file`. `spelled` says whether a name occurs in it: `None` when
-/// the file was not tokenised. A loss about the file, of any kind and however
-/// small, takes it out of `Bound`, and a file that spells a name and is not bound
-/// is unaccounted for, never absent.
-fn status(
-    file: &str,
-    spelled: Option<bool>,
-    bound: Option<&Bound<'_>>,
-    losses: &[&Losses],
-) -> Status {
-    let loss = losses.iter().find_map(|l| l.about(file));
-    if loss.is_none() && bound.is_some_and(|b| b.reads(file)) {
-        return Status::Bound;
-    }
-    if spelled == Some(false) {
-        return Status::NameAbsent;
-    }
-    Status::Unaccounted(loss.unwrap_or_else(|| match (spelled, bound) {
-        (Some(_), Some(b)) if b.family.by_extension(file) => Reason::NotRead,
-        (Some(_), _) => Reason::OtherLanguage,
-        (None, _) => Reason::NotRead,
-    }))
-}
-
-/// Every file of one interaction group, accounted for against one definition: the
-/// files that are bound or name none of its names are the proof of an absence, and
-/// the rest are what stands in its way, with their reasons.
-#[derive(Clone, Debug)]
-pub struct Account {
-    /// The files of the group.
-    group_files: usize,
-    /// The files that are neither, by reason.
-    unaccounted: Vec<(Reason, Vec<RepoPath>)>,
-    /// What the losses did to the run as a whole (a deadline, withheld files).
-    run: Vec<Gap>,
-}
-
-impl Account {
-    /// An account that cannot be made: nothing of the group was read.
-    fn blocked(reason: Reason, file: &str) -> Self {
-        Self {
-            group_files: 0,
-            unaccounted: vec![(reason, RepoPath::new(file).into_iter().collect())],
-            run: Vec::new(),
-        }
-    }
-
-    /// The files the account could not place, by reason.
-    pub fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
-        &self.unaccounted
-    }
-
-    /// The first thing that stands in the way of an absence, when anything does.
-    pub fn first_gap(&self) -> Option<Gap> {
-        self.gaps().into_iter().next()
-    }
-
-    fn gaps(&self) -> Vec<Gap> {
-        let mut gaps: Vec<Gap> = self
-            .unaccounted
-            .iter()
-            .map(|(reason, files)| Gap::Unaccounted {
-                reason: *reason,
-                files: files.len(),
-            })
-            .collect();
-        // A group of no file proves nothing: the guard that keeps an empty group
-        // (a registry that lost a family) from reading as a clean absence.
-        if self.group_files == 0 && self.unaccounted.is_empty() {
-            gaps.push(Gap::Unaccounted {
-                reason: Reason::NoGroup,
-                files: 0,
-            });
-        }
-        gaps.extend(self.run.iter().cloned());
-        gaps
-    }
-}
-
-/// Accounts for the files of `tokens`' group against `names`. Only the files that
-/// spell a name and the files that could not be tokenised are looked at: the rest
-/// are bound or absent by subtraction. `reach` says which files could name the
-/// definition at all (a function local to another is named only in its own file):
-/// the others are neither.
-fn account_of(
-    tokens: &GroupTokens,
-    names: &Names,
-    losses: &[&Losses],
-    bound: Option<&Bound<'_>>,
-    reach: &dyn Fn(&str) -> bool,
-) -> Account {
-    let unread = tokens.unread();
-    let mut candidates = tokens.spelling(names);
-    candidates.extend_from_slice(unread);
-    candidates.sort_unstable();
-    let mut by_reason: BTreeMap<Reason, Vec<RepoPath>> = BTreeMap::new();
-    for at in candidates {
-        let file = &tokens.files()[at as usize];
-        if !reach(file.as_str()) {
-            continue;
-        }
-        let spelled = unread.binary_search(&at).is_err().then_some(true);
-        if let Status::Unaccounted(reason) = status(file.as_str(), spelled, bound, losses) {
-            by_reason.entry(reason).or_default().push(file.clone());
-        }
-    }
-    // The group's own count is the guard against an empty registry: a file the
-    // cell read outside it counts only when its language is its shebang's (an
-    // extensionless script), which no path can tell, so that a repository of
-    // scripts alone is a group of them.
-    let group_files = tokens.files().len() + bound.map_or(0, Bound::scripts);
-    if let Some(bound) = bound {
-        for file in bound.outside {
-            let Ok(path) = RepoPath::new(file) else {
-                continue;
-            };
-            if !reach(file) {
-                continue;
-            }
-            if let Status::Unaccounted(reason) = status(file, None, Some(bound), losses) {
-                by_reason.entry(reason).or_default().push(path);
-            }
-        }
-    }
-    // The paths the run withheld are a count and name no file, so they stay what
-    // the run's scope says (`Coverage::close(Run)`, every claim of absence holds
-    // it too): a gap of every definition would hide which of them has callers.
-    let mut run: Vec<Gap> = Vec::new();
-    for layer in losses {
-        for gap in &layer.run {
-            if !matches!(gap, Gap::Withheld { .. }) && !run.contains(gap) {
-                run.push(gap.clone());
-            }
-        }
-    }
-    Account {
-        group_files,
-        unaccounted: by_reason.into_iter().collect(),
-        run,
-    }
-}
-
-/// Whether the grammar reads `path` with errors: the one loss of a file no cell
-/// reads that can be told from outside.
-fn parses_with_errors(ctx: &AnalysisContext, path: &RepoPath) -> bool {
-    crate::parsers::unanalysed_reason(path.as_str(), true, || match ctx.head.read(path) {
-        Ok(Some(bytes)) => Some(bytes.to_vec()),
-        _ => None,
-    })
-    .is_some_and(|(reason, _)| matches!(reason, "parse_partial" | "parse_failed" | "parse_timeout"))
-}
-
-/// The account of a definition in a language no cell reads, made to say what that
-/// means: the definition's own file is never bound, so no absence is claimed; the
-/// files that spell a name are counted, and the ones whose grammar reads them with
-/// errors are the ones named, as lost.
-fn unowned(mut account: Account, ctx: &AnalysisContext, file: &str) -> Account {
-    if let Ok(own) = RepoPath::new(file) {
-        if !account
-            .unaccounted
-            .iter()
-            .any(|(_, files)| files.contains(&own))
-        {
-            match account
-                .unaccounted
-                .iter_mut()
-                .find(|(reason, _)| *reason == Reason::OtherLanguage)
-            {
-                Some((_, files)) => files.push(own),
-                None => account.unaccounted.push((Reason::OtherLanguage, vec![own])),
-            }
-        }
-    }
-    let mut broken: Vec<RepoPath> = Vec::new();
-    for (reason, files) in &mut account.unaccounted {
-        if *reason != Reason::OtherLanguage {
-            continue;
-        }
-        let (lost, kept): (Vec<RepoPath>, Vec<RepoPath>) = std::mem::take(files)
-            .into_iter()
-            .partition(|path| !crate::facts::expired(&ctx.run) && parses_with_errors(ctx, path));
-        *files = kept;
-        broken.extend(lost);
-    }
-    if !broken.is_empty() {
-        match account
-            .unaccounted
-            .iter_mut()
-            .find(|(reason, _)| *reason == Reason::Unparsed)
-        {
-            Some((_, files)) => files.extend(broken),
-            None => account.unaccounted.push((Reason::Unparsed, broken)),
-        }
-    }
-    account.unaccounted.retain(|(_, files)| !files.is_empty());
-    account.unaccounted.sort_by_key(|(reason, _)| *reason);
-    account
 }
 
 /// What a coverage rests on besides the gaps the search found.
@@ -1150,13 +896,8 @@ impl Coverages {
 
     /// The coverage of a definition no cell answers for: nothing accounts for the
     /// occurrences of its names, so it is never complete. Its gaps are the ones the
-    /// answer knows and its group's account, or a route no model traces.
-    pub fn unowned(account: Option<&Account>, mut gaps: Vec<Gap>) -> Self {
-        for gap in account.map_or_else(Vec::new, Account::gaps) {
-            if !gaps.contains(&gap) {
-                gaps.push(gap);
-            }
-        }
+    /// answer knows, or a route no model traces.
+    pub fn unowned(mut gaps: Vec<Gap>) -> Self {
         if gaps.is_empty() {
             gaps.push(Gap::NotTraced);
         }
@@ -1246,7 +987,6 @@ pub struct Use {
 pub struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
-    account: Account,
     overridden: Option<String>,
     /// No occurrence of its names is a use, an alias, a leak or a candidate.
     unused: bool,
@@ -1292,9 +1032,10 @@ impl Verdict {
     }
 
     /// The files of the definition's interaction group the search could not
-    /// place, by reason.
-    pub fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
-        self.account.unaccounted()
+    /// place, by reason. Stub until the answer reads them off the account's
+    /// hedges.
+    pub const fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
+        &[]
     }
 
     /// What covered the search of one relation of use.
@@ -1577,10 +1318,6 @@ pub struct Cell {
     macro_files: HashSet<String>,
     /// Python files that import a library which executes annotations at run time.
     runtime_files: RefCell<HashMap<String, bool>>,
-    /// Names with uses that landed on nothing, by name: the files.
-    /// The file, line, owner and whether it reads a property through a receiver
-    /// nothing types.
-    unlanded: HashMap<String, Vec<(String, u32, Scope, bool, Relation)>>,
     /// Resolved uses by target: the file and line of each.
     landed: HashMap<DefKey, Vec<(String, u32)>>,
     /// (user file, used file) pairs a binding links.
@@ -1595,10 +1332,6 @@ pub struct Cell {
     read: HashSet<String>,
     /// Of those, the ones no extension puts in the family's group.
     outside_group: Vec<String>,
-    /// The paths the base resolver read, once a removed or moved name asks.
-    base_read: OnceCell<HashSet<String>>,
-    /// The paths the base lists.
-    base_listed: OnceCell<Option<HashSet<String>>>,
     /// What the run lost that does not change while the cell answers: its own
     /// losses, the manifests it could not read, the files its listing set aside.
     /// `None` when the listing cannot be had again.
@@ -1841,7 +1574,6 @@ impl Cell {
             outside: HashSet::new(),
             macro_files: HashSet::new(),
             runtime_files: RefCell::new(HashMap::new()),
-            unlanded: HashMap::new(),
             landed: HashMap::new(),
             reaches: HashSet::new(),
             losses: Vec::new(),
@@ -1849,8 +1581,6 @@ impl Cell {
             tokens,
             read,
             outside_group,
-            base_read: OnceCell::new(),
-            base_listed: OnceCell::new(),
             fixed: OnceCell::new(),
             shadow_files: OnceCell::new(),
             shadow_written: RefCell::default(),
@@ -1902,14 +1632,6 @@ impl Cell {
 
     fn index(&mut self) {
         let mut file_of: HashMap<&DefKey, &str> = HashMap::new();
-        // Uses that landed on nothing: (name, file, owner, a use through a receiver
-        // nothing types: a property read, and in TypeScript a method call).
-        let mut unlanded: Vec<(String, String, u32, Scope, bool, Relation)> = Vec::new();
-        // The names a scope calls or reads through an untyped receiver and the
-        // resolver placed as candidates: a read of `w.switch` beside the call
-        // `w.switch()` is the call's question. A use a typed receiver resolved
-        // says nothing of another receiver's read (`c.get()` beside `x.get`).
-        let mut placed: HashSet<(String, Scope, String)> = HashSet::new();
         for (at, def) in self.head.definitions().iter().enumerate() {
             let file = def.file.as_str();
             self.files.insert(file.to_string());
@@ -1981,42 +1703,8 @@ impl Cell {
                     self.reaches
                         .insert((file.to_string(), used.as_str().to_string()));
                 }
-                Resolution::Candidate { .. } => {}
-                Resolution::Unresolved { reason } => {
-                    if b.relation.uses() && reason.is_unknown() {
-                        unlanded.push((
-                            b.name.as_str().to_string(),
-                            file.to_string(),
-                            line,
-                            b.from.clone(),
-                            *reason == UnresolvedReason::UntypedRead
-                                || (self.family == Family::TypeScript
-                                    && matches!(
-                                        reason,
-                                        UnresolvedReason::NoCandidates
-                                            | UnresolvedReason::TooManyCandidates
-                                    )),
-                            b.relation,
-                        ));
-                    }
-                }
+                Resolution::Candidate { .. } | Resolution::Unresolved { .. } => {}
             }
-            if b.relation.uses() && matches!(b.resolution, Resolution::Candidate { .. }) {
-                placed.insert((
-                    file.to_string(),
-                    b.from.clone(),
-                    b.name.as_str().to_string(),
-                ));
-            }
-        }
-        for (name, file, line, from, read, relation) in unlanded {
-            if read && placed.contains(&(file.clone(), from.clone(), name.clone())) {
-                continue;
-            }
-            self.unlanded
-                .entry(name)
-                .or_default()
-                .push((file, line, from, read, relation));
         }
         self.losses = self.head.losses().to_vec();
     }
@@ -2195,7 +1883,7 @@ impl Cell {
                             .then(|| self.class_holding(&gone.file, &d.key))
                             .flatten();
                     match class {
-                        Some(class) if !self.stale_uses(&gone).0.is_empty() => {
+                        Some(class) if self.stranded(&gone) => {
                             let mut held = Changed {
                                 name: class.key.local.name.as_str().to_string(),
                                 kind: class.kind,
@@ -2279,7 +1967,7 @@ impl Cell {
                                 delta: None,
                                 origin: None,
                             };
-                            if !self.stale_uses(&gone).0.is_empty() {
+                            if self.stranded(&gone) {
                                 removed.push(gone);
                                 stale = Vec::new();
                             }
@@ -2931,18 +2619,10 @@ impl Cell {
     }
 
     /// Whether the cell read the file without a loss: its definitions and uses
-    /// are the cell's, and the file is bound in the sense of `status`. A file the
-    /// grammar read only in part, or lost any other way, has uses the cell never
-    /// saw.
+    /// are the cell's. A file the grammar read only in part, or lost any other
+    /// way, has uses the cell never saw.
     pub fn is_bound(&self, rel: &str) -> bool {
-        let bound = Bound {
-            family: self.family,
-            read: &self.read,
-            base: None,
-            scope: &self.scope,
-            outside: &self.outside_group,
-        };
-        bound.reads(rel) && self.loss_about(rel).is_none()
+        within_scope(&self.scope, rel) && self.read.contains(rel) && self.loss_about(rel).is_none()
     }
 
     /// The files of the cell's group that spell `name` (or could not be tokenised)
@@ -2968,9 +2648,7 @@ impl Cell {
         let Some(fixed) = self.fixed_losses() else {
             return Some(Reason::NotRead);
         };
-        fixed
-            .about(rel)
-            .or_else(|| self.moving_losses(None).about(rel))
+        fixed.about(rel).or_else(|| self.moving_losses().about(rel))
     }
 
     /// What the run lost that stays what it is while the cell answers.
@@ -2991,17 +2669,11 @@ impl Cell {
     }
 
     /// What the run lost that grows as it reads: the reads of either snapshot
-    /// that failed, and the base resolver's losses when a name it held is asked
-    /// for.
-    fn moving_losses(&self, base: Option<&Resolver>) -> Losses {
+    /// that failed.
+    fn moving_losses(&self) -> Losses {
         let reads = self.ctx.head.losses();
         let before = self.ctx.base.losses();
-        Losses::of(
-            reads
-                .iter()
-                .chain(before.iter())
-                .chain(base.map_or(&[][..], Resolver::losses)),
-        )
+        Losses::of(reads.iter().chain(before.iter()))
     }
 
     /// The definition of a queried name or a fragment at these lines, as the
@@ -3131,31 +2803,13 @@ impl Cell {
                 uses.extend(self.use_of(b));
             }
         }
-        let (stale, base_gap) = self.stale_uses(changed);
-        let covered: HashSet<(String, u32)> =
-            stale.iter().map(|u| (u.file.clone(), u.line)).collect();
-        uses.extend(stale);
-        let unplaced = self.unplaced(changed, &covered);
         // What the search could not tell of every relation. A use that landed on
         // nothing is a candidate of the occurrence account, which closes the rest.
-        let mut lead: Vec<Gap> = Vec::new();
-        if changed.unpaired {
-            lead.push(Gap::Unpaired);
-        } else if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
-            // A name that left, or moved, may still be spelled where nothing
-            // types the receiver: each such line may be a use that broke.
-            uses.extend(unplaced.into_iter().map(|(file, line, scope, _)| Use {
-                // Still named at the head, so possibly broken, whoever changed it.
-                also_changed: false,
-                file,
-                line,
-                relation: Relation::Reads,
-                standing: Standing::Candidate(UNTYPED_RECEIVER),
-                scope,
-                folded: None,
-                sharing: 0,
-            }));
-        }
+        let lead: Vec<Gap> = changed
+            .unpaired
+            .then_some(Gap::Unpaired)
+            .into_iter()
+            .collect();
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
                 b.file.as_str(),
@@ -3172,15 +2826,11 @@ impl Cell {
             }
         }
         let overridden = self.overridden_via(changed);
-        let mut tail: Vec<Gap> = base_gap.into_iter().collect();
-        if overridden.is_some() {
-            tail.push(Gap::NotTraced);
-        }
-        let (by_relation, account, unused) = self.coverage(changed, lead, tail);
+        let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
+        let (by_relation, unused) = self.coverage(changed, lead, tail);
         Verdict {
             uses,
             by_relation,
-            account,
             overridden,
             unused,
         }
@@ -3195,7 +2845,7 @@ impl Cell {
         if let Some(known) = known {
             return known;
         }
-        let done = Rc::new(self.account_occurrences(changed, gaps));
+        let done = Rc::new(self.account_occurrences(changed, gaps, true));
         if let Some(key) = key {
             self.accounted
                 .borrow_mut()
@@ -3204,8 +2854,16 @@ impl Cell {
         done
     }
 
-    fn account_occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Accounted {
-        let mut out = sink();
+    /// Whether a head line still spells what `gone` removed and nothing explains
+    /// it: its occurrence account holds a candidate. Asked while the changes are
+    /// read, so nothing of it is memoized or written.
+    fn stranded(&self, gone: &Changed) -> bool {
+        let done = self.account_occurrences(gone, &[], false);
+        (done.hedges.iter()).any(|(_, hedge)| matches!(hedge, Hedge::Candidate { .. }))
+    }
+
+    fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounted {
+        let mut out = sink().filter(|_| write);
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
                 .head
@@ -3242,7 +2900,10 @@ impl Cell {
         } else {
             match self.base() {
                 Ok(base) => Some(base),
-                Err(_) => None,
+                Err(gap) => {
+                    tracing::debug!("a removed definition is not accounted, {gap}");
+                    None
+                }
             }
         };
         if !changed.stale.is_empty() {
@@ -3415,14 +3076,13 @@ impl Cell {
     /// relation (`lead`, `tail`), the files outside the run's pathspecs that could
     /// name the definition, a read the cell lost, and the hedges of the occurrence
     /// account. `Coverage::close` makes the `Complete`, and so the cell never does.
-    /// The file-status account comes along for the files the answer lists; whether
-    /// the definition is unused is the occurrence account's.
+    /// Whether the definition is unused is the occurrence account's.
     fn coverage(
         &self,
         changed: &Changed,
         lead: Vec<Gap>,
         tail: Vec<Gap>,
-    ) -> ([(Relation, Coverage); 6], Account, bool) {
+    ) -> ([(Relation, Coverage); 6], bool) {
         let mut tail = tail;
         let outside = self
             .outside
@@ -3534,102 +3194,7 @@ impl Cell {
             let coverage = Coverage::close(Evidence::Occurrences(&hedges), gaps.clone());
             (relation, coverage)
         });
-        (by_relation, self.account(changed), found.unused)
-    }
-
-    /// Every file of the definition's interaction group, accounted for against the
-    /// names a use of it could carry: bound (read by this cell without a loss, at
-    /// both sides for a name that left), without any of the names, or neither. A
-    /// removed definition and a queried name are accounted for the same way: the
-    /// names are what the head's files can still spell.
-    pub fn account(&self, changed: &Changed) -> Account {
-        let Some(fixed) = self.fixed_losses() else {
-            return Account::blocked(Reason::NotRead, &changed.file);
-        };
-        // A name that left or moved is still spelled by head files the base side
-        // read as uses of it: only a file read at both sides is bound.
-        // A base side that could not be resolved is `Gap::BaseUnresolved` already.
-        let base = if changed.stale.is_empty() {
-            None
-        } else {
-            self.base().into_iter().next()
-        };
-        let base_side = match base {
-            Some(base) => {
-                let Some(listed) = self.base_listed() else {
-                    return Account::blocked(Reason::NotRead, &changed.file);
-                };
-                let read = self.base_read.get_or_init(|| {
-                    base.read_paths()
-                        .iter()
-                        .map(|path| path.as_str().to_string())
-                        .collect()
-                });
-                Some((read, listed))
-            }
-            None => None,
-        };
-        let moving = self.moving_losses(base);
-        let names = self.reference_names(changed);
-        let names = Names::new(names.iter().map(String::as_str));
-        let bound = Bound {
-            family: self.family,
-            read: &self.read,
-            base: base_side,
-            scope: &self.scope,
-            outside: &self.outside_group,
-        };
-        let (local, own) = (changed.local, changed.file.as_str());
-        account_of(
-            &self.tokens.group(self.family.group()),
-            &names,
-            &[fixed, &moving],
-            Some(&bound),
-            &|file: &str| within_scope(&self.scope, file) && (!local || file == own),
-        )
-    }
-
-    /// The paths the base snapshot lists, by name; `None` when it cannot be
-    /// listed.
-    fn base_listed(&self) -> Option<&HashSet<String>> {
-        self.base_listed
-            .get_or_init(|| {
-                let Ok(listing) = self.cache.listing(&self.ctx.base) else {
-                    return None;
-                };
-                Some(
-                    listing
-                        .entries
-                        .iter()
-                        .map(|entry| &entry.path)
-                        .chain(listing.not_analysed.iter().map(|(path, _)| path))
-                        .map(|path| path.as_str().to_string())
-                        .collect(),
-                )
-            })
-            .as_ref()
-    }
-
-    /// The account of a group this cell does not answer for, against `names`: its
-    /// files can be told from the ones that spell none of them, and no file of it
-    /// is bound.
-    fn account_unowned(
-        &self,
-        group: Group,
-        names: &[String],
-        reach: &dyn Fn(&str) -> bool,
-    ) -> Account {
-        let Some(fixed) = self.fixed_losses() else {
-            return Account::blocked(Reason::NotRead, "");
-        };
-        let moving = self.moving_losses(None);
-        account_of(
-            &self.tokens.group(group),
-            &Names::new(names.iter().map(String::as_str)),
-            &[fixed, &moving],
-            None,
-            &|file: &str| within_scope(&self.scope, file) && reach(file),
-        )
+        (by_relation, found.unused)
     }
 
     /// The names a use of the definition could carry in a file of its group: its
@@ -3806,7 +3371,6 @@ impl Cell {
         if changed.how != How::Removed {
             return None;
         }
-        // An unresolved base is `stale_uses`'s `Gap::BaseUnresolved`, said once.
         let Ok(base) = self.base() else {
             return None;
         };
@@ -3829,158 +3393,6 @@ impl Cell {
                     |holder| format!("`{}`", holder.as_str()),
                 ),
         )
-    }
-
-    /// Uses at the head of a definition the range removed or moved away: lines
-    /// the base resolved to it, which the head still spells and no longer lands.
-    /// With them, the gap that kept the base side from saying all of it: it was
-    /// not resolved, or what it read was cut short.
-    fn stale_uses(&self, changed: &Changed) -> (Vec<Use>, Option<Gap>) {
-        if changed.stale.is_empty() {
-            return (Vec::new(), None);
-        }
-        let base = match self.base() {
-            Ok(base) => base,
-            Err(gap) => return (Vec::new(), Some(gap)),
-        };
-        let reasons = stopped_by(base.losses());
-        let gap = (!reasons.is_empty()).then_some(Gap::Stopped { reasons });
-        // How sure the base was of each: a call through an interface-typed
-        // receiver reached the definition as a candidate, and the line that
-        // still spells it is one.
-        let mut named: HashMap<(String, Name), Standing> = HashMap::new();
-        for key in &changed.stale {
-            for b in base.references_to(key) {
-                if strands(self.family, b.relation)
-                    && !b.entry_guard
-                    && within_scope(&self.scope, b.file.as_str())
-                {
-                    let standing = match (self.family, standing_of(&b.resolution)) {
-                        (Family::Python, _) | (_, None) => Standing::Resolved,
-                        (_, Some(standing)) => standing,
-                    };
-                    named
-                        .entry((b.file.as_str().to_string(), b.name.clone()))
-                        .and_modify(|known| {
-                            if standing == Standing::Resolved {
-                                *known = standing;
-                            }
-                        })
-                        .or_insert(standing);
-                }
-            }
-        }
-        // What the base bound each such name to, per file: a head line that lands
-        // on something else was a use of the definition that left and now means
-        // another (a re-export, an inherited or shadowing name), which is as
-        // stranded as one that lands on nothing.
-        let files: HashSet<&str> = named.keys().map(|(file, _)| file.as_str()).collect();
-        let mut had: HashMap<(&str, &Name), HashSet<&DefKey>> = HashMap::new();
-        for b in base.bindings() {
-            if files.contains(b.file.as_str()) {
-                had.entry((b.file.as_str(), &b.name))
-                    .or_default()
-                    .extend(b.targets());
-            }
-        }
-        let mut out = Vec::new();
-        for ((file, name), standing) in named {
-            let had = had.get(&(file.as_str(), &name));
-            // A file whose own new lines spell the name moved its uses itself (an
-            // import of the replacement): they are the diff's work, not stranded.
-            let moved_by_range = self.added.get(&file).is_some_and(|lines| {
-                lines.iter().any(|(_, text)| {
-                    text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
-                        .any(|word| word == name.as_str())
-                })
-            });
-            let rebound = |h: &Binding| {
-                let targets = h.targets();
-                !moved_by_range
-                    && !targets.is_empty()
-                    && had.is_some_and(|had| targets.iter().all(|t| !had.contains(t)))
-            };
-            let stranded: Vec<(&Binding, bool)> = self
-                .bindings_by_file
-                .get(&file)
-                .into_iter()
-                .flatten()
-                .map(|at| &self.head.bindings()[*at])
-                .filter(|h| h.name == name && strands(self.family, h.relation))
-                .filter_map(|h| match h.resolution {
-                    Resolution::Unresolved { .. } => Some((h, false)),
-                    _ => rebound(h).then_some((h, true)),
-                })
-                .collect();
-            // An import is a broken line too, but a file that still uses the name
-            // has said so on the use: the import names it only when nothing else does.
-            let used = stranded
-                .iter()
-                .any(|(h, _)| h.relation != Relation::Imports);
-            for (h, rebound) in stranded
-                .into_iter()
-                .filter(|(h, _)| !used || h.relation != Relation::Imports)
-            {
-                let line = h.site.lines.0;
-                out.push(Use {
-                    // A line that still names what left is a broken reference
-                    // whoever else the range changed: never the diff's own line.
-                    also_changed: false,
-                    file: file.clone(),
-                    line,
-                    relation: h.relation,
-                    standing: if rebound {
-                        Standing::Candidate(REBOUND)
-                    } else {
-                        standing
-                    },
-                    scope: h.from.clone(),
-                    folded: None,
-                    sharing: 0,
-                });
-            }
-        }
-        (out, gap)
-    }
-
-    /// The uses of the name that landed on nothing, in files that could reach
-    /// the definition, apart from those already given as stale.
-    fn unplaced(
-        &self,
-        changed: &Changed,
-        covered: &HashSet<(String, u32)>,
-    ) -> Vec<(String, u32, Scope, Relation)> {
-        // A property read through an object nothing types cannot be a use of a
-        // top-level function or constant of a module: `c.env` is no use of the
-        // exported `env`, which a use reaches through its import. Only a member
-        // is read that way.
-        let member = changed
-            .subjects
-            .first()
-            .map(|s| &s.key)
-            .or_else(|| changed.stale.first())
-            .is_some_and(|key| !key.local.container.is_empty());
-        let top_level_only = self.family == Family::TypeScript && !member;
-        // A use whose name is not written (`$o->$m()`, `new $c`) may be of any
-        // definition of a kind its relation reaches.
-        let dynamic = self
-            .unlanded
-            .get(crate::resolve::DYNAMIC)
-            .into_iter()
-            .flatten()
-            .filter(|(_, _, _, _, relation)| dynamic_reaches(*relation, changed.kind));
-        self.unlanded
-            .get(&changed.name)
-            .into_iter()
-            .flatten()
-            .chain(dynamic)
-            .filter(|(file, line, _, read, _)| {
-                !(top_level_only && *read)
-                    && self.ctx.workspace.may_reference(file, &changed.file)
-                    && !covered.contains(&(file.clone(), *line))
-            })
-            .map(|(file, line, scope, _, relation)| (file.clone(), *line, scope.clone(), *relation))
-            .collect()
     }
 
     /// Whether a line range of `user_file` holds a resolved use of the
@@ -4089,32 +3501,9 @@ impl Cell {
     }
 }
 
-/// Whether a use that names nothing it could be a use of a definition of this
-/// kind: a call reaches what is called, an instantiation a class, an access a
-/// value.
-fn dynamic_reaches(relation: Relation, kind: DefKind) -> bool {
-    match relation {
-        Relation::Calls | Relation::PassesAsValue => matches!(
-            kind,
-            DefKind::Function | DefKind::Method | DefKind::Constructor
-        ),
-        Relation::Instantiates => matches!(kind, DefKind::Class),
-        Relation::Reads | Relation::Writes => matches!(
-            kind,
-            DefKind::Property
-                | DefKind::Constant
-                | DefKind::Field
-                | DefKind::EnumMember
-                | DefKind::Variable
-        ),
-        _ => false,
-    }
-}
-
 /// The head a run with no cell at all reads the files of a group from.
 struct Bare {
     ctx: AnalysisContext,
-    fixed: Losses,
     cache: FactsCache,
 }
 
@@ -4180,8 +3569,8 @@ impl Cells {
         }
     }
 
-    /// The head of a run that opened no cell, read for the accounts of the
-    /// definitions no cell owns; `None` when it cannot be read.
+    /// The head of a run that opened no cell, read for the files of a group;
+    /// `None` when it cannot be read.
     fn bare(&self, state: &ScoredState) -> Option<&Bare> {
         self.bare
             .get_or_init(|| {
@@ -4192,12 +3581,7 @@ impl Cells {
                 if self.tokens.bind(&ctx, &cache).is_err() {
                     return None;
                 }
-                let Ok(listing) = cache.listing(&ctx.head) else {
-                    return None;
-                };
-                let fixed =
-                    Losses::of(ctx.workspace.losses().iter().chain(listing.losses().iter()));
-                Some(Bare { ctx, fixed, cache })
+                Some(Bare { ctx, cache })
             })
             .as_ref()
     }
@@ -4306,42 +3690,6 @@ impl Cells {
         })
     }
 
-    /// The account of a definition in `file` that no cell answers for: the files
-    /// of its group that spell `names`, none of them bound. A file of no group has
-    /// none to account for, and says so.
-    pub fn account_without_cell(
-        &self,
-        state: &ScoredState,
-        file: &str,
-        names: &[String],
-        reach: &dyn Fn(&str) -> bool,
-    ) -> Account {
-        let Some(group) = Group::of_path(file) else {
-            return Account::blocked(Reason::NoGroup, file);
-        };
-        if let Some(cell) = self.cells.first() {
-            return unowned(cell.account_unowned(group, names, reach), &cell.ctx, file);
-        }
-        let Some(bare) = self.bare(state) else {
-            return Account::blocked(Reason::NotRead, file);
-        };
-        let moving = Losses::of(
-            bare.ctx
-                .head
-                .losses()
-                .iter()
-                .chain(bare.ctx.base.losses().iter()),
-        );
-        let account = account_of(
-            &self.tokens.group(group),
-            &Names::new(names.iter().map(String::as_str)),
-            &[&bare.fixed, &moving],
-            None,
-            &|file: &str| within_scope(&state.scope, file) && reach(file),
-        );
-        unowned(account, &bare.ctx, file)
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = &Cell> {
         self.cells.iter()
     }
@@ -4371,22 +3719,6 @@ impl Cells {
     pub fn lost(&self, rel: &str) -> bool {
         self.lost.iter().any(|family| family.has_path(rel))
     }
-}
-
-/// Whether a line that names a definition the range removed is stranded by it: a
-/// use that now finds nothing, or an export that still offers the missing name. In
-/// the code families a name written where a type is expected, and an import of it,
-/// are the only uses a removed interface, class or alias may have: a file that still
-/// imports a removed type and annotates with it is broken, and without them the
-/// search of a removed type finds nothing and the answer says nothing references it.
-fn strands(family: Family, relation: Relation) -> bool {
-    relation.uses()
-        || relation == Relation::Reexports
-        || (matches!(relation, Relation::TypeUses | Relation::Imports)
-            && !matches!(
-                family,
-                Family::Config | Family::Terraform | Family::Dockerfile | Family::Shell
-            ))
 }
 
 /// Reports one definition once, with the subjects of every reason it is
