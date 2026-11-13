@@ -11,3 +11,10 @@ pub(super) const DECLARING_LOCALS: &[(Family, LocalKind)] = &[
     (Family::Python, LocalKind::Closure),
     (Family::TypeScript, LocalKind::Closure),
 ];
+
+/// Where a bare name heading a chain (`name.x`) can be shown to be no member, as (family,
+/// its locals reach the whole function and not a block, a class member needs a receiver).
+pub(super) const BARE_HEADS: &[(Family, bool, bool)] = &[
+    (Family::Python, true, true),
+    (Family::TypeScript, false, true),
+];
