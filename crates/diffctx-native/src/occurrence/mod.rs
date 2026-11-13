@@ -497,4 +497,4 @@ impl Verdict {
 
 mod alias;
 
-pub use alias::{AliasClosure, ValueUse, close_aliases, value_use};
+pub use alias::{close_aliases, value_use};
