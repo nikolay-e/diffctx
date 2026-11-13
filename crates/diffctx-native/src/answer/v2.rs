@@ -452,6 +452,9 @@ pub enum GuardState {
     Unread,
     /// No test file was in view.
     NoTests,
+    /// The search for a test stopped at its hop bound with uses left above it: a
+    /// test may be there, so no absence is claimed.
+    NotEstablished,
 }
 
 /// Tests a guard names before the rest are counted.
@@ -495,8 +498,8 @@ pub struct Guard {
 }
 
 impl Guard {
-    pub fn of(caller: &Caller, tests_known: bool) -> Self {
-        let bare = |state| Self {
+    pub fn bare(state: GuardState) -> Self {
+        Self {
             state,
             test: None,
             name: None,
@@ -504,7 +507,11 @@ impl Guard {
             also: Vec::new(),
             more: 0,
             registrar: None,
-        };
+        }
+    }
+
+    pub fn of(caller: &Caller, tests_known: bool) -> Self {
+        let bare = Self::bare;
         let named = crate::impact::named_tests(&caller.tests);
         if let Some((first, rest)) = named.split_first() {
             return Self {
@@ -540,12 +547,14 @@ impl Guard {
                 ..bare(GuardState::Unread)
             };
         }
-        bare(if caller.file_tested {
-            GuardState::FileOnly
-        } else if tests_known {
-            GuardState::None
-        } else {
+        bare(if !tests_known {
             GuardState::NoTests
+        } else if caller.tests_cut {
+            GuardState::NotEstablished
+        } else if caller.file_tested {
+            GuardState::FileOnly
+        } else {
+            GuardState::None
         })
     }
 }
@@ -606,7 +615,10 @@ impl Row {
         self.is_caller()
             && !matches!(
                 self.guard.state,
-                GuardState::Linked | GuardState::Registered | GuardState::EntryPoint
+                GuardState::Linked
+                    | GuardState::Registered
+                    | GuardState::EntryPoint
+                    | GuardState::NotEstablished
             )
     }
 
@@ -1441,15 +1453,7 @@ fn definition(c: &ChangedSymbol, tests_known: bool) -> Definition {
         local_of,
         commits: c.commits,
         entry: c.entry.clone(),
-        guard: c.untested.then(|| Guard {
-            state: GuardState::None,
-            test: None,
-            name: None,
-            via: None,
-            also: Vec::new(),
-            more: 0,
-            registrar: None,
-        }),
+        guard: c.untested.map(Guard::bare),
         rows: c.callers.iter().map(|r| Row::of(r, tests_known)).collect(),
         folded,
         also_changed: refs(&c.also_changed),

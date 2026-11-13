@@ -11,6 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schemars::JsonSchema;
 use serde::Serialize;
 
+use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
 use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells};
@@ -308,8 +309,9 @@ pub struct ChangedSymbol {
     /// files in a language without a binding model, a trait method reached
     /// through dynamic dispatch. Its empty `callers` is then no finding.
     pub unresolved: Option<Unknown>,
-    /// No test reaches the definition itself by a static link.
-    pub untested: bool,
+    /// What the answer says of the tests of the definition itself: none reaches it
+    /// by a static link (`None` state), or the search was not closed.
+    pub untested: Option<GuardState>,
     /// Call sites left working by the change: it only added fields or
     /// parameters with defaults, so they are counted, not listed (#388).
     pub compatible_callers: usize,
@@ -368,7 +370,7 @@ impl ChangedSymbol {
             callers: Vec::new(),
             entry: None,
             unresolved: None,
-            untested: false,
+            untested: None,
             compatible_callers: 0,
             missed_in: Vec::new(),
             also_changed: Vec::new(),
@@ -527,6 +529,9 @@ pub struct Caller {
     /// A test file the size cap kept out that names this caller: an absent
     /// `tests` says nothing about it (#542).
     pub unread_test: Option<String>,
+    /// The search for a test stopped at the hop bound with uses left above: an
+    /// absent `tests` is not established.
+    pub tests_cut: bool,
     /// `resolved`: a binding links the reference to the changed definition.
     /// `name`: a word match — the lexical model of a language without a
     /// binding model, or a removed definition's name found by search; the
@@ -574,6 +579,7 @@ impl Caller {
             file_tested: false,
             registered_by: None,
             unread_test: None,
+            tests_cut: false,
             evidence,
             reason: None,
             relation,
@@ -1937,6 +1943,7 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 }
                 m.unread_test = m.unread_test.take().or(c.unread_test);
                 m.file_tested = m.tests.is_empty() && (m.file_tested || c.file_tested);
+                m.tests_cut = m.tests.is_empty() && (m.tests_cut || c.tests_cut);
             }
             None => merged.push(c),
         }
@@ -2724,6 +2731,7 @@ fn cell_row(u: &decide::Use) -> Caller {
         file_tested: false,
         registered_by: None,
         unread_test: None,
+        tests_cut: false,
         evidence: if reexport { REEXPORT } else { reach.evidence() },
         reason: reach.reason().filter(|_| !reexport),
         relation: if reexport {
@@ -3586,6 +3594,7 @@ pub fn build_impact(
                         .is_empty()
                         .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
+                    tests_cut: tested.is_empty() && tests.cut(frag),
                     registered_by,
                     tests: tested,
                     evidence: found.map_or("name", Reach::evidence),
@@ -3798,23 +3807,20 @@ pub fn build_impact(
         // graph edge for the walk to take (#503). A candidate caller counts: a
         // test that reaches it may reach the definition, and an absence is
         // claimed only where nothing could.
-        let class_tested = || {
-            route
-                .as_ref()
-                .and_then(|_| enclosing_class(core, file_of(core)))
-                .is_some_and(|class| !tests.tested_by(class, state, &by_id, &link).is_empty())
-        };
-        let untested = query.is_none()
+        let class = route
+            .as_ref()
+            .and_then(|_| enclosing_class(core, file_of(core)));
+        let class_tested =
+            || class.is_some_and(|class| !tests.tested_by(class, state, &by_id, &link).is_empty());
+        let tests_absent = query.is_none()
             && tests.any()
             && !tests.is_test(core)
             && (entry.is_none() || linkless_role)
-            && verdict.as_ref().is_none_or(decide::Verdict::complete)
             && !callers
                 .iter()
                 .any(|c| c.tests.iter().any(|t| t.via.is_none()))
             && tests.tested_by(core, state, &by_id, &link).is_empty()
             && !class_tested();
-        untested_definitions += usize::from(untested);
         let compatible_callers = if compatible {
             let n = callers
                 .iter()
@@ -3875,6 +3881,21 @@ pub fn build_impact(
             unresolved.as_ref(),
             outside,
         );
+        // No test found is an absence only from a closed search: the callers
+        // accounted for and no walk up the uses cut at its hop bound. A cut walk
+        // says the tests are not established; incomplete callers say nothing here,
+        // their own gap does.
+        let untested = tests_absent
+            .then(|| {
+                if tests.cut(core) || class.is_some_and(|class| tests.cut(class)) {
+                    Some(GuardState::NotEstablished)
+                } else {
+                    coverage.all().witness().map(|_| GuardState::None)
+                }
+            })
+            .flatten();
+        let absent = untested == Some(GuardState::None);
+        untested_definitions += usize::from(absent);
         // A definition no cell reads is never one nothing calls: the files of its
         // group that spell the name are counted in a gap, and the answer says so
         // even where no file of it is listed.
@@ -3895,7 +3916,7 @@ pub fn build_impact(
                 && tests.any()
                 && !tests.is_test(core)
                 && entry.is_none()
-                && !untested
+                && untested.is_none()
                 && (class_tested() || !tests.tested_by(core, state, &by_id, &link).is_empty())
         };
         // Nothing said of a definition needs every relation of it known.
@@ -3925,7 +3946,7 @@ pub fn build_impact(
                 core.symbol_name.as_deref(),
                 &lines_of(&core.id),
             );
-            if untested {
+            if absent {
                 let named = match entry.as_ref().filter(|_| linkless_role) {
                     Some(role) => format!("{named} \u{2014} {role}"),
                     None => named,
@@ -3954,7 +3975,7 @@ pub fn build_impact(
             && commits < 2
             && coverage.all().witness().is_some()
             && !(also_changed.is_empty() && possibly_also_changed.is_empty());
-        if only_in_diff && untested {
+        if only_in_diff && absent {
             untested_called_in_diff.push(label(
                 &rel(state, core.path()),
                 core.symbol_name.as_deref(),
@@ -3970,7 +3991,7 @@ pub fn build_impact(
             callers,
             entry,
             unresolved,
-            untested: untested && !only_in_diff,
+            untested: untested.filter(|_| !only_in_diff),
             compatible_callers,
             missed_in,
             also_changed,
@@ -4192,6 +4213,7 @@ pub fn build_impact(
                 };
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
+                c.tests_cut = tested.is_empty() && tests.cut(frag);
                 c.tests = tested;
             }
             if let Some(c) =
@@ -5745,7 +5767,7 @@ const TOO_COMMON_NAMED: usize = 8;
 /// A caller no static test link reaches although one could have: the one
 /// predicate behind the header count, the folded count and the line (#386).
 pub(crate) fn without_test_link(c: &Caller) -> bool {
-    c.evidence == "resolved" && c.tests.is_empty() && c.registered_by.is_none()
+    c.evidence == "resolved" && c.tests.is_empty() && c.registered_by.is_none() && !c.tests_cut
 }
 
 /// A row that rests on a word match alone: listed as text, never counted or
