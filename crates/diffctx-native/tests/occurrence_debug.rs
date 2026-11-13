@@ -1,7 +1,8 @@
 //! The `DIFFCTX_DEBUG_OCCURRENCES` writer, through the binary on a real Python
-//! repository: one line per occurrence and per (definition, relation), written
-//! while the answer stays what it was. The expectations are read off the sources
-//! below, never off a run of diffctx.
+//! repository: one line per occurrence and per (definition, relation). The
+//! accounting runs for every answer, so the knob only writes what it found: the
+//! answer is the same with and without it. The expectations are read off the
+//! sources below, never off a run of diffctx.
 
 mod support;
 
@@ -122,7 +123,10 @@ fn the_shadow_names_each_occurrence_and_leaves_the_answer_alone() {
         .expect("the declaration");
     assert_eq!(declaration["outcome"], "declaration");
     assert_eq!(declaration["position"], "function_definition/name");
-    let pairs: Vec<&&Value> = ours.iter().filter(|l| l["today"].is_string()).collect();
+    let pairs: Vec<&&Value> = ours
+        .iter()
+        .filter(|l| l["occurrences"].is_string())
+        .collect();
     for relation in [
         "calls",
         "reads",
@@ -135,10 +139,9 @@ fn the_shadow_names_each_occurrence_and_leaves_the_answer_alone() {
             .iter()
             .find(|l| l["relation"] == relation)
             .unwrap_or_else(|| panic!("no pair line for {relation}"));
-        for key in ["today", "occurrences"] {
-            let said = pair[key].as_str().expect("a verdict");
-            assert!(matches!(said, "complete" | "partial"), "{key}: {said}");
-        }
+        let said = pair["occurrences"].as_str().expect("a verdict");
+        assert!(matches!(said, "complete" | "partial"), "{said}");
+        assert!(pair["today"].is_null(), "one verdict, not two: {pair}");
         let both = pair["occurrences"] == "complete" && pair["gaps"] == serde_json::json!([]);
         assert_eq!(pair["complete"], both, "{pair}");
     }
@@ -181,11 +184,6 @@ fn a_pair_is_written_for_every_relation_an_unexplained_occurrence_may_be_a_use_t
     for relation in ["instantiates", "type_use", "passes_as_value"] {
         assert!(relations.contains(&relation), "{relation}: {relations:?}");
     }
-    let uncovered = pairs
-        .iter()
-        .find(|l| l["relation"] == "type_use")
-        .expect("type_use");
-    assert!(uncovered["today"].is_null(), "{uncovered}");
 }
 
 #[test]
