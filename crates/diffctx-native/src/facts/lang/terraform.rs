@@ -95,6 +95,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.losses.push(Loss::ExtractorFailed { path: unbound() });
     }
     blob.facts = std::mem::take(&mut walker.facts);
+    blob.record_lexical(root);
     blob.in_source_order();
     blob
 }

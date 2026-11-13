@@ -8,7 +8,7 @@
 //!
 //! - A2.1 (this file and `scanner`): the types, the verdict of [`Account`], and
 //!   [`scan`], which finds the occurrences of names in one file.
-//! - A2.2: the extractors fill `BlobFacts::lexical`.
+//! - A2.2 (`facts::lexical`): one pass over each parsed tree fills `BlobFacts::lexical`.
 //! - A2.3 (`outcome`): a `Binding`, a declaration or an import name becomes an
 //!   [`Outcome`] with its [`Basis`]; a binding that gives none is a candidate.
 //! - A2.4 (`alias`, `implicit`): the alias closure within [`MAX_ALIAS_HOPS`] and
