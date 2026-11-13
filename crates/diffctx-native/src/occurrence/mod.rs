@@ -19,6 +19,7 @@
 //! Every `match` over these enums names each variant, so a new one does not compile
 //! until it is decided.
 
+pub mod debug;
 mod implicit;
 mod outcome;
 mod scanner;

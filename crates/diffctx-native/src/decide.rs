@@ -36,10 +36,12 @@ use anyhow::Result;
 
 use crate::facts::{
     Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
-    Framework, Language, ModulePath, Name, Origin, ProjectId, Scope, SemanticDef, Visibility,
-    facts_of, semantic_changes,
+    FileFacts, Framework, Language, ModulePath, Name, Origin, ProjectId, Scope, SemanticDef,
+    Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
+use crate::occurrence::debug::{Shadow, sink};
+use crate::occurrence::{Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
@@ -1548,6 +1550,8 @@ pub struct Cell {
     /// losses, the manifests it could not read, the files its listing set aside.
     /// `None` when the listing cannot be had again.
     fixed: OnceCell<Option<Losses>>,
+    /// The head's files the resolver read, for the shadow accounting.
+    shadow_files: OnceCell<Vec<FileFacts>>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -1788,6 +1792,7 @@ impl Cell {
             base_read: OnceCell::new(),
             base_listed: OnceCell::new(),
             fixed: OnceCell::new(),
+            shadow_files: OnceCell::new(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
         // definitions on are no hunks, and a use inside one is a caller.
@@ -3125,11 +3130,89 @@ impl Cell {
             tail.push(Gap::NotTraced);
         }
         let (by_relation, account) = self.coverage(changed, lead, per, tail);
+        self.shadow(changed, &by_relation);
         Verdict {
             uses,
             by_relation,
             account,
             overridden,
+        }
+    }
+
+    /// Under `DIFFCTX_DEBUG_OCCURRENCES`, the occurrence accounting of each
+    /// definition of `changed` written beside `today`; the answer never reads it.
+    fn shadow(&self, changed: &Changed, today: &[(Relation, Coverage)]) {
+        let Some(mut out) = sink() else {
+            return;
+        };
+        let files = self.shadow_files.get_or_init(|| {
+            let mut files: Vec<FileFacts> = self
+                .head
+                .read_paths()
+                .iter()
+                .flat_map(|path| {
+                    facts_of(&self.ctx, SideTag::Head, &self.cache, path)
+                        .into_iter()
+                        .flatten()
+                })
+                .collect();
+            files.sort_by(|a, b| a.path.cmp(&b.path));
+            files
+        });
+        let manifests_whole = !self
+            .ctx
+            .workspace
+            .losses()
+            .iter()
+            .any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
+        let view = View::new(
+            files,
+            self.head.bindings(),
+            self.head.definitions(),
+            manifests_whole,
+        );
+        let names = self.reference_names(changed);
+        let tokens = self.tokens.group(self.family.group());
+        let reach = |file: &str| {
+            within_scope(&self.scope, file) && (!changed.local || file == changed.file)
+        };
+        let outside: Vec<RepoPath> = self
+            .outside_group
+            .iter()
+            .flat_map(|file| RepoPath::new(file))
+            .collect();
+        let shadow = Shadow {
+            ctx: &self.ctx,
+            cache: &self.cache,
+            family: self.family,
+            view: &view,
+            files,
+            tokens: &tokens,
+            reach: &reach,
+            outside: &outside,
+            names: &names,
+            today,
+        };
+        let heads = changed
+            .subjects
+            .iter()
+            .filter_map(|subject| self.definition(&subject.key))
+            .map(|definition| (definition, SideTag::Head));
+        // The base resolver is the one `stale_uses` opened: none is built for a
+        // definition that left nothing behind.
+        let removed = (!changed.stale.is_empty())
+            .then(|| self.base())
+            .into_iter()
+            .flatten()
+            .flat_map(|base| base.definitions())
+            .filter(|definition| changed.stale.contains(&definition.key))
+            .map(|definition| (definition, SideTag::Base));
+        for (definition, side) in heads.chain(removed) {
+            let known = Known {
+                dispatched: self.dispatched_via(definition).is_some(),
+                consumed_outside: self.consumed_outside(),
+            };
+            shadow.write(&mut out, definition, side, known);
         }
     }
 
