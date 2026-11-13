@@ -491,19 +491,7 @@ impl<'t> Walker<'t> {
         self.visit(root, &cx, 0);
     }
 
-    /// Polls the budget on a cadence; `false` once the run is over.
-    fn tick(&mut self) -> bool {
-        if self.ticks % POLL_EVERY == 0 && expired(self.budget) {
-            self.halted = true;
-        }
-        self.ticks += 1;
-        !self.halted
-    }
-
-    fn text(&self, node: Node<'_>) -> &'t str {
-        let bytes: &'t [u8] = self.bytes;
-        std::str::from_utf8(&bytes[node.start_byte()..node.end_byte()]).unwrap_or("")
-    }
+    walker_methods!();
 
     fn is_type_checking(&self, condition: Node<'_>) -> bool {
         let compact: String = self

@@ -57,6 +57,7 @@ use std::rc::Rc;
 
 use tree_sitter::Node;
 
+use super::walker::hash_outside;
 use super::{lines_of, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
@@ -302,26 +303,9 @@ impl<'t> Walker<'t> {
         self.statements(root, &Cx::root(), 0);
     }
 
-    fn tick(&mut self) -> bool {
-        if self.ticks % POLL_EVERY == 0 && expired(self.budget) {
-            self.halted = true;
-        }
-        self.ticks += 1;
-        !self.halted
-    }
-
-    fn deeper(&mut self, depth: u16) -> bool {
-        if depth > MAX_DEPTH {
-            self.too_deep = true;
-            return false;
-        }
-        self.tick()
-    }
-
-    fn text(&self, node: Node<'_>) -> &'t str {
-        let bytes: &'t [u8] = self.bytes;
-        std::str::from_utf8(&bytes[node.start_byte()..node.end_byte()]).unwrap_or("")
-    }
+    walker_methods!();
+    walker_depth!();
+    walker_emit!();
 
     fn named_children(node: Node<'t>) -> Vec<Node<'t>> {
         let mut cursor = node.walk();
@@ -591,7 +575,7 @@ impl<'t> Walker<'t> {
             decorators,
             visibility,
             body_hash: body.map_or(0, |b| self.hash_tree(b, members, None)),
-            text_hash: self.text_hash(node, members),
+            text_hash: hash_outside(self.bytes, node, members),
             doc_hash: self.doc_hash(doc),
         }));
         key
@@ -651,24 +635,6 @@ impl<'t> Walker<'t> {
             }
         }
         hash.finish().unwrap_or(0)
-    }
-
-    fn text_hash(&self, node: Node<'t>, members: &[Node<'t>]) -> u64 {
-        let mut cuts: Vec<(usize, usize)> = members
-            .iter()
-            .map(|m| (m.start_byte(), m.end_byte()))
-            .collect();
-        cuts.sort_unstable();
-        let mut pieces: Vec<&[u8]> = Vec::new();
-        let mut at = node.start_byte();
-        for (from, to) in cuts {
-            if from >= at {
-                pieces.push(self.bytes[at..from].trim_ascii());
-                at = to;
-            }
-        }
-        pieces.push(self.bytes[at..node.end_byte()].trim_ascii());
-        hash_text(&pieces.join(&b'\n'))
     }
 
     // ---- types
@@ -1369,25 +1335,6 @@ impl<'t> Walker<'t> {
         {
             self.arguments(arguments, cx, depth + 1);
         }
-    }
-
-    fn emit(
-        &mut self,
-        node: Node<'t>,
-        cx: &Cx,
-        receiver: Receiver,
-        use_kind: UseKind,
-        name: &str,
-        qualifier: Vec<Name>,
-    ) {
-        self.facts.push(Fact::Reference(Ref {
-            site: span(node),
-            enclosing: cx.scope.clone(),
-            receiver,
-            use_kind,
-            name: Name::new(name),
-            qualifier,
-        }));
     }
 
     // ---- expressions

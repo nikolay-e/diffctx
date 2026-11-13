@@ -14,6 +14,9 @@ use crate::facts::language::Language;
 use crate::facts::{Span, expired};
 use crate::snapshot::RunBudget;
 
+#[macro_use]
+mod walker;
+
 pub mod c;
 pub mod config;
 pub mod dockerfile;
