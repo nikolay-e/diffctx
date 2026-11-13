@@ -685,6 +685,9 @@ pub(crate) struct Verdict {
     by_relation: [(Relation, Coverage); 6],
     overridden: Option<String>,
     found: Rc<Accounted>,
+    /// What stands in the way of each relation's absence, less the occurrences a
+    /// resolved use already settles: a site has one standing, the strongest.
+    hedges: Vec<(Relation, Hedge)>,
 }
 
 impl Verdict {
@@ -728,7 +731,7 @@ impl Verdict {
 
     /// What stands in the way of each relation's absence, occurrence by occurrence.
     pub(crate) fn hedges(&self) -> &[(Relation, Hedge)] {
-        &self.found.hedges
+        &self.hedges
     }
 
     /// What covered the search of one relation of use.
@@ -2460,7 +2463,7 @@ impl Cell {
             .collect();
         let overridden = self.overridden_via(changed);
         let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
-        let (by_relation, found) = self.coverage(changed, lead, tail);
+        let (by_relation, found, hedges) = self.coverage(changed, lead, tail, &uses);
         uses.extend(found.callers.iter().cloned());
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
@@ -2482,6 +2485,7 @@ impl Cell {
             by_relation,
             overridden,
             found,
+            hedges,
         }
     }
 
@@ -2853,7 +2857,12 @@ impl Cell {
         changed: &Changed,
         lead: Vec<Gap>,
         tail: Vec<Gap>,
-    ) -> ([(Relation, Coverage); 6], Rc<Accounted>) {
+        uses: &[Use],
+    ) -> (
+        [(Relation, Coverage); 6],
+        Rc<Accounted>,
+        Vec<(Relation, Hedge)>,
+    ) {
         let mut tail = tail;
         let outside = self
             .outside
@@ -2957,15 +2966,31 @@ impl Cell {
             gaps.push(gap);
         }
         let found = self.occurrences(changed, &gaps);
+        // A line a resolved use stands on is settled: another occurrence of the
+        // name on it (a keyword argument's name, the second spelling of a shorthand)
+        // is no second standing of the same site.
+        let settled: HashSet<(&str, u32)> = uses
+            .iter()
+            .chain(&found.callers)
+            .filter(|u| u.standing == Standing::Resolved)
+            .map(|u| (u.file.as_str(), u.line))
+            .collect();
+        let hedges: Vec<(Relation, Hedge)> = (found.hedges.iter())
+            .filter(|(_, hedge)| {
+                !matches!(hedge, Hedge::Candidate { file, line, .. }
+                    if settled.contains(&(file.as_str(), *line)))
+            })
+            .cloned()
+            .collect();
         let by_relation = USES.map(|relation| {
-            let hedges: Vec<Hedge> = (found.hedges.iter())
-                .filter(|(own, _)| *own == relation)
+            let own: Vec<Hedge> = (hedges.iter())
+                .filter(|(of, _)| *of == relation)
                 .map(|(_, hedge)| hedge.clone())
                 .collect();
-            let coverage = Coverage::close(Evidence::Occurrences(relation, &hedges), gaps.clone());
+            let coverage = Coverage::close(Evidence::Occurrences(relation, &own), gaps.clone());
             (relation, coverage)
         });
-        (by_relation, found)
+        (by_relation, found, hedges)
     }
 
     /// The names a use of the definition could carry in a file of its group: its
