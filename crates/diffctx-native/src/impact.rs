@@ -5972,13 +5972,9 @@ pub(crate) struct LocalOf {
     pub uses: Vec<LocalUse>,
 }
 
-/// A `--symbol` query that names only locals: one block each, never "no
-/// definition found".
-pub(crate) fn symbol_local_output(
-    root_dir: &Path,
-    query: &str,
-    locals: Vec<LocalOf>,
-) -> ImpactOutput {
+/// The answer of a `--symbol` query that has blocks of its own to fill in, and no
+/// search of named files.
+fn symbol_blocks_output(root_dir: &Path, query: &str) -> ImpactOutput {
     let mut output = symbol_named_output(
         root_dir,
         query,
@@ -5990,6 +5986,66 @@ pub(crate) fn symbol_local_output(
         },
     );
     output.symbol_named = None;
+    output
+}
+
+/// A `--symbol` query that names a module: the module is the definition and the
+/// imports the resolver landed on it are its rows (gh#710). `None` when the name
+/// is no module of the tree.
+pub(crate) fn symbol_module_output(
+    root_dir: &Path,
+    query: &str,
+    modules: Vec<decide::ModuleOf>,
+) -> Option<ImpactOutput> {
+    if modules.is_empty() {
+        return None;
+    }
+    let mut output = symbol_blocks_output(root_dir, query);
+    output.changed = modules
+        .into_iter()
+        .map(|module| {
+            let lines = std::fs::read_to_string(root_dir.join(&module.file))
+                .map_or(1, |text| text.lines().count().max(1));
+            ChangedSymbol {
+                callers: module
+                    .importers
+                    .into_iter()
+                    .map(|importer| Caller {
+                        kind: vocabulary::stated_kind_of(
+                            &importer.file,
+                            vocabulary::RelationKind::Imports,
+                        ),
+                        ..Caller::at_line(
+                            importer.file,
+                            importer.inside,
+                            format!("{0}-{0}", importer.line),
+                            "resolved",
+                            "reference",
+                            importer.line,
+                        )
+                    })
+                    .collect(),
+                ..ChangedSymbol::bare(
+                    module.file,
+                    None,
+                    format!("1-{lines}"),
+                    "module",
+                    decide::Coverages::unowned(Vec::new()),
+                )
+            }
+        })
+        .collect();
+    Some(output)
+}
+
+/// A `--symbol` query that names only locals: one block each, never "no
+/// definition found".
+pub(crate) fn symbol_local_output(
+    root_dir: &Path,
+    query: &str,
+    locals: Vec<LocalOf>,
+) -> ImpactOutput {
+    let mut output = symbol_blocks_output(root_dir, query);
     output.changed = locals
         .into_iter()
         .map(|local| ChangedSymbol {
