@@ -25,9 +25,9 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use super::index::{Path, scope_path};
-use super::jvm::{self, Ent, Found, Head, ImportRec, Jvm, Super, relation_for};
+use super::jvm::{self, Ent, Found, Head, ImportRec, Super, relation_for};
 use super::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable, plain_relation,
 };
 use crate::facts::{
@@ -36,7 +36,7 @@ use crate::facts::{
 };
 use crate::snapshot::workspace::ProjectId;
 use crate::snapshot::{
-    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, WorkspaceModel,
+    AnalysisContext, Bytes, Loss, Result, SideTag, SnapshotReader, WorkspaceModel,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -49,38 +49,18 @@ const MAX_DEPTH: usize = 6;
 /// The bindings of one snapshot's Java and Kotlin files, for a Java cell: the Java
 /// definitions are its own, the Kotlin files are read through the table of
 /// `resolve::jvm`.
-pub struct JavaResolver(Jvm);
+pub struct JavaResolver {
+    solved: Solved,
+}
 
 impl JavaResolver {
     /// Resolves every Java and Kotlin file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        Jvm::open(ctx, side, cache, Language::Java).map(Self)
-    }
-
-    pub fn bindings(&self) -> &[Binding] {
-        self.0.bindings()
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        self.0.definitions()
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.0.references_to(key)
-    }
-
-    /// What the answer is partial for: files the extractor could not fully read,
-    /// reads that failed, a run cut short.
-    pub fn losses(&self) -> &[Loss] {
-        self.0.losses()
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        self.0.read_paths()
+        Solved::open_jvm(ctx, side, cache, Language::Java).map(|solved| Self { solved })
     }
 }
+
+solved_by!(JavaResolver);
 
 /// The definitions of `files` and what their references land on, the Kotlin files
 /// read as the Java engine reads its own; the losses of reading their texts.

@@ -33,7 +33,7 @@ use std::rc::Rc;
 
 use super::index::{Path, dir_of, normalise, scope_path};
 use super::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable,
 };
 use crate::facts::lang::php::PROPERTIES;
@@ -70,11 +70,7 @@ const SCALARS: &[&str] = &[
 
 /// The bindings of one snapshot's PHP files.
 pub struct PhpResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
+    solved: Solved,
 }
 
 impl PhpResolver {
@@ -127,52 +123,13 @@ impl PhpResolver {
                 stage: Stage::Search,
             });
         }
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
         Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
+            solved: Solved::new(definitions, bindings, losses, read),
         })
     }
-
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
-    }
-
-    /// What the answer is partial for: files the extractor could not fully read,
-    /// reads that failed, a run cut short.
-    pub fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
-    }
 }
+
+solved_by!(PhpResolver);
 
 // ---- composer.json
 

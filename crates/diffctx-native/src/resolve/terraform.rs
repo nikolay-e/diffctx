@@ -16,7 +16,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Binding, Definition, Evidence, EvidenceKind, Relation, Resolution, UnresolvedReason};
+use super::{
+    Binding, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved, UnresolvedReason,
+};
 use crate::facts::config::{PointerKind, Resolved, SourcePointer};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, Span, UseKind, expired,
@@ -25,11 +27,7 @@ use crate::facts::{
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
 pub struct TerraformResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
+    solved: Solved,
     /// Module calls whose source is outside the repository.
     external: usize,
 }
@@ -65,48 +63,10 @@ impl TerraformResolver {
         }
         let index = Index::build(files);
         let (definitions, bindings, external) = Engine { ix: &index }.run();
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
         Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
+            solved: Solved::new(definitions, bindings, losses, read),
             external,
         })
-    }
-
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
-    }
-
-    pub fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
     }
 
     /// How many module calls name a source outside the repository: what they
@@ -115,6 +75,8 @@ impl TerraformResolver {
         self.external
     }
 }
+
+solved_by!(TerraformResolver);
 
 // ---- the index
 

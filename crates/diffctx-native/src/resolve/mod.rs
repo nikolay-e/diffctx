@@ -24,6 +24,9 @@
 #![deny(clippy::disallowed_methods)]
 #![allow(clippy::cognitive_complexity, clippy::significant_drop_tightening)]
 
+#[macro_use]
+mod solved;
+
 mod c;
 mod chart;
 mod config;
@@ -53,6 +56,7 @@ pub use php::{DYNAMIC, PhpResolver};
 pub use python::PythonResolver;
 pub use rust::RustResolver;
 pub use shell::ShellResolver;
+pub use solved::Solved;
 pub use sql::SqlResolver;
 pub use swift::SwiftResolver;
 pub use terraform::TerraformResolver;

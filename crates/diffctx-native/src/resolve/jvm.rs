@@ -25,27 +25,18 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    Binding, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason, is_callable, java,
-    kotlin, plain_relation,
+    EvidenceKind, Relation, Resolution, Solved, UnresolvedReason, is_callable, java, kotlin,
+    plain_relation,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, Language, LocalKey, Name,
     Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
-/// The bindings of one snapshot's Kotlin and Java files.
-pub struct Jvm {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
-}
-
-impl Jvm {
+impl Solved {
     /// Resolves every Kotlin and Java file of `side`; the definitions are `own`'s.
-    pub(super) fn open(
+    pub(super) fn open_jvm(
         ctx: &AnalysisContext,
         side: SideTag,
         cache: &FactsCache,
@@ -107,50 +98,7 @@ impl Jvm {
         } else {
             java_definitions
         };
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
-        Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read,
-        })
-    }
-
-    pub(super) fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub(super) fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a key the index has no entry for has no references"
-    )]
-    pub(super) fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        self.by_target
-            .get(key)
-            .map(|at| at.iter().map(|i| &self.bindings[*i]).collect())
-            .unwrap_or_default()
-    }
-
-    /// What the answer is partial for: files the extractor could not fully read,
-    /// reads that failed, a run cut short.
-    pub(super) fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub(super) fn read_paths(&self) -> &[RepoPath] {
-        &self.read
+        Ok(Self::new(definitions, bindings, losses, read))
     }
 }
 
