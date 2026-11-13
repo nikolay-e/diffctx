@@ -232,6 +232,43 @@ fn span(node: Node) -> Span {
     }
 }
 
+/// Where each line of a text starts, for the readers that take spans off byte ranges.
+pub(super) struct LineStarts(Vec<usize>);
+
+impl LineStarts {
+    pub fn new(text: &[u8]) -> Self {
+        let mut starts = vec![0];
+        starts.extend(
+            text.iter()
+                .enumerate()
+                .filter(|(_, byte)| **byte == b'\n')
+                .map(|(at, _)| at + 1),
+        );
+        Self(starts)
+    }
+
+    fn line_at(&self, byte: usize) -> u32 {
+        self.0.partition_point(|start| *start <= byte) as u32
+    }
+
+    pub fn span(&self, range: std::ops::Range<usize>) -> Span {
+        let first = self.line_at(range.start);
+        let last = self.line_at(range.end.saturating_sub(1).max(range.start));
+        Span::new(
+            range.start as u32..range.end as u32,
+            (first, last.max(first)),
+        )
+    }
+}
+
+impl std::ops::Deref for LineStarts {
+    type Target = [usize];
+
+    fn deref(&self) -> &[usize] {
+        &self.0
+    }
+}
+
 fn children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).collect()

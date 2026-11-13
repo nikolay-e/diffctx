@@ -18,9 +18,10 @@
 
 use std::ops::Range;
 
+use super::LineStarts;
 use crate::facts::lang::typescript::{Dialect, extract_as, relative_of};
 use crate::facts::{
-    BlobFacts, Extractor, Fact, Import, ImportKind, Language, ModulePath, Scope, Span, Star,
+    BlobFacts, Extractor, Fact, Import, ImportKind, Language, ModulePath, Scope, Star,
 };
 use crate::snapshot::RunBudget;
 
@@ -65,34 +66,6 @@ fn page(language: Language, dialect: Dialect, text: &[u8], budget: &RunBudget) -
     }
     blob.in_source_order();
     blob
-}
-
-struct LineStarts(Vec<usize>);
-
-impl LineStarts {
-    fn new(text: &[u8]) -> Self {
-        let mut starts = vec![0];
-        starts.extend(
-            text.iter()
-                .enumerate()
-                .filter(|(_, byte)| **byte == b'\n')
-                .map(|(at, _)| at + 1),
-        );
-        Self(starts)
-    }
-
-    fn line_at(&self, byte: usize) -> u32 {
-        self.0.partition_point(|start| *start <= byte) as u32
-    }
-
-    fn span(&self, range: Range<usize>) -> Span {
-        let first = self.line_at(range.start);
-        let last = self.line_at(range.end.saturating_sub(1).max(range.start));
-        Span::new(
-            range.start as u32..range.end as u32,
-            (first, last.max(first)),
-        )
-    }
 }
 
 /// A classic `<script src>`: the tag, and the path as written.
