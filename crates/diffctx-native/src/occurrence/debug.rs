@@ -1,7 +1,7 @@
-//! The shadow of the accounting, written. Under `DIFFCTX_DEBUG_OCCURRENCES=<file>`
-//! the occurrences of each changed definition are accounted beside the coverage the
-//! answer took, and one JSON line is appended per occurrence and per (definition,
-//! relation). Unset, nothing here runs; an answer never reads any of it.
+//! The accounting of every changed definition's occurrences. It runs for every
+//! answer and its hedges are what stands in the way of `Complete`
+//! (`Coverage::close`). Under `DIFFCTX_DEBUG_OCCURRENCES=<file>` it also appends
+//! one JSON line per occurrence and per (definition, relation).
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
@@ -12,10 +12,10 @@ use serde_json::json;
 use tree_sitter::Tree;
 
 use super::{
-    Account, Alias, AliasScope, Basis, Entry, Known, Occurrence, Outcome, Unread, Verdict, View,
-    admitted, close_aliases, counts_against, implicit_kinds, outcomes, value_use,
+    Account, Alias, AliasScope, Basis, Entry, Hedge, Known, Occurrence, Outcome, Unread, Verdict,
+    View, admitted, close_aliases, counts_against, implicit_kinds, outcomes, value_use,
 };
-use crate::decide::{Coverage, Family, Gap};
+use crate::decide::{Family, Gap, USES};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation};
 use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
@@ -54,12 +54,22 @@ pub struct Shadow<'a> {
     pub outside: &'a [RepoPath],
     /// The reference names of the definition.
     pub names: &'a [String],
-    /// What the answer took, by relation.
-    pub today: &'a [(Relation, Coverage)],
+    /// What else stands in the way of every relation of use: the run's gaps.
+    pub gaps: &'a [Gap],
     /// The changed definitions nested in this one, and whether every one is whole
-    /// and unused.
+    /// and unused (only asked for when the lines are written).
     pub held: usize,
     pub nested: bool,
+}
+
+/// What the accounting of one definition found.
+pub struct Accounted {
+    /// What stands in the way of each relation of use.
+    pub hedges: Vec<(Relation, Hedge)>,
+    /// No occurrence is a use, an alias, a leak or a candidate.
+    pub unused: bool,
+    /// Every relation is complete and so is what the definition holds.
+    pub whole: bool,
 }
 
 #[derive(Default)]
@@ -78,32 +88,34 @@ fn label(definition: &Definition) -> String {
 }
 
 impl Shadow<'_> {
-    /// Appends the lines of `definition`, read at `side`, to `out`; returns whether
-    /// its pairs are all complete and whether no occurrence is a use or a candidate.
+    /// Accounts `definition`, read at `side`, and appends its lines to `out` when
+    /// there is one.
     pub fn write(
         &self,
-        out: &mut File,
+        out: Option<&mut File>,
         written: &mut Written,
         definition: &Definition,
         side: SideTag,
         known: Known,
-    ) -> (bool, bool) {
+    ) -> Accounted {
+        let writing = out.is_some();
         let (def, side_text, family) = (
             label(definition),
             format!("{side:?}").to_lowercase(),
             format!("{:?}", self.family).to_lowercase(),
         );
         let mut once = |relation: Option<Relation>| {
-            written.insert((def.clone(), side_text.clone(), relation.map(Relation::name)))
+            writing
+                && written.insert((def.clone(), side_text.clone(), relation.map(Relation::name)))
         };
-        // The relations the answer covers, then those an unexplained occurrence may
-        // be a use through that it has no coverage of.
+        // The relations of use, then those an unexplained occurrence may be a use
+        // through that the answer has no coverage of.
         let unanswered = admitted(definition.kind)
             .iter()
-            .filter(|relation| self.today.iter().all(|(known, _)| known != *relation))
-            .map(|relation| (*relation, None));
-        let pairs: Vec<(Relation, Option<&Coverage>)> = (self.today.iter())
-            .map(|(relation, coverage)| (*relation, Some(coverage)))
+            .filter(|relation| !USES.contains(relation))
+            .map(|relation| (*relation, &[][..]));
+        let pairs: Vec<(Relation, &[Gap])> = (USES.iter())
+            .map(|relation| (*relation, self.gaps))
             .chain(unanswered)
             .collect();
         let first = once(None);
@@ -148,12 +160,12 @@ impl Shadow<'_> {
             );
             lines.push('\n');
         }
-        let mut whole = true;
+        let (mut whole, mut hedges) = (true, Vec::new());
         let unused = found
             .entries
             .iter()
             .all(|entry| matches!(entry.outcome, Outcome::Declaration | Outcome::NotOurs));
-        for (relation, coverage) in pairs {
+        for (relation, gaps) in pairs {
             let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
             account.entries = found
@@ -170,50 +182,48 @@ impl Shadow<'_> {
             account.implicit.clone_from(&implicit);
             account.alias_bound = alias_bound;
             let verdict = account.verdict();
-            let reasons: Vec<String> = match &verdict {
-                Verdict::Complete => Vec::new(),
-                Verdict::Partial(hedges) => hedges.iter().map(ToString::to_string).collect(),
-            };
-            // What the answer was also held by, besides the file status and the
-            // unplaced uses that occurrences replace.
-            let gaps: Vec<String> = (coverage.into_iter())
-                .flat_map(|coverage| coverage.gaps())
-                .filter(|gap| !matches!(gap, Gap::Unaccounted { .. } | Gap::Unlanded { .. }))
-                .map(ToString::to_string)
-                .collect();
-            let complete = matches!(verdict, Verdict::Complete) && gaps.is_empty();
+            let complete = verdict.is_complete() && gaps.is_empty();
             whole &= complete;
-            let today = coverage.map(|coverage| {
-                if coverage.witness().is_some() {
-                    "complete"
-                } else {
-                    "partial"
-                }
-            });
+            if let Verdict::Partial(stuck) = &verdict {
+                hedges.extend(stuck.iter().map(|hedge| (relation, hedge.clone())));
+            }
             if !once(Some(relation)) {
                 continue;
             }
+            let reasons: Vec<String> = match &verdict {
+                Verdict::Complete => Vec::new(),
+                Verdict::Partial(stuck) => stuck.iter().map(ToString::to_string).collect(),
+            };
+            let gaps: Vec<String> = gaps.iter().map(ToString::to_string).collect();
             lines.push_str(
                 &json!({
                     "def": def, "side": side_text, "relation": relation.name(),
-                    "today": today,
-                    "occurrences": verdict.as_str(), "reasons": reasons, "gaps": gaps,
-                    "complete": complete,
+                    "occurrences": verdict.as_str(),
+                    "reasons": reasons, "gaps": gaps, "complete": complete,
                 })
                 .to_string(),
             );
             lines.push('\n');
         }
         whole &= self.nested;
-        if self.held > 0 && written.insert((def.clone(), side_text.clone(), Some("holder"))) {
+        if writing
+            && self.held > 0
+            && written.insert((def.clone(), side_text.clone(), Some("holder")))
+        {
             let line = json!({
                 "def": def, "side": side_text, "holder": true, "held": self.held,
                 "complete": whole,
             });
             lines.push_str(&format!("{line}\n"));
         }
-        append(out, &lines);
-        (whole, unused)
+        if let Some(out) = out {
+            append(out, &lines);
+        }
+        Accounted {
+            hedges,
+            unused,
+            whole,
+        }
     }
 
     /// Accounts the occurrences of one name, a reference name of the definition

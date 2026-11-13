@@ -40,8 +40,8 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::occurrence::debug::{Shadow, Written, sink};
-use crate::occurrence::{Known, View};
+use crate::occurrence::debug::{Accounted, Shadow, Written, sink};
+use crate::occurrence::{Hedge, Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
@@ -974,11 +974,46 @@ fn unowned(mut account: Account, ctx: &AnalysisContext, file: &str) -> Account {
 /// What a coverage rests on besides the gaps the search found.
 #[derive(Clone, Copy)]
 pub enum Evidence<'a> {
-    /// The files of a definition's interaction group, each accounted for.
-    Group(&'a Account),
-    /// No group: the run's own limits, the files it withheld, code it left
+    /// A definition's occurrence account: what stands in the way of its absence.
+    Occurrences(&'a [Hedge]),
+    /// Not a definition: the run's own limits, the files it withheld, code it left
     /// untraced.
     Run,
+}
+
+/// What each hedge of an occurrence account says in the answer's words: an
+/// occurrence nothing explains is a use that landed on nothing, a file lost is
+/// unaccounted for by its loss, the rest are routes no model traces.
+fn hedge_gaps(hedges: &[Hedge]) -> Vec<Gap> {
+    let (mut landed, mut lost, mut rest) = (0, BTreeMap::<Reason, usize>::new(), Vec::new());
+    for hedge in hedges {
+        let gap = match hedge {
+            Hedge::Candidate { .. } => {
+                landed += 1;
+                continue;
+            }
+            Hedge::TooCommon { occurrences } => {
+                landed += occurrences;
+                continue;
+            }
+            Hedge::Unread { loss, .. } => match effect_of(loss) {
+                Effect::File(reason) | Effect::Subtree(reason, _) => {
+                    *lost.entry(reason).or_default() += 1;
+                    continue;
+                }
+                Effect::Run(gap) => gap,
+            },
+            Hedge::Leak { .. } | Hedge::Implicit(_) | Hedge::AliasBound(_) => Gap::NotTraced,
+        };
+        if !rest.contains(&gap) {
+            rest.push(gap);
+        }
+    }
+    let lost = lost
+        .into_iter()
+        .map(|(reason, files)| Gap::Unaccounted { reason, files });
+    let landed = (landed > 0).then_some(Gap::Unlanded { uses: landed });
+    lost.chain(landed).chain(rest).collect()
 }
 
 /// What the search for a definition's uses covered.
@@ -990,12 +1025,12 @@ pub enum Coverage {
 
 impl Coverage {
     /// The one place a `Complete` is made: the search found no gap, and, for a
-    /// definition, its group has a file and every file of it is bound or spells
-    /// none of the names (the account's gaps join the search's own, so that a
-    /// partial coverage always says what stood in the way).
+    /// definition, no occurrence of its names is left unexplained (the hedges join
+    /// the search's own gaps, so that a partial coverage always says what stood in
+    /// the way).
     pub fn close(evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self {
-        if let Evidence::Group(account) = evidence {
-            for gap in account.gaps() {
+        if let Evidence::Occurrences(hedges) = evidence {
+            for gap in hedge_gaps(hedges) {
                 if !gaps.contains(&gap) {
                     gaps.push(gap);
                 }
@@ -1112,12 +1147,21 @@ impl Coverages {
         }
     }
 
-    /// The coverage of a definition no cell answers for: its group's account and
-    /// the gaps the answer knows, closed the one way every coverage is.
-    pub fn unowned(evidence: Evidence<'_>, gaps: Vec<Gap>) -> Self {
+    /// The coverage of a definition no cell answers for: nothing accounts for the
+    /// occurrences of its names, so it is never complete. Its gaps are the ones the
+    /// answer knows and its group's account, or a route no model traces.
+    pub fn unowned(account: Option<&Account>, mut gaps: Vec<Gap>) -> Self {
+        for gap in account.map_or_else(Vec::new, Account::gaps) {
+            if !gaps.contains(&gap) {
+                gaps.push(gap);
+            }
+        }
+        if gaps.is_empty() {
+            gaps.push(Gap::NotTraced);
+        }
         Self {
-            calls: Coverage::close(evidence, gaps.clone()),
-            reads: Coverage::close(evidence, gaps),
+            calls: Coverage::Partial(gaps.clone()),
+            reads: Coverage::Partial(gaps),
         }
     }
 
@@ -1146,7 +1190,7 @@ impl Coverages {
 
 /// The relations of a use: the ones a change to a definition reaches its readers
 /// and callers through (`Relation::uses`).
-const USES: [Relation; 6] = [
+pub(crate) const USES: [Relation; 6] = [
     Relation::Calls,
     Relation::Instantiates,
     Relation::Overrides,
@@ -1203,9 +1247,17 @@ pub struct Verdict {
     by_relation: [(Relation, Coverage); 6],
     account: Account,
     overridden: Option<String>,
+    /// No occurrence of its names is a use, an alias, a leak or a candidate.
+    unused: bool,
 }
 
 impl Verdict {
+    /// Whether the accounting found no use of the definition and nothing it could
+    /// not explain: what a holder needs of what it holds to be said unused.
+    pub const fn unused(&self) -> bool {
+        self.unused
+    }
+
     /// The type a removed override was reached through, when it was one: what
     /// called the member it overrode reached it, and no model traces that.
     pub fn overridden_via(&self) -> Option<&str> {
@@ -3076,41 +3128,25 @@ impl Cell {
             stale.iter().map(|u| (u.file.clone(), u.line)).collect();
         uses.extend(stale);
         let unplaced = self.unplaced(changed, &covered);
-        // What the search could not tell of every relation, then what it could not
-        // tell of one: a use that landed on nothing is a gap of the relation it
-        // would have been, a read of a function leaves its calls known.
+        // What the search could not tell of every relation. A use that landed on
+        // nothing is a candidate of the occurrence account, which closes the rest.
         let mut lead: Vec<Gap> = Vec::new();
-        let mut per: Vec<(Relation, Gap)> = Vec::new();
         if changed.unpaired {
             lead.push(Gap::Unpaired);
-        } else if !unplaced.is_empty() {
-            if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
-                // A name that left, or moved, may still be spelled where nothing
-                // types the receiver: each such line may be a use that broke.
-                uses.extend(unplaced.into_iter().map(|(file, line, scope, _)| Use {
-                    // Still named at the head, so possibly broken, whoever changed it.
-                    also_changed: false,
-                    file,
-                    line,
-                    relation: Relation::Reads,
-                    standing: Standing::Candidate(UNTYPED_RECEIVER),
-                    scope,
-                    folded: None,
-                    sharing: 0,
-                }));
-            } else {
-                for relation in USES {
-                    let landed_on_nothing = unplaced.iter().filter(|u| u.3 == relation).count();
-                    if landed_on_nothing > 0 {
-                        per.push((
-                            relation,
-                            Gap::Unlanded {
-                                uses: landed_on_nothing,
-                            },
-                        ));
-                    }
-                }
-            }
+        } else if !changed.stale.is_empty() && unplaced.len() <= MAX_UNPLACED_LISTED {
+            // A name that left, or moved, may still be spelled where nothing
+            // types the receiver: each such line may be a use that broke.
+            uses.extend(unplaced.into_iter().map(|(file, line, scope, _)| Use {
+                // Still named at the head, so possibly broken, whoever changed it.
+                also_changed: false,
+                file,
+                line,
+                relation: Relation::Reads,
+                standing: Standing::Candidate(UNTYPED_RECEIVER),
+                scope,
+                folded: None,
+                sharing: 0,
+            }));
         }
         uses.sort_by(|a, b| {
             (a.file.as_str(), a.line, a.relation.name()).cmp(&(
@@ -3132,20 +3168,21 @@ impl Cell {
         if overridden.is_some() {
             tail.push(Gap::NotTraced);
         }
-        let (by_relation, account) = self.coverage(changed, lead, per, tail);
-        let _ = self.shadow(changed, &by_relation);
+        let (by_relation, account, unused) = self.coverage(changed, lead, tail);
         Verdict {
             uses,
             by_relation,
             account,
             overridden,
+            unused,
         }
     }
 
-    /// Under `DIFFCTX_DEBUG_OCCURRENCES`, the occurrence accounting of each
-    /// definition of `changed` written beside `today`; the answer never reads it.
-    fn shadow(&self, changed: &Changed, today: &[(Relation, Coverage)]) -> Option<(bool, bool)> {
-        let mut out = sink()?;
+    /// The occurrence accounting of each definition of `changed`: what stands in the
+    /// way of each relation's absence. `gaps` is what else stands in the way of
+    /// every relation. Under `DIFFCTX_DEBUG_OCCURRENCES` its lines are written too.
+    fn occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Accounted {
+        let mut out = sink();
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
                 .head
@@ -3172,11 +3209,15 @@ impl Cell {
             self.head.definitions(),
             manifests_whole,
         );
+        // A base that could not be read leaves no removed definition to account:
+        // `base_gap` says so in every relation.
+        let base = if changed.stale.is_empty() {
+            None
+        } else {
+            self.base().ok()
+        };
         if !changed.stale.is_empty() {
-            view = match self.base() {
-                Ok(base) => view.removed_sites(Some(base.bindings()), &changed.stale),
-                Err(_) => view.removed_sites(None, &changed.stale),
-            };
+            view = view.removed_sites(base.map(Resolver::bindings), &changed.stale);
         }
         let names = self.reference_names(changed);
         let tokens = self.tokens.group(self.family.group());
@@ -3188,13 +3229,15 @@ impl Cell {
             .iter()
             .flat_map(|file| RepoPath::new(file))
             .collect();
-        // A holder is whole when its own rows are and what it holds is too, and
-        // unused: what its rows leave unsaid is the held definitions' to say.
+        // A holder's line says whether it is whole: its own rows are and what it
+        // holds is too, and unused. Only the line needs it; the answer asks a
+        // holder's held definitions itself.
         let held: Vec<&Changed> = self.changed.iter().filter(|h| changed.holds(h)).collect();
-        let nested = held.iter().all(|inner| {
-            let verdict = self.verdict(inner);
-            self.shadow(inner, &verdict.by_relation) == Some((true, true))
-        });
+        let nested = out.is_none()
+            || held.iter().all(|inner| {
+                let verdict = self.verdict(inner);
+                verdict.complete() && verdict.unused()
+            });
         let shadow = Shadow {
             ctx: &self.ctx,
             cache: &self.cache,
@@ -3205,7 +3248,7 @@ impl Cell {
             reach: &reach,
             outside: &outside,
             names: &names,
-            today,
+            gaps,
             held: held.len(),
             nested,
         };
@@ -3214,26 +3257,44 @@ impl Cell {
             .iter()
             .filter_map(|subject| self.definition(&subject.key))
             .map(|definition| (definition, SideTag::Head));
-        // The base resolver is the one `stale_uses` opened: none is built for a
-        // definition that left nothing behind.
-        let removed = (!changed.stale.is_empty())
-            .then(|| self.base())
+        let removed = base
             .into_iter()
-            .flatten()
-            .flat_map(|base| base.definitions())
+            .flat_map(Resolver::definitions)
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
-        let (mut whole, mut unused) = (true, true);
+        let mut all = Accounted {
+            hedges: Vec::new(),
+            unused: true,
+            whole: true,
+        };
         for (definition, side) in heads.chain(removed) {
             let known = Known {
                 dispatched: self.dispatched_via(definition).is_some(),
                 consumed_outside: self.consumed_outside(),
             };
             let mut written = self.shadow_written.borrow_mut();
-            let (complete, bare) = shadow.write(&mut out, &mut written, definition, side, known);
-            (whole, unused) = (whole && complete, unused && bare);
+            let done = shadow.write(out.as_mut(), &mut written, definition, side, known);
+            all.hedges.extend(done.hedges);
+            all.unused &= done.unused;
+            all.whole &= done.whole;
         }
-        Some((whole, unused))
+        all
+    }
+
+    /// What kept the base side of the range from saying all of it: it was not
+    /// resolved, or what it read was cut short. A removed or moved definition's
+    /// uses are accounted at the head, but only against a base that was read.
+    fn base_gap(&self, changed: &Changed) -> Option<Gap> {
+        if changed.stale.is_empty() {
+            return None;
+        }
+        match self.base() {
+            Err(gap) => Some(gap),
+            Ok(base) => {
+                let reasons = stopped_by(base.losses());
+                (!reasons.is_empty()).then_some(Gap::Stopped { reasons })
+            }
+        }
     }
 
     /// Whether a head file of the family holds an import whose target the code
@@ -3322,17 +3383,17 @@ impl Cell {
     }
 
     /// What covered the search of each relation of use: the gaps of every
-    /// relation (`lead`, `tail`), the one a relation has of its own (`per`), the
-    /// files outside the run's pathspecs that could name the definition, a read
-    /// the cell lost, and the account of the files of its interaction group.
-    /// `Coverage::close` makes the `Complete`, and so the cell never does.
+    /// relation (`lead`, `tail`), the files outside the run's pathspecs that could
+    /// name the definition, a read the cell lost, and the hedges of the occurrence
+    /// account. `Coverage::close` makes the `Complete`, and so the cell never does.
+    /// The file-status account comes along for the files the answer lists; whether
+    /// the definition is unused is the occurrence account's.
     fn coverage(
         &self,
         changed: &Changed,
         lead: Vec<Gap>,
-        per: Vec<(Relation, Gap)>,
         tail: Vec<Gap>,
-    ) -> ([(Relation, Coverage); 6], Account) {
+    ) -> ([(Relation, Coverage); 6], Account, bool) {
         let mut tail = tail;
         let outside = self
             .outside
@@ -3430,18 +3491,21 @@ impl Cell {
         if !reasons.is_empty() {
             tail.push(Gap::Stopped { reasons });
         }
-        let account = self.account(changed);
+        let mut gaps = lead;
+        gaps.extend(tail);
+        if let Some(gap) = self.base_gap(changed).filter(|gap| !gaps.contains(gap)) {
+            gaps.push(gap);
+        }
+        let found = self.occurrences(changed, &gaps);
         let by_relation = USES.map(|relation| {
-            let mut gaps = lead.clone();
-            gaps.extend(
-                per.iter()
-                    .filter(|(r, _)| *r == relation)
-                    .map(|(_, gap)| gap.clone()),
-            );
-            gaps.extend(tail.iter().cloned());
-            (relation, Coverage::close(Evidence::Group(&account), gaps))
+            let hedges: Vec<Hedge> = (found.hedges.iter())
+                .filter(|(own, _)| *own == relation)
+                .map(|(_, hedge)| hedge.clone())
+                .collect();
+            let coverage = Coverage::close(Evidence::Occurrences(&hedges), gaps.clone());
+            (relation, coverage)
         });
-        (by_relation, account)
+        (by_relation, self.account(changed), found.unused)
     }
 
     /// Every file of the definition's interaction group, accounted for against the

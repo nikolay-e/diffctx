@@ -8,15 +8,15 @@ allow_count = 139
 root_modules = 63
 
 [big_files]
-"crates/diffctx-native/src/decide.rs" = 4304
+"crates/diffctx-native/src/decide.rs" = 4471
 "crates/diffctx-native/src/facts/lang/c.rs" = 2011
 "crates/diffctx-native/src/facts/lang/php.rs" = 1930
 "crates/diffctx-native/src/facts/lang/python.rs" = 2680
 "crates/diffctx-native/src/facts/lang/rust.rs" = 1963
-"crates/diffctx-native/src/facts/lang/typescript.rs" = 4340
+"crates/diffctx-native/src/facts/lang/typescript.rs" = 4341
 "crates/diffctx-native/src/graph.rs" = 1564
 "crates/diffctx-native/src/hook.rs" = 4163
-"crates/diffctx-native/src/impact.rs" = 5956
+"crates/diffctx-native/src/impact.rs" = 5966
 "crates/diffctx-native/src/keytable/extract.rs" = 2174
 "crates/diffctx-native/src/parsers/tree_sitter_strategy.rs" = 2661
 "crates/diffctx-native/src/pipeline.rs" = 3443
@@ -29,7 +29,7 @@ root_modules = 63
 "crates/diffctx-native/src/select.rs" = 2015
 
 [debt.phase-a-shadow]
-lines = 2293
+lines = 2375
 repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
 due_when = "crates/diffctx-native/src/decide.rs::fn status("
 covers = ["crates/diffctx-native/src/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
@@ -37,7 +37,6 @@ deletes = [
   "crates/diffctx-native/src/decide.rs::enum Status {",
   "crates/diffctx-native/src/decide.rs::fn status(",
   "crates/diffctx-native/src/decide.rs::fn account_of(",
-  "crates/diffctx-native/src/decide.rs::Group(&'a Account),",
   "crates/diffctx-native/src/decide.rs::fn stale_uses(",
   "crates/diffctx-native/src/decide.rs::const MAX_UNPLACED_LISTED",
   "crates/diffctx-native/src/decide.rs::let top_level_only",
@@ -46,11 +45,10 @@ deletes = [
   "crates/diffctx-native/src/decide.rs::fn lost_namers(",
   "crates/diffctx-native/src/impact.rs::fn missed_namers(",
   "crates/diffctx-native/src/decide.rs::fn spelled_lines(",
-  "crates/diffctx-native/src/impact.rs::account.map_or(decide::Evidence::Run, decide::Evidence::Group)",
 ]
 
 [debt.phase-a-shadow.grows]
-"crates/diffctx-native/src/decide.rs" = { base = 4304, plus = 103 }
+"crates/diffctx-native/src/decide.rs" = { base = 4304, plus = 167 }
 "crates/diffctx-native/src/effective_config.rs" = { base = 471, plus = 1 }
 "crates/diffctx-native/src/facts/file.rs" = { base = 122, plus = 5 }
 "crates/diffctx-native/src/facts/cache.rs" = { base = 447, plus = 5 }
