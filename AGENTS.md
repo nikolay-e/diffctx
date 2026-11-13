@@ -43,6 +43,17 @@ listed case that starts passing also fails) are in `CONTRIBUTING.md`.
   `crates/diffctx-native/src/vocabulary.rs`; Tier 3 is "not modelled" and never
   claims an absence.
 
+## Product size is a ratchet
+
+- **R-budget.** Product lines live in `budget.toml` and grow only by the
+  owner's word, recorded as a `Budget-raise:` commit trailer quoting it; every
+  stream names `+X/−Y` up front.
+- **R-layer.** A fix for one reason that touches more than one language
+  family's resolver or extractor is in the wrong layer: move it to shared code,
+  language differences as data.
+- **R-delete.** After each landing, a deletion-only pass: tests green, fewer
+  lines, nothing added.
+
 ## History reads as epochs
 
 `main` is a sequence of epochs — one commit per coherent chunk of the
