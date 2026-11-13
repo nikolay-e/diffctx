@@ -34,6 +34,26 @@ pub fn sink() -> Option<File> {
 /// once per relation, however many times the cell asks.
 pub type Written = HashSet<(String, String, Option<&'static str>)>;
 
+fn append(out: &mut File, lines: &str) {
+    if let Err(error) = out.write_all(lines.as_bytes()) {
+        eprintln!("{ENV}: {error}");
+    }
+}
+
+pub fn write_holder(
+    out: &mut File,
+    written: &mut Written,
+    holder: &Definition,
+    side: SideTag,
+    complete: bool,
+) {
+    let (def, side) = (label(holder), format!("{side:?}").to_lowercase());
+    if written.insert((def.clone(), side.clone(), Some("holder"))) {
+        let line = json!({"def": def, "side": side, "holder": true, "complete": complete});
+        append(out, &format!("{line}\n"));
+    }
+}
+
 /// What the cell knows of one changed definition's group, as the accounting asks.
 pub struct Shadow<'a> {
     pub ctx: &'a AnalysisContext,
@@ -68,7 +88,8 @@ fn label(definition: &Definition) -> String {
 }
 
 impl Shadow<'_> {
-    /// Appends the lines of `definition`, read at `side`, to `out`.
+    /// Appends the lines of `definition`, read at `side`, to `out`; returns whether
+    /// its pairs are all complete and whether no occurrence is a use or a candidate.
     pub fn write(
         &self,
         out: &mut File,
@@ -76,7 +97,7 @@ impl Shadow<'_> {
         definition: &Definition,
         side: SideTag,
         known: Known,
-    ) {
+    ) -> (bool, bool) {
         let (def, side_text, family) = (
             label(definition),
             format!("{side:?}").to_lowercase(),
@@ -94,12 +115,8 @@ impl Shadow<'_> {
         let pairs: Vec<(Relation, Option<&Coverage>)> = (self.today.iter())
             .map(|(relation, coverage)| (*relation, Some(coverage)))
             .chain(unanswered)
-            .filter(|(relation, _)| once(Some(*relation)))
             .collect();
         let first = once(None);
-        if !first && pairs.is_empty() {
-            return;
-        }
         let mut found = Found::default();
         let names: Vec<Name> = self
             .names
@@ -141,6 +158,11 @@ impl Shadow<'_> {
             );
             lines.push('\n');
         }
+        let mut whole = true;
+        let unused = found
+            .entries
+            .iter()
+            .all(|entry| matches!(entry.outcome, Outcome::Declaration | Outcome::NotOurs));
         for (relation, coverage) in pairs {
             let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
@@ -170,6 +192,7 @@ impl Shadow<'_> {
                 .map(ToString::to_string)
                 .collect();
             let complete = matches!(verdict, Verdict::Complete) && gaps.is_empty();
+            whole &= complete;
             let today = coverage.map(|coverage| {
                 if coverage.witness().is_some() {
                     "complete"
@@ -177,6 +200,9 @@ impl Shadow<'_> {
                     "partial"
                 }
             });
+            if !once(Some(relation)) {
+                continue;
+            }
             lines.push_str(
                 &json!({
                     "def": def, "side": side_text, "relation": relation.name(),
@@ -188,9 +214,8 @@ impl Shadow<'_> {
             );
             lines.push('\n');
         }
-        if let Err(error) = out.write_all(lines.as_bytes()) {
-            eprintln!("{ENV}: {error}");
-        }
+        append(out, &lines);
+        (whole, unused)
     }
 
     /// Accounts the occurrences of one name, a reference name of the definition
