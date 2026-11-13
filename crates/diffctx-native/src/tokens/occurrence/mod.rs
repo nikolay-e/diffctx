@@ -22,6 +22,7 @@
 pub mod debug;
 mod implicit;
 mod outcome;
+mod rows;
 mod scanner;
 
 use std::fmt;
