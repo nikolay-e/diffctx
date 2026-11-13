@@ -4026,6 +4026,8 @@ pub fn build_impact(
             )
         });
     }
+    let mut traced_apart = 0u64;
+    let mut apart_unreached: Vec<&decide::Changed> = Vec::new();
     for entry in &cell_apart {
         let Some(cell) = cells.of(&entry.file) else {
             continue;
@@ -4038,6 +4040,13 @@ pub fn build_impact(
             ));
             continue;
         }
+        // Past the deadline a definition is named as never searched, as the
+        // loop over the fragments does for its own.
+        if !state.run.check() {
+            apart_unreached.push(entry);
+            continue;
+        }
+        traced_apart += 1;
         let verdict = cell.verdict(entry);
         let sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
         let callerless = query.is_none()
@@ -4062,8 +4071,18 @@ pub fn build_impact(
             _ => changed.push(sym),
         }
     }
+    crate::profile::count("impact.traced_apart", traced_apart);
     {
         let stops = state.run.stops();
+        for entry in apart_unreached {
+            changed.push(unfinished_symbol(
+                entry.file.clone(),
+                entry.symbol(),
+                format!("{}-{}", entry.lines.0, entry.lines.1),
+                format!("{:?}", entry.kind).to_lowercase(),
+                &stops,
+            ));
+        }
         for core in unreached {
             let hunks = hunks_in(core);
             let skipped = query.is_none()
@@ -5256,7 +5275,8 @@ fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput)
     output.empty = proves_empty(output);
     // What showing everything would take, to the next hundred tokens.
     output.needs = measure(output).div_ceil(100) * 100;
-    crate::fit::shed_to_fit(output, cap, measure);
+    let steps = crate::fit::shed_to_fit(output, cap, measure);
+    crate::profile::count("fit.steps", steps as u64);
 }
 
 impl crate::fit::Shed for ImpactOutput {
@@ -5346,7 +5366,7 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     // The definitions of test files rank last among the targets: they go first,
     // whole, into the entry that names what the cap shed.
     if let Some(i) = output.changed.iter().rposition(|c| {
-        !is_omitted(c) && crate::testfiles::is_test_path(Path::new(&c.path)) && !is_unfinished(c)
+        !is_omitted(c) && !is_unfinished(c) && crate::testfiles::is_test_path(Path::new(&c.path))
     }) {
         shed_definition(output, i);
         return true;
@@ -5383,14 +5403,20 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         omit(output, i);
         return true;
     }
-    // A definition the run never searched goes into a count the header keeps.
-    if let Some(i) = output
-        .changed
-        .iter()
-        .rposition(|c| c.callers.is_empty() && c.compatible_callers == 0 && is_unfinished(c))
-    {
-        output.changed.remove(i);
-        output.unfinished_omitted += 1;
+    // A definition the run never searched goes into a count the header keeps. Once
+    // the run is over nothing is measured and they all go, as one step each would
+    // end: a step per definition rescanned the whole answer for every one of them.
+    let never_searched =
+        |c: &ChangedSymbol| c.callers.is_empty() && c.compatible_callers == 0 && is_unfinished(c);
+    if let Some(i) = output.changed.iter().rposition(never_searched) {
+        if output.run.as_ref().is_some_and(|run| run.tripped()) {
+            let before = output.changed.len();
+            output.changed.retain(|c| !never_searched(c));
+            output.unfinished_omitted += before - output.changed.len();
+        } else {
+            output.changed.remove(i);
+            output.unfinished_omitted += 1;
+        }
         return true;
     }
     if shed_weakest_caller(output) {

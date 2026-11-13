@@ -20,6 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use super::index::scope_path;
+use super::solved::before_deadline;
 use super::twins::{self, Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -181,7 +182,7 @@ impl RustResolver {
             .map(|file| file.facts.path.as_str().to_string())
             .collect();
         let engine = Engine::new(index, &ctx.workspace, reader, side);
-        let (definitions, bindings, owned) = engine.run();
+        let (definitions, bindings, owned) = engine.run(ctx);
         losses.extend(engine.losses.take());
         // The table is built before the first lookup, so this is a bug of the
         // build itself: said, never an answer from half a table.
@@ -750,12 +751,12 @@ impl<'a> Engine<'a> {
 
     /// The definitions, the bindings, and every (owner, member, kind) of a type
     /// or trait.
-    fn run(&self) -> (Vec<Definition>, Vec<Binding>, Vec<Owned>) {
+    fn run(&self, ctx: &AnalysisContext) -> (Vec<Definition>, Vec<Binding>, Vec<Owned>) {
         // Built before any lookup reads it.
         self.trait_table();
         let mut bindings = Vec::new();
         for (f, file) in self.ix.files.iter().enumerate() {
-            for fact in &file.facts.blob.facts {
+            for fact in before_deadline(ctx, &self.losses, &file.facts.blob.facts) {
                 match fact {
                     Fact::Reference(r) => self.reference(f, r, &mut bindings),
                     Fact::Import(import) => self.import(f, import, &mut bindings),
