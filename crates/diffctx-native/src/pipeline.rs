@@ -703,86 +703,6 @@ impl std::fmt::Display for SymbolQueryError {
 
 impl std::error::Error for SymbolQueryError {}
 
-/// `NAME`, `PATH:NAME`, or a qualified name: `Class.method`, `Class::method`,
-/// `module.func`, a Helm `chart.helper`. A Kotlin name may hold spaces and
-/// punctuation between backticks (`` `N escapes MemberNames` ``); there `.` and
-/// `:` belong to the name, and the segments come back without the backticks,
-/// as the facts layer names the definition.
-fn parse_symbol_query(query: &str) -> Option<(Option<&str>, Vec<&str>)> {
-    // The path ends at the last lone `:` outside backticks; a `::` belongs to
-    // the name (`shop.py:Ledger::total`).
-    let bytes = query.as_bytes();
-    let mut quoted = false;
-    let mut lone = None;
-    for (i, &b) in bytes.iter().enumerate() {
-        match b {
-            b'`' => quoted = !quoted,
-            b':' if !quoted
-                && bytes.get(i + 1) != Some(&b':')
-                && (i == 0 || bytes[i - 1] != b':') =>
-            {
-                lone = Some(i);
-            }
-            _ => {}
-        }
-    }
-    if quoted {
-        return None;
-    }
-    let (path, name) = match lone {
-        Some(i) if i > 0 => (Some(&query[..i]), &query[i + 1..]),
-        _ => (None, query),
-    };
-    let name_bytes = name.as_bytes();
-    let mut segments = Vec::new();
-    let (mut start, mut at) = (0, 0);
-    quoted = false;
-    while at < name_bytes.len() {
-        let separator = match name_bytes[at] {
-            b'`' => {
-                quoted = !quoted;
-                0
-            }
-            b'.' if !quoted => 1,
-            b':' if !quoted && name_bytes.get(at + 1) == Some(&b':') => 2,
-            _ => 0,
-        };
-        if separator > 0 {
-            segments.push(&name[start..at]);
-            at += separator;
-            start = at;
-        } else {
-            at += 1;
-        }
-    }
-    segments.push(&name[start..]);
-    segments
-        .into_iter()
-        .map(segment_name)
-        .collect::<Option<Vec<_>>>()
-        .map(|segments| (path, segments))
-}
-
-/// What a segment names: the text between its backticks, or the segment itself
-/// when it has none of them, no `:`, no control character and no space at either
-/// end. An empty segment names nothing.
-fn segment_name(segment: &str) -> Option<&str> {
-    if let Some(inner) = segment
-        .strip_prefix('`')
-        .and_then(|rest| rest.strip_suffix('`'))
-    {
-        return (!inner.trim().is_empty()
-            && !inner.contains('`')
-            && !inner.chars().any(char::is_control))
-        .then_some(inner);
-    }
-    (!segment.is_empty()
-        && segment == segment.trim()
-        && !segment.contains(['`', ':'])
-        && !segment.chars().any(char::is_control))
-    .then_some(segment)
-}
-
 /// A name every language spells without quoting.
 fn is_identifier(segment: &str) -> bool {
     segment
@@ -889,6 +809,66 @@ fn local_facts(path: &str, text: &str) -> Option<crate::facts::BlobFacts> {
         "js" | "jsx" | "mjs" | "cjs" => Some(JavaScript.extract(text.as_bytes(), &budget)),
         _ => None,
     }
+}
+
+/// A fragment spans whole lines, so a second declarator on them
+/// (`const S = 1, T = 2`) has none of its own: the fragment of the first
+/// stands for it, and the cell reads the definition from the facts.
+fn shadowed_definitions<'f>(
+    root_dir: &Path,
+    fragments: &'f [Fragment],
+    found: &[&Fragment],
+    name: &str,
+    container: &str,
+    run: &crate::resource::RunContext,
+) -> Vec<&'f Fragment> {
+    use crate::facts::{Fact, Language};
+    let registry = crate::facts::lang::builtin();
+    let mut stand_ins: Vec<&Fragment> = Vec::new();
+    let mut paths: Vec<&str> = fragments.iter().map(Fragment::path).collect();
+    paths.sort_unstable();
+    paths.dedup();
+    for path in paths {
+        let (Ok(repo_path), Some(text)) = (
+            crate::snapshot::RepoPath::new(&crate::paths::display_rel_or_abs(
+                root_dir,
+                Path::new(path),
+            )),
+            run.source().read_to_string(Path::new(path)),
+        ) else {
+            continue;
+        };
+        let Some(extractor) = Language::detect(&repo_path, text.as_bytes())
+            .and_then(|language| registry.get(language))
+        else {
+            continue;
+        };
+        let blob = extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default());
+        for fact in &blob.facts {
+            let Fact::Definition(d) = fact else { continue };
+            let joined = d
+                .local
+                .container
+                .iter()
+                .map(|n| n.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            if d.local.name.as_str() != name || joined != container {
+                continue;
+            }
+            let stands = fragments.iter().find(|f| {
+                f.path() == path
+                    && (f.start_line(), f.end_line()) == d.span.lines
+                    && f.symbol_name.as_deref().is_some_and(|s| s != name)
+            });
+            if let Some(f) =
+                stands.filter(|f| !found.iter().chain(&stand_ins).any(|k| k.id == f.id))
+            {
+                stand_ins.push(f);
+            }
+        }
+    }
+    stand_ins
 }
 
 /// A fragment the fragmenter named `name` that the facts hold as a local of
@@ -1061,7 +1041,7 @@ fn resolve_symbol_change_set(
     run: &crate::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
-    let Some((path, segments)) = parse_symbol_query(query) else {
+    let Some((path, segments)) = crate::impact::parse_symbol_query(query) else {
         return Err(malformed_symbol(query).into());
     };
     let full = segments.join(".");
@@ -1201,6 +1181,11 @@ fn resolve_symbol_change_set(
     // A name the facts layer holds only as a local of a definition is no
     // definition, whatever the fragmenter named.
     definitions.retain(|f| !is_local_fragment(f, name, run));
+    let container = segments[..segments.len() - 1].join(".");
+    for stand_in in shadowed_definitions(root_dir, &fragments, &definitions, name, &container, run)
+    {
+        definitions.push(stand_in);
+    }
     if definitions.is_empty() {
         // Written without backticks, a name that is no identifier is a query to
         // correct, as it was before such names were looked up.

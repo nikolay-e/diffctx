@@ -1,0 +1,18 @@
+name: web_symbol_second_declarator_in_an_inline_script_is_a_definition
+mode: symbol
+source: gh#730
+issue_state: open
+tags: [web, javascript, multi-declarator]
+repo:
+  initial_files:
+    index.html: |
+      <!doctype html>
+      <script>
+      const A_ONE = 1, B_TWO = 2;
+      function use() { return A_ONE + B_TWO; }
+      </script>
+query:
+  symbol: B_TWO
+expect:
+  definitions: [index.html::B_TWO]
+  callers: {B_TWO: [index.html::use]}
