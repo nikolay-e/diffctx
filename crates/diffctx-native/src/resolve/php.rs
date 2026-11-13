@@ -41,7 +41,7 @@ use crate::facts::{
     Scope, Span, UseKind, Visibility, expired, facts_of,
 };
 use crate::snapshot::{
-    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
+    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, Stage, WorkspaceModel,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -119,11 +119,8 @@ impl PhpResolver {
             Index::build(files, &ctx.workspace),
             composer,
             &ctx.workspace,
-            reader,
-            side,
         );
         let (definitions, bindings, stopped) = engine.run(ctx);
-        losses.extend(engine.losses.take());
         if stopped {
             losses.push(Loss::Deadline {
                 stage: Stage::Search,
@@ -736,10 +733,7 @@ struct Engine<'w> {
     ix: Index,
     composer: Composer,
     workspace: &'w WorkspaceModel,
-    reader: &'w SnapshotReader,
-    side: SideTag,
     supers: RefCell<HashMap<usize, Rc<Vec<Super>>>>,
-    losses: RefCell<Vec<Loss>>,
 }
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {
@@ -784,21 +778,12 @@ fn lower(name: &Name) -> String {
 }
 
 impl<'w> Engine<'w> {
-    fn new(
-        ix: Index,
-        composer: Composer,
-        workspace: &'w WorkspaceModel,
-        reader: &'w SnapshotReader,
-        side: SideTag,
-    ) -> Self {
+    fn new(ix: Index, composer: Composer, workspace: &'w WorkspaceModel) -> Self {
         Self {
             ix,
             composer,
             workspace,
-            reader,
-            side,
             supers: RefCell::default(),
-            losses: RefCell::default(),
         }
     }
 
@@ -1741,21 +1726,6 @@ impl<'w> Engine<'w> {
             resolution,
             entry_guard: false,
         });
-    }
-
-    #[allow(dead_code, reason = "kept for the loss a failed text read names")]
-    fn text(&self, f: usize) -> Option<Bytes> {
-        let path = &self.ix.files[f].facts.path;
-        match self.reader.read(path) {
-            Ok(read) => read,
-            Err(_) => {
-                self.losses.borrow_mut().push(Loss::ReadFailed {
-                    path: path.clone(),
-                    side: self.side,
-                });
-                None
-            }
-        }
     }
 }
 
