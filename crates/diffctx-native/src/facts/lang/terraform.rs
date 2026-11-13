@@ -210,26 +210,8 @@ impl<'t> Walker<'t> {
         }
     }
 
-    fn tick(&mut self) -> bool {
-        if self.ticks % POLL_EVERY == 0 && expired(self.budget) {
-            self.halted = true;
-        }
-        self.ticks += 1;
-        !self.halted
-    }
-
-    fn deeper(&mut self, depth: u16) -> bool {
-        if depth > MAX_DEPTH {
-            self.too_deep = true;
-            return false;
-        }
-        self.tick()
-    }
-
-    fn text(&self, node: Node<'_>) -> &'t str {
-        let bytes: &'t [u8] = self.bytes;
-        std::str::from_utf8(&bytes[node.start_byte()..node.end_byte()]).unwrap_or("")
-    }
+    walker_methods!();
+    walker_depth!();
 
     // ---- the file
 
