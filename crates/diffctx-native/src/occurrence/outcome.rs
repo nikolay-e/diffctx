@@ -23,6 +23,16 @@ pub struct View<'a> {
     overriders: HashMap<DefKey, Vec<DefKey>>,
     manifests_whole: bool,
     family_unproven: bool,
+    /// Where the base resolved a use to a removed definition.
+    stale: HashSet<Place>,
+}
+
+/// Where a use is written, free of byte offsets: a changed file's differ by side.
+type Place = (RepoPath, Vec<Name>, Name);
+
+fn place(binding: &Binding) -> Place {
+    let owners = path_of(&binding.from).into_iter().cloned().collect();
+    (binding.file.clone(), owners, binding.name.clone())
 }
 
 impl<'a> View<'a> {
@@ -42,6 +52,7 @@ impl<'a> View<'a> {
             overriders: HashMap::new(),
             manifests_whole,
             family_unproven: false,
+            stale: HashSet::new(),
         };
         for binding in bindings {
             let bytes = &binding.site.bytes;
@@ -74,13 +85,17 @@ impl<'a> View<'a> {
         self.overriders.entry(target).or_default().push(overrider);
     }
 
-    /// A removed member's family is the base side's (overrider, target) pairs; with
-    /// none, a call resolved to a same-named member is a candidate.
-    pub fn removed_family(mut self, base: Option<Vec<(DefKey, DefKey)>>) -> Self {
+    /// A removed member's family is what the base side bound at the places it resolved
+    /// a use to it (no `@Override` needed); with no base read, a call resolved to a
+    /// same-named member is a candidate.
+    pub fn removed_sites(mut self, base: Option<&[Binding]>, removed: &[DefKey]) -> Self {
         match base {
-            Some(pairs) => pairs
-                .into_iter()
-                .for_each(|(overrider, target)| self.overrides(overrider, target)),
+            Some(bindings) => {
+                let named = |binding: &&Binding| {
+                    (binding.targets().into_iter()).any(|target| removed.contains(target))
+                };
+                self.stale = bindings.iter().filter(named).map(place).collect();
+            }
             None => self.family_unproven = true,
         }
         self
@@ -337,7 +352,7 @@ impl<'a> Reading<'a> {
     fn claim(&self, binding: &Binding, spelled: &[u8]) -> Claim {
         let relation = Some(binding.relation);
         match &binding.resolution {
-            Resolution::Resolved { target, .. } => self.resolved(target, relation),
+            Resolution::Resolved { target, .. } => self.resolved(target, binding),
             Resolution::Module { file, .. } => self.module(file, relation),
             Resolution::Candidate { reason, .. } => {
                 Claim::candidate(relation, Reason::Resolver(*reason))
@@ -346,10 +361,11 @@ impl<'a> Reading<'a> {
         }
     }
 
-    fn resolved(&self, target: &DefKey, relation: Option<Relation>) -> Claim {
+    fn resolved(&self, target: &DefKey, binding: &Binding) -> Claim {
+        let relation = Some(binding.relation);
         if *target == self.subject.key {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
-        } else if self.family.contains(target) {
+        } else if self.family.contains(target) || self.view.stale.contains(&place(binding)) {
             Claim::candidate(relation, Reason::Dispatch)
         } else if self.view.family_unproven
             && target.local.name == self.subject.key.local.name
