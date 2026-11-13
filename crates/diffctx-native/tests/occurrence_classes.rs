@@ -5,10 +5,10 @@
 // whose "complete" does not come from explained occurrences.
 
 mod support;
-use support::families::Family;
+use support::families::{Family, says_empty};
 #[path = "support/occurrence/mod.rs"]
 mod occurrence;
-use occurrence::{accounts_for, corpus, no_scaffold, run_seeds, scaffolds};
+use occurrence::{ALIASES, accounts_for, corpus, covers, load, no_scaffold, run_seeds, scaffolds};
 
 #[test]
 fn every_family_has_a_scaffold_or_a_reason() {
@@ -51,6 +51,27 @@ fn an_occurrence_is_not_lost() {
                 "the answer neither names {} nor discloses",
                 seed.user
             ))
+        }
+    });
+}
+
+// Class 2. The definition is used under another name (a renaming import, a
+// re-export, an assignment, a star import, up to the closure's bound): the
+// answer names the user or says what it could not follow, and is never a
+// clean absence. A chain longer than the bound is a named gap, not a stop.
+#[test]
+fn an_alias_of_the_definition_is_not_lost() {
+    let seeds = load(ALIASES);
+    covers(
+        "aliases",
+        &seeds,
+        &[("shell", "a shell function is called by its name only")],
+    );
+    run_seeds("an alias is not lost", &seeds, |seed, doc| {
+        if accounts_for(doc, &seed.user) && !says_empty(doc) {
+            Ok(())
+        } else {
+            Err(format!("the answer loses the user {}", seed.user))
         }
     });
 }
