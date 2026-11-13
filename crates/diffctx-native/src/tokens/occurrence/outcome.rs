@@ -7,11 +7,13 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use super::rows::{BARE_HEADS, CLASS_CANDIDATES, DECLARING_LOCALS, MODULE_PATHS};
+use super::rows::{
+    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, MODULE_PATHS,
+};
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::decide::Standing;
 use crate::facts::{
-    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
+    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star, UseKind,
 };
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
@@ -644,6 +646,7 @@ impl<'a> Reading<'a> {
         if let Some(basis) = self
             .bare_head(occurrence, spelled)
             .or_else(|| self.module_path(occurrence))
+            .or_else(|| self.command_argument(occurrence))
         {
             return Claim::new(None, Outcome::NotOurs, basis);
         }
@@ -716,6 +719,39 @@ impl<'a> Reading<'a> {
             .collect();
         (words.first() == Some(&opens.as_bytes()) && !words.contains(&closes.as_bytes()))
             .then_some(Basis::OtherModule)
+    }
+
+    /// A word after a command word, in the same command, is text to the commands the row
+    /// lists: a function is never named by it, and a script's own name (a module of the
+    /// row's language) is run only by a command that runs its argument. Any other command
+    /// may run a function (`trap`).
+    fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
+        let language = self.file.language();
+        let family = COMMAND_ARGUMENTS.iter().find(|row| row.0.has(language))?.0;
+        let at = occurrence.bytes.start;
+        let call = (self.file.blob.facts.iter())
+            .filter_map(|fact| match fact {
+                Fact::Reference(call)
+                    if call.use_kind == UseKind::Call && call.site.bytes.end <= at =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .max_by_key(|call| call.site.bytes.end)?;
+        let between = &self.text[call.site.bytes.end as usize..at as usize];
+        if between.iter().any(|b| b"\n;&|(){}`".contains(b)) {
+            return None;
+        }
+        let row = COMMAND_ARGUMENTS.iter().find(|(of, commands, _)| {
+            of.has(language) && commands.split(' ').any(|word| word == call.name.as_str())
+        });
+        let plain = if self.subject.kind == DefKind::Module {
+            family.has(self.subject.key.language) && !row.is_some_and(|row| row.2)
+        } else {
+            row.is_some() && !writable(self.subject)
+        };
+        plain.then_some(Basis::Builtin)
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body.

@@ -30,3 +30,18 @@ pub(super) const CLASS_CANDIDATES: &[(Family, CandidateReason)] = &[
     (Family::Java, CandidateReason::Overloaded),
     (Family::Java, CandidateReason::Dispatch),
 ];
+
+/// The commands a shell word follows without naming a function: (family, the commands,
+/// whether they run the program their argument names, so `sudo check` may run a script).
+pub(super) const COMMAND_ARGUMENTS: &[(Family, &str, bool)] = &[
+    (
+        Family::Shell,
+        "echo printf cat grep ls cd rm mkdir sleep",
+        false,
+    ),
+    (
+        Family::Shell,
+        "sudo env exec nohup xargs command nice",
+        true,
+    ),
+];
