@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_php_file(path: &Path) -> bool {
     PHP_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -84,10 +84,9 @@ impl EdgeBuilder for PhpEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["php_use"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
         let mut ns_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
             if let Some(ns) = extract_namespace(&f.content) {
                 ns_to_frags.entry(ns).or_default().push(f.id.clone());
             }
@@ -100,25 +99,15 @@ impl EdgeBuilder for PhpEdgeBuilder {
             for req in extract_requires(&f.content) {
                 base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
             }
-            for use_name in extract_uses(&f.content) {
-                if let Some(targets) = name_to_defs.get(&use_name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, use_w, reverse_factor);
-                }
-            }
-            for parent in extract_inheritance(&f.content) {
-                if let Some(targets) = name_to_defs.get(&parent.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, inherit_w, reverse_factor);
-                }
-            }
-            for tr in TYPE_REF_RE.captures_iter(&f.content) {
-                let name = &tr[1];
-                if self_defs.contains(name) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
-                }
-            }
+            defs.link(&mut edges, &f.id, extract_uses(&f.content), use_w);
+            defs.link(
+                &mut edges,
+                &f.id,
+                extract_inheritance(&f.content),
+                inherit_w,
+            );
+            let type_refs = base::captures1(&TYPE_REF_RE, &f.content);
+            defs.link_except(&mut edges, &f.id, type_refs, &self_defs, type_w);
         }
         edges
     }

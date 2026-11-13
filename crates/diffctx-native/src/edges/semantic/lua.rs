@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_lua_file(path: &Path) -> bool {
     base::has_ext(path, &[".lua"])
@@ -63,10 +63,7 @@ impl EdgeBuilder for LuaEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["lua_require"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -75,22 +72,9 @@ impl EdgeBuilder for LuaEdgeBuilder {
             for req in extract_requires(&f.content) {
                 base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
             }
-            for target in extract_method_targets(&f.content) {
-                if self_defs.contains(&target) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&target.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, method_w, reverse_factor);
-                }
-            }
-            for id in &f.identifiers {
-                if self_defs.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            let methods = extract_method_targets(&f.content);
+            defs.link_except(&mut edges, &f.id, methods, &self_defs, method_w);
+            defs.link_except(&mut edges, &f.id, &f.identifiers, &self_defs, fn_w);
         }
         edges
     }
