@@ -47,6 +47,42 @@ pub struct Selector {
     /// that namespace alone.
     pub namespace: Option<String>,
     pub pairs: Vec<(String, String)>,
+    /// The `matchExpressions` of a label selector, all of which must hold too.
+    pub expressions: Vec<Expression>,
+}
+
+/// How an expression tests the value of a label key.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Operator {
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
+}
+
+/// One entry of a selector's `matchExpressions`.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Expression {
+    pub key: String,
+    pub operator: Operator,
+    pub values: Vec<String>,
+}
+
+impl Selector {
+    /// Whether an object that carries `labels` is selected: every pair is among
+    /// them and every expression holds.
+    pub fn selects(&self, labels: &[(String, String)]) -> bool {
+        self.pairs.iter().all(|pair| labels.contains(pair))
+            && self.expressions.iter().all(|expression| {
+                let held = labels.iter().find(|(key, _)| *key == expression.key);
+                match expression.operator {
+                    Operator::In => held.is_some_and(|(_, v)| expression.values.contains(v)),
+                    Operator::NotIn => held.is_none_or(|(_, v)| !expression.values.contains(v)),
+                    Operator::Exists => held.is_some(),
+                    Operator::DoesNotExist => held.is_none(),
+                }
+            })
+    }
 }
 
 /// The labels of one label definition: its pairs, as written.
@@ -63,6 +99,9 @@ pub struct Labels {
 pub struct SelectorRow {
     pub kinds: &'static [&'static str],
     pub path: &'static str,
+    /// The node at `path` is a label selector (`matchLabels` and
+    /// `matchExpressions`), not a map of pairs.
+    pub label_selector: bool,
     pub matches: LabelSet,
     pub target_kinds: &'static [&'static str],
 }
@@ -83,6 +122,42 @@ pub fn pairs_of(node: &Node) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The expressions of a `matchExpressions` list, in source order; an entry that
+/// states no known operator or key is no expression, so the selector reads wider
+/// than it is.
+fn expressions_of(node: &Node) -> Vec<Expression> {
+    let Some(items) = node.as_seq() else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            let operator = match item.get("operator")?.as_str()? {
+                "In" => Operator::In,
+                "NotIn" => Operator::NotIn,
+                "Exists" => Operator::Exists,
+                "DoesNotExist" => Operator::DoesNotExist,
+                _ => return None,
+            };
+            let values = item
+                .get("values")
+                .and_then(Node::as_seq)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|v| Some(v.as_str()?.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(Expression {
+                key: item.get("key")?.as_str()?.to_string(),
+                operator,
+                values,
+            })
+        })
+        .collect()
+}
+
 /// The selectors an object states by `rows`. An empty selector selects
 /// everything and says nothing: it is none.
 pub fn selectors(found: &Found<'_>, enclosing: &Scope, rows: &[SelectorRow]) -> Vec<Selector> {
@@ -93,18 +168,34 @@ pub fn selectors(found: &Found<'_>, enclosing: &Scope, rows: &[SelectorRow]) -> 
         }
         let path = FieldPath::parse(row.path).expect("a row's path is a field path");
         for hit in found.node.select(&path) {
-            let pairs = pairs_of(hit.node);
-            if pairs.is_empty() {
+            let labels = row.label_selector.then(|| hit.node.get("matchLabels"));
+            let (pair_node, expressions) = match labels {
+                Some(match_labels) => (
+                    match_labels,
+                    hit.node
+                        .get("matchExpressions")
+                        .map(expressions_of)
+                        .unwrap_or_default(),
+                ),
+                None => (Some(hit.node), Vec::new()),
+            };
+            let pairs = pair_node.map(pairs_of).unwrap_or_default();
+            if pairs.is_empty() && expressions.is_empty() {
                 continue;
             }
             found_selectors.push(Selector {
-                site: hit.node.span.clone(),
+                site: pair_node.unwrap_or(hit.node).span.clone(),
                 enclosing: enclosing.clone(),
-                field: row.path.to_string(),
+                field: match (row.label_selector, pair_node) {
+                    (false, _) => row.path.to_string(),
+                    (true, Some(_)) => format!("{}.matchLabels", row.path),
+                    (true, None) => format!("{}.matchExpressions", row.path),
+                },
                 matches: row.matches,
                 target_kinds: row.target_kinds.iter().map(|k| (*k).to_string()).collect(),
                 namespace: found.object.id.namespace.clone(),
                 pairs,
+                expressions,
             });
         }
     }

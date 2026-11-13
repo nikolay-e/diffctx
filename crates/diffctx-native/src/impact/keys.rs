@@ -5,7 +5,7 @@
 
 /// The terms of one line of a config: its key-shaped words and its value phrases.
 pub(super) fn terms(line: &str) -> Vec<String> {
-    key_words(line).chain(value_phrases(line)).collect()
+    changed_words(line).chain(value_phrases(line)).collect()
 }
 
 /// A value that spells more than a word: a selector, a path, an address, an
@@ -112,6 +112,16 @@ fn trim_flow(token: &str) -> &str {
     }
 }
 
+/// `key=value` with a key-shaped head.
+fn assignment(token: &str) -> Option<(&str, &str)> {
+    let (head, value) = token.split_once('=')?;
+    let key = !head.is_empty()
+        && head
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    key.then_some((head, value))
+}
+
 /// The values a config line spells that are worth searching whole, found the
 /// same way on the changed side and on the reader's: `expr: 'up{job="a"} == 0'`
 /// gives `up{job="a"}`, `url=http://db:5432/app` gives `http://db:5432/app`.
@@ -123,13 +133,7 @@ pub(super) fn value_phrases(line: &str) -> Vec<String> {
                 Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
                     Some(&token[1..token.len() - 1])
                 }
-                _ => token.split_once('=').and_then(|(head, value)| {
-                    let key = !head.is_empty()
-                        && head
-                            .chars()
-                            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '-'));
-                    key.then_some(value)
-                }),
+                _ => assignment(token).map(|(_, value)| value),
             };
             match inner {
                 Some(inner) if depth < 2 => collect(inner, depth + 1, out),
@@ -149,6 +153,72 @@ pub(super) fn key_words(text: &str) -> impl Iterator<Item = String> + '_ {
         .map(|w| w.trim_matches('-'))
         .filter(|w| key_like(w))
         .map(str::to_string)
+}
+
+/// The key-shaped words a changed line offers to search. A value that is
+/// spelled whole (an image, a path, an address: `phrase_like`) is searched whole
+/// and gives no words of its own, as `1-debian13` of `app:2.14.1-debian13` is no
+/// key (#707); a quoted sentence is prose and gives none either (#700). A reader's
+/// line is read for every word (`key_words`): it is the needle that is narrow.
+fn changed_words(text: &str) -> std::vec::IntoIter<String> {
+    fn collect(text: &str, depth: usize, out: &mut Vec<String>) {
+        for raw in split_tokens(text) {
+            let token = trim_flow(raw);
+            match token.chars().next() {
+                Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
+                    let inner = &token[1..token.len() - 1];
+                    if depth < 2 {
+                        collect(inner, depth + 1, out);
+                    }
+                }
+                _ => match assignment(token) {
+                    Some((head, value)) if depth < 2 => {
+                        words(head, out);
+                        collect(value, depth + 1, out);
+                    }
+                    _ if phrase_like(token) => {}
+                    _ => words(token, out),
+                },
+            }
+        }
+    }
+    fn words(text: &str, out: &mut Vec<String>) {
+        out.extend(key_words(text));
+    }
+    let mut out = Vec::new();
+    collect(&without_sentences(text), 0, &mut out);
+    out.into_iter()
+}
+
+/// `line` with each quoted string that is a sentence blanked out: a quote opens
+/// where a value starts, never inside a word (`don't`).
+fn without_sentences(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.char_indices().peekable();
+    let mut prev = ' ';
+    while let Some((at, c)) = chars.next() {
+        let opens = matches!(c, '"' | '\'')
+            && (prev.is_whitespace() || matches!(prev, '[' | '(' | ',' | ':' | '='));
+        if opens {
+            let mut escaped = false;
+            let close = chars.clone().find_map(|(i, d)| {
+                let end = d == c && !escaped;
+                escaped = d == '\\' && !escaped;
+                end.then_some(i)
+            });
+            if let Some(close) = close {
+                if super::mentions::is_sentence(&line[at + 1..close]) {
+                    while chars.next().is_some_and(|(i, _)| i < close) {}
+                    out.push(' ');
+                    prev = ' ';
+                    continue;
+                }
+            }
+        }
+        out.push(c);
+        prev = c;
+    }
+    out
 }
 
 /// Shaped like a key a reader spells back: joined words, a constant's

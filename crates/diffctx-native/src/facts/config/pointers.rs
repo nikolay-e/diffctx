@@ -1,7 +1,7 @@
 //! The second table: which field of which tool's file names a place. Kustomize
 //! `resources`, `bases`, `components` and `patches`, Argo CD `source.path`, Flux
 //! `spec.path`, Helmfile `releases[].chart` and `values`, a chart's
-//! `dependencies[].repository`. A tool joins by a row, with a fixture that reads
+//! `dependencies[].repository`, promtool's `rule_files`. A tool joins by a row, with a fixture that reads
 //! it.
 //!
 //! Rows are by kind. A Kustomize file, a Helmfile and a chart carry no `kind`
@@ -44,9 +44,9 @@ const fn assigned(kind: &'static str, path: &'static str) -> Row {
 static ROWS: &[Row] = &[
     // Kustomize: `resources` takes a file or a directory with a kustomization;
     // generators, transformers and validators take a path or a URL.
-    row("Kustomization", "resources[]", PointerKind::Path),
-    row("Kustomization", "bases[]", PointerKind::Path),
-    row("Kustomization", "components[]", PointerKind::Path),
+    row("Kustomization", "resources[]", PointerKind::Listed),
+    row("Kustomization", "bases[]", PointerKind::Listed),
+    row("Kustomization", "components[]", PointerKind::Listed),
     row("Kustomization", "configurations[]", PointerKind::Path),
     row("Kustomization", "crds[]", PointerKind::Path),
     row("Kustomization", "generators[]", PointerKind::Path),
@@ -87,6 +87,8 @@ static ROWS: &[Row] = &[
         "spec.template.spec.source.path",
         PointerKind::Path,
     ),
+    // promtool's test files list the rule files they test.
+    row("RuleTest", "rule_files[]", PointerKind::Listed),
     // Helmfile.
     row("Helmfile", "releases[].chart", PointerKind::Chart),
     row("Helmfile", "releases[].values[]", PointerKind::Path),
@@ -124,6 +126,9 @@ pub fn document_kind(doc: &Node) -> Option<&str> {
     }
     if doc.get("releases").and_then(Node::as_seq).is_some() {
         return Some("Helmfile");
+    }
+    if doc.get("rule_files").and_then(Node::as_seq).is_some() && doc.get("tests").is_some() {
+        return Some("RuleTest");
     }
     let chart_version = doc
         .get("apiVersion")

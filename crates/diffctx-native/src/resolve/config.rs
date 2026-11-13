@@ -38,8 +38,8 @@ use super::{
     UnresolvedReason,
 };
 use crate::facts::config::{
-    ConfigRef, LabelSet, ObjectId, Resolved, Selector, SourcePointer, Strength, directory_of,
-    identity_of, k8s,
+    ConfigRef, LabelSet, ObjectId, PointerKind, Resolved, Selector, SourcePointer, Strength,
+    directory_of, identity_of, k8s,
 };
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, LocalKey, Name, Namespace, Scope,
@@ -364,8 +364,13 @@ impl Places<'_> {
             Resolved::Computed if pointer.templated => return Placed::Templated,
             Resolved::Computed => return Placed::Outside,
         };
+        let evidence = if pointer.kind == PointerKind::Listed {
+            EvidenceKind::Listed
+        } else {
+            EvidenceKind::SameScope
+        };
         if let Some(found) = self.files.get(path.as_str()) {
-            return Placed::Lands(self.module(found));
+            return Placed::Lands(self.module(found, evidence));
         }
         if self.directories.contains(path.as_str()) {
             for name in DIRECTORY_FILES {
@@ -375,7 +380,7 @@ impl Places<'_> {
                     format!("{path}/{name}")
                 };
                 if let Some(found) = self.files.get(inside.as_str()) {
-                    return Placed::Lands(self.module(found));
+                    return Placed::Lands(self.module(found, evidence));
                 }
             }
         }
@@ -384,11 +389,11 @@ impl Places<'_> {
         })
     }
 
-    fn module(&self, path: &str) -> Resolution {
+    fn module(&self, path: &str, evidence: EvidenceKind) -> Resolution {
         match RepoPath::new(path) {
             Ok(file) => Resolution::Module {
                 file,
-                evidence: Evidence::new(EvidenceKind::SameScope),
+                evidence: Evidence::new(evidence),
             },
             Err(_) => Resolution::Unresolved {
                 reason: UnresolvedReason::MissingModule,
@@ -465,7 +470,7 @@ fn select(labels: &[LabelEntry], selector: &Selector, own: Option<&DefKey>) -> V
             set && kind
                 && namespace
                 && own != Some(&entry.parent_key)
-                && selector.pairs.iter().all(|pair| entry.pairs.contains(pair))
+                && selector.selects(&entry.pairs)
         })
         .map(|entry| entry.key.clone())
         .collect()

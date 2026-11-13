@@ -3233,7 +3233,8 @@ impl Cell {
         )
     }
 
-    /// The file and line of each pointer the family settled on `target`.
+    /// The file and line of each pointer the family settled on `target`. An entry
+    /// of a list (`Listed`) is no reader of the file's content.
     pub(crate) fn pointers_to(&self, target: &str) -> Vec<(String, u32)> {
         if !self.points_by_path() {
             return Vec::new();
@@ -3242,7 +3243,8 @@ impl Cell {
             .bindings()
             .iter()
             .filter(|b| {
-                matches!(&b.resolution, Resolution::Module { file, .. } if file.as_str() == target)
+                matches!(&b.resolution, Resolution::Module { file, evidence }
+                    if file.as_str() == target && evidence.kind != EvidenceKind::Listed)
                     && within_scope(&self.scope, b.file.as_str())
             })
             .map(|b| (b.file.as_str().to_string(), b.site.lines.0))
@@ -3250,15 +3252,15 @@ impl Cell {
     }
 
     /// Whether the family settled a pointer written at `file:line` on a file
-    /// other than `target`.
+    /// other than `target`, or as an entry of a list, which names no content.
     pub(crate) fn points_elsewhere(&self, file: &str, line: u32, target: &str) -> bool {
         self.points_by_path()
             && self.bindings_by_file.get(file).is_some_and(|at| {
                 at.iter().map(|i| &self.head.bindings()[*i]).any(|b| {
                     b.site.lines.0 <= line
                         && line <= b.site.lines.1
-                        && matches!(&b.resolution, Resolution::Module { file: found, .. }
-                                if found.as_str() != target)
+                        && matches!(&b.resolution, Resolution::Module { file: found, evidence }
+                                if found.as_str() != target || evidence.kind == EvidenceKind::Listed)
                 })
             })
     }
