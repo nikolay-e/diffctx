@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import compare
 import report
 from gates import GATES_FILE, load_gates
 
@@ -508,3 +509,17 @@ def test_the_safety_columns_replayed_from_adjudicated_rows_are_labelled_a_lower_
     text = (run / "report.md").read_text()
     assert "a lower bound that undercounts the safety rows" in text
     assert json.loads((run / "report.json").read_text())["scip_adjudicated_note"] in text
+
+
+def test_every_printed_incomplete_complete_says_what_complete_is_counted_on(tmp_path: Path):
+    cells = [cell(truth=1, fn=1, incomplete_complete=1, reported=True)]
+    pair = {"language": "python", "mode": "impact", "kind": "calls", "repo": "r", "commit": "c1", "from": "a::g", "to": "a::f"}
+    run = run_with(tmp_path / "run", cells, [{**pair, "verdict": "fn", "incomplete_complete": True}])
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
+
+    found = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert found["incomplete_complete"]["basis"] == compare.COUNTING_BASIS
+    line = {line["gate"]: line for line in found["verdict"]}["safety.incomplete_complete"]
+    assert compare.COUNTING_BASIS in line["detail"]
+    assert "per changed definition and relation group" in (tmp_path / "out" / "report.md").read_text()
