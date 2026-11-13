@@ -70,3 +70,37 @@ def test_the_commits_help_names_the_default_and_the_quota_that_measure_draws(cap
     assert "default 24" in help_text
     assert "quota" in help_text
     assert "draws 40" not in help_text
+
+
+def test_a_round_installs_dependencies_as_measure_does_and_can_drop_each_tree_once_indexed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    for n in range(3):
+        commit(repo_dir, {"go.mod": "module t\n", "a.go": f"package a // {n}\n"}, f"c{n}")
+    head = gitrepo.git("rev-parse", "HEAD", cwd=repo_dir).strip()
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(indexing, "CACHE", cache)
+    monkeypatch.setattr(indexshare, "CACHE", cache)
+    seen: list[bool] = []
+
+    def plan(ctx: runners.Context) -> runners.Plan:
+        seen.append(ctx.install)
+        return runners.Plan([sys.executable, "-c", FAKE_INDEXER, str(ctx.out)], {"PATH": ""})
+
+    monkeypatch.setitem(runners.PLANNERS, "go", plan)
+    repo = Repo("t", "", "go", head, "MIT")
+    corpus = load_corpus()
+
+    indexshare.index_sample(corpus, repo, repo_dir / ".git", count=2)
+    assert seen and all(seen)
+    assert any((cache / "trees" / "t").iterdir())
+
+    seen.clear()
+    monkeypatch.setattr(indexing, "CACHE", tmp_path / "second")
+    monkeypatch.setattr(indexshare, "CACHE", tmp_path / "second")
+    indexshare.index_sample(corpus, repo, repo_dir / ".git", count=2, install=False, drop_trees=True)
+    assert seen and not any(seen)
+    assert not any((tmp_path / "second" / "trees" / "t").iterdir())

@@ -4,7 +4,7 @@ A commit is excluded when either of its two snapshots is not indexed ok, or it h
 `measure.prepare`, without asking the engine anything. The indexes land in the cache `measure` reads, so a later
 `measure --no-install` finds them. Each failure's full output is in `failure.log` beside its slot.
 
-  python indexshare.py --repo NAME [--repo NAME]... [--commits 24] [--seed N] [--retry-failed] [--out rows.jsonl]
+  python indexshare.py --repo NAME [--repo NAME]... [--commits 24] [--seed N] [--retry-failed] [--no-install] [--drop-trees] [--out rows.jsonl]
   python indexshare.py --adhoc NAME URL LANGUAGE [--sha SHA]     # a repository that is not in corpus.toml
 """
 
@@ -14,6 +14,7 @@ import argparse
 import collections
 import dataclasses
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,7 +36,14 @@ def cause(result: IndexResult) -> str:
 
 
 def index_sample(
-    corpus: Corpus, repo: Repo, git_dir: Path, count: int, *, install: bool = False, retry_failed: bool = False
+    corpus: Corpus,
+    repo: Repo,
+    git_dir: Path,
+    count: int,
+    *,
+    install: bool = True,
+    retry_failed: bool = False,
+    drop_trees: bool = False,
 ) -> list[dict]:
     rows = []
     for commit in sample_commits(corpus, repo, git_dir, count):
@@ -56,6 +64,8 @@ def index_sample(
                 tree = gitrepo.export_tree(git_dir, snapshot, CACHE / "trees" / repo.name / snapshot)
                 result = index_snapshot(corpus, repo, snapshot, tree, install=install, retry_failed=retry_failed)
                 row[f"{side}_file_ratio"] = round(result.completeness.file_ratio, 3)
+                if drop_trees:
+                    shutil.rmtree(tree, ignore_errors=True)
                 if not result.ok:
                     row["causes"][side] = cause(result)
         row["excluded"] = bool(row["causes"])
@@ -85,6 +95,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--seed", type=int, help="replaces the corpus seed")
     parser.add_argument("--retry-failed", action="store_true", help="index again snapshots whose cached index failed")
+    parser.add_argument("--no-install", dest="install", action="store_false", help="do not install TypeScript dependencies")
+    parser.add_argument(
+        "--drop-trees", action="store_true", help="remove each exported snapshot once it is indexed (a long run's disk)"
+    )
     parser.add_argument("--no-setup", dest="setup", action="store_false", help="do not install the pinned indexers first")
     parser.add_argument("--out", type=Path, help="one JSON line per sampled commit")
     options = parser.parse_args(argv)
@@ -103,7 +117,15 @@ def main(argv: list[str] | None = None) -> int:
     sink = options.out.open("w", encoding="utf-8") if options.out else None
     for repo in repos:
         git_dir = gitrepo.mirror(repo.url, CACHE / "mirrors" / f"{repo.name}.git", repo.sha)
-        rows = index_sample(corpus, repo, git_dir, options.commits, retry_failed=options.retry_failed)
+        rows = index_sample(
+            corpus,
+            repo,
+            git_dir,
+            options.commits,
+            install=options.install,
+            retry_failed=options.retry_failed,
+            drop_trees=options.drop_trees,
+        )
         if sink:
             sink.writelines(json.dumps(row) + "\n" for row in rows)
             sink.flush()
