@@ -784,7 +784,8 @@ impl<'a> Reading<'a> {
         .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
-    /// A word after a listed command names no function (`trap` is unlisted); a script, only a runner.
+    /// A word after a listed command names no function (`trap` is unlisted); a script, only after a
+    /// listed command that runs nothing (`cat check`, not `bash check`).
     fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
         let language = self.file.language();
         let family = COMMAND_ARGUMENTS.iter().find(|row| row.0.has(language))?.0;
@@ -804,7 +805,7 @@ impl<'a> Reading<'a> {
             of.has(language) && commands.split(' ').any(|word| word == call.name.as_str())
         });
         let plain = if self.subject.kind == DefKind::Module {
-            family.has(self.subject.key.language) && !row.is_some_and(|row| row.2)
+            family.has(self.subject.key.language) && row.is_some_and(|row| !row.2)
         } else {
             row.is_some() && !writable(self.subject)
         };
