@@ -122,7 +122,7 @@ impl CResolver {
                 files.push(file);
             }
         }
-        let ix = Index::build(files, &ctx.workspace);
+        let ix = Index::build(files);
         let hints = include_hints(&commands, &ix);
         let engine = Engine::new(ix, hints, &ctx.workspace, reader, side);
         let (definitions, bindings, stopped) = engine.run(ctx);
@@ -362,7 +362,6 @@ struct IncRec {
 struct FileRec {
     facts: FileFacts,
     dir: String,
-    project: Option<crate::snapshot::workspace::ProjectId>,
     includes: Vec<IncRec>,
     usings: Vec<UsingRec>,
     children: HashMap<Path, Vec<usize>>,
@@ -428,7 +427,7 @@ fn is_header(path: &str) -> bool {
 }
 
 impl Index {
-    fn build(files: Vec<FileFacts>, workspace: &WorkspaceModel) -> Self {
+    fn build(files: Vec<FileFacts>) -> Self {
         let mut index = Self::default();
         for facts in files {
             let at = index.files.len();
@@ -444,7 +443,6 @@ impl Index {
             index.by_file.insert(path.clone(), at);
             let mut file = FileRec {
                 dir: dir_of(&path).to_string(),
-                project: workspace.project_of(&path),
                 facts,
                 includes: Vec::new(),
                 usings: Vec::new(),

@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use _diffctx::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_changes};
-use _diffctx::resolve::{Binding, EvidenceKind, Relation, Resolution, TerraformResolver};
+use _diffctx::resolve::{Binding, Relation, Resolution, TerraformResolver};
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree};
 use serde::Deserialize;
 use snapshot_fixture::Repo;
@@ -106,16 +106,6 @@ impl Fixture {
 
     fn lands_at(&self, file: &str, name: &str, line: u32) -> String {
         self.lands(self.at(file, name, line))
-    }
-}
-
-fn evidence(binding: &Binding) -> (EvidenceKind, Vec<String>) {
-    match &binding.resolution {
-        Resolution::Resolved { evidence, .. } | Resolution::Module { evidence, .. } => (
-            evidence.kind,
-            evidence.through.iter().map(|p| p.to_string()).collect(),
-        ),
-        other => panic!("no evidence on {other:?}"),
     }
 }
 

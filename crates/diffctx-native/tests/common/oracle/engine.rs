@@ -360,18 +360,6 @@ fn node_of(value: &Value) -> Node {
     Node::new(text(value, "path").unwrap_or(""), text(value, "symbol"))
 }
 
-/// The definition a `path::symbol (lines)` label names; a symbol-less
-/// definition is labelled `path:lines`.
-fn node_of_label(label: &str) -> Node {
-    let head = label.split(" \u{2014} ").next().unwrap_or(label);
-    let head = head.rsplit_once(" (").map_or(head, |(name, _)| name);
-    if head.contains("::") {
-        Node::parse(head)
-    } else {
-        Node::parse(head.rsplit_once(':').map_or(head, |(path, _)| path))
-    }
-}
-
 fn kind_of(relation: &str) -> Kind {
     match relation {
         "reference" => Kind::Reads,
