@@ -110,9 +110,6 @@ enum Entity {
     DoubtfulModule(usize),
     /// A definition reached through a `DoubtfulModule`: a possibility.
     Maybe(usize),
-    /// The class a function returns on its only `return Cls(...)`: the body says
-    /// it, the signature does not, so a call through it is a possibility.
-    Guess(usize),
     /// Annotated `Any` or `object`: any class.
     Dynamic,
     External,
@@ -130,8 +127,6 @@ enum Lookup {
         inherited: bool,
     },
     Absent(UnresolvedReason),
-    /// The receiver is probably the class, not certainly.
-    Possible(usize),
     /// The receiver says nothing about what it is.
     Untyped,
     Any,
@@ -381,7 +376,7 @@ impl<'a> Engine<'a> {
                     through,
                     inherited,
                 } => (entity, through, inherited),
-                Lookup::Untyped | Lookup::Any | Lookup::Possible(_) => {
+                Lookup::Untyped | Lookup::Any => {
                     reads.extend(std::iter::once((index, member)).chain(members).map(
                         |(index, name)| {
                             (
@@ -509,13 +504,6 @@ impl<'a> Engine<'a> {
                 }
             }
             Lookup::Absent(reason) => Outcome::Unresolved(reason),
-            Lookup::Possible(_) if r.use_kind != UseKind::Call => {
-                Outcome::Unresolved(UnresolvedReason::UntypedRead)
-            }
-            Lookup::Possible(id) => Outcome::Candidates {
-                ids: vec![id],
-                reason: CandidateReason::UntypedReceiver,
-            },
             Lookup::Untyped => self.untyped(f, r, false),
             Lookup::Any => self.untyped(f, r, true),
         }
@@ -971,7 +959,7 @@ impl<'a> Engine<'a> {
             Lookup::Absent(UnresolvedReason::Builtin) => Entity::Builtin,
             Lookup::Absent(UnresolvedReason::OutsideProject) => Entity::Outside,
             Lookup::Any => Entity::Dynamic,
-            Lookup::Absent(_) | Lookup::Untyped | Lookup::Possible(_) => Entity::Unknown,
+            Lookup::Absent(_) | Lookup::Untyped => Entity::Unknown,
         }
     }
 
@@ -1338,7 +1326,7 @@ impl<'a> Engine<'a> {
     }
 
     /// The instance of the class a function's `-> Cls` annotation names; without
-    /// an annotation, the class of its one `return Cls(...)`, as a guess.
+    /// an annotation, the class of its one `return Cls(...)`.
     fn return_instance(&self, id: usize) -> Entity {
         let rec = &self.ix.defs[id];
         let annotation = rec
@@ -1348,23 +1336,24 @@ impl<'a> Engine<'a> {
             .and_then(|signature| signature.rfind("->").map(|at| &signature[at + 2..]));
         match annotation {
             Some(written) => self.type_entity(rec.file, &rec.def.local.container, written),
-            None => self.guessed_return(id),
+            None => self.sole_return(id),
         }
     }
 
-    fn guessed_return(&self, id: usize) -> Entity {
+    fn sole_return(&self, id: usize) -> Entity {
         if let Some(known) = self.returns.borrow().get(&id) {
             return known.clone();
         }
         self.returns.borrow_mut().insert(id, Entity::Unknown);
-        let found = self.compute_guessed_return(id);
+        let found = self.compute_sole_return(id);
         self.returns.borrow_mut().insert(id, found.clone());
         found
     }
 
     /// The function has one `return`, no `yield` and no function or class inside
-    /// it, and the `return` hands back a call: what the call makes.
-    fn compute_guessed_return(&self, id: usize) -> Entity {
+    /// it, and the `return` hands back a call: what the call makes, the instance
+    /// of a constructor it names.
+    fn compute_sole_return(&self, id: usize) -> Entity {
         let rec = &self.ix.defs[id];
         if !matches!(rec.def.kind, DefKind::Function | DefKind::Method) {
             return Entity::Unknown;
@@ -1412,8 +1401,7 @@ impl<'a> Engine<'a> {
         let facts = &self.ix.files[f].facts.blob.facts;
         let at = facts.partition_point(|fact| (fact.site().bytes.start as usize) < *after);
         match self.call_after(f, at, *after as u32, Lead::Return, 1) {
-            Some((Entity::Instance(c), _)) => Entity::Guess(c),
-            Some((other, _)) => other,
+            Some((entity, _)) => entity,
             None => Entity::Unknown,
         }
     }
@@ -1522,13 +1510,6 @@ impl<'a> Engine<'a> {
                 }
             }
             Entity::Maybe(_) => Lookup::Untyped,
-            Entity::Guess(c) => match self.class_member(*c, name, false) {
-                Lookup::Found {
-                    entity: Entity::Class(id) | Entity::Def(id),
-                    ..
-                } => Lookup::Possible(id),
-                other => other,
-            },
             Entity::Class(c) | Entity::Instance(c) => self.class_member(*c, name, false),
             Entity::Super(c) => self.class_member(*c, name, true),
             Entity::Def(id) => match self.ix.defs[*id].def.kind {
