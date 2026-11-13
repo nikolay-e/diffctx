@@ -3173,8 +3173,10 @@ impl Cell {
             manifests_whole,
         );
         if !changed.stale.is_empty() {
-            let base = self.base().ok().map(Resolver::bindings);
-            view = view.removed_sites(base, &changed.stale);
+            view = match self.base() {
+                Ok(base) => view.removed_sites(Some(base.bindings()), &changed.stale),
+                Err(_) => view.removed_sites(None, &changed.stale),
+            };
         }
         let names = self.reference_names(changed);
         let tokens = self.tokens.group(self.family.group());
