@@ -3214,7 +3214,10 @@ impl Cell {
         let base = if changed.stale.is_empty() {
             None
         } else {
-            self.base().ok()
+            match self.base() {
+                Ok(base) => Some(base),
+                Err(_) => None,
+            }
         };
         if !changed.stale.is_empty() {
             view = view.removed_sites(base.map(Resolver::bindings), &changed.stale);
