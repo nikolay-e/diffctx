@@ -46,11 +46,13 @@ listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 ## Product size is a ratchet
 
 - **R-budget.** Product lines live in `budget.toml` and grow only by the
-  owner's word, recorded as a `Budget-raise:` commit trailer quoting it; every
-  stream names `+X/−Y` up front.
+  owner's word, recorded as a `Budget-raise:` commit trailer quoting it (a
+  `[debt.*]` row of `budget.toml`, covering only the paths it names and repaid
+  at the switch it names, grows the same way); every stream names `+X/−Y` up front.
 - **R-layer.** A fix for one reason that touches more than one language
   family's resolver or extractor is in the wrong layer: move it to shared code,
-  language differences as data.
+  language differences as data, a table row never a function or closure
+  (`tests/test_tables_are_data.py`).
 - **R-delete.** After each landing, a deletion-only pass: tests green, fewer
   lines, nothing added.
 
