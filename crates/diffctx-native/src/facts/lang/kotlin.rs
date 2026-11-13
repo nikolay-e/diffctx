@@ -483,7 +483,9 @@ impl<'a> Reader<'a> {
     fn name_span(&self, d: &old::Declaration) -> Span {
         let header = self.slice(d.header.start..d.header.end.min(self.bytes.len()));
         let limit = match d.kind {
-            "fun" => header.find('(').unwrap_or(header.len()),
+            "fun" => (header.match_indices('(').map(|(at, _)| at))
+                .find(|&at| header[..at].split_whitespace().any(|word| word == "fun"))
+                .unwrap_or(header.len()),
             "property" => header.find([':', '=', '\n']).unwrap_or(header.len()),
             _ => header.len(),
         };

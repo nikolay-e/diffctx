@@ -274,7 +274,13 @@ impl<'t> Walker<'t> {
         let mut body = None;
         for child in kids {
             match child.kind() {
-                "string_lit" => labels.push((child, self.string_text(child))),
+                // The name is the text inside the quotes, where a scan finds it.
+                "string_lit" => {
+                    let inner = children(child)
+                        .into_iter()
+                        .find(|n| n.kind() == "template_literal");
+                    labels.push((inner.unwrap_or(child), self.string_text(child)));
+                }
                 "identifier" => labels.push((child, self.text(child).to_string())),
                 "body" => body = Some(child),
                 _ => {}
