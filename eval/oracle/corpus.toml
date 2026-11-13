@@ -3,9 +3,11 @@
 # Indexers are pinned in tools/package.json (npm, with integrity hashes in tools/package-lock.json).
 
 [sampling]
-# The fresh seed (Revision 18, C4). The earlier seed was 20261031: every commit its runs sampled is in spent_commits.txt.
-# A new seed is drawn after a defect is fixed from a row the previous draw produced, never before.
-seed = 20261112
+# The fresh seed (Revision 18, C4): one draw of the operating system's CSPRNG on 2026-11-13, used by nothing before. The
+# earlier seeds were 20261031 (every commit its runs sampled is in spent_commits.txt) and 20261112 (index-only rounds that
+# chose the repositories below read its first commits' exclusions, so it would be a tuning set). A new seed is drawn after
+# a defect is fixed from a row the previous draw produced, never before.
+seed = 753568482
 spent = "spent_commits.txt"  # commits never drawn again
 fast_commits = 10  # sampled commits per repository for the `oracle` label
 history = 800      # commits back from the pin the sample is drawn from
@@ -147,17 +149,24 @@ language = "kotlin"
 license = "Apache-2.0"
 sha = "d67e333d682de65620bf82c46c5b41038e1e450f"  # pragma: allowlist secret gitleaks:allow
 
+# hoplite is out: 19 of the 24 commits sampled from it (and 22 of jackson-annotations', 12 of jackson-core's) were excluded
+# by commit age (a Gradle or JDK level JDK 21 cannot run, a SNAPSHOT parent no longer published), above the 20 % the C3 rule
+# allows. Replacements: the first Kotlin and Java libraries a git-only prediction put at or below 20 % (`p5/index`), by the
+# order fixed before any of them was looked at.
+
 [[repo]]
-name = "hoplite"
-url = "https://github.com/sksamuel/hoplite.git"
+name = "github-workflows-kt"
+url = "https://github.com/typesafegithub/github-workflows-kt.git"
 language = "kotlin"
 license = "Apache-2.0"
-sha = "ebb7ad4d5bd25a41406323da8b507086fe92eb02"  # pragma: allowlist secret gitleaks:allow
+sha = "e3056235acd5fc543c20da0022fa41af226522d2"  # pragma: allowlist secret gitleaks:allow
 
 # Go repositories, chosen by Revision 18's C3 in a fixed order before any engine answer on them: more than 20 % of the
 # commits sampled from chi, cobra and testify were excluded before `go.mod` (no module file, nothing indexed). An index-only
 # round over each candidate measured the share: gin 0/24, urfave/cli 0/24, go-toml 1/24 (fasthttp 20/24 and lo 5/24 were
-# out: files built for another OS, a nested module).
+# out: files built for another OS, a nested module). On the fresh seed's whole draw, 68 commits per repository, go-toml
+# predicts 20 excluded (29.4 %): the window reaches Go v1 history without a module file. It is replaced by echo, the first
+# entry of the list written before the run (`p5/index/GO_REPLACEMENTS.md`: echo 16.2 %, then tablewriter 17.6 %).
 
 [[repo]]
 name = "gin"
@@ -175,15 +184,16 @@ license = "MIT"
 sha = "d5c06cb04479eeacbbb9378ea26261b6be516320"  # pragma: allowlist secret gitleaks:allow
 
 [[repo]]
-name = "go-toml"
-url = "https://github.com/pelletier/go-toml.git"
+name = "echo"
+url = "https://github.com/labstack/echo.git"
 language = "go"
 license = "MIT"
-sha = "686c980c47581bf19b6119b60e9a59f2aed04170"  # pragma: allowlist secret gitleaks:allow
+sha = "53cdb2be42cccf61da4a9c6efefb769c4daac0e5"  # pragma: allowlist secret gitleaks:allow
 
 # Java is indexed by scip-java through the repository's Maven build, which runs in a container (see runners.py).
 # gson (Error Prone's flags) and javapoet (enforcer rules) do not build under scip-java's compiler plugin, and
-# commons-lang and commons-io build without producing an index: these three index.
+# commons-lang and commons-io build without producing an index: these three index. jackson-core and jackson-annotations
+# are out (see the Kotlin note above); github-api and HikariCP replace them.
 
 [[repo]]
 name = "jsoup"
@@ -194,15 +204,15 @@ sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"  # pragma: allowlist secret git
 fast = true
 
 [[repo]]
-name = "jackson-core"
-url = "https://github.com/FasterXML/jackson-core.git"
+name = "github-api"
+url = "https://github.com/hub4j/github-api.git"
 language = "java"
-license = "Apache-2.0"
-sha = "b756733180686f115ca15f34a5edb7168a07fae9"  # pragma: allowlist secret gitleaks:allow
+license = "MIT"
+sha = "1e029e3946a4cae0af347355b0c097dd732490ea"  # pragma: allowlist secret gitleaks:allow
 
 [[repo]]
-name = "jackson-annotations"
-url = "https://github.com/FasterXML/jackson-annotations.git"
+name = "HikariCP"
+url = "https://github.com/brettwooldridge/HikariCP.git"
 language = "java"
 license = "Apache-2.0"
-sha = "cc816dfc7c0f45c54215361e010188d2eba12276"  # pragma: allowlist secret gitleaks:allow
+sha = "a4d93f4f85517f90e632b795486d7102e933d7ff"  # pragma: allowlist secret gitleaks:allow
