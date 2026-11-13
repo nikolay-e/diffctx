@@ -5,6 +5,7 @@
 //! the base's [`Definition`].
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::facts::{
@@ -13,15 +14,75 @@ use crate::facts::{
 use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use crate::snapshot::RepoPath;
 
-/// One side's resolved snapshot, indexed for the questions an occurrence asks.
-pub struct View<'a> {
-    files: HashMap<RepoPath, &'a FileFacts>,
-    by_file: HashMap<RepoPath, Vec<&'a Binding>>,
-    exact: HashMap<(RepoPath, u32, u32), Vec<&'a Binding>>,
+/// What one side's resolved snapshot is indexed by, as positions in its files and
+/// bindings: built once for a run, so that every definition's [`View`] borrows it.
+pub struct Index {
+    files: HashMap<RepoPath, usize>,
+    by_file: HashMap<RepoPath, Vec<usize>>,
+    exact: HashMap<(RepoPath, u32, u32), Vec<usize>>,
     definitions: HashSet<DefKey>,
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
     manifests_whole: bool,
+}
+
+impl Index {
+    /// `manifests_whole`: the workspace manifests were read without a loss.
+    pub fn new(
+        files: &[FileFacts],
+        bindings: &[Binding],
+        definitions: &[Definition],
+        manifests_whole: bool,
+    ) -> Self {
+        let mut index = Self {
+            files: (files.iter().enumerate())
+                .map(|(at, file)| (file.path.clone(), at))
+                .collect(),
+            by_file: HashMap::new(),
+            exact: HashMap::new(),
+            definitions: definitions.iter().map(|def| def.key.clone()).collect(),
+            bases: HashMap::new(),
+            overriders: HashMap::new(),
+            manifests_whole,
+        };
+        for (at, binding) in bindings.iter().enumerate() {
+            let bytes = &binding.site.bytes;
+            let file = &binding.file;
+            index.by_file.entry(file.clone()).or_default().push(at);
+            index
+                .exact
+                .entry((file.clone(), bytes.start, bytes.end))
+                .or_default()
+                .push(at);
+            let (Scope::Def(local), Resolution::Resolved { target, .. }) =
+                (&binding.from, &binding.resolution)
+            else {
+                continue;
+            };
+            let Some(&home) = index.files.get(file) else {
+                continue;
+            };
+            if binding.relation == Relation::Overrides {
+                index.overrides(files[home].key(local), target.clone());
+            }
+        }
+        index
+    }
+
+    fn overrides(&mut self, overrider: DefKey, target: DefKey) {
+        self.bases
+            .entry(overrider.clone())
+            .or_default()
+            .push(target.clone());
+        self.overriders.entry(target).or_default().push(overrider);
+    }
+}
+
+/// One side's resolved snapshot, as the questions an occurrence asks see it.
+pub struct View<'a> {
+    index: Rc<Index>,
+    files: &'a [FileFacts],
+    bindings: &'a [Binding],
     family_unproven: bool,
     /// Where the base resolved a use to a removed definition.
     stale: HashSet<Place>,
@@ -36,53 +97,45 @@ fn place(binding: &Binding) -> Place {
 }
 
 impl<'a> View<'a> {
-    /// `manifests_whole`: the workspace manifests were read without a loss.
     pub fn new(
         files: &'a [FileFacts],
         bindings: &'a [Binding],
         definitions: &'a [Definition],
         manifests_whole: bool,
     ) -> Self {
-        let mut view = Self {
-            files: files.iter().map(|file| (file.path.clone(), file)).collect(),
-            by_file: HashMap::new(),
-            exact: HashMap::new(),
-            definitions: definitions.iter().map(|def| def.key.clone()).collect(),
-            bases: HashMap::new(),
-            overriders: HashMap::new(),
-            manifests_whole,
-            family_unproven: false,
-            stale: HashSet::new(),
-        };
-        for binding in bindings {
-            let bytes = &binding.site.bytes;
-            let file = &binding.file;
-            view.by_file.entry(file.clone()).or_default().push(binding);
-            view.exact
-                .entry((file.clone(), bytes.start, bytes.end))
-                .or_default()
-                .push(binding);
-            let (Scope::Def(local), Resolution::Resolved { target, .. }) =
-                (&binding.from, &binding.resolution)
-            else {
-                continue;
-            };
-            let Some(&facts) = view.files.get(file) else {
-                continue;
-            };
-            if binding.relation == Relation::Overrides {
-                view.overrides(facts.key(local), target.clone());
-            }
-        }
-        view
+        let index = Index::new(files, bindings, definitions, manifests_whole);
+        Self::over(Rc::new(index), files, bindings)
     }
 
-    fn overrides(&mut self, overrider: DefKey, target: DefKey) {
-        self.bases
-            .entry(overrider.clone())
-            .or_default()
-            .push(target.clone());
-        self.overriders.entry(target).or_default().push(overrider);
+    /// The view of what `index` was built from.
+    pub fn over(index: Rc<Index>, files: &'a [FileFacts], bindings: &'a [Binding]) -> Self {
+        Self {
+            index,
+            files,
+            bindings,
+            family_unproven: false,
+            stale: HashSet::new(),
+        }
+    }
+
+    fn file(&self, path: &RepoPath) -> Option<&'a FileFacts> {
+        let files = self.files;
+        self.index.files.get(path).map(|&at| &files[at])
+    }
+
+    /// The bindings written in `path`.
+    fn in_file<'s>(&'s self, path: &RepoPath) -> impl Iterator<Item = &'a Binding> + 's {
+        self.picked(self.index.by_file.get(path))
+    }
+
+    /// The bindings whose site is exactly this span.
+    fn at<'s>(&'s self, span: &(RepoPath, u32, u32)) -> impl Iterator<Item = &'a Binding> + 's {
+        self.picked(self.index.exact.get(span))
+    }
+
+    fn picked<'s>(&'s self, at: Option<&'s Vec<usize>>) -> impl Iterator<Item = &'a Binding> + 's {
+        let bindings = self.bindings;
+        at.into_iter().flatten().map(move |&at| &bindings[at])
     }
 
     /// A removed member's family is what the base side bound at the places it resolved
@@ -104,7 +157,7 @@ impl<'a> View<'a> {
     /// What `key` overrides or is overridden by, transitively; not `key`.
     fn family(&self, key: &DefKey) -> HashSet<DefKey> {
         let mut found = HashSet::new();
-        for step in [&self.bases, &self.overriders] {
+        for step in [&self.index.bases, &self.index.overriders] {
             let mut queue = vec![key.clone()];
             while let Some(at) = queue.pop() {
                 for next in step.get(&at).into_iter().flatten() {
@@ -123,16 +176,11 @@ impl<'a> View<'a> {
             Fact::Export(Export::Named { name, .. }) => *name == subject.key.local.name,
             Fact::Export(Export::Star { .. }) => true,
             _ => false,
-        }) || self
-            .by_file
-            .get(&module.path)
-            .into_iter()
-            .flatten()
-            .any(|binding| {
-                binding.relation == Relation::Reexports
-                    && matches!(&binding.resolution,
-                        Resolution::Resolved { target, .. } if *target == subject.key)
-            })
+        }) || self.in_file(&module.path).any(|binding| {
+            binding.relation == Relation::Reexports
+                && matches!(&binding.resolution,
+                    Resolution::Resolved { target, .. } if *target == subject.key)
+        })
     }
 }
 
@@ -340,10 +388,7 @@ impl<'a> Reading<'a> {
             occurrence.bytes.end,
         );
         self.view
-            .exact
-            .get(&at)
-            .into_iter()
-            .flatten()
+            .at(&at)
             .filter(|binding| same(binding.name.as_str(), spelled, self.case))
             .map(|binding| self.claim(binding, spelled))
             .collect()
@@ -369,10 +414,10 @@ impl<'a> Reading<'a> {
             Claim::candidate(relation, Reason::Dispatch)
         } else if self.view.family_unproven
             && target.local.name == self.subject.key.local.name
-            && !self.view.definitions.contains(&self.subject.key)
+            && !self.view.index.definitions.contains(&self.subject.key)
         {
             Claim::candidate(relation, Reason::OverrideUnproven)
-        } else if self.view.definitions.contains(target) {
+        } else if self.view.index.definitions.contains(target) {
             Claim::new(relation, Outcome::NotOurs, Basis::OtherDefinition)
         } else {
             Claim::candidate(relation, Reason::BasisUnverified)
@@ -380,7 +425,7 @@ impl<'a> Reading<'a> {
     }
 
     fn module(&self, module: &RepoPath, relation: Option<Relation>) -> Claim {
-        let found = self.view.files.get(module).copied();
+        let found = self.view.file(module);
         let ours = *module == self.subject.file
             || found.is_some_and(|file| {
                 self.is_own_module(file) || self.view.reexports(file, self.subject)
@@ -438,7 +483,7 @@ impl<'a> Reading<'a> {
                 }),
             ),
             UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => {
-                verified(Basis::Manifests, self.view.manifests_whole)
+                verified(Basis::Manifests, self.view.index.manifests_whole)
             }
             UnresolvedReason::NoMember
             | UnresolvedReason::NoBinding
@@ -495,18 +540,12 @@ impl<'a> Reading<'a> {
     fn unbound(&self, occurrence: &Occurrence) -> Claim {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
-        let wide = self
-            .view
-            .by_file
-            .get(&occurrence.file)
-            .into_iter()
-            .flatten()
-            .find(|binding| {
-                let site = &binding.site.bytes;
-                site.start <= bytes.start
-                    && bytes.end <= site.end
-                    && same(binding.name.as_str(), spelled, self.case)
-            });
+        let wide = self.view.in_file(&occurrence.file).find(|binding| {
+            let site = &binding.site.bytes;
+            site.start <= bytes.start
+                && bytes.end <= site.end
+                && same(binding.name.as_str(), spelled, self.case)
+        });
         wide.map_or_else(
             || Claim::candidate(None, Reason::Unexplained),
             |binding| Claim::candidate(Some(binding.relation), Reason::WideBinding),
