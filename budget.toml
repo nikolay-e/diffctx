@@ -3,12 +3,12 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 141601
+product_lines = 144230
 allow_count = 139
 root_modules = 63
 
 [big_files]
-"crates/diffctx-native/src/decide.rs" = 3835
+"crates/diffctx-native/src/decide.rs" = 3874
 "crates/diffctx-native/src/facts/lang/c.rs" = 2011
 "crates/diffctx-native/src/facts/lang/php.rs" = 1930
 "crates/diffctx-native/src/facts/lang/python.rs" = 2680
@@ -16,7 +16,7 @@ root_modules = 63
 "crates/diffctx-native/src/facts/lang/typescript.rs" = 4341
 "crates/diffctx-native/src/graph.rs" = 1564
 "crates/diffctx-native/src/hook.rs" = 4163
-"crates/diffctx-native/src/impact.rs" = 5890
+"crates/diffctx-native/src/impact.rs" = 5897
 "crates/diffctx-native/src/keytable/extract.rs" = 2174
 "crates/diffctx-native/src/parsers/tree_sitter_strategy.rs" = 2661
 "crates/diffctx-native/src/pipeline.rs" = 3443
@@ -27,32 +27,3 @@ root_modules = 63
 "crates/diffctx-native/src/resolve/rust.rs" = 2176
 "crates/diffctx-native/src/resolve/typescript.rs" = 3767
 "crates/diffctx-native/src/select.rs" = 2015
-
-[debt.phase-a-shadow]
-lines = 2565
-repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
-due_when = "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },"
-covers = ["crates/diffctx-native/src/tokens/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
-deletes = [
-  "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },",
-]
-
-[debt.phase-a-shadow.grows]
-"crates/diffctx-native/src/decide.rs" = { base = 3835, plus = 0 }
-"crates/diffctx-native/src/effective_config.rs" = { base = 471, plus = 1 }
-"crates/diffctx-native/src/facts/file.rs" = { base = 122, plus = 5 }
-"crates/diffctx-native/src/facts/cache.rs" = { base = 447, plus = 5 }
-"crates/diffctx-native/src/facts/mod.rs" = { base = 49, plus = 1 }
-"crates/diffctx-native/src/facts/model.rs" = { base = 575, plus = 28 }
-"crates/diffctx-native/src/lib.rs" = { base = 91, plus = 1 }
-"crates/diffctx-native/src/tokens.rs" = { base = 467, plus = 1 }
-"crates/diffctx-native/src/facts/lang/c.rs" = { base = 2011, plus = 1 }
-"crates/diffctx-native/src/facts/lang/go.rs" = { base = 1474, plus = 1 }
-"crates/diffctx-native/src/facts/lang/java.rs" = { base = 602, plus = 1 }
-"crates/diffctx-native/src/facts/lang/kotlin.rs" = { base = 683, plus = 3 }
-"crates/diffctx-native/src/facts/lang/php.rs" = { base = 1930, plus = 1 }
-"crates/diffctx-native/src/facts/lang/python.rs" = { base = 2680, plus = 1 }
-"crates/diffctx-native/src/facts/lang/rust.rs" = { base = 1963, plus = 1 }
-"crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
-"crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 757, plus = 7 }
-"crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }

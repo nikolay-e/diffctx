@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 
 use super::v2::{DefRef, Gap, GuardState, How, ImpactV2, Listing, Range, Standing, Unreached};
 use super::{Answer, Page};
+use crate::decide::{Site, Via};
 use crate::impact::{
     MAX_REMOVED_NAME_HITS, MAX_TEST_HOPS, MAX_TEXTUAL_SHOWN, MAX_UNTESTED_NAMED,
     OUTSIDE_DEFINITIONS, TEXTUAL_MATCH, UNANALYSED_EXAMPLES, base_symbol, reason_names, stops_of,
@@ -34,6 +35,36 @@ fn unreached(item: &Unreached) -> String {
     }
 }
 
+/// The candidate uses a gap names, each kind in its own words, then the count of
+/// the rest.
+fn candidates(name: &str, uses: usize, sites: &[Site]) -> String {
+    let at = |via| -> Vec<String> {
+        (sites.iter().filter(|s| s.via == via))
+            .map(|s| format!("{}:{}", s.path, s.line))
+            .collect()
+    };
+    let (calls, reads, embedded) = (at(Via::Call), at(Via::Read), at(Via::Embedded));
+    let mut parts: Vec<String> = Vec::new();
+    if !calls.is_empty() {
+        parts.push(format!("possibly called from {}", calls.join(", ")));
+    }
+    if !reads.is_empty() {
+        parts.push(format!(
+            "{} read(s) of `.{name}` through a receiver the binding model cannot type ({})",
+            reads.len(),
+            reads.join(", ")
+        ));
+    }
+    if !embedded.is_empty() {
+        let at = embedded.join(", ");
+        parts.push(format!("{at} runs code naming it that is not analysed"));
+    }
+    if uses > sites.len() {
+        parts.push(format!("and {} more", uses - sites.len()));
+    }
+    parts.join("; ")
+}
+
 /// What a gap says of a definition whose callers are not resolved. The wording of
 /// the answer's own reasons (a name on too many lines, reads through a receiver
 /// nothing types, a member of a trait) is theirs; any other gap is a limit of the
@@ -43,14 +74,12 @@ pub fn gap_sentence(gap: &Gap) -> String {
         format!("callers not determined: {gap}, so finding none does not mean there are none")
     };
     match gap {
-        Gap::Unlanded { name, uses } if *uses > MAX_REMOVED_NAME_HITS => {
+        Gap::Unlanded { name, uses, .. } if *uses > MAX_REMOVED_NAME_HITS => {
             format!(
                 "`{name}` is a whole word on {uses} or more lines of code; too common to trace by name"
             )
         }
-        Gap::Unlanded { name, uses } => {
-            format!("{uses} read(s) of `.{name}` through a receiver the binding model cannot type")
-        }
+        Gap::Unlanded { name, uses, sites } => candidates(name, *uses, sites),
         Gap::Unpaired { name } => format!(
             "`{name}` has more than one counterpart on the other side of the range, so what changed in it is not determined and finding no callers does not mean there are none"
         ),

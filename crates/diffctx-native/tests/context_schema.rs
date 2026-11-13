@@ -270,7 +270,8 @@ fn v2_values_serialize_to_the_documented_shape() {
     assert_eq!(
         serde_json::to_value(Gap::Unlanded {
             name: "f".into(),
-            uses: 3
+            uses: 3,
+            sites: Vec::new()
         })
         .unwrap(),
         serde_json::json!({"kind": "unlanded", "name": "f", "uses": 3})
