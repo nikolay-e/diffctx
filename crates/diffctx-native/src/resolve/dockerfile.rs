@@ -23,6 +23,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::index::dir_of;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
     UnresolvedReason,
@@ -182,10 +183,6 @@ impl DockerfileResolver {
     pub fn read_paths(&self) -> &[RepoPath] {
         &self.read
     }
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {

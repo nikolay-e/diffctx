@@ -58,7 +58,7 @@ pub use swift::SwiftResolver;
 pub use terraform::TerraformResolver;
 pub use typescript::TypeScriptResolver;
 
-use crate::facts::{DefKey, DefKind, Name, Scope, Span};
+use crate::facts::{DefKey, DefKind, Name, Scope, Span, UseKind};
 use crate::snapshot::RepoPath;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
@@ -120,6 +120,25 @@ impl Relation {
                 | Self::Overrides
         )
     }
+}
+
+fn plain_relation(use_kind: UseKind) -> Relation {
+    match use_kind {
+        UseKind::Call | UseKind::Decorate => Relation::Calls,
+        UseKind::Read => Relation::Reads,
+        UseKind::Write => Relation::Writes,
+        UseKind::TypeUse => Relation::TypeUses,
+        UseKind::PassAsValue => Relation::PassesAsValue,
+        UseKind::Instantiate => Relation::Instantiates,
+        UseKind::Override => Relation::Overrides,
+    }
+}
+
+fn is_callable(kind: DefKind) -> bool {
+    matches!(
+        kind,
+        DefKind::Function | DefKind::Method | DefKind::Constructor
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
