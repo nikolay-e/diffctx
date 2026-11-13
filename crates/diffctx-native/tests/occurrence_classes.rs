@@ -8,7 +8,10 @@ mod support;
 use support::families::{Family, says_empty};
 #[path = "support/occurrence/mod.rs"]
 mod occurrence;
-use occurrence::{ALIASES, accounts_for, corpus, covers, load, no_scaffold, run_seeds, scaffolds};
+use occurrence::{
+    ALIASES, LEAKS, accounts_for, calls_complete, corpus, covers, load, no_scaffold, run_seeds,
+    scaffolds,
+};
 
 #[test]
 fn every_family_has_a_scaffold_or_a_reason() {
@@ -72,6 +75,31 @@ fn an_alias_of_the_definition_is_not_lost() {
             Ok(())
         } else {
             Err(format!("the answer loses the user {}", seed.user))
+        }
+    });
+}
+
+// Class 3. A definition handed on as a value (an argument, a return value, a
+// collection member, a field) can be called by a place the index cannot see,
+// so its `calls` relation is partial however many direct calls are listed.
+// The `direct` seed of each family is the control: a plain call leaves the
+// relation complete.
+#[test]
+fn a_value_leak_makes_the_calls_relation_partial() {
+    let seeds = load(LEAKS);
+    covers(
+        "leaks",
+        &seeds,
+        &[("shell", "a shell function is called by its name only")],
+    );
+    run_seeds("a value leak", &seeds, |seed, doc| {
+        let expected = seed.kind == "direct";
+        match calls_complete(doc, seed.symbol()) {
+            Some(complete) if complete == expected => Ok(()),
+            found => Err(format!(
+                "a {} use leaves the calls relation complete = {found:?}, expected {expected}",
+                seed.kind
+            )),
         }
     });
 }
