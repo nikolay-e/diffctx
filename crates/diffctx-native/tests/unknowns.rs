@@ -1163,6 +1163,45 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
     assert!(total.get("gaps").is_none(), "{json}");
 }
 
+/// gh#736: a method of a `NamedTuple` (or a `TypedDict`, a `Generic`) overrides
+/// nothing, so no call goes through that base and the answer never blames it.
+/// With no caller the method is one nothing calls; a method of a class with a
+/// real base keeps naming that base.
+#[test]
+fn a_typing_construct_is_no_dispatch_route_for_its_methods() {
+    let class = |base: &str, body: u8| {
+        format!(
+            "from typing import NamedTuple\n\n\nclass Bundle({base}):\n    copies: int\n\n    def total(self):\n        def add(a):\n            return a + {body}\n        return add(1)\n"
+        )
+    };
+    for base in ["NamedTuple", "typing.NamedTuple", "Generic[T]"] {
+        let tmp = repo(
+            &[("pkg/core.py", &class(base, 1))],
+            &[("pkg/core.py", &class(base, 2))],
+        );
+        let json = impact_json(tmp.path());
+        assert!(
+            json["unlisted"]["no_caller"]["items"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|i| i["symbol"] == "total")),
+            "{base}: {json}"
+        );
+        assert!(!json.to_string().contains("overridable"), "{base}: {json}");
+    }
+    let tmp = repo(
+        &[("pkg/core.py", &class("Base", 1))],
+        &[("pkg/core.py", &class("Base", 2))],
+    );
+    let json = impact_json(tmp.path());
+    assert!(
+        json["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains("Base")))),
+        "{json}"
+    );
+}
+
 /// #442: an edit that changes the code's tokens, the block a line sits in
 /// or a string's content is never layout, so its callers are listed. Each
 /// has a formatting look-alike that stays layout and says its callers were
