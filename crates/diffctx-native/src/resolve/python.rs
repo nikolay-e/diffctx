@@ -1408,8 +1408,6 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// The object a variable, constant or field holds, when its annotation or
-    /// the call it is assigned says which class.
     var_instance_memo!();
 
     fn compute_var_instance(&self, id: usize) -> Entity {
