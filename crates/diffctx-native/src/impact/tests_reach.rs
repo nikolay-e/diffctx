@@ -16,8 +16,8 @@
 //! users, held to the same bar as a caller, and a test file's name links it to the
 //! source it asks for (`testfiles::naming_links`). Nothing here reads the ranking
 //! graph. A claim that a definition has no test link is printed only where `any`
-//! says tests are in view and the walk up the uses was not [`TestsReach::cut`]:
-//! until the occurrence accounting of the test scopes lands, that is what closes it.
+//! says tests are in view and the search above it is closed
+//! ([`TestsReach::open_above`]): every definition above it is accounted for.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -87,8 +87,8 @@ pub(super) struct TestsReach<'a> {
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: RefCell<FxHashMap<FragmentId, Vec<TestLink>>>,
-    /// The fragments whose walk stopped at [`MAX_TEST_HOPS`] with uses left above.
-    cut: RefCell<FxHashSet<FragmentId>>,
+    /// Whether a use of the fragment is left unexplained, per fragment.
+    accounts: RefCell<FxHashMap<FragmentId, bool>>,
 }
 
 impl<'a> TestsReach<'a> {
@@ -200,7 +200,7 @@ impl<'a> TestsReach<'a> {
             runs,
             repo_tests,
             memo: RefCell::default(),
-            cut: RefCell::default(),
+            accounts: RefCell::default(),
         }
     }
 
@@ -542,15 +542,55 @@ impl<'a> TestsReach<'a> {
             }
             frontier = next;
         }
-        if !frontier.is_empty() {
-            self.cut.borrow_mut().insert(caller.id.clone());
-        }
         Vec::new()
     }
 
-    /// Whether the walk of [`Self::tested_by`] for `f` stopped at the hop bound.
-    pub(super) fn cut(&self, f: &Fragment) -> bool {
-        self.cut.borrow().contains(&f.id)
+    /// Whether the occurrence account of `f` holds a hedge: a test may use it
+    /// unseen. A file no cell reads has no account.
+    fn unexplained(&self, f: &Fragment) -> bool {
+        if let Some(&known) = self.accounts.borrow().get(&f.id) {
+            return known;
+        }
+        let name = f.symbol_name.as_deref().map(base_symbol);
+        let open = self
+            .cell_of(f)
+            .zip(name)
+            .is_some_and(|((cell, shown), name)| {
+                cell.define(shown, name, (f.start_line(), f.end_line()))
+                    .iter()
+                    .any(|changed| !cell.verdict(changed).hedges().is_empty())
+            });
+        self.accounts.borrow_mut().insert(f.id.clone(), open);
+        open
+    }
+
+    /// Whether a test could reach `f` unnamed: the uses above it hold a test past
+    /// the hop bound or a definition with a hedge (`f` too when `own`), or the run
+    /// stopped. An absence is claimed only from a closed search.
+    pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
+        if own && self.unexplained(f) {
+            return true;
+        }
+        let mut seen: FxHashSet<&FragmentId> = std::iter::once(&f.id).collect();
+        let mut todo = vec![f];
+        while let Some(at) = todo.pop() {
+            let up = self.up(at, self.state, link);
+            if !self.state.run.check() || up.test.is_some() {
+                return true;
+            }
+            for user in up.fragments {
+                if self.is_test(user)
+                    || !self.direct(user, link).is_empty()
+                    || self.unexplained(user)
+                {
+                    return true;
+                }
+                if seen.insert(&user.id) {
+                    todo.push(user);
+                }
+            }
+        }
+        false
     }
 
     pub(super) fn file_tested(
