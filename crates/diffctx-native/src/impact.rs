@@ -2047,9 +2047,9 @@ pub(crate) fn supertypes(class: &str, ext: &str) -> Vec<String> {
         .map(|t| t.split(['[', '<', '(']).next().unwrap_or(t))
         .filter(|t| !t.is_empty())
         .map(|t| t.rsplit('.').next().unwrap_or(t))
-        // Typing constructs declare no member a call reaches a subclass's own
-        // through: their classes' methods are reached directly or not at all.
-        .filter(|t| !matches!(*t, "NamedTuple" | "TypedDict" | "Generic"))
+        // Python's typing constructs declare no member a call reaches a subclass's
+        // own through: their classes' methods are reached directly or not at all.
+        .filter(|t| !(python && matches!(*t, "NamedTuple" | "TypedDict" | "Generic")))
         .map(str::to_string)
         .collect()
 }
