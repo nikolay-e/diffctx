@@ -177,6 +177,8 @@ pub enum Basis {
     Builtin,
     /// `not_ours`: an import binds the name to a module outside the repository.
     ExternalModule,
+    /// `not_ours`: an external call no import binds, and no definition of the side is a member of that name.
+    ExternalName,
     /// `not_ours`: outside the project or on an external base, the manifests read whole.
     Manifests,
     /// `not_ours`: the receiver's class was found and is not the owner's hierarchy.
@@ -216,6 +218,7 @@ impl Basis {
             Self::Local => "local",
             Self::Builtin => "builtin",
             Self::ExternalModule => "external_module",
+            Self::ExternalName => "external_name",
             Self::Manifests => "manifests",
             Self::ReceiverClass => "receiver_class",
             Self::BareName => "bare_name",
@@ -238,6 +241,7 @@ impl Basis {
             | Self::Local
             | Self::Builtin
             | Self::ExternalModule
+            | Self::ExternalName
             | Self::Manifests
             | Self::ReceiverClass
             | Self::BareName

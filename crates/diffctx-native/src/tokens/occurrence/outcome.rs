@@ -24,6 +24,8 @@ pub struct Index {
     by_file: HashMap<RepoPath, Vec<usize>>,
     exact: HashMap<(RepoPath, u32, u32), Vec<usize>>,
     definitions: HashSet<DefKey>,
+    /// The lower-cased names of the definitions that are members of a class.
+    members: HashSet<String>,
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
     /// The bindings of a use that spells no name (`$o->$m()`).
@@ -46,6 +48,10 @@ impl Index {
             by_file: HashMap::new(),
             exact: HashMap::new(),
             definitions: definitions.iter().map(|def| def.key.clone()).collect(),
+            members: (definitions.iter())
+                .filter(|def| !def.key.local.container.is_empty())
+                .map(|def| def.key.local.name.as_str().to_ascii_lowercase())
+                .collect(),
             bases: HashMap::new(),
             overriders: HashMap::new(),
             unnamed: Vec::new(),
@@ -532,14 +538,26 @@ impl<'a> Reading<'a> {
                     && !(self.subject.key.local.container.is_empty()
                         && self.is_own_module(self.file)),
             ),
-            UnresolvedReason::External => verified(
-                Basis::ExternalModule,
-                self.imports.iter().any(|import| {
+            UnresolvedReason::External => {
+                let named: Vec<&Import> = (self.imports.iter())
+                    .filter(|import| self.binds(import, spelled))
+                    .copied()
+                    .collect();
+                let imported = named.iter().any(|import| {
                     import.relative == 0
-                        && self.binds(import, spelled)
                         && !(self.view.files.iter()).any(|file| file.module == import.module)
-                }),
-            ),
+                });
+                // With no import of the name, an external call is no member of any
+                // class of the side: a same-named member anywhere keeps the candidate.
+                let lower = String::from_utf8_lossy(spelled).to_ascii_lowercase();
+                let bare = named.is_empty() && !self.view.index.members.contains(&lower);
+                let basis = if imported {
+                    Basis::ExternalModule
+                } else {
+                    Basis::ExternalName
+                };
+                verified(basis, imported || bare)
+            }
             UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => {
                 verified(Basis::Manifests, self.view.index.manifests_whole)
             }
