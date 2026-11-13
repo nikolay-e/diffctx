@@ -145,14 +145,16 @@ pub(crate) fn check(
 /// A path only `.gitignore` excludes keeps its name. Asked without a snapshot:
 /// a working-tree reader hashes every dirty file for its identity, which a
 /// surface that only names paths does not need.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a name no path can spell is not asked about: the engine names it too"
-)]
 pub fn name_working_tree_changes(root: &Path, names: Vec<String>) -> Result<NamedChanges> {
     let exec = Exec::current();
     let untracked = crate::snapshot::untracked::read(&exec, root, &[])?.names;
-    let asked = |name: &str| RepoPath::new(name.trim_end_matches('/')).ok();
+    // A name no path can spell is not asked about: the engine names it too.
+    let asked = |name: &str| {
+        let Ok(path) = RepoPath::new(name.trim_end_matches('/')) else {
+            return None;
+        };
+        Some(path)
+    };
     let queries: Vec<&str> = names
         .iter()
         .filter_map(|n| asked(n).map(|_| n.trim_end_matches('/')))
