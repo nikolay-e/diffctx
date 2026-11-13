@@ -194,3 +194,12 @@ def test_the_shipped_adjudicated_sets_are_decided_references():
 def test_a_type_use_and_an_import_are_labels_an_adjudicator_may_give():
     assert adj.KIND_OF["type_use"] == "type_use" and adj.KIND_OF["import"] == "imports"
     assert {"type_use", "import"} <= adj.DECIDED
+
+
+def test_a_gap_in_one_search_group_abstains_that_groups_cells_only_after_adjudication_too():
+    raw = [raw_cell("calls"), raw_cell("reads", abstained=True)]
+    rows = [row("a", "fn", kind="calls", affected=True), row("b", "fn", kind="reads", affected=True)]
+
+    cells = {c["kind"]: c for c in adj.cells_from_rows(rows, raw)}
+
+    assert (cells["calls"]["incomplete_complete"], cells["reads"]["incomplete_complete"]) == (1, 0)

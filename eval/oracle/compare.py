@@ -13,6 +13,15 @@ CONSTRUCTORS = {"__init__", "constructor"}
 
 KIND_PRIORITY = ("calls", "instantiates", "passes_as_value", "writes", "reads", "type_use", "overrides", "reexports", "imports")
 CALL_KINDS = {"calls", "instantiates"}
+# The engine searches calls and reads apart (`coverage.calls`, `coverage.reads`); a relation of neither is open to every gap.
+SEARCHED_AS = {
+    "calls": "calls",
+    "instantiates": "calls",
+    "overrides": "calls",
+    "reads": "reads",
+    "writes": "reads",
+    "passes_as_value": "reads",
+}
 # A `reexport` row is a module that re-exports the definition: resolved evidence, relation `reexports`.
 EVIDENCE_RANK = {"resolved": 2, "reexport": 2, "candidate": 1}
 SURE = {"resolved", "reexport"}
@@ -87,6 +96,16 @@ def _strongest(callers: list[AnswerCaller]) -> dict[str, AnswerCaller]:
         if c.from_key not in best or rank(c) > rank(best[c.from_key]):
             best[c.from_key] = c
     return best
+
+
+def relation_group(kind: str) -> str | None:
+    return SEARCHED_AS.get(kind)
+
+
+def open_for(kind: str, reported: TargetAnswer | None) -> bool:
+    """The answer names a gap in the search that covers `kind`, or in every search for a relation neither covers."""
+    group = relation_group(kind)
+    return bool(reported and reported.gapped and (group is None or group in reported.gapped))
 
 
 def _blank_cell(target: str, kind: str) -> dict:
@@ -215,8 +234,8 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     # listed for the target, the answer abstains (R15). `callers_omitted` and `also_changed` are read above.
     abstained = abstained or (not callers and (answer.truncated > 0 or bool(reported and reported.entry)))
     # An answer with no entry for the target says nothing of it: a symbol it found no definition of ("named in N file(s), a
-    # textual match"), a nested definition it reports under its container. Only an entry claims anything, so only one can be complete.
-    complete = reported is not None and not abstained
+    # textual match"), a nested definition it reports under its container. Only an entry claims anything, so only one can be
+    # complete, and only for the relations whose search it did not leave a gap in.
     cells: dict[str, dict] = {}
     details: list[dict] = []
 
@@ -243,6 +262,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
             row["kind_mismatches"] += _kind_mismatch(kind, caller)
         shown = next((r for r in relations if r.kind == kind), relations[0])
         folded_by = caller.folded_by if caller else None
+        complete = reported is not None and not abstained and not open_for(kind, reported)
         incomplete = incomplete_complete(complete, status, affected)
         row["incomplete_complete"] += incomplete
         details.append(
@@ -270,7 +290,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         cell(kind)[status] += 1
         details.append(_detail(status, from_key, target, None, kind, caller.evidence, reported, moved))
     for row in cells.values():
-        row["abstained"] = abstained
+        row["abstained"] = abstained or open_for(row["kind"], reported)
         row["reported"] = reported is not None
         row["listed"] = bool(callers)
         row["fcn"] = false_complete_negative(row["incomplete_complete"], bool(callers))
