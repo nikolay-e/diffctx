@@ -276,18 +276,13 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
     ),
     (
         "src/fit.rs",
-        "while !fits(body)",
-        "the answer, a stride a turn; past the deadline it must still fit",
+        "for stride in (0..).map(|k| 1usize << k)",
+        "the answer's sheddable rows: a stride doubles per turn and ends when shed_one can take none; past the run's limits the rest goes at once",
     ),
     (
         "src/fit.rs",
         "while hi - lo > 1",
         "halves one stride of the answer",
-    ),
-    (
-        "src/fit.rs",
-        "for below in (1..hi).rev().take(LOOK_BELOW)",
-        "LOOK_BELOW steps below the one bisection found",
     ),
     (
         "src/snapshot/reader.rs",
