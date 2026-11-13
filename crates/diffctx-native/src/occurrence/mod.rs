@@ -494,3 +494,7 @@ impl Verdict {
         matches!(self, Self::Complete)
     }
 }
+
+mod alias;
+
+pub use alias::{AliasClosure, ValueUse, close_aliases, value_use};
