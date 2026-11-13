@@ -9,10 +9,9 @@
 //! declaration of its own kind, a definition that extends the type of its name;
 //! the members it adds are owned by that type, wherever it is declared.
 
-use std::cell::RefCell;
+use tree_sitter::Node;
 
-use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
-
+use super::parse_tree;
 use crate::facts::kotlin::{
     Binding, Declaration, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility, child,
     line_of, name_text, push_use, squash, string_text, text, walk,
@@ -30,7 +29,7 @@ impl Extractor for SwiftExtractor {
 
     fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {
         let mut blob = BlobFacts::new(Language::Swift);
-        let Some(tree) = parse(text, budget) else {
+        let Some(tree) = parse_tree(Language::Swift, text, budget) else {
             if expired(budget) {
                 blob.deadline();
             } else {
@@ -44,44 +43,6 @@ impl Extractor for SwiftExtractor {
         let read = extract(root, text);
         blob_of(Language::Swift, Dialect::Swift, text, root, &read, budget)
     }
-}
-
-#[cfg(feature = "tree-sitter-swift")]
-fn grammar() -> Option<Grammar> {
-    Some(Grammar::new(tree_sitter_swift::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-swift"))]
-fn grammar() -> Option<Grammar> {
-    None
-}
-
-thread_local! {
-    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
-)]
-fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
-    let language = grammar()?;
-    PARSER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let parser = slot.get_or_insert_with(Parser::new);
-        parser.set_language(&language).ok()?;
-        let mut progress = |_: &ParseState| expired(budget);
-        let len = text.len();
-        let tree = parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
-            None,
-            Some(ParseOptions::new().progress_callback(&mut progress)),
-        );
-        if tree.is_none() {
-            parser.reset();
-        }
-        tree
-    })
 }
 
 type Owners = Vec<(String, Option<Visibility>)>;
@@ -778,7 +739,8 @@ func check(_ track: Track, them: Track?) {\n\
 }\n";
 
     fn facts_of() -> KotlinFacts {
-        let tree = parse(SOURCE.as_bytes(), &RunBudget::default()).expect("swift grammar");
+        let tree = parse_tree(Language::Swift, SOURCE.as_bytes(), &RunBudget::default())
+            .expect("swift grammar");
         extract(tree.root_node(), SOURCE.as_bytes())
     }
 
