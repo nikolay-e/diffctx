@@ -1,11 +1,12 @@
 //! What every resolver keeps of the files it bound: the definitions, the
 //! bindings and what the answer is partial for.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::{Binding, Definition};
-use crate::facts::DefKey;
-use crate::snapshot::{Loss, RepoPath};
+use crate::facts::{DefKey, Fact, expired};
+use crate::snapshot::{AnalysisContext, Loss, RepoPath, Stage};
 
 pub struct Solved {
     definitions: Vec<Definition>,
@@ -63,6 +64,26 @@ impl Solved {
     pub fn read_paths(&self) -> &[RepoPath] {
         &self.read
     }
+}
+
+/// The facts of a file up to the run's deadline, which the engine's `losses` then
+/// name. An engine binds every reference of every file it read, minutes of work
+/// on a large range, so each fact is taken after one poll.
+pub(super) fn before_deadline<'a>(
+    ctx: &'a AnalysisContext,
+    losses: &'a RefCell<Vec<Loss>>,
+    facts: &'a [Fact],
+) -> impl Iterator<Item = &'a Fact> + 'a {
+    facts.iter().take_while(move |_| {
+        let over = expired(&ctx.run);
+        let search = Loss::Deadline {
+            stage: Stage::Search,
+        };
+        if over && !losses.borrow().contains(&search) {
+            losses.borrow_mut().push(search);
+        }
+        !over
+    })
 }
 
 /// A resolver's `solved` field answers the methods above as its own.

@@ -34,15 +34,17 @@ fn shed<T: Shed>(body: &mut T, steps: usize) -> (usize, bool) {
 /// least fitting one only when the measure falls with every step; a pack document
 /// does not (its first cut adds a coverage block). Limits that are over end the
 /// measuring: nothing fits then, so the doubling goes on to the least, and a step
-/// already found stays.
-pub fn shed_to_fit<T: Shed>(body: &mut T, cap: u32, measure: &dyn Fn(&T) -> u32) {
+/// already found stays. Returns the steps taken, probes included.
+pub fn shed_to_fit<T: Shed>(body: &mut T, cap: u32, measure: &dyn Fn(&T) -> u32) -> usize {
     let fits = |b: &T| measure(b) <= cap;
     if fits(body) {
-        return;
+        return 0;
     }
+    let mut steps = 0;
     for stride in (0..).map(|k| 1usize << k) {
         let mut ahead = body.clone();
         let (taken, over) = shed(&mut ahead, stride);
+        steps += taken;
         if over || !fits(&ahead) {
             *body = ahead;
             if taken < stride {
@@ -56,7 +58,8 @@ pub fn shed_to_fit<T: Shed>(body: &mut T, cap: u32, measure: &dyn Fn(&T) -> u32)
         while hi - lo > 1 {
             let half = (hi - lo) / 2;
             let mut probe = body.clone();
-            let (_, over) = shed(&mut probe, half);
+            let (taken, over) = shed(&mut probe, half);
+            steps += taken;
             if !over && fits(&probe) {
                 (hi, ahead) = (lo + half, probe);
             } else {
@@ -67,4 +70,5 @@ pub fn shed_to_fit<T: Shed>(body: &mut T, cap: u32, measure: &dyn Fn(&T) -> u32)
         break;
     }
     body.settle();
+    steps
 }

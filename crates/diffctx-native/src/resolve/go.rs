@@ -21,6 +21,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+use super::solved::before_deadline;
 use super::twins::{self, Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -125,7 +126,7 @@ impl GoResolver {
             texts: RefCell::default(),
             losses: RefCell::default(),
         };
-        let (definitions, bindings) = engine.run();
+        let (definitions, bindings) = engine.run(ctx);
         losses.extend(engine.losses.take());
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
@@ -426,10 +427,10 @@ fn after_group<'s, 't>(tokens: &'s [&'t str], open: &str, close: &str) -> &'s [&
 }
 
 impl Engine<'_> {
-    fn run(&self) -> (Vec<Definition>, Vec<Binding>) {
+    fn run(&self, ctx: &AnalysisContext) -> (Vec<Definition>, Vec<Binding>) {
         let mut bindings = Vec::new();
         for (f, file) in self.ix.files.iter().enumerate() {
-            for fact in &file.facts.blob.facts {
+            for fact in before_deadline(ctx, &self.losses, &file.facts.blob.facts) {
                 match fact {
                     Fact::Reference(r) => self.bind(f, r, &mut bindings),
                     Fact::Import(import) => self.import(f, import, &mut bindings),
