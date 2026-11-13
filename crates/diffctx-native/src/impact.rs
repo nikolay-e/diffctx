@@ -14,8 +14,9 @@ use serde::Serialize;
 use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
 use crate::container::{innermost, named_container_of, within};
-use crate::decide::{self, Cells};
+use crate::decide::{self, Cells, Effect};
 use crate::facts::{EntryKind, framework};
+use crate::occurrence::Hedge;
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
 use crate::types::{Fragment, FragmentId, FragmentKind};
@@ -1514,25 +1515,24 @@ fn missed_namers(state: &ScoredState, cells: &Cells, name: &str, own: &str) -> V
 /// listed in `missed_in`: the gap carries the count, the rows are a sample.
 const MAX_UNACCOUNTED_ROWS: usize = 20;
 
-/// The files of an interaction group the account could not place, as the answer's
-/// rows: by path, the first few. A file that is only of a language no cell binds is
-/// in the gap's count and not listed: a row says the file was named and not read.
-fn unaccounted_rows(
-    unaccounted: &[(decide::Reason, Vec<crate::snapshot::RepoPath>)],
-) -> Vec<UnanalysedFile> {
-    let mut rows: Vec<UnanalysedFile> = unaccounted
-        .iter()
-        .filter(|(reason, _)| reason.lists_the_file())
-        .flat_map(|(reason, files)| {
-            files.iter().map(move |file| UnanalysedFile {
-                language: crate::languages::get_language_for_file(file.as_str()),
-                path: file.as_str().to_string(),
-                reason: reason.row_reason(),
-                lines: Vec::new(),
-            })
+/// The files the account could not read, as the answer's rows: by path, the first few.
+fn unaccounted_rows(verdict: &decide::Verdict) -> Vec<UnanalysedFile> {
+    let mut rows: Vec<UnanalysedFile> = (verdict.hedges().iter())
+        .filter_map(|(_, hedge)| match hedge {
+            Hedge::Unread { file, loss } => match decide::effect_of(loss) {
+                Effect::File(reason) | Effect::Subtree(reason, _) => Some(UnanalysedFile {
+                    language: crate::languages::get_language_for_file(file.as_str()),
+                    path: file.as_str().to_string(),
+                    reason: reason.row_reason(),
+                    lines: Vec::new(),
+                }),
+                Effect::Run(_) => None,
+            },
+            _ => None,
         })
         .collect();
     rows.sort_by(|a, b| a.path.cmp(&b.path));
+    rows.dedup_by(|a, b| a.path == b.path);
     rows.truncate(MAX_UNACCOUNTED_ROWS);
     rows
 }
@@ -2781,7 +2781,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
             merged
         },
         unresolved: verdict.gap().map(|gap| cell_unknown(&gap, &def.name)),
-        missed_in: unaccounted_rows(verdict.unaccounted()),
+        missed_in: unaccounted_rows(verdict),
         also_changed,
         possibly_also_changed,
         change: Some(crate::answer::v2::Change::of(def)),
@@ -3829,9 +3829,8 @@ pub fn build_impact(
         } else {
             0
         };
-        let mut missed_in: Vec<UnanalysedFile> = verdict
-            .as_ref()
-            .map_or_else(Vec::new, |verdict| unaccounted_rows(verdict.unaccounted()));
+        let mut missed_in: Vec<UnanalysedFile> =
+            verdict.as_ref().map_or_else(Vec::new, unaccounted_rows);
         // A script of the definition's runtime embedded in a shell script names it
         // beyond the group, and so does a file outside code that spells it.
         let embedded: Vec<UnanalysedFile> = symbol
