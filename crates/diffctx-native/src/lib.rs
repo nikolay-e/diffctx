@@ -26,14 +26,13 @@ pub(crate) mod languages;
 pub(crate) mod parsers;
 pub(crate) mod signatures;
 pub(crate) mod testfiles;
-pub(crate) mod tokens;
+pub mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
 pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod keytable;
-pub mod occurrence;
 pub(crate) mod provenance;
 pub mod resolve;
 
