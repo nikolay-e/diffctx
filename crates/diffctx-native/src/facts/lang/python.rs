@@ -25,18 +25,19 @@
 //!   body's tree (node kinds, nesting, leaf text; no comments, no docstring),
 //!   `text_hash` over its bytes, `doc_hash` over the docstring's words.
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
+use tree_sitter::Node;
 
+use super::{lines_of, parse_tree, span};
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
     Fact, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
-    Namespace, PathMention, Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility,
-    expired, hash_text,
+    Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
+    hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -62,47 +63,9 @@ fn unbound() -> RepoPath {
     RepoPath::new("<blob>").expect("a valid path")
 }
 
-#[cfg(feature = "tree-sitter-python")]
-fn grammar() -> Option<TsLanguage> {
-    Some(TsLanguage::new(tree_sitter_python::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-python"))]
-fn grammar() -> Option<TsLanguage> {
-    None
-}
-
-thread_local! {
-    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
-)]
-fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
-    let language = grammar()?;
-    PARSER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let parser = slot.get_or_insert_with(Parser::new);
-        parser.set_language(&language).ok()?;
-        let mut progress = |_: &ParseState| expired(budget);
-        let len = text.len();
-        let tree = parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
-            None,
-            Some(ParseOptions::new().progress_callback(&mut progress)),
-        );
-        if tree.is_none() {
-            parser.reset();
-        }
-        tree
-    })
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Python);
-    let Some(tree) = parse(text, budget) else {
+    let Some(tree) = parse_tree(Language::Python, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
@@ -165,24 +128,6 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
     }
     merged.truncate(ERROR_RANGES_KEPT);
     merged
-}
-
-fn lines_of(node: Node) -> (u32, u32) {
-    let start = node.start_position();
-    let end = node.end_position();
-    let first = start.row as u32 + 1;
-    let mut last = end.row as u32 + 1;
-    if end.column == 0 && end.row > start.row {
-        last -= 1;
-    }
-    (first, last.max(first))
-}
-
-fn span(node: Node) -> Span {
-    Span {
-        bytes: node.start_byte() as u32..node.end_byte() as u32,
-        lines: lines_of(node),
-    }
 }
 
 /// Tokens of a declaration written for a reader: a space between two tokens

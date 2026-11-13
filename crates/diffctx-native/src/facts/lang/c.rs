@@ -56,11 +56,12 @@
 //! - Hashes are FNV-1a over the definition's own parts: members that are
 //!   definitions themselves are left out of their container's.
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
-use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
+use tree_sitter::Node;
 
+use super::{lines_of, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -102,54 +103,6 @@ fn unbound() -> RepoPath {
     RepoPath::new("<blob>").expect("a valid path")
 }
 
-#[cfg(feature = "tree-sitter-c")]
-fn c_grammar() -> Option<TsLanguage> {
-    Some(TsLanguage::new(tree_sitter_c::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-c"))]
-fn c_grammar() -> Option<TsLanguage> {
-    None
-}
-
-#[cfg(feature = "tree-sitter-cpp")]
-fn cpp_grammar() -> Option<TsLanguage> {
-    Some(TsLanguage::new(tree_sitter_cpp::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-cpp"))]
-fn cpp_grammar() -> Option<TsLanguage> {
-    None
-}
-
-thread_local! {
-    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
-)]
-fn parse(text: &[u8], budget: &RunBudget, cpp: bool) -> Option<Tree> {
-    let language = if cpp { cpp_grammar()? } else { c_grammar()? };
-    PARSER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let parser = slot.get_or_insert_with(Parser::new);
-        parser.set_language(&language).ok()?;
-        let mut progress = |_: &ParseState| expired(budget);
-        let len = text.len();
-        let tree = parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
-            None,
-            Some(ParseOptions::new().progress_callback(&mut progress)),
-        );
-        if tree.is_none() {
-            parser.reset();
-        }
-        tree
-    })
-}
-
 /// Whether the text is C++: a class, a namespace, a template or an access
 /// specifier at the start of a line. A `.h` that is, is read as C++.
 fn looks_like_cpp(text: &[u8]) -> bool {
@@ -172,7 +125,7 @@ fn looks_like_cpp(text: &[u8]) -> bool {
 fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
     let mut blob = BlobFacts::new(language);
     let cpp = language == Language::Cpp || looks_like_cpp(text);
-    let Some(tree) = parse(text, budget, cpp) else {
+    let Some(tree) = parse_tree(if cpp { Language::Cpp } else { Language::C }, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
@@ -281,24 +234,6 @@ fn error_lines(root: Node, cpp: bool) -> Vec<(u32, u32)> {
     }
     merged.truncate(ERROR_RANGES_KEPT);
     merged
-}
-
-fn lines_of(node: Node) -> (u32, u32) {
-    let start = node.start_position();
-    let end = node.end_position();
-    let first = start.row as u32 + 1;
-    let mut last = end.row as u32 + 1;
-    if end.column == 0 && end.row > start.row {
-        last -= 1;
-    }
-    (first, last.max(first))
-}
-
-fn span(node: Node) -> Span {
-    Span {
-        bytes: node.start_byte() as u32..node.end_byte() as u32,
-        lines: lines_of(node),
-    }
 }
 
 /// Tokens of a declaration written for a reader: a space between two tokens

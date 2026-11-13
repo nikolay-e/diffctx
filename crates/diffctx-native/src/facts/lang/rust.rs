@@ -34,16 +34,16 @@
 //!   definitions themselves (fields, variants, a trait's items, a module's
 //!   items) are left out of their container's.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use tree_sitter::{Language as TsLanguage, Node, ParseOptions, ParseState, Parser, Tree};
+use tree_sitter::Node;
 
+use super::{lines_of, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
-    Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
+    Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired, hash_text,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
@@ -67,47 +67,9 @@ fn unbound() -> RepoPath {
     RepoPath::new("<blob>").expect("a valid path")
 }
 
-#[cfg(feature = "tree-sitter-rust")]
-fn grammar() -> Option<TsLanguage> {
-    Some(TsLanguage::new(tree_sitter_rust::LANGUAGE))
-}
-
-#[cfg(not(feature = "tree-sitter-rust"))]
-fn grammar() -> Option<TsLanguage> {
-    None
-}
-
-thread_local! {
-    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
-)]
-fn parse(text: &[u8], budget: &RunBudget) -> Option<Tree> {
-    let language = grammar()?;
-    PARSER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        let parser = slot.get_or_insert_with(Parser::new);
-        parser.set_language(&language).ok()?;
-        let mut progress = |_: &ParseState| expired(budget);
-        let len = text.len();
-        let tree = parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
-            None,
-            Some(ParseOptions::new().progress_callback(&mut progress)),
-        );
-        if tree.is_none() {
-            parser.reset();
-        }
-        tree
-    })
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Rust);
-    let Some(tree) = parse(text, budget) else {
+    let Some(tree) = parse_tree(Language::Rust, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
@@ -196,24 +158,6 @@ fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
 fn named_children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).collect()
-}
-
-fn lines_of(node: Node) -> (u32, u32) {
-    let start = node.start_position();
-    let end = node.end_position();
-    let first = start.row as u32 + 1;
-    let mut last = end.row as u32 + 1;
-    if end.column == 0 && end.row > start.row {
-        last -= 1;
-    }
-    (first, last.max(first))
-}
-
-fn span(node: Node) -> Span {
-    Span {
-        bytes: node.start_byte() as u32..node.end_byte() as u32,
-        lines: lines_of(node),
-    }
 }
 
 /// Tokens of a declaration written for a reader: a space between two tokens

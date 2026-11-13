@@ -3,11 +3,16 @@
 //! reads, since it serves JavaScript too) and gains a line there; nothing else
 //! changes when a language joins.
 
+use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
+
+use tree_sitter::{Node, ParseOptions, ParseState, Parser, Tree};
 
 use crate::facts::extractor::{Extractor, Registry};
 use crate::facts::hash::Hasher;
 use crate::facts::language::Language;
+use crate::facts::{Span, expired};
+use crate::snapshot::RunBudget;
 
 pub mod c;
 pub mod config;
@@ -175,4 +180,55 @@ fn grammars(language: Language) -> Vec<tree_sitter::Language> {
         _ => {}
     }
     found
+}
+
+thread_local! {
+    static PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a grammar that does not load or a parse that ends is `None`, which `extract` turns into a named loss; past the end the read callback gives no bytes"
+)]
+fn parse_tree(language: Language, text: &[u8], budget: &RunBudget) -> Option<Tree> {
+    let language = grammars(language).pop()?;
+    PARSER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let parser = slot.get_or_insert_with(Parser::new);
+        parser.set_language(&language).ok()?;
+        let mut progress = |_: &ParseState| expired(budget);
+        let len = text.len();
+        let tree = parser.parse_with_options(
+            &mut |i, _| (i < len).then(|| &text[i..]).unwrap_or_default(),
+            None,
+            Some(ParseOptions::new().progress_callback(&mut progress)),
+        );
+        if tree.is_none() {
+            parser.reset();
+        }
+        tree
+    })
+}
+
+fn lines_of(node: Node) -> (u32, u32) {
+    let start = node.start_position();
+    let end = node.end_position();
+    let first = start.row as u32 + 1;
+    let mut last = end.row as u32 + 1;
+    if end.column == 0 && end.row > start.row {
+        last -= 1;
+    }
+    (first, last.max(first))
+}
+
+fn span(node: Node) -> Span {
+    Span {
+        bytes: node.start_byte() as u32..node.end_byte() as u32,
+        lines: lines_of(node),
+    }
+}
+
+fn children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor).collect()
 }
