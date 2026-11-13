@@ -25,7 +25,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use super::index::{Path, scope_path};
-use super::jvm::{self, Jvm};
+use super::jvm::{self, Ent, Found, Head, ImportRec, Jvm, Super, relation_for};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
     UnresolvedReason, is_callable, plain_relation,
@@ -302,16 +302,6 @@ struct DefRec {
     sig: Sig,
 }
 
-/// An import: its full dotted path, split.
-struct ImportRec {
-    /// The name it brings into the file; none for a wildcard.
-    local: Option<Name>,
-    path: Vec<String>,
-    wildcard: bool,
-    site: crate::facts::Span,
-    scope: Scope,
-}
-
 struct FileRec {
     facts: FileFacts,
     package: String,
@@ -514,41 +504,6 @@ impl Index {
 }
 
 // ---- the engine
-
-/// What a name, or a step of a chain, stands for.
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum Ent {
-    /// A type named as a qualifier: its nested types and its static members.
-    Type(usize),
-    /// A value of a type declared in the repository.
-    Instance(usize),
-    /// A value of a type the repository does not declare, by name.
-    Foreign(Name),
-    /// A package, by dotted name.
-    Package(String),
-    /// A package or type that exists in the repository, out of reach.
-    Outside,
-    /// Nothing outside the repository can be told of it.
-    External,
-    Unknown,
-}
-
-enum Found {
-    /// The definitions the name lands on, with how.
-    Defs(Vec<usize>, EvidenceKind),
-    /// The name is imported from outside the repository, or is a builtin.
-    External,
-    /// It exists, out of reach.
-    Blocked(UnresolvedReason),
-    Nothing,
-}
-
-/// A supertype of a type.
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum Super {
-    Repo(usize),
-    Foreign(Name),
-}
 
 struct Engine<'w> {
     ix: Index,
@@ -1799,13 +1754,6 @@ impl<'w> Engine<'w> {
     }
 }
 
-enum Head {
-    /// The chain's head, and how it was reached.
-    Resolved(Ent, EvidenceKind),
-    /// A name written alone.
-    Bare,
-}
-
 /// Whether the `<` at `at` opens type arguments rather than comparing: it
 /// follows a name and stands before another.
 fn generic_open(text: &[u8], at: usize) -> bool {
@@ -1818,19 +1766,6 @@ fn generic_open(text: &[u8], at: usize) -> bool {
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {
     Resolution::Unresolved { reason }
-}
-
-/// A call of a class makes an object; a method passed on is passed on, a type
-/// or a field named as a value is read.
-fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
-    match (use_kind, target) {
-        (
-            UseKind::Call,
-            DefKind::Class | DefKind::Enum | DefKind::Struct | DefKind::Constructor,
-        ) => Relation::Instantiates,
-        (UseKind::PassAsValue, k) if !is_callable(k) => Relation::Reads,
-        _ => plain_relation(use_kind),
-    }
 }
 
 #[cfg(test)]
