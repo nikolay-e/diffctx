@@ -183,6 +183,8 @@ pub enum Basis {
     ReceiverClass,
     /// `not_ours`: a bare name is no member of a class it is written outside of.
     BareName,
+    /// `not_ours`: the file's project cannot reference the definition's, the manifests read whole.
+    OtherProject,
     /// `alias`: `import f as g`, `use m::f as g`.
     RenamedImport,
     /// `alias`: `export { f as g }`, `pub use m::f as g`.
@@ -217,6 +219,7 @@ impl Basis {
             Self::Manifests => "manifests",
             Self::ReceiverClass => "receiver_class",
             Self::BareName => "bare_name",
+            Self::OtherProject => "other_project",
             Self::RenamedImport => "renamed_import",
             Self::RenamedExport => "renamed_export",
             Self::Assignment => "assignment",
@@ -237,7 +240,8 @@ impl Basis {
             | Self::ExternalModule
             | Self::Manifests
             | Self::ReceiverClass
-            | Self::BareName => true,
+            | Self::BareName
+            | Self::OtherProject => true,
             Self::Resolved
             | Self::OwnModule
             | Self::ImportedName
