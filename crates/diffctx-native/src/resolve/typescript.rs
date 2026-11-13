@@ -33,11 +33,10 @@ use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Language,
     LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
-use crate::paths::normalize_lexical;
 use crate::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,
-    Stage, WorkspaceModel,
+    Stage, WorkspaceModel, normalize_lexical,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many

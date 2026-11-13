@@ -108,7 +108,7 @@ impl Containment {
     }
 }
 
-pub(crate) use crate::snapshot::contains_lexically;
+pub(crate) use crate::snapshot::{contains_lexically, normalize_lexical};
 
 /// A fragment's path as `FragmentIndex` keys it: repo-relative, posix. In
 /// production fragment paths are absolute (`fragmentation.rs` stores what it
@@ -120,22 +120,6 @@ pub(crate) fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
         .and_then(|root| Path::new(path).strip_prefix(root).ok())
         .map(|rel| to_posix_display(rel.to_string_lossy()))
         .unwrap_or_else(|| to_posix_display(path.into()))
-}
-
-/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
-/// above its start.
-pub(crate) fn normalize_lexical(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
 }
 
 #[cfg(test)]

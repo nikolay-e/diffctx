@@ -67,7 +67,8 @@ pub use run::{
     run_git_or_none, run_git_z,
 };
 pub use types::{
-    Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath, contains_lexically,
+    Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath,
+    contains_lexically, normalize_lexical,
 };
 pub use untracked::{Untracked, untracked};
 pub use workspace::WorkspaceModel;
