@@ -23,16 +23,19 @@
 //!   of the companion.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
+use super::index::Path;
 use super::{
     EvidenceKind, Relation, Resolution, Solved, UnresolvedReason, is_callable, java, kotlin,
     plain_relation,
 };
 use crate::facts::{
-    Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, Language, LocalKey, Name,
-    Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
+    Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, ImportKind, Language,
+    LocalKey, Name, Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
+use crate::snapshot::workspace::ProjectId;
+use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, WorkspaceModel};
 
 impl Solved {
     /// Resolves every Kotlin and Java file of `side`; the definitions are `own`'s.
@@ -99,6 +102,122 @@ impl Solved {
             java_definitions
         };
         Ok(Self::new(definitions, bindings, losses, read))
+    }
+}
+
+/// A definition of the index, with the header its engine read.
+pub(super) struct DefRec<S> {
+    pub file: usize,
+    pub def: Def,
+    pub path: Path,
+    pub key: DefKey,
+    pub sig: S,
+}
+
+/// A file of the index: what an engine looks up in it by name.
+pub(super) struct FileRec {
+    pub facts: FileFacts,
+    pub package: String,
+    pub project: Option<ProjectId>,
+    pub imports: Vec<ImportRec>,
+    /// Where each local name is visible.
+    pub locals: HashMap<Name, Vec<Range<u32>>>,
+    /// Definitions by the path of the scope that holds them.
+    pub children: HashMap<Path, Vec<usize>>,
+    pub by_path: HashMap<Path, Vec<usize>>,
+    /// Every name the file refers to.
+    pub names: HashSet<Name>,
+    /// A file of the neighbouring language: its declarations are read through the
+    /// table, its references are the neighbour engine's.
+    pub foreign: bool,
+}
+
+impl FileRec {
+    /// The imports, local bindings and referenced names of `facts`; `package` is the
+    /// file's own unless an import of the facts declares one.
+    pub fn read(
+        facts: FileFacts,
+        foreign: bool,
+        workspace: &WorkspaceModel,
+        mut package: String,
+    ) -> Self {
+        let project = workspace.project_of(facts.path.as_str());
+        let blob = std::sync::Arc::clone(&facts.blob);
+        let mut file = Self {
+            facts,
+            package: String::new(),
+            project,
+            imports: Vec::new(),
+            locals: HashMap::new(),
+            children: HashMap::new(),
+            by_path: HashMap::new(),
+            names: HashSet::new(),
+            foreign,
+        };
+        for fact in &blob.facts {
+            match fact {
+                Fact::Import(import) if import.kind == ImportKind::SideEffect => {
+                    package = import.module.as_str().to_string();
+                }
+                Fact::Import(import) => {
+                    let module = import.module.as_str();
+                    let segments = |name: &str| -> Vec<String> {
+                        module
+                            .split('.')
+                            .filter(|s| !s.is_empty())
+                            .chain(std::iter::once(name))
+                            .map(str::to_string)
+                            .collect()
+                    };
+                    if import.star.is_star() {
+                        file.imports.push(ImportRec {
+                            local: None,
+                            path: module
+                                .split('.')
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string)
+                                .collect(),
+                            wildcard: true,
+                            site: import.site.clone(),
+                            scope: import.enclosing.clone(),
+                        });
+                    }
+                    for (name, alias) in &import.names {
+                        file.imports.push(ImportRec {
+                            local: Some(alias.clone().unwrap_or_else(|| name.clone())),
+                            path: segments(name.as_str()),
+                            wildcard: false,
+                            site: import.site.clone(),
+                            scope: import.enclosing.clone(),
+                        });
+                    }
+                }
+                Fact::LocalBinding(local) => {
+                    file.locals
+                        .entry(local.name.clone())
+                        .or_default()
+                        .push(local.site.bytes.clone());
+                }
+                Fact::Reference(r) => {
+                    file.names.insert(r.name.clone());
+                }
+                _ => {}
+            }
+        }
+        file.package = package;
+        file
+    }
+}
+
+/// The package and every prefix of it, as declared.
+pub(super) fn declare_packages(packages: &mut HashSet<String>, package: &str) {
+    let mut prefix = String::new();
+    for segment in package.split('.').filter(|s| !s.is_empty()) {
+        if !prefix.is_empty() {
+            prefix.push('.');
+        }
+        prefix.push_str(segment);
+        packages.insert(prefix.clone());
     }
 }
 

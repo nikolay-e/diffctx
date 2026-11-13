@@ -34,16 +34,17 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use super::index::{Path, scope_path};
-use super::jvm::{self, Ent, Found, Head, ImportRec, Super, relation_for};
+use super::jvm::{
+    self, DefRec, Ent, FileRec, Found, Head, ImportRec, Super, declare_packages, relation_for,
+};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable, plain_relation, unresolved,
 };
 use crate::facts::{
-    Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, Name,
-    Receiver, Ref, Scope, UseKind, Visibility, expired,
+    Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, Language, Name, Receiver, Ref,
+    Scope, UseKind, Visibility, expired,
 };
-use crate::snapshot::workspace::ProjectId;
 use crate::snapshot::{AnalysisContext, Result, SideTag, WorkspaceModel};
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -363,35 +364,10 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
 
 // ---- the index
 
-struct DefRec {
-    file: usize,
-    def: Def,
-    path: Path,
-    key: DefKey,
-    sig: Sig,
-}
-
-struct FileRec {
-    facts: FileFacts,
-    package: String,
-    project: Option<ProjectId>,
-    imports: Vec<ImportRec>,
-    /// Where each local name is visible.
-    locals: HashMap<Name, Vec<Range<u32>>>,
-    /// Definitions by the path of the scope that holds them.
-    children: HashMap<Path, Vec<usize>>,
-    by_path: HashMap<Path, Vec<usize>>,
-    /// Every name the file refers to.
-    names: HashSet<Name>,
-    /// A Java file: its declarations are read as Kotlin's, its references are
-    /// the Java engine's.
-    foreign: bool,
-}
-
 #[derive(Default)]
 struct Index {
     files: Vec<FileRec>,
-    defs: Vec<DefRec>,
+    defs: Vec<DefRec<Sig>>,
     /// Every type, by name.
     types: HashMap<Name, Vec<usize>>,
     /// The declarations of a package, by package and name.
@@ -456,9 +432,8 @@ impl Index {
             .chain(neighbours)
         {
             let at = index.files.len();
-            let project = workspace.project_of(facts.path.as_str());
             // A Swift file declares no package: its module is its target's.
-            let mut package = if swift {
+            let package = if swift {
                 facts.module.as_str().to_string()
             } else {
                 String::new()
@@ -469,77 +444,10 @@ impl Index {
             } else {
                 Vec::new()
             };
-            let mut file = FileRec {
-                facts,
-                package: String::new(),
-                project,
-                imports: Vec::new(),
-                locals: HashMap::new(),
-                children: HashMap::new(),
-                by_path: HashMap::new(),
-                names: HashSet::new(),
-                foreign: neighbour,
-            };
-            for fact in &blob.facts {
-                match fact {
-                    Fact::Import(import) if import.kind == ImportKind::SideEffect => {
-                        package = import.module.as_str().to_string();
-                    }
-                    Fact::Import(import) => {
-                        let module = import.module.as_str();
-                        let segments = |name: &str| -> Vec<String> {
-                            module
-                                .split('.')
-                                .filter(|s| !s.is_empty())
-                                .chain(std::iter::once(name))
-                                .map(str::to_string)
-                                .collect()
-                        };
-                        if import.star.is_star() {
-                            file.imports.push(ImportRec {
-                                local: None,
-                                path: module
-                                    .split('.')
-                                    .filter(|s| !s.is_empty())
-                                    .map(str::to_string)
-                                    .collect(),
-                                wildcard: true,
-                                site: import.site.clone(),
-                                scope: import.enclosing.clone(),
-                            });
-                        }
-                        for (name, alias) in &import.names {
-                            file.imports.push(ImportRec {
-                                local: Some(alias.clone().unwrap_or_else(|| name.clone())),
-                                path: segments(name.as_str()),
-                                wildcard: false,
-                                site: import.site.clone(),
-                                scope: import.enclosing.clone(),
-                            });
-                        }
-                    }
-                    Fact::LocalBinding(local) => {
-                        file.locals
-                            .entry(local.name.clone())
-                            .or_default()
-                            .push(local.site.bytes.clone());
-                    }
-                    Fact::Reference(r) => {
-                        file.names.insert(r.name.clone());
-                    }
-                    _ => {}
-                }
-            }
-            file.package = package.clone();
+            let file = FileRec::read(facts, neighbour, workspace, package);
+            let package = file.package.clone();
             index.files.push(file);
-            let mut prefix = String::new();
-            for segment in package.split('.').filter(|s| !s.is_empty()) {
-                if !prefix.is_empty() {
-                    prefix.push('.');
-                }
-                prefix.push_str(segment);
-                index.packages.insert(prefix.clone());
-            }
+            declare_packages(&mut index.packages, &package);
             if neighbour {
                 for item in projected {
                     index.add_def(at, &item.def, item.key, &package);
