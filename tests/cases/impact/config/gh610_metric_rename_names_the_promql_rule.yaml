@@ -1,0 +1,29 @@
+name: gh610_metric_rename_names_the_promql_rule
+mode: impact
+source: gh#610
+issue_state: open
+tags: [config, python, prometheus, feature]
+repo:
+  initial_files:
+    app/metrics.py: |
+      from prometheus_client import Counter
+      EVENTS = Counter("demo_events", "Events by type", ["type"])
+      def record(kind):
+          EVENTS.labels(type=kind).inc()
+    rules/alerts.yaml: |
+      groups:
+        - name: demo
+          rules:
+            - alert: DemoStalls
+              expr: sum(rate(demo_events_total{type="stall"}[6h])) > 5
+  changed_files:
+    app/metrics.py: |
+      from prometheus_client import Counter
+      EVENTS = Counter("demo_signals", "Events by type", ["type"])
+      def record(kind):
+          EVENTS.labels(type=kind).inc()
+expect:
+  exact: false
+  changed: [app/metrics.py::EVENTS]
+  relations:
+    - {from: rules/alerts.yaml, to: app/metrics.py::EVENTS, kind: reads, resolution: candidate, site: 5}

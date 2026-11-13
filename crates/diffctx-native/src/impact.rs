@@ -4233,7 +4233,7 @@ pub fn build_impact(
         .collect();
     let (stale, stale_omitted) = if query.is_none() {
         let _stale = crate::profile::phase("impact.stale_paths");
-        stale_references(state, analysed)
+        stale_references(state, &cells, analysed)
     } else {
         (Vec::new(), 0)
     };

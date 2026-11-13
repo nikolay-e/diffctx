@@ -194,6 +194,9 @@ pub enum EvidenceKind {
     /// A module found only under a project the importer names as a requirement
     /// without a source.
     AmbiguousModule,
+    /// A file a list includes by its entry (`PointerKind::Listed`): the entry
+    /// reads none of what the file says.
+    Listed,
 }
 
 /// How a binding was reached: the kind, and the modules a name passed through

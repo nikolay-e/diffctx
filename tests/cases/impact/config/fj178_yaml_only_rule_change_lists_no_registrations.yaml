@@ -1,0 +1,26 @@
+name: fj178_yaml_only_rule_change_lists_no_registrations
+mode: impact
+source: fj#178
+issue_state: open
+tags:
+- config
+- registration
+- hook
+repo:
+  initial_files:
+    monitoring/rules.yml: "groups:\n  - name: backup\n    rules:\n      - alert: BackupStale\n\
+      \        expr: time() - backup_last_success > 86400\n        for: 10m\n    \
+      \  - alert: DiskFull\n        expr: disk_free_ratio < 0.05\n        for: 5m\n"
+    monitoring/tests/rules_test.yml: "rule_files:\n  - ../rules.yml\ntests:\n  - interval:\
+      \ 1m\n    input_series:\n      - series: backup_last_success\n        values:\
+      \ '0x100'\n    alert_rule_test:\n      - eval_time: 30h\n        alertname:\
+      \ BackupStale\n        exp_alerts:\n          - exp_labels: {}\n"
+    monitoring/kustomization.yaml: "resources:\n  - rules.yml\n"
+  changed_files:
+    monitoring/rules.yml: "groups:\n  - name: backup\n    rules:\n      - alert: BackupStale\n\
+      \        expr: time() - backup_last_success > 172800\n        for: 10m\n   \
+      \   - alert: DiskFull\n        expr: disk_free_ratio < 0.05\n        for: 5m\n"
+  commit_message: 'monitoring: backups may be two days old'
+expect:
+  not_named_by:
+  - monitoring/kustomization.yaml
