@@ -58,7 +58,7 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::hash_outside;
-use super::{lines_of, parse_tree, span};
+use super::{children as named_children, lines_of, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -307,28 +307,6 @@ impl<'t> Walker<'t> {
     walker_depth!();
     walker_emit!();
 
-    fn named_children(node: Node<'t>) -> Vec<Node<'t>> {
-        let mut cursor = node.walk();
-        node.named_children(&mut cursor).collect()
-    }
-
-    /// The named children of a statement container in source order, those the
-    /// grammar parked under an error node included: a stray token leaves the
-    /// declarations around it whole inside the error, and their docs and
-    /// container are still theirs.
-    fn through_errors(parent: Node<'t>) -> Vec<Node<'t>> {
-        let mut out = Vec::new();
-        let mut stack: Vec<Node<'t>> = Self::named_children(parent).into_iter().rev().collect();
-        while let Some(node) = stack.pop() {
-            if node.is_error() {
-                stack.extend(Self::named_children(node).into_iter().rev());
-            } else {
-                out.push(node);
-            }
-        }
-        out
-    }
-
     // ---- statements and declarations
 
     /// The children of a container (file, block, class body), each with the doc
@@ -337,7 +315,7 @@ impl<'t> Walker<'t> {
         if !self.deeper(depth) {
             return;
         }
-        let children = Self::through_errors(parent);
+        let children = through_errors(parent);
         let mut doc: Option<&'t str> = None;
         for (at, child) in children.iter().enumerate() {
             if child.kind() == "comment" {
@@ -420,7 +398,7 @@ impl<'t> Walker<'t> {
 
     fn use_declaration(&mut self, node: Node<'t>, cx: &Cx) {
         let outer = self.import_kind(node);
-        let children = Self::named_children(node);
+        let children = named_children(node);
         let prefix = children
             .iter()
             .find(|c| c.kind() == "namespace_name")
@@ -430,7 +408,7 @@ impl<'t> Walker<'t> {
             match child.kind() {
                 "namespace_use_clause" => clauses.push((*child, prefix.clone())),
                 "namespace_use_group" => {
-                    for clause in Self::named_children(*child) {
+                    for clause in named_children(*child) {
                         if clause.kind() == "namespace_use_clause" {
                             clauses.push((clause, prefix.clone()));
                         }
@@ -440,7 +418,7 @@ impl<'t> Walker<'t> {
             }
         }
         for (clause, prefix) in clauses {
-            let Some(written) = Self::named_children(clause)
+            let Some(written) = named_children(clause)
                 .into_iter()
                 .find(|c| is_name(c.kind()))
             else {
@@ -474,7 +452,7 @@ impl<'t> Walker<'t> {
     }
 
     fn visibility(&self, node: Node<'t>) -> Visibility {
-        Self::named_children(node)
+        named_children(node)
             .into_iter()
             .find(|c| c.kind() == "visibility_modifier")
             .map_or(Visibility::Public, |v| match self.text(v) {
@@ -513,10 +491,10 @@ impl<'t> Walker<'t> {
     /// The attributes written on a declaration, as names.
     fn attributes(&self, node: Node<'t>) -> Vec<Node<'t>> {
         let mut found = Vec::new();
-        for child in Self::named_children(node) {
+        for child in named_children(node) {
             if child.kind() == "attribute_list" {
-                for group in Self::named_children(child) {
-                    for attribute in Self::named_children(group) {
+                for group in named_children(child) {
+                    for attribute in named_children(group) {
                         if attribute.kind() == "attribute" {
                             found.push(attribute);
                         }
@@ -528,7 +506,7 @@ impl<'t> Walker<'t> {
     }
 
     fn attribute_name(&self, attribute: Node<'t>) -> Option<Node<'t>> {
-        Self::named_children(attribute)
+        named_children(attribute)
             .into_iter()
             .find(|c| is_name(c.kind()))
     }
@@ -659,7 +637,7 @@ impl<'t> Walker<'t> {
             (self.text(n).to_string(), n)
         };
         let members: Vec<Node<'t>> = body.map_or_else(Vec::new, |b| {
-            Self::named_children(b)
+            named_children(b)
                 .into_iter()
                 .filter(|c| c.kind() != "comment")
                 .collect()
@@ -697,7 +675,7 @@ impl<'t> Walker<'t> {
         for (_, node, text) in &supers {
             self.type_use_name(*node, &inner, text);
         }
-        for member in Self::named_children(node)
+        for member in named_children(node)
             .into_iter()
             .filter(|c| c.kind() == "arguments")
         {
@@ -711,9 +689,9 @@ impl<'t> Walker<'t> {
     /// The names an `extends` and an `implements` clause list, with their nodes.
     fn supertypes(&self, node: Node<'t>) -> Vec<(bool, Node<'t>, String)> {
         let mut found = Vec::new();
-        for clause in Self::named_children(node) {
+        for clause in named_children(node) {
             if matches!(clause.kind(), "base_clause" | "class_interface_clause") {
-                for name in Self::named_children(clause) {
+                for name in named_children(clause) {
                     if is_name(name.kind()) {
                         found.push((
                             clause.kind() == "base_clause",
@@ -731,7 +709,7 @@ impl<'t> Walker<'t> {
     fn trait_uses(&self, members: &[Node<'t>]) -> Vec<(String, bool)> {
         let mut found = Vec::new();
         for member in members.iter().filter(|m| m.kind() == "use_declaration") {
-            let children = Self::named_children(*member);
+            let children = named_children(*member);
             let adapted = children.iter().any(|c| c.kind() == "use_list");
             for name in children.iter().filter(|c| is_name(c.kind())) {
                 found.push((self.text(*name).to_string(), adapted));
@@ -741,7 +719,7 @@ impl<'t> Walker<'t> {
     }
 
     fn members(&mut self, body: Node<'t>, cx: &Cx, depth: u16) {
-        let children = Self::named_children(body);
+        let children = named_children(body);
         let mut doc: Option<&'t str> = None;
         for child in children {
             if !self.deeper(depth) {
@@ -765,7 +743,7 @@ impl<'t> Walker<'t> {
     }
 
     fn trait_use(&mut self, node: Node<'t>, cx: &Cx) {
-        for name in Self::named_children(node) {
+        for name in named_children(node) {
             if is_name(name.kind()) {
                 let text = self.text(name);
                 self.type_use_name(name, cx, text);
@@ -803,7 +781,7 @@ impl<'t> Walker<'t> {
 
     fn constants(&mut self, node: Node<'t>, cx: &Cx, doc: Option<&'t str>, depth: u16) {
         let visibility = self.visibility(node);
-        let elements: Vec<Node<'t>> = Self::named_children(node)
+        let elements: Vec<Node<'t>> = named_children(node)
             .into_iter()
             .filter(|c| c.kind() == "const_element")
             .collect();
@@ -816,7 +794,7 @@ impl<'t> Walker<'t> {
                 .collect::<Vec<_>>(),
         );
         for element in &elements {
-            let children = Self::named_children(*element);
+            let children = named_children(*element);
             let Some(name_node) = children.iter().find(|c| c.kind() == "name").copied() else {
                 continue;
             };
@@ -847,7 +825,7 @@ impl<'t> Walker<'t> {
     }
 
     fn attribute_nodes(&self, node: Node<'t>) -> Vec<Node<'t>> {
-        Self::named_children(node)
+        named_children(node)
             .into_iter()
             .filter(|c| c.kind() == "attribute_list")
             .collect()
@@ -897,7 +875,7 @@ impl<'t> Walker<'t> {
 
     fn properties(&mut self, node: Node<'t>, cx: &Cx, doc: Option<&'t str>, depth: u16) {
         let visibility = self.visibility(node);
-        let elements: Vec<Node<'t>> = Self::named_children(node)
+        let elements: Vec<Node<'t>> = named_children(node)
             .into_iter()
             .filter(|c| c.kind() == "property_element")
             .collect();
@@ -1001,7 +979,7 @@ impl<'t> Walker<'t> {
             self.type_uses(ret, &inner);
         }
         if let Some(parameters) = parameters {
-            for parameter in Self::named_children(parameters) {
+            for parameter in named_children(parameters) {
                 if let Some(default) = parameter.child_by_field_name("default_value") {
                     self.expr(default, &inner, depth + 1);
                 }
@@ -1036,7 +1014,7 @@ impl<'t> Walker<'t> {
             container: cx.container[..cx.container.len().saturating_sub(1)].to_vec(),
             ..cx.clone()
         };
-        for parameter in Self::named_children(parameters) {
+        for parameter in named_children(parameters) {
             let Some(name_node) = parameter.child_by_field_name("name") else {
                 continue;
             };
@@ -1095,7 +1073,7 @@ impl<'t> Walker<'t> {
     fn variable_of(node: Node<'t>) -> Option<Node<'t>> {
         match node.kind() {
             "variable_name" => Some(node),
-            _ => Self::named_children(node)
+            _ => named_children(node)
                 .into_iter()
                 .find(|c| c.kind() == "variable_name"),
         }
@@ -1106,7 +1084,7 @@ impl<'t> Walker<'t> {
     fn scan_locals(&self, body: Option<Node<'t>>, parameters: Option<Node<'t>>, cx: &Cx) -> Locals {
         let mut seen: HashMap<String, Vec<Option<Ty>>> = HashMap::new();
         if let Some(parameters) = parameters {
-            for parameter in Self::named_children(parameters) {
+            for parameter in named_children(parameters) {
                 let Some(name) = parameter.child_by_field_name("name") else {
                     continue;
                 };
@@ -1164,7 +1142,7 @@ impl<'t> Walker<'t> {
                 | "static_variable_declaration"
                 | "anonymous_function_use_clause"
                 | "augmented_assignment_expression" => {
-                    for child in Self::named_children(node) {
+                    for child in named_children(node) {
                         for variable in self.variables_in(child) {
                             seen.entry(variable).or_default().push(None);
                         }
@@ -1174,7 +1152,7 @@ impl<'t> Walker<'t> {
                     let ty = node
                         .child_by_field_name("type")
                         .and_then(|t| {
-                            let names: Vec<_> = Self::named_children(t);
+                            let names: Vec<_> = named_children(t);
                             (names.len() == 1).then(|| self.text(names[0]).to_string())
                         })
                         .map(Ty::Typed);
@@ -1204,7 +1182,7 @@ impl<'t> Walker<'t> {
             ) {
                 continue;
             }
-            stack.extend(Self::named_children(n));
+            stack.extend(named_children(n));
         }
         found
     }
@@ -1222,7 +1200,7 @@ impl<'t> Walker<'t> {
     /// What an assigned expression states about the variable's type.
     fn assigned_type(&self, node: Node<'t>, cx: &Cx) -> Option<Ty> {
         match node.kind() {
-            "parenthesized_expression" => Self::named_children(node)
+            "parenthesized_expression" => named_children(node)
                 .first()
                 .and_then(|n| self.assigned_type(*n, cx)),
             "object_creation_expression" => self.created(node).map(Ty::New),
@@ -1240,7 +1218,7 @@ impl<'t> Walker<'t> {
 
     /// The class `new` names: as written, `None` for a dynamic or anonymous one.
     fn created(&self, node: Node<'t>) -> Option<String> {
-        let target = Self::named_children(node)
+        let target = named_children(node)
             .into_iter()
             .find(|c| c.kind() != "arguments")?;
         match target.kind() {
@@ -1256,16 +1234,16 @@ impl<'t> Walker<'t> {
     fn written_type(&self, node: Node<'t>) -> Option<String> {
         match node.kind() {
             "named_type" => {
-                let name = Self::named_children(node)
+                let name = named_children(node)
                     .into_iter()
                     .find(|c| is_name(c.kind()))?;
                 Some(self.text(name).to_string())
             }
-            "optional_type" => Self::named_children(node)
+            "optional_type" => named_children(node)
                 .into_iter()
                 .find_map(|c| self.written_type(c)),
             "union_type" => {
-                let classes: Vec<String> = Self::named_children(node)
+                let classes: Vec<String> = named_children(node)
                     .into_iter()
                     .filter(|c| !(c.kind() == "primitive_type" && self.text(*c) == "null"))
                     .filter_map(|c| {
@@ -1286,16 +1264,13 @@ impl<'t> Walker<'t> {
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
             if n.kind() == "named_type" {
-                if let Some(name) = Self::named_children(n)
-                    .into_iter()
-                    .find(|c| is_name(c.kind()))
-                {
+                if let Some(name) = named_children(n).into_iter().find(|c| is_name(c.kind())) {
                     let text = self.text(name);
                     self.type_use_name(name, cx, text);
                 }
                 continue;
             }
-            stack.extend(Self::named_children(n));
+            stack.extend(named_children(n));
         }
     }
 
@@ -1329,7 +1304,7 @@ impl<'t> Walker<'t> {
                 );
             }
         }
-        for arguments in Self::named_children(attribute)
+        for arguments in named_children(attribute)
             .into_iter()
             .filter(|c| c.kind() == "arguments")
         {
@@ -1387,7 +1362,7 @@ impl<'t> Walker<'t> {
             | "include_once_expression" => self.require(node, cx, depth),
             "comment" | "string" | "integer" | "float" | "boolean" | "null" | "name" => {}
             _ => {
-                for child in Self::named_children(node) {
+                for child in named_children(node) {
                     self.expr(child, cx, depth + 1);
                 }
             }
@@ -1395,14 +1370,14 @@ impl<'t> Walker<'t> {
     }
 
     fn arguments(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        for child in Self::named_children(node) {
+        for child in named_children(node) {
             self.expr(child, cx, depth + 1);
         }
     }
 
     fn is_first_class_callable(node: Node<'t>) -> bool {
         node.child_by_field_name("arguments").is_some_and(|a| {
-            Self::named_children(a)
+            named_children(a)
                 .iter()
                 .any(|c| c.kind() == "variadic_placeholder")
         })
@@ -1538,7 +1513,7 @@ impl<'t> Walker<'t> {
 
     /// `A::B`, `A::class`, `Status::Active`.
     fn class_constant(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        let children = Self::named_children(node);
+        let children = named_children(node);
         let (Some(scope), Some(name)) = (children.first().copied(), children.last().copied())
         else {
             return;
@@ -1567,7 +1542,7 @@ impl<'t> Walker<'t> {
     }
 
     fn creation(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        let children = Self::named_children(node);
+        let children = named_children(node);
         for child in &children {
             match child.kind() {
                 "arguments" => self.arguments(*child, cx, depth + 1),
@@ -1614,8 +1589,8 @@ impl<'t> Walker<'t> {
     fn write_target(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
         let operand = node
             .child_by_field_name("left")
-            .or_else(|| Self::named_children(node).into_iter().next());
-        for child in Self::named_children(node) {
+            .or_else(|| named_children(node).into_iter().next());
+        for child in named_children(node) {
             if Some(child.id()) == operand.map(|o| o.id()) && child.kind() != "variable_name" {
                 self.target(child, cx, depth + 1);
             } else {
@@ -1644,7 +1619,7 @@ impl<'t> Walker<'t> {
             }
             "scoped_property_access_expression" => self.scoped(node, cx, UseKind::Write, depth),
             "subscript_expression" => {
-                let children = Self::named_children(node);
+                let children = named_children(node);
                 if let Some(base) = children.first() {
                     self.target(*base, cx, depth + 1);
                 }
@@ -1653,12 +1628,12 @@ impl<'t> Walker<'t> {
                 }
             }
             "list_literal" | "array_creation_expression" => {
-                for child in Self::named_children(node) {
+                for child in named_children(node) {
                     self.target(child, cx, depth + 1);
                 }
             }
             "array_element_initializer" => {
-                for child in Self::named_children(node) {
+                for child in named_children(node) {
                     self.target(child, cx, depth + 1);
                 }
             }
@@ -1683,7 +1658,7 @@ impl<'t> Walker<'t> {
             }
             return;
         }
-        for child in Self::named_children(node) {
+        for child in named_children(node) {
             self.expr(child, cx, depth + 1);
         }
     }
@@ -1710,12 +1685,12 @@ impl<'t> Walker<'t> {
 
     /// `[$this, 'm']` and `[A::class, 'm']` name the method they pass.
     fn array(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        let elements: Vec<Node<'t>> = Self::named_children(node)
+        let elements: Vec<Node<'t>> = named_children(node)
             .into_iter()
             .filter(|c| c.kind() == "array_element_initializer")
             .collect();
         if elements.len() == 2 {
-            let value = |e: Node<'t>| Self::named_children(e).into_iter().next();
+            let value = |e: Node<'t>| named_children(e).into_iter().next();
             if let (Some(owner), Some(method)) = (value(elements[0]), value(elements[1])) {
                 if let Some(name) = self.string_literal(method) {
                     let head = match owner.kind() {
@@ -1723,7 +1698,7 @@ impl<'t> Walker<'t> {
                             Some((Receiver::SelfType, Vec::new()))
                         }
                         "class_constant_access_expression" => {
-                            let parts = Self::named_children(owner);
+                            let parts = named_children(owner);
                             (parts.len() == 2
                                 && self.text(parts[1]).eq_ignore_ascii_case("class")
                                 && is_name(parts[0].kind()))
@@ -1737,14 +1712,14 @@ impl<'t> Walker<'t> {
                 }
             }
         }
-        for child in Self::named_children(node) {
+        for child in named_children(node) {
             self.expr(child, cx, depth + 1);
         }
     }
 
     fn string_literal(&self, node: Node<'t>) -> Option<String> {
         let inner = match node.kind() {
-            "string" => Self::named_children(node)
+            "string" => named_children(node)
                 .into_iter()
                 .find(|c| c.kind() == "string_content")
                 .map(|c| self.text(c).to_string())?,
@@ -1755,7 +1730,7 @@ impl<'t> Walker<'t> {
     }
 
     fn require(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        let Some(argument) = Self::named_children(node).into_iter().next() else {
+        let Some(argument) = named_children(node).into_iter().next() else {
             return;
         };
         if let Some((module, relative)) = self.literal_path(argument) {
@@ -1782,7 +1757,7 @@ impl<'t> Walker<'t> {
                 let inner = text.get(1..text.len().checked_sub(1)?)?;
                 (!inner.contains('$')).then(|| (inner.to_string(), 0))
             }
-            "parenthesized_expression" => Self::named_children(node)
+            "parenthesized_expression" => named_children(node)
                 .into_iter()
                 .next()
                 .and_then(|n| self.literal_path(n)),
@@ -1801,7 +1776,7 @@ impl<'t> Walker<'t> {
     /// What an expression written before `->` stands for.
     fn head(&self, node: Node<'t>, cx: &Cx) -> Head {
         match node.kind() {
-            "parenthesized_expression" => Self::named_children(node)
+            "parenthesized_expression" => named_children(node)
                 .into_iter()
                 .next()
                 .map_or_else(Head::unknown, |n| self.head(n, cx)),

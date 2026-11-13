@@ -62,7 +62,7 @@ use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
 
 use super::walker::hash_outside;
-use super::{lines_of, parse_tree, span};
+use super::{children, lines_of, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -388,7 +388,7 @@ impl<'t> Walker<'t> {
     fn run(&mut self, root: Node<'t>) {
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
-            for child in Self::named_children(node) {
+            for child in children(node) {
                 match child.kind() {
                     "function_definition" => {
                         if let Some(d) = child
@@ -442,28 +442,6 @@ impl<'t> Walker<'t> {
         self.tick()
     }
 
-    fn named_children(node: Node<'t>) -> Vec<Node<'t>> {
-        let mut cursor = node.walk();
-        node.named_children(&mut cursor).collect()
-    }
-
-    /// The named children of an item container in source order, those the
-    /// grammar parked under an error node included: a stray token leaves the
-    /// items around it whole inside the error, and their docs and container
-    /// are still theirs.
-    fn through_errors(parent: Node<'t>) -> Vec<Node<'t>> {
-        let mut out = Vec::new();
-        let mut stack: Vec<Node<'t>> = Self::named_children(parent).into_iter().rev().collect();
-        while let Some(node) = stack.pop() {
-            if node.is_error() {
-                stack.extend(Self::named_children(node).into_iter().rev());
-            } else {
-                out.push(node);
-            }
-        }
-        out
-    }
-
     // ---- locals
 
     fn lookup(&self, name: &str) -> Option<&Option<String>> {
@@ -492,7 +470,7 @@ impl<'t> Walker<'t> {
             return;
         }
         let mut doc: Option<&'t str> = None;
-        for child in Self::through_errors(parent) {
+        for child in through_errors(parent) {
             if child.kind() == "comment" {
                 doc = Some(self.text(child));
                 continue;
@@ -553,7 +531,7 @@ impl<'t> Walker<'t> {
             .map(str::to_string)
             .collect();
         let mut inner = cx.clone();
-        let members = Self::named_children(body);
+        let members = children(body);
         let name_node = node.child_by_field_name("name").unwrap_or(node);
         for segment in segments {
             let key = self.key_for(&inner, &[], &segment, Namespace::Type);
@@ -586,7 +564,7 @@ impl<'t> Walker<'t> {
         });
         let mut inner = cx.clone();
         inner.template = header.map(|h| format!("template {h}"));
-        for child in Self::through_errors(node) {
+        for child in through_errors(node) {
             if matches!(child.kind(), "template_parameter_list" | "comment") {
                 continue;
             }
@@ -684,7 +662,7 @@ impl<'t> Walker<'t> {
             .trim()
             .to_string();
         let is_struct = ty.kind() == "struct_specifier";
-        let members: Vec<Node<'t>> = Self::named_children(body)
+        let members: Vec<Node<'t>> = children(body)
             .into_iter()
             .filter(|c| c.kind() != "comment")
             .collect();
@@ -711,7 +689,7 @@ impl<'t> Walker<'t> {
         }));
         let mut inner = Self::inside(cx, &key);
         inner.template = None;
-        for child in Self::named_children(ty) {
+        for child in children(ty) {
             if child.kind() == "base_class_clause" {
                 self.type_refs(child, &inner, depth + 1);
             }
@@ -724,7 +702,7 @@ impl<'t> Walker<'t> {
             Visibility::Private
         });
         let mut doc: Option<&'t str> = None;
-        for member in Self::through_errors(body) {
+        for member in through_errors(body) {
             match member.kind() {
                 "comment" => doc = Some(self.text(member)),
                 "access_specifier" => {
@@ -769,7 +747,7 @@ impl<'t> Walker<'t> {
         node.kind() == "preproc_ifdef"
             && self.text(node).trim_start().starts_with("#ifndef")
             && node.child_by_field_name("alternative").is_none()
-            && Self::named_children(node)
+            && children(node)
                 .into_iter()
                 .find(|c| c.kind() == "preproc_def")
                 .is_some_and(|d| {
@@ -822,7 +800,7 @@ impl<'t> Walker<'t> {
                 })
             };
             let mut doc = None;
-            for child in Self::through_errors(current) {
+            for child in through_errors(current) {
                 if skip.contains(&child.id()) {
                     continue;
                 }
@@ -968,7 +946,7 @@ impl<'t> Walker<'t> {
     fn storage(&self, node: Node<'t>) -> (bool, bool) {
         let mut is_static = false;
         let mut is_extern = false;
-        for child in Self::named_children(node) {
+        for child in children(node) {
             if child.kind() == "storage_class_specifier" {
                 match self.text(child) {
                     "static" => is_static = true,
@@ -1029,7 +1007,7 @@ impl<'t> Walker<'t> {
         if let Some(parameters) = declarator.function {
             self.parameters(parameters, &inner, depth + 1);
         }
-        for child in Self::named_children(node) {
+        for child in children(node) {
             if child.kind() == "field_initializer_list" {
                 self.expr(child, &inner, depth + 1);
             }
@@ -1075,7 +1053,7 @@ impl<'t> Walker<'t> {
     }
 
     fn parameters(&mut self, parameters: Node<'t>, cx: &Cx, depth: u16) {
-        for parameter in Self::named_children(parameters) {
+        for parameter in children(parameters) {
             if parameter.kind() != "parameter_declaration" {
                 continue;
             }
@@ -1166,7 +1144,7 @@ impl<'t> Walker<'t> {
             let visibility = self.visibility_of(cx, is_static);
             let spelled = {
                 let mut parts: Vec<&str> = Vec::new();
-                for child in Self::named_children(node) {
+                for child in children(node) {
                     if matches!(child.kind(), "storage_class_specifier" | "type_qualifier")
                         || Some(child.id()) == ty.map(|t| t.id())
                     {
@@ -1410,7 +1388,7 @@ impl<'t> Walker<'t> {
             |t| self.text(t).to_string(),
         );
         let is_enum = ty.kind() == "enum_specifier";
-        let members: Vec<Node<'t>> = Self::named_children(body)
+        let members: Vec<Node<'t>> = children(body)
             .into_iter()
             .filter(|c| c.kind() != "comment")
             .collect();
@@ -1455,7 +1433,7 @@ impl<'t> Walker<'t> {
         } else {
             Vec::new()
         };
-        for member in Self::named_children(body) {
+        for member in children(body) {
             match member.kind() {
                 "enumerator" => {
                     let Some(name_node) = member.child_by_field_name("name") else {
@@ -1492,7 +1470,7 @@ impl<'t> Walker<'t> {
     }
 
     fn fields(&mut self, body: Node<'t>, container: &[String], owner: &Cx, cx: &Cx, depth: u16) {
-        for member in Self::named_children(body) {
+        for member in children(body) {
             match member.kind() {
                 "field_declaration" => {
                     let ty = member.child_by_field_name("type");
@@ -1518,7 +1496,7 @@ impl<'t> Walker<'t> {
                         };
                         let signature = {
                             let mut parts: Vec<&str> = Vec::new();
-                            for child in Self::named_children(member) {
+                            for child in children(member) {
                                 if Some(child.id()) == ty.map(|t| t.id())
                                     || child.kind() == "type_qualifier"
                                 {
@@ -1566,7 +1544,7 @@ impl<'t> Walker<'t> {
         let params: Vec<String> = node
             .child_by_field_name("parameters")
             .map(|p| {
-                Self::named_children(p)
+                children(p)
                     .into_iter()
                     .map(|i| self.text(i).to_string())
                     .collect()
@@ -1668,7 +1646,7 @@ impl<'t> Walker<'t> {
             return;
         }
         self.locals.push(HashMap::new());
-        for child in Self::named_children(body) {
+        for child in children(body) {
             self.expr(child, cx, depth + 1);
         }
         self.locals.pop();
@@ -1704,7 +1682,7 @@ impl<'t> Walker<'t> {
             "compound_statement" => self.block(node, cx, depth),
             "for_statement" => {
                 self.locals.push(HashMap::new());
-                for child in Self::named_children(node) {
+                for child in children(node) {
                     self.expr(child, cx, depth + 1);
                 }
                 self.locals.pop();
@@ -1765,7 +1743,7 @@ impl<'t> Walker<'t> {
                 self.item(node, cx, None, depth)
             }
             _ => {
-                for child in Self::named_children(node) {
+                for child in children(node) {
                     self.expr(child, cx, depth + 1);
                 }
             }
@@ -1797,7 +1775,7 @@ impl<'t> Walker<'t> {
                 }
                 if node.kind() == "template_type" {
                     if let Some(arguments) = node.child_by_field_name("arguments") {
-                        for child in Self::named_children(arguments) {
+                        for child in children(arguments) {
                             self.type_refs(child, cx, depth + 1);
                         }
                     }
@@ -1819,7 +1797,7 @@ impl<'t> Walker<'t> {
             | "namespace_identifier"
             | "placeholder_type_specifier" => {}
             _ => {
-                for child in Self::named_children(node) {
+                for child in children(node) {
                     self.type_refs(child, cx, depth + 1);
                 }
             }
@@ -1877,7 +1855,7 @@ impl<'t> Walker<'t> {
             }
         }
         if let Some(arguments) = node.child_by_field_name("arguments") {
-            for child in Self::named_children(arguments) {
+            for child in children(arguments) {
                 self.expr(child, cx, depth + 1);
             }
         }
@@ -2013,7 +1991,7 @@ impl<'t> Walker<'t> {
                 {
                     self.target(inner, cx, depth + 1);
                 }
-                for child in Self::named_children(node) {
+                for child in children(node) {
                     if child.id() != inner.id() {
                         self.expr(child, cx, depth + 1);
                     }
