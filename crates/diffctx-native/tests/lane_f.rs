@@ -7,7 +7,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, git, write};
+use support::{NO_WALL_DEADLINE, diffctx, git, write};
 
 const CALLERS: usize = 12;
 
@@ -53,7 +53,7 @@ fn run(repo: &Path, args: &[&str], polls: Option<u64>) -> serde_json::Value {
     let mut cmd = diffctx();
     cmd.current_dir(repo)
         .args(args)
-        .args(["-q", "--timeout", "600"]);
+        .args(["-q", "--timeout", NO_WALL_DEADLINE]);
     if let Some(n) = polls {
         cmd.env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string());
     }
