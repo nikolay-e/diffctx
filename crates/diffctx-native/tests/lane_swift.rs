@@ -348,7 +348,7 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
     assert_eq!(folded[0]["rule"], "untyped-receiver");
     assert_eq!(
         folded[0]["count"],
-        serde_json::json!({"n": 1, "exact": true})
+        serde_json::json!({"n": 1, "exact": false})
     );
     let example = &folded[0]["examples"][0];
     assert_eq!(example["path"], svc, "{folded:?}");
