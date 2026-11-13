@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::rows::{
-    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, MODULE_PATHS,
+    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS, MODULE_PATHS,
 };
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::decide::Standing;
@@ -344,6 +344,12 @@ fn settle(mut claims: Vec<Claim>) -> Claim {
     )
 }
 
+fn split_words(text: &[u8]) -> Vec<&[u8]> {
+    (text.split(|b| !(b.is_ascii_alphanumeric() || *b == b'_')))
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
 fn same(name: &str, spelled: &[u8], case: Case) -> bool {
     match case {
         Case::Sensitive => name.as_bytes() == spelled,
@@ -643,6 +649,9 @@ impl<'a> Reading<'a> {
     fn unbound(&self, occurrence: &Occurrence) -> Claim {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
+        if let Some(claim) = self.impl_type(occurrence) {
+            return claim;
+        }
         if let Some(basis) = self
             .bare_head(occurrence, spelled)
             .or_else(|| self.module_path(occurrence))
@@ -713,12 +722,33 @@ impl<'a> Reading<'a> {
         let at = occurrence.bytes.start;
         let import = (self.imports.iter()).find(|import| import.site.bytes.contains(&at))?;
         let site = &import.site.bytes;
-        let words: Vec<&[u8]> = self.text[site.start as usize..at as usize]
-            .split(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
-            .filter(|word| !word.is_empty())
-            .collect();
+        let words = split_words(&self.text[site.start as usize..at as usize]);
         (words.first() == Some(&opens.as_bytes()) && !words.contains(&closes.as_bytes()))
             .then_some(Basis::OtherModule)
+    }
+
+    /// The type an `impl` header names (`impl Display for T`, `impl<U> T<U>`) is where the
+    /// block declares its members. The keyword opens the header (`unsafe` may come first);
+    /// a bound or a where clause names no type.
+    fn impl_type(&self, occurrence: &Occurrence) -> Option<Claim> {
+        let (_, keyword) = IMPL_HEADS
+            .iter()
+            .find(|row| row.0.has(self.file.language()))?;
+        let before = &self.text[..occurrence.bytes.start as usize];
+        let at = before.iter().rposition(|b| b"\n;{}".contains(b));
+        let header = &before[at.map_or(0, |at| at + 1)..];
+        let words = split_words(header);
+        let opens = |word: &&[u8]| *word == keyword.as_bytes();
+        let named = words
+            .last()
+            .is_some_and(|word| opens(word) || *word == b"for")
+            || header.trim_ascii_end().ends_with(b">");
+        let declares = words
+            .iter()
+            .position(|word| opens(word))
+            .is_some_and(|at| at < 2)
+            && !words.contains(&b"where".as_slice());
+        (named && declares).then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
     /// A word after a command word, in the same command, is text to the commands the row

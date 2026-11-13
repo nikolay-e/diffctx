@@ -45,3 +45,6 @@ pub(super) const COMMAND_ARGUMENTS: &[(Family, &str, bool)] = &[
         true,
     ),
 ];
+
+/// The keyword that opens a block declaring the members of the type it names (`impl T`).
+pub(super) const IMPL_HEADS: &[(Family, &str)] = &[(Family::Rust, "impl")];
