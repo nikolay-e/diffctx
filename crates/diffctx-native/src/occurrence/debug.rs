@@ -141,10 +141,15 @@ impl Shadow<'_> {
                 .filter(|gap| !matches!(gap, Gap::Unaccounted { .. } | Gap::Unlanded { .. }))
                 .map(ToString::to_string)
                 .collect();
+            let today = if coverage.witness().is_some() {
+                "complete"
+            } else {
+                "partial"
+            };
             lines.push_str(
                 &json!({
                     "def": def, "side": side_text, "relation": relation.name(),
-                    "today": ["partial", "complete"][usize::from(coverage.witness().is_some())],
+                    "today": today,
                     "occurrences": verdict.as_str(), "reasons": reasons, "gaps": gaps,
                 })
                 .to_string(),
