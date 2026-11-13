@@ -637,7 +637,7 @@ def render(report: dict) -> str:
     parts.append(table_of(SCIP_COLUMNS, report["scip"], "No scored cells."))
     parts += render_safety_listings(report)
     if report.get("scip_adjudicated") is not None:
-        parts += ["", "## SCIP truth with the adjudicated overrides", ""]
+        parts += ["", "## SCIP truth with the adjudicated overrides", "", report["scip_adjudicated_note"], ""]
         parts += [table_of(SCIP_COLUMNS, report["scip_adjudicated"], "No scored cells.")]
         parts += ["", "### SCIP against the adjudicated set", "", table_of(ADJUDICATION_COLUMNS, report["adjudication"], "")]
     if report.get("curve"):
@@ -714,6 +714,7 @@ def build(
     if verdicts:
         rows = adjudication.apply_to_rows(relations, verdicts)
         report["scip_adjudicated"] = scip_rows(adjudication.cells_from_rows(rows, cells))
+        report["scip_adjudicated_note"] = adjudication.LOWER_BOUND
         report["adjudication"] = adjudication.summary(verdicts, repo_languages())
     states = cellstate.classify(report["paired"], cellstate.load_facts(cell_facts), gates) if cell_facts else []
     report["cells"] = [vars(state) for state in states] if cell_facts else None
