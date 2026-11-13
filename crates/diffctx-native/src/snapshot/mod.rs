@@ -30,6 +30,8 @@ mod range;
 mod reader;
 mod repo;
 mod run;
+#[cfg(test)]
+pub(crate) mod testing;
 mod types;
 mod untracked;
 pub mod workspace;
