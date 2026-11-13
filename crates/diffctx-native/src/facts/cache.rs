@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,13 +21,13 @@ use crate::facts::extractor::Registry;
 use crate::facts::hash::checksum;
 use crate::facts::lang;
 use crate::facts::language::Language;
-use crate::facts::model::{BlobFacts, Fact};
+use crate::facts::model::{BlobFacts, Fact, Lexical};
 use crate::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader};
 
 /// The stored layout, named in the key and in the file name. This file is under
 /// `src/`, so a change to the layout moves [`FINGERPRINT`] whether or not this is
 /// bumped.
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
 
 /// The digest of the sources under `src/` and of the lock file the crate was
 /// built with (`build.rs`): what an extractor emits is a function of them, so an
@@ -64,6 +65,7 @@ struct EntryRef<'a> {
     language: Language,
     parse_errors: &'a [&'a [(u32, u32)]],
     facts: &'a [Fact],
+    lexical: &'a [(Range<u32>, Lexical)],
 }
 
 #[derive(Deserialize)]
@@ -71,6 +73,7 @@ struct Entry {
     language: Language,
     parse_errors: Vec<Vec<(u32, u32)>>,
     facts: Vec<Fact>,
+    lexical: Vec<(Range<u32>, Lexical)>,
 }
 
 /// What the cache did since it was built.
@@ -336,6 +339,7 @@ impl FactsCache {
         Some(Arc::new(BlobFacts::from_stored(
             entry.language,
             entry.facts,
+            entry.lexical,
             entry.parse_errors,
         )))
     }
@@ -368,6 +372,7 @@ impl FactsCache {
             language: blob.language,
             parse_errors: &errors,
             facts: &blob.facts,
+            lexical: &blob.lexical,
         };
         let Ok(body) = serde_json::to_vec(&entry) else {
             bump(&self.counters.write_failures);
