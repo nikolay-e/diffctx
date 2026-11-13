@@ -20,6 +20,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::twins::{Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
@@ -381,24 +382,6 @@ enum Want {
     Any,
 }
 
-/// A type a value has.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Typed {
-    /// A struct or a defined type.
-    Def(usize),
-    /// An interface: any type that has its methods.
-    Dyn(usize),
-    /// A type the repository does not hold.
-    External,
-    Unknown,
-}
-
-enum Outcome {
-    Found(usize, EvidenceKind),
-    Candidates(Vec<usize>, CandidateReason),
-    Unresolved(UnresolvedReason),
-}
-
 struct Engine<'a> {
     ix: Index,
     workspace: &'a WorkspaceModel,
@@ -465,15 +448,7 @@ impl Engine<'_> {
         self.ix.files[self.ix.defs[d].file].pkg
     }
 
-    /// Whether a name used in file `f` may refer to the definition: one project,
-    /// a declared dependency, or no project at all.
-    fn reachable(&self, f: usize, def: usize) -> bool {
-        let used = self.ix.defs[def].file;
-        used == f
-            || self
-                .workspace
-                .may_reference(self.path_of(f).as_str(), self.path_of(used).as_str())
-    }
+    reachable_by_project!();
 
     fn tokens(&self, d: usize) -> Vec<&str> {
         self.ix.defs[d]

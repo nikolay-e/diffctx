@@ -1,5 +1,47 @@
-//! Engine methods that the resolvers of neighbouring families write alike, once each: the
-//! engines differ in their indexes, not in how they read a candidate list or a reach.
+//! What the resolvers of neighbouring families write alike, once each: the engines differ
+//! in their indexes, not in how they read a candidate list or a reach, or in what a name lands on.
+
+use super::{CandidateReason, Evidence, EvidenceKind, UnresolvedReason};
+
+/// A type a value has, for the engines that follow a value to its type's methods.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Typed {
+    /// A definition that holds the methods.
+    Def(usize),
+    /// An interface, trait object or bound: any type that has its methods.
+    Dyn(usize),
+    /// A type the repository does not hold.
+    External,
+    Unknown,
+}
+
+/// What a name lands on, before it is a binding.
+pub(super) enum Outcome {
+    Found(usize, EvidenceKind),
+    Candidates(Vec<usize>, CandidateReason),
+    Unresolved(UnresolvedReason),
+}
+
+/// What a name lands on, before it is a binding, for the engines whose finds are entities:
+/// `E` is the engine's entity.
+pub(super) enum EntityOutcome<E> {
+    Found {
+        entity: E,
+        evidence: Evidence,
+    },
+    Candidates {
+        ids: Vec<usize>,
+        reason: CandidateReason,
+    },
+    Unresolved(UnresolvedReason),
+}
+
+/// A name's entity, how it was found and the modules it passed through.
+pub(super) struct Hit<E> {
+    pub entity: E,
+    pub kind: EvidenceKind,
+    pub through: Vec<usize>,
+}
 
 /// What a resolved or candidate resolution names, for the engines that keep an index of definitions.
 macro_rules! ground_methods {
@@ -20,6 +62,47 @@ macro_rules! ground_methods {
                 }
             }
             Resolution::Candidate { targets, reason }
+        }
+    };
+}
+
+/// Of the definitions, those the file may use (what `reach` allows); the reason when none is.
+macro_rules! reachable_by_reach {
+    () => {
+        fn reachable(
+            &self,
+            f: usize,
+            ids: Vec<usize>,
+        ) -> std::result::Result<Vec<usize>, UnresolvedReason> {
+            let mut blocked = None;
+            let kept: Vec<usize> = ids
+                .into_iter()
+                .filter(|id| match self.reach(f, *id) {
+                    Ok(()) => true,
+                    Err(reason) => {
+                        blocked = Some(reason);
+                        false
+                    }
+                })
+                .collect();
+            match (kept.is_empty(), blocked) {
+                (true, Some(reason)) => Err(reason),
+                _ => Ok(kept),
+            }
+        }
+    };
+}
+
+/// Whether a name used in file `f` may refer to the definition: one project, a declared
+/// dependency, or no project at all.
+macro_rules! reachable_by_project {
+    () => {
+        fn reachable(&self, f: usize, def: usize) -> bool {
+            let used = self.ix.defs[def].file;
+            used == f
+                || self
+                    .workspace
+                    .may_reference(self.path_of(f).as_str(), self.path_of(used).as_str())
         }
     };
 }
@@ -63,28 +146,7 @@ macro_rules! jvm_engine_methods {
             (definitions, bindings, stopped)
         }
 
-        /// Of the definitions, those the file may use; the reason when none is.
-        fn reachable(
-            &self,
-            f: usize,
-            ids: Vec<usize>,
-        ) -> std::result::Result<Vec<usize>, UnresolvedReason> {
-            let mut blocked = None;
-            let kept: Vec<usize> = ids
-                .into_iter()
-                .filter(|id| match self.reach(f, *id) {
-                    Ok(()) => true,
-                    Err(reason) => {
-                        blocked = Some(reason);
-                        false
-                    }
-                })
-                .collect();
-            match (kept.is_empty(), blocked) {
-                (true, Some(reason)) => Err(reason),
-                _ => Ok(kept),
-            }
-        }
+        reachable_by_reach!();
 
         fn pick(&self, f: usize, ids: Vec<usize>, how: EvidenceKind) -> Found {
             match self.reachable(f, ids) {

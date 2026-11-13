@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 use super::index::{ImportRec, Index, Path, Spec, join, scope_path};
 use super::modules::ModuleRes;
+use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
@@ -119,11 +120,7 @@ enum Entity {
     Unknown,
 }
 
-struct Hit {
-    entity: Entity,
-    kind: EvidenceKind,
-    through: Vec<usize>,
-}
+type Hit = twins::Hit<Entity>;
 
 enum Lookup {
     Found {
@@ -139,17 +136,7 @@ enum Lookup {
     Any,
 }
 
-enum Outcome {
-    Found {
-        entity: Entity,
-        evidence: Evidence,
-    },
-    Candidates {
-        ids: Vec<usize>,
-        reason: CandidateReason,
-    },
-    Unresolved(UnresolvedReason),
-}
+type Outcome = twins::EntityOutcome<Entity>;
 
 type Seen = HashSet<(usize, Name)>;
 
@@ -240,15 +227,7 @@ impl<'a> Engine<'a> {
         files.iter().map(|f| self.path_of(*f).clone()).collect()
     }
 
-    /// Whether a name used in file `f` may refer to the definition: one
-    /// project, a declared dependency, or no project at all.
-    fn reachable(&self, f: usize, def: usize) -> bool {
-        let used = self.ix.defs[def].file;
-        used == f
-            || self
-                .workspace
-                .may_reference(self.path_of(f).as_str(), self.path_of(used).as_str())
-    }
+    reachable_by_project!();
 
     fn module(&self, f: usize, relative: u32, dotted: &str) -> ModuleRes {
         let key = (f, relative, dotted.to_string());
