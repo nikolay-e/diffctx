@@ -1,0 +1,299 @@
+# One changed definition per family, with no user anywhere: the control of
+# `support/families.rs`, as data, so the class tests build their seeds from the
+# same file the probes of the classes read. `base` is the first commit, `change`
+# the files the second one rewrites. A seed adds a user of `symbol`, or a
+# mention of it, and the answer to the change is read for that file.
+python:
+  definition: shop/pricing.py
+  symbol: total
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    shop/util.py: |
+      def helper(x):
+          return x
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+  change:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) * 2
+typescript:
+  definition: src/pricing.ts
+  symbol: total
+  base:
+    package.json: |
+      {
+        "name": "shop",
+        "version": "1.0.0"
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {}
+      }
+    src/util.ts: |
+      export function helper(x: number) {
+        return x;
+      }
+    src/pricing.ts: |
+      export function total(items: number[]) {
+        return items.reduce((a, b) => a + b, 0);
+      }
+  change:
+    src/pricing.ts: |
+      export function total(items: number[]) {
+        return items.reduce((a, b) => a + b, 0) * 2;
+      }
+rust:
+  definition: src/pricing.rs
+  symbol: total
+  base:
+    Cargo.toml: |
+      [package]
+      name = "shop"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod pricing;
+      pub mod util;
+    src/util.rs: |
+      pub fn helper(x: i64) -> i64 {
+          x
+      }
+    src/pricing.rs: |
+      pub fn total(items: &[i64]) -> i64 {
+          items.iter().sum()
+      }
+  change:
+    src/pricing.rs: |
+      pub fn total(items: &[i64]) -> i64 {
+          items.iter().sum::<i64>() * 2
+      }
+kotlin:
+  definition: src/main/kotlin/shop/Pricing.kt
+  symbol: total
+  base:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+    build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    src/main/kotlin/shop/Util.kt: |
+      package shop
+
+      fun helper(x: Int): Int {
+          return x
+      }
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int {
+          return items.sum()
+      }
+  change:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int {
+          return items.sum() * 2
+      }
+java:
+  definition: src/main/java/shop/Pricing.java
+  symbol: total
+  base:
+    src/main/java/shop/Util.java: |
+      package shop;
+
+      public class Util {
+          public static int helper(int x) {
+              return x;
+          }
+      }
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) sum += n;
+              return sum;
+          }
+      }
+  change:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) sum += n;
+              return sum * 2;
+          }
+      }
+go:
+  definition: pricing/pricing.go
+  symbol: Total
+  base:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    util/util.go: |
+      package util
+
+      func Helper(x int) int {
+          return x
+      }
+    pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+          sum := 0
+          for _, n := range items {
+              sum += n
+          }
+          return sum
+      }
+  change:
+    pricing/pricing.go: |
+      package pricing
+
+      func Total(items []int) int {
+          sum := 0
+          for _, n := range items {
+              sum += n
+          }
+          return sum * 2
+      }
+php:
+  definition: src/Shop/Pricing.php
+  symbol: total
+  base:
+    src/Util.php: |
+      <?php
+
+      namespace Shop;
+
+      class Util
+      {
+          public static function helper(int $x): int
+          {
+              return $x;
+          }
+      }
+    src/Shop/Pricing.php: |
+      <?php
+
+      namespace Shop;
+
+      class Pricing
+      {
+          public static function total(array $items): int
+          {
+              return array_sum($items);
+          }
+      }
+  change:
+    src/Shop/Pricing.php: |
+      <?php
+
+      namespace Shop;
+
+      class Pricing
+      {
+          public static function total(array $items): int
+          {
+              return array_sum($items) * 2;
+          }
+      }
+c:
+  definition: src/pricing.c
+  symbol: total
+  base:
+    src/pricing.h: |
+      #ifndef PRICING_H
+      #define PRICING_H
+
+      int total(const int *items, int n);
+
+      #endif
+    src/util.c: |
+      int helper(int x)
+      {
+          return x;
+      }
+    src/pricing.c: |
+      #include "pricing.h"
+
+      int total(const int *items, int n)
+      {
+          int sum = 0;
+          for (int i = 0; i < n; i++) {
+              sum += items[i];
+          }
+          return sum;
+      }
+  change:
+    src/pricing.c: |
+      #include "pricing.h"
+
+      int total(const int *items, int n)
+      {
+          int sum = 0;
+          for (int i = 0; i < n; i++) {
+              sum += items[i];
+          }
+          return sum * 2;
+      }
+shell:
+  definition: scripts/pricing.sh
+  symbol: total
+  base:
+    scripts/notes.sh: |
+      echo notes
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        echo "$sum"
+      }
+  change:
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        printf '%s\n' "$sum"
+      }
+swift:
+  definition: Sources/Shop/Pricing.swift
+  symbol: total
+  base:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "Fixture",
+          targets: [.target(name: "Shop")]
+      )
+    Sources/Shop/Util.swift: |
+      func helper(_ x: Int) -> Int {
+          return x
+      }
+    Sources/Shop/Pricing.swift: |
+      enum Pricing {
+          static func total(_ items: [Int]) -> Int {
+              return items.reduce(0, +)
+          }
+      }
+  change:
+    Sources/Shop/Pricing.swift: |
+      enum Pricing {
+          static func total(_ items: [Int]) -> Int {
+              return items.reduce(0, +) * 2
+          }
+      }
