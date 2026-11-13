@@ -310,6 +310,7 @@ pub(super) fn extract_as(
     }
     blob.facts = facts;
     framework::derive(&mut blob);
+    blob.record_lexical(root);
     blob.in_source_order();
     blob
 }

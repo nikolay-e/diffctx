@@ -506,13 +506,14 @@ impl BlobFacts {
     pub(crate) fn from_stored(
         language: Language,
         facts: Vec<Fact>,
+        lexical: Vec<(Range<u32>, Lexical)>,
         errors: Vec<Vec<(u32, u32)>>,
     ) -> Self {
         let mut blob = Self {
             language,
             facts,
             losses: Vec::new(),
-            lexical: Vec::new(),
+            lexical,
         };
         for lines in errors {
             blob.parse_error(lines);

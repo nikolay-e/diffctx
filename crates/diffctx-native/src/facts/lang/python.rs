@@ -87,6 +87,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     }
     blob.facts = std::mem::take(&mut walker.facts);
     framework::derive(&mut blob);
+    blob.record_lexical(root);
     blob.in_source_order();
     blob
 }

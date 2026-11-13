@@ -129,6 +129,7 @@ pub(super) fn blob_of(
     }
     blob.facts = reader.facts;
     framework::derive(&mut blob);
+    blob.record_lexical(root);
     blob.in_source_order();
     blob
 }

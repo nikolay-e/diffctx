@@ -29,6 +29,7 @@ mod hash;
 mod ids;
 pub mod lang;
 mod language;
+mod lexical;
 mod model;
 mod module;
 
