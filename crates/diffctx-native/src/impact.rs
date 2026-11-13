@@ -5574,8 +5574,19 @@ pub fn deliver_framed(
     fit_with(output, cap, measure);
     // The least the answer can say may outgrow the budget: it names the tokens
     // that take, cutting nothing more, and a budget of that size delivers it.
-    let least = measure(output);
-    if least > cap {
+    // The document prints its cap, so the figure is the one that cap prints
+    // itself into, found from a cap of 0 whatever the budget asked.
+    if measure(output) > cap {
+        let mut least = 0;
+        loop {
+            output.cap = least;
+            let printed = measure(output);
+            if printed <= least {
+                break;
+            }
+            least = printed;
+        }
+        output.cap = cap;
         output.budget_needed = Some(least);
     }
     if markdown {
