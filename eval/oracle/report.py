@@ -381,9 +381,12 @@ def observations(report: dict, states: list[cellstate.CellState], gates: dict[st
 INFORMATIONAL = frozenset({"measurability.interval_width"})  # it sorts cells into measured or not and can never fail
 
 
+NOT_MEASURED = "not measured"
+
+
 def _status(gate: Threshold, value: object) -> str:
     if value is None:
-        return "n/a"
+        return NOT_MEASURED
     if gate.gate in INFORMATIONAL:
         return "info"
     if gate.op == "read":
@@ -392,7 +395,7 @@ def _status(gate: Threshold, value: object) -> str:
 
 
 def verdict_lines(report: dict, gates: dict[str, Threshold], states: list[cellstate.CellState]) -> list[dict]:
-    """One line per observation of each threshold in `gates`, and one `n/a` line for a threshold the run gave no input."""
+    """One line per observation of each threshold in `gates`, and one `not measured` line for a threshold the run gave no input."""
     seen = observations(report, states, gates)
     return [
         {
@@ -602,7 +605,7 @@ def render_verdict(lines: list[dict]) -> list[str]:
         for line in lines
     ]
     failed = [line["gate"] for line in lines if line["status"] == "fail"]
-    summary = f"Failing: {', '.join(failed)}." if failed else "No threshold fails; lines marked N/A had no input in this run."
+    summary = f"Failing: {', '.join(failed)}." if failed else "No threshold fails; NOT MEASURED lines had no input in this run."
     return ["", "## Verdict", "", table(["Gate", "Source", "Value", "Limit", "Verdict", "Numbers"], rows), "", summary]
 
 
@@ -771,7 +774,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         metavar="FILE",
         help=f"the engine's declared state of each cell ({cellstate.FACTS_SCHEMA}): adds the precise.* verdict lines and the "
-        "cell-state table; without it those lines stay n/a",
+        "cell-state table; without it those lines stay not measured",
     )
     parser.add_argument("--ac5-head", type=Path, help="the AC5 scorer's totals.json for the head")
     parser.add_argument("--ac5-base", type=Path, help="the same for the base, scored on the same material")

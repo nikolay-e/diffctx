@@ -62,10 +62,11 @@ a body-only edit, a deletion and a move.
 
 ## Thresholds and the verdict
 
-`gates.toml` holds every threshold the oracle judges by; no number lives in code.
-`report.py` prints one verdict line per threshold with the numbers behind it (a
-threshold with no input in the run is `N/A`, never a pass; `--gates FILE` reads
-another file, `--ac5-head` and `--ac5-base` the AC5 scorer's `totals.json`).
+`gates.toml` holds every threshold the oracle judges by; no number lives in
+code. `report.py` prints one verdict line per threshold with the numbers behind
+it (a threshold with no input in the run is `not measured`, never a pass;
+`--gates FILE` reads another file, `--ac5-head` and `--ac5-base` the AC5
+scorer's `totals.json`).
 
 `--against DIR` pairs the run with another on the same commits and resamples
 over commits. A cell, one (language, mode, relation), is *measured* when the
@@ -132,9 +133,9 @@ declared state, is refused.)
 
 `report.py --cell-facts FILE` (with `--against`) prints the `precise.*` and
 `declared.every_state_true` verdict lines from `cellstate` and a cell-state
-table; without the file they stay `N/A`. A `precise.*` line is judged over the
-cells declared precise: a floor shows the weakest value among them, a required
-condition is true when none of them misses it.
+table; without the file they stay `not measured`. A `precise.*` line is judged
+over the cells declared precise: a floor shows the weakest value among them, a
+required condition is true when none of them misses it.
 
 ```text
 python cellstate.py --report out/report.json --facts facts.json \
@@ -161,8 +162,9 @@ definitions it lost, less the `unnamed_omitted` it says it shed without a name
 and with what classifies it, an entry of its file or name under another key
 being an identity mismatch and none an engine loss. A run without
 `silent_loss.jsonl` or the `incomplete_complete` column (an older run) leaves
-those lines `N/A`; an answer that lost nothing still has its row, so a zero is a
-witnessed zero. The silent-loss gate is `read`: each row is read and classified.
+those lines `not measured`; an answer that lost nothing still has its row, so a
+zero is a witnessed zero. The silent-loss gate is `read`: each row is read and
+classified.
 
 ## Pins and isolation
 
