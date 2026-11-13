@@ -45,6 +45,7 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
+use super::kotlin::{Leaf, POLL_EVERY, UNBOUND_PATH, error_ranges, has_word};
 use super::parse_tree;
 use crate::facts::framework;
 use crate::facts::kotlin as old;
@@ -54,10 +55,6 @@ use crate::facts::{
     Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::{Loss, RepoPath, RunBudget};
-
-const UNBOUND_PATH: &str = "<blob>";
-const POLL_EVERY: usize = 256;
-const MAX_ERROR_RANGES: usize = 32;
 
 /// Annotations that make a method a test a runner calls.
 const TEST_ANNOTATIONS: &[&str] = &[
@@ -111,19 +108,6 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     blob.record_lexical(root);
     blob.in_source_order();
     blob
-}
-
-/// The error lines (sorted, distinct) as merged ranges.
-fn error_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
-    let mut ranges: Vec<(u32, u32)> = Vec::new();
-    for &line in lines {
-        match ranges.last_mut() {
-            Some(last) if line <= last.1 + 1 => last.1 = line,
-            _ => ranges.push((line, line)),
-        }
-    }
-    ranges.truncate(MAX_ERROR_RANGES);
-    ranges
 }
 
 /// The constants of every enum, which the first walk does not declare: each is a
@@ -203,13 +187,6 @@ fn enum_member(node: Node<'_>, bytes: &[u8]) -> Option<old::Declaration> {
         header: node.start_byte()..header_end,
         signature: old::squash(bytes, node.start_byte()..header_end),
     })
-}
-
-/// A leaf of the tree: its bytes, and whether it is a comment.
-struct Leaf {
-    start: usize,
-    end: usize,
-    comment: bool,
 }
 
 struct Reader<'a> {
@@ -789,9 +766,4 @@ fn visibility_of(d: &old::Declaration) -> Visibility {
         Some(old::Visibility::Internal) => Visibility::Package,
         Some(old::Visibility::Public) | None => Visibility::Public,
     }
-}
-
-fn has_word(text: &str, word: &str) -> bool {
-    text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
-        .any(|w| w == word)
 }
