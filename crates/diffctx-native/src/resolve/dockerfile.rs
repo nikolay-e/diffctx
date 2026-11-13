@@ -21,11 +21,11 @@
 //!   lands on. A glob, a directory and the whole context are `Opaque`; a name no
 //!   file has is `MissingModule`, an unknown.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use super::index::dir_of;
 use super::{
-    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution,
+    Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
 use crate::facts::{
@@ -35,11 +35,7 @@ use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's Dockerfiles.
 pub struct DockerfileResolver {
-    definitions: Vec<Definition>,
-    bindings: Vec<Binding>,
-    by_target: HashMap<DefKey, Vec<usize>>,
-    losses: Vec<Loss>,
-    read: Vec<RepoPath>,
+    solved: Solved,
 }
 
 struct StageRec {
@@ -142,48 +138,13 @@ impl DockerfileResolver {
                 }
             }
         }
-        let mut by_target: HashMap<DefKey, Vec<usize>> = HashMap::new();
-        for (at, binding) in bindings.iter().enumerate() {
-            for key in binding.targets() {
-                by_target.entry(key.clone()).or_default().push(at);
-            }
-        }
         Ok(Self {
-            definitions,
-            bindings,
-            by_target,
-            losses,
-            read: read_paths,
+            solved: Solved::new(definitions, bindings, losses, read_paths),
         })
     }
-
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-
-    /// The bindings that resolve to `key` or have it among their candidates.
-    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
-        match self.by_target.get(key) {
-            Some(at) => at.iter().map(|i| &self.bindings[*i]).collect(),
-            None => Vec::new(),
-        }
-    }
-
-    /// What the answer is partial for: files the extractor could not fully read,
-    /// reads that failed, a run cut short.
-    pub fn losses(&self) -> &[Loss] {
-        &self.losses
-    }
-
-    /// The files the resolver read: what an absence may rest on.
-    pub fn read_paths(&self) -> &[RepoPath] {
-        &self.read
-    }
 }
+
+solved_by!(DockerfileResolver);
 
 fn unresolved(reason: UnresolvedReason) -> Resolution {
     Resolution::Unresolved { reason }
