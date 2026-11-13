@@ -132,11 +132,6 @@ struct Cli {
     /// Suppress the token summary on stderr
     #[arg(short = 'q', long)]
     quiet: bool,
-
-    /// Migration measurement: per changed file, the changed definitions the
-    /// impact path reports beside the facts layer's, as JSON
-    #[arg(long, hide = true, requires = "diff_ref", conflicts_with_all = ["symbol", "mode", "with_raw_diff"])]
-    shadow: bool,
 }
 
 #[derive(Subcommand)]
@@ -417,14 +412,6 @@ fn real_main() -> Result<()> {
         request.symbol = Some(symbol);
         refuse_raw_diff_without_source(&cli, "impact");
         return deliver(&cli, request);
-    }
-    if cli.shadow {
-        let path = cli.path.clone();
-        let (alpha, scoring) = (cli.alpha, scoring_mode);
-        let report = run_with_deadline(timeout, move || {
-            _diffctx::shadow::report(&path, diff_ref.as_deref(), alpha, scoring, timeout)
-        })?;
-        return write_stdout(&format!("{report}\n"));
     }
     if request.mode != Mode::Pack {
         refuse_raw_diff_without_source(&cli, mode);
