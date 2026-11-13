@@ -119,8 +119,6 @@ synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_rep
 # These entries are predictions made without running the harness; reconcile them on the first run.
 # Each lists its issue; T21 dispositions every line before the release.
 impact/python/py_generated_file_is_not_a_separate_consumer_of_its_source  # fj#110 open
-impact/python/py_known_caller_inside_the_diff_is_not_unresolved  # fj#124: the caller is listed as also changed, not as a caller (decision, wave 4); the case reads callers
-impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts  # gh#602 open
 impact/python/py_new_script_module_level_names_are_one_change  # gh#647 open
 impact/python/py_attribute_assignment_is_not_a_changed_definition  # gh#672 open: `self.workdir =` is named as a changed definition; the test file no longer drops it
 impact/python/py_namedtuple_fields_are_not_changed_definitions  # fj#129 open: the NamedTuple field `unit` is named as a changed definition; a callerless one was dropped before
@@ -146,11 +144,9 @@ impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#51
 impact/config/config_shell_script_naming_changed_files_by_path  # gh#609 open
 symbol/config/config_symbol_helm_named_template_and_its_includes  # gh#378 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
-impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # gh#602 open
 impact/web/web_deleted_static_file_is_still_referenced_by_markup  # gh#631 open
 impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
-impact/web/web_test_that_evaluates_a_pages_script_reaches_its_functions  # gh#695 open
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
 symbol/config/gh675_symbol_lists_scripts_that_run_its_file_by_path  # gh#675 open
 # Open tickets, cases added 2026-11-10 (each names its ticket in source:).
@@ -161,11 +157,10 @@ impact/config/config_scheduler_unit_running_a_changed_script_by_its_installed_ba
 impact/kotlin/kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none
 impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
-impact/python/py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
 impact/typescript/ts_playwright_spec_reaches_a_component_through_its_route_and_its_test_id
 impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
-symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved
+symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved  # gh#710 open: --symbol takes no module as a definition, so its importers have no rows (the definition half needs a module definition for Python)
 
 # AC5 false-absence classes (tests stream, p5): the cases are red on the engine they were written
 # against and stay so until phase A's switch ("not established", never "no tests"): the callers
@@ -175,3 +170,4 @@ symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved
 impact/python/py_class_attribute_holding_a_changed_class_is_a_caller  # fj#186 open
 impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#186 open
 impact/typescript/ts_hook_type_a_test_passes_by_option_key_has_a_test_link  # fj#166 open
+impact/python/fj186_class_attribute_holding_class  # fj#186 open: a changed class attribute names no caller; the users of its holder class are not carried to it (1.20 listed them)
