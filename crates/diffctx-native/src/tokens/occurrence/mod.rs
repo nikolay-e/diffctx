@@ -33,7 +33,7 @@ use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
 use crate::snapshot::{Loss, RepoPath, SideTag};
 
 pub use crate::facts::Lexical;
-pub use implicit::{Known, implicit_kinds};
+pub use implicit::{Known, entered, implicit_kinds};
 pub use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes};
 pub use scanner::{Case, Scan, scan};
 
