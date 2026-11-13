@@ -79,8 +79,17 @@ def test_a_container_is_detected_by_its_marker_file_or_its_cgroup(tmp_path: Path
 def test_a_kubernetes_pod_is_a_container_even_under_a_cgroup_namespace(tmp_path: Path):
     cgroup = tmp_path / "cgroup"
     cgroup.write_text("0::/\n")
-    assert not runners.in_container(tmp_path / "none", cgroup, {})
-    assert runners.in_container(tmp_path / "none", cgroup, {"KUBERNETES_SERVICE_HOST": "192.0.2.1"})
+    mount = tmp_path / "serviceaccount"
+    assert not runners.in_container(tmp_path / "none", cgroup, mount)
+    mount.mkdir()
+    assert runners.in_container(tmp_path / "none", cgroup, mount)
+
+
+def test_a_variable_named_like_the_kubelets_is_not_a_container(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cgroup = tmp_path / "cgroup"
+    cgroup.write_text("0::/\n")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "192.0.2.1")
+    assert not runners.in_container(tmp_path / "none", cgroup, tmp_path / "no-mount")
 
 
 def test_the_sandbox_variable_alone_vouches_for_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

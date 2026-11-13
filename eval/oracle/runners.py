@@ -25,7 +25,6 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,14 +48,18 @@ class Plan:
 CONTAINER_MARKERS = ("docker", "containerd", "kubepods", "lxc", "podman")
 
 
+POD_MOUNT = Path("/var/run/secrets/kubernetes.io/serviceaccount")
+
+
 def in_container(
     dockerenv: Path = Path("/.dockerenv"),
     cgroup: Path = Path("/proc/self/cgroup"),
-    environment: Mapping[str, str] = os.environ,
+    pod_mount: Path = POD_MOUNT,
 ) -> bool:
-    """This process runs inside a container: Docker's marker file, the variable the kubelet sets in every pod
-    (a pod under a cgroup namespace shows `0::/` and no marker file), or a container runtime in its cgroup path."""
-    if dockerenv.exists() or environment.get("KUBERNETES_SERVICE_HOST"):
+    """This process runs inside a container: Docker's marker file, the service-account volume the kubelet mounts into a pod
+    (a pod under a cgroup namespace shows `0::/` and no marker file; a mounted fact, not a variable anyone can set), or a
+    container runtime in its cgroup path."""
+    if dockerenv.exists() or pod_mount.is_dir():
         return True
     try:
         return any(marker in cgroup.read_text(encoding="utf-8", errors="replace") for marker in CONTAINER_MARKERS)
