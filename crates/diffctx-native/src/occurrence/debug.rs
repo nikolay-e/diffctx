@@ -40,20 +40,6 @@ fn append(out: &mut File, lines: &str) {
     }
 }
 
-pub fn write_holder(
-    out: &mut File,
-    written: &mut Written,
-    holder: &Definition,
-    side: SideTag,
-    complete: bool,
-) {
-    let (def, side) = (label(holder), format!("{side:?}").to_lowercase());
-    if written.insert((def.clone(), side.clone(), Some("holder"))) {
-        let line = json!({"def": def, "side": side, "holder": true, "complete": complete});
-        append(out, &format!("{line}\n"));
-    }
-}
-
 /// What the cell knows of one changed definition's group, as the accounting asks.
 pub struct Shadow<'a> {
     pub ctx: &'a AnalysisContext,
@@ -70,6 +56,10 @@ pub struct Shadow<'a> {
     pub names: &'a [String],
     /// What the answer took, by relation.
     pub today: &'a [(Relation, Coverage)],
+    /// The changed definitions nested in this one, and whether every one is whole
+    /// and unused.
+    pub held: usize,
+    pub nested: bool,
 }
 
 #[derive(Default)]
@@ -213,6 +203,14 @@ impl Shadow<'_> {
                 .to_string(),
             );
             lines.push('\n');
+        }
+        whole &= self.nested;
+        if self.held > 0 && written.insert((def.clone(), side_text.clone(), Some("holder"))) {
+            let line = json!({
+                "def": def, "side": side_text, "holder": true, "held": self.held,
+                "complete": whole,
+            });
+            lines.push_str(&format!("{line}\n"));
         }
         append(out, &lines);
         (whole, unused)
