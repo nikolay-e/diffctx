@@ -40,7 +40,7 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::hash_outside;
-use super::{lines_of, parse_tree, span};
+use super::{children, lines_of, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
@@ -138,28 +138,6 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
     }
     merged.truncate(ERROR_RANGES_KEPT);
     merged
-}
-
-/// The named children of an item container in source order, those the
-/// grammar parked under an error node included: a stray token leaves the
-/// items around it whole inside the error, and their attributes, docs and
-/// container are still theirs.
-fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
-    let mut out = Vec::new();
-    let mut stack: Vec<Node<'t>> = named_children(parent).into_iter().rev().collect();
-    while let Some(node) = stack.pop() {
-        if node.is_error() {
-            stack.extend(named_children(node).into_iter().rev());
-        } else {
-            out.push(node);
-        }
-    }
-    out
-}
-
-fn named_children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
-    let mut cursor = node.walk();
-    node.named_children(&mut cursor).collect()
 }
 
 /// Tokens of a declaration written for a reader: a space between two tokens

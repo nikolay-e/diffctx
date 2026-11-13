@@ -236,3 +236,19 @@ fn children<'t>(node: Node<'t>) -> Vec<Node<'t>> {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).collect()
 }
+
+/// The named children of an item container in source order, those the grammar
+/// parked under an error node included: a stray token leaves the items around it
+/// whole inside the error, and their attributes, docs and container are still theirs.
+fn through_errors<'t>(parent: Node<'t>) -> Vec<Node<'t>> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Node<'t>> = children(parent).into_iter().rev().collect();
+    while let Some(node) = stack.pop() {
+        if node.is_error() {
+            stack.extend(children(node).into_iter().rev());
+        } else {
+            out.push(node);
+        }
+    }
+    out
+}
