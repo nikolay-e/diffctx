@@ -187,3 +187,19 @@ fn a_pair_is_written_for_every_relation_an_unexplained_occurrence_may_be_a_use_t
         .expect("type_use");
     assert!(uncovered["today"].is_null(), "{uncovered}");
 }
+
+#[test]
+fn a_line_is_written_once_however_often_the_cell_is_asked() {
+    let (_, _, lines) = shadowed("def total(items):\n    return sum(items) * 2\n");
+    let mut seen = std::collections::HashSet::new();
+    for line in &lines {
+        let key = (
+            line["def"].to_string(),
+            line["side"].to_string(),
+            line["relation"].to_string(),
+            line["file"].to_string(),
+            line["bytes"].to_string(),
+        );
+        assert!(seen.insert(key), "written twice: {line}");
+    }
+}

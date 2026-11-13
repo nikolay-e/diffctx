@@ -40,7 +40,7 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::occurrence::debug::{Shadow, sink};
+use crate::occurrence::debug::{Shadow, Written, sink};
 use crate::occurrence::{Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
@@ -1552,6 +1552,8 @@ pub struct Cell {
     fixed: OnceCell<Option<Losses>>,
     /// The head's files the resolver read, for the shadow accounting.
     shadow_files: OnceCell<Vec<FileFacts>>,
+    /// What the shadow wrote already: `verdict` runs from several places.
+    shadow_written: RefCell<Written>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -1793,6 +1795,7 @@ impl Cell {
             base_listed: OnceCell::new(),
             fixed: OnceCell::new(),
             shadow_files: OnceCell::new(),
+            shadow_written: RefCell::default(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
         // definitions on are no hunks, and a use inside one is a caller.
@@ -3212,7 +3215,8 @@ impl Cell {
                 dispatched: self.dispatched_via(definition).is_some(),
                 consumed_outside: self.consumed_outside(),
             };
-            shadow.write(&mut out, definition, side, known);
+            let mut written = self.shadow_written.borrow_mut();
+            shadow.write(&mut out, &mut written, definition, side, known);
         }
     }
 
