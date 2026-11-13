@@ -1,4 +1,4 @@
-"""Wall-time baseline (T18): p50 and p95 of impact per commit, `--symbol` and pack over the sampled commits."""
+"""Wall-time baseline (T18): p50 and p95 of impact, pack and locate per commit and of `--symbol` over the sampled commits."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from sampling import sample_commits
 from scipindex import Index
 from truth import Snapshot
 
-OPERATIONS = ("impact", "symbol", "pack")
+OPERATIONS = ("impact", "symbol", "pack", "locate")
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             work = gitrepo.checkout(CACHE / "work" / repo.name, git_dir, sha)
             name = symbol_name(git_dir, repo.name, base, sha, repo.language, rng)
-            commands = {"impact": impact_args(sha), "pack": impact_args(sha, "pack")}
+            commands = {"impact": impact_args(sha), "pack": impact_args(sha, "pack"), "locate": impact_args(sha, "locate")}
             if name:
                 commands["symbol"] = symbol_args(name)
             for op, args in commands.items():
