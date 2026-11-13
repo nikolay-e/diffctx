@@ -223,6 +223,7 @@ fn the_v2_impact_schema_has_the_shape_the_design_gives() {
         "entry_point",
         "unread",
         "no_tests",
+        "not_established",
     ] {
         assert!(guard.contains(state), "guard state {state}");
     }

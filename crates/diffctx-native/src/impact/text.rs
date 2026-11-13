@@ -19,6 +19,8 @@ use crate::answer::v2::{
 };
 use crate::answer::{Answer, Page, RenderCtx};
 
+const NOT_ESTABLISHED: &str = "tests not established";
+
 /// The hook's and the CLI's text form: one line per changed symbol, one per
 /// caller beneath it, contracts last. Short enough to read before a commit.
 pub fn render_markdown(output: &ImpactOutput) -> String {
@@ -467,6 +469,9 @@ fn guard_text(row: &Row) -> String {
         GuardState::FileOnly => "no static test link (its file has tests)".to_string(),
         GuardState::None => "no static test link found".to_string(),
         GuardState::NoTests => "no test files in view".to_string(),
+        GuardState::NotEstablished => {
+            format!("{NOT_ESTABLISHED}: the search stopped at its hop bound")
+        }
     }
 }
 
@@ -526,11 +531,18 @@ fn write_definition(out: &mut String, a: &Answer, d: &Definition, scope: bool) {
     } else {
         d.lines.clone()
     };
-    let note = match (&d.entry, d.guard.is_some() && tests_known) {
-        (Some(role), true) => format!(" \u{2014} {role} \u{2014} no static test link"),
-        (None, true) => " \u{2014} no static test link".to_string(),
-        (Some(role), false) => format!(" \u{2014} {role}"),
-        (None, false) => String::new(),
+    let claim = d.guard.as_ref().filter(|_| tests_known).map(|g| {
+        if g.state == GuardState::NotEstablished {
+            NOT_ESTABLISHED
+        } else {
+            "no static test link"
+        }
+    });
+    let note = match (&d.entry, claim) {
+        (Some(role), Some(claim)) => format!(" \u{2014} {role} \u{2014} {claim}"),
+        (None, Some(claim)) => format!(" \u{2014} {claim}"),
+        (Some(role), None) => format!(" \u{2014} {role}"),
+        (None, None) => String::new(),
     };
     let _ = writeln!(
         out,

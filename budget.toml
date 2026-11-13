@@ -67,3 +67,22 @@ deletes = [
 "crates/diffctx-native/src/facts/lang/shell.rs" = { base = 623, plus = 1 }
 "crates/diffctx-native/src/facts/lang/terraform.rs" = { base = 768, plus = 1 }
 "crates/diffctx-native/src/facts/lang/typescript.rs" = { base = 4340, plus = 1 }
+
+[debt.phase-b-tests]
+lines = 50
+repaid_at = "phase A step 4, the switch commit: the occurrence accounting of test scopes closes the search, no cut walk is recorded"
+due_when = "crates/diffctx-native/src/decide.rs::fn status("
+covers = []
+deletes = [
+  "crates/diffctx-native/src/impact/tests_reach.rs::fn cut(",
+  "crates/diffctx-native/src/impact/tests_reach.rs::cut: RefCell",
+  "crates/diffctx-native/src/impact.rs::tests_cut: bool",
+  "crates/diffctx-native/src/impact.rs::&& !c.tests_cut",
+  "crates/diffctx-native/src/answer/v2.rs::caller.tests_cut",
+]
+
+[debt.phase-b-tests.grows]
+"crates/diffctx-native/src/impact.rs" = { base = 5956, plus = 22 }
+"crates/diffctx-native/src/impact/tests_reach.rs" = { base = 1350, plus = 12 }
+"crates/diffctx-native/src/impact/text.rs" = { base = 747, plus = 12 }
+"crates/diffctx-native/src/answer/v2.rs" = { base = 1465, plus = 4 }

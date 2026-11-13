@@ -15,8 +15,9 @@
 //! For the files no cell reads, the files of the group that spell a name are the
 //! users, held to the same bar as a caller, and a test file's name links it to the
 //! source it asks for (`testfiles::naming_links`). Nothing here reads the ranking
-//! graph. A claim that a definition
-//! has no test link is printed only where `any` says tests are in view.
+//! graph. A claim that a definition has no test link is printed only where `any`
+//! says tests are in view and the walk up the uses was not [`TestsReach::cut`]:
+//! until the occurrence accounting of the test scopes lands, that is what closes it.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -86,6 +87,8 @@ pub(super) struct TestsReach<'a> {
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: RefCell<FxHashMap<FragmentId, Vec<TestLink>>>,
+    /// The fragments whose walk stopped at [`MAX_TEST_HOPS`] with uses left above.
+    cut: RefCell<FxHashSet<FragmentId>>,
 }
 
 impl<'a> TestsReach<'a> {
@@ -197,6 +200,7 @@ impl<'a> TestsReach<'a> {
             runs,
             repo_tests,
             memo: RefCell::default(),
+            cut: RefCell::default(),
         }
     }
 
@@ -538,7 +542,15 @@ impl<'a> TestsReach<'a> {
             }
             frontier = next;
         }
+        if !frontier.is_empty() {
+            self.cut.borrow_mut().insert(caller.id.clone());
+        }
         Vec::new()
+    }
+
+    /// Whether the walk of [`Self::tested_by`] for `f` stopped at the hop bound.
+    pub(super) fn cut(&self, f: &Fragment) -> bool {
+        self.cut.borrow().contains(&f.id)
     }
 
     pub(super) fn file_tested(

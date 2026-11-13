@@ -465,7 +465,7 @@ pub fn extract(doc: &Value) -> Result<Answer, String> {
         if text(&definition_doc["change"], "kind") == Some("removed") {
             answer.removed.push(definition.clone());
         }
-        if definition_doc.get("guard").is_some_and(|g| !g.is_null()) {
+        if text(&definition_doc["guard"], "state") == Some("none") {
             answer.untested.push(definition.clone());
         }
         if let Some(entry) = text(definition_doc, "entry") {
