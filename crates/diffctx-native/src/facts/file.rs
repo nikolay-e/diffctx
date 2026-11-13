@@ -94,6 +94,11 @@ pub fn facts_of(
                 catch_unwind(AssertUnwindSafe(|| extractor.extract(&read, &ctx.run)))
                     .unwrap_or_else(|_| BlobFacts::failed(language));
             extracted.in_source_order();
+            // An extractor may have parsed a lossy copy of invalid UTF-8, whose
+            // offsets are not the bytes': every byte is then code, the safe side.
+            if std::str::from_utf8(&read).is_err() {
+                extracted.lexical.clear();
+            }
             cache.put(&key, extracted)
         }
     };

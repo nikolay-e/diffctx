@@ -209,3 +209,17 @@ fn the_ranges_survive_the_disk_cache() {
     assert_eq!(fresh_process.stats().disk_hits, 1);
     assert_eq!(served.blob.lexical, written.blob.lexical);
 }
+
+#[test]
+fn a_file_that_is_not_utf8_has_every_byte_as_code() {
+    let repo = Repo::init();
+    let source = b"// note \xff\nfoo(1);\nconst s = 'foo';\n";
+    std::fs::write(repo.path().join("a.js"), source).expect("write");
+    let head = repo.commit("only");
+    let ctx = review(&repo, &head, &head);
+    let path = RepoPath::new("a.js").expect("a path");
+    let facts = facts_of(&ctx, SideTag::Head, &FactsCache::disabled(), &path)
+        .expect("facts")
+        .expect("some");
+    assert!(facts.blob.lexical.is_empty(), "{:?}", facts.blob.lexical);
+}
