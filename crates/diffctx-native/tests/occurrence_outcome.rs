@@ -9,14 +9,14 @@ mod snapshot_fixture;
 use std::sync::Arc;
 
 use _diffctx::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
-use _diffctx::occurrence::{
-    Basis, Entry, FileOutcomes, Outcome, Reason, View, admitted, counts_against, outcomes,
-};
 use _diffctx::resolve::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, PythonResolver, Relation,
     Resolution, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
+use _diffctx::tokens::occurrence::{
+    Basis, Entry, FileOutcomes, Outcome, Reason, View, admitted, counts_against, outcomes,
+};
 use snapshot_fixture::Repo;
 
 struct World {

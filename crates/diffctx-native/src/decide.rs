@@ -18,7 +18,7 @@
 //! An absence is never a default. [`Complete`] is the witness that the search for
 //! a definition's uses left nothing unread, and [`Coverage::close`] is the one place
 //! that makes it: from the gaps the search found and, for a definition, from the
-//! occurrence account of its names ([`crate::occurrence::Account`]): every
+//! occurrence account of its names ([`crate::tokens::occurrence::Account`]): every
 //! occurrence in the files of its interaction group ([`Group`]) is explained.
 //! An absence claim ([`Claim::Absent`]) or an exact count ([`Count::Exact`]) holds
 //! the witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
@@ -41,8 +41,6 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::occurrence::{Hedge, Index, Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
@@ -55,6 +53,8 @@ use crate::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, ChangeKind, Loss, NotAnalysedReason,
     RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
+use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
+use crate::tokens::occurrence::{Hedge, Index, Known, View};
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 
 /// The reasons a candidate row carries in the answer.

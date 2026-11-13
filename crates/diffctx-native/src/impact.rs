@@ -16,9 +16,9 @@ use crate::answer::{Answer, RenderCtx};
 use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells, Effect};
 use crate::facts::{EntryKind, framework};
-use crate::occurrence::Hedge;
 use crate::pipeline::ScoredState;
 use crate::tokens::Names;
+use crate::tokens::occurrence::Hedge;
 use crate::types::{Fragment, FragmentId, FragmentKind};
 use crate::vocabulary;
 
