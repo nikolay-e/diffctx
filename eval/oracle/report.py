@@ -136,7 +136,9 @@ class LoadedRun:
     path: Path
     engine: str | None
     budget: int | None
-    replayed_from: str | None = None  # the run whose stored answers this one scored: nothing it says decides a safety row
+    fresh: bool = (
+        False  # the mark of a `measure` run whose answers the engine gave in that run: only such a run decides a safety row
+    )
 
     @property
     def cells(self) -> list[dict]:
@@ -154,7 +156,7 @@ def load_run(spec: str) -> LoadedRun:
     meta_file = path / "run.json"
     meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else {}
     budget = (UNCAPPED_BUDGET if given == "uncapped" else int(given)) if given else meta.get("budget")
-    return LoadedRun(path, meta.get("engine"), budget, meta.get("replayed_from"))
+    return LoadedRun(path, meta.get("engine"), budget, bool(meta.get("fresh")))
 
 
 def curve_rows(runs: list[LoadedRun]) -> list[dict]:
@@ -383,13 +385,13 @@ INFORMATIONAL = frozenset({"measurability.interval_width"})  # it sorts cells in
 
 
 NOT_MEASURED = "not measured"
-NOT_DECIDED = "not decided: replayed answers"
+NOT_DECIDED = "not decided: no fresh mark"
 
 
-def _status(gate: Threshold, value: object, replayed: bool) -> str:
+def _status(gate: Threshold, value: object, fresh: bool) -> str:
     if value is None:
         return NOT_MEASURED
-    if replayed and gate.gate.startswith("safety."):
+    if not fresh and gate.gate.startswith("safety."):
         return NOT_DECIDED
     if gate.gate in INFORMATIONAL:
         return "info"
@@ -399,13 +401,13 @@ def _status(gate: Threshold, value: object, replayed: bool) -> str:
 
 
 def verdict_lines(report: dict, gates: dict[str, Threshold], states: list[cellstate.CellState]) -> list[dict]:
-    """One line per observation of each threshold, one `not measured` line for a threshold with no input; safety rows of replays are not decided."""
+    """One line per observation of each threshold, one `not measured` line for a threshold with no input; a safety row of a run without the fresh mark is not decided."""
     seen = observations(report, states, gates)
     return [
         {
             "gate": gate.gate,
             "source": source,
-            "status": _status(gate, value, bool(report.get("replayed_from"))),
+            "status": _status(gate, value, report["fresh"]),
             "value": value,
             "limit": limit_text(gate),
             "detail": detail,
@@ -610,7 +612,9 @@ def render_verdict(lines: list[dict]) -> list[str]:
     ]
     failed = [line["gate"] for line in lines if line["status"] == "fail"]
     summary = f"Failing: {', '.join(failed)}." if failed else "No threshold fails; NOT MEASURED lines had no input in this run."
-    summary += " Safety rows of replayed answers decide nothing." * any(line["status"] == NOT_DECIDED for line in lines)
+    summary += " Safety rows of a run without the fresh mark decide nothing." * any(
+        line["status"] == NOT_DECIDED for line in lines
+    )
     return ["", "## Verdict", "", table(["Gate", "Source", "Value", "Limit", "Verdict", "Numbers"], rows), "", summary]
 
 
@@ -724,7 +728,7 @@ def build(
         "bench": json.loads(bench.read_text(encoding="utf-8")) if bench else None,
         "curve": curve_rows(curve) if curve else None,
         "paired": [paired_entry(run, other, rule) for other in against or []],
-        "replayed_from": load_run(str(run)).replayed_from,
+        "fresh": load_run(str(run)).fresh,
         "ac5": {"head": ac5_totals(ac5_head), "base": ac5_totals(ac5_base) if ac5_base else None} if ac5_head else None,
         "scip_adjudicated": None,
         "adjudication": None,

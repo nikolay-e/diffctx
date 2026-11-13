@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -91,7 +92,7 @@ def write_run(path: Path, cells: list[dict], engine: str | None = "diffctx 9", b
     path.mkdir()
     (path / "cells.jsonl").write_text("".join(json.dumps(c) + "\n" for c in cells))
     if engine:
-        (path / "run.json").write_text(json.dumps({"engine": engine, "budget": budget}))
+        (path / "run.json").write_text(json.dumps({"engine": engine, "budget": budget, "fresh": True}))
     return path
 
 
@@ -159,7 +160,7 @@ def test_main_adds_the_paired_section_fails_a_measured_cell_and_lists_thin_relat
             "to": "a::f",
         }
         (directory / "relations.jsonl").write_text(json.dumps({**pair, "verdict": "tp" if tp == 2 else "fn"}) + "\n")
-        (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+        (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000, "fresh": True}))
         return directory
 
     base, head = run("base", 2), run("head", 1)
@@ -428,7 +429,7 @@ def paired_runs(tmp_path: Path, truth: int = 8) -> tuple[Path, Path]:
         (directory / "cells.jsonl").write_text(
             "".join(json.dumps(cell(commit=c, truth=truth, tp=truth, incomplete_complete=0)) + "\n" for c in commits)
         )
-        (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+        (directory / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000, "fresh": True}))
         made.append(directory)
     return made[0], made[1]
 
@@ -527,35 +528,33 @@ def test_every_printed_incomplete_complete_says_what_complete_is_counted_on(tmp_
     assert "per changed definition and relation group" in (tmp_path / "out" / "report.md").read_text()
 
 
-def run_marked_replayed(path: Path, cells: list[dict], silent: list[dict] = ()) -> Path:
-    run = run_with(path, cells, silent=silent)
-    meta = json.loads((run / "run.json").read_text())
-    (run / "run.json").write_text(json.dumps({**meta, "replayed_from": "run2"}))
-    return run
-
-
-def test_a_verdict_on_replayed_answers_is_not_decided_whatever_the_safety_rows_say(tmp_path: Path):
+def test_a_run_without_the_fresh_mark_decides_no_safety_row_whatever_the_rows_say(tmp_path: Path):
     cells = [cell(truth=2, tp=2, folded=1, false_fold=1)]
-    run = run_marked_replayed(tmp_path / "run", cells)
+    legacy = run_with(tmp_path / "legacy", cells)  # a run.json from before the mark, or from a replay
+    (legacy / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+    bare = run_with(tmp_path / "bare", cells)
+    (bare / "run.json").unlink()
 
-    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
-
-    found = json.loads((tmp_path / "out" / "report.json").read_text())
-    status = {line["gate"]: line["status"] for line in found["verdict"]}
-    assert status["safety.false_fold"] == "not decided: replayed answers"
-    assert not [gate for gate, s in status.items() if gate.startswith("safety.") and s in ("pass", "fail")]
-    markdown = (tmp_path / "out" / "report.md").read_text()
-    assert "NOT DECIDED: REPLAYED ANSWERS" in markdown
-    assert "Failing: safety.false_fold" not in markdown
+    for number, run in enumerate((legacy, bare)):
+        assert report.main(["--run", str(run), "--out", str(tmp_path / f"out{number}")]) == 0
+        found = json.loads((tmp_path / f"out{number}" / "report.json").read_text())
+        status = {line["gate"]: line["status"] for line in found["verdict"]}
+        assert status["safety.false_fold"] == "not decided: no fresh mark"
+        assert not [gate for gate, s in status.items() if gate.startswith("safety.") and s in ("pass", "fail")]
+        markdown = (tmp_path / f"out{number}" / "report.md").read_text()
+        assert "NOT DECIDED: NO FRESH MARK" in markdown
+        assert "Failing: safety.false_fold" not in markdown
     assert verdicts(tmp_path / "fresh", cells)[("safety.false_fold", "oracle cells")]["status"] == "fail"
 
 
-def test_a_replay_marks_its_run_record_so_the_report_can_refuse_it(tmp_path: Path):
-    source, out = tmp_path / "old", tmp_path / "new"
-    source.mkdir()
-    out.mkdir()
-    (source / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+def test_only_a_fresh_measure_run_writes_the_mark_and_a_replay_copies_the_record_without_it(tmp_path: Path):
+    fresh, replay = tmp_path / "fresh", tmp_path / "replay"
+    fresh.mkdir()
+    replay.mkdir()
+    measure.write_run_meta(fresh, Path(sys.executable), 2000, append=False)
+    assert json.loads((fresh / "run.json").read_text())["fresh"] is True
 
-    measure.mark_replayed(source, out)
+    measure.copy_unfresh(fresh, replay)
 
-    assert json.loads((out / "run.json").read_text()) == {"engine": "diffctx 9", "budget": 2000, "replayed_from": str(source)}
+    copied = json.loads((replay / "run.json").read_text())
+    assert "fresh" not in copied and copied["budget"] == 2000

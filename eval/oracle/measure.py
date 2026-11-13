@@ -145,7 +145,13 @@ def engine_version(binary: Path) -> str:
 
 def write_run_meta(out: Path, binary: Path, budget: int | None, append: bool, engine_args: tuple[str, ...] = ()) -> None:
     """Which engine and budget made these results: the report's curve and comparisons read it back."""
-    meta = {"engine": engine_version(binary), "binary": binary.name, "budget": budget, "engine_args": list(engine_args)}
+    meta = {
+        "engine": engine_version(binary),
+        "binary": binary.name,
+        "budget": budget,
+        "engine_args": list(engine_args),
+        "fresh": True,
+    }
     path = out / RUN_FILE
     if append and path.exists():
         before = json.loads(path.read_text(encoding="utf-8"))
@@ -155,9 +161,9 @@ def write_run_meta(out: Path, binary: Path, budget: int | None, append: bool, en
     path.write_text(json.dumps(meta, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def mark_replayed(source: Path, out: Path) -> None:
-    """The replayed run's record, marked: the report refuses a deciding verdict on answers the engine did not give now."""
-    meta = {**json.loads((source / RUN_FILE).read_text(encoding="utf-8")), "replayed_from": str(source)}
+def copy_unfresh(source: Path, out: Path) -> None:
+    """A replay's run record: the replayed run's, without the `fresh` mark only an engine's own answers earn."""
+    meta = {k: v for k, v in json.loads((source / RUN_FILE).read_text(encoding="utf-8")).items() if k != "fresh"}
     (out / RUN_FILE).write_text(json.dumps(meta, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -445,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
             binary = diffctx_binary()
             if binary.name != stored.get("binary"):
                 raise SystemExit(f"--replay: {options.replay} was made by {stored.get('binary')}, not {binary.name}")
-        mark_replayed(options.replay, options.out)
+        copy_unfresh(options.replay, options.out)
     measured: dict[str, int] = {}
     selected = options.repo or (replayed_repositories(options.replay) if options.replay else None)
     for repo in corpus.select(selected, options.fast):
