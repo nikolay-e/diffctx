@@ -3,12 +3,12 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 141540
+product_lines = 141536
 allow_count = 139
 root_modules = 63
 
 [big_files]
-"crates/diffctx-native/src/decide.rs" = 3832
+"crates/diffctx-native/src/decide.rs" = 3829
 "crates/diffctx-native/src/facts/lang/c.rs" = 2011
 "crates/diffctx-native/src/facts/lang/php.rs" = 1930
 "crates/diffctx-native/src/facts/lang/python.rs" = 2680
@@ -16,7 +16,7 @@ root_modules = 63
 "crates/diffctx-native/src/facts/lang/typescript.rs" = 4341
 "crates/diffctx-native/src/graph.rs" = 1564
 "crates/diffctx-native/src/hook.rs" = 4163
-"crates/diffctx-native/src/impact.rs" = 5927
+"crates/diffctx-native/src/impact.rs" = 5926
 "crates/diffctx-native/src/keytable/extract.rs" = 2174
 "crates/diffctx-native/src/parsers/tree_sitter_strategy.rs" = 2661
 "crates/diffctx-native/src/pipeline.rs" = 3443
@@ -41,7 +41,7 @@ deletes = [
 ]
 
 [debt.phase-a-shadow.grows]
-"crates/diffctx-native/src/decide.rs" = { base = 3832, plus = 0 }
+"crates/diffctx-native/src/decide.rs" = { base = 3829, plus = 0 }
 "crates/diffctx-native/src/effective_config.rs" = { base = 471, plus = 1 }
 "crates/diffctx-native/src/facts/file.rs" = { base = 122, plus = 5 }
 "crates/diffctx-native/src/facts/cache.rs" = { base = 447, plus = 5 }
@@ -73,7 +73,7 @@ deletes = [
 ]
 
 [debt.phase-b-tests.grows]
-"crates/diffctx-native/src/impact.rs" = { base = 5927, plus = 0 }
+"crates/diffctx-native/src/impact.rs" = { base = 5926, plus = 0 }
 "crates/diffctx-native/src/impact/tests_reach.rs" = { base = 1350, plus = 12 }
 "crates/diffctx-native/src/impact/text.rs" = { base = 747, plus = 12 }
 "crates/diffctx-native/src/answer/v2.rs" = { base = 1465, plus = 4 }
