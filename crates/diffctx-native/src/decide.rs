@@ -1104,6 +1104,58 @@ fn standing_of(resolution: &Resolution) -> Option<Standing> {
     }
 }
 
+/// A module a `--symbol` name names and the imports that land on it.
+pub(crate) struct ModuleOf {
+    pub file: String,
+    pub importers: Vec<Importer>,
+}
+
+pub(crate) struct Importer {
+    pub file: String,
+    pub line: u32,
+    pub inside: Option<String>,
+}
+
+/// The modules of the working tree `name` names, each with the imports the
+/// resolver landed on it. A module is no definition of the facts layer, so a
+/// name that defines nothing is looked for here.
+pub(crate) fn modules_named(
+    root: &std::path::Path,
+    limits: (
+        Option<std::time::Instant>,
+        Arc<std::sync::atomic::AtomicBool>,
+    ),
+    name: &str,
+) -> Result<Vec<ModuleOf>> {
+    let ctx = context_in(root, limits, None, true)?;
+    let cache = FactsCache::user();
+    let resolver = Resolver::open(Family::Python, &ctx, SideTag::Head, &cache)?;
+    let modules = resolver.modules_named(name);
+    Ok(modules
+        .iter()
+        .map(|module| ModuleOf {
+            file: module.as_str().to_string(),
+            importers: resolver
+                .bindings()
+                .iter()
+                .filter(|b| b.relation == Relation::Imports)
+                .filter(|b| {
+                    matches!(&b.resolution, Resolution::Module { file, evidence }
+                        if file == module && evidence.kind != EvidenceKind::AmbiguousModule)
+                })
+                .map(|b| Importer {
+                    file: b.file.as_str().to_string(),
+                    line: b.site.lines.0,
+                    inside: match &b.from {
+                        Scope::Def(local) => Some(local.name.as_str().to_string()),
+                        _ => None,
+                    },
+                })
+                .collect(),
+        })
+        .collect())
+}
+
 impl Cell {
     /// Whether any file the answer is about is of the family: a changed file
     /// with its extension, or none and its shebang, or a queried name in one.
