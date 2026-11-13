@@ -657,10 +657,9 @@ fn search_coverage(
         Some(verdict) => decide::Coverages::of_verdict(verdict)
             .with(own_gap)
             .with(named_outside),
-        None => decide::Coverages::unowned(
-            account.map_or(decide::Evidence::Run, decide::Evidence::Group),
-            own_gap.into_iter().chain(named_outside).collect(),
-        ),
+        None => {
+            decide::Coverages::unowned(account, own_gap.into_iter().chain(named_outside).collect())
+        }
     }
 }
 
@@ -2757,7 +2756,7 @@ fn held_has_users(cell: &decide::Cell, holder: &decide::Changed) -> bool {
     cell.changed().iter().any(|held| {
         holder.holds(held) && {
             let verdict = cell.verdict(held);
-            !verdict.uses.is_empty() || !verdict.complete()
+            !verdict.uses.is_empty() || !verdict.complete() || !verdict.unused()
         }
     })
 }
