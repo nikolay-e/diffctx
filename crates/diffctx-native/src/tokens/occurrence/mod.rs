@@ -157,12 +157,6 @@ pub enum Basis {
     Resolved,
     /// `ours`: the module is the definition's own, or re-exports it.
     OwnModule,
-    /// `ours`: an import name of the definition's module.
-    ImportedName,
-    /// `ours`: an export name of the definition.
-    ExportedName,
-    /// `ours`: a removed member looked up on its owner.
-    OwnerReceiver,
     /// `declaration`: the definition's `name_span`.
     DefinitionName,
     /// `declaration`: the site of a `LocalBinding`.
@@ -181,8 +175,6 @@ pub enum Basis {
     ExternalName,
     /// `not_ours`: outside the project or on an external base, the manifests read whole.
     Manifests,
-    /// `not_ours`: the receiver's class was found and is not the owner's hierarchy.
-    ReceiverClass,
     /// `not_ours`: a bare name is no member of a class it is written outside of.
     BareName,
     /// `not_ours`: the file's project cannot reference the definition's, the manifests read whole.
@@ -208,9 +200,6 @@ impl Basis {
         match self {
             Self::Resolved => "resolved",
             Self::OwnModule => "own_module",
-            Self::ImportedName => "imported_name",
-            Self::ExportedName => "exported_name",
-            Self::OwnerReceiver => "owner_receiver",
             Self::DefinitionName => "definition_name",
             Self::LocalSite => "local_site",
             Self::OtherDefinition => "other_definition",
@@ -220,7 +209,6 @@ impl Basis {
             Self::ExternalModule => "external_module",
             Self::ExternalName => "external_name",
             Self::Manifests => "manifests",
-            Self::ReceiverClass => "receiver_class",
             Self::BareName => "bare_name",
             Self::OtherProject => "other_project",
             Self::RenamedImport => "renamed_import",
@@ -243,14 +231,10 @@ impl Basis {
             | Self::ExternalModule
             | Self::ExternalName
             | Self::Manifests
-            | Self::ReceiverClass
             | Self::BareName
             | Self::OtherProject => true,
             Self::Resolved
             | Self::OwnModule
-            | Self::ImportedName
-            | Self::ExportedName
-            | Self::OwnerReceiver
             | Self::DefinitionName
             | Self::LocalSite
             | Self::RenamedImport
