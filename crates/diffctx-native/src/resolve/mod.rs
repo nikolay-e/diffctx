@@ -26,6 +26,8 @@
 
 #[macro_use]
 mod solved;
+#[macro_use]
+mod twins;
 
 mod c;
 mod chart;
