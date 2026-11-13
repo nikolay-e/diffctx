@@ -72,7 +72,6 @@ pub mod profile;
 pub mod resource;
 pub mod run_provenance;
 pub mod sanitize;
-pub mod shadow;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
