@@ -40,7 +40,7 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::hash_outside;
-use super::{children, lines_of, parse_tree, span, through_errors};
+use super::{lines_of, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
