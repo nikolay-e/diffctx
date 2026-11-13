@@ -243,18 +243,16 @@ impl Shadow<'_> {
                 continue;
             }
             found.files.insert(file.clone());
-            let unread = Loss::ReadFailed {
-                path: file.clone(),
-                side: SideTag::Head,
-            };
             let Some((facts, text)) = self.read(&file) else {
-                found.unread.entry(file).or_insert(unread);
+                let loss = self.unread(&file);
+                found.unread.entry(file).or_insert(loss);
                 continue;
             };
             let done = outcomes(self.view, facts, &text, definition, &[name.as_str()]);
             found.mentions += done.mentions;
             if done.lost && done.entries.is_empty() {
-                let loss = facts.losses().into_iter().next().unwrap_or(unread);
+                let loss =
+                    (facts.losses().into_iter().next()).unwrap_or_else(|| self.unread(&file));
                 found.unread.entry(file).or_insert(loss);
             }
             for mut entry in done.entries {
@@ -296,6 +294,27 @@ impl Shadow<'_> {
             .filter(|file| (self.reach)(file.as_str()))
             .cloned()
             .collect()
+    }
+
+    /// Why no occurrence of `file` was read: the listing names it as not read as
+    /// source (too large, a symlink, ...), else the read failed.
+    fn unread(&self, file: &RepoPath) -> Loss {
+        let listed = match self.cache.listing(&self.ctx.head) {
+            Ok(listing) => (listing.not_analysed.iter())
+                .find(|(path, _)| path == file)
+                .map(|(_, reason)| *reason),
+            Err(_) => None,
+        };
+        listed.map_or_else(
+            || Loss::ReadFailed {
+                path: file.clone(),
+                side: SideTag::Head,
+            },
+            |reason| Loss::NotAnalysed {
+                path: file.clone(),
+                reason,
+            },
+        )
     }
 
     fn read(&self, file: &RepoPath) -> Option<(&FileFacts, Arc<[u8]>)> {
