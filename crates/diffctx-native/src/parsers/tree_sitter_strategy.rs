@@ -27,6 +27,27 @@ struct LangConfig {
     definition_types: &'static [&'static str],
 }
 
+const JS_DEFINITION_TYPES: &[&str] = &[
+    "function_declaration",
+    "generator_function_declaration",
+    "class_declaration",
+    "method_definition",
+    "arrow_function",
+    "variable_declarator",
+];
+
+const TS_DEFINITION_TYPES: &[&str] = &[
+    "function_declaration",
+    "generator_function_declaration",
+    "class_declaration",
+    "method_definition",
+    "arrow_function",
+    "interface_declaration",
+    "type_alias_declaration",
+    "enum_declaration",
+    "variable_declarator",
+];
+
 const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
         extensions: &[".py", ".pyw", ".pyi"],
@@ -40,56 +61,22 @@ const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
         extensions: &[".js", ".mjs", ".cjs"],
         ts_name: "javascript",
-        definition_types: &[
-            "function_declaration",
-            "generator_function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "variable_declarator",
-        ],
+        definition_types: JS_DEFINITION_TYPES,
     },
     LangConfig {
         extensions: &[".jsx"],
         ts_name: "jsx",
-        definition_types: &[
-            "function_declaration",
-            "generator_function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "variable_declarator",
-        ],
+        definition_types: JS_DEFINITION_TYPES,
     },
     LangConfig {
         extensions: &[".ts", ".mts", ".cts"],
         ts_name: "typescript",
-        definition_types: &[
-            "function_declaration",
-            "generator_function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
-            "variable_declarator",
-        ],
+        definition_types: TS_DEFINITION_TYPES,
     },
     LangConfig {
         extensions: &[".tsx"],
         ts_name: "tsx",
-        definition_types: &[
-            "function_declaration",
-            "generator_function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
-            "variable_declarator",
-        ],
+        definition_types: TS_DEFINITION_TYPES,
     },
     LangConfig {
         extensions: &[".go"],
