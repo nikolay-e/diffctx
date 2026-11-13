@@ -30,6 +30,10 @@ pub fn sink() -> Option<File> {
     file.map_err(|error| eprintln!("{ENV}: {error}")).ok()
 }
 
+/// The lines already written: a definition's occurrences once per side, a pair
+/// once per relation, however many times the cell asks.
+pub type Written = HashSet<(String, String, Option<&'static str>)>;
+
 /// What the cell knows of one changed definition's group, as the accounting asks.
 pub struct Shadow<'a> {
     pub ctx: &'a AnalysisContext,
@@ -65,7 +69,37 @@ fn label(definition: &Definition) -> String {
 
 impl Shadow<'_> {
     /// Appends the lines of `definition`, read at `side`, to `out`.
-    pub fn write(&self, out: &mut File, definition: &Definition, side: SideTag, known: Known) {
+    pub fn write(
+        &self,
+        out: &mut File,
+        written: &mut Written,
+        definition: &Definition,
+        side: SideTag,
+        known: Known,
+    ) {
+        let (def, side_text, family) = (
+            label(definition),
+            format!("{side:?}").to_lowercase(),
+            format!("{:?}", self.family).to_lowercase(),
+        );
+        let mut once = |relation: Option<Relation>| {
+            written.insert((def.clone(), side_text.clone(), relation.map(Relation::name)))
+        };
+        // The relations the answer covers, then those an unexplained occurrence may
+        // be a use through that it has no coverage of.
+        let unanswered = admitted(definition.kind)
+            .iter()
+            .filter(|relation| self.today.iter().all(|(known, _)| known != *relation))
+            .map(|relation| (*relation, None));
+        let pairs: Vec<(Relation, Option<&Coverage>)> = (self.today.iter())
+            .map(|(relation, coverage)| (*relation, Some(coverage)))
+            .chain(unanswered)
+            .filter(|(relation, _)| once(Some(*relation)))
+            .collect();
+        let first = once(None);
+        if !first && pairs.is_empty() {
+            return;
+        }
         let mut found = Found::default();
         let names: Vec<Name> = self
             .names
@@ -82,11 +116,6 @@ impl Shadow<'_> {
                 .map_or_else(Vec::new, |def| implicit_kinds(&home, def, known)),
             _ => Vec::new(),
         };
-        let (def, side_text, family) = (
-            label(definition),
-            format!("{side:?}").to_lowercase(),
-            format!("{:?}", self.family).to_lowercase(),
-        );
         let unread: Vec<Unread> = (found.unread.iter())
             .map(|(file, loss)| Unread {
                 file: file.clone(),
@@ -95,7 +124,7 @@ impl Shadow<'_> {
             .collect();
         let mut lines = String::new();
         let mut trees = HashMap::new();
-        for entry in &found.entries {
+        for entry in found.entries.iter().filter(|_| first) {
             let at = &entry.occurrence;
             lines.push_str(
                 &json!({
@@ -112,15 +141,6 @@ impl Shadow<'_> {
             );
             lines.push('\n');
         }
-        // The relations the answer covers, then those an unexplained occurrence may
-        // be a use through that it has no coverage of.
-        let unanswered = admitted(definition.kind)
-            .iter()
-            .filter(|relation| self.today.iter().all(|(known, _)| known != *relation))
-            .map(|relation| (*relation, None));
-        let pairs = (self.today.iter())
-            .map(|(relation, coverage)| (*relation, Some(coverage)))
-            .chain(unanswered);
         for (relation, coverage) in pairs {
             let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
