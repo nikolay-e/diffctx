@@ -21,7 +21,10 @@
 //! library's; a quoted include no file answers is an unknown.
 //!
 //! Two projects are linked only through a declared dependency
-//! (`WorkspaceModel::may_reference`).
+//! (`WorkspaceModel::may_reference`). Where the project's own build tree (the
+//! directory of its topmost build file) defines an external name, that is the
+//! definition its linker finds: a same-named function of another tree is no
+//! second candidate.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -39,6 +42,20 @@ use crate::facts::{
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
 };
+
+/// The files that make a directory a build: what the linker of a C project is
+/// told its sources by.
+const BUILD_FILES: &[&str] = &[
+    "Makefile",
+    "GNUmakefile",
+    "makefile",
+    "CMakeLists.txt",
+    "meson.build",
+    "configure.ac",
+    "build.ninja",
+    "SConstruct",
+    "BUILD.bazel",
+];
 
 /// A call through a pointer is a candidate for at most this many functions.
 const MAX_CANDIDATES: usize = 24;
@@ -121,7 +138,14 @@ impl CResolver {
         }
         let ix = Index::build(files);
         let hints = include_hints(&commands, &ix);
-        let engine = Engine::new(ix, hints, &ctx.workspace, reader, side);
+        let builds = build_trees(
+            listing
+                .entries
+                .iter()
+                .map(|entry| entry.path.as_str())
+                .filter(|path| BUILD_FILES.contains(&path.rsplit('/').next().unwrap_or(path))),
+        );
+        let engine = Engine::new(ix, hints, builds, &ctx.workspace, reader, side);
         let (definitions, bindings, stopped) = engine.run(ctx);
         losses.extend(engine.losses.take());
         if stopped {
@@ -136,6 +160,30 @@ impl CResolver {
 }
 
 solved_by!(CResolver);
+
+// ---- build trees
+
+/// The directories holding a build file with none above them: the roots of the
+/// repository's build trees.
+fn build_trees<'a>(build_files: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let dirs: HashSet<&str> = build_files.map(dir_of).collect();
+    let mut trees: Vec<String> = dirs
+        .iter()
+        .filter(|dir| {
+            let mut above = **dir;
+            while !above.is_empty() {
+                above = dir_of(above);
+                if dirs.contains(above) {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|dir| (*dir).to_string())
+        .collect();
+    trees.sort();
+    trees
+}
 
 // ---- compile_commands.json
 
@@ -527,6 +575,7 @@ enum Inc {
 struct Engine<'w> {
     ix: Index,
     roots: Vec<String>,
+    builds: Vec<String>,
     workspace: &'w WorkspaceModel,
     includes: RefCell<HashMap<(usize, usize), Inc>>,
     closures: RefCell<HashMap<usize, Rc<Vec<usize>>>>,
@@ -553,6 +602,7 @@ impl<'w> Engine<'w> {
     fn new(
         ix: Index,
         hints: Vec<String>,
+        builds: Vec<String>,
         workspace: &'w WorkspaceModel,
         reader: &'w SnapshotReader,
         side: SideTag,
@@ -561,6 +611,7 @@ impl<'w> Engine<'w> {
         Self {
             ix,
             roots,
+            builds,
             workspace,
             includes: RefCell::default(),
             closures: RefCell::default(),
@@ -750,9 +801,25 @@ impl<'w> Engine<'w> {
             .collect()
     }
 
-    /// The external definitions of a function: what the linker finds.
+    /// The build tree a file is in, when a build file stands above it.
+    fn build_of(&self, file: usize) -> Option<&str> {
+        let path = self.ix.file_path(file);
+        self.builds
+            .iter()
+            .find(|root| {
+                root.is_empty()
+                    || path
+                        .strip_prefix(root.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .map(String::as_str)
+    }
+
+    /// The external definitions of a function: what the linker finds. Where the
+    /// caller's own build defines the name, its linker finds that one.
     fn linked(&self, f: usize, name: &str) -> Vec<usize> {
-        self.ix
+        let found: Vec<usize> = self
+            .ix
             .top
             .get(name)
             .into_iter()
@@ -765,7 +832,16 @@ impl<'w> Engine<'w> {
                     && rec.def.visibility != Visibility::Private
                     && self.may_reach(f, *id)
             })
-            .collect()
+            .collect();
+        let own: Vec<usize> = match self.build_of(f) {
+            Some(tree) => found
+                .iter()
+                .copied()
+                .filter(|id| self.build_of(self.ix.defs[*id].file) == Some(tree))
+                .collect(),
+            None => Vec::new(),
+        };
+        if own.is_empty() { found } else { own }
     }
 
     ground_methods!();
