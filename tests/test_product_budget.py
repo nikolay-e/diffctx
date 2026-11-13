@@ -3,7 +3,8 @@
 A `[debt.*]` row in budget.toml is growth taken on loan, and only where it says: `covers` are new paths (a glob ending
 `/**`, or a file) whose lines count against the row, `grows` are existing files that may add `plus` lines over their
 recorded `base`. Every other product line obeys the plain ratchet. The row is repaid at the commit that makes its
-`due_when` gone.
+`due_when` gone. A `covers` entry `crates/diffctx-native/src/<dir>/**` that is a root module stays out of `root_modules`
+only while its row stands.
 """
 
 import re
@@ -35,7 +36,7 @@ def _lines(path: str) -> int:
     return (ROOT / path).read_bytes().count(b"\n")
 
 
-def _root_modules(files: list[str]) -> int:
+def _root_modules(files: list[str], covers: tuple[str, ...] | list[str] = ()) -> int:
     names = set()
     for path in files:
         if not path.startswith(NATIVE_SRC) or not path.endswith(".rs"):
@@ -45,7 +46,7 @@ def _root_modules(files: list[str]) -> int:
             names.add(parts[0][:-3])
         elif len(parts) == 2 and parts[1] == "mod.rs":
             names.add(parts[0])
-    return len(names)
+    return len({n for n in names if f"{NATIVE_SRC}{n}/**" not in covers})
 
 
 def _gone(root: Path, spec: str) -> bool:
@@ -75,14 +76,14 @@ def _debt_problems(root: Path, debt: dict) -> list[str]:
     return problems
 
 
-def _measured() -> dict:
+def _measured(debt: dict) -> dict:
     files = _product_files()
     sizes = {p: _lines(p) for p in files}
     rust = [p for p in files if p.endswith(".rs")]
     return {
         "sizes": sizes,
         "allow_count": sum(len(ALLOW.findall((ROOT / p).read_text(encoding="utf-8"))) for p in rust),
-        "root_modules": _root_modules(files),
+        "root_modules": _root_modules(files, [c for row in debt.values() for c in row["covers"]]),
     }
 
 
@@ -132,7 +133,7 @@ def _size_problems(recorded: dict, sizes: dict[str, int]) -> list[str]:
 
 def test_product_budget_is_a_ratchet():
     recorded = tomllib.loads(BUDGET.read_text(encoding="utf-8"))
-    measured = _measured()
+    measured = _measured(recorded.get("debt", {}))
     problems = _size_problems(recorded, measured["sizes"])
     for key in ("allow_count", "root_modules"):
         if measured[key] > recorded[key]:
@@ -187,3 +188,10 @@ def test_unrelated_growth_cannot_hide_under_a_debt():
     assert _size_problems(recorded, {"old.rs": 1, "big.rs": 1600, "elsewhere.rs": 5}) == [
         "product lines outside the debt grew 1 -> 6"
     ]
+
+
+def test_a_covered_new_root_module_counts_only_while_its_row_stands():
+    files = [f"{NATIVE_SRC}{p}" for p in ("lib.rs", "a.rs", "occurrence/mod.rs", "occurrence/x.rs")]
+    assert _root_modules(files) == 2
+    assert _root_modules(files, [f"{NATIVE_SRC}occurrence/**"]) == 1
+    assert _root_modules(files, [f"{NATIVE_SRC}other/**", f"{NATIVE_SRC}a.rs"]) == 2
