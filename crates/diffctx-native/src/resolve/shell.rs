@@ -34,8 +34,7 @@ use crate::facts::shell::{PathHead, PathUse};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, UseKind, expired, facts_of,
 };
-use crate::paths::normalize_lexical;
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, normalize_lexical};
 
 /// The bindings of one snapshot's shell scripts.
 pub struct ShellResolver {
