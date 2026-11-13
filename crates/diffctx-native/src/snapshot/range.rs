@@ -331,7 +331,6 @@ pub fn duration_base(root: &Path, spec: &str) -> Result<Option<String>> {
 mod tests {
     use super::*;
     use crate::snapshot::testing::{commit_all, git, init_git_repo, write_file};
-    use std::fs;
     use tempfile::TempDir;
 
     /// One `--name-status` listing answers what the three listings it

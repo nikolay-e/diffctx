@@ -2134,8 +2134,6 @@ impl<'a> Engine<'a> {
         self.type_expr(rec.file, &self.container_scope(rec), &written)
     }
 
-    /// The object a variable, constant, field or accessor holds, when its
-    /// annotation or the call it is assigned says which type.
     var_instance_memo!();
 
     fn compute_var_instance(&self, id: usize) -> Entity {
