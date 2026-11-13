@@ -1039,12 +1039,12 @@ fn a_word_after_a_command_that_may_run_a_function_stays_a_candidate() {
 }
 
 #[test]
-fn a_scripts_own_name_after_another_command_is_no_run_unless_the_command_runs_it() {
+fn a_scripts_own_name_after_a_plain_command_is_no_run_unless_the_command_runs_it() {
     let world = snapshot_in(
         Lang::Shell,
         &[(
             "scripts/check.sh",
-            "#!/bin/sh -e\n\nset -x\nruff check .\nsudo check\n",
+            "#!/bin/sh -e\n\nset -x\ncat check\nsudo check\n",
         )],
     );
     let script = world.def("scripts/check.sh", "<script>");
@@ -1059,6 +1059,26 @@ fn a_scripts_own_name_after_another_command_is_no_run_unless_the_command_runs_it
         Outcome::Candidate(Reason::Unexplained),
         "`sudo check` runs a program of that name: {found:#?}"
     );
+}
+
+#[test]
+fn a_scripts_name_after_a_command_the_table_does_not_list_stays_a_candidate() {
+    let world = snapshot_in(
+        Lang::Shell,
+        &[(
+            "scripts/deploy.sh",
+            "#!/bin/sh -e\n\nbash deploy\npython deploy\n",
+        )],
+    );
+    let script = world.def("scripts/deploy.sh", "<script>");
+    let found = world.outcomes(script, "scripts/deploy.sh", &["deploy"]);
+    for line in [3, 4] {
+        assert_eq!(
+            on(&found, line).outcome,
+            Outcome::Candidate(Reason::Unexplained),
+            "line {line}: {found:#?}"
+        );
+    }
 }
 
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
