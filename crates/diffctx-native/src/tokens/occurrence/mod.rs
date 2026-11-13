@@ -368,6 +368,9 @@ pub struct Account {
     /// Occurrences in strings nobody explained: counted, never blocking.
     pub mentions: usize,
     pub implicit: Vec<Implicit>,
+    /// The definition's kind admits `calls`: only then a leak or an implicit
+    /// call stands against it (a property is read, never called).
+    pub admits_calls: bool,
     pub alias_bound: Option<AliasBound>,
     /// A name too common to list: its occurrences, folded into one row.
     pub too_common: Option<usize>,
@@ -384,6 +387,7 @@ impl Account {
             unread: Vec::new(),
             mentions: 0,
             implicit: Vec::new(),
+            admits_calls: true,
             alias_bound: None,
             too_common: None,
         }
@@ -400,7 +404,7 @@ impl Account {
             match &entry.outcome {
                 Outcome::Ours | Outcome::Declaration | Outcome::NotOurs | Outcome::Alias(_) => {}
                 Outcome::Leak(place) => {
-                    if self.relation == Relation::Calls {
+                    if self.relation == Relation::Calls && self.admits_calls {
                         hedges.push(Hedge::Leak {
                             file: at.file.clone(),
                             line: at.line,
@@ -425,7 +429,7 @@ impl Account {
                 loss: unread.loss.clone(),
             });
         }
-        if self.relation == Relation::Calls {
+        if self.relation == Relation::Calls && self.admits_calls {
             hedges.extend(self.implicit.iter().copied().map(Hedge::Implicit));
         }
         hedges.extend(self.alias_bound.map(Hedge::AliasBound));
