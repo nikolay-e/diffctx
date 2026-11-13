@@ -3,10 +3,10 @@
 // is a difference between two knob sets. The expected callers come from
 // reading the generated files, never from running diffctx.
 
+use _diffctx::snapshot::git_command;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
-use std::process::Command;
 
 pub type Files = BTreeMap<String, String>;
 
@@ -163,11 +163,7 @@ impl Seed {
 
 // A scratch repository must not depend on the machine's git configuration.
 pub fn run_git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git")
-        .current_dir(dir)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
+    let out = git_command(dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .args(args)

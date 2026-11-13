@@ -4,22 +4,16 @@
 // so every case here makes the disk say something different from the index.
 
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use tempfile::TempDir;
 
 mod support;
+use _diffctx::snapshot::git_command;
 use support::{diffctx, write};
 
 fn git_out(repo: &Path, args: &[&str]) -> Output {
-    Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .output()
-        .expect("run git")
+    git_command(repo).args(args).output().expect("run git")
 }
 
 fn git(repo: &Path, args: &[&str]) {

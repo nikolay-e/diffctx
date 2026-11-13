@@ -1,7 +1,6 @@
 #![allow(dead_code, reason = "each test file uses its own part of the fixture")]
 
 use std::path::Path;
-use std::process::Command;
 
 use _diffctx::snapshot::{Listing, Oid, RepoRoot, open};
 
@@ -12,27 +11,8 @@ pub struct Repo {
     pub root: RepoRoot,
 }
 
-/// What a git hook exports. The pre-commit hook runs this suite with these
-/// pointing at the real repository, and an unscrubbed `git init` here rewrote
-/// that repository's config.
-const REPO_LOCATING_ENV: [&str; 7] = [
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_PREFIX",
-];
-
 fn run(dir: &Path, args: &[&str]) -> String {
-    let mut command = Command::new("git");
-    for name in REPO_LOCATING_ENV {
-        command.env_remove(name);
-    }
-    let out = command
-        .arg("-C")
-        .arg(dir)
+    let out = _diffctx::snapshot::git_command(dir)
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")

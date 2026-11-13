@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::{Command, Output};
 
+use _diffctx::snapshot::git_command;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -186,11 +187,7 @@ fn write_files(root: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .current_dir(root)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
+    let out = git_command(root)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_AUTHOR_NAME", "test")
