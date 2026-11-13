@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
 
 fn is_clojure_file(path: &Path) -> bool {
     base::has_ext(path, &[".clj", ".cljs", ".cljc", ".edn"])
@@ -133,20 +133,5 @@ impl EdgeBuilder for ClojureEdgeBuilder {
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            is_clojure_file,
-            extract_requires,
-        )
-    }
+    discover_by_refs!(is_clojure_file, extract_requires);
 }
