@@ -54,7 +54,7 @@ use crate::snapshot::{
     RangeSpec, RepoPath, RunBudget, Side, SideTag, WorkspaceModel,
 };
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::tokens::occurrence::{Hedge, Index, Known, Reason as CandidateReason, View};
+use crate::tokens::occurrence::{Hedge, Index, Known, Reason as OccurrenceReason, View};
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 
 /// The reasons a candidate row carries in the answer.
@@ -761,7 +761,7 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge]) -> Vec<Gap> {
     for hedge in hedges {
         let gap = match hedge {
             Hedge::Candidate { file, line, reason } => {
-                let via = match (*reason == CandidateReason::Embedded, reads) {
+                let via = match (*reason == OccurrenceReason::Embedded, reads) {
                     (true, _) => Via::Embedded,
                     (false, true) => Via::Read,
                     (false, false) => Via::Call,
