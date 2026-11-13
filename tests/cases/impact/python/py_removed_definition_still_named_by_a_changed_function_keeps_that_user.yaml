@@ -32,7 +32,7 @@ repo:
 # A line that still names the removed definition is a broken reference whether or
 # not its function changed in the same range.
 expect:
-  changed: [lib.py::old]
+  changed: [lib.py::old, app.py::run]
   relations:
     - {from: "app.py::run", to: "lib.py::old", kind: calls, resolution: resolved, site: 5}
   removed: [old]

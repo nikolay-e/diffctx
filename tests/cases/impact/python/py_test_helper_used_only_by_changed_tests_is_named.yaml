@@ -27,7 +27,7 @@ repo:
           assert make(2) == 2
   commit_message: "tests: the helper and its test"
 # A definition in a test file is traced like any other: the helper is used by a
-# test the range changes, and is named with it. The test function, which nothing
-# calls, says nothing.
+# test the range changes, and is named with it. The changed test function, which
+# nothing calls, is named as one the test runner enters.
 expect:
-  changed: [tests/helpers.py::make]
+  changed: [tests/helpers.py::make, tests/test_make.py::test_make]

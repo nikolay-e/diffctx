@@ -31,6 +31,8 @@ repo:
 # R14: the one use of the edited field is a definition the same range changes, so
 # it is no caller outside the diff. The field is still named, with that user, on
 # the answer's one line for definitions only the range's own changes use. (A field
-# the range adds is not: nothing outside the range could depend on it.)
+# the range adds is not: nothing outside the range could depend on it.) `attempts`
+# is a changed function nothing calls, named too; `Options` is changed only through
+# the field, whose row says all there is.
 expect:
-  changed: [pkg/opts.py::Options.limit]
+  changed: [pkg/opts.py::Options.limit, pkg/use.py::attempts]

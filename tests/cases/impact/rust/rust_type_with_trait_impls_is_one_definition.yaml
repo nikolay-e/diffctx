@@ -55,6 +55,7 @@ expect:
   changed:
   - src/err.rs::SymbolQueryError
   - src/err.rs::fmt
+  - src/err.rs::SymbolQueryError.malformed
   relations:
   - from: src/caller.rs::fail
     to: src/err.rs::SymbolQueryError
