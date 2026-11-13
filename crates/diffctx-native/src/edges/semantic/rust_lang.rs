@@ -300,29 +300,25 @@ impl EdgeBuilder for RustEdgeBuilder {
             for use_path in extract_uses(&rf.content) {
                 for part in use_path.split("::") {
                     let part_lower = part.to_lowercase();
-                    if mod_files
-                        .get(&part_lower)
-                        .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
+                    for (files, frags) in
+                        [(&mod_files, &mod_to_frags), (&name_files, &name_to_frags)]
                     {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &rf.id,
-                            mod_to_frags.get(&part_lower).unwrap_or(&vec![]),
-                            use_weight,
-                            reverse_factor,
-                        );
-                    }
-                    if name_files
-                        .get(&part_lower)
-                        .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
-                    {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &rf.id,
-                            name_to_frags.get(&part_lower).unwrap_or(&vec![]),
-                            use_weight,
-                            reverse_factor,
-                        );
+                        if files
+                            .get(&part_lower)
+                            .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
+                        {
+                            let targets = frags
+                                .get(&part_lower)
+                                .map(Vec::as_slice)
+                                .unwrap_or_default();
+                            add_edges_from_ids(
+                                &mut edges,
+                                &rf.id,
+                                targets,
+                                use_weight,
+                                reverse_factor,
+                            );
+                        }
                     }
                 }
             }
@@ -338,32 +334,18 @@ impl EdgeBuilder for RustEdgeBuilder {
                 }
             }
 
-            for type_ref in &type_refs {
-                let lower = type_ref.to_lowercase();
-                if name_capped(&lower) {
-                    continue;
+            for (names, defs, weight) in [
+                (&type_refs, &type_defs, type_weight),
+                (&fn_calls, &fn_defs, fn_weight),
+            ] {
+                for name in names {
+                    let lower = name.to_lowercase();
+                    if name_capped(&lower) {
+                        continue;
+                    }
+                    let targets = defs.get(&lower).map(Vec::as_slice).unwrap_or_default();
+                    add_edges_from_ids(&mut edges, &rf.id, targets, weight, reverse_factor);
                 }
-                add_edges_from_ids(
-                    &mut edges,
-                    &rf.id,
-                    type_defs.get(&lower).unwrap_or(&vec![]),
-                    type_weight,
-                    reverse_factor,
-                );
-            }
-
-            for fn_call in &fn_calls {
-                let lower = fn_call.to_lowercase();
-                if name_capped(&lower) {
-                    continue;
-                }
-                add_edges_from_ids(
-                    &mut edges,
-                    &rf.id,
-                    fn_defs.get(&lower).unwrap_or(&vec![]),
-                    fn_weight,
-                    reverse_factor,
-                );
             }
 
             for method in &method_calls {
