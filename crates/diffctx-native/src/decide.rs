@@ -40,7 +40,7 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::occurrence::debug::{Shadow, Written, sink, write_holder};
+use crate::occurrence::debug::{Shadow, Written, sink};
 use crate::occurrence::{Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
@@ -3185,6 +3185,13 @@ impl Cell {
             .iter()
             .flat_map(|file| RepoPath::new(file))
             .collect();
+        // A holder is whole when its own rows are and what it holds is too, and
+        // unused: what its rows leave unsaid is the held definitions' to say.
+        let held: Vec<&Changed> = self.changed.iter().filter(|h| changed.holds(h)).collect();
+        let nested = held.iter().all(|inner| {
+            let verdict = self.verdict(inner);
+            self.shadow(inner, &verdict.by_relation) == Some((true, true))
+        });
         let shadow = Shadow {
             ctx: &self.ctx,
             cache: &self.cache,
@@ -3196,6 +3203,8 @@ impl Cell {
             outside: &outside,
             names: &names,
             today,
+            held: held.len(),
+            nested,
         };
         let heads = changed
             .subjects
@@ -3211,13 +3220,6 @@ impl Cell {
             .flat_map(|base| base.definitions())
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
-        // A holder is whole when its own rows are and what it holds is too, and
-        // unused: what its rows leave unsaid is the held definitions' to say.
-        let held: Vec<&Changed> = self.changed.iter().filter(|h| changed.holds(h)).collect();
-        let nested = held.iter().all(|inner| {
-            let verdict = self.verdict(inner);
-            self.shadow(inner, &verdict.by_relation) == Some((true, true))
-        });
         let (mut whole, mut unused) = (true, true);
         for (definition, side) in heads.chain(removed) {
             let known = Known {
@@ -3226,9 +3228,6 @@ impl Cell {
             };
             let mut written = self.shadow_written.borrow_mut();
             let (complete, bare) = shadow.write(&mut out, &mut written, definition, side, known);
-            if !held.is_empty() {
-                write_holder(&mut out, &mut written, definition, side, complete && nested);
-            }
             (whole, unused) = (whole && complete, unused && bare);
         }
         Some((whole, unused))
