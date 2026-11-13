@@ -26,7 +26,7 @@ pub(crate) mod languages;
 pub(crate) mod parsers;
 pub(crate) mod signatures;
 pub(crate) mod testfiles;
-pub mod tokens;
+pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
@@ -35,6 +35,7 @@ pub(crate) mod graph;
 pub(crate) mod keytable;
 pub(crate) mod provenance;
 pub mod resolve;
+pub use tokens::occurrence;
 
 // Ranking: relevance of each candidate to the change.
 pub(crate) mod core;
