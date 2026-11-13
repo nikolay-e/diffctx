@@ -167,19 +167,19 @@ fn stalled(d: &Definition) -> bool {
 }
 
 /// A changed definition every use of which is itself changed in the range (R14),
-/// complete in what it searched: the diff already shows its users. A removed one
-/// is never among them, since a line that still names it is a broken reference.
+/// complete in what it searched but for candidates there: the diff already shows its
+/// users. A removed one is never among them, since a line that still names it is a
+/// broken reference.
 fn inside_only(d: &Definition) -> bool {
     d.local_of.is_none()
         && !d.removed()
         && d.rows.is_empty()
         && d.folded.is_empty()
-        && d.gaps.is_empty()
         && d.missed_in.is_empty()
         && d.entry.is_none()
         && d.commits < 2
         && !(d.also_changed.is_empty() && d.possibly_also_changed.is_empty())
-        && d.complete()
+        && d.open_only_inside()
 }
 
 /// A name no file defines, spelled in files: what the files are, and which of them

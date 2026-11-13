@@ -87,6 +87,12 @@ pub struct DefRef {
 }
 
 impl DefRef {
+    /// Whether `line` of `path` is one of its lines (`a-b`, or the one line `a`).
+    pub fn holds(&self, path: &str, line: u32) -> bool {
+        let (from, to) = (self.lines.split_once('-')).unwrap_or((&self.lines, &self.lines));
+        matches!((from.parse::<u32>(), to.parse::<u32>()), (Ok(a), Ok(b)) if self.path == path && (a..=b).contains(&line))
+    }
+
     /// Reads `path::symbol (lines)`, `path::symbol` and `path:lines`, the three
     /// spellings v1 wrote a definition in.
     pub fn parse(text: &str) -> Self {
@@ -810,6 +816,19 @@ impl Definition {
 
     pub fn removed(&self) -> bool {
         self.change.kind == ChangeKind::Removed
+    }
+
+    /// Its search is whole, or open only on candidate uses, each named, inside users the
+    /// range changes too.
+    pub fn open_only_inside(&self) -> bool {
+        let inside = |s: &decide::Site| {
+            (self.possibly_also_changed.iter()).any(|d| d.holds(&s.path, s.line))
+        };
+        let (calls, reads) = (&self.coverage.calls.gaps, &self.coverage.reads.gaps);
+        let mut gaps = self.gaps.iter().chain(calls).chain(reads).peekable();
+        let open = gaps.peek().is_some();
+        let only_inside = gaps.all(|gap| matches!(gap, Gap::Unlanded { uses, sites, .. } if *uses == sites.len() && sites.iter().all(inside)));
+        only_inside && (open || self.complete())
     }
 
     /// The gap that limits its search most (see [`Gap::severity`]); the first of
