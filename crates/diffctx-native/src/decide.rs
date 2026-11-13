@@ -988,15 +988,14 @@ pub struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
     overridden: Option<String>,
-    /// No occurrence of its names is a use, an alias, a leak or a candidate.
-    unused: bool,
+    found: Rc<Accounted>,
 }
 
 impl Verdict {
     /// Whether the accounting found no use of the definition and nothing it could
     /// not explain: what a holder needs of what it holds to be said unused.
-    pub const fn unused(&self) -> bool {
-        self.unused
+    pub fn unused(&self) -> bool {
+        self.found.unused
     }
 
     /// The type a removed override was reached through, when it was one: what
@@ -1031,11 +1030,9 @@ impl Verdict {
             .all(|gap| matches!(gap, Gap::Unaccounted { .. }))
     }
 
-    /// The files of the definition's interaction group the search could not
-    /// place, by reason. Stub until the answer reads them off the account's
-    /// hedges.
-    pub const fn unaccounted(&self) -> &[(Reason, Vec<RepoPath>)] {
-        &[]
+    /// What stands in the way of each relation's absence, occurrence by occurrence.
+    pub fn hedges(&self) -> &[(Relation, Hedge)] {
+        &self.found.hedges
     }
 
     /// What covered the search of one relation of use.
@@ -2827,12 +2824,12 @@ impl Cell {
         }
         let overridden = self.overridden_via(changed);
         let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
-        let (by_relation, unused) = self.coverage(changed, lead, tail);
+        let (by_relation, found) = self.coverage(changed, lead, tail);
         Verdict {
             uses,
             by_relation,
             overridden,
-            unused,
+            found,
         }
     }
 
@@ -3082,7 +3079,7 @@ impl Cell {
         changed: &Changed,
         lead: Vec<Gap>,
         tail: Vec<Gap>,
-    ) -> ([(Relation, Coverage); 6], bool) {
+    ) -> ([(Relation, Coverage); 6], Rc<Accounted>) {
         let mut tail = tail;
         let outside = self
             .outside
@@ -3194,7 +3191,7 @@ impl Cell {
             let coverage = Coverage::close(Evidence::Occurrences(&hedges), gaps.clone());
             (relation, coverage)
         });
-        (by_relation, found.unused)
+        (by_relation, found)
     }
 
     /// The names a use of the definition could carry in a file of its group: its
