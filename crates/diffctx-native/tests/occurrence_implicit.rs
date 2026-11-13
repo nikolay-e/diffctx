@@ -22,9 +22,15 @@ use _diffctx::facts::{Extractor, FileFacts, ModulePath, ProjectId};
 use _diffctx::snapshot::{RepoPath, RunBudget};
 use _diffctx::tokens::occurrence::{Implicit, Known, implicit_kinds};
 
-fn kinds_with(extractor: &dyn Extractor, source: &str, at: &str, known: Known) -> Vec<Implicit> {
+fn kinds_in(
+    path: &str,
+    extractor: &dyn Extractor,
+    source: &str,
+    at: &str,
+    known: Known,
+) -> Vec<Implicit> {
     let file = FileFacts {
-        path: RepoPath::new("src/sample").expect("a repository path"),
+        path: RepoPath::new(path).expect("a repository path"),
         project: ProjectId::default(),
         module: ModulePath::new("sample"),
         blob: Arc::new(extractor.extract(source.as_bytes(), &RunBudget::default())),
@@ -39,6 +45,10 @@ fn kinds_with(extractor: &dyn Extractor, source: &str, at: &str, known: Known) -
         })
         .unwrap_or_else(|| panic!("no definition {at}"));
     implicit_kinds(&file, def, known)
+}
+
+fn kinds_with(extractor: &dyn Extractor, source: &str, at: &str, known: Known) -> Vec<Implicit> {
+    kinds_in("src/sample", extractor, source, at, known)
 }
 
 fn kinds(extractor: &dyn Extractor, source: &str, at: &str) -> Vec<Implicit> {
@@ -281,6 +291,79 @@ fn what_decide_knows_is_taken_as_given() {
         "def helper():\n    pass\n",
         "helper",
         known,
+    );
+    assert_eq!(found, [Implicit::Override]);
+}
+
+const PY_TEST: &str = "def test_works():\n    pass\n";
+const RUST_TEST: &str = "#[test]\nfn works() {}\n";
+
+#[test]
+fn a_test_of_a_test_file_is_entered_by_the_runner_the_answer_names() {
+    let at = |path: &str| {
+        kinds_in(
+            path,
+            &PythonExtractor,
+            PY_TEST,
+            "test_works",
+            Known::default(),
+        )
+    };
+    assert!(at("tests/test_app.py").is_empty());
+    assert!(at("app/test_app.py").is_empty());
+    let rust = kinds_in(
+        "crates/x/tests/it.rs",
+        &RustExtractor,
+        RUST_TEST,
+        "works",
+        Known::default(),
+    );
+    assert!(rust.is_empty(), "{rust:?}");
+}
+
+#[test]
+fn a_test_the_runner_is_not_known_to_enter_keeps_its_hedge() {
+    let at = |path: &str| {
+        kinds_in(
+            path,
+            &PythonExtractor,
+            PY_TEST,
+            "test_works",
+            Known::default(),
+        )
+    };
+    assert_eq!(at("app/helpers.py"), [Implicit::Test]);
+    assert_eq!(at("src/sample"), [Implicit::Test]);
+    let rust = kinds_in(
+        "src/lib.rs",
+        &RustExtractor,
+        RUST_TEST,
+        "works",
+        Known::default(),
+    );
+    assert_eq!(rust, [Implicit::Test]);
+}
+
+#[test]
+fn another_kind_of_a_test_file_definition_keeps_its_hedge() {
+    let found = kinds_in(
+        "tests/test_app.py",
+        &PythonExtractor,
+        "class V:\n    def __iter__(self):\n        return self\n",
+        "V.__iter__",
+        Known::default(),
+    );
+    assert_eq!(found, [Implicit::Protocol]);
+    let entered = Known {
+        dispatched: true,
+        consumed_outside: false,
+    };
+    let found = kinds_in(
+        "tests/test_app.py",
+        &PythonExtractor,
+        PY_TEST,
+        "test_works",
+        entered,
     );
     assert_eq!(found, [Implicit::Override]);
 }
