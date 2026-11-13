@@ -19,6 +19,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from eval.analysis.compare_runs import RUN_ENV
 from eval.datasets.build_splits import default_calibration_pool_adapters, default_test_adapters
 from eval.harness.adapters.evaluator import UniversalEvaluator
 from eval.harness.adapters.final_eval import aggregate_by_language, aggregate_test_set, render_language_table, render_paper_table
@@ -526,6 +527,7 @@ def main() -> int:
     _warm_repo_cache(manifest_instances)
 
     args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / RUN_ENV).write_text(json.dumps(asdict(params), sort_keys=True))
     loop_depths: list[int | None] = list(depths_list) if depths_list else [None]
     reports, all_results, failed_manifests = _run_depth_manifest_sweep(
         manifest_instances, args, params, budgets_list, eval_fn, eval_all_cells_fn, loop_depths
