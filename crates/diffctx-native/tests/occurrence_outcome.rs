@@ -1092,6 +1092,33 @@ fn a_name_in_an_impl_trait_argument_is_no_impl_header_type() {
     assert_ne!(on(&found, 9).outcome, Outcome::Declaration, "{found:#?}");
 }
 
+const TRAITS: &str = "pub trait Convert<T> {}\n\npub struct Page;\n\nimpl Convert<i32> for Page {\n}\n\nimpl<T> Convert<T> for Page {\n}\n\nimpl Page {}\n";
+
+#[test]
+fn the_trait_an_impl_header_names_is_no_declaration_of_it_but_the_type_is() {
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", TRAITS)]);
+    let found = world.outcomes(
+        world.def("src/lib.rs", "Convert"),
+        "src/lib.rs",
+        &["Convert"],
+    );
+    for line in [5, 8] {
+        assert_ne!(
+            on(&found, line).outcome,
+            Outcome::Declaration,
+            "line {line}: {found:#?}"
+        );
+    }
+    let found = world.outcomes(world.def("src/lib.rs", "Page"), "src/lib.rs", &["Page"]);
+    for line in [5, 8, 11] {
+        assert_eq!(
+            shape(on(&found, line)),
+            ("declaration", "definition_name", None),
+            "line {line}: {found:#?}"
+        );
+    }
+}
+
 /// (language, file, the subject's name, source, the line declaring the local, a plain read of it)
 const LOCALS: [(Lang, &str, &str, &str, u32, u32); 5] = [
     (

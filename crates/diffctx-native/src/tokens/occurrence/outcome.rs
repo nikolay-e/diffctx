@@ -772,9 +772,16 @@ impl<'a> Reading<'a> {
         let opens = keyword.as_bytes();
         let named = [opens, b"for".as_slice()].contains(words.last()?)
             || header.trim_ascii_end().ends_with(b">");
+        let ahead = self.text[occurrence.bytes.end as usize..].split(|b| b"{;".contains(b));
+        let traited = (split_words(ahead.into_iter().next()?).into_iter())
+            .take_while(|word| *word != b"where")
+            .any(|word| word == b"for");
         let first = words.iter().position(|word| *word == opens);
-        (named && first.is_some_and(|at| at < 2) && !words.contains(&b"where".as_slice()))
-            .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
+        (named
+            && !traited
+            && first.is_some_and(|at| at < 2)
+            && !words.contains(&b"where".as_slice()))
+        .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
     /// A word after a listed command names no function (`trap` is unlisted); a script, only a runner.
