@@ -207,3 +207,20 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
         .filter(|kind| found.contains(kind) && !(*kind == Implicit::Test && run_by_runner))
         .collect()
 }
+
+/// Whether the facts state who enters `def`, as the answer's `entered_by` names it:
+/// `main`, a script guard or an entry a framework makes. That entry is no hedge.
+pub fn entered(file: &FileFacts, def: &Def) -> bool {
+    let own = Scope::Def(def.local.clone());
+    file.blob.facts.iter().any(|fact| match fact {
+        Fact::EntryPoint(entry) => {
+            entry.target == own
+                && match entry.kind {
+                    EntryKind::Test => false,
+                    EntryKind::Main | EntryKind::ScriptGuard => true,
+                    _ => entry.framework.is_some(),
+                }
+        }
+        _ => false,
+    })
+}

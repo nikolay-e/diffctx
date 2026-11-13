@@ -12,9 +12,9 @@ use serde_json::json;
 use tree_sitter::Tree;
 
 use super::{
-    Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Known, Occurrence, Outcome, Reason,
-    Unread, Verdict, View, admitted, close_aliases, counts_against, implicit_kinds, outcomes,
-    value_use,
+    Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Implicit, Known, Occurrence, Outcome,
+    Reason, Unread, Verdict, View, admitted, close_aliases, counts_against, entered,
+    implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Family, Gap, USES};
 use crate::facts::{FactsCache, FileFacts, Name, facts_of};
@@ -134,7 +134,13 @@ impl Shadow<'_> {
             Ok(Some(home)) => home
                 .defs()
                 .find(|def| home.key(&def.local) == definition.key)
-                .map_or_else(Vec::new, |def| implicit_kinds(&home, def, known)),
+                .map_or_else(Vec::new, |def| {
+                    let mut kinds = implicit_kinds(&home, def, known);
+                    if entered(&home, def) {
+                        kinds.retain(|kind| *kind != Implicit::Entry);
+                    }
+                    kinds
+                }),
             _ => Vec::new(),
         };
         let unread: Vec<Unread> = (found.unread.iter())
