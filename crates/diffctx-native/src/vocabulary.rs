@@ -1,8 +1,6 @@
 //! What the answer states of a language beyond the cells: the tier table the README
 //! reproduces, the relation kinds the case schema names, and the cells made precise.
 
-use std::path::Path;
-
 /// How far an answer about a language is promised (T5). Tier 1 is the
 /// declared set whose definitions, callers and test reach are being made
 /// precise. Tier 2 is read by a cell or by the ranking graph and answers with
@@ -181,27 +179,6 @@ fn stated_kind_by(
     precise(cell_language(path), kind.name()).then_some(kind.name())
 }
 
-/// The tier of `path`: its language's row of `TIERS`; Tier 3 when none names it.
-#[allow(
-    dead_code,
-    reason = "read by this module's tests until a door states it"
-)]
-pub fn tier_of(path: &str) -> Tier {
-    let language = crate::languages::get_language_for_file(path);
-    let extension = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    TIERS
-        .iter()
-        .find(|(_, _, names)| {
-            names
-                .iter()
-                .any(|n| Some(*n) == language || n.eq_ignore_ascii_case(extension))
-        })
-        .map_or(Tier::Three, |(tier, _, _)| *tier)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,34 +206,6 @@ mod tests {
                     "{label}: {name} names no language"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn a_path_is_tiered_by_its_language() {
-        let expected = [
-            ("app/main.py", Tier::One),
-            ("web/index.ts", Tier::One),
-            ("src/lib.rs", Tier::One),
-            ("src/App.kt", Tier::One),
-            ("cmd/main.go", Tier::Two),
-            ("src/Main.java", Tier::Two),
-            ("src/Users.php", Tier::Two),
-            ("src/users.c", Tier::Two),
-            ("src/users.cpp", Tier::Two),
-            ("Sources/App.swift", Tier::Two),
-            ("db/q.sql", Tier::Two),
-            ("bin/run.sh", Tier::Two),
-            ("deploy/app.yaml", Tier::Two),
-            ("deploy/Dockerfile", Tier::Two),
-            ("web/index.html", Tier::Two),
-            ("src/pages/index.astro", Tier::Two),
-            ("lib/users.rb", Tier::Three),
-            ("src/Users.cs", Tier::Three),
-            ("src/Users.scala", Tier::Three),
-        ];
-        for (path, tier) in expected {
-            assert_eq!(tier_of(path), tier, "{path}");
         }
     }
 
