@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::decide::Group;
 use crate::facts::{FactsCache, expired};
 use crate::snapshot::{AnalysisContext, Listing, Oid, RepoPath, Result, RunBudget, SnapshotReader};
+pub mod occurrence;
 
 /// Moves when the tokenizer's rules do: a stored token set made by another
 /// version is not read.

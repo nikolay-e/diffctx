@@ -3,7 +3,7 @@
 use crate::decide::Family;
 use crate::facts::lang::shell::SCRIPT;
 use crate::facts::{Def, EntryKind, Fact, FileFacts, Scope, UseKind};
-use crate::occurrence::Implicit;
+use crate::tokens::occurrence::Implicit;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
 /// `consumed_outside` is `consumed_outside` of its family.

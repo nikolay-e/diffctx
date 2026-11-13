@@ -11,12 +11,12 @@ use _diffctx::facts::lang::typescript::TypeScript;
 use _diffctx::facts::{
     DefKind, Extractor, Fact, FileFacts, ModulePath, Name, ProjectId, Scope, UseKind,
 };
-use _diffctx::occurrence::{
+use _diffctx::resolve::Relation;
+use _diffctx::snapshot::{RepoPath, RunBudget};
+use _diffctx::tokens::occurrence::{
     Alias, AliasBound, AliasScope, Basis, Case, MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Outcome, Reason,
     ValuePlace, close_aliases, scan, value_use,
 };
-use _diffctx::resolve::Relation;
-use _diffctx::snapshot::{RepoPath, RunBudget};
 
 type Found = Option<(Outcome, Basis)>;
 

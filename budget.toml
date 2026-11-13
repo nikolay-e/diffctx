@@ -32,7 +32,7 @@ root_modules = 63
 lines = 2243
 repaid_at = "phase A step 4, the switch commit (OCCURRENCES.md section 6)"
 due_when = "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },"
-covers = ["crates/diffctx-native/src/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
+covers = ["crates/diffctx-native/src/tokens/occurrence/**", "crates/diffctx-native/src/facts/lexical.rs"]
 deletes = [
   "crates/diffctx-native/src/decide.rs::Unlanded { uses: usize },",
   "crates/diffctx-native/src/decide.rs::fn lost_namers(",
@@ -47,7 +47,8 @@ deletes = [
 "crates/diffctx-native/src/facts/cache.rs" = { base = 447, plus = 5 }
 "crates/diffctx-native/src/facts/mod.rs" = { base = 49, plus = 1 }
 "crates/diffctx-native/src/facts/model.rs" = { base = 575, plus = 28 }
-"crates/diffctx-native/src/lib.rs" = { base = 91, plus = 1 }
+"crates/diffctx-native/src/lib.rs" = { base = 91, plus = 0 }
+"crates/diffctx-native/src/tokens.rs" = { base = 467, plus = 1 }
 "crates/diffctx-native/src/facts/lang/c.rs" = { base = 2011, plus = 1 }
 "crates/diffctx-native/src/facts/lang/go.rs" = { base = 1474, plus = 1 }
 "crates/diffctx-native/src/facts/lang/java.rs" = { base = 602, plus = 1 }
