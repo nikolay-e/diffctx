@@ -22,6 +22,7 @@ pub struct View<'a> {
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
     manifests_whole: bool,
+    family_unproven: bool,
 }
 
 impl<'a> View<'a> {
@@ -40,6 +41,7 @@ impl<'a> View<'a> {
             bases: HashMap::new(),
             overriders: HashMap::new(),
             manifests_whole,
+            family_unproven: false,
         };
         for binding in bindings {
             let bytes = &binding.site.bytes;
@@ -58,18 +60,30 @@ impl<'a> View<'a> {
                 continue;
             };
             if binding.relation == Relation::Overrides {
-                let overrider = facts.key(local);
-                view.bases
-                    .entry(overrider.clone())
-                    .or_default()
-                    .push(target.clone());
-                view.overriders
-                    .entry(target.clone())
-                    .or_default()
-                    .push(overrider);
+                view.overrides(facts.key(local), target.clone());
             }
         }
         view
+    }
+
+    fn overrides(&mut self, overrider: DefKey, target: DefKey) {
+        self.bases
+            .entry(overrider.clone())
+            .or_default()
+            .push(target.clone());
+        self.overriders.entry(target).or_default().push(overrider);
+    }
+
+    /// A removed member's family is the base side's (overrider, target) pairs; with
+    /// none, a call resolved to a same-named member is a candidate.
+    pub fn removed_family(mut self, base: Option<Vec<(DefKey, DefKey)>>) -> Self {
+        match base {
+            Some(pairs) => pairs
+                .into_iter()
+                .for_each(|(overrider, target)| self.overrides(overrider, target)),
+            None => self.family_unproven = true,
+        }
+        self
     }
 
     /// What `key` overrides or is overridden by, transitively; not `key`.
@@ -337,6 +351,11 @@ impl<'a> Reading<'a> {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
         } else if self.family.contains(target) {
             Claim::candidate(relation, Reason::Dispatch)
+        } else if self.view.family_unproven
+            && target.local.name == self.subject.key.local.name
+            && !self.view.definitions.contains(&self.subject.key)
+        {
+            Claim::candidate(relation, Reason::OverrideUnproven)
         } else if self.view.definitions.contains(target) {
             Claim::new(relation, Outcome::NotOurs, Basis::OtherDefinition)
         } else {

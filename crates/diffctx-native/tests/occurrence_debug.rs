@@ -236,3 +236,39 @@ fn a_holder_is_complete_only_when_what_it_holds_is_whole_and_unused() {
     // The destructuring of `attempt` is a candidate no row of `Retry` mentions.
     assert_eq!(holder[0]["complete"], false, "{}", holder[0]);
 }
+
+#[test]
+fn a_removed_override_is_reached_through_the_member_it_overrode() {
+    let repo = Repo {
+        family: Family::Java,
+        base: files(&[
+            (
+                "src/a/Notifying.java",
+                "package a;\n\nimport java.util.ArrayList;\n\npublic abstract class Notifying<E> extends ArrayList<E> {\n    public abstract void onContentsChanged();\n\n    public boolean add(E e) {\n        onContentsChanged();\n        return super.add(e);\n    }\n}\n",
+            ),
+            (
+                "src/a/Element.java",
+                "package a;\n\npublic class Element {\n    Object cache;\n\n    static final class NodeList extends Notifying<String> {\n        public void onContentsChanged() {\n            System.out.println(\"changed\");\n        }\n    }\n}\n",
+            ),
+        ]),
+        change: files(&[(
+            "src/a/Element.java",
+            "package a;\n\nimport java.util.ArrayList;\n\npublic class Element {\n    Object cache;\n\n    static final class NodeList extends ArrayList<String> {\n    }\n}\n",
+        )]),
+        caller: None,
+        definition: "src/a/Element.java".to_string(),
+        symbol: "onContentsChanged".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let removed = of(
+        &lines,
+        "src/a/Element.java::Element.NodeList.onContentsChanged",
+        "base",
+    );
+    let call = removed
+        .iter()
+        .find(|l| l["file"] == "src/a/Notifying.java" && l["relation"] == "calls")
+        .unwrap_or_else(|| panic!("the dispatching call is not accounted: {removed:?}"));
+    assert_eq!(call["outcome"], "candidate", "{call}");
+    assert_ne!(call["basis"], "other_definition", "{call}");
+}

@@ -135,6 +135,8 @@ pub enum Reason {
     Conflict,
     /// A target in the definition's override family: a call through a supertype.
     Dispatch,
+    /// A removed member's call through a same-named member, its base family unread.
+    OverrideUnproven,
     /// A `Candidate` resolution, with its reason.
     Resolver(CandidateReason),
     /// An `Unresolved` resolution whose reason gives no basis for `not_ours`.

@@ -3166,12 +3166,15 @@ impl Cell {
             .losses()
             .iter()
             .any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
-        let view = View::new(
+        let mut view = View::new(
             files,
             self.head.bindings(),
             self.head.definitions(),
             manifests_whole,
         );
+        if !changed.stale.is_empty() {
+            view = view.removed_family(self.base().ok().map(|base| self.override_pairs(base)));
+        }
         let names = self.reference_names(changed);
         let tokens = self.tokens.group(self.family.group());
         let reach = |file: &str| {
@@ -3229,6 +3232,22 @@ impl Cell {
             (whole, unused) = (whole && complete, unused && bare);
         }
         Some((whole, unused))
+    }
+
+    /// The base side's resolved overrides, as (overrider, target) keys.
+    fn override_pairs(&self, base: &Resolver) -> Vec<(DefKey, DefKey)> {
+        let pair = |binding: &Binding| {
+            let (Scope::Def(local), Resolution::Resolved { target, .. }) =
+                (&binding.from, &binding.resolution)
+            else {
+                return None;
+            };
+            let facts = facts_of(&self.ctx, SideTag::Base, &self.cache, &binding.file);
+            Some((facts.ok()??.key(local), target.clone()))
+        };
+        let overrides = base.bindings().iter();
+        let overrides = overrides.filter(|binding| binding.relation == Relation::Overrides);
+        overrides.filter_map(pair).collect()
     }
 
     /// Whether a head file of the family holds an import whose target the code
