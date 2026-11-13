@@ -446,10 +446,7 @@ fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
             return crate::paths::to_posix_display(rel.to_string_lossy()).to_lowercase();
         }
     }
-    candidate
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default()
+    lower_file_name(candidate)
 }
 
 fn matches_any_ref(candidate_name: &str, candidate_rel: &str, refs: &FxHashSet<String>) -> bool {
@@ -655,10 +652,7 @@ pub fn discover_files_by_refs(
         if changed_set.contains(candidate) {
             continue;
         }
-        let candidate_name = candidate
-            .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
+        let candidate_name = lower_file_name(candidate);
         let candidate_rel = candidate_rel_path(candidate, repo_root);
         if matches_any_ref(&candidate_name, &candidate_rel, refs) {
             discovered.push(candidate.clone());
@@ -746,6 +740,12 @@ pub fn file_stem_string(path: &Path) -> String {
 
 pub fn file_stem_lower(path: &Path) -> String {
     file_stem_string(path).to_lowercase()
+}
+
+pub fn lower_file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
 }
 
 pub fn file_ext(path: &Path) -> String {
