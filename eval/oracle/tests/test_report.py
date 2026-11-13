@@ -201,7 +201,7 @@ def test_main_adds_the_paired_section_fails_a_measured_cell_and_lists_thin_relat
     unmeasured = json.loads((tmp_path / "strict" / "report.json").read_text())
     assert unmeasured["paired"][0]["result"]["rows"][0]["state"] == "unmeasured"
     statuses = {line["gate"]: line["status"] for line in unmeasured["verdict"]}
-    assert statuses["measurability.lower_bound"] == "n/a"
+    assert statuses["measurability.lower_bound"] == "not measured"
     assert statuses["measurability.interval_width"] == "info"  # no width can make it pass or fail
     assert {line["gate"]: line["value"] for line in unmeasured["verdict"]}[
         "measurability.interval_width"
@@ -249,11 +249,12 @@ def test_every_threshold_of_the_gates_file_gets_a_verdict_line_and_missing_input
 
     assert {gate for gate, _ in lines} == set(load_gates())
     assert lines[("safety.false_fold", "oracle cells")]["status"] == "pass"
-    assert lines[("safety.silent_loss", "")]["status"] == "n/a"
-    assert lines[("precise.precision", "")]["status"] == "n/a"
+    assert lines[("safety.silent_loss", "")]["status"] == "not measured"
+    assert lines[("precise.precision", "")]["status"] == "not measured"
     markdown = (tmp_path / "out" / "report.md").read_text()
     assert "| safety.false_fold | oracle cells | 0 | <= 0 | PASS |" in markdown
     assert "No threshold fails" in markdown
+    assert "| safety.silent_loss |  | n/a | every row read | NOT MEASURED |" in markdown
 
 
 def test_a_false_fold_fails_its_gate_and_the_threshold_comes_from_the_file_alone(tmp_path: Path):
@@ -358,10 +359,10 @@ def test_the_incomplete_complete_count_is_per_cell_with_every_pair_listed_and_ju
     assert again[("safety.incomplete_complete", "oracle cells")]["status"] == "pass"
 
 
-def test_cells_that_never_counted_an_incomplete_complete_are_n_a_not_zero(tmp_path: Path):
+def test_cells_that_never_counted_an_incomplete_complete_are_not_measured_not_zero(tmp_path: Path):
     lines = verdicts(tmp_path, [cell(truth=1, tp=1)])
 
-    assert lines[("safety.incomplete_complete", "")]["status"] == "n/a"
+    assert lines[("safety.incomplete_complete", "")]["status"] == "not measured"
     assert report.scip_rows([cell(truth=1, tp=1)])[0]["incomplete_complete"] is None
 
 
@@ -409,7 +410,7 @@ def test_an_answer_that_lost_nothing_is_a_witnessed_zero_and_a_run_without_the_f
         "safety.silent_loss"
     ]
     assert (line["status"], line["value"]) == ("read", 0)
-    assert verdicts(tmp_path / "bare", [cell(truth=1, tp=1)])[("safety.silent_loss", "")]["status"] == "n/a"
+    assert verdicts(tmp_path / "bare", [cell(truth=1, tp=1)])[("safety.silent_loss", "")]["status"] == "not measured"
 
 
 FACTS = Path(__file__).parent / "fixtures" / "cell_facts.json"
@@ -453,7 +454,7 @@ def test_the_cell_facts_add_the_precise_lines_and_the_cell_states_from_cellstate
 
     assert report.main(["--run", str(head), "--against", str(base), "--out", str(tmp_path / "bare")]) == 0
     bare = {line["gate"]: line["status"] for line in json.loads((tmp_path / "bare" / "report.json").read_text())["verdict"]}
-    assert {bare[g] for g in bare if g.startswith("precise.") or g.startswith("declared.")} == {"n/a"}
+    assert {bare[g] for g in bare if g.startswith("precise.") or g.startswith("declared.")} == {"not measured"}
 
 
 def test_the_precise_lines_flip_with_gates_toml_alone_and_the_facts_need_a_paired_run(tmp_path: Path):
