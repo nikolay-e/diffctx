@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use super::rows::DECLARING_LOCALS;
+use super::rows::{BARE_HEADS, DECLARING_LOCALS};
 use super::{Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
 use crate::facts::{
     DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star,
@@ -221,6 +221,11 @@ pub const fn admitted(kind: DefKind) -> &'static [Relation] {
     }
 }
 
+/// Whether a name may be written through to the subject (`global`): its kind admits writes.
+fn writable(subject: &Definition) -> bool {
+    admitted(subject.kind).contains(&Relation::Writes)
+}
+
 /// Whether the entry stands in the way of `relation`: its binding's own relation,
 /// else every relation the kind admits.
 pub fn counts_against(entry: &Entry, kind: DefKind, relation: Relation) -> bool {
@@ -340,7 +345,6 @@ impl<'a> Reading<'a> {
         let mut declared = HashMap::new();
         let mut locals = Vec::new();
         let mut imports = Vec::new();
-        let writable = admitted(subject.kind).contains(&Relation::Writes);
         for fact in &file.blob.facts {
             match fact {
                 Fact::Definition(def) => {
@@ -355,7 +359,7 @@ impl<'a> Reading<'a> {
                     // language's row says so. A value a name may be written through
                     // (`global`) keeps its hedge at a local of its own name.
                     let declares = local.kind == LocalKind::Parameter
-                        || (!writable
+                        || (!writable(subject)
                             && DECLARING_LOCALS.iter().any(|(family, kind)| {
                                 *kind == local.kind && family.has(file.language())
                             }));
@@ -540,10 +544,14 @@ impl<'a> Reading<'a> {
         }
     }
 
-    /// No binding at the span: a wider one of the name holds it, or none does.
+    /// No binding at the span: a basis shows it is no use of the subject, a wider
+    /// binding of the name holds it, or none does.
     fn unbound(&self, occurrence: &Occurrence) -> Claim {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
+        if let Some(basis) = self.bare_head(occurrence, spelled) {
+            return Claim::new(None, Outcome::NotOurs, basis);
+        }
         let wide = self.view.in_file(&occurrence.file).find(|binding| {
             let site = &binding.site.bytes;
             site.start <= bytes.start
@@ -554,6 +562,61 @@ impl<'a> Reading<'a> {
             || Claim::candidate(None, Reason::Unexplained),
             |binding| Claim::candidate(Some(binding.relation), Reason::WideBinding),
         )
+    }
+
+    /// A bare name heading a chain (`name.x`) is a local, an import or the file's own
+    /// name, and never a member of a class it is written outside of.
+    fn bare_head(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Basis> {
+        let (_, scoped, receiver) = BARE_HEADS
+            .iter()
+            .find(|row| row.0.has(self.file.language()))?;
+        let (start, end) = (occurrence.bytes.start, occurrence.bytes.end);
+        let spaced = |b: &&u8| !b.is_ascii_whitespace();
+        let before = self.text[..start as usize].iter().rev().find(spaced);
+        if before == Some(&b'.') || self.text[end as usize..].iter().find(spaced) != Some(&b'.') {
+            return None;
+        }
+        let named = |name: &Name| same(name.as_str(), spelled, self.case);
+        let scope = (self.file.defs())
+            .filter(|def| def.span.bytes.contains(&start))
+            .min_by_key(|def| def.span.bytes.len())
+            .map_or(Scope::Module, |def| Scope::Def(def.local.clone()));
+        let local = *scoped
+            && !writable(self.subject)
+            && self.locals.iter().any(|local| {
+                named(&local.name)
+                    && matches!(local.enclosing, Scope::Def(_))
+                    && encloses(&local.enclosing, &scope)
+            });
+        let imports = (self.view.in_file(&self.file.path))
+            .filter(|binding| binding.relation == Relation::Imports && named(&binding.name));
+        let claims: Vec<Claim> = imports
+            .map(|binding| self.claim(binding, spelled))
+            .collect();
+        let defined =
+            (self.file.defs()).any(|def| def.local.container.is_empty() && named(&def.local.name));
+        if local {
+            Some(Basis::Local)
+        } else if !defined
+            && !claims.is_empty()
+            && claims.iter().all(|c| matches!(c.outcome, Outcome::NotOurs))
+        {
+            Some(claims[0].basis)
+        } else {
+            (*receiver && self.outside_class(start)).then_some(Basis::BareName)
+        }
+    }
+
+    /// Whether the subject is a member of a class, and `at` is not in the class body.
+    fn outside_class(&self, at: u32) -> bool {
+        let home = self.view.file(&self.subject.file);
+        let owner = &self.subject.key.local.container;
+        let class = (home.into_iter().flat_map(|home| home.defs())).find(|def| {
+            def.kind != DefKind::Module
+                && (def.local.container.iter().chain([&def.local.name])).eq(owner)
+        });
+        class
+            .is_some_and(|def| self.file.path != self.subject.file || !def.span.bytes.contains(&at))
     }
 
     /// A mention is an entry only when a binding at its span explains it; it is

@@ -181,6 +181,8 @@ pub enum Basis {
     Manifests,
     /// `not_ours`: the receiver's class was found and is not the owner's hierarchy.
     ReceiverClass,
+    /// `not_ours`: a bare name is no member of a class it is written outside of.
+    BareName,
     /// `alias`: `import f as g`, `use m::f as g`.
     RenamedImport,
     /// `alias`: `export { f as g }`, `pub use m::f as g`.
@@ -214,6 +216,7 @@ impl Basis {
             Self::ExternalModule => "external_module",
             Self::Manifests => "manifests",
             Self::ReceiverClass => "receiver_class",
+            Self::BareName => "bare_name",
             Self::RenamedImport => "renamed_import",
             Self::RenamedExport => "renamed_export",
             Self::Assignment => "assignment",
@@ -233,7 +236,8 @@ impl Basis {
             | Self::Builtin
             | Self::ExternalModule
             | Self::Manifests
-            | Self::ReceiverClass => true,
+            | Self::ReceiverClass
+            | Self::BareName => true,
             Self::Resolved
             | Self::OwnModule
             | Self::ImportedName
