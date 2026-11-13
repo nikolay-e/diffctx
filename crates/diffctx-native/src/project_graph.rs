@@ -72,36 +72,8 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use crate::snapshot::testing::{commit_all, init_git_repo, write_file};
     use tempfile::TempDir;
-
-    fn git(dir: &Path, args: &[&str]) {
-        let status = crate::snapshot::git_command(dir)
-            .args(args)
-            .status()
-            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
-        assert!(status.success(), "git {args:?} failed");
-    }
-
-    fn init_git_repo(dir: &Path) {
-        git(dir, &["init", "-q", "-b", "main"]);
-        git(dir, &["config", "user.email", "test@example.com"]);
-        git(dir, &["config", "user.name", "Test"]);
-        git(dir, &["config", "commit.gpgsign", "false"]);
-    }
-
-    fn commit_all(dir: &Path) {
-        git(dir, &["add", "-A"]);
-        git(dir, &["commit", "-q", "-m", "initial"]);
-    }
-
-    fn write_file(root: &Path, rel: &str, content: &str) {
-        let path = root.join(rel);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create parent");
-        }
-        fs::write(&path, content).expect("write file");
-    }
 
     #[test]
     fn build_project_graph_on_tiny_python_project() {
@@ -118,7 +90,7 @@ mod tests {
             "consumer.py",
             "from alpha import alpha\n\ndef main():\n    return alpha()\n",
         );
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(
@@ -136,7 +108,7 @@ mod tests {
         let root = tmp.path();
         init_git_repo(root);
         write_file(root, ".gitkeep", "");
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert_eq!(pg.fragments.len(), 0);
@@ -159,7 +131,7 @@ mod tests {
             "app.py",
             "from lib import helper, other\n\ndef run():\n    return helper(other(3))\n",
         );
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(pg.fragments.len() >= 2);

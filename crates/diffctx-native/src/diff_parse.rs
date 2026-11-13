@@ -400,23 +400,9 @@ pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<
 mod tests {
     use super::*;
     use crate::snapshot::git_command;
+    use crate::snapshot::testing::{commit_all, git, init_git_repo, write_file};
     use std::fs;
     use tempfile::TempDir;
-
-    fn git(dir: &Path, args: &[&str]) {
-        let status = git_command(dir)
-            .args(args)
-            .status()
-            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
-        assert!(status.success(), "git {args:?} failed");
-    }
-
-    fn init_git_repo(dir: &Path) {
-        git(dir, &["init", "-q", "-b", "main"]);
-        git(dir, &["config", "user.email", "test@example.com"]);
-        git(dir, &["config", "user.name", "Test"]);
-        git(dir, &["config", "commit.gpgsign", "false"]);
-    }
 
     /// One `--name-status` listing answers what the three listings it
     /// replaced answered, by git's own word on each: renames, deletions and
@@ -486,19 +472,6 @@ mod tests {
             pairs,
             vec![("moved.txt".to_string(), "renamed.txt".to_string())]
         );
-    }
-
-    fn commit_all(dir: &Path, message: &str) {
-        git(dir, &["add", "-A"]);
-        git(dir, &["commit", "-q", "-m", message]);
-    }
-
-    fn write_file(root: &Path, rel: &str, content: &str) {
-        let path = root.join(rel);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create parent");
-        }
-        fs::write(&path, content).expect("write file");
     }
 
     // --- SAFE_DIFF_FLAGS pins the parser against hostile repo-local config ---
