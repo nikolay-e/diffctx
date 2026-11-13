@@ -146,7 +146,7 @@ def test_a_v2_row_is_read_by_its_class_standing_kind_and_fold():
     ]
 
 
-def test_a_v2_gap_in_any_search_makes_the_target_a_partial_answer_and_none_leaves_it_whole():
+def test_a_v2_gap_in_a_search_leaves_that_group_open_and_none_leaves_it_whole():
     whole = parse_answer(v2(definitions=[definition()]), Resolve()).targets["a.py::f"]
     unlanded = definition(
         gaps=[{"kind": "unlanded", "uses": 3}],
@@ -164,7 +164,8 @@ def test_a_v2_gap_in_any_search_makes_the_target_a_partial_answer_and_none_leave
     missed = parse_answer(v2(definitions=[unread]), Resolve()).targets["a.py::f"]
 
     assert not whole.unresolved and not whole.missed_in
-    assert partial.unresolved == "unlanded" and missed.unresolved == "unaccounted" and missed.missed_in == ["2 unread file(s)"]
+    assert not partial.unresolved and not missed.unresolved and not missed.missed_in
+    assert (partial.gapped, missed.gapped, whole.gapped) == ({"reads"}, {"calls"}, set())
 
 
 def test_what_a_v2_definition_shed_is_its_ledger_total_and_one_the_ledger_attributes_is_no_unattributed_truncation():
@@ -326,7 +327,7 @@ def what_the_scorer_sees(parsed):
                     (c.from_key, "resolved" if c.evidence == "reexport" else c.evidence, *dataclasses.astuple(c)[2:])
                     for c in t.callers
                 ],
-                "partial": bool(t.unresolved or t.missed_in or t.callers_omitted),
+                "partial": bool(t.unresolved or t.missed_in or t.gapped or t.callers_omitted),
                 "callers_omitted": t.callers_omitted,
                 "entry": t.entry,
             }

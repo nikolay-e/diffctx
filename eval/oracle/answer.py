@@ -30,6 +30,7 @@ class TargetAnswer:
     callers: list[AnswerCaller] = field(default_factory=list)
     unresolved: str | None = None
     missed_in: list[str] = field(default_factory=list)
+    gapped: set[str] = field(default_factory=set)  # the search groups (calls, reads) whose coverage names a gap (v2)
     callers_omitted: int = 0  # callers the answer cap dropped from this symbol: its list is a lower bound
     entry: str | None = None  # how the symbol is entered ("run as a script"): callers are not what reaches it
 

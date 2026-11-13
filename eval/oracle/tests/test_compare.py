@@ -636,3 +636,15 @@ def test_every_unlisted_list_names_its_items_whether_a_reference_or_one_under_de
 
     assert unlisted_named(data, resolve) == {"shop/pricing.py::total", "shop/checkout.py::charge", "shop/report.py::build"}
     assert unlisted_named({"changed": []}, resolve) == frozenset()
+
+
+def test_a_gap_in_the_reads_search_leaves_the_calls_claim_complete_and_the_reads_claim_open():
+    truth = [relation("shop/checkout.py::charge"), relation("shop/report.py::build", "reads")]
+    calls_gap = answer([], unresolved=None)
+    calls_gap.targets[TARGET.key].gapped = {"reads"}
+
+    cells, _ = compare(TARGET, truth, calls_gap)
+
+    by_kind = {c["kind"]: c for c in cells}
+    assert (by_kind["calls"]["incomplete_complete"], by_kind["calls"]["abstained"]) == (1, False)
+    assert (by_kind["reads"]["incomplete_complete"], by_kind["reads"]["abstained"]) == (0, True)
