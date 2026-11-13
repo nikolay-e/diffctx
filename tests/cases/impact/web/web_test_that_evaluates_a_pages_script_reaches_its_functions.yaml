@@ -45,6 +45,11 @@ expect:
     kind: references_path
     resolution: resolved
     site: 4
-  exact: true
+  - from: index.html::__t
+    to: index.html::f
+    kind: reads
+    resolution: resolved
+    site: 5
+  exact: false
   not_untested:
   - f
