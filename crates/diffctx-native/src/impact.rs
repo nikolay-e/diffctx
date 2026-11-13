@@ -5391,7 +5391,14 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.truncated_possible += 1;
         return true;
     }
-    if output.contracts.pop().is_some() {
+    // A removed or changed contract is a break the reader must see; only the
+    // public API the range merely touches is context (#663).
+    if output
+        .contracts
+        .last()
+        .is_some_and(|c| c.kind == "public_api")
+    {
+        output.contracts.pop();
         output.contracts_omitted += 1;
         return true;
     }
