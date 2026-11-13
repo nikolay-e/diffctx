@@ -2230,6 +2230,38 @@ impl Cell {
         matches!(self.family, Family::Config | Family::Dockerfile)
     }
 
+    /// The files other than `gone` whose base bindings landed in the module `file`,
+    /// an import of it or a resolved use of what it defined: who still depends on a module
+    /// the range deletes. A Go package is one module, so a file of the directory
+    /// stands for all of it. `None` when the base could not be read.
+    pub(crate) fn importers_of(&self, file: &str, gone: &[String]) -> Option<Vec<String>> {
+        let Ok(base) = self.base() else {
+            return None;
+        };
+        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir.to_string());
+        let go = self.family == Family::Go;
+        let unit = |path: &str| path == file || (go && dir(path) == dir(file));
+        let defined: HashSet<&DefKey> = base
+            .definitions()
+            .iter()
+            .filter(|d| unit(d.file.as_str()))
+            .map(|d| &d.key)
+            .collect();
+        let found: BTreeSet<&str> = base
+            .bindings()
+            .iter()
+            .filter(|b| !unit(b.file.as_str()) && !gone.iter().any(|g| g == b.file.as_str()))
+            .filter(|b| match &b.resolution {
+                Resolution::Module { file, .. } => unit(file.as_str()),
+                Resolution::Resolved { target, .. } => defined.contains(target),
+                // A name that any same-named member might answer binds no file.
+                Resolution::Candidate { .. } | Resolution::Unresolved { .. } => false,
+            })
+            .map(|b| b.file.as_str())
+            .collect();
+        Some(found.into_iter().map(str::to_string).collect())
+    }
+
     /// Whether the cell read the file without a loss: its definitions and uses
     /// are the cell's. A file the grammar read only in part, or lost any other
     /// way, has uses the cell never saw.

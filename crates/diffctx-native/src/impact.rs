@@ -256,15 +256,26 @@ impl ImpactOutput {
     }
 }
 
-/// A module the range deletes and no file at the head imports: its definitions
-/// are named once, here, since nothing can reach any of them.
+/// A module the range deletes, answered as a module.
+///
+/// The files that still import it, or none, and the definitions it held counted
+/// once. A definition something outside the diff still uses keeps its own row.
 #[derive(Debug, Serialize, JsonSchema, Clone)]
 pub struct DeletedModule {
     pub path: String,
     /// The definitions it held.
     pub definitions: usize,
-    /// An import whose name is computed at run time could reach it, and the facts
-    /// cannot rule one out: "no importers" is what was found, not a proof.
+    /// How many of them have a row of their own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listed: Option<usize>,
+    /// The files at the head that import it, a few by path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub importers: Vec<String>,
+    /// Importers beyond those named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more_importers: Option<usize>,
+    /// No importer was found and an import whose name is computed at run time
+    /// could reach it: "no importers" is what was found, not a proof.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dynamic_import: bool,
 }
@@ -4760,47 +4771,92 @@ const MAX_STALE_PER_TARGET: usize = 8;
 const MAX_NAMED_BY: usize = 12;
 const MAX_NAMED_BY_PER_TARGET: usize = 3;
 
-/// The modules the range deletes that no head file imports, named once instead of
-/// definition by definition, and the changed list without their entries. A module
-/// something imports keeps its per-definition listing, whose importers are stale
-/// references. Only a module of a cell language is read this way: its imports are
-/// the facts'. A computed import may reach it, so the claim says "none found"
-/// whenever the facts cannot rule one out (`Cells::computed_imports_possible`).
+/// The modules the range deletes, each answered once instead of definition by
+/// definition, and the changed list without the definitions it folded. A module's
+/// importers are the head files the base bound to it (the cell's facts) and the
+/// files that still name its path. A definition keeps its row when something that
+/// can reach it uses it: a resolved caller, or a candidate in an importer. A name
+/// that other files merely spell is no way to reach a module nothing imports.
+/// Only a module of a cell language is read this way: its imports are the facts'.
+/// A computed import may reach a module nothing imports, so that claim says "none
+/// found" whenever the facts cannot rule one out (`Cells::computed_imports_possible`).
 fn dead_modules(
     state: &ScoredState,
     cells: &Cells,
     changed: Vec<ChangedSymbol>,
     stale: &[StaleReference],
 ) -> (Vec<DeletedModule>, Vec<ChangedSymbol>) {
+    let renamed: FxHashMap<&str, &str> = state
+        .renamed_files
+        .iter()
+        .map(|(old, new)| (old.as_str(), new.as_str()))
+        .collect();
     let mut dead: Vec<DeletedModule> = Vec::new();
+    let mut folded: FxHashSet<usize> = FxHashSet::default();
     for file in &state.deleted_files {
-        let held: Vec<&ChangedSymbol> = changed
-            .iter()
-            .filter(|c| c.kind == "removed" && &c.path == file)
+        let held: Vec<usize> = (0..changed.len())
+            .filter(|&at| changed[at].kind == "removed" && &changed[at].path == file)
             .collect();
-        if held.is_empty()
-            || cells.of(file).is_none()
-            || held.iter().any(|c| !c.callers.is_empty())
-            || stale.iter().any(|r| &r.target == file)
-        {
+        let Some(cell) = cells.of(file).filter(|_| !held.is_empty()) else {
+            continue;
+        };
+        let Some(bound) = cell.importers_of(file, &state.deleted_files) else {
+            continue;
+        };
+        let mut importers: Vec<String> = bound
+            .into_iter()
+            .map(|path| {
+                renamed
+                    .get(path.as_str())
+                    .map_or(path, |new| (*new).to_string())
+            })
+            .chain(
+                stale
+                    .iter()
+                    .filter(|r| &r.target == file && r.class.reads())
+                    .map(|r| r.path.clone()),
+            )
+            .collect();
+        importers.sort();
+        importers.dedup();
+        let reaches = |c: &ChangedSymbol| {
+            c.callers
+                .iter()
+                .any(|k| k.evidence != "candidate" || importers.contains(&k.path))
+        };
+        let folding: Vec<usize> = held
+            .iter()
+            .copied()
+            .filter(|&at| !reaches(&changed[at]))
+            .collect();
+        if folding.is_empty() {
             continue;
         }
+        let more_importers =
+            Some(importers.len().saturating_sub(MAX_NAMED_BY_PER_TARGET)).filter(|n| *n > 0);
+        importers.truncate(MAX_NAMED_BY_PER_TARGET);
         dead.push(DeletedModule {
             path: file.clone(),
             definitions: held.len(),
+            listed: Some(held.len() - folding.len()).filter(|n| *n > 0),
+            importers,
+            more_importers,
             dynamic_import: false,
         });
+        folded.extend(folding);
     }
     if dead.is_empty() {
         return (dead, changed);
     }
     let dynamic_import = cells.computed_imports_possible();
     for module in &mut dead {
-        module.dynamic_import = dynamic_import;
+        module.dynamic_import = dynamic_import && module.importers.is_empty();
     }
     let changed = changed
         .into_iter()
-        .filter(|c| !(c.kind == "removed" && dead.iter().any(|m| m.path == c.path)))
+        .enumerate()
+        .filter(|(at, _)| !folded.contains(at))
+        .map(|(_, c)| c)
         .collect();
     (dead, changed)
 }
