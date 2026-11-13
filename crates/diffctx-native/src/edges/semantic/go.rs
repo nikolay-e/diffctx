@@ -332,6 +332,9 @@ impl EdgeBuilder for GoEdgeBuilder {
                 &no_imports
             };
 
+            let link_import = |edges: &mut EdgeDict, ids: &[FragmentId]| {
+                add_edges_from_ids(edges, &gf.id, ids, import_weight, reverse_factor);
+            };
             for imp in imports {
                 let imp_pkg = imp.split('/').next_back().unwrap_or(imp).to_lowercase();
                 // Direct lookup: the previous full-map scan was
@@ -339,13 +342,7 @@ impl EdgeBuilder for GoEdgeBuilder {
                 // kubernetes-scale commit (#196).
                 if !pkg_capped(&imp_pkg) {
                     if let Some(frag_ids) = pkg_to_frags.get(&imp_pkg) {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &gf.id,
-                            frag_ids,
-                            import_weight,
-                            reverse_factor,
-                        );
+                        link_import(&mut edges, frag_ids);
                     }
                 }
                 // Last-component index instead of a full scan: the old form
@@ -364,13 +361,7 @@ impl EdgeBuilder for GoEdgeBuilder {
                             || imp.contains(&format!("/{}/", path_str))
                         {
                             if let Some(frag_ids) = path_to_frags.get(*path_str) {
-                                add_edges_from_ids(
-                                    &mut edges,
-                                    &gf.id,
-                                    frag_ids,
-                                    import_weight,
-                                    reverse_factor,
-                                );
+                                link_import(&mut edges, frag_ids);
                             }
                         }
                     }
