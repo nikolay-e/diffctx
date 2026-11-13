@@ -532,9 +532,9 @@ pub struct Caller {
     /// A test file the size cap kept out that names this caller: an absent
     /// `tests` says nothing about it (#542).
     pub unread_test: Option<String>,
-    /// The search for a test stopped at the hop bound with uses left above: an
-    /// absent `tests` is not established.
-    pub tests_cut: bool,
+    /// The search for a test above this caller is open: an absent `tests` is not
+    /// established.
+    pub tests_open: bool,
     /// `resolved`: a binding links the reference to the changed definition.
     /// `name`: a word match — the lexical model of a language without a
     /// binding model, or a removed definition's name found by search; the
@@ -582,7 +582,7 @@ impl Caller {
             file_tested: false,
             registered_by: None,
             unread_test: None,
-            tests_cut: false,
+            tests_open: false,
             evidence,
             reason: None,
             relation,
@@ -1941,7 +1941,7 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 }
                 m.unread_test = m.unread_test.take().or(c.unread_test);
                 m.file_tested = m.tests.is_empty() && (m.file_tested || c.file_tested);
-                m.tests_cut = m.tests.is_empty() && (m.tests_cut || c.tests_cut);
+                m.tests_open = m.tests.is_empty() && (m.tests_open || c.tests_open);
             }
             None => merged.push(c),
         }
@@ -2729,7 +2729,7 @@ fn cell_row(u: &decide::Use) -> Caller {
         file_tested: false,
         registered_by: None,
         unread_test: None,
-        tests_cut: false,
+        tests_open: false,
         evidence: if reexport { REEXPORT } else { reach.evidence() },
         reason: reach.reason().filter(|_| !reexport),
         relation: if reexport {
@@ -3592,7 +3592,7 @@ pub fn build_impact(
                         .is_empty()
                         .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
-                    tests_cut: tested.is_empty() && tests.cut(frag),
+                    tests_open: tested.is_empty() && tests.open_above(frag, &link, true),
                     registered_by,
                     tests: tested,
                     evidence: found.map_or("name", Reach::evidence),
@@ -3854,12 +3854,14 @@ pub fn build_impact(
         }
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside);
         // No test found is an absence only from a closed search: the callers
-        // accounted for and no walk up the uses cut at its hop bound. A cut walk
-        // says the tests are not established; incomplete callers say nothing here,
-        // their own gap does.
+        // accounted for and every definition above them. An open search says the
+        // tests are not established; incomplete callers say nothing here, their
+        // own gap does.
         let untested = tests_absent
             .then(|| {
-                if tests.cut(core) || class.is_some_and(|class| tests.cut(class)) {
+                if tests.open_above(core, &link, false)
+                    || class.is_some_and(|class| tests.open_above(class, &link, false))
+                {
                     Some(GuardState::NotEstablished)
                 } else {
                     coverage.all().witness().map(|_| GuardState::None)
@@ -4174,7 +4176,7 @@ pub fn build_impact(
                 };
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
-                c.tests_cut = tested.is_empty() && tests.cut(frag);
+                c.tests_open = tested.is_empty() && tests.open_above(frag, &link, true);
                 c.tests = tested;
             }
             if let Some(c) =
@@ -5714,7 +5716,7 @@ const TOO_COMMON_NAMED: usize = 8;
 /// A caller no static test link reaches although one could have: the one
 /// predicate behind the header count, the folded count and the line (#386).
 pub(crate) fn without_test_link(c: &Caller) -> bool {
-    c.evidence == "resolved" && c.tests.is_empty() && c.registered_by.is_none() && !c.tests_cut
+    c.evidence == "resolved" && c.tests.is_empty() && c.registered_by.is_none() && !c.tests_open
 }
 
 /// A row that rests on a word match alone: listed as text, never counted or
