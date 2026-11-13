@@ -628,14 +628,13 @@ pub(crate) fn is_omitted(s: &ChangedSymbol) -> bool {
 }
 
 /// What the search for one definition's callers did not cover: the cell's own
-/// gaps (which carry the account of the files of its interaction group), or, for
-/// a definition no cell answers for, the account of that group, the reasons the
-/// answer names for it (`unresolved`) and the `outside` files that name it beyond
-/// the group (a script that embeds its code, a file outside code). The one place
-/// that decides whether an absence may be claimed for it.
+/// gaps (which carry its occurrence account), or, for a definition no cell
+/// answers for, the reasons the answer names for it (`unresolved`) and the
+/// `outside` files that name it beyond the group (a script that embeds its code,
+/// a file outside code). The one place that decides whether an absence may be
+/// claimed for it.
 fn search_coverage(
     verdict: Option<&decide::Verdict>,
-    account: Option<&decide::Account>,
     unresolved: Option<&Unknown>,
     outside: usize,
 ) -> decide::Coverages {
@@ -657,9 +656,7 @@ fn search_coverage(
         Some(verdict) => decide::Coverages::of_verdict(verdict)
             .with(own_gap)
             .with(named_outside),
-        None => {
-            decide::Coverages::unowned(account, own_gap.into_iter().chain(named_outside).collect())
-        }
+        None => decide::Coverages::unowned(own_gap.into_iter().chain(named_outside).collect()),
     }
 }
 
@@ -3832,29 +3829,9 @@ pub fn build_impact(
         } else {
             0
         };
-        // The files of the definition's interaction group the account could not
-        // place: the cell's own for its definitions, the group's by extension for
-        // the rest, none of them bound. A file outside code has no group.
-        // A fragment of a file a cell reads is the cell's to answer for: its own
-        // definitions carry the account.
-        let account = if verdict.is_none()
-            && is_code_file(core.path())
-            && cells.of(&rel(state, core.path())).is_none()
-        {
-            Some(cells.account_without_cell(
-                state,
-                &rel(state, core.path()),
-                &symbol.map_or_else(Vec::new, names_of),
-                &|_| true,
-            ))
-        } else {
-            None
-        };
-        let mut missed_in: Vec<UnanalysedFile> = match (&verdict, &account) {
-            (Some(verdict), _) => unaccounted_rows(verdict.unaccounted()),
-            (None, Some(account)) => unaccounted_rows(account.unaccounted()),
-            (None, None) => Vec::new(),
-        };
+        let mut missed_in: Vec<UnanalysedFile> = verdict
+            .as_ref()
+            .map_or_else(Vec::new, |verdict| unaccounted_rows(verdict.unaccounted()));
         // A script of the definition's runtime embedded in a shell script names it
         // beyond the group, and so does a file outside code that spells it.
         let embedded: Vec<UnanalysedFile> = symbol
@@ -3876,12 +3853,7 @@ pub fn build_impact(
             missed_in = untraced.of(core).into_iter().collect();
             outside += missed_in.len();
         }
-        let coverage = search_coverage(
-            verdict.as_ref(),
-            account.as_ref(),
-            unresolved.as_ref(),
-            outside,
-        );
+        let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside);
         // No test found is an absence only from a closed search: the callers
         // accounted for and no walk up the uses cut at its hop bound. A cut walk
         // says the tests are not established; incomplete callers say nothing here,
@@ -3897,17 +3869,6 @@ pub fn build_impact(
             .flatten();
         let absent = untested == Some(GuardState::None);
         untested_definitions += usize::from(absent);
-        // A definition no cell reads is never one nothing calls: the files of its
-        // group that spell the name are counted in a gap, and the answer says so
-        // even where no file of it is listed.
-        let unresolved = unresolved.or_else(|| {
-            account
-                .as_ref()
-                .and_then(decide::Account::first_gap)
-                .map(|gap| Unknown::Uncovered {
-                    why: gap.to_string(),
-                })
-        });
         // A test that reaches a definition no caller does (a doctest runs it, a
         // test in its own file spells it, a test of the class a dispatch route
         // goes through) is no caller: the definition is listed, its guard stated
