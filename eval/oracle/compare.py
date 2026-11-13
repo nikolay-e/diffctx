@@ -131,6 +131,12 @@ def _blank_cell(target: str, kind: str) -> dict:
     }
 
 
+COUNTING_BASIS = (
+    "complete is counted per changed definition and relation group (calls, reads), not per answer: a gap an answer names for "
+    "one group of a definition leaves its other group complete, while limits and truncation of the whole answer abstain all of it"
+)
+
+
 def incomplete_complete(complete: bool, status: str, affected: bool) -> bool:
     """The safety row: the answer is complete for (definition, relation) while a truth pair the change can reach is in
     neither its rows nor its candidates (`fn`). Silence about what the change cannot reach is no false claim."""
