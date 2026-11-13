@@ -57,7 +57,11 @@ impl Answer<'_> {
             && doc.definitions.iter().all(v2::Definition::only_in_the_diff)
             && doc.contracts.total == 0
             && doc.stale.total == 0
-            && doc.deleted_modules.items.iter().all(|m| !m.dynamic_import)
+            && doc
+                .deleted_modules
+                .items
+                .iter()
+                .all(|m| !m.dynamic_import && m.importers.is_empty())
             && doc.named.by_path.total == 0
             && doc.named.by_key.total == 0
             && doc.named.key_searches.is_empty()
