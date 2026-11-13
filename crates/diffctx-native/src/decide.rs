@@ -40,7 +40,7 @@ use crate::facts::{
     Visibility, facts_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
-use crate::occurrence::debug::{Shadow, Written, sink};
+use crate::occurrence::debug::{Shadow, Written, sink, write_holder};
 use crate::occurrence::{Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
@@ -3133,7 +3133,7 @@ impl Cell {
             tail.push(Gap::NotTraced);
         }
         let (by_relation, account) = self.coverage(changed, lead, per, tail);
-        self.shadow(changed, &by_relation);
+        let _ = self.shadow(changed, &by_relation);
         Verdict {
             uses,
             by_relation,
@@ -3144,10 +3144,8 @@ impl Cell {
 
     /// Under `DIFFCTX_DEBUG_OCCURRENCES`, the occurrence accounting of each
     /// definition of `changed` written beside `today`; the answer never reads it.
-    fn shadow(&self, changed: &Changed, today: &[(Relation, Coverage)]) {
-        let Some(mut out) = sink() else {
-            return;
-        };
+    fn shadow(&self, changed: &Changed, today: &[(Relation, Coverage)]) -> Option<(bool, bool)> {
+        let mut out = sink()?;
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
                 .head
@@ -3210,14 +3208,27 @@ impl Cell {
             .flat_map(|base| base.definitions())
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
+        // A holder is whole when its own rows are and what it holds is too, and
+        // unused: what its rows leave unsaid is the held definitions' to say.
+        let held: Vec<&Changed> = self.changed.iter().filter(|h| changed.holds(h)).collect();
+        let nested = held.iter().all(|inner| {
+            let verdict = self.verdict(inner);
+            self.shadow(inner, &verdict.by_relation) == Some((true, true))
+        });
+        let (mut whole, mut unused) = (true, true);
         for (definition, side) in heads.chain(removed) {
             let known = Known {
                 dispatched: self.dispatched_via(definition).is_some(),
                 consumed_outside: self.consumed_outside(),
             };
             let mut written = self.shadow_written.borrow_mut();
-            shadow.write(&mut out, &mut written, definition, side, known);
+            let (complete, bare) = shadow.write(&mut out, &mut written, definition, side, known);
+            if !held.is_empty() {
+                write_holder(&mut out, &mut written, definition, side, complete && nested);
+            }
+            (whole, unused) = (whole && complete, unused && bare);
         }
+        Some((whole, unused))
     }
 
     /// Whether a head file of the family holds an import whose target the code

@@ -203,3 +203,36 @@ fn a_line_is_written_once_however_often_the_cell_is_asked() {
         assert!(seen.insert(key), "written twice: {line}");
     }
 }
+
+#[test]
+fn a_holder_is_complete_only_when_what_it_holds_is_whole_and_unused() {
+    let repo = Repo {
+        family: Family::TypeScript,
+        base: files(&[
+            (
+                "src/t.ts",
+                "export interface Retry {\n  attempt: number;\n}\n",
+            ),
+            (
+                "src/u.ts",
+                "export function next(r) {\n  const { attempt } = r;\n  return attempt + 1;\n}\n",
+            ),
+        ]),
+        change: files(&[(
+            "src/t.ts",
+            "export interface Retry {\n  attempt: string;\n}\n",
+        )]),
+        caller: None,
+        definition: "src/t.ts".to_string(),
+        symbol: "Retry".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let holder: Vec<&Value> = of(&lines, "src/t.ts::Retry", "head")
+        .into_iter()
+        .filter(|l| l["held"].is_u64())
+        .collect();
+    assert_eq!(holder.len(), 1, "one holder line: {holder:?}");
+    assert_eq!(holder[0]["held"], 1);
+    // The destructuring of `attempt` is a candidate no row of `Retry` mentions.
+    assert_eq!(holder[0]["complete"], false, "{}", holder[0]);
+}
