@@ -227,3 +227,19 @@ pub fn contains_lexically(relative: &Path) -> bool {
     }
     true
 }
+
+/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
+/// above its start.
+pub fn normalize_lexical(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            p => parts.push(p),
+        }
+    }
+    Some(parts.join("/"))
+}

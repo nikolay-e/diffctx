@@ -31,8 +31,7 @@ use super::{
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, expired, facts_of,
 };
-use crate::paths::normalize_lexical;
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage, normalize_lexical};
 
 /// The bindings of one snapshot's Dockerfiles.
 pub struct DockerfileResolver {
