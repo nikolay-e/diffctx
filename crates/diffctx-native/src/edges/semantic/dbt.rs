@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
 
 fn is_dbt_file(content: &str) -> bool {
     content.contains("{{ ref(") || content.contains("{{ source(") || content.contains("{{ config(")
@@ -94,30 +94,15 @@ impl EdgeBuilder for DbtEdgeBuilder {
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_sql_file(p),
-            |c| {
-                is_dbt_file(c)
-                    .then(|| {
-                        extract_refs(c)
-                            .into_iter()
-                            .chain(extract_sources(c))
-                            .chain(extract_macro_calls(c))
-                    })
+    discover_by_refs!(|p| is_sql_file(p), |c| {
+        is_dbt_file(c)
+            .then(|| {
+                extract_refs(c)
                     .into_iter()
-                    .flatten()
-            },
-        )
-    }
+                    .chain(extract_sources(c))
+                    .chain(extract_macro_calls(c))
+            })
+            .into_iter()
+            .flatten()
+    });
 }

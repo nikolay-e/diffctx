@@ -688,6 +688,30 @@ where
     )
 }
 
+/// The `discover_related_files` of a builder whose discovery is
+/// `discover_by_extracted_refs` over one recogniser and one extractor.
+macro_rules! discover_by_refs {
+    ($recognises:expr, $extract:expr) => {
+        fn discover_related_files(
+            &self,
+            changed: &[::std::path::PathBuf],
+            candidates: &[::std::path::PathBuf],
+            repo_root: Option<&::std::path::Path>,
+            file_cache: Option<&::rustc_hash::FxHashMap<::std::path::PathBuf, String>>,
+        ) -> Vec<::std::path::PathBuf> {
+            $crate::edges::base::discover_by_extracted_refs(
+                changed,
+                candidates,
+                repo_root,
+                file_cache,
+                $recognises,
+                $extract,
+            )
+        }
+    };
+}
+pub(crate) use discover_by_refs;
+
 /// The same shape when the extractor needs the file's path as well as its
 /// text (a CI file's flavour, a Dockerfile against a compose file, a C#
 /// file's own namespace).
