@@ -665,9 +665,7 @@ mod fallback_gate_tests {
             std::fs::write(at, content).expect("a file");
         }
         let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .arg("-C")
-                .arg(dir.path())
+            let out = crate::snapshot::git_command(dir.path())
                 .args(args)
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .env("GIT_CONFIG_NOSYSTEM", "1")

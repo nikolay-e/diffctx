@@ -10,7 +10,8 @@ use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 mod support;
-use support::{commit_all, diffctx, git, write};
+use _diffctx::snapshot::git_command;
+use support::{commit_all, diffctx, git, scrubbed_sh, write};
 
 /// `pricing.total` is edited in the working tree; `checkout.charge` calls it
 /// from another file and `test_checkout.py` pins `charge`.
@@ -144,13 +145,8 @@ fn payload_in_session(session: &str, repo: &Path, command: &str) -> String {
 /// `command` as the Bash tool runs it: through `sh`, in `cwd`. A line that
 /// fails is still a line the agent ran.
 fn sh(cwd: &Path, env: &[(&str, &Path)], command: &str) {
-    Command::new("sh")
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
+    scrubbed_sh(cwd, command)
         .envs(env.iter().copied())
-        .args(["-c", command])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1597,11 +1593,7 @@ fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
     let mut n = 0;
     let mut search = |query: &str| {
         n += 1;
-        let ran = Command::new("sh")
-            .args(["-c", query])
-            .current_dir(repo)
-            .output()
-            .unwrap();
+        let ran = scrubbed_sh(repo, query).output().unwrap();
         let mut payload: serde_json::Value = serde_json::from_str(&in_session(
             &format!("s{n}"),
             &search_payload(repo, "Bash", query),
@@ -2445,14 +2437,7 @@ fn staging_by_any_means_is_read_off_the_commit() {
     ] {
         let tmp = repo_with_pending_change();
         let repo = tmp.path();
-        let diff = Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .args(["diff"])
-            .output()
-            .unwrap();
+        let diff = git_command(repo).args(["diff"]).output().unwrap();
         std::fs::write(repo.join("vat.patch"), diff.stdout).unwrap();
         add_unrelated_edit(repo);
         let cache = TempDir::new().unwrap();
@@ -2567,11 +2552,7 @@ fn a_fast_forward_to_the_upstream_is_silence() {
     );
     git(repo, &["push", "-q", "-u", "origin", "HEAD"]);
     let branch = String::from_utf8(
-        Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
+        git_command(repo)
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .output()
             .unwrap()
@@ -2702,14 +2683,7 @@ fn a_push_after_a_pull_on_the_same_line_reviews_only_what_it_sent() {
 /// of a push, which the hook's payload carries as `tool_response`. A push
 /// that fails still reports.
 fn sh_printed(cwd: &Path, command: &str) -> String {
-    let out = Command::new("sh")
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(["-c", command])
-        .output()
-        .expect("run sh");
+    let out = scrubbed_sh(cwd, command).output().expect("run sh");
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
@@ -3858,11 +3832,7 @@ fn a_search_matching_no_definition_or_use_builds_no_answer() {
     let mut n = 0;
     let mut search = |query: &str| {
         n += 1;
-        let ran = Command::new("sh")
-            .args(["-c", query])
-            .current_dir(repo)
-            .output()
-            .unwrap();
+        let ran = scrubbed_sh(repo, query).output().unwrap();
         let mut payload: serde_json::Value = serde_json::from_str(&in_session(
             &format!("s{n}"),
             &search_payload(repo, "Bash", query),

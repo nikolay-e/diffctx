@@ -97,9 +97,7 @@ impl TempTree {
             std::fs::write(at, content).ok()?;
         }
         let git = |args: &[&str]| {
-            std::process::Command::new("git")
-                .arg("-C")
-                .arg(&tree.root)
+            crate::snapshot::git_command(&tree.root)
                 .args(args)
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -579,7 +577,7 @@ mod tests {
 
         // `--no-index` needs no repository and emits exactly the header and
         // hunk syntax `parse_diff` consumes in production.
-        let output = std::process::Command::new("git")
+        let output = crate::snapshot::git_command(tmp.path())
             .args([
                 "diff",
                 "--no-index",
@@ -588,7 +586,6 @@ mod tests {
                 "old.py",
                 "new.py",
             ])
-            .current_dir(tmp.path())
             .output()
             .expect("git diff --no-index");
         let diff_text = String::from_utf8_lossy(&output.stdout);
