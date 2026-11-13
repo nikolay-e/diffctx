@@ -14,7 +14,7 @@ use _diffctx::occurrence::{
 };
 use _diffctx::resolve::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, JavaResolver, PythonResolver,
-    Relation, Resolution, TypeScriptResolver, UnresolvedReason,
+    Relation, Resolution, ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
 use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
@@ -40,6 +40,7 @@ enum Lang {
     Python,
     TypeScript,
     Java,
+    Shell,
 }
 
 /// What the language's resolver says of one side.
@@ -60,6 +61,10 @@ fn resolved(
         }
         Lang::Java => {
             let it = JavaResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Shell => {
+            let it = ShellResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
     }
@@ -976,5 +981,61 @@ fn a_call_through_a_supertype_stays_a_candidate_on_an_override() {
         on(&found, 21).outcome,
         Outcome::Candidate(Reason::Resolver(CandidateReason::Dispatch)),
         "{found:#?}"
+    );
+}
+
+const CLEANUP: &str = "#!/bin/bash\ncleanup() {\n  rm -f \"$1\"\n}\ncleanup now\necho cleanup\nsudo cleanup\ntrap cleanup EXIT\n";
+
+#[test]
+fn a_word_after_a_command_that_names_no_function_is_no_call() {
+    let world = snapshot_in(Lang::Shell, &[("run.sh", CLEANUP)]);
+    let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
+    assert_eq!(
+        shape(on(&found, 6)),
+        ("not_ours", "builtin", None),
+        "{found:#?}"
+    );
+    assert_eq!(
+        shape(on(&found, 7)),
+        ("not_ours", "builtin", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_word_after_a_command_that_may_run_a_function_stays_a_candidate() {
+    let world = snapshot_in(Lang::Shell, &[("run.sh", CLEANUP)]);
+    let found = world.outcomes(world.def("run.sh", "cleanup"), "run.sh", &["cleanup"]);
+    assert_eq!(
+        on(&found, 8).outcome,
+        Outcome::Candidate(Reason::Unexplained),
+        "`trap cleanup EXIT` calls it: {found:#?}"
+    );
+    assert_eq!(
+        shape(on(&found, 5)),
+        ("ours", "resolved", Some(Relation::Calls))
+    );
+}
+
+#[test]
+fn a_scripts_own_name_after_another_command_is_no_run_unless_the_command_runs_it() {
+    let world = snapshot_in(
+        Lang::Shell,
+        &[(
+            "scripts/check.sh",
+            "#!/bin/sh -e\n\nset -x\nruff check .\nsudo check\n",
+        )],
+    );
+    let script = world.def("scripts/check.sh", "<script>");
+    let found = world.outcomes(script, "scripts/check.sh", &["check"]);
+    assert_eq!(
+        shape(on(&found, 4)),
+        ("not_ours", "builtin", None),
+        "{found:#?}"
+    );
+    assert_eq!(
+        on(&found, 5).outcome,
+        Outcome::Candidate(Reason::Unexplained),
+        "`sudo check` runs a program of that name: {found:#?}"
     );
 }
