@@ -229,26 +229,16 @@ pub fn build_symbol_impact(
                 Ok(SymbolQueryError { locals, .. }) if !locals.is_empty() => {
                     Ok(crate::impact::symbol_local_output(root_dir, query, locals))
                 }
-                Ok(q) => {
-                    let limits = (
-                        Some(deadline),
-                        Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                    );
-                    let modules = if q.malformed {
-                        Vec::new()
-                    } else {
-                        crate::decide::modules_named(root_dir, limits, query).unwrap_or_default()
-                    };
-                    if let Some(output) =
-                        crate::impact::symbol_module_output(root_dir, query, modules)
-                    {
-                        return Ok(output);
-                    }
-                    match q.named {
-                        Some(named) => {
+                Ok(mut q) => {
+                    let module = (!q.malformed)
+                        .then(|| crate::impact::symbol_module_output(root_dir, query, deadline))
+                        .flatten();
+                    match (module, q.named.take()) {
+                        (Some(output), _) => Ok(output),
+                        (None, Some(named)) => {
                             Ok(crate::impact::symbol_named_output(root_dir, query, named))
                         }
-                        None => Err(q.into()),
+                        (None, None) => Err(q.into()),
                     }
                 }
                 Err(e) => Err(e),

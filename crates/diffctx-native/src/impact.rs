@@ -5995,8 +5995,13 @@ fn symbol_blocks_output(root_dir: &Path, query: &str) -> ImpactOutput {
 pub(crate) fn symbol_module_output(
     root_dir: &Path,
     query: &str,
-    modules: Vec<decide::ModuleOf>,
+    deadline: Instant,
 ) -> Option<ImpactOutput> {
+    let limits = (
+        Some(deadline),
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    );
+    let modules = decide::modules_named(root_dir, limits, query).unwrap_or_default();
     if modules.is_empty() {
         return None;
     }
