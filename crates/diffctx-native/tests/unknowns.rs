@@ -1200,6 +1200,25 @@ fn a_typing_construct_is_no_dispatch_route_for_its_methods() {
                 && g["via"].as_str().is_some_and(|v| v.contains("Base")))),
         "{json}"
     );
+    // The names are Python's: a Java class extending a type of its own called
+    // `Generic` keeps that route.
+    let java = |body: u8| {
+        format!(
+            "public class Impl extends Generic {{\n    @Override\n    public int total() {{\n        return {body};\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo(
+        &[("src/Impl.java", &java(1))],
+        &[("src/Impl.java", &java(2))],
+    );
+    let json = impact_json(tmp.path());
+    assert!(
+        json["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains("Generic")))),
+        "{json}"
+    );
 }
 
 /// #442: an edit that changes the code's tokens, the block a line sits in
