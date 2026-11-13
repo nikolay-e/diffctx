@@ -36,11 +36,11 @@ pub(crate) fn peak_rss_bytes() -> u64 {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-pub fn peak_rss_bytes() -> u64 {
+pub(crate) fn peak_rss_bytes() -> u64 {
     getrusage_max_rss_bytes()
 }
 
 #[cfg(not(unix))]
-pub fn peak_rss_bytes() -> u64 {
+pub(crate) fn peak_rss_bytes() -> u64 {
     0
 }
