@@ -19,6 +19,7 @@
 //! Every `match` over these enums names each variant, so a new one does not compile
 //! until it is decided.
 
+mod outcome;
 mod scanner;
 
 use std::fmt;
@@ -29,6 +30,7 @@ use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
 use crate::snapshot::{Loss, RepoPath, SideTag};
 
 pub use crate::facts::Lexical;
+pub use outcome::{FileOutcomes, View, admitted, counts_against, outcomes};
 pub use scanner::{Case, Scan, scan};
 
 /// The longest chain of aliases of aliases the closure follows (*estimate*,
