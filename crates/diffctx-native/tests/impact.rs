@@ -7072,20 +7072,35 @@ fn a_deleted_module_nothing_imports_is_named_once() {
     assert_eq!(md.matches("deleted module").count(), 1, "{md}");
 }
 
-/// The same module with an importer: the importer is a stale reference to what
-/// left, and the definitions are listed one by one.
+/// The same module with an importer: the module names it, the one class the
+/// importer uses keeps its row and its caller, and the nine nothing uses are
+/// folded into the module's count.
 #[test]
-fn a_deleted_module_with_an_importer_keeps_its_definitions_and_the_importer() {
+fn a_deleted_module_with_an_importer_keeps_the_definitions_it_uses_and_names_it() {
     let tmp = repo_deleting_a_schema_module(&[(
         "app/use.py",
         "from pkg.schema import Model0\n\n\ndef build():\n    return Model0()\n",
     )]);
     let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    assert!(doc["deleted_modules"].is_null(), "{doc:#}");
-    assert_eq!(removed_symbols(&doc).len(), 10, "{doc:#}");
+    assert_eq!(
+        doc["deleted_modules"]["items"],
+        serde_json::json!([{
+            "path": "pkg/schema.py",
+            "definitions": 10,
+            "listed": 1,
+            "importers": ["app/use.py"]
+        }]),
+        "{doc:#}"
+    );
+    assert_eq!(removed_symbols(&doc), ["Model0"], "{doc:#}");
     assert_eq!(callers_of(&doc, "Model0"), ["app/use.py"], "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    assert!(!md.contains("deleted module"), "{md}");
+    assert!(
+        md.contains(
+            "- deleted module pkg/schema.py: 10 definition(s), 1 listed on its own, imported by app/use.py"
+        ),
+        "{md}"
+    );
 }
 
 /// An import whose name is computed anywhere may reach the module: "no importers"
@@ -7112,6 +7127,127 @@ fn a_computed_import_leaves_a_deleted_module_unproven() {
         ),
         "{md}"
     );
+}
+
+/// A package of two modules, each a class with the members `run`, `start` and
+/// `title`, deleted whole. `other/` spells those words on `lines` lines and never
+/// imports the package; `importer` is a file that does.
+fn repo_deleting_a_package(lines: usize, importer: Option<(&str, &str)>) -> TempDir {
+    let class = |name: &str| {
+        format!(
+            "class {name}:\n    title = \"\"\n\n    def run(self):\n        return 1\n\n    def start(self):\n        return 2\n"
+        )
+    };
+    let noise = (0..lines)
+        .map(|_| "    obj.run()\n    obj.start()\n    obj.title\n")
+        .collect::<String>();
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "pkg/__init__.py", "");
+    write(repo, "pkg/first.py", &class("First"));
+    write(repo, "pkg/second.py", &class("Second"));
+    write(repo, "other/loop.py", &format!("def spin(obj):\n{noise}"));
+    if let Some((path, text)) = importer {
+        write(repo, path, text);
+    }
+    commit_all(repo, "initial");
+    std::fs::remove_dir_all(repo.join("pkg")).expect("delete the package");
+    commit_all(repo, "drop the package");
+    tmp
+}
+
+/// A package nothing imports: `other/` spells the members' names, and that is no
+/// way to reach a deleted class. Each module is one line, the members are no
+/// candidates, and nothing says "possibly called".
+#[test]
+fn a_deleted_package_nothing_imports_folds_the_members_other_files_spell() {
+    let tmp = repo_deleting_a_package(4, None);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["deleted_modules"]["total"], 2, "{doc:#}");
+    assert!(removed_symbols(&doc).is_empty(), "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(md.matches("no importers").count(), 2, "{md}");
+    assert!(!md.contains("possibly called"), "{md}");
+    assert!(!md.contains("too common"), "{md}");
+}
+
+/// One module is imported and uses only its class: the module says who imports
+/// it, the class that is used stays a row with its caller, and the members a name
+/// on hundreds of lines elsewhere cannot place are folded into the count instead
+/// of "too common to trace". The module nobody imports is still one line.
+#[test]
+fn a_deleted_module_names_its_importers_and_folds_the_members_nothing_uses() {
+    let tmp = repo_deleting_a_package(
+        300,
+        Some((
+            "app/use.py",
+            "from pkg.first import First\n\n\ndef build():\n    return First()\n",
+        )),
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let modules = &doc["deleted_modules"];
+    assert_eq!(modules["total"], 2, "{doc:#}");
+    let first = modules["items"]
+        .as_array()
+        .and_then(|m| m.iter().find(|m| m["path"] == "pkg/first.py"))
+        .expect("pkg/first.py is a deleted module");
+    assert_eq!(
+        first["importers"],
+        serde_json::json!(["app/use.py"]),
+        "{doc:#}"
+    );
+    assert_eq!(first["definitions"], 3, "{doc:#}");
+    assert_eq!(first["listed"], 1, "{doc:#}");
+    assert_eq!(removed_symbols(&doc), ["First"], "{doc:#}");
+    assert_eq!(callers_of(&doc, "First"), ["app/use.py"], "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "- deleted module pkg/first.py: 3 definition(s), 1 listed on its own, imported by app/use.py"
+        ),
+        "{md}"
+    );
+    assert!(
+        md.contains("- deleted module pkg/second.py: 3 definition(s), no importers"),
+        "{md}"
+    );
+    assert!(!md.contains("too common"), "{md}");
+}
+
+/// A package's importer reaches every file of it: a Go file that imports the
+/// package and uses one name is an importer of the package's other files, whose
+/// members are folded.
+#[test]
+fn a_deleted_go_package_is_imported_as_one_module() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "go.mod", "module example.com/app\n\ngo 1.22\n");
+    write(
+        repo,
+        "pkg/first.go",
+        "package pkg\n\ntype First struct{}\n\nfunc (f *First) Run() int { return 1 }\n",
+    );
+    write(
+        repo,
+        "pkg/second.go",
+        "package pkg\n\ntype Second struct{}\n\nfunc (s *Second) Run() int { return 2 }\n",
+    );
+    write(
+        repo,
+        "app/use.go",
+        "package app\n\nimport \"example.com/app/pkg\"\n\nfunc Build() *pkg.First { return &pkg.First{} }\n",
+    );
+    commit_all(repo, "initial");
+    std::fs::remove_dir_all(repo.join("pkg")).expect("delete the package");
+    commit_all(repo, "drop the package");
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        md.contains("- deleted module pkg/second.go: 2 definition(s), imported by app/use.go"),
+        "{md}"
+    );
+    assert!(!md.contains("no importers"), "{md}");
 }
 
 /// The module's default export is one export across a change of form: `export

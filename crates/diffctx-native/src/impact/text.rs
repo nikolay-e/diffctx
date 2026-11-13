@@ -272,27 +272,32 @@ fn write_inside_only(out: &mut String, a: &Answer) {
     );
 }
 
-/// A deleted module nothing imports: one line, never one per definition.
+/// A deleted module is one line: who imports it, or that nothing does, and its
+/// definitions counted, never one per definition.
 fn write_deleted_modules(out: &mut String, a: &Answer) {
     let modules = &a.doc.deleted_modules;
     for m in &modules.items {
-        let found = if m.dynamic_import {
-            "no importer found; imports computed at run time are not read"
+        let found = if !m.importers.is_empty() {
+            let more = m
+                .more_importers
+                .map_or_else(String::new, |n| format!(" and {n} more"));
+            format!("imported by {}{more}", m.importers.join(", "))
+        } else if m.dynamic_import {
+            "no importer found; imports computed at run time are not read".to_string()
         } else {
-            "no importers"
+            "no importers".to_string()
         };
+        let listed = m
+            .listed
+            .map_or_else(String::new, |n| format!(", {n} listed on its own"));
         let _ = writeln!(
             out,
-            "- deleted module {}: {} definition(s), {found}",
+            "- deleted module {}: {} definition(s){listed}, {found}",
             m.path, m.definitions
         );
     }
     if modules.omitted() > 0 {
-        let _ = writeln!(
-            out,
-            "- {} more deleted module(s), no importers",
-            modules.omitted()
-        );
+        let _ = writeln!(out, "- {} more deleted module(s)", modules.omitted());
     }
 }
 

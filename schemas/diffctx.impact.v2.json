@@ -1871,7 +1871,7 @@
       ]
     },
     "DeletedModule": {
-      "description": "A module the range deletes and no file at the head imports: its definitions\nare named once, here, since nothing can reach any of them.",
+      "description": "A module the range deletes, answered as a module.\n\nThe files that still import it, or none, and the definitions it held counted\nonce. A definition something outside the diff still uses keeps its own row.",
       "type": "object",
       "properties": {
         "path": {
@@ -1883,8 +1883,33 @@
           "format": "uint",
           "minimum": 0
         },
+        "listed": {
+          "description": "How many of them have a row of their own.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "importers": {
+          "description": "The files at the head that import it, a few by path.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "more_importers": {
+          "description": "Importers beyond those named.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
         "dynamic_import": {
-          "description": "An import whose name is computed at run time could reach it, and the facts\ncannot rule one out: \"no importers\" is what was found, not a proof.",
+          "description": "No importer was found and an import whose name is computed at run time\ncould reach it: \"no importers\" is what was found, not a proof.",
           "type": "boolean"
         }
       },
