@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 use super::index::{Path, scope_path};
 use super::jvm::{
-    self, DefRec, Ent, FileRec, Found, Head, ImportRec, Super, declare_packages, relation_for,
+    self, DefRec, Ent, FileRec, Flat, Found, Head, ImportRec, Super, declare_packages, relation_for,
 };
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -123,58 +123,7 @@ const MODIFIERS: &[&str] = &[
 
 const TYPE_KEYWORDS: &[&str] = &["class", "interface", "enum", "record"];
 
-/// The header with everything inside brackets blanked, brackets that open kept:
-/// what is written at the top of the declaration, in the same positions.
-struct Flat {
-    chars: Vec<char>,
-    depth: Vec<usize>,
-    top: Vec<char>,
-}
-
 impl Flat {
-    fn new(text: &str) -> Self {
-        let chars: Vec<char> = text.chars().collect();
-        let mut depth = vec![0usize; chars.len() + 1];
-        let mut d = 0usize;
-        for (i, c) in chars.iter().enumerate() {
-            depth[i] = d;
-            match c {
-                '(' | '[' | '{' | '<' => d += 1,
-                ')' | ']' | '}' | '>' => d = d.saturating_sub(1),
-                _ => {}
-            }
-        }
-        let top = chars
-            .iter()
-            .enumerate()
-            .map(|(i, c)| match c {
-                '(' | '[' | '{' | '<' if depth[i] == 0 => *c,
-                _ if depth[i] == 0 && !matches!(c, ')' | ']' | '}' | '>') => *c,
-                _ => ' ',
-            })
-            .collect();
-        Self { chars, depth, top }
-    }
-
-    /// The top-level words, with where each starts and ends.
-    fn tokens(&self) -> Vec<(usize, usize, String)> {
-        let mut out = Vec::new();
-        let mut at = 0;
-        let separator = |c: char| c.is_whitespace() || matches!(c, '(' | '[' | '{' | '<' | ',');
-        while at < self.top.len() {
-            if separator(self.top[at]) {
-                at += 1;
-                continue;
-            }
-            let start = at;
-            while at < self.top.len() && !separator(self.top[at]) {
-                at += 1;
-            }
-            out.push((start, at, self.top[start..at].iter().collect()));
-        }
-        out
-    }
-
     /// The first non-blank top-level character at or after `from`.
     fn next_char(&self, from: usize) -> Option<char> {
         self.top[from.min(self.top.len())..]
@@ -197,7 +146,7 @@ fn outer_name(written: &str) -> Option<String> {
 }
 
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
-    let flat = Flat::new(text);
+    let flat = Flat::new(text, jvm::JAVA);
     let tokens: Vec<(usize, usize, String)> = flat
         .tokens()
         .into_iter()
