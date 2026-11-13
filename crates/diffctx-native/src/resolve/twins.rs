@@ -93,6 +93,21 @@ macro_rules! reachable_by_reach {
     };
 }
 
+/// The object a variable holds, computed once per definition; a cycle reads as unknown.
+macro_rules! var_instance_memo {
+    () => {
+        fn var_instance(&self, id: usize) -> Entity {
+            if let Some(known) = self.instances.borrow().get(&id) {
+                return known.clone();
+            }
+            self.instances.borrow_mut().insert(id, Entity::Unknown);
+            let found = self.compute_var_instance(id);
+            self.instances.borrow_mut().insert(id, found.clone());
+            found
+        }
+    };
+}
+
 /// Whether a name used in file `f` may refer to the definition: one project, a declared
 /// dependency, or no project at all.
 macro_rules! reachable_by_project {

@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
-use super::index::{Path, dir_of, normalise, scope_path};
+use super::index::{self, Path, dir_of, normalise, scope_path};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable, is_value, unresolved,
@@ -151,12 +151,7 @@ struct Composer {
 }
 
 fn join(dir: &str, rest: &str) -> String {
-    let rest = rest.trim_start_matches("./").trim_end_matches('/');
-    match (dir.is_empty(), rest.is_empty()) {
-        (_, true) => dir.to_string(),
-        (true, false) => rest.to_string(),
-        (false, false) => format!("{dir}/{rest}"),
-    }
+    index::join(dir, rest.trim_start_matches("./").trim_end_matches('/'))
 }
 
 fn strings(value: Option<&serde_json::Value>) -> Vec<String> {
@@ -668,13 +663,8 @@ struct Engine<'w> {
 
 fn plain_relation(use_kind: UseKind) -> Relation {
     match use_kind {
-        UseKind::Call => Relation::Calls,
-        UseKind::Decorate | UseKind::Instantiate => Relation::Instantiates,
-        UseKind::Read => Relation::Reads,
-        UseKind::Write => Relation::Writes,
-        UseKind::TypeUse => Relation::TypeUses,
-        UseKind::PassAsValue => Relation::PassesAsValue,
-        UseKind::Override => Relation::Overrides,
+        UseKind::Decorate => Relation::Instantiates,
+        _ => super::plain_relation(use_kind),
     }
 }
 
