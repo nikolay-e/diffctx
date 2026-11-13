@@ -30,10 +30,7 @@ fn is_helm_template(path: &Path) -> bool {
 }
 
 fn is_helm_values(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "values.yaml"
         || name == "values.yml"
         || name.starts_with("values-")
@@ -41,10 +38,7 @@ fn is_helm_values(path: &Path) -> bool {
 }
 
 fn is_chart_yaml(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "chart.yaml" || name == "chart.yml"
 }
 
