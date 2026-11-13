@@ -1487,8 +1487,10 @@ impl UntracedNamers {
 /// listed in `missed_in`: the gap carries the count, the rows are a sample.
 const MAX_UNACCOUNTED_ROWS: usize = 20;
 
-/// The files the account could not read, as the answer's rows: by path, the first few.
-fn unaccounted_rows(verdict: &decide::Verdict) -> Vec<UnanalysedFile> {
+/// The files the account could not read, as the answer's rows: by path, the first
+/// few. The definition's own file is no row: the gap says its loss, and its name
+/// there is the definition.
+fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile> {
     let mut rows: Vec<UnanalysedFile> = (verdict.hedges().iter())
         .filter_map(|(_, hedge)| {
             let (file, reason, lines) = match hedge {
@@ -1498,10 +1500,15 @@ fn unaccounted_rows(verdict: &decide::Verdict) -> Vec<UnanalysedFile> {
                     reason: Reason::Embedded,
                 } => (file, "embedded_code", vec![*line]),
                 Hedge::Unread { file, loss } => match decide::effect_of(loss) {
-                    Effect::File(reason) | Effect::Subtree(reason, _) => {
+                    // A file a use stands in is listed as that use; its loss stays
+                    // in the coverage, which says it was read in part.
+                    Effect::File(reason) | Effect::Subtree(reason, _)
+                        if file.as_str() != own
+                            && !verdict.uses.iter().any(|u| u.file == file.as_str()) =>
+                    {
                         (file, reason.row_reason(), Vec::new())
                     }
-                    Effect::Run(_) => return None,
+                    _ => return None,
                 },
                 _ => return None,
             };
@@ -2764,7 +2771,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
             merged
         },
         unresolved: verdict.gap().map(|gap| cell_unknown(&gap, &def.name)),
-        missed_in: unaccounted_rows(verdict),
+        missed_in: unaccounted_rows(verdict, &def.file),
         also_changed,
         possibly_also_changed,
         change: Some(crate::answer::v2::Change::of(def)),
@@ -3828,8 +3835,9 @@ pub fn build_impact(
         } else {
             0
         };
-        let mut missed_in: Vec<UnanalysedFile> =
-            verdict.as_ref().map_or_else(Vec::new, unaccounted_rows);
+        let mut missed_in: Vec<UnanalysedFile> = verdict
+            .as_ref()
+            .map_or_else(Vec::new, |v| unaccounted_rows(v, &rel(state, core.path())));
         let mut outside = 0;
         if callers.is_empty()
             && compatible_callers == 0
