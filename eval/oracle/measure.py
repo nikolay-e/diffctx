@@ -13,7 +13,6 @@ import json
 import os
 import random
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -154,6 +153,12 @@ def write_run_meta(out: Path, binary: Path, budget: int | None, append: bool, en
             raise SystemExit(f"--append: {path} holds {before['engine']} at budget {before['budget']}, not this run")
         return
     path.write_text(json.dumps(meta, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def mark_replayed(source: Path, out: Path) -> None:
+    """The replayed run's record, marked: the report refuses a deciding verdict on answers the engine did not give now."""
+    meta = {**json.loads((source / RUN_FILE).read_text(encoding="utf-8")), "replayed_from": str(source)}
+    (out / RUN_FILE).write_text(json.dumps(meta, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _hunk_lines(changes: list[gitrepo.FileChange], side: str) -> dict[str, set[int]]:
@@ -440,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
             binary = diffctx_binary()
             if binary.name != stored.get("binary"):
                 raise SystemExit(f"--replay: {options.replay} was made by {stored.get('binary')}, not {binary.name}")
-        shutil.copy(options.replay / RUN_FILE, options.out / RUN_FILE)
+        mark_replayed(options.replay, options.out)
     measured: dict[str, int] = {}
     selected = options.repo or (replayed_repositories(options.replay) if options.replay else None)
     for repo in corpus.select(selected, options.fast):

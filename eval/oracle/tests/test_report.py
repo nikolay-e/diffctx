@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import compare
+import measure
 import report
 from gates import GATES_FILE, load_gates
 
@@ -524,3 +525,37 @@ def test_every_printed_incomplete_complete_says_what_complete_is_counted_on(tmp_
     line = {line["gate"]: line for line in found["verdict"]}["safety.incomplete_complete"]
     assert compare.COUNTING_BASIS in line["detail"]
     assert "per changed definition and relation group" in (tmp_path / "out" / "report.md").read_text()
+
+
+def run_marked_replayed(path: Path, cells: list[dict], silent: list[dict] = ()) -> Path:
+    run = run_with(path, cells, silent=silent)
+    meta = json.loads((run / "run.json").read_text())
+    (run / "run.json").write_text(json.dumps({**meta, "replayed_from": "run2"}))
+    return run
+
+
+def test_a_verdict_on_replayed_answers_is_not_decided_whatever_the_safety_rows_say(tmp_path: Path):
+    cells = [cell(truth=2, tp=2, folded=1, false_fold=1)]
+    run = run_marked_replayed(tmp_path / "run", cells)
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "out")]) == 0
+
+    found = json.loads((tmp_path / "out" / "report.json").read_text())
+    status = {line["gate"]: line["status"] for line in found["verdict"]}
+    assert status["safety.false_fold"] == "not decided: replayed answers"
+    assert not [gate for gate, s in status.items() if gate.startswith("safety.") and s in ("pass", "fail")]
+    markdown = (tmp_path / "out" / "report.md").read_text()
+    assert "NOT DECIDED: REPLAYED ANSWERS" in markdown
+    assert "Failing: safety.false_fold" not in markdown
+    assert verdicts(tmp_path / "fresh", cells)[("safety.false_fold", "oracle cells")]["status"] == "fail"
+
+
+def test_a_replay_marks_its_run_record_so_the_report_can_refuse_it(tmp_path: Path):
+    source, out = tmp_path / "old", tmp_path / "new"
+    source.mkdir()
+    out.mkdir()
+    (source / "run.json").write_text(json.dumps({"engine": "diffctx 9", "budget": 2000}))
+
+    measure.mark_replayed(source, out)
+
+    assert json.loads((out / "run.json").read_text()) == {"engine": "diffctx 9", "budget": 2000, "replayed_from": str(source)}
