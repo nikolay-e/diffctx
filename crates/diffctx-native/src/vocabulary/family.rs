@@ -254,6 +254,14 @@ impl Resolver {
         }
     }
 
+    /// The modules a name names, for the families that import modules by name.
+    pub(crate) fn modules_named(&self, dotted: &str) -> Vec<RepoPath> {
+        match self {
+            Self::Python(r) => r.modules_named(dotted),
+            _ => Vec::new(),
+        }
+    }
+
     pub(crate) fn definitions(&self) -> &[Definition] {
         match self {
             Self::Python(r) => r.definitions(),

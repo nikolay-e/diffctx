@@ -90,6 +90,28 @@ impl PythonResolver {
             solved: Solved::new(definitions, bindings, losses, read),
         })
     }
+
+    /// The modules of the snapshot a dotted name, whole or by its tail, names:
+    /// `pkg.tools` and `tools` are `pkg/tools.py`, `pkg` is `pkg/__init__.py`.
+    pub fn modules_named(&self, dotted: &str) -> Vec<RepoPath> {
+        let name: Vec<&str> = dotted.split('.').collect();
+        self.read_paths()
+            .iter()
+            .filter(|path| {
+                let (dir, file) = path
+                    .as_str()
+                    .rsplit_once('/')
+                    .unwrap_or(("", path.as_str()));
+                let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+                let mut module: Vec<&str> = dir.split('/').filter(|d| !d.is_empty()).collect();
+                if stem != "__init__" {
+                    module.push(stem);
+                }
+                module.ends_with(name.as_slice())
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 solved_by!(PythonResolver);
