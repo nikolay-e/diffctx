@@ -795,55 +795,46 @@ fn unanalysed_namers_text(unread: &[crate::impact::UnanalysedFile]) -> String {
     )
 }
 
-/// The facts an extractor states about a file of a language whose definitions
-/// they are; `None` for any other.
+/// The facts an extractor states about a file; `None` for a language none reads.
 fn local_facts(path: &str, text: &str) -> Option<crate::facts::BlobFacts> {
-    use crate::facts::Extractor as _;
-    use crate::facts::lang::python::PythonExtractor;
-    use crate::facts::lang::typescript::{JavaScript, TypeScript};
-    let extension = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
-    let budget = crate::snapshot::RunBudget::default();
-    match extension.as_str() {
-        "py" | "pyi" => Some(PythonExtractor.extract(text.as_bytes(), &budget)),
-        "ts" | "tsx" | "mts" | "cts" => Some(TypeScript.extract(text.as_bytes(), &budget)),
-        "js" | "jsx" | "mjs" | "cjs" => Some(JavaScript.extract(text.as_bytes(), &budget)),
-        _ => None,
-    }
+    static REGISTRY: std::sync::OnceLock<crate::facts::Registry> = std::sync::OnceLock::new();
+    let name = Path::new(path).file_name()?.to_str()?;
+    let language = crate::facts::Language::detect(
+        &crate::snapshot::RepoPath::new(name).ok()?,
+        text.as_bytes(),
+    )?;
+    let extractor = REGISTRY
+        .get_or_init(crate::facts::lang::builtin)
+        .get(language)?;
+    Some(extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default()))
 }
 
 /// A fragment spans whole lines, so a second declarator on them
 /// (`const S = 1, T = 2`) has none of its own: the fragment of the first
 /// stands for it, and the cell reads the definition from the facts.
 fn shadowed_definitions<'f>(
-    root_dir: &Path,
     fragments: &'f [Fragment],
     found: &[&Fragment],
     name: &str,
     container: &str,
     run: &crate::resource::RunContext,
 ) -> Vec<&'f Fragment> {
-    use crate::facts::{Fact, Language};
-    let registry = crate::facts::lang::builtin();
+    use crate::facts::Fact;
     let mut stand_ins: Vec<&Fragment> = Vec::new();
     let mut paths: Vec<&str> = fragments.iter().map(Fragment::path).collect();
     paths.sort_unstable();
     paths.dedup();
     for path in paths {
-        let (Ok(repo_path), Some(text)) = (
-            crate::snapshot::RepoPath::new(&crate::paths::display_rel_or_abs(
-                root_dir,
-                Path::new(path),
-            )),
-            run.source().read_to_string(Path::new(path)),
-        ) else {
-            continue;
-        };
-        let Some(extractor) = Language::detect(&repo_path, text.as_bytes())
-            .and_then(|language| registry.get(language))
+        let Some(text) = run
+            .source()
+            .read_to_string(Path::new(path))
+            .filter(|text| text.contains(name))
         else {
             continue;
         };
-        let blob = extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default());
+        let Some(blob) = local_facts(path, &text) else {
+            continue;
+        };
         for fact in &blob.facts {
             let Fact::Definition(d) = fact else { continue };
             let joined = d
@@ -1182,8 +1173,7 @@ fn resolve_symbol_change_set(
     // definition, whatever the fragmenter named.
     definitions.retain(|f| !is_local_fragment(f, name, run));
     let container = segments[..segments.len() - 1].join(".");
-    for stand_in in shadowed_definitions(root_dir, &fragments, &definitions, name, &container, run)
-    {
+    for stand_in in shadowed_definitions(&fragments, &definitions, name, &container, run) {
         definitions.push(stand_in);
     }
     if definitions.is_empty() {
