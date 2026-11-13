@@ -30,6 +30,7 @@
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -41,7 +42,7 @@ use crate::facts::{
 };
 use crate::fold::{self, Basis, Rule};
 use crate::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::occurrence::{Hedge, Known, View};
+use crate::occurrence::{Hedge, Index, Known, View};
 use crate::pipeline::ScoredState;
 use crate::resolve::{
     Binding, CResolver, CandidateReason, ConfigResolver, Definition, DockerfileResolver,
@@ -1606,6 +1607,11 @@ pub struct Cell {
     shadow_files: OnceCell<Vec<FileFacts>>,
     /// What the shadow wrote already: `verdict` runs from several places.
     shadow_written: RefCell<Written>,
+    /// The head's bindings indexed for the occurrence account, once per cell.
+    index: OnceCell<Rc<Index>>,
+    /// The occurrence account of each changed definition, once per cell: the
+    /// answer asks for a definition's verdict from several places.
+    accounted: RefCell<HashMap<DefKey, Rc<Accounted>>>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -1848,6 +1854,8 @@ impl Cell {
             fixed: OnceCell::new(),
             shadow_files: OnceCell::new(),
             shadow_written: RefCell::default(),
+            index: OnceCell::new(),
+            accounted: RefCell::default(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
         // definitions on are no hunks, and a use inside one is a caller.
@@ -3181,7 +3189,22 @@ impl Cell {
     /// The occurrence accounting of each definition of `changed`: what stands in the
     /// way of each relation's absence. `gaps` is what else stands in the way of
     /// every relation. Under `DIFFCTX_DEBUG_OCCURRENCES` its lines are written too.
-    fn occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Accounted {
+    fn occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Rc<Accounted> {
+        let key = changed.key();
+        let known = key.and_then(|key| self.accounted.borrow().get(key).cloned());
+        if let Some(known) = known {
+            return known;
+        }
+        let done = Rc::new(self.account_occurrences(changed, gaps));
+        if let Some(key) = key {
+            self.accounted
+                .borrow_mut()
+                .insert(key.clone(), Rc::clone(&done));
+        }
+        done
+    }
+
+    fn account_occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Accounted {
         let mut out = sink();
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
@@ -3197,18 +3220,21 @@ impl Cell {
             files.sort_by(|a, b| a.path.cmp(&b.path));
             files
         });
-        let manifests_whole = !self
-            .ctx
-            .workspace
-            .losses()
-            .iter()
-            .any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
-        let mut view = View::new(
-            files,
-            self.head.bindings(),
-            self.head.definitions(),
-            manifests_whole,
-        );
+        let index = self.index.get_or_init(|| {
+            let manifests_whole = !self
+                .ctx
+                .workspace
+                .losses()
+                .iter()
+                .any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
+            Rc::new(Index::new(
+                files,
+                self.head.bindings(),
+                self.head.definitions(),
+                manifests_whole,
+            ))
+        });
+        let mut view = View::over(Rc::clone(index), files, self.head.bindings());
         // A base that could not be read leaves no removed definition to account:
         // `base_gap` says so in every relation.
         let base = if changed.stale.is_empty() {
