@@ -790,9 +790,10 @@ fn a_member_of_an_interface_or_class_is_a_definition() {
         unresolved
             .as_ref()
             .and_then(|g| g.as_array())
-            .is_some_and(|gaps| gaps.contains(
-                &serde_json::json!({"kind": "unlanded", "name": "softPrefs", "uses": 1})
-            )),
+            .is_some_and(|gaps| gaps.contains(&serde_json::json!({
+                "kind": "unlanded", "name": "softPrefs", "uses": 1,
+                "sites": [{"path": "src/read.ts", "line": 15, "via": "read"}]
+            }))),
         "{prefs:#}"
     );
     let timeout = symbol(tmp.path(), "loadTimeoutMs");
