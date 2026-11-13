@@ -2140,7 +2140,12 @@ impl Cell {
                 None => out.push(own(def, Reach::Every)),
             },
             DefKind::Variable | DefKind::Constant | DefKind::Field => {
-                out.push(own(def, Reach::Every));
+                // A Python name the range adds has no reader outside it: its
+                // holder, or the module, is what changed, not a definition of
+                // its own that something is expected to call.
+                if !(how == How::Added && self.family == Family::Python) {
+                    out.push(own(def, Reach::Every));
+                }
                 if edited && holder && self.family == Family::Python {
                     if let Some(class) = self.owner(def) {
                         let mut changed = own(class, Reach::Construction);
