@@ -20,6 +20,7 @@ use crate::support::families::{
 
 pub const SCAFFOLDS: &str = include_str!("seeds/scaffolds.yaml");
 pub const ALIASES: &str = include_str!("seeds/aliases.yaml");
+pub const LEAKS: &str = include_str!("seeds/leaks.yaml");
 
 #[derive(Deserialize)]
 pub struct Scaffold {
@@ -82,6 +83,15 @@ pub fn load(table: &str) -> Vec<Seed> {
 }
 
 impl Seed {
+    // The changed definition's name: the scaffold's, unless the seed has its own.
+    pub fn symbol(&self) -> &str {
+        if self.symbol.is_empty() {
+            &scaffolds()[&self.family].symbol
+        } else {
+            &self.symbol
+        }
+    }
+
     pub fn repo(&self) -> Repo {
         if self.family.is_empty() {
             // The family names the group of a scaffold seed; an impact answer
