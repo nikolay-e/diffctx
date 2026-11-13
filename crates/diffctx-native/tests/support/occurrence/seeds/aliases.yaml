@@ -1,0 +1,480 @@
+# The definition is used under another name or without its name: a renaming
+# import, a re-export under another name, an assignment, a star import. `user`
+# is the file that uses it; the answer names that file's link or names a gap,
+# and is never a clean absence.
+- name: python_import_as
+  family: python
+  kind: import_as
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total as price
+
+
+      def charge(cart):
+          return price(cart)
+- name: python_module_alias
+  family: python
+  kind: import_as
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      import shop.pricing as pr
+
+
+      def charge(cart):
+          return pr.total(cart)
+- name: python_reexport_under_another_name
+  family: python
+  kind: reexport
+  user: shop/checkout.py
+  files:
+    shop/__init__.py: |
+      from shop.pricing import total as grand_total
+    shop/checkout.py: |
+      from shop import grand_total
+
+
+      def charge(cart):
+          return grand_total(cart)
+- name: python_assignment
+  family: python
+  kind: assignment
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import total
+
+      compute = total
+
+
+      def charge(cart):
+          return compute(cart)
+- name: python_star_import
+  family: python
+  kind: star
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop.pricing import *
+
+
+      def charge(cart):
+          return total(cart)
+- name: typescript_import_as
+  family: typescript
+  kind: import_as
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total as price } from './pricing';
+
+      export function charge(cart: number[]) {
+        return price(cart);
+      }
+- name: typescript_namespace_import
+  family: typescript
+  kind: import_as
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import * as pricing from './pricing';
+
+      export function charge(cart: number[]) {
+        return pricing.total(cart);
+      }
+- name: typescript_reexport_under_another_name
+  family: typescript
+  kind: reexport
+  user: src/checkout.ts
+  files:
+    src/index.ts: |
+      export { total as grandTotal } from './pricing';
+    src/checkout.ts: |
+      import { grandTotal } from './index';
+
+      export function charge(cart: number[]) {
+        return grandTotal(cart);
+      }
+- name: typescript_assignment
+  family: typescript
+  kind: assignment
+  user: src/checkout.ts
+  files:
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      const compute = total;
+
+      export function charge(cart: number[]) {
+        return compute(cart);
+      }
+- name: typescript_star_reexport
+  family: typescript
+  kind: star
+  user: src/checkout.ts
+  files:
+    src/index.ts: |
+      export * from './pricing';
+    src/checkout.ts: |
+      import { total } from './index';
+
+      export function charge(cart: number[]) {
+        return total(cart);
+      }
+- name: rust_use_as
+  family: rust
+  kind: import_as
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total as price;
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          price(cart)
+      }
+- name: rust_reexport_under_another_name
+  family: rust
+  kind: reexport
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+      pub use crate::pricing::total as grand_total;
+    src/checkout.rs: |
+      use crate::grand_total;
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          grand_total(cart)
+      }
+- name: rust_assignment
+  family: rust
+  kind: assignment
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::total;
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          let compute = total;
+          compute(cart)
+      }
+- name: rust_glob_import
+  family: rust
+  kind: star
+  user: src/checkout.rs
+  files:
+    src/lib.rs: |
+      pub mod checkout;
+      pub mod pricing;
+      pub mod util;
+    src/checkout.rs: |
+      use crate::pricing::*;
+
+      pub fn charge(cart: &[i64]) -> i64 {
+          total(cart)
+      }
+- name: kotlin_import_as
+  family: kotlin
+  kind: import_as
+  user: src/main/kotlin/app/Checkout.kt
+  files:
+    src/main/kotlin/app/Checkout.kt: |
+      package app
+
+      import shop.total as price
+
+      fun charge(cart: List<Int>): Int {
+          return price(cart)
+      }
+- name: kotlin_function_reference_assignment
+  family: kotlin
+  kind: assignment
+  user: src/main/kotlin/shop/Checkout.kt
+  files:
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      val compute = ::total
+
+      fun charge(cart: List<Int>): Int {
+          return compute(cart)
+      }
+- name: kotlin_star_import
+  family: kotlin
+  kind: star
+  user: src/main/kotlin/app/Checkout.kt
+  files:
+    src/main/kotlin/app/Checkout.kt: |
+      package app
+
+      import shop.*
+
+      fun charge(cart: List<Int>): Int {
+          return total(cart)
+      }
+- name: java_method_reference_assignment
+  family: java
+  kind: assignment
+  user: src/main/java/shop/Checkout.java
+  files:
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      import java.util.function.ToIntFunction;
+
+      public class Checkout {
+          private static final ToIntFunction<int[]> COMPUTE = Pricing::total;
+
+          public int charge(int[] items) {
+              return COMPUTE.applyAsInt(items);
+          }
+      }
+- name: java_static_star_import
+  family: java
+  kind: star
+  user: src/main/java/app/Checkout.java
+  files:
+    src/main/java/app/Checkout.java: |
+      package app;
+
+      import static shop.Pricing.*;
+
+      public class Checkout {
+          public int charge(int[] items) {
+              return total(items);
+          }
+      }
+- name: go_import_alias
+  family: go
+  kind: import_as
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import p "example.com/app/pricing"
+
+      func Charge(items []int) int {
+          return p.Total(items)
+      }
+- name: go_assignment
+  family: go
+  kind: assignment
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import "example.com/app/pricing"
+
+      var compute = pricing.Total
+
+      func Charge(items []int) int {
+          return compute(items)
+      }
+- name: go_dot_import
+  family: go
+  kind: star
+  user: checkout/checkout.go
+  files:
+    checkout/checkout.go: |
+      package checkout
+
+      import . "example.com/app/pricing"
+
+      func Charge(items []int) int {
+          return Total(items)
+      }
+- name: php_use_as
+  family: php
+  kind: import_as
+  user: src/App/Checkout.php
+  files:
+    src/App/Checkout.php: |
+      <?php
+
+      namespace App;
+
+      use Shop\Pricing as P;
+
+      class Checkout
+      {
+          public function charge(array $items): int
+          {
+              return P::total($items);
+          }
+      }
+- name: php_group_use_as
+  family: php
+  kind: import_as
+  user: src/App/Checkout.php
+  files:
+    src/App/Checkout.php: |
+      <?php
+
+      namespace App;
+
+      use Shop\{Pricing as P};
+
+      class Checkout
+      {
+          public function charge(array $items): int
+          {
+              return P::total($items);
+          }
+      }
+- name: c_function_pointer_assignment
+  family: c
+  kind: assignment
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      int (*compute)(const int *, int) = total;
+
+      int charge(const int *items, int n)
+      {
+          return compute(items, n);
+      }
+- name: c_macro_alias
+  family: c
+  kind: assignment
+  user: src/checkout.c
+  files:
+    src/checkout.c: |
+      #include "pricing.h"
+
+      #define compute total
+
+      int charge(const int *items, int n)
+      {
+          return compute(items, n);
+      }
+- name: swift_typealias
+  family: swift
+  kind: assignment
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      typealias Cost = Pricing
+
+      func charge(_ items: [Int]) -> Int {
+          return Cost.total(items)
+      }
+- name: swift_function_assignment
+  family: swift
+  kind: assignment
+  user: Sources/Shop/Checkout.swift
+  files:
+    Sources/Shop/Checkout.swift: |
+      let compute = Pricing.total
+
+      func charge(_ items: [Int]) -> Int {
+          return compute(items)
+      }
+- name: python_attribute_assignment
+  family: python
+  kind: assignment
+  user: shop/checkout.py
+  files:
+    shop/checkout.py: |
+      from shop import pricing
+
+      compute = pricing.total
+
+
+      def charge(cart):
+          return compute(cart)
+- name: python_alias_of_an_alias
+  family: python
+  kind: import_as
+  user: shop/checkout.py
+  files:
+    shop/first.py: |
+      from shop.pricing import total as first
+    shop/second.py: |
+      from shop.first import first as second
+    shop/checkout.py: |
+      from shop.second import second
+
+
+      def charge(cart):
+          return second(cart)
+- name: python_alias_chain_past_the_bound
+  family: python
+  kind: import_as
+  user: shop/checkout.py
+  files:
+    shop/a1.py: |
+      from shop.pricing import total as n1
+    shop/a2.py: |
+      from shop.a1 import n1 as n2
+    shop/a3.py: |
+      from shop.a2 import n2 as n3
+    shop/a4.py: |
+      from shop.a3 import n3 as n4
+    shop/a5.py: |
+      from shop.a4 import n4 as n5
+    shop/checkout.py: |
+      from shop.a5 import n5
+
+
+      def charge(cart):
+          return n5(cart)
+- name: typescript_alias_of_an_alias
+  family: typescript
+  kind: import_as
+  user: src/checkout.ts
+  files:
+    src/first.ts: |
+      export { total as first } from './pricing';
+    src/second.ts: |
+      export { first as second } from './first';
+    src/checkout.ts: |
+      import { second } from './second';
+
+      export function charge(cart: number[]) {
+        return second(cart);
+      }
+- name: typescript_destructured_require
+  family: typescript
+  kind: assignment
+  user: src/checkout.js
+  files:
+    src/checkout.js: |
+      const { total: price } = require('./pricing');
+
+      function charge(cart) {
+        return price(cart);
+      }
+
+      module.exports = { charge };
+- name: python_alias_chain_of_three
+  family: python
+  kind: import_as
+  user: shop/checkout.py
+  files:
+    shop/a1.py: |
+      from shop.pricing import total as n1
+    shop/a2.py: |
+      from shop.a1 import n1 as n2
+    shop/a3.py: |
+      from shop.a2 import n2 as n3
+    shop/checkout.py: |
+      from shop.a3 import n3
+
+
+      def charge(cart):
+          return n3(cart)
