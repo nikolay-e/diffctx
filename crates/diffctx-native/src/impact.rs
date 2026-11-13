@@ -5254,11 +5254,11 @@ fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput)
 
 impl crate::fit::Shed for ImpactOutput {
     fn shed_one(&mut self) -> bool {
-        let shed = shed_one(self);
-        if shed {
-            self.empty = proves_empty(self);
-        }
-        shed
+        shed_one(self)
+    }
+
+    fn settle(&mut self) {
+        self.empty = proves_empty(self);
     }
 }
 
