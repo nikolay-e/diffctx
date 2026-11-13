@@ -25,26 +25,24 @@ fn files(entries: &[(&str, &str)]) -> Files {
         .collect()
 }
 
-/// The answer without the knob, the answer and the lines with it.
-fn shadowed(pricing: &str) -> (Value, Value, Vec<Value>) {
-    let repo = Repo {
+const PYPROJECT: (&str, &str) = (
+    "pyproject.toml",
+    "[project]\nname = \"shop\"\nversion = \"0.1.0\"\n",
+);
+
+fn python(base: &[(&str, &str)], change: &[(&str, &str)], definition: &str) -> Repo {
+    Repo {
         family: Family::Python,
-        base: files(&[
-            (
-                "pyproject.toml",
-                "[project]\nname = \"shop\"\nversion = \"0.1.0\"\n",
-            ),
-            (
-                "shop/pricing.py",
-                "def total(items):\n    return sum(items)\n",
-            ),
-            ("shop/cart.py", CART),
-        ]),
-        change: files(&[("shop/pricing.py", pricing)]),
+        base: files(base),
+        change: files(change),
         caller: None,
-        definition: "shop/pricing.py".to_string(),
+        definition: definition.to_string(),
         symbol: "total".to_string(),
-    };
+    }
+}
+
+/// The answer without the knob, the answer and the lines with it.
+fn shadow_of(repo: Repo) -> (Value, Value, Vec<Value>) {
     let planted = Planted::new(repo);
     let plain = planted.ask(Query::Impact, &[]).expect("the plain answer");
     let out = TempDir::new().expect("tempdir");
@@ -59,6 +57,21 @@ fn shadowed(pricing: &str) -> (Value, Value, Vec<Value>) {
         .map(|line| serde_json::from_str(line).expect("a JSON line"))
         .collect();
     (plain, shadow, lines)
+}
+
+fn shadowed(pricing: &str) -> (Value, Value, Vec<Value>) {
+    shadow_of(python(
+        &[
+            PYPROJECT,
+            (
+                "shop/pricing.py",
+                "def total(items):\n    return sum(items)\n",
+            ),
+            ("shop/cart.py", CART),
+        ],
+        &[("shop/pricing.py", pricing)],
+        "shop/pricing.py",
+    ))
 }
 
 fn of<'a>(lines: &'a [Value], def: &str, side: &str) -> Vec<&'a Value> {
@@ -139,4 +152,36 @@ fn a_removed_definition_is_accounted_at_the_base_over_the_heads_files() {
             .any(|l| l["file"] == "shop/cart.py" && l["line"] == 7 && l["class"] == "code"),
         "the call that may have broken is not accounted: {removed:?}"
     );
+}
+
+#[test]
+fn a_pair_is_written_for_every_relation_an_unexplained_occurrence_may_be_a_use_through() {
+    let (_, _, lines) = shadow_of(python(
+        &[
+            PYPROJECT,
+            ("shop/model.py", "class Price:\n    rate = 1\n"),
+            (
+                "shop/cart.py",
+                "from shop.model import Price\n\n\ndef cost(p: Price):\n    return p\n",
+            ),
+        ],
+        &[("shop/model.py", "class Price:\n    rate = 2\n")],
+        "shop/model.py",
+    ));
+    let pairs: Vec<&Value> = of(&lines, "shop/model.py::Price", "head")
+        .into_iter()
+        .filter(|l| l["occurrences"].is_string())
+        .collect();
+    let relations: Vec<&str> = pairs
+        .iter()
+        .map(|l| l["relation"].as_str().expect("a relation"))
+        .collect();
+    for relation in ["instantiates", "type_use", "passes_as_value"] {
+        assert!(relations.contains(&relation), "{relation}: {relations:?}");
+    }
+    let uncovered = pairs
+        .iter()
+        .find(|l| l["relation"] == "type_use")
+        .expect("type_use");
+    assert!(uncovered["today"].is_null(), "{uncovered}");
 }
