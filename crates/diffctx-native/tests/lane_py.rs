@@ -217,8 +217,12 @@ fn a_class_field_is_defined_and_its_readers_and_writers_listed() {
     );
     let field = changed(&doc, "app/models.py", "valued_at");
     assert!(
-        field["gaps"].as_array().is_some_and(|gaps| gaps
-            .contains(&serde_json::json!({"kind": "unlanded", "name": "valued_at", "uses": 1}))),
+        field["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.contains(&serde_json::json!({
+                "kind": "unlanded", "name": "valued_at", "uses": 1,
+                "sites": [{"path": "app/api.py", "line": 24, "via": "read"}]
+            }))),
         "{doc}"
     );
     // Control: a method, which the base already models.
@@ -411,9 +415,10 @@ fn an_attribute_a_method_sets_is_defined_and_used() {
     assert!(
         changed(&doc, "app/engine.py", "load_timeout")["gaps"]
             .as_array()
-            .is_some_and(|gaps| gaps.contains(
-                &serde_json::json!({"kind": "unlanded", "name": "load_timeout", "uses": 1})
-            )),
+            .is_some_and(|gaps| gaps.contains(&serde_json::json!({
+                "kind": "unlanded", "name": "load_timeout", "uses": 1,
+                "sites": [{"path": "app/store.py", "line": 11, "via": "read"}]
+            }))),
         "{doc}"
     );
     let doc = impact(tmp.path());

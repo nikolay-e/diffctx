@@ -2962,7 +2962,12 @@ fn a_change_only_a_withheld_file_could_read_is_not_empty() {
 /// An untyped read of a member leaves the member's reads undetermined and says
 /// nothing against its calls: the answer states both, and the second is a finding
 /// the first does not cancel. One shape per language the facts' resolvers read.
-fn assert_reads_undetermined_calls_found(md: &str, json: &serde_json::Value, name: &str) {
+fn assert_reads_undetermined_calls_found(
+    md: &str,
+    json: &serde_json::Value,
+    name: &str,
+    site: (&str, u32),
+) {
     let read = format!("1 read(s) of `.{name}`");
     assert!(
         md.contains(&format!("callers not resolved: {read}")),
@@ -2987,7 +2992,8 @@ fn assert_reads_undetermined_calls_found(md: &str, json: &serde_json::Value, nam
             .is_some_and(|gaps| gaps.contains(&serde_json::json!({
                 "kind": "unlanded",
                 "name": name,
-                "uses": 1
+                "uses": 1,
+                "sites": [{"path": site.0, "line": site.1, "via": "read"}]
             }))),
         "{json:#}"
     );
@@ -3013,6 +3019,7 @@ fn a_typescript_read_through_an_untyped_receiver_leaves_the_reads_undetermined_a
         &impact_markdown(tmp.path()),
         &impact_json(tmp.path()),
         "total",
+        ("src/checkout.ts", 2),
     );
 }
 
@@ -3037,6 +3044,7 @@ fn a_rust_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the
         &impact_markdown(tmp.path()),
         &impact_json(tmp.path()),
         "total",
+        ("src/checkout.rs", 4),
     );
 }
 
@@ -3062,5 +3070,6 @@ fn a_kotlin_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_t
         &impact_markdown(tmp.path()),
         &impact_json(tmp.path()),
         "total",
+        ("src/main/kotlin/Checkout.kt", 1),
     );
 }
