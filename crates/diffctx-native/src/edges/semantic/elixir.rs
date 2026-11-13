@@ -67,7 +67,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["elixir_use"].reverse_factor;
 
         let mut module_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        let mut fn_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let fns = base::DefIndex::new(&frags, reverse_factor, extract_func_defs);
         for f in &frags {
             for m in extract_module_defs(&f.content) {
                 let leaf = m.split('.').last().unwrap_or(&m).to_lowercase();
@@ -77,7 +77,6 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
-            base::index_lower(&mut fn_to_frags, extract_func_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -108,14 +107,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
-            for id in &f.identifiers {
-                if self_fns.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = fn_to_frags.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            fns.link_except(&mut edges, &f.id, &f.identifiers, &self_fns, fn_w);
         }
         edges
     }

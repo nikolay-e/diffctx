@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder};
 
 fn is_ruby_file(path: &Path) -> bool {
     RUBY_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -71,10 +71,7 @@ impl EdgeBuilder for RubyEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["ruby_require"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defines(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defines);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -95,20 +92,11 @@ impl EdgeBuilder for RubyEdgeBuilder {
                     base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
                 }
             }
-            for mixin in extract_mixins(&f.content) {
-                if let Some(targets) = name_to_defs.get(&mixin.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, include_w, reverse_factor);
-                }
-            }
-            for cref in extract_const_refs(&f.content) {
-                let leaf = cref.split("::").last().unwrap_or(&cref);
-                if self_defs.contains(leaf) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&leaf.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, const_w, reverse_factor);
-                }
-            }
+            defs.link(&mut edges, &f.id, extract_mixins(&f.content), include_w);
+            let leaves = extract_const_refs(&f.content)
+                .into_iter()
+                .map(|cref| cref.rsplit("::").next().unwrap_or(&cref).to_string());
+            defs.link_except(&mut edges, &f.id, leaves, &self_defs, const_w);
         }
         edges
     }

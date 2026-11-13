@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_perl_file(path: &Path) -> bool {
     base::has_ext(path, &[".pl", ".pm", ".t"])
@@ -106,11 +106,9 @@ impl EdgeBuilder for PerlEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["perl_use"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_packages(&f.content), &f.id);
-            base::index_lower(&mut name_to_defs, extract_subs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, |c| {
+            extract_packages(c).into_iter().chain(extract_subs(c))
+        });
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -120,28 +118,12 @@ impl EdgeBuilder for PerlEdgeBuilder {
                 let leaf = use_name.split("::").last().unwrap_or(&use_name);
                 base::link_by_name(&f.id, leaf, &idx, &mut edges, use_w, reverse_factor);
             }
-            for parent in extract_parents(&f.content) {
-                if let Some(targets) = name_to_defs.get(&parent.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, inherit_w, reverse_factor);
-                }
-            }
-            for cap in METHOD_CALL_RE.captures_iter(&f.content) {
-                let method = &cap[2];
-                if self_defs.contains(method) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&method.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, method_w, reverse_factor);
-                }
-            }
-            for id in &f.identifiers {
-                if self_defs.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            defs.link(&mut edges, &f.id, extract_parents(&f.content), inherit_w);
+            let methods = METHOD_CALL_RE
+                .captures_iter(&f.content)
+                .map(|c| c[2].to_string());
+            defs.link_except(&mut edges, &f.id, methods, &self_defs, method_w);
+            defs.link_except(&mut edges, &f.id, &f.identifiers, &self_defs, fn_w);
         }
         edges
     }

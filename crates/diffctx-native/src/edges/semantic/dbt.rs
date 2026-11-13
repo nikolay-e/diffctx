@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_dbt_file(content: &str) -> bool {
     content.contains("{{ ref(") || content.contains("{{ source(") || content.contains("{{ config(")
@@ -71,10 +71,7 @@ impl EdgeBuilder for DbtEdgeBuilder {
         let macro_rev = EDGE_WEIGHTS["dbt_macro"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut macro_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut macro_to_frags, extract_macro_defs(&f.content), &f.id);
-        }
+        let macros = base::DefIndex::new(&frags, macro_rev, extract_macro_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -85,11 +82,7 @@ impl EdgeBuilder for DbtEdgeBuilder {
             for s in extract_sources(&f.content) {
                 base::link_by_name(&f.id, &s, &idx, &mut edges, source_w, source_rev);
             }
-            for mc in extract_macro_calls(&f.content) {
-                if let Some(targets) = macro_to_frags.get(&mc.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, macro_w, macro_rev);
-                }
-            }
+            macros.link(&mut edges, &f.id, extract_macro_calls(&f.content), macro_w);
         }
         edges
     }

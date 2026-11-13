@@ -81,7 +81,7 @@ impl EdgeBuilder for SwiftEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["swift_import"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let mut by_name = FxHashMap::default();
         let mut file_type_defs: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
         let mut file_type_refs: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
         for f in &frags {
@@ -110,8 +110,12 @@ impl EdgeBuilder for SwiftEdgeBuilder {
             } else {
                 extract_type_defs(&f.content)
             };
-            base::index_lower(&mut name_to_defs, defs, &f.id);
+            base::index_lower(&mut by_name, defs, &f.id);
         }
+        let defs = base::DefIndex {
+            by_name,
+            reverse_factor,
+        };
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -120,31 +124,21 @@ impl EdgeBuilder for SwiftEdgeBuilder {
             for imp in extract_imports(&f.content) {
                 base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, reverse_factor);
             }
-            for conf in extract_conformances(&f.content) {
-                if let Some(targets) = name_to_defs.get(&conf.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, conform_w, reverse_factor);
-                }
-            }
-            for ext_name in extract_extensions(&f.content) {
-                if let Some(targets) = name_to_defs.get(&ext_name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, ext_w, reverse_factor);
-                }
-            }
-            for cap in TYPE_REF_RE.captures_iter(&f.content) {
-                let name = &cap[1];
-                if self_defs.contains(name) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, type_w, reverse_factor);
-                }
-            }
+            defs.link(
+                &mut edges,
+                &f.id,
+                extract_conformances(&f.content),
+                conform_w,
+            );
+            defs.link(&mut edges, &f.id, extract_extensions(&f.content), ext_w);
+            let type_refs = base::captures1(&TYPE_REF_RE, &f.content);
+            defs.link_except(&mut edges, &f.id, type_refs, &self_defs, type_w);
             for cap in CALL_RE.captures_iter(&f.content) {
                 let name = &cap[1];
                 if SWIFT_KEYWORDS.contains(name) || self_defs.contains(name) {
                     continue;
                 }
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
+                if let Some(targets) = defs.by_name.get(&name.to_lowercase()) {
                     let caller_refs = file_type_refs.get(f.path());
                     let typed: Vec<_> = targets
                         .iter()

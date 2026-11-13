@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_r_file(path: &Path) -> bool {
     base::has_ext(path, &[".r", ".rmd"])
@@ -66,10 +66,7 @@ impl EdgeBuilder for RLangEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["r_source"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -87,9 +84,7 @@ impl EdgeBuilder for RLangEdgeBuilder {
                 } else {
                     fn_w
                 };
-                if let Some(targets) = name_to_defs.get(&call.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
-                }
+                defs.link_one(&mut edges, &f.id, &call, w);
             }
         }
         edges

@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_zig_file(path: &Path) -> bool {
     base::has_ext(path, &[".zig"])
@@ -55,10 +55,7 @@ impl EdgeBuilder for ZigEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["zig_import"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -67,24 +64,11 @@ impl EdgeBuilder for ZigEdgeBuilder {
             for imp in extract_imports(&f.content) {
                 base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, reverse_factor);
             }
-            for cap in TYPE_RE.captures_iter(&f.content) {
-                let name = &cap[1];
-                if self_defs.contains(name) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
-                }
-            }
-            for cap in CALL_RE.captures_iter(&f.content) {
-                let name = &cap[1];
-                if self_defs.contains(name) || ZIG_KEYWORDS.contains(name) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            let types = base::captures1(&TYPE_RE, &f.content);
+            defs.link_except(&mut edges, &f.id, types, &self_defs, type_w);
+            let calls = base::captures1(&CALL_RE, &f.content)
+                .filter(|name| !ZIG_KEYWORDS.contains(name.as_str()));
+            defs.link_except(&mut edges, &f.id, calls, &self_defs, fn_w);
         }
         edges
     }

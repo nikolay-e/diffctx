@@ -262,6 +262,64 @@ pub fn index_lower(
     }
 }
 
+/// A builder's definitions by lowercased name, and the reverse factor every
+/// edge to them carries.
+pub struct DefIndex {
+    pub by_name: FxHashMap<String, Vec<FragmentId>>,
+    pub reverse_factor: f64,
+}
+
+impl DefIndex {
+    pub fn new<I: IntoIterator<Item = String>>(
+        frags: &[&Fragment],
+        reverse_factor: f64,
+        defs: impl Fn(&str) -> I,
+    ) -> Self {
+        let mut by_name = FxHashMap::default();
+        for f in frags {
+            index_lower(&mut by_name, defs(&f.content), &f.id);
+        }
+        Self {
+            by_name,
+            reverse_factor,
+        }
+    }
+
+    pub fn link_one(&self, edges: &mut EdgeDict, src: &FragmentId, name: &str, weight: f64) {
+        if let Some(targets) = self.by_name.get(&name.to_lowercase()) {
+            add_edges_from_ids(edges, src, targets, weight, self.reverse_factor);
+        }
+    }
+
+    pub fn link<S: AsRef<str>>(
+        &self,
+        edges: &mut EdgeDict,
+        src: &FragmentId,
+        names: impl IntoIterator<Item = S>,
+        weight: f64,
+    ) {
+        for name in names {
+            self.link_one(edges, src, name.as_ref(), weight);
+        }
+    }
+
+    /// `link` without the names `src` defines itself.
+    pub fn link_except<S: AsRef<str>>(
+        &self,
+        edges: &mut EdgeDict,
+        src: &FragmentId,
+        names: impl IntoIterator<Item = S>,
+        self_defs: &FxHashSet<String>,
+        weight: f64,
+    ) {
+        let foreign = names.into_iter().filter(|n| {
+            let name: &str = n.as_ref();
+            !self_defs.contains(name)
+        });
+        self.link(edges, src, foreign, weight);
+    }
+}
+
 pub fn add_edge(
     edges: &mut EdgeDict,
     src: &FragmentId,
