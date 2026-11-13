@@ -451,7 +451,9 @@ impl<'a> Reading<'a> {
         let relation = Some(binding.relation);
         if *target == self.subject.key {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
-        } else if self.family.contains(target) || self.view.stale.contains(&place(binding)) {
+        } else if binding.relation != Relation::Overrides
+            && (self.family.contains(target) || self.view.stale.contains(&place(binding)))
+        {
             Claim::candidate(relation, Reason::Dispatch)
         } else if self.view.family_unproven
             && target.local.name == self.subject.key.local.name
