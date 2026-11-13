@@ -250,6 +250,8 @@ impl Shadow<'_> {
                 continue;
             };
             let done = outcomes(self.view, facts, &text, definition, &[name.as_str()]);
+            let other_project = self.view.manifests_whole()
+                && !(self.ctx.workspace).may_reference(file.as_str(), definition.file.as_str());
             found.mentions += done.mentions;
             if done.lost && done.entries.is_empty() {
                 let loss =
@@ -257,6 +259,10 @@ impl Shadow<'_> {
                 found.unread.entry(file).or_insert(loss);
             }
             for mut entry in done.entries {
+                if other_project && matches!(entry.outcome, Outcome::Candidate(_)) {
+                    entry.outcome = Outcome::NotOurs;
+                    entry.basis = Basis::OtherProject;
+                }
                 let through = scope.is_some()
                     && matches!(entry.outcome, Outcome::NotOurs)
                     && entry.basis == Basis::OtherDefinition;

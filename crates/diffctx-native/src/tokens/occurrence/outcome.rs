@@ -121,6 +121,11 @@ impl<'a> View<'a> {
         }
     }
 
+    /// Whether the workspace manifests were read without a loss.
+    pub fn manifests_whole(&self) -> bool {
+        self.index.manifests_whole
+    }
+
     fn file(&self, path: &RepoPath) -> Option<&'a FileFacts> {
         let files = self.files;
         self.index.files.get(path).map(|&at| &files[at])
