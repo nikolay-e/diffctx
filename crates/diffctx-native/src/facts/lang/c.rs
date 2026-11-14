@@ -61,7 +61,7 @@ use std::collections::{HashMap, HashSet};
 
 use tree_sitter::Node;
 
-use super::walker::hash_outside;
+use super::walker::{hash_outside, hash_tree, is_member};
 use super::{
     ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span, through_errors,
 };
@@ -675,7 +675,7 @@ impl<'t> Walker<'t> {
             signature: Some(signature),
             decorators: Vec::new(),
             visibility: Visibility::Public,
-            body_hash: self.hash_tree(ty, &members),
+            body_hash: hash_tree(self.bytes, ty, |n| is_member(&members, n)),
             text_hash: hash_outside(self.bytes, ty, &members),
             doc_hash: Self::doc_hash(doc),
         }));
@@ -870,32 +870,6 @@ impl<'t> Walker<'t> {
         join_tokens(&tokens)
     }
 
-    fn hash_tree(&self, root: Node<'t>, members: &[Node<'t>]) -> u64 {
-        let mut hash = Hasher::new();
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            let held = node.id() != root.id() && members.iter().any(|m| m.id() == node.id());
-            if node.kind() == "comment" || held {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
-        hash.finish().unwrap_or(0)
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn define(
         &mut self,
@@ -921,7 +895,7 @@ impl<'t> Walker<'t> {
             signature: Some(signature),
             decorators: Vec::new(),
             visibility,
-            body_hash: body.map_or(0, |b| self.hash_tree(b, members)),
+            body_hash: body.map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
             text_hash: hash_outside(self.bytes, node, members),
             doc_hash: Self::doc_hash(doc),
         }));
@@ -1399,7 +1373,7 @@ impl<'t> Walker<'t> {
                 signature: Some(signature),
                 decorators: Vec::new(),
                 visibility: Visibility::Public,
-                body_hash: self.hash_tree(ty, &members),
+                body_hash: hash_tree(self.bytes, ty, |n| is_member(&members, n)),
                 text_hash: hash_outside(self.bytes, ty, &members),
                 doc_hash: Self::doc_hash(doc),
             }));

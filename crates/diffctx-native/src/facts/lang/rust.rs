@@ -39,7 +39,7 @@ use std::rc::Rc;
 
 use tree_sitter::Node;
 
-use super::walker::hash_outside;
+use super::walker::{hash_outside, hash_tree, is_member};
 use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, parse_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
@@ -454,46 +454,22 @@ impl<'t> Walker<'t> {
         join_tokens(&tokens)
     }
 
-    fn hash_tree(&self, root: Node<'t>, members: &[Node<'t>], skip_name: bool) -> u64 {
-        let name = root.child_by_field_name("name").map(|n| n.id());
-        let mut hash = Hasher::new();
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            let held = node.id() != root.id()
-                && (members.iter().any(|m| m.id() == node.id())
-                    || (skip_name && Some(node.id()) == name));
-            if node.kind().ends_with("comment") || held {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
-        hash.finish().unwrap_or(0)
-    }
-
     /// The body's tree, or for a declaration with none (a struct, a type
     /// alias, a trait method signature) nothing: `0` is never paired by.
     fn body_hash(&self, node: Node<'t>, members: &[Node<'t>]) -> u64 {
         match node.kind() {
             "function_signature_item" | "associated_type" => 0,
             "struct_item" | "union_item" | "enum_item" | "trait_item" | "type_item"
-            | "mod_item" => self.hash_tree(node, members, true),
+            | "mod_item" => {
+                let name = node.child_by_field_name("name").map(|n| n.id());
+                hash_tree(self.bytes, node, |n| {
+                    is_member(members, n) || Some(n.id()) == name
+                })
+            }
             _ => node
                 .child_by_field_name("body")
                 .or_else(|| node.child_by_field_name("value"))
-                .map_or(0, |b| self.hash_tree(b, members, false)),
+                .map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
         }
     }
 
