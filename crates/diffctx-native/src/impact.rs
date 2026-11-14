@@ -1439,6 +1439,8 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
 struct UntracedNamers {
     /// Each needle, by the lines naming it as a whole word.
     rows: FxHashMap<String, Vec<(String, u32)>>,
+    /// The names spelled as a literal, a value or a query string.
+    literal: keys::LiteralNames,
 }
 
 /// A name spelled in more untraced files than this is a common word, not a
@@ -1464,6 +1466,12 @@ pub(crate) fn distinctive(word: &str) -> bool {
         && !ROLE_STEMS.split(' ').any(|r| r == word)
 }
 
+/// The name a literal spells: `var.region` is written `region`.
+fn literal_base(symbol: &str) -> &str {
+    let name = base_symbol(symbol);
+    name.rsplit('.').next().unwrap_or(name)
+}
+
 fn module_stem(path: &str) -> Option<&str> {
     Path::new(path)
         .file_stem()
@@ -1472,7 +1480,19 @@ fn module_stem(path: &str) -> Option<&str> {
 }
 
 impl UntracedNamers {
-    fn build(state: &ScoredState, cores: &[&Fragment], diff_range: Option<&str>) -> Self {
+    fn build(
+        state: &ScoredState,
+        cores: &[&Fragment],
+        removed: &[&str],
+        diff_range: Option<&str>,
+    ) -> Self {
+        let literal_names: Vec<&str> = cores
+            .iter()
+            .filter_map(|c| c.symbol_name.as_deref())
+            .chain(removed.iter().copied())
+            .map(literal_base)
+            .collect();
+        let literal = keys::LiteralNames::build(state, diff_range, &literal_names);
         let mut needles: Vec<String> = cores
             .iter()
             .filter_map(|c| c.symbol_name.as_deref().map(base_symbol))
@@ -1483,7 +1503,10 @@ impl UntracedNamers {
         needles.sort();
         needles.dedup();
         if needles.is_empty() {
-            return Self::default();
+            return Self {
+                literal,
+                ..Self::default()
+            };
         }
         let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
         let changed: FxHashSet<String> = changed_rels(state).collect();
@@ -1519,7 +1542,41 @@ impl UntracedNamers {
                 }
             }
         }
-        Self { rows }
+        Self { rows, literal }
+    }
+
+    /// `sym` with the files that spell `name` as a literal named in its answer.
+    fn name_literals(&self, sym: &mut ChangedSymbol, name: &str) {
+        let spelled: Vec<UnanalysedFile> = self
+            .literal_files(name)
+            .into_iter()
+            .filter(|f| {
+                !sym.callers.iter().any(|c| c.path == f.path)
+                    && !matches!(&sym.unresolved, Some(Unknown::Candidates { sites, .. })
+                        if sites.iter().any(|s| s.path == f.path))
+            })
+            .collect();
+        if !spelled.is_empty() {
+            sym.coverage = sym.coverage.clone().with(Some(decide::Gap::Unaccounted {
+                reason: decide::Reason::OtherLanguage,
+                files: spelled.len(),
+            }));
+            sym.missed_in.extend(spelled);
+        }
+    }
+
+    /// The files that spell `name` as a literal.
+    fn literal_files(&self, name: &str) -> Vec<UnanalysedFile> {
+        self.literal
+            .naming(literal_base(name))
+            .into_iter()
+            .map(|(path, line)| UnanalysedFile {
+                language: crate::languages::get_language_for_file(&path),
+                path,
+                reason: "not_traced",
+                lines: vec![line],
+            })
+            .collect()
     }
 
     /// The lines naming `word` in the files `admit` keeps, one per file;
@@ -3353,7 +3410,12 @@ pub fn build_impact(
     };
     let untraced = if query.is_none() {
         let _t = crate::profile::detail("impact.setup.untraced", "");
-        UntracedNamers::build(state, &cores, diff_range)
+        let removed: Vec<&str> = cell_removed
+            .iter()
+            .chain(&cell_apart)
+            .map(|e| e.name.as_str())
+            .collect();
+        UntracedNamers::build(state, &cores, &removed, diff_range)
     } else {
         UntracedNamers::default()
     };
@@ -3985,17 +4047,53 @@ pub fn build_impact(
             .as_ref()
             .map_or_else(Vec::new, |v| unaccounted_rows(v, &rel(state, core.path())));
         let mut outside = 0;
-        if callers.is_empty()
+        let nothing_known = callers.is_empty()
             && compatible_callers == 0
             && (unresolved.is_none()
                 || verdict
                     .as_ref()
                     .is_some_and(decide::Verdict::gaps_are_only_unaccounted))
-            && missed_in.is_empty()
-        {
-            missed_in = untraced.of(core).into_iter().collect();
-            outside += missed_in.len();
+            && missed_in.is_empty();
+        // A script calls a shell or Ruby definition by its bare name: a CI step's
+        // `run:` block, a Rakefile, a script with no extension.
+        let runs_script = |file: &UnanalysedFile| {
+            let name = file.path.rsplit('/').next().unwrap_or(&file.path);
+            matches!(
+                crate::languages::get_language_for_file(core.path()),
+                Some("bash" | "ruby")
+            ) && (!name.contains('.')
+                || matches!(extension(name).as_str(), "yml" | "yaml" | "rake"))
+        };
+        let spelled = core
+            .symbol_name
+            .iter()
+            .flat_map(|n| untraced.literal_files(n))
+            .map(|file| (file, true));
+        let named = untraced
+            .of(core)
+            .into_iter()
+            .filter(|f| nothing_known || runs_script(f))
+            .map(|file| (file, false))
+            .chain(spelled);
+        // A config that spells the name is no test: only a test file that does
+        // leaves the absence of a test link open.
+        let mut outside_tests = 0;
+        for (file, literal) in named {
+            if !missed_in.iter().any(|m| m.path == file.path)
+                && !callers.iter().any(|c| c.path == file.path)
+                && !verdict
+                    .as_ref()
+                    .is_some_and(|v| v.uses.iter().any(|u| u.file == file.path))
+                && !matches!(&unresolved, Some(Unknown::Candidates { sites, .. })
+                    if sites.iter().any(|s| s.path == file.path))
+            {
+                outside += 1;
+                outside_tests +=
+                    usize::from(!literal || crate::testfiles::is_test_path(Path::new(&file.path)));
+                missed_in.push(file);
+            }
         }
+        let tests_coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside_tests);
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside);
         // No test found is an absence only from a closed search: the callers
         // accounted for and every definition above them. An open search says the
@@ -4008,7 +4106,7 @@ pub fn build_impact(
                 {
                     Some(GuardState::NotEstablished)
                 } else {
-                    coverage.all().witness().map(|_| GuardState::None)
+                    tests_coverage.all().witness().map(|_| GuardState::None)
                 }
             })
             .flatten();
@@ -4182,7 +4280,8 @@ pub fn build_impact(
         }
         traced_apart += 1;
         let verdict = cell.verdict(entry);
-        let sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
+        let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
+        untraced.name_literals(&mut sym, &entry.name);
         let callerless = query.is_none()
             && sym.callers.is_empty()
             && sym.also_changed.is_empty()
@@ -4269,6 +4368,7 @@ pub fn build_impact(
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
             let verdict = cells.of(&entry.file)?.verdict(entry);
             let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
+            untraced.name_literals(&mut sym, &entry.name);
             // A removed override was reached through the member it overrode: the
             // answer names that route, whatever else it could not tell.
             if let Some(via) = verdict.overridden_via() {
