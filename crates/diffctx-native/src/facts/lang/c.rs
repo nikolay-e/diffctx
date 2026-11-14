@@ -172,6 +172,7 @@ fn is_read(kind: &str, cpp: bool) -> bool {
             | "namespace_definition"
             | "template_declaration"
             | "using_declaration"
+            | "namespace_alias_definition"
             | "alias_declaration"
             | "class_specifier"
             | "struct_specifier"
@@ -224,7 +225,8 @@ fn join_tokens(tokens: &[&str]) -> String {
     let mut previous: Option<&str> = None;
     for &token in tokens {
         if let Some(a) = previous {
-            let tight = matches!(token, ")" | "]" | "," | ";" | "[")
+            let tight = matches!(token, ")" | "]" | "," | ";" | "[" | "::")
+                || a == "::"
                 || matches!(a, "(" | "[" | "*" | "&" | "~" | "!")
                 || (token == "(" && (word_end(a) || a == ")" || a == "*"));
             if !tight {
@@ -478,7 +480,8 @@ impl<'t> Walker<'t> {
             "class_specifier" | "struct_specifier" | "union_specifier" | "enum_specifier" => {
                 self.type_specifier(node, None, cx, doc, depth)
             }
-            "namespace_alias_definition" | "friend_declaration" | "static_assert_declaration" => {}
+            "namespace_alias_definition" => self.namespace_alias(node, cx),
+            "friend_declaration" | "static_assert_declaration" => {}
             "linkage_specification" => {
                 if let Some(body) = node.child_by_field_name("body") {
                     if body.kind() == "declaration_list" {
@@ -590,6 +593,28 @@ impl<'t> Walker<'t> {
             kind: ImportKind::Static,
             names,
             star,
+            default: None,
+        }));
+    }
+
+    /// `namespace alias = a::b;` names a namespace by another spelling.
+    fn namespace_alias(&mut self, node: Node<'t>, cx: &Cx) {
+        let text = self.text(node).trim().trim_end_matches(';');
+        let Some((alias, target)) = text.trim_start_matches("namespace").split_once('=') else {
+            return;
+        };
+        let (alias, target) = (alias.trim(), target.trim());
+        if alias.is_empty() || target.is_empty() {
+            return;
+        }
+        self.facts.push(Fact::Import(Import {
+            site: span(node),
+            enclosing: cx.scope.clone(),
+            module: ModulePath::new(target),
+            relative: 0,
+            kind: ImportKind::Static,
+            names: Vec::new(),
+            star: Star::Alias(Name::new(alias)),
             default: None,
         }));
     }
