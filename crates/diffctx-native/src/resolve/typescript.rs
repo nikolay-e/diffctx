@@ -1202,11 +1202,45 @@ impl<'a> Engine<'a> {
         let incomplete = around.iter().any(|project| project.paths_incomplete);
         if outside {
             ModRes::Outside
-        } else if unplaced || incomplete || is_alias_like(specifier) {
+        } else if unplaced
+            || incomplete
+            || is_alias_like(specifier)
+            || self.names_no_package(specifier)
+        {
             ModRes::Unplaced
         } else {
             ModRes::External
         }
+    }
+
+    /// A bare specifier that is no Node built-in and no package any manifest of the
+    /// repository declares, where some manifest exists: an alias nothing states, or
+    /// a package the manifests do not list.
+    fn names_no_package(&self, specifier: &str) -> bool {
+        if specifier.contains([':', '!']) {
+            return false;
+        }
+        let (package, _) = split_package(specifier);
+        if NODE_BUILTINS.contains(&package) {
+            return false;
+        }
+        let types = match package.strip_prefix('@').and_then(|p| p.split_once('/')) {
+            Some((scope, name)) => format!("@types/{scope}__{name}"),
+            None => format!("@types/{package}"),
+        };
+        let mut manifest = false;
+        for packages in self
+            .workspace
+            .projects()
+            .iter()
+            .filter_map(|p| p.packages.as_ref())
+        {
+            if packages.contains(package) || packages.contains(&types) {
+                return false;
+            }
+            manifest = true;
+        }
+        manifest
     }
 
     /// The projects whose configuration a file's imports are read with: its own,
@@ -3538,6 +3572,52 @@ fn best_alias<'p>(specifier: &str, aliases: &'p [Alias]) -> Option<&'p Alias> {
         .filter(|alias| !alias_targets(specifier, alias).is_empty())
         .max_by_key(|alias| alias.pattern.find('*').map_or(usize::MAX, |star| star))
 }
+
+/// The modules Node ships, which no manifest declares.
+const NODE_BUILTINS: &[&str] = &[
+    "assert",
+    "async_hooks",
+    "buffer",
+    "child_process",
+    "cluster",
+    "console",
+    "constants",
+    "crypto",
+    "dgram",
+    "diagnostics_channel",
+    "dns",
+    "domain",
+    "events",
+    "fs",
+    "http",
+    "http2",
+    "https",
+    "inspector",
+    "module",
+    "net",
+    "os",
+    "path",
+    "perf_hooks",
+    "process",
+    "punycode",
+    "querystring",
+    "readline",
+    "repl",
+    "stream",
+    "string_decoder",
+    "sys",
+    "timers",
+    "tls",
+    "trace_events",
+    "tty",
+    "url",
+    "util",
+    "v8",
+    "vm",
+    "wasi",
+    "worker_threads",
+    "zlib",
+];
 
 /// A specifier that reads as a bundler or `tsconfig` alias, not a package.
 fn is_alias_like(specifier: &str) -> bool {
