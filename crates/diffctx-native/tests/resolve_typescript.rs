@@ -803,6 +803,11 @@ const RED: &[(&str, &str)] = &[
         "impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader",
         "fj#186: open ticket; the case asserts what the engine does not yet answer",
     ),
+    (
+        "symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition",
+        "gh#661: an arrow-function const declared inside a function body is no definition for the \
+         resolver; the symbol lookup of the full pipeline finds it",
+    ),
 ];
 
 #[test]

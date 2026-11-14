@@ -734,7 +734,25 @@ fn cases_root() -> PathBuf {
 /// The Java cases the resolver cannot answer yet, each with the reason. The
 /// list is held both ways: a listed case that turns green fails the run, as does
 /// a red case that is not listed.
-const RED: &[(&str, &str)] = &[];
+const RED: &[(&str, &str)] = &[
+    (
+        "impact/java/gh704_sole_implementor_called_through_a_subinterface_has_a_test_link",
+        "gh#704: a call through a subinterface of the implemented interface states no candidate \
+         binding to the sole implementor; the resolver leaves it a gap with a site",
+    ),
+    (
+        "impact/java/gh732_constant_appended_to_a_constants_class_reaches_only_its_readers",
+        "gh#732: no resolver capability is missing: the resolver states every read of a member of \
+         the class, and the class-keyed decoys are withheld by impact, which lists the appended \
+         constant's readers instead of the class's, so only the full pipeline judges them",
+    ),
+    (
+        "impact/java/gh734_additive_dto_field_does_not_list_the_class_users",
+        "gh#734: no resolver capability is missing: the resolver states every use of the class, \
+         and the class-keyed decoys are withheld by impact, which does not list the users of a \
+         class for an added field, so only the full pipeline judges them",
+    ),
+];
 
 #[test]
 fn the_java_corpus_is_answered_as_the_list_says() {
