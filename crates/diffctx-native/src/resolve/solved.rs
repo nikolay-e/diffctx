@@ -215,7 +215,7 @@ fn rebind(definitions: &[Definition], bindings: &mut [Binding]) {
         if !used || !ALTERNATIVES.contains(&target.language) {
             continue;
         }
-        let mut targets: Vec<DefKey> = twins.get(target).cloned().unwrap_or_default();
+        let mut targets: Vec<DefKey> = twins.get(target).map_or_else(Vec::new, Clone::clone);
         if target.local.container.is_empty() && REBINDS.contains(&target.language) {
             let rival = imported.get(&(binding.file.clone(), binding.name.clone()));
             targets.extend(rival.into_iter().flatten().cloned());
