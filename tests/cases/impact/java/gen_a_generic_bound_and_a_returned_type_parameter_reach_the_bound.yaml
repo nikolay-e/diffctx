@@ -1,0 +1,64 @@
+name: gen_a_generic_bound_and_a_returned_type_parameter_reach_the_bound
+mode: impact
+source: blackbox2-GEN
+tags:
+- java
+- generics
+repo:
+  initial_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 1;
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.core.Repo;
+      import java.io.Serializable;
+
+      public class Use {
+          public <T extends Comparable<T> & Repo> int compared(T t) {
+              return t.load(1);
+          }
+
+          public <T extends Repo> T pick(T t) {
+              return t;
+          }
+
+          public int returned(Repo r) {
+              return pick(r).load(2);
+          }
+
+          public <T extends Repo & Serializable> int saved(T t) {
+              return t.hashCode();
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 2;
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - src/main/java/com/acme/core/Repo.java::Repo.load
+  relations:
+  - from: src/main/java/com/acme/app/Use.java::Use.compared
+    to: src/main/java/com/acme/core/Repo.java::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 8
+  - from: src/main/java/com/acme/app/Use.java::Use.returned
+    to: src/main/java/com/acme/core/Repo.java::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 16
+  exact: true
