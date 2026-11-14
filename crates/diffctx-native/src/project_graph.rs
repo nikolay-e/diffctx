@@ -60,7 +60,7 @@ pub(crate) fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         &run,
     );
 
-    let graph = graph::build_graph_capped(&all_fragments, capped);
+    let graph = graph::build_graph_capped(capped);
 
     Ok(ProjectGraph {
         fragments: all_fragments,
