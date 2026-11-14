@@ -796,11 +796,6 @@ const RED: &[(&str, &str)] = &[
          the resolver's binding is to the new type",
     ),
     (
-        "impact/typescript/ts_classic_script_global_is_called_by_the_pages_later_scripts",
-        "gh#602: a classic script's global is bound by the page that loads the scripts in order; \
-         the facts carry nothing of HTML, and a bare name no file binds is `NoBinding`",
-    ),
-    (
         "impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it",
         "gh#304: open ticket; the case asserts what the engine does not yet answer",
     ),
