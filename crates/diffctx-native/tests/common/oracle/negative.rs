@@ -241,6 +241,53 @@ fn a2_only_a_removed_api_contract_is_a_removal() -> Result<(), Failed> {
     ])
 }
 
+const MODULE_M4_IS_DELETED: &str = r"
+mode: impact
+source: synthetic
+repo:
+  deleted_files: [pkg/m4.py]
+expect:
+  removed: ['pkg/m4.py']
+";
+
+fn deleted_modules(paths: &[&str], total: u64) -> Value {
+    let items: Vec<Value> = paths
+        .iter()
+        .map(|path| json!({"path": path, "definitions": 5, "importers": []}))
+        .collect();
+    json!({
+        "definitions": [],
+        "inventory": {"changed": {"total": total, "items": paths}},
+        "empty": false,
+        "deleted_modules": {"total": total, "items": items},
+    })
+}
+
+/// A2b: a module the answer lists under `deleted_modules` is a removal; one the
+/// listing shed, or none at all, is not.
+fn a2b_only_a_listed_deleted_module_is_a_removal() -> Result<(), Failed> {
+    run(vec![
+        Probe {
+            what: "the expected module is listed as deleted",
+            case: MODULE_M4_IS_DELETED,
+            answer: deleted_modules(&["pkg/m3.py", "pkg/m4.py"], 2),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the listing shed the expected module",
+            case: MODULE_M4_IS_DELETED,
+            answer: deleted_modules(&["pkg/m1.py", "pkg/m2.py"], 3),
+            verdict: Verdict::Fails("`pkg/m4.py` is not reported as a removed definition"),
+        },
+        Probe {
+            what: "no module is listed as deleted",
+            case: MODULE_M4_IS_DELETED,
+            answer: json!({"definitions": [], "empty": false}),
+            verdict: Verdict::Fails("`pkg/m4.py` is not reported as a removed definition"),
+        },
+    ])
+}
+
 /// A3: a caller found only by its name is textual and yields no relation.
 fn a3_a_name_match_is_no_caller() -> Result<(), Failed> {
     run(vec![Probe {
@@ -562,7 +609,7 @@ fn a_site_has_one_standing() -> Result<(), Failed> {
 }
 
 pub(crate) fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 12] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 13] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",
             a1_a_named_test_function_needs_the_answer_to_name_it,
@@ -570,6 +617,10 @@ pub(crate) fn trials() -> Vec<Trial> {
         (
             "a2_only_a_removed_api_contract_is_a_removal",
             a2_only_a_removed_api_contract_is_a_removal,
+        ),
+        (
+            "a2b_only_a_listed_deleted_module_is_a_removal",
+            a2b_only_a_listed_deleted_module_is_a_removal,
         ),
         ("a3_a_name_match_is_no_caller", a3_a_name_match_is_no_caller),
         (

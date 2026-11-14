@@ -679,6 +679,11 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
             answer.touched.push(node);
         }
     }
+    // A deleted module is a removal of the file itself, listed apart from the
+    // capped `contracts` and `definitions`; one the listing sheds is not stated.
+    for module in listing(doc, "deleted_modules") {
+        answer.removed.push(node_of(module));
+    }
     // `getCollection('blog')` reads every entry under `content/blog/`.
     let changed_files: Vec<&str> = items(&doc["inventory"]["changed"], "items")
         .iter()
