@@ -41,7 +41,6 @@ repo:
   commit_message: Change the targets of two GNU alias attributes
 expect:
   exact: false
-  discloses: true
   no_negative_claims: true
   changed:
   - src/lib.c::alias_target
@@ -50,10 +49,10 @@ expect:
   - from: src/lib.c::public_alias
     to: src/lib.c::alias_target
     kind: passes_as_value
-    resolution: candidate
+    resolution: resolved
     site: 5
   - from: src/lib.c::weak_alias
     to: src/lib.c::weak_target
     kind: passes_as_value
-    resolution: candidate
+    resolution: resolved
     site: 9

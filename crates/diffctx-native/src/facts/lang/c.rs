@@ -71,6 +71,8 @@ use crate::facts::{
 use crate::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
+/// How far below a prototype its `alias(...)` call is looked for.
+const ALIAS_SEARCH_DEPTH: u8 = 8;
 const POLL_EVERY: usize = 256;
 
 pub struct CExtractor;
@@ -1190,6 +1192,14 @@ impl<'t> Walker<'t> {
                 if let Some(ty) = ty {
                     self.type_refs(ty, &inner, depth + 1);
                 }
+                self.alias_targets(
+                    if declarators_len == 1 {
+                        node
+                    } else {
+                        declarator
+                    },
+                    &inner,
+                );
                 if let Some(parameters) = d.function {
                     self.locals.push(HashMap::new());
                     self.parameters(parameters, &inner, depth + 1);
@@ -1223,6 +1233,37 @@ impl<'t> Walker<'t> {
                 self.locals.push(HashMap::new());
                 self.expr(value, &inner, depth + 1);
                 self.locals.pop();
+            }
+        }
+    }
+
+    /// `__attribute__((alias("target")))` makes the declared name another name of
+    /// `target`, which the attribute spells only in a string: a read of it.
+    fn alias_targets(&mut self, node: Node<'t>, cx: &Cx) {
+        let mut pending = vec![(node, 0u8)];
+        while let Some((at, depth)) = pending.pop() {
+            if at.kind() == "call_expression" {
+                self.alias_call(at, cx);
+            }
+            if depth < ALIAS_SEARCH_DEPTH {
+                pending.extend(children(at).into_iter().map(|child| (child, depth + 1)));
+            }
+        }
+    }
+
+    fn alias_call(&mut self, call: Node<'t>, cx: &Cx) {
+        let named = call
+            .child_by_field_name("function")
+            .is_some_and(|f| matches!(self.text(f), "alias" | "__alias__"));
+        let target = call.child_by_field_name("arguments").and_then(|a| {
+            children(a)
+                .into_iter()
+                .find(|c| c.kind() == "string_literal")
+        });
+        if let (true, Some(target)) = (named, target) {
+            let name = self.text(target).trim_matches('"').to_string();
+            if !name.is_empty() {
+                self.emit(target, cx, Receiver::None, UseKind::Read, &name, Vec::new());
             }
         }
     }
