@@ -1390,7 +1390,7 @@ fn a_workspace_package_specifier_resolves_into_its_source() {
         &[
             (
                 "package.json",
-                "{\"private\": true, \"workspaces\": [\"packages/*\", \"apps/*\"]}\n",
+                "{\"private\": true, \"workspaces\": [\"packages/*\", \"apps/*\"], \"dependencies\": {\"@other/core\": \"1.0.0\"}}\n",
             ),
             (
                 "packages/core/package.json",

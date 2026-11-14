@@ -354,7 +354,10 @@ fn a_vite_alias_resolves_to_the_file_it_names() {
         &[
             ("shared/pkg/client-telemetry.ts", telemetry),
             ("shared/other/client-telemetry.ts", telemetry),
-            ("apps/a/package.json", "{\"name\": \"a\"}\n"),
+            (
+                "apps/a/package.json",
+                "{\"name\": \"a\", \"dependencies\": {\"telemetry-lib\": \"1.0.0\"}}\n",
+            ),
             (
                 "apps/a/vite.config.ts",
                 "import { defineConfig } from 'vite';\nimport path from 'node:path';\nimport { fileURLToPath } from 'node:url';\nexport default defineConfig({\n  resolve: {\n    alias: {\n      '@pkg': path.resolve(__dirname, '../../shared/pkg'),\n      '@other': fileURLToPath(new URL('../../shared/other', import.meta.url)),\n    },\n  },\n});\n",
