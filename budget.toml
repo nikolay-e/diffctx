@@ -3,7 +3,7 @@
 # together with the `plus` each `grows` file adds over its `base`; everything else obeys the plain ratchet. `due_when`
 # and each `deletes` entry are `path` or `path::text` (gone = file absent, or text not in it). Once `due_when` is
 # gone the row must be removed and every `deletes` entry gone, in the same commit.
-product_lines = 145701
+product_lines = 145046
 allow_count = 138
 root_modules = 63
 # Module-graph caps (crates/diffctx-native/tests/module_graph.rs): the biggest knot of modules that reach each
@@ -13,20 +13,20 @@ against_order_edges = 0
 
 [big_files]
 "crates/diffctx-native/src/decide.rs" = 3718
-"crates/diffctx-native/src/facts/lang/c.rs" = 2011
-"crates/diffctx-native/src/facts/lang/php.rs" = 1930
-"crates/diffctx-native/src/facts/lang/python.rs" = 2702
-"crates/diffctx-native/src/facts/lang/rust.rs" = 1977
-"crates/diffctx-native/src/facts/lang/typescript.rs" = 4341
+"crates/diffctx-native/src/facts/lang/c.rs" = 1963
+"crates/diffctx-native/src/facts/lang/php.rs" = 1882
+"crates/diffctx-native/src/facts/lang/python.rs" = 2653
+"crates/diffctx-native/src/facts/lang/rust.rs" = 1930
+"crates/diffctx-native/src/facts/lang/typescript.rs" = 4328
 "crates/diffctx-native/src/hook.rs" = 4200
-"crates/diffctx-native/src/impact.rs" = 6138
+"crates/diffctx-native/src/impact.rs" = 6037
 "crates/diffctx-native/src/keytable/extract.rs" = 2174
 "crates/diffctx-native/src/parsers/tree_sitter_strategy.rs" = 2661
-"crates/diffctx-native/src/pipeline.rs" = 3178
-"crates/diffctx-native/src/resolve/c.rs" = 2019
+"crates/diffctx-native/src/pipeline.rs" = 3147
+"crates/diffctx-native/src/resolve/c.rs" = 2011
 "crates/diffctx-native/src/resolve/kotlin.rs" = 1740
-"crates/diffctx-native/src/resolve/php.rs" = 1667
-"crates/diffctx-native/src/resolve/python.rs" = 2131
-"crates/diffctx-native/src/resolve/rust.rs" = 2205
-"crates/diffctx-native/src/resolve/typescript.rs" = 3813
+"crates/diffctx-native/src/resolve/php.rs" = 1659
+"crates/diffctx-native/src/resolve/python.rs" = 2119
+"crates/diffctx-native/src/resolve/rust.rs" = 2186
+"crates/diffctx-native/src/resolve/typescript.rs" = 3801
 "crates/diffctx-native/src/select.rs" = 2015
