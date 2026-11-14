@@ -44,6 +44,9 @@ pub struct RustCrate {
     pub kind: CrateKind,
     pub root_file: String,
     pub modules: Vec<RustModule>,
+    /// Dependencies the package renames: the name `use` spells and the name of
+    /// the crate it stands for.
+    pub renames: Vec<(String, String)>,
 }
 
 struct Manifest<'a> {
@@ -55,6 +58,7 @@ struct Manifest<'a> {
 /// A `[workspace.dependencies]` entry: the directory it names.
 struct Inherited {
     dir: Option<String>,
+    package: Option<String>,
 }
 
 pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
@@ -88,7 +92,8 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
                     .get("path")
                     .and_then(|p| p.as_str())
                     .and_then(|p| join(manifest.root, p));
-                (name.clone(), Inherited { dir })
+                let package = package_of(spec);
+                (name.clone(), Inherited { dir, package })
             })
             .collect();
         inherited.insert(manifest.root, entries);
@@ -113,6 +118,12 @@ fn workspace_of<'a>(workspaces: &BTreeSet<&'a str>, root: &str) -> Option<&'a st
         }
         at = dir_of(at);
     }
+}
+
+fn package_of(spec: &toml::Value) -> Option<String> {
+    spec.get("package")
+        .and_then(|p| p.as_str())
+        .map(str::to_string)
 }
 
 fn dependency_tables_of<'a>(table: &'a toml::Table, out: &mut Vec<&'a toml::Table>) {
@@ -160,8 +171,22 @@ fn read_manifest(
     let owner = workspace_of(workspaces, root).and_then(|w| inherited.get(w));
 
     let mut links: Vec<String> = Vec::new();
+    let mut renames: Vec<(String, String)> = Vec::new();
     for dependencies in dependency_tables {
         for (name, spec) in dependencies {
+            let package = package_of(spec).or_else(|| {
+                let inherited = spec.get("workspace").and_then(|w| w.as_bool()) == Some(true);
+                inherited
+                    .then(|| {
+                        owner
+                            .and_then(|o| o.get(name))
+                            .and_then(|e| e.package.clone())
+                    })
+                    .flatten()
+            });
+            if let Some(package) = package.filter(|p| p != name) {
+                renames.push((name.replace('-', "_"), package.replace('-', "_")));
+            }
             let own_path = spec
                 .get("path")
                 .and_then(|p| p.as_str())
@@ -178,7 +203,10 @@ fn read_manifest(
         }
     }
 
-    let crates = crates_of(files, manifest, package_name.as_deref())?;
+    let mut crates = crates_of(files, manifest, package_name.as_deref())?;
+    for krate in &mut crates {
+        krate.renames.clone_from(&renames);
+    }
     let sets = ["src", "tests", "benches", "examples"]
         .iter()
         .filter_map(|name| {
@@ -301,6 +329,7 @@ fn crates_of(files: &Files, manifest: &Manifest, package: Option<&str>) -> Resul
             kind,
             root_file,
             modules,
+            renames: Vec::new(),
         });
     }
     Ok(out)
