@@ -36,6 +36,6 @@ repo:
       }
   commit_message: "vec: subtract the second product"
 expect:
-  changed: [src/vec.cpp::Vec.dot]
+  changed: [src/vec.cpp::dot]
   relations:
-    - {from: "src/main.cpp::run", to: "src/vec.cpp::Vec.dot", kind: calls, resolution: candidate, site: 4}
+    - {from: "src/main.cpp::run", to: "src/vec.cpp::dot", kind: calls, resolution: resolved, site: 4}

@@ -38,7 +38,7 @@ use super::{
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, LocalKey,
-    Name, Receiver, Ref, Scope, Span, UseKind, Visibility, expired,
+    Name, Receiver, Ref, Scope, Span, Star, UseKind, Visibility, expired,
 };
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
@@ -346,6 +346,8 @@ struct UsingRec {
     module: Vec<String>,
     /// The name a declaration takes; none for a directive.
     name: Option<String>,
+    /// `namespace alias = module;`: the spelling the namespace takes here.
+    alias: Option<String>,
 }
 
 struct IncRec {
@@ -446,6 +448,15 @@ impl Index {
                                 .collect(),
                             _ => Vec::new(),
                         };
+                        if let Star::Alias(alias) = &import.star {
+                            file.usings.push(UsingRec {
+                                scope,
+                                module,
+                                name: None,
+                                alias: Some(alias.as_str().to_string()),
+                            });
+                            continue;
+                        }
                         let names: Vec<Option<String>> = if import.names.is_empty() {
                             vec![None]
                         } else {
@@ -460,6 +471,7 @@ impl Index {
                                 scope: scope.clone(),
                                 module: module.clone(),
                                 name,
+                                alias: None,
                             });
                         }
                     }
@@ -1446,11 +1458,21 @@ impl Engine<'_> {
         let closure = self.closure(f);
         let visible = |id: usize| wanted(self.ix.defs[id].def.kind) && self.sees(f, id, &closure);
         let rooted = qualifier.first().is_some_and(|n| n.as_str().is_empty());
-        let written: Vec<String> = qualifier
+        let mut written: Vec<String> = qualifier
             .iter()
             .map(|n| n.as_str().to_string())
             .filter(|n| !n.is_empty())
             .collect();
+        let aliased = closure.iter().find_map(|file| {
+            self.ix.files[*file].usings.iter().find(|using| {
+                using.alias.is_some()
+                    && using.alias.as_ref() == written.first()
+                    && scope.starts_with(&using.scope)
+            })
+        });
+        if let Some(using) = aliased {
+            written.splice(..1, using.module.iter().cloned());
+        }
         let prefixes: Vec<Vec<String>> = if rooted {
             vec![Vec::new()]
         } else {
@@ -1495,7 +1517,8 @@ impl Engine<'_> {
             if written.is_empty() && !rooted {
                 for file in closure.iter() {
                     for using in &self.ix.files[*file].usings {
-                        if using.scope != *prefix
+                        if using.alias.is_some()
+                            || using.scope != *prefix
                             || using.name.as_deref().is_some_and(|n| n != name)
                         {
                             continue;
@@ -1895,7 +1918,8 @@ impl Engine<'_> {
             Receiver::SelfType => class = self.class_of_scope(scope),
             Receiver::Typed(t) | Receiver::New(t) => {
                 class = self.type_class(f, scope, t.as_str(), 0);
-                foreign = class.is_none();
+                let short = t.as_str().rsplit("::").next().unwrap_or_default();
+                foreign = class.is_none() && !self.ix.by_short.contains_key(short);
             }
             Receiver::CallResult(path) => {
                 if let Some(function) = path.last() {
