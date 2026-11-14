@@ -107,14 +107,17 @@ fn without_attributes(line: &str) -> &str {
     rest
 }
 
-/// The lines of the functions in `text` an attribute marks as tests:
-/// `#[test]`, `#[tokio::test]` — an inline unit test is a test like any in
-/// `tests/` (#528).
+/// The lines of the functions in `text` an attribute marks as tests (`#[test]`,
+/// `#[tokio::test]`, `#[rstest]`, `#[test_case(..)]`), and of the macro blocks
+/// that make tests of the functions inside them (`proptest! { .. }`) — an inline
+/// unit test is a test like any in `tests/` (#528). The attributes and macros are
+/// the rows of `testfiles::RUST_TEST_ATTRIBUTES` and `RUST_TEST_MACROS`.
 pub(super) fn test_functions(text: &str) -> Vec<(u32, u32)> {
     let Some(tree) = crate::parsers::parse_tree("rust", text) else {
         return Vec::new();
     };
     let bytes = text.as_bytes();
+    let row = |p: tree_sitter::Point| p.row as u32 + 1;
     let mut lines = Vec::new();
     let mut stack = vec![tree.root_node()];
     while let Some(node) = stack.pop() {
@@ -122,7 +125,9 @@ pub(super) fn test_functions(text: &str) -> Vec<(u32, u32)> {
         for child in node.named_children(&mut cursor) {
             match child.kind() {
                 "function_item" if marked_test(child, bytes) => {
-                    let row = |p: tree_sitter::Point| p.row as u32 + 1;
+                    lines.push((row(child.start_position()), row(child.end_position())));
+                }
+                "macro_invocation" if is_test_macro(child, bytes) => {
                     lines.push((row(child.start_position()), row(child.end_position())));
                 }
                 "mod_item" | "declaration_list" | "impl_item" => stack.push(child),
@@ -133,6 +138,18 @@ pub(super) fn test_functions(text: &str) -> Vec<(u32, u32)> {
     lines
 }
 
+/// The last segment of `node`'s path (`tokio::test` is `test`).
+fn last_segment<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
+    node.utf8_text(bytes).ok()?.rsplit("::").next()
+}
+
+fn is_test_macro(invocation: Node, bytes: &[u8]) -> bool {
+    invocation
+        .child_by_field_name("macro")
+        .and_then(|name| last_segment(name, bytes))
+        .is_some_and(|name| crate::testfiles::RUST_TEST_MACROS.contains(&name))
+}
+
 fn marked_test(func: Node, bytes: &[u8]) -> bool {
     let mut prev = func.prev_named_sibling();
     while let Some(p) = prev {
@@ -141,10 +158,8 @@ fn marked_test(func: Node, bytes: &[u8]) -> bool {
                 let is_test = p
                     .named_child(0)
                     .and_then(|a| a.named_child(0))
-                    .is_some_and(|n| {
-                        n.utf8_text(bytes)
-                            .is_ok_and(|path| path.rsplit("::").next() == Some("test"))
-                    });
+                    .and_then(|path| last_segment(path, bytes))
+                    .is_some_and(|name| crate::testfiles::RUST_TEST_ATTRIBUTES.contains(&name));
                 if is_test {
                     return true;
                 }
