@@ -150,6 +150,9 @@ pub struct Project {
     /// extending a package, a bundler alias that is a pattern or computed. A bare
     /// specifier no alias places may be one.
     pub paths_incomplete: bool,
+    /// The npm packages its `package.json` declares; `None` for a project with
+    /// no such manifest, where a bare specifier names nothing to check.
+    pub packages: Option<BTreeSet<String>>,
     pub exports: Vec<Export>,
     pub reexports: Vec<Reexport>,
     /// Directories holding an `__init__.py`.
@@ -190,6 +193,7 @@ pub(crate) struct Pending {
     pub(crate) aliases: Vec<Alias>,
     pub(crate) base_urls: Vec<String>,
     pub(crate) paths_incomplete: bool,
+    pub(crate) packages: Option<BTreeSet<String>>,
     pub(crate) exports: Vec<Export>,
     pub(crate) crates: Vec<RustCrate>,
     pub(crate) go_module: Option<String>,
@@ -207,6 +211,7 @@ impl Pending {
             aliases: Vec::new(),
             base_urls: Vec::new(),
             paths_incomplete: false,
+            packages: None,
             exports: Vec::new(),
             crates: Vec::new(),
             go_module: None,
@@ -285,8 +290,9 @@ pub(crate) enum Late {
         references: Vec<String>,
         incomplete: bool,
     },
-    /// The `resolve.alias` of a `vite.config.*`, read as text, never run.
-    Vite {
+    /// The aliases of a bundler or test runner config (`vite.config.*`,
+    /// `webpack.config.*`, `.babelrc`, `jest.config.*`), read as text, never run.
+    Bundler {
         dir: String,
         aliases: Vec<Alias>,
         incomplete: bool,
@@ -815,7 +821,7 @@ impl Draft {
                         }
                     }
                 }
-                Late::Vite {
+                Late::Bundler {
                     dir,
                     aliases,
                     incomplete,
@@ -937,6 +943,7 @@ impl Draft {
                 aliases: pending.aliases,
                 base_urls: pending.base_urls,
                 paths_incomplete: pending.paths_incomplete,
+                packages: pending.packages,
                 exports: pending.exports,
                 reexports: reexports.remove(root).unwrap_or_default(),
                 python_packages: packages.remove(root).unwrap_or_default(),

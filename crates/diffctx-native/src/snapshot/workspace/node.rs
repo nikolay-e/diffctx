@@ -2,6 +2,8 @@
 //! `exports`), `pnpm-workspace.yaml`, and the `tsconfig` family (`extends`,
 //! `baseUrl`, `paths`, `references`).
 
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 
 use super::{
@@ -51,38 +53,29 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
     for config in configs {
         read_tsconfig(files, config, draft)?;
     }
-    let bundlers: Vec<&str> = files
+    let bundlers: Vec<(&str, &[&str])> = files
         .all()
-        .filter(|p| {
-            let name = name_of(p);
-            (name.starts_with("vite.config.") || name.starts_with("vitest.config."))
-                && [".ts", ".js", ".mts", ".mjs", ".cts", ".cjs"]
-                    .iter()
-                    .any(|e| name.ends_with(e))
-        })
+        .filter_map(|p| alias_keys(name_of(p)).map(|keys| (p, keys)))
         .collect();
-    for config in bundlers {
+    for (config, keys) in bundlers {
         let Some(text) = files.read(config)? else {
             continue;
         };
         let dir = dir_of(config);
-        let (found, readable) = vite_aliases(&text);
-        let mut aliases = Vec::new();
-        for (find, replacement) in found {
-            let Some(target) = join(dir, &replacement) else {
-                continue;
-            };
-            let find = find.trim_end_matches('/');
-            aliases.push(Alias {
-                pattern: find.to_string(),
-                targets: vec![target.clone()],
-            });
-            aliases.push(Alias {
-                pattern: format!("{find}/*"),
-                targets: vec![format!("{target}/*")],
-            });
-        }
-        draft.late(Late::Vite {
+        let (found, readable) = bundler_aliases(&text, keys);
+        let (aliases, readable) = if keys == ["moduleNameMapper"] {
+            let (aliases, understood) = jest_aliases(dir, &found);
+            (aliases, readable && understood)
+        } else {
+            (
+                found
+                    .iter()
+                    .flat_map(|(find, replacement)| path_aliases(dir, find, replacement))
+                    .collect(),
+                readable,
+            )
+        };
+        draft.late(Late::Bundler {
             dir: dir.to_string(),
             aliases,
             incomplete: !readable,
@@ -91,36 +84,128 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
     Ok(())
 }
 
+/// The keys under which a bundler or test runner config states its aliases:
+/// `resolve.alias` (Vite, Vitest, webpack), `@rollup/plugin-alias` `entries`,
+/// the `module-resolver` `alias` of Babel, Jest's `moduleNameMapper`.
+fn alias_keys(name: &str) -> Option<&'static [&'static str]> {
+    const SCRIPTS: [&str; 7] = [".ts", ".js", ".mts", ".mjs", ".cts", ".cjs", ".json"];
+    let config = |stem: &str| {
+        name.strip_prefix(stem)
+            .is_some_and(|rest| rest.starts_with('.') && SCRIPTS.iter().any(|e| name.ends_with(e)))
+    };
+    if config("vite.config") || config("vitest.config") || config("webpack.config") {
+        Some(&["alias"])
+    } else if config("rollup.config") {
+        Some(&["alias", "entries"])
+    } else if config("jest.config") {
+        Some(&["moduleNameMapper"])
+    } else if name == ".babelrc" || name.starts_with(".babelrc.") || config("babel.config") {
+        Some(&["alias"])
+    } else {
+        None
+    }
+}
+
+/// The aliases a `find` and `replacement` of a bundler config stand for: the
+/// directory itself and what is under it, or only the name for a webpack `Name$`.
+fn path_aliases(dir: &str, find: &str, replacement: &str) -> Vec<Alias> {
+    let Some(target) = join(dir, replacement) else {
+        return Vec::new();
+    };
+    if let Some(exact) = find.strip_suffix('$') {
+        return vec![Alias {
+            pattern: exact.to_string(),
+            targets: vec![target],
+        }];
+    }
+    let find = find.trim_end_matches('/');
+    vec![
+        Alias {
+            pattern: find.to_string(),
+            targets: vec![target.clone()],
+        },
+        Alias {
+            pattern: format!("{find}/*"),
+            targets: vec![format!("{target}/*")],
+        },
+    ]
+}
+
+/// The aliases of a `moduleNameMapper`, whose keys are anchored patterns
+/// (`^@lib/(.*)$`) and whose values start at `<rootDir>`. A key that is no
+/// anchored pattern (`\.css$`) and a value that is a module name or a mock map
+/// no repository path. The flag is false for an anchored key it could not read.
+fn jest_aliases(dir: &str, found: &[(String, String)]) -> (Vec<Alias>, bool) {
+    let mut aliases = Vec::new();
+    let mut readable = true;
+    for (key, value) in found {
+        let (Some(key), Some(target)) = (key.strip_prefix('^'), value.strip_prefix("<rootDir>"))
+        else {
+            continue;
+        };
+        let key = key.strip_suffix('$').unwrap_or(key);
+        let (prefix, capture) = match key
+            .strip_suffix("(.*)")
+            .or_else(|| key.strip_suffix("(.+)"))
+        {
+            Some(prefix) => (prefix, true),
+            None => (key, false),
+        };
+        let literal = !prefix.contains([
+            '(', ')', '[', ']', '{', '}', '*', '+', '?', '|', '\\', '^', '$',
+        ]);
+        let target = if capture {
+            target.replace("$1", "*")
+        } else {
+            target.to_string()
+        };
+        match join(dir, target.trim_start_matches('/')) {
+            Some(target) if literal && target.contains('*') == capture => aliases.push(Alias {
+                pattern: if capture {
+                    format!("{prefix}*")
+                } else {
+                    prefix.to_string()
+                },
+                targets: vec![target],
+            }),
+            _ => readable = false,
+        }
+    }
+    (aliases, readable)
+}
+
 /// What a bundler config states, read as text and never run: the `find` and
-/// `replacement` of each entry of `resolve.alias`, as `{ '@pkg': path.resolve(
-/// __dirname, '../pkg') }` or `[{ find: '@pkg', replacement: ... }]`. A
-/// replacement is the string literals it is built from, joined by `/`. The flag
-/// is false when an entry could not be read (a regex `find`, a computed or
-/// absolute replacement).
-fn vite_aliases(text: &str) -> (Vec<(String, String)>, bool) {
+/// `replacement` of each entry of the object or array under one of `keys`, as
+/// `{ '@pkg': path.resolve(__dirname, '../pkg') }` or `[{ find: '@pkg',
+/// replacement: ... }]`. A replacement is the string literals it is built from,
+/// joined by `/`. The flag is false when an entry could not be read (a regex
+/// `find`, a computed or absolute replacement).
+fn bundler_aliases(text: &str, keys: &[&str]) -> (Vec<(String, String)>, bool) {
     let bytes = text.as_bytes();
     let mut found = Vec::new();
     let mut readable = true;
-    let mut at = 0;
-    while let Some(hit) = text[at..].find("alias") {
-        let start = at + hit;
-        at = start + "alias".len();
-        let before = bytes.get(start.wrapping_sub(1)).copied();
-        if before.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$') {
-            continue;
-        }
-        let mut cursor = skip_blanks(bytes, at);
-        if matches!(bytes.get(cursor), Some(b'"' | b'\'' | b'`')) {
+    for key in keys {
+        let mut at = 0;
+        while let Some(hit) = text[at..].find(key) {
+            let start = at + hit;
+            at = start + key.len();
+            let before = bytes.get(start.wrapping_sub(1)).copied();
+            if before.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$') {
+                continue;
+            }
+            let mut cursor = skip_blanks(bytes, at);
+            if matches!(bytes.get(cursor), Some(b'"' | b'\'' | b'`')) {
+                cursor = skip_blanks(bytes, cursor + 1);
+            }
+            if bytes.get(cursor) != Some(&b':') {
+                continue;
+            }
             cursor = skip_blanks(bytes, cursor + 1);
-        }
-        if bytes.get(cursor) != Some(&b':') {
-            continue;
-        }
-        cursor = skip_blanks(bytes, cursor + 1);
-        match bytes.get(cursor) {
-            Some(b'{') => readable &= alias_object(bytes, cursor + 1, &mut found).is_some(),
-            Some(b'[') => readable &= alias_array(bytes, cursor + 1, &mut found).is_some(),
-            _ => readable = false,
+            match bytes.get(cursor) {
+                Some(b'{') => readable &= alias_object(bytes, cursor + 1, &mut found).is_some(),
+                Some(b'[') => readable &= alias_array(bytes, cursor + 1, &mut found).is_some(),
+                _ => readable = false,
+            }
         }
     }
     (found, readable)
@@ -347,8 +432,23 @@ fn read_package(files: &Files, root: &str, package: &Value, draft: &mut Draft) {
         }
     }
 
+    if let Some(Value::Object(mapper)) = package.get("jest").and_then(|j| j.get("moduleNameMapper"))
+    {
+        let found: Vec<(String, String)> = mapper
+            .iter()
+            .filter_map(|(key, to)| Some((key.clone(), to.as_str()?.to_string())))
+            .collect();
+        let (aliases, readable) = jest_aliases(root, &found);
+        draft.late(Late::Bundler {
+            dir: root.to_string(),
+            aliases,
+            incomplete: !readable || found.len() != mapper.len(),
+        });
+    }
+
     let project = draft.project(root, Ecosystem::Node);
     project.root(root.to_string(), RootOrigin::Manifest);
+    project.packages.get_or_insert_with(BTreeSet::new);
     if let Some(name) = package.get("name").and_then(Value::as_str) {
         project.name(Ecosystem::Node, name.to_string());
     }
@@ -362,6 +462,10 @@ fn read_package(files: &Files, root: &str, package: &Value, draft: &mut Draft) {
             continue;
         };
         for (name, spec) in dependencies {
+            project
+                .packages
+                .get_or_insert_with(BTreeSet::new)
+                .insert(name.clone());
             project.link_name(Ecosystem::Node, name.clone());
             let local = spec.as_str().and_then(|s| {
                 ["file:", "link:", "portal:"]
