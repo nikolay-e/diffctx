@@ -1,0 +1,37 @@
+name: k6_kotlin_get_method_in_the_definitions_own_file
+mode: impact
+source: synthetic
+tags: [kotlin, literal-name, reflection, own-file]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/cfg/Reflect.kt: |
+      package com.acme.cfg
+
+      class Target {
+          fun hidden(): Int {
+              return 1
+          }
+      }
+
+      fun callReflectively(): Any? = Target::class.java.getMethod("hidden").invoke(Target())
+  changed_files:
+    src/main/kotlin/com/acme/cfg/Reflect.kt: |
+      package com.acme.cfg
+
+      class Target {
+          fun hidden(): Int {
+              return 2
+          }
+      }
+
+      fun callReflectively(): Any? = Target::class.java.getMethod("hidden").invoke(Target())
+  commit_message: "reflect: hidden returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/kotlin/com/acme/cfg/Reflect.kt
+      to: src/main/kotlin/com/acme/cfg/Reflect.kt::hidden
+      kind: calls
+      resolution: unresolved
