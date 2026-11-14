@@ -1,0 +1,35 @@
+name: k4b_pyw_script_is_a_python_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- pyw
+- k4b
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def compute(x):
+          return x + 1
+    app/gui.pyw: |
+      from pkg.core import compute
+
+
+      def main():
+          return compute(1)
+    tests/test_other.py: |
+      def test_nothing():
+          assert True
+  changed_files:
+    pkg/core.py: |
+      def compute(x):
+          return x + 2
+  commit_message: change compute
+expect:
+  changed:
+  - pkg/core.py::compute
+  exact: false
+  callers:
+    compute:
+    - app/gui.pyw::main
