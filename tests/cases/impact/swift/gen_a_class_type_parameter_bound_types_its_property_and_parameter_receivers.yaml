@@ -1,0 +1,53 @@
+name: gen_a_class_type_parameter_bound_types_its_property_and_parameter_receivers
+mode: impact
+source: synthetic
+tags:
+- swift
+- generics
+repo:
+  initial_files:
+    Sources/App/Repo.swift: |
+      class Repo {
+          func load(_ x: Int) -> Int {
+              return x + 1
+          }
+      }
+    Sources/App/Use.swift: |
+      final class Holder<T: Repo> {
+          let held: T
+
+          init(held: T) {
+              self.held = held
+          }
+
+          func field() -> Int {
+              return held.load(1)
+          }
+
+          func param(_ t: T) -> Int {
+              return t.load(2)
+          }
+      }
+  changed_files:
+    Sources/App/Repo.swift: |
+      class Repo {
+          func load(_ x: Int) -> Int {
+              return x + 2
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - Sources/App/Repo.swift::Repo.load
+  relations:
+  - from: Sources/App/Use.swift::Holder.field
+    to: Sources/App/Repo.swift::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 9
+  - from: Sources/App/Use.swift::Holder.param
+    to: Sources/App/Repo.swift::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 13
+  exact: true
