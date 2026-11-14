@@ -757,26 +757,6 @@ const RED: &[(&str, &str)] = &[
          and the class-keyed decoys are withheld by impact, which does not list the users of a \
          class for an added field, so only the full pipeline judges them",
     ),
-    (
-        "impact/java/gen_a_method_type_parameter_bound_types_its_receiver",
-        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
-    ),
-    (
-        "impact/java/gen_a_class_type_parameter_bound_types_its_field_and_parameter_receivers",
-        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
-    ),
-    (
-        "impact/java/gen_an_intersection_bound_types_its_receiver_through_the_bound_that_has_the_member",
-        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
-    ),
-    (
-        "impact/java/gen_a_bound_that_is_another_type_parameter_types_its_receiver",
-        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
-    ),
-    (
-        "impact/java/gen_a_generic_bound_and_a_returned_type_parameter_reach_the_bound",
-        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
-    ),
 ];
 
 #[test]
