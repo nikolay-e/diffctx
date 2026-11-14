@@ -32,7 +32,7 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::hash_tree;
-use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, parse_tree, span};
+use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, read_tree, span};
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
@@ -60,32 +60,23 @@ impl Extractor for PythonExtractor {
 /// A blob names no path, so a loss it raises about itself carries this one
 /// for `facts_of` to replace with the file's own.
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
-    let mut blob = BlobFacts::new(Language::Python);
-    let Some(tree) = parse_tree(Language::Python, text, budget) else {
-        if expired(budget) {
-            blob.deadline();
-        } else {
-            blob.unsupported();
-        }
-        return blob;
-    };
-    let root = tree.root_node();
-    if root.has_error() {
-        blob.parse_error(error_lines(root));
-    }
-    let mut walker = Walker::new(text, budget);
-    walker.run(root);
-    if walker.halted {
-        blob.deadline();
-    }
-    if walker.too_deep.get() {
-        blob.extractor_failed();
-    }
-    blob.facts = std::mem::take(&mut walker.facts);
-    framework::derive(&mut blob);
-    blob.record_lexical(root);
-    blob.in_source_order();
-    blob
+    read_tree(
+        Language::Python,
+        Language::Python,
+        text,
+        budget,
+        error_lines,
+        |root, blob| {
+            let mut walker = Walker::new(text, budget);
+            walker.run(root);
+            blob.walked(
+                std::mem::take(&mut walker.facts),
+                walker.halted,
+                walker.too_deep.get(),
+            );
+            framework::derive(blob);
+        },
+    )
 }
 
 /// A construct the grammar read whole, whatever lies around it.

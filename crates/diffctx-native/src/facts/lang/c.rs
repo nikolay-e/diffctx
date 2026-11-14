@@ -62,9 +62,7 @@ use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
-use super::{
-    ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span, through_errors,
-};
+use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -121,32 +119,24 @@ fn looks_like_cpp(text: &[u8]) -> bool {
 }
 
 fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
-    let mut blob = BlobFacts::new(language);
     let cpp = language == Language::Cpp || looks_like_cpp(text);
-    let Some(tree) = parse_tree(if cpp { Language::Cpp } else { Language::C }, text, budget) else {
-        if expired(budget) {
-            blob.deadline();
-        } else {
-            blob.unsupported();
-        }
-        return blob;
-    };
-    let root = tree.root_node();
-    if root.has_error() {
-        blob.parse_error(error_lines(root, cpp));
-    }
-    let mut walker = Walker::new(text, budget, cpp);
-    walker.run(root);
-    if walker.halted {
-        blob.deadline();
-    }
-    if walker.too_deep.get() {
-        blob.extractor_failed();
-    }
-    blob.facts = std::mem::take(&mut walker.facts);
-    blob.record_lexical(root);
-    blob.in_source_order();
-    blob
+    let grammar = if cpp { Language::Cpp } else { Language::C };
+    read_tree(
+        language,
+        grammar,
+        text,
+        budget,
+        |root| error_lines(root, cpp),
+        |root, blob| {
+            let mut walker = Walker::new(text, budget, cpp);
+            walker.run(root);
+            blob.walked(
+                std::mem::take(&mut walker.facts),
+                walker.halted,
+                walker.too_deep.get(),
+            );
+        },
+    )
 }
 
 /// The nodes whose named children the walk reads as items, an error node

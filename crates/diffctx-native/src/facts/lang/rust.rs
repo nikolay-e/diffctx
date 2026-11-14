@@ -40,7 +40,7 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
-use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, parse_tree, span, through_errors};
+use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, read_tree, span, through_errors};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher,
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
@@ -64,31 +64,22 @@ impl Extractor for RustExtractor {
 }
 
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
-    let mut blob = BlobFacts::new(Language::Rust);
-    let Some(tree) = parse_tree(Language::Rust, text, budget) else {
-        if expired(budget) {
-            blob.deadline();
-        } else {
-            blob.unsupported();
-        }
-        return blob;
-    };
-    let root = tree.root_node();
-    if root.has_error() {
-        blob.parse_error(error_lines(root));
-    }
-    let mut walker = Walker::new(text, budget);
-    walker.run(root);
-    if walker.halted {
-        blob.deadline();
-    }
-    if walker.too_deep {
-        blob.extractor_failed();
-    }
-    blob.facts = std::mem::take(&mut walker.facts);
-    blob.record_lexical(root);
-    blob.in_source_order();
-    blob
+    read_tree(
+        Language::Rust,
+        Language::Rust,
+        text,
+        budget,
+        error_lines,
+        |root, blob| {
+            let mut walker = Walker::new(text, budget);
+            walker.run(root);
+            blob.walked(
+                std::mem::take(&mut walker.facts),
+                walker.halted,
+                walker.too_deep,
+            );
+        },
+    )
 }
 
 /// A construct the grammar read whole, whatever lies around it.
