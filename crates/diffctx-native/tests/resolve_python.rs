@@ -757,10 +757,6 @@ const RED: &[(&str, &str)] = &[
         "fj#151: open ticket; the case asserts what the engine does not yet answer",
     ),
     (
-        "impact/python/py_method_of_a_class_a_factory_imports_in_its_body_has_a_test_link",
-        "gh#717: open ticket; the case asserts what the engine does not yet answer",
-    ),
-    (
         "symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved",
         "gh#710: open ticket; the case asserts what the engine does not yet answer",
     ),
@@ -1457,10 +1453,10 @@ fn pytest_configuration_files_name_import_roots() {
 }
 
 /// A function with one `return Cls(...)` and nothing else to return makes an
-/// instance of `Cls`, a possibility the signature does not state; one with two
-/// returns, or an annotation, is told by that.
+/// instance of `Cls`, a proof (gh#717); one that returns two different
+/// constructions makes one of them, a possibility.
 #[test]
-fn a_function_returning_a_construction_returns_a_possible_instance() {
+fn a_sole_construction_returns_its_instance_and_a_choice_a_possible_one() {
     let fx = snapshot(&[
         ("app/__init__.py", ""),
         (
@@ -1481,9 +1477,9 @@ fn a_function_returning_a_construction_returns_a_possible_instance() {
             "from tests import helpers\nfrom tests.helpers import either, make\nfrom app.client import Client\nfrom app.other import Other\n\n\ndef test_token():\n    client = make()\n    assert client.token()\n\n\ndef test_qualified():\n    c = helpers.make()\n    assert c.token()\n\n\ndef test_either():\n    e = either(1)\n    assert e.token()\n\n\ndef test_other():\n    o = Other()\n    assert o.token()\n",
         ),
     ]);
-    let possibly = "candidate(UntypedReceiver) app/client.py::Client.token";
-    assert_eq!(fx.lands_at("tests/test_api.py", "token", 9), possibly);
-    assert_eq!(fx.lands_at("tests/test_api.py", "token", 14), possibly);
+    let instance = "app/client.py::Client.token";
+    assert_eq!(fx.lands_at("tests/test_api.py", "token", 9), instance);
+    assert_eq!(fx.lands_at("tests/test_api.py", "token", 14), instance);
     assert_eq!(
         fx.lands_at("tests/test_api.py", "token", 19),
         "candidate(UntypedReceiver) app/client.py::Client.token, app/other.py::Other.token"
