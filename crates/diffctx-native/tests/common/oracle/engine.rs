@@ -16,6 +16,12 @@ use super::model::{Kind, Node, Relation, Resolution, UnknownClass};
 #[derive(Default)]
 pub(crate) struct Answer {
     pub relations: Vec<Relation>,
+    /// Rows the answer folds as not affected (`--unfold` lists them with their
+    /// rule): the reader is told the change cannot have reached them, so they are
+    /// no relation of `relations`; the judge reads them apart. A candidate
+    /// folded for its untyped receiver is no such row: the text says "possible",
+    /// and it stays a relation.
+    pub folded: Vec<(Relation, String)>,
     /// Definitions under `changed[]`: for `--symbol`, the ones it resolved.
     pub definitions: Vec<Node>,
     /// Every changed definition the answer names anywhere, listed or not.
@@ -64,6 +70,10 @@ const ABSENCE_CLAIMS: &[&str] = &[
     "no definition found",
     "untested",
 ];
+
+/// The folding rule whose rows are disclosed candidates, not rows the change
+/// cannot have reached.
+const UNTYPED_RECEIVER: &str = "untyped-receiver";
 
 const ZERO_CALLERS: &str = "0 caller(s)";
 
@@ -533,7 +543,7 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
             }
             let from = node_of(row);
             let stated = stated_kind(row)?;
-            answer.relations.push(Relation {
+            let relation = Relation {
                 from: from.clone(),
                 to: definition.clone(),
                 kind: stated.unwrap_or_else(|| kind_of(class)),
@@ -541,7 +551,12 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
                 sites: lines_of(row),
                 loose_kind: false,
                 kind_stated: stated.is_some(),
-            });
+            };
+            if let Some(rule) = text(row, "folded_by").filter(|rule| *rule != UNTYPED_RECEIVER) {
+                answer.folded.push((relation, rule.to_string()));
+                continue;
+            }
+            answer.relations.push(relation);
             if text(&row["guard"], "state") == Some("linked") {
                 // The first test the guard names, then the others it lists.
                 for test in
