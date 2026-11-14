@@ -311,7 +311,8 @@ impl<'t> Walker<'t> {
                 self.define(node, cx, attrs, docs, shape);
             }
             "use_declaration" => self.import(node, cx),
-            "extern_crate_declaration" | "foreign_mod_item" | "empty_statement" => {}
+            "extern_crate_declaration" => self.extern_crate(node, cx),
+            "foreign_mod_item" | "empty_statement" => {}
             "let_declaration" => self.let_statement(node, cx, depth),
             _ => self.expr(node, cx, depth),
         }
@@ -979,12 +980,34 @@ impl<'t> Walker<'t> {
         let Some(argument) = node.child_by_field_name("argument") else {
             return;
         };
-        let mut cursor = node.walk();
-        let exported = node
-            .named_children(&mut cursor)
-            .any(|c| c.kind() == "visibility_modifier");
+        let exported = is_exported(node);
         let mut leaves: Vec<Leaf> = Vec::new();
         self.use_leaves(argument, &mut Vec::new(), &mut leaves);
+        self.bind_leaves(node, cx, exported, leaves);
+    }
+
+    /// `extern crate a as b;` binds `b` to the crate `a`, as `use a as b;` does.
+    fn extern_crate(&mut self, node: Node<'t>, cx: &Cx) {
+        let (Some(name), Some(alias)) = (
+            node.child_by_field_name("name"),
+            node.child_by_field_name("alias"),
+        ) else {
+            return;
+        };
+        let name = self.ident(name).to_string();
+        let alias = self.ident(alias).to_string();
+        if name == "self" || alias == "_" {
+            return;
+        }
+        let exported = is_exported(node);
+        let leaf = Leaf::Name {
+            path: vec![name],
+            alias: Some(alias),
+        };
+        self.bind_leaves(node, cx, exported, vec![leaf]);
+    }
+
+    fn bind_leaves(&mut self, node: Node<'t>, cx: &Cx, exported: bool, leaves: Vec<Leaf>) {
         let site = span(node);
         for leaf in leaves {
             let (module, names, star) = match leaf {
@@ -1899,6 +1922,12 @@ fn path_of(bytes: &[u8], node: Node<'_>) -> Option<Vec<String>> {
         }
         _ => None,
     }
+}
+
+fn is_exported(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .any(|c| c.kind() == "visibility_modifier")
 }
 
 /// The path before a `*` or a list: empty for `use *;` and `use {a, b};`, and
