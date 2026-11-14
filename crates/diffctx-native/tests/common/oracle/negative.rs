@@ -534,6 +534,11 @@ fn a_site_has_one_standing() -> Result<(), Failed> {
         defined(json!([row("resolved")]), gap(9), json!([])),
         defined(json!([row("candidate")]), gap(5), json!([])),
         defined(
+            json!([charge("resolved", "reference", None)]),
+            gap(5),
+            json!([]),
+        ),
+        defined(
             json!([row("resolved")]),
             json!([]),
             json!([{"path": "shop/other.py", "lines": []}]),
