@@ -139,16 +139,15 @@ fn expressions_of(node: &Node) -> Vec<Expression> {
                 "DoesNotExist" => Operator::DoesNotExist,
                 _ => return None,
             };
-            let values = item
-                .get("values")
-                .and_then(Node::as_seq)
-                .map(|values| {
-                    values
-                        .iter()
-                        .filter_map(|v| Some(v.as_str()?.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let values =
+                item.get("values")
+                    .and_then(Node::as_seq)
+                    .map_or_else(Vec::new, |values| {
+                        values
+                            .iter()
+                            .filter_map(|v| Some(v.as_str()?.to_string()))
+                            .collect()
+                    });
             Some(Expression {
                 key: item.get("key")?.as_str()?.to_string(),
                 operator,
@@ -174,12 +173,11 @@ pub fn selectors(found: &Found<'_>, enclosing: &Scope, rows: &[SelectorRow]) -> 
                     match_labels,
                     hit.node
                         .get("matchExpressions")
-                        .map(expressions_of)
-                        .unwrap_or_default(),
+                        .map_or_else(Vec::new, expressions_of),
                 ),
                 None => (Some(hit.node), Vec::new()),
             };
-            let pairs = pair_node.map(pairs_of).unwrap_or_default();
+            let pairs = pair_node.map_or_else(Vec::new, pairs_of);
             if pairs.is_empty() && expressions.is_empty() {
                 continue;
             }
