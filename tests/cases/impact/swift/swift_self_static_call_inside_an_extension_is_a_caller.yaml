@@ -1,0 +1,34 @@
+name: swift_self_static_call_inside_an_extension_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [swift, extension]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+    Sources/Kit/Feed.swift: |
+      class Feed {
+          static func defaultPageSize() -> Int { return 20 }
+      }
+    Sources/Kit/Feed+Extras.swift: |
+      extension Feed {
+          func refresh() -> Int { return Self.defaultPageSize() }
+      }
+  changed_files:
+    Sources/Kit/Feed.swift: |
+      class Feed {
+          static func defaultPageSize() -> Int { return 25 }
+      }
+  commit_message: "feed: larger pages"
+expect:
+  changed:
+    - Sources/Kit/Feed.swift::defaultPageSize
+  relations:
+    - from: "Sources/Kit/Feed+Extras.swift::refresh"
+      to: "Sources/Kit/Feed.swift::defaultPageSize"
+      kind: calls
+      resolution: resolved
+      site: 2
