@@ -4157,7 +4157,16 @@ pub fn build_impact(
         let Some(cell) = cells.of(&entry.file) else {
             continue;
         };
-        if query.is_none() && matches!(entry.how, decide::How::Edited { layout_only: true }) {
+        // The facts' hash can miss what the syntax changed (the default of a promoted
+        // constructor property): the claim stands unless a hunk of its lines is not layout.
+        let contradicted = state.hunk_texts.iter().any(|h| {
+            let (a, b) = h.new_range();
+            h.path == entry.file && !h.layout && entry.lines.0 <= b && entry.lines.1 >= a
+        });
+        if query.is_none()
+            && !contradicted
+            && matches!(entry.how, decide::How::Edited { layout_only: true })
+        {
             layout_only.push(place(
                 &entry.file,
                 Some(entry.name.as_str()).filter(|_| entry.symbol().is_some()),
