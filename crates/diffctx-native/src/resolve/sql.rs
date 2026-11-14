@@ -13,14 +13,13 @@
 
 use std::collections::HashMap;
 
+use super::solved::{Gathered, gather_of};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
-use crate::facts::{
-    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, UseKind, expired, facts_of,
-};
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
+use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, UseKind};
+use crate::snapshot::{AnalysisContext, Result, SideTag};
 
 /// The bindings of one snapshot's SQL files.
 pub struct SqlResolver {
@@ -30,30 +29,12 @@ pub struct SqlResolver {
 impl SqlResolver {
     /// Resolves every SQL file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files: Vec<FileFacts> = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Sql) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+        let Gathered {
+            losses,
+            files,
+            read,
+            ..
+        } = gather_of(ctx, side, cache, Language::Sql)?;
         let mut definitions = Vec::new();
         let mut by_name: HashMap<(Name, bool), Vec<DefKey>> = HashMap::new();
         for file in &files {

@@ -4,7 +4,8 @@
 
 use super::Solved;
 use super::kotlin;
-use crate::facts::{FactsCache, Language, expired, facts_of};
+use super::solved::{Gathered, gather_of};
+use crate::facts::{FactsCache, Language};
 use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's Swift files.
@@ -15,30 +16,12 @@ pub struct SwiftResolver {
 impl SwiftResolver {
     /// Resolves every Swift file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Swift) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+        let Gathered {
+            mut losses,
+            files,
+            read,
+            ..
+        } = gather_of(ctx, side, cache, Language::Swift)?;
         let (definitions, bindings, stopped) = kotlin::solve_swift(ctx, &files);
         if stopped {
             losses.push(Loss::Deadline {

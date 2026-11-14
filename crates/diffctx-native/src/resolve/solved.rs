@@ -5,8 +5,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::{Binding, Definition};
-use crate::facts::{DefKey, Fact, expired};
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Stage};
+use std::sync::Arc;
+
+use crate::facts::{DefKey, Fact, FactsCache, FileFacts, Language, expired, facts_of};
+use crate::snapshot::{
+    AnalysisContext, Entry, Listing, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage,
+};
 
 pub struct Solved {
     definitions: Vec<Definition>,
@@ -64,6 +68,74 @@ impl Solved {
     pub fn read_paths(&self) -> &[RepoPath] {
         &self.read
     }
+}
+
+/// The snapshot a side of the range names.
+pub(super) fn reader_of(ctx: &AnalysisContext, side: SideTag) -> &SnapshotReader {
+    match side {
+        SideTag::Base => &ctx.base,
+        SideTag::Head => &ctx.head,
+    }
+}
+
+/// What a resolver read of one side: the files it wants as facts, the losses of reading
+/// them and their paths.
+pub(super) struct Gathered {
+    pub listing: Arc<Listing>,
+    pub files: Vec<FileFacts>,
+    pub losses: Vec<Loss>,
+    pub read: Vec<RepoPath>,
+}
+
+/// The facts of every listed file `wants` names whose language `keeps` accepts, until the
+/// run's deadline. `wants` may read or lose other entries (a manifest) on its way.
+pub(super) fn gather(
+    ctx: &AnalysisContext,
+    side: SideTag,
+    cache: &FactsCache,
+    mut wants: impl FnMut(&Entry, &mut Vec<Loss>) -> bool,
+    keeps: impl Fn(&FileFacts) -> bool,
+) -> Result<Gathered> {
+    let listing = cache.listing(reader_of(ctx, side))?;
+    let (mut files, mut losses, mut read) = (Vec::new(), Vec::new(), Vec::new());
+    for entry in &listing.entries {
+        if !wants(entry, &mut losses) {
+            continue;
+        }
+        if expired(&ctx.run) {
+            losses.push(Loss::Deadline {
+                stage: Stage::Search,
+            });
+            break;
+        }
+        if let Some(file) = facts_of(ctx, side, cache, &entry.path)?.filter(&keeps) {
+            losses.extend(file.losses());
+            read.push(entry.path.clone());
+            files.push(file);
+        }
+    }
+    Ok(Gathered {
+        listing,
+        files,
+        losses,
+        read,
+    })
+}
+
+/// [`gather`] for the files of one language.
+pub(super) fn gather_of(
+    ctx: &AnalysisContext,
+    side: SideTag,
+    cache: &FactsCache,
+    language: Language,
+) -> Result<Gathered> {
+    gather(
+        ctx,
+        side,
+        cache,
+        |entry, _| Language::from_path(&entry.path) == Some(language),
+        |file| file.language() == language,
+    )
 }
 
 /// The facts of a file up to the run's deadline, which the engine's `losses` then

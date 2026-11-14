@@ -16,15 +16,15 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::solved::{Gathered, gather_of};
 use super::{
     Binding, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved, UnresolvedReason,
 };
 use crate::facts::config::{PointerKind, Resolved, SourcePointer};
 use crate::facts::{
-    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, Span, UseKind, expired,
-    facts_of,
+    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, Span, UseKind,
 };
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 pub struct TerraformResolver {
     solved: Solved,
@@ -35,32 +35,12 @@ pub struct TerraformResolver {
 impl TerraformResolver {
     /// Resolves every Terraform file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Terraform) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if file.language() == Language::Terraform {
-                    losses.extend(file.losses());
-                    read.push(entry.path.clone());
-                    files.push(file);
-                }
-            }
-        }
+        let Gathered {
+            losses,
+            files,
+            read,
+            ..
+        } = gather_of(ctx, side, cache, Language::Terraform)?;
         let index = Index::build(files);
         let (definitions, bindings, external) = Engine { ix: &index }.run();
         Ok(Self {

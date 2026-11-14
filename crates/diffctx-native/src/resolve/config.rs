@@ -33,6 +33,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::chart;
+use super::solved::{Gathered, gather};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
@@ -43,9 +44,8 @@ use crate::facts::config::{
 };
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, LocalKey, Name, Namespace, Scope,
-    expired, facts_of,
 };
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage};
+use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 /// The files a tool reads where its place is a directory.
 const DIRECTORY_FILES: &[&str] = &[
@@ -85,30 +85,19 @@ struct Target {
 impl ConfigResolver {
     /// Resolves every YAML file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files: Vec<FileFacts> = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if !Language::from_path(&entry.path).is_some_and(Language::is_config_family) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+        let Gathered {
+            losses,
+            files,
+            read,
+            listing,
+            ..
+        } = gather(
+            ctx,
+            side,
+            cache,
+            |entry, _| Language::from_path(&entry.path).is_some_and(Language::is_config_family),
+            |_| true,
+        )?;
         let paths: HashSet<&str> = listing.entries.iter().map(|e| e.path.as_str()).collect();
         let mut directories: HashSet<&str> = HashSet::new();
         for &path in &paths {

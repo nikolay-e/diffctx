@@ -24,7 +24,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use super::index::{DefRec, Path, dir_of, join, scope_path};
-use super::solved::before_deadline;
+use super::solved::{Gathered, before_deadline, gather, reader_of};
 use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -32,12 +32,12 @@ use super::{
 };
 use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Language,
-    LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, facts_of,
+    LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility,
 };
 use crate::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,
-    Stage, WorkspaceModel, normalize_lexical,
+    WorkspaceModel, normalize_lexical,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -72,35 +72,23 @@ impl TypeScriptResolver {
     /// Resolves every TypeScript and JavaScript file of `side`, found by
     /// extension or shebang.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            let language = Language::from_path(&entry.path);
-            let script = language.is_some_and(reads)
-                || (language.is_none() && Language::needs_shebang(&entry.path));
-            if !script {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if reads(file.language()) {
-                    losses.extend(file.losses());
-                    read.push(entry.path.clone());
-                    files.push(file);
-                }
-            }
-        }
+        let reader = reader_of(ctx, side);
+        let Gathered {
+            listing,
+            files,
+            mut losses,
+            read,
+        } = gather(
+            ctx,
+            side,
+            cache,
+            |entry, _| {
+                let language = Language::from_path(&entry.path);
+                language.is_some_and(reads)
+                    || (language.is_none() && Language::needs_shebang(&entry.path))
+            },
+            |file| reads(file.language()),
+        )?;
         // A symlink holds the module it names, as Node and Vite load it: an
         // import of the link reaches the definitions there (#372).
         let mut links: HashMap<String, String> = HashMap::new();
