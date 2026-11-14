@@ -31,6 +31,7 @@ use std::rc::Rc;
 
 use tree_sitter::Node;
 
+use super::walker::hash_tree;
 use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, parse_tree, span};
 use crate::facts::framework;
 use crate::facts::{
@@ -1540,35 +1541,8 @@ impl<'t> Walker<'t> {
 
     // ---- hashes
 
-    /// A tree as node kinds, nesting and leaf text: no comment, no skipped
-    /// subtree. `0` never comes back, so `0` stays a definition's "no body".
-    fn hash_tree(&self, root: Node<'t>, skip: impl Fn(Node<'t>) -> bool) -> u64 {
-        let mut hash = Hasher::new();
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            if node.kind() == "comment" || (node.id() != root.id() && skip(node)) {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
-        hash.finish().unwrap_or(0)
-    }
-
     fn body_hash(&self, body: Node<'t>, doc: Option<usize>) -> u64 {
-        self.hash_tree(body, |n| {
+        hash_tree(self.bytes, body, |n| {
             Some(n.id()) == doc || self.owned.contains(&n.id())
         })
     }
@@ -1692,7 +1666,7 @@ impl<'t> Walker<'t> {
             self.leaf_tokens(t, &mut tokens);
             join_tokens(&tokens)
         });
-        let mut body_hash = value.map_or(0, |v| self.hash_tree(v, |_| false));
+        let mut body_hash = value.map_or(0, |v| hash_tree(self.bytes, v, |_| false));
         let mut text_hash = hash_text(&self.bytes[statement.start_byte()..statement.end_byte()]);
         if let Some(statements) = known
             .key
@@ -1708,7 +1682,7 @@ impl<'t> Walker<'t> {
             body.bytes(&body_hash.to_le_bytes());
             text.bytes(&text_hash.to_le_bytes());
             for statement in statements {
-                body.bytes(&self.hash_tree(*statement, |_| false).to_le_bytes());
+                body.bytes(&hash_tree(self.bytes, *statement, |_| false).to_le_bytes());
                 text.token(self.bytes[statement.start_byte()..statement.end_byte()].trim_ascii());
             }
             body_hash = body.finish().unwrap_or(body_hash);

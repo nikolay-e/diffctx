@@ -43,7 +43,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::walker::hash_outside;
+use super::walker::{hash_outside, hash_tree, is_member};
 use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
@@ -402,13 +402,15 @@ impl<'t> Walker<'t> {
         };
         let key = self.key_for(container, name, ns);
         let body_hash = match body {
-            Some(body) => self.hash_tree(body, &[], None),
+            Some(body) => hash_tree(self.bytes, body, |_| false),
             None if matches!(
                 kind,
                 DefKind::Struct | DefKind::Interface | DefKind::TypeAlias
             ) =>
             {
-                self.hash_tree(root, members, Some(name_node.id()))
+                hash_tree(self.bytes, root, |n| {
+                    is_member(members, n) || n.id() == name_node.id()
+                })
             }
             None => 0,
         };
@@ -461,33 +463,6 @@ impl<'t> Walker<'t> {
             }
         }
         tokens.join(" ")
-    }
-
-    fn hash_tree(&self, root: Node<'t>, members: &[Node<'t>], skip: Option<usize>) -> u64 {
-        let mut hash = Hasher::new();
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            let held = node.id() != root.id()
-                && (members.iter().any(|m| m.id() == node.id()) || Some(node.id()) == skip);
-            if node.kind() == "comment" || held {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
-        hash.finish().unwrap_or(0)
     }
 
     // ---- functions and methods
