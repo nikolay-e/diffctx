@@ -1,0 +1,27 @@
+name: fj156_framework_delegate_method_is_entered_by_the_framework
+mode: impact
+source: fj#156
+issue_state: open
+tags: [swift, delegate, entry]
+repo:
+  initial_files:
+    README.md: |
+      demo
+  changed_files:
+    Sources/Cam/Cam.swift: |
+      import AVFoundation
+
+      final class Cam: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+          func captureOutput(
+              _ output: AVCaptureOutput,
+              didOutput sampleBuffer: CMSampleBuffer,
+              from connection: AVCaptureConnection
+          ) {
+              count += 1
+          }
+          var count = 0
+      }
+  commit_message: "cam: count frames"
+expect:
+  changed: [Sources/Cam/Cam.swift::captureOutput, Sources/Cam/Cam.swift::count]
+  unknowns: {}

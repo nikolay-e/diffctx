@@ -1,0 +1,30 @@
+name: gh638_new_manifest_its_kustomization_does_not_list_is_flagged
+mode: impact
+source: gh#638
+issue_state: open
+tags: [config, kustomize, feature]
+repo:
+  initial_files:
+    k8s/apps/kustomization.yaml: |
+      resources:
+        - a.yaml
+        - b.yaml
+    k8s/apps/a.yaml: |
+      kind: ConfigMap
+      metadata:
+        name: a
+    k8s/apps/b.yaml: |
+      kind: ConfigMap
+      metadata:
+        name: b
+  changed_files:
+    k8s/apps/c.yaml: |
+      kind: ConfigMap
+      metadata:
+        name: c
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: k8s/apps/kustomization.yaml, to: k8s/apps/c.yaml, kind: references_path, resolution: unresolved}

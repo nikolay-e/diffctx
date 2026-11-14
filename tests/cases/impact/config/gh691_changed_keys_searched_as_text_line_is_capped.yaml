@@ -1,0 +1,137 @@
+name: gh691_changed_keys_searched_as_text_line_is_capped
+mode: impact
+source: gh#691
+issue_state: open
+# mode=diff: the defect is the md size of the 'changed keys searched as text' line
+# (uncapped in the report's 1.20 line, capped with 'key search capped' on 2.0).
+# The schema has no size assertion; this case pins only that the answer discloses.
+tags: [config, json, cap, output-size]
+repo:
+  initial_files:
+    README: |
+      base
+  changed_files:
+    ev/r1.json: |
+      {"run_1": {"key_1_alpha": "value-1", "key_1_beta": 1}}
+    ev/r2.json: |
+      {"run_2": {"key_2_alpha": "value-2", "key_2_beta": 2}}
+    ev/r3.json: |
+      {"run_3": {"key_3_alpha": "value-3", "key_3_beta": 3}}
+    ev/r4.json: |
+      {"run_4": {"key_4_alpha": "value-4", "key_4_beta": 4}}
+    ev/r5.json: |
+      {"run_5": {"key_5_alpha": "value-5", "key_5_beta": 5}}
+    ev/r6.json: |
+      {"run_6": {"key_6_alpha": "value-6", "key_6_beta": 6}}
+    ev/r7.json: |
+      {"run_7": {"key_7_alpha": "value-7", "key_7_beta": 7}}
+    ev/r8.json: |
+      {"run_8": {"key_8_alpha": "value-8", "key_8_beta": 8}}
+    ev/r9.json: |
+      {"run_9": {"key_9_alpha": "value-9", "key_9_beta": 9}}
+    ev/r10.json: |
+      {"run_10": {"key_10_alpha": "value-10", "key_10_beta": 10}}
+    ev/r11.json: |
+      {"run_11": {"key_11_alpha": "value-11", "key_11_beta": 11}}
+    ev/r12.json: |
+      {"run_12": {"key_12_alpha": "value-12", "key_12_beta": 12}}
+    ev/r13.json: |
+      {"run_13": {"key_13_alpha": "value-13", "key_13_beta": 13}}
+    ev/r14.json: |
+      {"run_14": {"key_14_alpha": "value-14", "key_14_beta": 14}}
+    ev/r15.json: |
+      {"run_15": {"key_15_alpha": "value-15", "key_15_beta": 15}}
+    ev/r16.json: |
+      {"run_16": {"key_16_alpha": "value-16", "key_16_beta": 16}}
+    ev/r17.json: |
+      {"run_17": {"key_17_alpha": "value-17", "key_17_beta": 17}}
+    ev/r18.json: |
+      {"run_18": {"key_18_alpha": "value-18", "key_18_beta": 18}}
+    ev/r19.json: |
+      {"run_19": {"key_19_alpha": "value-19", "key_19_beta": 19}}
+    ev/r20.json: |
+      {"run_20": {"key_20_alpha": "value-20", "key_20_beta": 20}}
+    ev/r21.json: |
+      {"run_21": {"key_21_alpha": "value-21", "key_21_beta": 21}}
+    ev/r22.json: |
+      {"run_22": {"key_22_alpha": "value-22", "key_22_beta": 22}}
+    ev/r23.json: |
+      {"run_23": {"key_23_alpha": "value-23", "key_23_beta": 23}}
+    ev/r24.json: |
+      {"run_24": {"key_24_alpha": "value-24", "key_24_beta": 24}}
+    ev/r25.json: |
+      {"run_25": {"key_25_alpha": "value-25", "key_25_beta": 25}}
+    ev/r26.json: |
+      {"run_26": {"key_26_alpha": "value-26", "key_26_beta": 26}}
+    ev/r27.json: |
+      {"run_27": {"key_27_alpha": "value-27", "key_27_beta": 27}}
+    ev/r28.json: |
+      {"run_28": {"key_28_alpha": "value-28", "key_28_beta": 28}}
+    ev/r29.json: |
+      {"run_29": {"key_29_alpha": "value-29", "key_29_beta": 29}}
+    ev/r30.json: |
+      {"run_30": {"key_30_alpha": "value-30", "key_30_beta": 30}}
+    ev/r31.json: |
+      {"run_31": {"key_31_alpha": "value-31", "key_31_beta": 31}}
+    ev/r32.json: |
+      {"run_32": {"key_32_alpha": "value-32", "key_32_beta": 32}}
+    ev/r33.json: |
+      {"run_33": {"key_33_alpha": "value-33", "key_33_beta": 33}}
+    ev/r34.json: |
+      {"run_34": {"key_34_alpha": "value-34", "key_34_beta": 34}}
+    ev/r35.json: |
+      {"run_35": {"key_35_alpha": "value-35", "key_35_beta": 35}}
+    ev/r36.json: |
+      {"run_36": {"key_36_alpha": "value-36", "key_36_beta": 36}}
+    ev/r37.json: |
+      {"run_37": {"key_37_alpha": "value-37", "key_37_beta": 37}}
+    ev/r38.json: |
+      {"run_38": {"key_38_alpha": "value-38", "key_38_beta": 38}}
+    ev/r39.json: |
+      {"run_39": {"key_39_alpha": "value-39", "key_39_beta": 39}}
+    ev/r40.json: |
+      {"run_40": {"key_40_alpha": "value-40", "key_40_beta": 40}}
+    ev/r41.json: |
+      {"run_41": {"key_41_alpha": "value-41", "key_41_beta": 41}}
+    ev/r42.json: |
+      {"run_42": {"key_42_alpha": "value-42", "key_42_beta": 42}}
+    ev/r43.json: |
+      {"run_43": {"key_43_alpha": "value-43", "key_43_beta": 43}}
+    ev/r44.json: |
+      {"run_44": {"key_44_alpha": "value-44", "key_44_beta": 44}}
+    ev/r45.json: |
+      {"run_45": {"key_45_alpha": "value-45", "key_45_beta": 45}}
+    ev/r46.json: |
+      {"run_46": {"key_46_alpha": "value-46", "key_46_beta": 46}}
+    ev/r47.json: |
+      {"run_47": {"key_47_alpha": "value-47", "key_47_beta": 47}}
+    ev/r48.json: |
+      {"run_48": {"key_48_alpha": "value-48", "key_48_beta": 48}}
+    ev/r49.json: |
+      {"run_49": {"key_49_alpha": "value-49", "key_49_beta": 49}}
+    ev/r50.json: |
+      {"run_50": {"key_50_alpha": "value-50", "key_50_beta": 50}}
+    ev/r51.json: |
+      {"run_51": {"key_51_alpha": "value-51", "key_51_beta": 51}}
+    ev/r52.json: |
+      {"run_52": {"key_52_alpha": "value-52", "key_52_beta": 52}}
+    ev/r53.json: |
+      {"run_53": {"key_53_alpha": "value-53", "key_53_beta": 53}}
+    ev/r54.json: |
+      {"run_54": {"key_54_alpha": "value-54", "key_54_beta": 54}}
+    ev/r55.json: |
+      {"run_55": {"key_55_alpha": "value-55", "key_55_beta": 55}}
+    ev/r56.json: |
+      {"run_56": {"key_56_alpha": "value-56", "key_56_beta": 56}}
+    ev/r57.json: |
+      {"run_57": {"key_57_alpha": "value-57", "key_57_beta": 57}}
+    ev/r58.json: |
+      {"run_58": {"key_58_alpha": "value-58", "key_58_beta": 58}}
+    ev/r59.json: |
+      {"run_59": {"key_59_alpha": "value-59", "key_59_beta": 59}}
+    ev/r60.json: |
+      {"run_60": {"key_60_alpha": "value-60", "key_60_beta": 60}}
+expect:
+  exact: false
+  never_empty: true
+  discloses: true

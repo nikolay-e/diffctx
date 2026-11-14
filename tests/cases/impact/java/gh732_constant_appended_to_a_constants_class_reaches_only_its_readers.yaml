@@ -1,0 +1,110 @@
+name: gh732_constant_appended_to_a_constants_class_reaches_only_its_readers
+mode: impact
+source: gh#732
+issue_state: open
+tags: [java, constants, granularity, decoys]
+repo:
+  initial_files:
+    src/main/java/app/Limits.java: |
+      package app;
+
+      public final class Limits {
+          public static final int LIMIT_1 = 1;
+          public static final int LIMIT_2 = 2;
+          public static final int LIMIT_3 = 3;
+          public static final int LIMIT_4 = 4;
+          public static final int LIMIT_5 = 5;
+          public static final int LIMIT_6 = 6;
+      }
+    src/main/java/app/User1.java: |
+      package app;
+
+      public class User1 {
+          int cap() {
+              return Limits.LIMIT_1 * 2;
+          }
+      }
+    src/main/java/app/User2.java: |
+      package app;
+
+      public class User2 {
+          int cap() {
+              return Limits.LIMIT_2 * 2;
+          }
+      }
+    src/main/java/app/User3.java: |
+      package app;
+
+      public class User3 {
+          int cap() {
+              return Limits.LIMIT_3 * 2;
+          }
+      }
+    src/main/java/app/User4.java: |
+      package app;
+
+      public class User4 {
+          int cap() {
+              return Limits.LIMIT_4 * 2;
+          }
+      }
+    src/main/java/app/User5.java: |
+      package app;
+
+      public class User5 {
+          int cap() {
+              return Limits.LIMIT_5 * 2;
+          }
+      }
+    src/main/java/app/User6.java: |
+      package app;
+
+      public class User6 {
+          int cap() {
+              return Limits.LIMIT_6 * 2;
+          }
+      }
+    src/main/java/app/UserNew.java: |
+      package app;
+
+      public class UserNew {
+          int cap() {
+              return Limits.LIMIT_NEW + 1;
+          }
+      }
+  changed_files:
+    src/main/java/app/Limits.java: |
+      package app;
+
+      public final class Limits {
+          public static final int LIMIT_1 = 1;
+          public static final int LIMIT_2 = 2;
+          public static final int LIMIT_3 = 3;
+          public static final int LIMIT_4 = 4;
+          public static final int LIMIT_5 = 5;
+          public static final int LIMIT_6 = 6;
+          public static final int LIMIT_NEW = 99;
+      }
+expect:
+  exact: true
+  relations:
+    - from: src/main/java/app/UserNew.java::cap
+      to: src/main/java/app/Limits.java::Limits.LIMIT_NEW
+      kind: reads
+      resolution: resolved
+      site: 5
+  decoys:
+    Limits:
+    - src/main/java/app/User1.java
+    - src/main/java/app/User2.java
+    - src/main/java/app/User3.java
+    - src/main/java/app/User4.java
+    - src/main/java/app/User5.java
+    - src/main/java/app/User6.java
+    LIMIT_NEW:
+    - src/main/java/app/User1.java
+    - src/main/java/app/User2.java
+    - src/main/java/app/User3.java
+    - src/main/java/app/User4.java
+    - src/main/java/app/User5.java
+    - src/main/java/app/User6.java

@@ -1,0 +1,42 @@
+name: fj189_method_through_a_field_chain_is_a_caller
+mode: symbol
+source: fj#189
+issue_state: open
+tags: [rust, receiver, field-chain]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod model;
+      pub mod scanner;
+    src/model.rs: |
+      pub struct Blob {
+          pub bytes: Vec<u8>,
+      }
+
+      impl Blob {
+          pub fn lexical_at(&self, at: usize) -> u8 {
+              self.bytes[at]
+          }
+      }
+
+      pub struct File {
+          pub blob: Blob,
+      }
+    src/scanner.rs: |
+      use crate::model::File;
+
+      pub fn scan(file: &File, start: usize) -> u8 {
+          file.blob.lexical_at(start)
+      }
+query:
+  symbol: lexical_at
+expect:
+  definitions: [src/model.rs::lexical_at]
+  relations:
+    - {from: src/scanner.rs::scan, to: src/model.rs::lexical_at, kind: calls, site: 4}
+  exact: false

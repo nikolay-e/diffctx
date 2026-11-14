@@ -1,0 +1,42 @@
+name: gh179_workspace_package_caller_through_a_barrel_is_resolved
+mode: impact
+source: gh#179
+issue_state: open
+tags:
+- typescript
+- workspace
+- monorepo
+repo:
+  initial_files:
+    apps/web/package.json: |
+      {"name":"@mono/web","version":"1.0.0","dependencies":{"@mono/core":"workspace:*"}}
+    apps/web/src/label.ts: |
+      import { priceOf } from "@mono/core";
+
+      export function label(c: number): string {
+        return "$" + priceOf(c);
+      }
+    package.json: |
+      {"name":"mono","private":true,"workspaces":["packages/*","apps/*"]}
+    packages/core/package.json: |
+      {"name":"@mono/core","version":"1.0.0","main":"src/index.ts","types":"src/index.ts"}
+    packages/core/src/index.ts: |
+      export { priceOf } from "./price";
+    packages/core/src/price.ts: |
+      export function priceOf(cents: number): string {
+        return (cents / 100).toFixed(2);
+      }
+  changed_files:
+    packages/core/src/price.ts: |
+      export function priceOf(cents: number): string {
+        return (cents / 100).toFixed(3);
+      }
+  commit_message: change
+expect:
+  relations:
+  - from: apps/web/src/label.ts::label
+    to: packages/core/src/price.ts::priceOf
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: false
