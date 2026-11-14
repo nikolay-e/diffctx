@@ -1,0 +1,52 @@
+name: k6_swift_symbol_class_named_by_plist_storyboard_and_a_string
+mode: symbol
+source: synthetic
+tags: [swift, literal-name, plist, storyboard]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+    Sources/Kit/Scene.swift: |
+      import Foundation
+      public final class CheckoutSceneDelegate: NSObject {
+          public var window: AnyObject?
+      }
+    Sources/Kit/Boot.swift: |
+      import Foundation
+      func boot() -> AnyObject? {
+          let cls = NSClassFromString("Kit.CheckoutSceneDelegate") as? NSObject.Type
+          return cls?.init()
+      }
+    App/Info.plist: |
+      <plist><dict>
+        <key>UISceneDelegateClassName</key>
+        <string>$(PRODUCT_MODULE_NAME).CheckoutSceneDelegate</string>
+      </dict></plist>
+    App/Main.storyboard: |
+      <document><scenes><scene><objects>
+        <viewController customClass="CheckoutSceneDelegate" customModule="Kit"/>
+      </objects></scene></scenes></document>
+  commit_message: "base"
+query:
+  symbol: CheckoutSceneDelegate
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  definitions:
+    - Sources/Kit/Scene.swift::CheckoutSceneDelegate
+  relations:
+    - from: Sources/Kit/Boot.swift
+      to: Sources/Kit/Scene.swift::CheckoutSceneDelegate
+      kind: calls
+      resolution: unresolved
+    - from: App/Info.plist
+      to: Sources/Kit/Scene.swift::CheckoutSceneDelegate
+      kind: calls
+      resolution: unresolved
+    - from: App/Main.storyboard
+      to: Sources/Kit/Scene.swift::CheckoutSceneDelegate
+      kind: calls
+      resolution: unresolved
