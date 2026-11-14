@@ -307,6 +307,13 @@ const MAX_LITERAL_FILES: usize = 12;
 const SQL_VERBS: &[&str] = &[
     "select", "insert", "update", "delete", "with", "call", "merge",
 ];
+/// The calls and commands that only write their argument out: a name they are
+/// handed is printed for a reader, never resolved by the program.
+const PRINTERS: &[&str] = &[
+    "print", "println", "printf", "fprintf", "puts", "echo", "write", "writeln", "log", "debug",
+    "info", "warn", "warning", "error", "fatal", "trace", "eprint", "eprintln", "print_r",
+    "var_dump",
+];
 /// A fixed prefix an environment variable spells a name with.
 const NAME_PREFIXES: &[&str] = &["TF_VAR_"];
 const TEMPLATE_GLOBS: &[&str] = &[
@@ -415,6 +422,19 @@ fn macro_value(before: &str) -> bool {
     words.next() == Some("#define") && words.next().is_some() && words.next().is_none()
 }
 
+/// Whether the text ahead of a string ends in a call that only prints it:
+/// `print(`, `console.log(`, `echo -n `.
+fn printed(before: &str) -> bool {
+    let before = before.trim_end();
+    let before = before.strip_suffix('(').unwrap_or(before).trim_end();
+    before
+        .split_whitespace()
+        .rev()
+        .find(|token| !token.starts_with('-'))
+        .and_then(|token| token.rsplit(['.', ':']).next())
+        .is_some_and(|callee| PRINTERS.contains(&callee.to_lowercase().as_str()))
+}
+
 /// Whether `before`, the text ahead of a string, ends in an argument's label
 /// (`(module: `, `, type: `, `(name=`), not an assignment or a mapping key.
 fn labeled(before: &str) -> bool {
@@ -458,12 +478,13 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
             // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
-            let placed = reading.values
+            let placed = (reading.values
                 || matches!(lead, Some('(' | ','))
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
                 || macro_value(&text[..from - 1])
-                || value;
+                || value)
+                && !printed(&text[..from - 1]);
             let reference = placed
                 && !head.contains(char::is_whitespace)
                 && !tail.contains(char::is_whitespace)
