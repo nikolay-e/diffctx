@@ -341,6 +341,21 @@ fn a_name_handed_to_a_call_is_passed_as_a_value() {
 }
 
 #[test]
+fn an_explicit_instantiation_of_a_generic_function_is_a_call() {
+    let lines = ref_lines(
+        "package p\n\nfunc F() {\n\t_ = Parse[int](\"1\")\n\t_ = Pair[Celsius, string](1, \"a\")\n}\n",
+    );
+    assert_eq!(
+        lines,
+        [
+            "Call Parse in def:F",
+            "Call Pair in def:F",
+            "TypeUse Celsius in def:F",
+        ]
+    );
+}
+
+#[test]
 fn assignments_write_fields_and_package_variables_not_locals() {
     let lines = ref_lines(
         "package p\n\nfunc F(c *Cart) {\n\tn := 0\n\tn = 1\n\tc.Total += 2\n\tCount++\n\tcart.Mode = 3\n\t_ = n\n}\n",
