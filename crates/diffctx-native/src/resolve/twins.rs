@@ -231,6 +231,99 @@ macro_rules! jvm_engine_methods {
                 })
         }
 
+        /// The bounds of the type parameter `name` as the declaration `own` and the
+        /// ones around `scope` state them, the innermost declaring it; none when no
+        /// declaration does.
+        fn type_param_bounds(
+            &self,
+            f: usize,
+            scope: &[Name],
+            own: Option<usize>,
+            name: &Name,
+        ) -> Option<Vec<Name>> {
+            let bounds_in = |ids: &[usize]| -> Option<Vec<Name>> {
+                let mut found: Option<Vec<Name>> = None;
+                for id in ids {
+                    let params = &self.ix.defs[*id].sig.type_params;
+                    if let Some((_, bounds)) = params.iter().find(|(n, _)| n == name.as_str()) {
+                        found
+                            .get_or_insert_with(Vec::new)
+                            .extend(bounds.iter().map(|b| Name::new(b.as_str())));
+                    }
+                }
+                found
+            };
+            if let Some(found) = own.and_then(|id| bounds_in(&[id])) {
+                return Some(found);
+            }
+            let file = &self.ix.files[f];
+            (1..=scope.len()).rev().find_map(|depth| {
+                let ids = file.by_path.get(&scope[..depth])?;
+                bounds_in(ids)
+            })
+        }
+
+        /// What a written type stands for, one entity per bound when it is a type
+        /// parameter: a value of such a type has the members of each of its bounds.
+        fn type_ents(
+            &self,
+            f: usize,
+            scope: &[Name],
+            own: Option<usize>,
+            name: &Name,
+            depth: usize,
+        ) -> Vec<Ent> {
+            if let Some(bounds) = self.type_param_bounds(f, scope, own, name) {
+                if depth >= MAX_DEPTH {
+                    return vec![Ent::Unknown];
+                }
+                let ents: Vec<Ent> = bounds
+                    .iter()
+                    .flat_map(|bound| self.type_ents(f, scope, own, bound, depth + 1))
+                    .collect();
+                // An unbounded parameter is an `Object` the repository does not declare.
+                return if ents.is_empty() {
+                    vec![Ent::Foreign(name.clone())]
+                } else {
+                    ents
+                };
+            }
+            vec![self.type_ent(f, scope, name)]
+        }
+
+        /// [`Self::type_ents`] as the one entity a stored value stands for: a type
+        /// parameter with several bounds is not told apart before its member is
+        /// known.
+        fn bound_ent(&self, f: usize, scope: &[Name], own: Option<usize>, name: &Name) -> Ent {
+            let mut ents = self.type_ents(f, scope, own, name, 0);
+            if ents.len() > 1 {
+                return Ent::Unknown;
+            }
+            ents.swap_remove(0)
+        }
+
+        /// The entity of a receiver typed by a type parameter with several bounds:
+        /// the one that has the member, else one the repository does not declare,
+        /// which may.
+        fn settle(&self, mut heads: Vec<Ent>, member: &Name) -> Ent {
+            let holds = |e: &Ent| match e {
+                Ent::Instance(class) | Ent::Type(class) => self
+                    .members_of(*class, member, matches!(e, Ent::Type(_)), 0)
+                    .is_some(),
+                _ => false,
+            };
+            let at = if heads.len() > 1 {
+                heads
+                    .iter()
+                    .position(holds)
+                    .or_else(|| heads.iter().position(|e| !matches!(e, Ent::Instance(_))))
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            heads.swap_remove(at)
+        }
+
         fn local_visible(&self, f: usize, name: &Name, at: u32) -> bool {
             self.ix.files[f]
                 .locals
