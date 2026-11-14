@@ -681,8 +681,9 @@ fn in_source_scopes(
 }
 
 /// A doctest runs, in the file it documents, each function of that file its
-/// `>>>` examples call (`python -m doctest`, pytest's `--doctest-modules`): the
-/// test is the example's line.
+/// examples call (`python -m doctest` and pytest's `--doctest-modules` read the
+/// `>>>` examples, `cargo test --doc` the fenced ones): the test is the example's
+/// line.
 fn doctest_runs(state: &ScoredState) -> Vec<Run> {
     let defined: FxHashSet<(&str, &str)> = state
         .all_fragments
@@ -691,31 +692,56 @@ fn doctest_runs(state: &ScoredState) -> Vec<Run> {
         .filter_map(|f| f.symbol_name.as_deref().map(|n| (f.path(), base_symbol(n))))
         .collect();
     let mut runs = Vec::new();
+    let mut rust_read: FxHashSet<&str> = FxHashSet::default();
     for f in &state.all_fragments {
-        if !Path::new(f.path())
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("py"))
-            || !f.content.contains(">>>")
-            || crate::testfiles::is_test_path(Path::new(f.path()))
-        {
+        let path = f.path();
+        if crate::testfiles::is_test_path(Path::new(path)) {
             continue;
         }
-        let shown = rel(state, f.path());
-        for (row, names) in crate::testfiles::doctest_calls(&f.content) {
-            let line = f.start_line() + row as u32;
-            for name in names
-                .into_iter()
-                .filter(|n| defined.contains(&(f.path(), *n)))
-            {
-                runs.push(Run {
-                    file: f.path().to_string(),
-                    symbol: Some(name.to_string()),
-                    tests: vec![(shown.clone(), line)],
-                });
+        let shown = rel(state, path);
+        if rust::is_rust(path) {
+            if !rust_read.insert(path) {
+                continue;
             }
+            if let Some(text) = state.run.source().read_to_string(Path::new(path)) {
+                let calls = crate::testfiles::rust_doc_example_calls(&text);
+                let lines = calls
+                    .into_iter()
+                    .map(|(row, names)| (row as u32 + 1, names));
+                doctest_runs_of(&mut runs, path, &shown, lines, &defined);
+            }
+        } else if Path::new(path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("py"))
+            && f.content.contains(">>>")
+        {
+            let calls = crate::testfiles::doctest_calls(&f.content);
+            let lines = calls
+                .into_iter()
+                .map(|(row, names)| (f.start_line() + row as u32, names));
+            doctest_runs_of(&mut runs, path, &shown, lines, &defined);
         }
     }
     runs
+}
+
+/// The run each called name of `file` that the file defines makes of it.
+fn doctest_runs_of<'t>(
+    runs: &mut Vec<Run>,
+    file: &str,
+    shown: &str,
+    calls: impl Iterator<Item = (u32, Vec<&'t str>)>,
+    defined: &FxHashSet<(&str, &str)>,
+) {
+    for (line, names) in calls {
+        for name in names.into_iter().filter(|n| defined.contains(&(file, *n))) {
+            runs.push(Run {
+                file: file.to_string(),
+                symbol: Some(name.to_string()),
+                tests: vec![(shown.to_string(), line)],
+            });
+        }
+    }
 }
 
 /// The lines of `f` before its own `def`: its decorators, however they wrap.

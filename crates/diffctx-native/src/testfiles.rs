@@ -342,33 +342,71 @@ fn indented_scopes(lines: &[&str], opens: impl Fn(&str) -> bool) -> Vec<(u32, u3
     scopes
 }
 
+/// The names one line of example code calls: a name after a dot is a method of
+/// something else, and is not taken.
+fn called_names(example: &str) -> Vec<&str> {
+    let bytes = example.as_bytes();
+    let mut names = Vec::new();
+    for (open, byte) in bytes.iter().enumerate() {
+        if *byte != b'(' {
+            continue;
+        }
+        let start = bytes[..open]
+            .iter()
+            .rposition(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+            .map_or(0, |at| at + 1);
+        let name = &example[start..open];
+        let after_a_dot = start > 0 && bytes[start - 1] == b'.';
+        if !name.is_empty() && !name.starts_with(|c: char| c.is_ascii_digit()) && !after_a_dot {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// The names the `>>>` examples of `text` call, with the 0-based line of each
-/// example: a doctest runs what it calls, in the file it documents. A name after
-/// a dot is a method of something else and is not taken.
+/// example: a doctest runs what it calls, in the file it documents.
 pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(row, line)| {
+            let names = called_names(line.trim_start().strip_prefix(">>>")?);
+            (!names.is_empty()).then_some((row, names))
+        })
+        .collect()
+}
+
+/// A fence's info string says the example runs as a test (`cargo test --doc`):
+/// plain, `rust`, `should_panic`, an edition. `ignore`, `no_run`, `compile_fail`
+/// and other languages do not run.
+fn fence_runs(info: &str) -> bool {
+    info.split(',')
+        .map(str::trim)
+        .all(|word| matches!(word, "" | "rust" | "should_panic") || word.starts_with("edition"))
+}
+
+/// The names the fenced examples of a Rust file's `///` and `//!` comments call
+/// that `cargo test --doc` runs, with the 0-based line of each.
+pub(crate) fn rust_doc_example_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
     let mut found = Vec::new();
+    let mut fence: Option<bool> = None;
     for (row, line) in text.lines().enumerate() {
-        let Some(example) = line.trim_start().strip_prefix(">>>") else {
+        let line = line.trim_start();
+        let Some(doc) = line
+            .strip_prefix("///")
+            .or_else(|| line.strip_prefix("//!"))
+        else {
+            fence = None;
             continue;
         };
-        let bytes = example.as_bytes();
-        let mut names = Vec::new();
-        for (open, byte) in bytes.iter().enumerate() {
-            if *byte != b'(' {
-                continue;
+        let doc = doc.trim();
+        if let Some(info) = doc.strip_prefix("```") {
+            fence = fence.map_or_else(|| Some(fence_runs(info)), |_| None);
+        } else if fence == Some(true) {
+            let names = called_names(doc);
+            if !names.is_empty() {
+                found.push((row, names));
             }
-            let start = bytes[..open]
-                .iter()
-                .rposition(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
-                .map_or(0, |at| at + 1);
-            let name = &example[start..open];
-            let after_a_dot = start > 0 && bytes[start - 1] == b'.';
-            if !name.is_empty() && !name.starts_with(|c: char| c.is_ascii_digit()) && !after_a_dot {
-                names.push(name);
-            }
-        }
-        if !names.is_empty() {
-            found.push((row, names));
         }
     }
     found
