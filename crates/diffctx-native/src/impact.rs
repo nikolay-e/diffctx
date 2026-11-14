@@ -1215,12 +1215,7 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
     let too_large = state
         .run
         .limited_by(crate::resource::LimitReason::FileTooLarge);
-    let layout: FxHashSet<&str> = state
-        .change_classes
-        .iter()
-        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
-        .map(|(p, _, _)| p.as_str())
-        .collect();
+    let layout = layout_files(state);
     let mut out: Vec<UnanalysedFile> = state
         .run
         .bounded(changed)
@@ -1374,15 +1369,9 @@ impl UntracedNamers {
         if needles.is_empty() {
             return Self::default();
         }
-        let head = diff_range
-            .map(crate::snapshot::split_diff_range)
-            .and_then(|(_, head)| head);
+        let head = head_of(diff_range);
         let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
-        let changed: FxHashSet<String> = state
-            .changed_files
-            .iter()
-            .map(|p| rel(state, &p.to_string_lossy()))
-            .collect();
+        let changed: FxHashSet<String> = changed_rels(state).collect();
         let grepped = read_or_note(
             state,
             crate::grep::grep_lines(
@@ -1661,6 +1650,31 @@ fn same_runtime(a: &str, b: &str) -> bool {
 
 fn rel(state: &ScoredState, path: &str) -> String {
     crate::paths::display_rel_or_abs(&state.root_dir, Path::new(path))
+}
+
+/// The changed files, by the path the answer prints.
+fn changed_rels(state: &ScoredState) -> impl Iterator<Item = String> + '_ {
+    state
+        .changed_files
+        .iter()
+        .map(|p| rel(state, &p.to_string_lossy()))
+}
+
+/// The revision a range ends at, when it names one.
+fn head_of(range: Option<&str>) -> Option<String> {
+    range
+        .map(crate::snapshot::split_diff_range)
+        .and_then(|(_, head)| head)
+}
+
+/// The files whose change is layout alone.
+fn layout_files(state: &ScoredState) -> FxHashSet<&str> {
+    state
+        .change_classes
+        .iter()
+        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
+        .map(|(p, _, _)| p.as_str())
+        .collect()
 }
 
 fn lines_of(id: &FragmentId) -> String {
@@ -4087,12 +4101,7 @@ pub fn build_impact(
         // view is not known to have none.
         if stopped_early && query.is_none() {
             let covered: FxHashSet<String> = cores.iter().map(|c| rel(state, c.path())).collect();
-            for path in state
-                .changed_files
-                .iter()
-                .map(|p| rel(state, &p.to_string_lossy()))
-                .filter(|p| is_code_file(p) && !covered.contains(p))
-            {
+            for path in changed_rels(state).filter(|p| is_code_file(p) && !covered.contains(p)) {
                 changed.push(unfinished_symbol(
                     path,
                     None,
@@ -4109,9 +4118,7 @@ pub fn build_impact(
         for (n, p) in &defined_in {
             defined.entry(n.as_str()).or_default().insert(rel(state, p));
         }
-        let head_rev = analysed
-            .map(crate::snapshot::split_diff_range)
-            .and_then(|(_, head)| head);
+        let head_rev = head_of(analysed);
         // The facts layer answers for the files of the cells' languages
         // (`cell_removed`).
         let read_off_facts = |path: &str| cells.of(path).is_some();
@@ -4203,17 +4210,8 @@ pub fn build_impact(
             .then_with(|| a.lines.cmp(&b.lines))
     });
 
-    let changed_files: Vec<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .collect();
-    let layout_files: FxHashSet<&str> = state
-        .change_classes
-        .iter()
-        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
-        .map(|(p, _, _)| p.as_str())
-        .collect();
+    let changed_files: Vec<String> = changed_rels(state).collect();
+    let layout_files = layout_files(state);
     // A queried symbol changes nothing: the file holding its definition is
     // no contract that moved.
     for path in changed_files.iter().filter(|_| query.is_none()) {
@@ -4985,11 +4983,7 @@ fn key_references(
         state.run.note(crate::resource::LimitReason::ReadFailed);
         decide::Spelled::default()
     });
-    let changed: FxHashSet<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .collect();
+    let changed: FxHashSet<String> = changed_rels(state).collect();
     let source = state.run.source();
     // A file that could not be read or tokenised may spell a key and nothing says
     // it does not: the answer names it as unanalysed instead of staying silent.
@@ -5128,10 +5122,7 @@ fn read_by_collection(
             .filter(|p| p.is_empty() || path.starts_with(&format!("{p}/")))
             .max_by_key(|p| p.len())
     };
-    let changed: FxHashSet<(&str, String)> = state
-        .changed_files
-        .iter()
-        .map(|f| rel(state, &f.to_string_lossy()))
+    let changed: FxHashSet<(&str, String)> = changed_rels(state)
         .chain(state.deleted_files.iter().cloned())
         .filter_map(|path| {
             let project = project_of(&path)?;
@@ -5142,9 +5133,7 @@ fn read_by_collection(
     if changed.is_empty() {
         return (Vec::new(), 0);
     }
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
+    let head = head_of(diff_range);
     let grepped = read_or_note(
         state,
         crate::grep::grep_lines_matching(
