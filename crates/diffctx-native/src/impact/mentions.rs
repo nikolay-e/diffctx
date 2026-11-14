@@ -25,8 +25,8 @@ use serde::Serialize;
 
 use super::{
     Cells, MAX_NAMED_BY, MAX_NAMED_BY_PER_TARGET, MAX_STALE_PER_TARGET, MAX_STALE_REFERENCES,
-    PROJECT_MANIFESTS, PathReference, ScoredState, StaleReference, extension, is_code_file,
-    is_document, read_or_note, rel,
+    PROJECT_MANIFESTS, PathReference, ScoredState, StaleReference, changed_rels, extension,
+    head_of, is_code_file, is_document, read_or_note,
 };
 
 /// The kind of place a path is mentioned in.
@@ -285,6 +285,34 @@ pub(super) fn naming(
         .then_some(Naming::UniqueBasename)
 }
 
+pub(super) fn basename_of(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
+/// What a search for the paths `targets` takes: the repository root as a
+/// token spells it, how many files share each basename, and the needles, each
+/// path and its basename.
+pub(super) fn path_search(
+    state: &ScoredState,
+    targets: &[String],
+) -> (String, FxHashMap<String, usize>, Vec<String>) {
+    let mut basenames: FxHashMap<String, usize> = FxHashMap::default();
+    for p in read_or_note(state, state.run.source().list_paths(&state.root_dir)) {
+        *basenames.entry(basename_of(&p)).or_default() += 1;
+    }
+    let mut needles: Vec<String> = targets
+        .iter()
+        .flat_map(|t| [t.clone(), basename_of(t)])
+        .collect();
+    needles.sort();
+    needles.dedup();
+    (
+        state.root_dir.to_string_lossy().replace('\\', "/"),
+        basenames,
+        needles,
+    )
+}
+
 /// What still names a path the change deleted or renamed, in the tree the
 /// change leaves behind: the range's head, or the working tree.
 pub(super) fn stale_references(
@@ -307,9 +335,7 @@ pub(super) fn stale_references(
         return (Vec::new(), 0);
     }
     let root = state.root_dir.to_string_lossy().replace('\\', "/");
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
+    let head = head_of(diff_range);
     let surviving: FxHashSet<String> =
         read_or_note(state, state.run.source().list_paths(&state.root_dir))
             .into_iter()
@@ -613,32 +639,14 @@ pub(super) fn named_by_path(
 ) -> (Vec<PathReference>, usize) {
     // Every build step names a project manifest; that it changed is said
     // where dependencies are.
-    let targets: Vec<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
+    let targets: Vec<String> = changed_rels(state)
         .filter(|t| !PROJECT_MANIFESTS.contains(&t.rsplit('/').next().unwrap_or(t)))
         .collect();
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
-    let root = state.root_dir.to_string_lossy().replace('\\', "/");
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
-    let mut basenames: FxHashMap<String, usize> = FxHashMap::default();
-    for p in read_or_note(state, state.run.source().list_paths(&state.root_dir)) {
-        if let Some(b) = p.rsplit('/').next() {
-            *basenames.entry(b.to_string()).or_default() += 1;
-        }
-    }
-    let basename_of = |t: &str| t.rsplit('/').next().unwrap_or(t).to_string();
-    let mut needles: Vec<String> = targets
-        .iter()
-        .flat_map(|t| [t.clone(), basename_of(t)])
-        .collect();
-    needles.sort();
-    needles.dedup();
+    let head = head_of(diff_range);
+    let (root, basenames, needles) = path_search(state, &targets);
     // A file the ignore rules withhold is not searched here; the header's
     // withheld count stays the one the answer's own reads give.
     let grepped = read_or_note(
