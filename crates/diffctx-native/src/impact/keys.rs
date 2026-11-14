@@ -3,6 +3,8 @@
 //! changed side and on the reader's. The reader side is the token index's
 //! (`Cells::spelled_lines`); this is the vocabulary both sides agree on.
 
+use super::ScoredState;
+
 /// The terms of one line of a config: its key-shaped words and its value phrases.
 pub(super) fn terms(line: &str) -> Vec<String> {
     changed_words(line).chain(value_phrases(line)).collect()
@@ -240,4 +242,326 @@ fn key_like(word: &str) -> bool {
         .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_');
     let long = chars.len() >= 8 && chars.iter().all(char::is_ascii_lowercase);
     joined || camel || constant || long
+}
+
+/// Where a changed name is spelled as a literal: a string a program resolves
+/// by name (`getattr(m, "compute")`, `"pkg.core:entry"`, `@MethodSource("A#m")`,
+/// `init-method="init"`), a value of a config or a flag (`controller: A::show`,
+/// `--target stage`, `TF_VAR_name`), a member call of a template, a name inside
+/// a query string, or the head of a name a program completes at run time
+/// (`"cmd_$1"`). A plain word is no key, and a plain word as a literal is the
+/// whole string or the tail of a qualified one, never a word of a sentence.
+/// What it finds is a candidate to name, never a binding.
+#[derive(Default)]
+pub(super) struct LiteralNames {
+    rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>>,
+}
+
+const MIN_LITERAL_NAME: usize = 4;
+const NAMES_PER_SEARCH: usize = 40;
+/// A name that fills more files than this is a common word, not a reference.
+const MAX_LITERAL_FILES: usize = 12;
+const SQL_VERBS: &[&str] = &[
+    "select", "insert", "update", "delete", "with", "call", "merge",
+];
+/// A fixed prefix an environment variable spells a name with.
+const NAME_PREFIXES: &[&str] = &["TF_VAR_"];
+const TEMPLATE_GLOBS: &[&str] = &[
+    ":(glob,icase)**/*.html",
+    ":(glob,icase)**/*.htm",
+    ":(glob,icase)**/*.xhtml",
+    ":(glob,icase)**/*.jsp",
+    ":(glob,icase)**/*.ftl",
+    ":(glob,icase)**/*.vm",
+    ":(glob,icase)**/*.twig",
+    ":(glob,icase)**/*.erb",
+    ":(glob,icase)**/*.haml",
+    ":(glob,icase)**/*.slim",
+    ":(glob,icase)**/*.mustache",
+    ":(glob,icase)**/*.hbs",
+];
+
+fn word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn qualifier(c: char) -> bool {
+    matches!(c, '.' | ':' | '#' | '/' | '\\')
+}
+
+fn literal_name(name: &str) -> bool {
+    name.chars().count() >= MIN_LITERAL_NAME && name.chars().all(|c| word_char(c) || c == '-')
+}
+
+/// The heads of `name` a program can complete: up to each `_`.
+fn dynamic_heads(name: &str) -> impl Iterator<Item = &str> {
+    name.match_indices('_')
+        .map(|(at, _)| &name[..=at])
+        .filter(move |head| head.len() >= MIN_LITERAL_NAME && head.len() < name.len())
+}
+
+/// `[start, end)` of the quoted strings of a line, quotes excluded.
+fn quoted_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut open: Option<(char, usize)> = None;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        match open {
+            Some((q, from)) => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    spans.push((from, i));
+                    open = None;
+                }
+            }
+            None if matches!(c, '"' | '\'' | '`') => open = Some((c, i + 1)),
+            None => {}
+        }
+    }
+    spans
+}
+
+/// What a file's strings and values are read as.
+#[derive(Clone, Copy)]
+struct Reading {
+    /// Source code: a string names a callee only as an argument (`getattr(m,
+    /// "f")`, `@MethodSource("A#m")`) or as a qualified path in a list.
+    code: bool,
+    /// A config or a command file: its values and flags name what they run.
+    values: bool,
+}
+
+impl Reading {
+    fn of(path: &str) -> Option<Self> {
+        let code = super::is_code_file(path);
+        let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
+        let values = matches!(
+            super::extension(path).as_str(),
+            "yaml"
+                | "yml"
+                | "toml"
+                | "ini"
+                | "cfg"
+                | "properties"
+                | "conf"
+                | "env"
+                | "xml"
+                | "mk"
+                | "html"
+                | "htm"
+                | "xhtml"
+                | "jsp"
+                | "ftl"
+                | "vm"
+                | "twig"
+                | "erb"
+                | "haml"
+                | "slim"
+        ) || !name.contains('.')
+            || name.starts_with("dockerfile");
+        (code || values).then_some(Self { code, values })
+    }
+}
+
+/// Whether `text` spells `name` as a literal in a file read as `reading`.
+fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
+    let spans = quoted_spans(text);
+    let sql = name.chars().any(|c| c == '_' || c.is_ascii_digit());
+    text.match_indices(name).any(|(at, _)| {
+        let end = at + name.len();
+        let before = text[..at].chars().next_back();
+        let after = text[end..].chars().next();
+        let prefixed = NAME_PREFIXES.iter().any(|p| text[..at].ends_with(p));
+        if (before.is_some_and(word_char) && !prefixed) || after.is_some_and(word_char) {
+            return false;
+        }
+        if prefixed {
+            return true;
+        }
+        if let Some(&(from, to)) = spans.iter().find(|(f, t)| *f <= at && end <= *t) {
+            let inside = &text[from..to];
+            let head = &text[from..at];
+            let tail = &text[end..to];
+            let qualified = !head.is_empty();
+            let lead = text[..from - 1].trim_end().chars().next_back();
+            let placed = reading.values
+                || matches!(lead, Some('(' | ','))
+                || (qualified && matches!(lead, Some('[')));
+            let reference = placed
+                && !inside.contains(char::is_whitespace)
+                && (!qualified || head.ends_with(qualifier))
+                && (tail.is_empty() || tail.starts_with(['(', '=', ':', '[']));
+            let query = sql
+                && inside
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|w| SQL_VERBS.contains(&w.to_lowercase().as_str()));
+            return reference || query;
+        }
+        if !reading.values {
+            return false;
+        }
+        if before == Some('.') && after == Some('(') {
+            return true;
+        }
+        // A value of a config or the argument of a flag: the tail of the token
+        // that follows `key:`, `key=` or `--flag`.
+        let token_start = text[..at].rfind(char::is_whitespace).map_or(0, |i| i + 1);
+        let token_head = &text[token_start..at];
+        let before_token = text[..token_start].trim_end();
+        let qualified = token_head.is_empty() || token_head.ends_with(qualifier);
+        let value = before_token.ends_with([':', '='])
+            || before_token
+                .rsplit(char::is_whitespace)
+                .next()
+                .is_some_and(|w| w.starts_with('-') && w.len() > 1)
+            || token_head.contains('=');
+        qualified
+            && value
+            && after.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';' | '\'' | '"' | '='))
+    }) || dynamic_heads(name).any(|head| {
+        text.match_indices(head).any(|(at, _)| {
+            let rest = &text[at + head.len()..];
+            !text[..at].chars().next_back().is_some_and(word_char)
+                && ["$", "%s", "#{", "{"].iter().any(|m| rest.starts_with(m))
+        })
+    })
+}
+
+/// The grep selecting the lines that can hold `names` as a literal, over the
+/// forms `spells_literally` reads back.
+fn literal_pattern(names: &[&str]) -> String {
+    let alt = |words: Vec<&str>| {
+        words
+            .into_iter()
+            .map(regex::escape)
+            .collect::<Vec<_>>()
+            .join("|")
+    };
+    let all = alt(names.to_vec());
+    let query = alt(names
+        .iter()
+        .copied()
+        .filter(|n| n.chars().any(|c| c == '_' || c.is_ascii_digit()))
+        .collect());
+    let heads = alt(names.iter().flat_map(|n| dynamic_heads(n)).collect());
+    let verbs: String = SQL_VERBS
+        .iter()
+        .map(|v| {
+            v.chars()
+                .map(|c| format!("[{}{}]", c, c.to_ascii_uppercase()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    let mut forms = vec![
+        format!(r#"["'`]([^"'`[:space:]]*[.:#/\\])?({all})["'`(=:\[]"#),
+        format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),
+        format!(r#"(^|[[:space:]])--?[[:alnum:]-]+[ =]['"]?({all})(['"=[:space:]]|$)"#),
+    ];
+    if !query.is_empty() {
+        forms.push(format!(
+            r#"["'`][[:space:]]*({verbs})[[:space:]]([^"'`]*[^[:alnum:]_])?({query})[^[:alnum:]_]"#
+        ));
+        for prefix in NAME_PREFIXES {
+            forms.push(format!("{prefix}({query})"));
+        }
+    }
+    if !heads.is_empty() {
+        forms.push(format!(r#"({heads})(\$|%s|#\{{|\{{)"#));
+    }
+    forms.join("|")
+}
+
+impl LiteralNames {
+    /// The lines of the tree at the range's head, outside the change, that spell
+    /// one of `names` as a literal.
+    pub(super) fn build(state: &ScoredState, diff_range: Option<&str>, names: &[&str]) -> Self {
+        let mut wanted: Vec<&str> = names.iter().copied().filter(|n| literal_name(n)).collect();
+        wanted.sort_unstable();
+        wanted.dedup();
+        if wanted.is_empty() {
+            return Self::default();
+        }
+        let changed: rustc_hash::FxHashSet<String> = super::changed_rels(state).collect();
+        let head = super::head_of(diff_range);
+        let source = state.run.source();
+        let mut rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>> =
+            rustc_hash::FxHashMap::default();
+        for chunk in wanted.chunks(NAMES_PER_SEARCH) {
+            if !state.run.check() {
+                break;
+            }
+            let templates = format!(
+                r"[.]({})[(]",
+                chunk
+                    .iter()
+                    .map(|n| regex::escape(n))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            );
+            let found = [
+                (literal_pattern(chunk), Vec::new()),
+                (templates, TEMPLATE_GLOBS.to_vec()),
+            ];
+            for (pattern, pathspec) in found {
+                let grepped = super::read_or_note(
+                    state,
+                    crate::grep::grep_lines_matching(
+                        &state.root_dir,
+                        &source,
+                        &pattern,
+                        head.as_deref(),
+                        &pathspec,
+                    ),
+                );
+                state.run.note_withheld(grepped.withheld);
+                for (path, line, text) in state.run.bounded(&grepped.rows) {
+                    if changed.contains(path)
+                        || super::is_document(path)
+                        || super::mentions::selects_paths(path)
+                        || super::mentions::commented(text)
+                        || matches!(
+                            super::extension(path).as_str(),
+                            "diff"
+                                | "patch"
+                                | "lock"
+                                | "tex"
+                                | "bib"
+                                | "csv"
+                                | "tsv"
+                                | "log"
+                                | "svg"
+                        )
+                    {
+                        continue;
+                    }
+                    let Some(reading) = Reading::of(path) else {
+                        continue;
+                    };
+                    for name in chunk.iter().filter(|n| spells_literally(text, n, reading)) {
+                        let named = rows.entry((*name).to_string()).or_default();
+                        if !named.iter().any(|(p, _)| p == path) {
+                            named.push((path.clone(), *line));
+                        }
+                    }
+                }
+            }
+        }
+        Self { rows }
+    }
+
+    /// The files that spell `name` as a literal, one line each; none when the
+    /// name is a common word.
+    pub(super) fn naming(&self, name: &str) -> Vec<(String, u32)> {
+        let mut named = self.rows.get(name).cloned().unwrap_or_default();
+        if named.len() > MAX_LITERAL_FILES {
+            return Vec::new();
+        }
+        named.sort();
+        named
+    }
 }

@@ -313,6 +313,37 @@ pub(super) fn path_search(
     )
 }
 
+/// The directories the change emptied: a path that names one (`path: apps/pricing`,
+/// `kustomize build apps/pricing`) is as stale as one naming a file of it. A
+/// top-level directory is no target: its bare name is a common word.
+fn gone_directories(targets: &[(String, String)], tree: &[String]) -> Vec<(String, String)> {
+    let mut gone: Vec<(String, String)> = Vec::new();
+    for (old, kind) in targets {
+        let Some(dir) = old
+            .match_indices('/')
+            .map(|(at, _)| &old[..at])
+            .filter(|dir| dir.contains('/'))
+            .find(|dir| {
+                !tree
+                    .iter()
+                    .any(|p| p.strip_prefix(dir).is_some_and(|r| r.starts_with('/')))
+            })
+        else {
+            continue;
+        };
+        if gone.iter().any(|(d, _)| d == dir) {
+            continue;
+        }
+        let tail = &old[dir.len()..];
+        let kind = kind
+            .strip_prefix("renamed to ")
+            .and_then(|new| new.strip_suffix(tail))
+            .map_or_else(|| kind.clone(), |new_dir| format!("renamed to {new_dir}"));
+        gone.push((dir.to_string(), kind));
+    }
+    gone
+}
+
 /// What still names a path the change deleted or renamed, in the tree the
 /// change leaves behind: the range's head, or the working tree.
 pub(super) fn stale_references(
@@ -335,11 +366,14 @@ pub(super) fn stale_references(
         return (Vec::new(), 0);
     }
     let root = state.root_dir.to_string_lossy().replace('\\', "/");
-    let surviving: FxHashSet<String> =
-        read_or_note(state, state.run.source().list_paths(&state.root_dir))
-            .into_iter()
-            .filter_map(|p| p.rsplit('/').next().map(str::to_string))
-            .collect();
+    let tree = read_or_note(state, state.run.source().list_paths(&state.root_dir));
+    let directories = gone_directories(&targets, &tree);
+    let directory_names: FxHashSet<String> = directories.iter().map(|(d, _)| d.clone()).collect();
+    targets.extend(directories);
+    let surviving: FxHashSet<String> = tree
+        .iter()
+        .filter_map(|p| p.rsplit('/').next().map(str::to_string))
+        .collect();
     let mut sharing: FxHashMap<&str, usize> = FxHashMap::default();
     for (target, _) in &targets {
         *sharing
@@ -360,6 +394,9 @@ pub(super) fn stale_references(
     let mut needles: Vec<String> = Vec::new();
     for (target, _) in &targets {
         needles.push(target.clone());
+        if directory_names.contains(target) {
+            continue;
+        }
         if let Some(name) = Path::new(target).file_name().and_then(|n| n.to_str()) {
             needles.push(name.to_string());
         }
