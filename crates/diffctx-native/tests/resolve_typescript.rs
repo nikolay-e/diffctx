@@ -782,6 +782,30 @@ fn cases_root() -> PathBuf {
 /// the run, as does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
+        "impact/typescript/tsx_webpack_resolve_alias_binds_the_import",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
+        "impact/typescript/tsx_babel_module_resolver_alias_binds_the_import",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
+        "impact/typescript/tsx_rollup_plugin_alias_binds_the_import",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
+        "impact/typescript/tsx_jest_module_name_mapper_binds_the_import",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
+        "impact/typescript/tsx_bare_import_naming_no_package_is_a_candidate_not_silence",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
+        "impact/typescript/tsx_element_access_call_on_a_typed_receiver_is_a_call",
+        "black-box TSX: the fix lands in the next commit",
+    ),
+    (
         "impact/typescript/ts_removed_member_read_through_an_untyped_receiver_is_a_candidate",
         "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
     ),

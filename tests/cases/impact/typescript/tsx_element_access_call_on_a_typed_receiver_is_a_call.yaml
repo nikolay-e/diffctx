@@ -1,0 +1,30 @@
+name: tsx_element_access_call_on_a_typed_receiver_is_a_call
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, element-access]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"ti"}
+    src/repo.ts: |
+      export class Repo {
+        load(x: number) {
+          return x + 1;
+        }
+      }
+    src/use.ts: |
+      import { Repo } from "./repo";
+      export const use = (r: Repo) => r["load"](1);
+  changed_files:
+    src/repo.ts: |
+      export class Repo {
+        load(x: number) {
+          return x + 2;
+        }
+      }
+  commit_message: "repo: add two"
+expect:
+  changed: [src/repo.ts::load]
+  relations:
+    - {from: "src/use.ts::use", to: "src/repo.ts::load", kind: calls, resolution: resolved, site: 2}
