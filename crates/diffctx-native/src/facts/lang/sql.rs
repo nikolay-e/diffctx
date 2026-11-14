@@ -28,7 +28,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Language, LocalKey, Name, Namespace, Receiver, Ref,
     Scope, Span, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 pub struct SqlExtractor;
 
@@ -44,9 +44,7 @@ impl Extractor for SqlExtractor {
             return blob;
         }
         let Ok(source) = std::str::from_utf8(text) else {
-            blob.losses.push(Loss::Unsupported {
-                path: RepoPath::new("<blob>").expect("a valid path"),
-            });
+            blob.unsupported();
             return blob;
         };
         blob.facts = facts_of(source);

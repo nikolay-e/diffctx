@@ -40,7 +40,7 @@ use crate::facts::{
     Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
     hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;
@@ -59,17 +59,13 @@ impl Extractor for PythonExtractor {
 
 /// A blob names no path, so a loss it raises about itself carries this one
 /// for `facts_of` to replace with the file's own.
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Python);
     let Some(tree) = parse_tree(Language::Python, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
         }
         return blob;
     };
@@ -83,7 +79,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.deadline();
     }
     if walker.too_deep.get() {
-        blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+        blob.extractor_failed();
     }
     blob.facts = std::mem::take(&mut walker.facts);
     framework::derive(&mut blob);

@@ -41,7 +41,7 @@ use crate::facts::{
     LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired,
     hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 pub struct ShellExtractor;
 
@@ -51,10 +51,6 @@ pub const SCRIPT: &str = "<script>";
 const MAX_DEPTH: usize = 120;
 /// Nodes between two looks at the run's deadline.
 const POLL_EVERY: usize = 256;
-
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
-}
 
 #[cfg(feature = "tree-sitter-bash")]
 fn grammar() -> Option<TsLanguage> {
@@ -97,22 +93,22 @@ impl Extractor for ShellExtractor {
     fn extract(&self, text: &[u8], budget: &RunBudget) -> BlobFacts {
         let mut blob = BlobFacts::new(Language::Shell);
         let Ok(source) = std::str::from_utf8(text) else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
             return blob;
         };
         if names_another_shell(source) {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
             return blob;
         }
         let Some(grammar) = grammar() else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
             return blob;
         };
         let Some(tree) = syntax::parse(&grammar, text, budget) else {
             if expired(budget) {
                 blob.deadline();
             } else {
-                blob.losses.push(Loss::Unsupported { path: unbound() });
+                blob.unsupported();
             }
             return blob;
         };
@@ -128,7 +124,7 @@ impl Extractor for ShellExtractor {
             blob.deadline();
         }
         if walker.too_deep {
-            blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+            blob.extractor_failed();
         }
         blob.facts = walker.facts;
         blob.record_lexical(root);
@@ -154,7 +150,7 @@ impl Extractor for UnreadShellExtractor {
 
     fn extract(&self, _text: &[u8], _budget: &RunBudget) -> BlobFacts {
         let mut blob = BlobFacts::new(Language::ShellUnread);
-        blob.losses.push(Loss::Unsupported { path: unbound() });
+        blob.unsupported();
         blob
     }
 }
