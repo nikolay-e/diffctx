@@ -669,16 +669,8 @@ fn cases_root() -> PathBuf {
 /// red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
-        "impact/go/g1q_aliased_package_explicit_instantiation_is_a_call",
-        "`c.Parse[int](x)` parses as a conversion to a qualified generic type and is emitted as a type use",
-    ),
-    (
         "impact/go/g1q_go_linkname_target_is_a_call_from_the_directive",
         "the `//go:linkname` directive names its target by import path and no fact is emitted for it",
-    ),
-    (
-        "impact/go/g1q_package_qualified_explicit_instantiation_is_a_call",
-        "`conv.Parse[int](x)` parses as a conversion to a qualified generic type and is emitted as a type use",
     ),
     (
         "impact/go/go_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
