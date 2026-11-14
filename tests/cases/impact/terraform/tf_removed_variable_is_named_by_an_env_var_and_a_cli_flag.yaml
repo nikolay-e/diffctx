@@ -5,6 +5,10 @@ tags: [terraform, literal-name, tf-var]
 repo:
   initial_files:
     stacks/app/variables.tf: |
+      variable "region" {
+        type = string
+      }
+
       variable "db_password_secret" {
         type = string
       }
@@ -21,6 +25,14 @@ repo:
       output "secret" {
         value = var.db_password_secret
       }
+
+      output "where" {
+        value = var.region
+      }
+
+      output "bucket" {
+        value = aws_s3_bucket.b
+      }
     .github/workflows/plan.yml: |
       jobs:
         plan:
@@ -34,12 +46,20 @@ repo:
       	terraform -chdir=stacks/app plan -var 'bucket_names=["c"]'
   changed_files:
     stacks/app/variables.tf: |
-      variable "unrelated" {
+      variable "region" {
         type = string
       }
     stacks/app/main.tf: |
       resource "aws_s3_bucket" "b" {
         bucket = "fixed"
+      }
+
+      output "where" {
+        value = var.region
+      }
+
+      output "bucket" {
+        value = aws_s3_bucket.b
       }
   commit_message: "tf: drop the two variables"
 expect:
