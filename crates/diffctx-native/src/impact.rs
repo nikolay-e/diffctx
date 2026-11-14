@@ -3416,7 +3416,7 @@ pub fn build_impact(
             .chain(&cell_apart)
             .map(|e| e.name.as_str())
             .collect();
-        let own: Vec<(String, String, (u32, u32))> = cell_defs
+        let own: Vec<keys::OwnSpan> = cell_defs
             .values()
             .chain(&cell_apart)
             .map(|e| (e.file.clone(), literal_base(&e.name).to_string(), e.lines))
@@ -3433,10 +3433,6 @@ pub fn build_impact(
                         )
                     }),
             )
-            .collect();
-        let own: Vec<keys::OwnSpan> = own
-            .iter()
-            .map(|(file, name, lines)| (file.as_str(), name.as_str(), *lines))
             .collect();
         UntracedNamers::build(state, &cores, &removed, &own, diff_range)
     };
