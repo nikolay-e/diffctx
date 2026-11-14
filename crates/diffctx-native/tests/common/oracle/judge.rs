@@ -124,13 +124,15 @@ fn compare_relations(
                     break;
                 }
             }
+            if hits == 0 && answer.folded.iter().any(|f| folded_stands_for(want, f)) {
+                hits = 1;
+                counts.entry(want.kind.name()).or_default().tp += 1;
+            }
             if hits == 0 {
                 red = true;
                 counts.entry(want.kind.name()).or_default().fn_ += 1;
                 lines.push(format!("  - missing {}", want.show()));
-                if let Some(near) = actual.iter().find(|got| want.from.covers(&got.from)) {
-                    lines.push(format!("      the answer has {}", near.show()));
-                }
+                explain_missing(want, &actual, answer, &mut lines);
             }
         }
         for (i, got) in actual.iter().enumerate() {
@@ -167,6 +169,54 @@ fn compare_relations(
                 lines.join("\n")
             ));
         }
+    }
+}
+
+/// The kinds a folding rule folds: a folded row is the answer finding a relation
+/// of that kind and calling it immaterial, so it still stands for an
+/// expectation naming that kind. It never stands for a call, a read, a write or
+/// an expectation naming no kind (`callers`): that is a caller the answer
+/// tells the reader is not one.
+fn folded_kinds(rule: &str) -> &'static [Kind] {
+    match rule {
+        "declared-type" => &[Kind::TypeUse],
+        "override-not-run" => &[Kind::Overrides],
+        "imports-a-body" => &[Kind::Imports, Kind::Reexports],
+        _ => &[],
+    }
+}
+
+/// The folded row joins `want`'s ends at its standing and sites, whatever the
+/// kind its class implies: a folded row's kind is the one its rule folds.
+fn folded_pairs(want: &Relation, (row, _): &(Relation, String)) -> bool {
+    let as_wanted = Relation {
+        kind: want.kind,
+        kind_stated: false,
+        ..row.clone()
+    };
+    want.to.covers(&row.to) && pairs(want, &as_wanted)
+}
+
+fn folded_stands_for(want: &Relation, folded: &(Relation, String)) -> bool {
+    !want.loose_kind && folded_kinds(&folded.1).contains(&want.kind) && folded_pairs(want, folded)
+}
+
+/// Why an expected relation has no row: the answer folds it as not affected,
+/// or has a row at the caller only.
+fn explain_missing(
+    want: &Relation,
+    actual: &[&Relation],
+    answer: &Answer,
+    lines: &mut Vec<String>,
+) {
+    if let Some(folded) = answer.folded.iter().find(|f| folded_pairs(want, f)) {
+        lines.push(format!(
+            "      the answer folds {} as not affected ({}): a row it does not list as a caller",
+            folded.0.show(),
+            folded.1
+        ));
+    } else if let Some(near) = actual.iter().find(|got| want.from.covers(&got.from)) {
+        lines.push(format!("      the answer has {}", near.show()));
     }
 }
 
