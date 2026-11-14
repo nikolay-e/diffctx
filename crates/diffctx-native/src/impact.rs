@@ -528,7 +528,7 @@ pub fn named_tests(tests: &[TestLink]) -> Vec<&TestLink> {
         .collect()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Caller {
     pub path: String,
     pub symbol: Option<String>,
@@ -593,19 +593,10 @@ impl Caller {
             symbol,
             lines,
             weight: 1.0,
-            tests: Vec::new(),
-            file_tested: false,
-            registered_by: None,
-            unread_test: None,
-            tests_open: false,
             evidence,
-            reason: None,
             relation,
-            kind: None,
-            folded_by: None,
-            fold_kind: None,
-            fold_share: 0,
             sites: vec![site],
+            ..Self::default()
         }
     }
 }
@@ -2713,27 +2704,23 @@ fn cell_row(u: &decide::Use) -> Caller {
         _ => None,
     };
     Caller {
-        path: u.file.clone(),
-        symbol: caller,
-        lines: format!("{0}-{0}", u.line),
-        weight: FINDING_WEIGHT,
-        tests: Vec::new(),
-        file_tested: false,
-        registered_by: None,
-        unread_test: None,
-        tests_open: false,
-        evidence: if reexport { REEXPORT } else { reach.evidence() },
         reason: reach.reason().filter(|_| !reexport),
-        relation: if reexport {
-            "reexports"
-        } else {
-            reach.relation
-        },
         kind: reach.stated_kind(&u.file),
         folded_by: reach.fold.map(|(rule, _, _)| rule),
         fold_kind: reach.fold.map(|(_, kind, _)| kind),
         fold_share: reach.fold.map_or(0, |(_, _, share)| share),
-        sites: reach.lines,
+        ..Caller::at_line(
+            u.file.clone(),
+            caller,
+            format!("{0}-{0}", u.line),
+            if reexport { REEXPORT } else { reach.evidence() },
+            if reexport {
+                "reexports"
+            } else {
+                reach.relation
+            },
+            u.line,
+        )
     }
 }
 
