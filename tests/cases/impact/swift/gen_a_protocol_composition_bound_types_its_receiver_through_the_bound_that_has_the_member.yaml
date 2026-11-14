@@ -1,0 +1,38 @@
+name: gen_a_protocol_composition_bound_types_its_receiver_through_the_bound_that_has_the_member
+mode: impact
+source: synthetic
+tags:
+- swift
+- generics
+repo:
+  initial_files:
+    Sources/App/Repo.swift: |
+      class Repo {
+          func load(_ x: Int) -> Int {
+              return x + 1
+          }
+      }
+    Sources/App/Marker.swift: |
+      protocol Marker {}
+    Sources/App/Use.swift: |
+      func use<T: Marker & Repo>(_ t: T) -> Int {
+          return t.load(1)
+      }
+  changed_files:
+    Sources/App/Repo.swift: |
+      class Repo {
+          func load(_ x: Int) -> Int {
+              return x + 2
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - Sources/App/Repo.swift::Repo.load
+  relations:
+  - from: Sources/App/Use.swift::use
+    to: Sources/App/Repo.swift::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
