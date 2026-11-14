@@ -1,0 +1,38 @@
+name: chx_c_looking_h_header_with_a_cpp_definition_keeps_its_callers_complete
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- header-extension
+repo:
+  initial_files:
+    src/geo.h: |
+      #pragma once
+      int area(int r);
+      int twice(int r);
+    src/geo.cpp: |
+      #include "geo.h"
+      int area(int r) { return r * 1; }
+      int twice(int r) { return r + r; }
+    src/main.cpp: |
+      #include "geo.h"
+      int run() { return area(2) + twice(3); }
+  changed_files:
+    src/geo.cpp: |
+      #include "geo.h"
+      int area(int r) { return r * 2; }
+      int twice(int r) { return r + r; }
+  commit_message: Change a function a plain dot h header declares and a cpp file defines
+expect:
+  changed:
+  - src/geo.cpp::area
+  relations:
+  - from: src/main.cpp::run
+    to: src/geo.cpp::area
+    kind: calls
+    resolution: resolved
+    site: 2
+  coverage:
+    src/geo.cpp::area:
+      calls: complete
