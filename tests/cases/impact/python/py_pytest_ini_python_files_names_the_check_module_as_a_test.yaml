@@ -1,0 +1,68 @@
+name: py_pytest_ini_python_files_names_the_check_module_as_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- pytest-config
+repo:
+  initial_files:
+    pytest.ini: |
+      [pytest]
+      python_files = check_*.py spec_*.py
+      testpaths = checks
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def a(x):
+          return x + 1
+
+
+      def b(x):
+          return x + 1
+    pkg/ua.py: |
+      from pkg.core import a
+
+
+      def use_a():
+          return a(1)
+    pkg/ub.py: |
+      from pkg.core import b
+
+
+      def use_b():
+          return b(1)
+    checks/check_a.py: |
+      from pkg.ua import use_a
+
+
+      def test_use_a():
+          assert use_a() == 2
+    checks/spec_b.py: |
+      from pkg.ub import use_b
+
+
+      def test_use_b():
+          assert use_b() == 2
+    tests/test_other.py: |
+      def test_nothing():
+          assert True
+  changed_files:
+    pkg/core.py: |
+      def a(x):
+          return x + 2
+
+
+      def b(x):
+          return x + 2
+  commit_message: change both
+expect:
+  changed:
+  - pkg/core.py::a
+  - pkg/core.py::b
+  exact: false
+  tested_by:
+    pkg/core.py: checks/check_a.py
+  not_untested:
+  - a
+  - b

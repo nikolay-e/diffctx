@@ -1,0 +1,56 @@
+name: rust_test_case_in_an_inline_test_module_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- test-attribute
+- test-case
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod core;
+      pub mod d;
+    src/core.rs: |
+      pub fn fd(x: i32) -> i32 {
+          x + 1
+      }
+    src/d.rs: |
+      pub fn use_d() -> i32 {
+          crate::core::fd(1)
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use test_case::test_case;
+
+          #[test_case(1 ; "one")]
+          fn td(_n: i32) {
+              assert_eq!(super::use_d(), 2);
+          }
+      }
+    tests/other.rs: |
+      #[test]
+      fn unrelated() {
+          assert!(true);
+      }
+  changed_files:
+    src/core.rs: |
+      pub fn fd(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: change fd
+expect:
+  changed:
+  - src/core.rs::fd
+  exact: false
+  tested_by:
+    src/core.rs: src/d.rs
+  not_untested:
+  - fd
