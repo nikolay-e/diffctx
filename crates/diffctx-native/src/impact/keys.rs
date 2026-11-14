@@ -150,45 +150,88 @@ pub(super) fn value_phrases(line: &str) -> Vec<String> {
     out
 }
 
-pub(super) fn key_words(text: &str) -> impl Iterator<Item = String> + '_ {
+/// Every word of a line a reader spells: the needle is what is narrow.
+pub(super) fn words(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
         .map(|w| w.trim_matches('-'))
-        .filter(|w| key_like(w))
+        .filter(|w| !w.is_empty())
         .map(str::to_string)
+}
+
+pub(super) fn key_words(text: &str) -> impl Iterator<Item = String> + '_ {
+    words(text).filter(|w| key_like(w))
 }
 
 /// The key-shaped words a changed line offers to search. A value that is
 /// spelled whole (an image, a path, an address: `phrase_like`) is searched whole
 /// and gives no words of its own, as `1-debian13` of `app:2.14.1-debian13` is no
 /// key (#707); a quoted sentence is prose and gives none either (#700). A reader's
-/// line is read for every word (`key_words`): it is the needle that is narrow.
+/// line is read for every word (`words`): it is the needle that is narrow.
 fn changed_words(text: &str) -> std::vec::IntoIter<String> {
-    fn collect(text: &str, depth: usize, out: &mut Vec<String>) {
+    spelled_words(text, |word| key_words(word).collect())
+}
+
+/// The words a line took out of a config that no line kept (`removed` the lines
+/// it lost, `added` the lines the file now has): a renamed key or value of any length,
+/// `pgdb`, `web`, `pgdb5`. The change dropped the name, so what still spells it
+/// is stale; a name short or plain enough to be everyone's is searched all the
+/// same, and the search gives it up when too many files spell it.
+pub(super) fn dropped_words<'a>(
+    removed: impl Iterator<Item = &'a str>,
+    added: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
+    let kept: rustc_hash::FxHashSet<String> = added
+        .flat_map(|line| spelled_words(&without_sentences(line), plain_words))
+        .collect();
+    let mut dropped: Vec<String> = removed
+        .flat_map(|line| spelled_words(&without_sentences(line), plain_words))
+        .filter(|w| !kept.contains(w))
+        .collect();
+    dropped.sort();
+    dropped.dedup();
+    dropped
+}
+
+/// Every word of `text` an identifier-shaped reader may spell back: three
+/// characters or more, a letter among them, no stopword.
+fn plain_words(text: &str) -> Vec<String> {
+    text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+        .map(|w| w.trim_matches('-'))
+        .filter(|w| {
+            w.chars().count() >= 3
+                && w.chars().any(|c| c.is_ascii_alphabetic())
+                && !crate::stopwords::CODE_STOPWORDS.contains(&w.to_lowercase())
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// The words of a config line outside its sentences and its whole-value phrases,
+/// `words` choosing which of a token's words count.
+fn spelled_words(text: &str, words: fn(&str) -> Vec<String>) -> std::vec::IntoIter<String> {
+    fn collect(text: &str, depth: usize, out: &mut Vec<String>, words: fn(&str) -> Vec<String>) {
         for raw in split_tokens(text) {
             let token = trim_flow(raw);
             match token.chars().next() {
                 Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
                     let inner = &token[1..token.len() - 1];
                     if depth < 2 {
-                        collect(inner, depth + 1, out);
+                        collect(inner, depth + 1, out, words);
                     }
                 }
                 _ => match assignment(token) {
                     Some((head, value)) if depth < 2 => {
-                        words(head, out);
-                        collect(value, depth + 1, out);
+                        out.extend(words(head));
+                        collect(value, depth + 1, out, words);
                     }
                     _ if phrase_like(token) => {}
-                    _ => words(token, out),
+                    _ => out.extend(words(token)),
                 },
             }
         }
     }
-    fn words(text: &str, out: &mut Vec<String>) {
-        out.extend(key_words(text));
-    }
     let mut out = Vec::new();
-    collect(&without_sentences(text), 0, &mut out);
+    collect(&without_sentences(text), 0, &mut out, words);
     out.into_iter()
 }
 
@@ -324,12 +367,11 @@ fn quoted_spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-/// What a file's strings and values are read as.
+/// What a file's strings and values are read as: source code reads a string as
+/// a callee only as an argument (`getattr(m, "f")`, `@MethodSource("A#m")`) or
+/// as a qualified path in a list.
 #[derive(Clone, Copy)]
 struct Reading {
-    /// Source code: a string names a callee only as an argument (`getattr(m,
-    /// "f")`, `@MethodSource("A#m")`) or as a qualified path in a list.
-    code: bool,
     /// A config or a command file: its values and flags name what they run.
     values: bool,
 }
@@ -352,6 +394,7 @@ impl Reading {
                 | "mk"
                 | "html"
                 | "htm"
+                | "svg"
                 | "xhtml"
                 | "jsp"
                 | "ftl"
@@ -362,14 +405,14 @@ impl Reading {
                 | "slim"
         ) || !name.contains('.')
             || name.starts_with("dockerfile");
-        (code || values).then_some(Self { code, values })
+        (code || values).then_some(Self { values })
     }
 }
 
-/// A Swift line that opens with `#` is a macro or a directive (`#externalMacro`),
-/// code that names things as strings, not a comment.
-fn swift_macro(path: &str, text: &str) -> bool {
-    super::extension(path) == "swift" && text.trim_start().starts_with('#')
+/// Whether the text before a string is `#define NAME`: the string is the macro's value.
+fn macro_value(before: &str) -> bool {
+    let mut words = before.split_whitespace();
+    words.next() == Some("#define") && words.next().is_some() && words.next().is_none()
 }
 
 /// Whether `before`, the text ahead of a string, ends in an argument's label
@@ -419,6 +462,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
                 || matches!(lead, Some('(' | ','))
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
+                || macro_value(&text[..from - 1])
                 || value;
             let reference = placed
                 && !head.contains(char::is_whitespace)
@@ -564,18 +608,10 @@ impl LiteralNames {
                 for (path, line, text) in state.run.bounded(&grepped.rows) {
                     if super::is_document(path)
                         || super::mentions::selects_paths(path)
-                        || (super::mentions::commented(text) && !swift_macro(path, text))
+                        || super::mentions::commented_in(path, text)
                         || matches!(
                             super::extension(path).as_str(),
-                            "diff"
-                                | "patch"
-                                | "lock"
-                                | "tex"
-                                | "bib"
-                                | "csv"
-                                | "tsv"
-                                | "log"
-                                | "svg"
+                            "diff" | "patch" | "lock" | "tex" | "bib" | "csv" | "tsv" | "log"
                         )
                     {
                         continue;

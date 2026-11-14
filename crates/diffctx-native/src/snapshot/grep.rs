@@ -108,6 +108,15 @@ pub fn files_with_word(root: &Path, word: &str, pathspec: &[String]) -> Result<V
     files(root, &["-w", "-F", "-e", word], pathspec)
 }
 
+/// The files holding `word` as a whole word in any case.
+pub fn files_with_word_any_case(
+    root: &Path,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Vec<String>> {
+    files(root, &["-w", "-F", "-i", "-e", word], pathspec)
+}
+
 /// The files with a line that declares `name`: `def name`, `class name`,
 /// `fn name`, `func (r T) name`, `const name =`, `name = function`.
 pub fn files_with_declaration(root: &Path, name: &str, pathspec: &[String]) -> Result<Vec<String>> {

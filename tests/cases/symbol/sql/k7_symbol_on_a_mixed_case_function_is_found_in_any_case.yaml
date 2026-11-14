@@ -13,5 +13,5 @@ query:
   symbol: net_total
 expect:
   exact: false
-  definitions: [db/functions/all.sql::Net_Total]
-  callers: {Net_Total: [db/migrations/003_tables.sql]}
+  definitions: [db/functions/all.sql::net_total]
+  callers: {net_total: [db/migrations/003_tables.sql]}

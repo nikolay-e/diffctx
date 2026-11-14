@@ -1466,10 +1466,30 @@ pub(crate) fn distinctive(word: &str) -> bool {
         && !ROLE_STEMS.split(' ').any(|r| r == word)
 }
 
+/// Code of a language no cell reads, or Swift, which no cell binds to C: a
+/// foreign-function binding there (`extern fn`, `ccall`, `ffi.cdef`, a bridging
+/// call) names a definition of another language by its bare name.
+fn unread_code(path: &str) -> bool {
+    use crate::vocabulary::family::{Family, Group};
+    is_code_file(path)
+        && matches!(
+            Group::of_path(path),
+            None | Some(Group::Language(_) | Group::Family(Family::Swift))
+        )
+}
+
 /// The name a literal spells: `var.region` is written `region`.
 fn literal_base(symbol: &str) -> &str {
     let name = base_symbol(symbol);
     name.rsplit('.').next().unwrap_or(name)
+}
+
+/// The word a reader spells for `core`: its name, but for a Terraform address the
+/// part after the last dot (`var.db_port` is written `db_port`).
+fn spelled_name(core: &Fragment) -> Option<&str> {
+    let name = base_symbol(core.symbol_name.as_deref()?);
+    let terraform = crate::languages::get_language_for_file(core.path()) == Some("terraform");
+    Some(if terraform { literal_base(name) } else { name })
 }
 
 fn module_stem(path: &str) -> Option<&str> {
@@ -1496,7 +1516,12 @@ impl UntracedNamers {
         let literal = keys::LiteralNames::build(state, diff_range, &literal_names, own);
         let mut needles: Vec<String> = cores
             .iter()
-            .filter_map(|c| c.symbol_name.as_deref().map(base_symbol))
+            .filter_map(|c| spelled_name(c))
+            .chain(
+                own.iter()
+                    .filter(|o| extension(&o.0) == "tf")
+                    .map(|o| o.1.as_str()),
+            )
             .chain(cores.iter().filter_map(|c| module_stem(c.path())))
             .filter(|w| distinctive(w))
             .map(str::to_string)
@@ -1514,8 +1539,9 @@ impl UntracedNamers {
         let grepped = spelled_lines(state, diff_range, &needles);
         let mut rows: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
         for (path, line, text) in &grepped.rows {
-            // A comment or a document mentions a name without reading it.
-            if changed.contains(path)
+            // A comment or a document mentions a name without reading it. A file the
+            // change edits is the diff's own, unless it is code no cell reads.
+            if (changed.contains(path) && !unread_code(path))
                 || is_document(path)
                 || matches!(
                     extension(path).as_str(),
@@ -1530,7 +1556,7 @@ impl UntracedNamers {
                         | "log"
                         | "svg"
                 )
-                || commented(text)
+                || mentions::commented_in(path, text)
             {
                 continue;
             }
@@ -1548,9 +1574,24 @@ impl UntracedNamers {
 
     /// `sym` with the files that spell `name` as a literal named in its answer.
     fn name_literals(&self, sym: &mut ChangedSymbol, name: &str) {
+        // Terragrunt's `inputs` and a `.tftest.hcl`'s `variables` set a Terraform
+        // module's variable by its name, in files the module's extractor never reads.
+        let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
+        let assigned = self
+            .naming(literal_base(name), |p| {
+                sets_variable && extension(p) == "hcl"
+            })
+            .into_iter()
+            .map(|(path, line)| UnanalysedFile {
+                language: crate::languages::get_language_for_file(&path),
+                path,
+                reason: "not_traced",
+                lines: vec![line],
+            });
         let spelled: Vec<UnanalysedFile> = self
             .literal_files(name)
             .into_iter()
+            .chain(assigned)
             .filter(|f| {
                 !sym.callers.iter().any(|c| c.path == f.path)
                     && !matches!(&sym.unresolved, Some(Unknown::Candidates { sites, .. })
@@ -1598,18 +1639,22 @@ impl UntracedNamers {
 
     /// The files outside code that spell `core`'s name.
     fn of(&self, core: &Fragment) -> Vec<UnanalysedFile> {
-        let Some(name) = core.symbol_name.as_deref().map(base_symbol) else {
+        let Some(name) = spelled_name(core) else {
             return Vec::new();
         };
-        self.naming(name, |p| !is_code_file(p))
-            .into_iter()
-            .map(|(path, line)| UnanalysedFile {
-                language: crate::languages::get_language_for_file(&path),
-                path,
-                reason: "not_traced",
-                lines: vec![line],
-            })
-            .collect()
+        let own = crate::vocabulary::family::Group::of_path(core.path());
+        self.naming(name, |p| {
+            !is_code_file(p)
+                || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
+        })
+        .into_iter()
+        .map(|(path, line)| UnanalysedFile {
+            language: crate::languages::get_language_for_file(&path),
+            path,
+            reason: "not_traced",
+            lines: vec![line],
+        })
+        .collect()
     }
 
     /// The lines naming a changed module by its name outside the code that
@@ -4635,6 +4680,7 @@ pub fn build_impact(
             .chain(cell_read_configs)
             .chain(lost_configs.iter().cloned())
             .chain(nameless.iter().map(|n| n.path.clone()))
+            .chain(changed_files.iter().filter(|p| is_schema_file(p)).cloned())
             .collect();
         let (refs, omitted, searches, unsearched, unread) =
             key_references(state, &cells, &untraced, &nameless);
@@ -5133,6 +5179,32 @@ fn dead_modules(
     (dead, changed)
 }
 
+/// The operation ids an API description's change wrote or took out: a generated
+/// client calls each by it (`api.getInvoiceById(id)`), so what still spells it
+/// outside the description is stale or new. The rest of a schema is a contract
+/// the answer lists.
+fn operation_ids(state: &ScoredState, path: &str) -> Vec<String> {
+    let mut ids: Vec<String> = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.path == path)
+        .flat_map(|h| h.added.iter().chain(&h.removed))
+        .filter_map(|line| {
+            let (_, rest) = line.split_once("operationId")?;
+            let rest = rest.trim_start_matches(['"', '\'']).trim_start();
+            let value = rest.strip_prefix(':')?.trim_start_matches([' ', '"', '\'']);
+            let id: String = value
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-'))
+                .collect();
+            (id.chars().count() >= 4).then_some(id)
+        })
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 /// What a changed config's lines spell that can witness a reader: words
 /// (`maxPoolSize`, `DATABASE_URL`, `max-connections`, `synchronization`,
 /// never `replicas`) and values (`up{job="demo"}`, `ghcr.io/acme/web:1.2`).
@@ -5141,6 +5213,9 @@ fn dead_modules(
 fn changed_keys(state: &ScoredState, path: &str, nameless: &[Nameless]) -> Vec<String> {
     if let Some(n) = nameless.iter().find(|n| n.path == path) {
         return n.terms.clone();
+    }
+    if is_schema_file(path) {
+        return operation_ids(state, path);
     }
     if !is_config_file(path) {
         return Vec::new();
@@ -5153,6 +5228,29 @@ fn changed_keys(state: &ScoredState, path: &str, nameless: &[Nameless]) -> Vec<S
         .filter(|l| !commented(l))
         .flat_map(|l| keys::terms(l))
         .collect();
+    let (removed, added): (Vec<&str>, Vec<&str>) = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.path == path)
+        .fold((Vec::new(), Vec::new()), |(mut removed, mut added), h| {
+            removed.extend(
+                h.removed
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|l| !commented(l)),
+            );
+            added.extend(h.added.iter().map(String::as_str).filter(|l| !commented(l)));
+            (removed, added)
+        });
+    let kept = state
+        .all_fragments
+        .iter()
+        .filter(|f| rel(state, f.path()) == path)
+        .flat_map(|f| f.content.lines());
+    keys.extend(keys::dropped_words(
+        removed.into_iter(),
+        added.into_iter().chain(kept),
+    ));
     keys.sort();
     keys.dedup();
     keys
@@ -5291,7 +5389,7 @@ fn key_references(
         if changed.contains(path) || !class_of(&state.root_dir, &source, path, text, None).reads() {
             continue;
         }
-        let spelled = keys::key_words(text)
+        let spelled = keys::words(text)
             .filter(|w| wanted.contains(w.as_str()))
             .chain(
                 phrases

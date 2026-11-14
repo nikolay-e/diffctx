@@ -2421,7 +2421,11 @@ impl Cell {
             .get(file)?
             .iter()
             .map(|at| &self.head.definitions()[*at])
-            .filter(|d| d.key.local.name.as_str() == name)
+            .filter(|d| {
+                d.key.local.name.as_str() == name
+                    || (d.key.language == Language::Sql
+                        && d.key.local.name.as_str().eq_ignore_ascii_case(name))
+            })
             .filter(|d| d.span.lines.0 <= lines.1 && lines.0 <= d.span.lines.1)
             .min_by_key(|d| d.span.lines.0.abs_diff(lines.0) + d.span.lines.1.abs_diff(lines.1))
     }
