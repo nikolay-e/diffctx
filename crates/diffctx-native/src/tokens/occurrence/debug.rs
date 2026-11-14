@@ -403,7 +403,8 @@ impl Shadow<'_> {
     }
 
     /// Why no occurrence of `file` was read: the listing names it as not read as
-    /// source (too large, a symlink, ...), else the read failed.
+    /// source (too large, a symlink, ...), else no extractor reads its language,
+    /// else the read failed.
     fn unread(&self, file: &RepoPath) -> Loss {
         let listed = match self.cache.listing(&self.ctx.head) {
             Ok(listing) => (listing.not_analysed.iter())
@@ -412,9 +413,15 @@ impl Shadow<'_> {
             Err(_) => None,
         };
         listed.map_or_else(
-            || Loss::ReadFailed {
-                path: file.clone(),
-                side: SideTag::Head,
+            || {
+                if self.facts_of(file).is_none() {
+                    Loss::Unsupported { path: file.clone() }
+                } else {
+                    Loss::ReadFailed {
+                        path: file.clone(),
+                        side: SideTag::Head,
+                    }
+                }
             },
             |reason| Loss::NotAnalysed {
                 path: file.clone(),
@@ -423,9 +430,13 @@ impl Shadow<'_> {
         )
     }
 
-    fn read(&self, file: &RepoPath) -> Option<(&FileFacts, Arc<[u8]>)> {
+    fn facts_of(&self, file: &RepoPath) -> Option<&FileFacts> {
         let at = self.files.partition_point(|facts| facts.path < *file);
-        let facts = self.files.get(at).filter(|facts| facts.path == *file)?;
+        self.files.get(at).filter(|facts| facts.path == *file)
+    }
+
+    fn read(&self, file: &RepoPath) -> Option<(&FileFacts, Arc<[u8]>)> {
+        let facts = self.facts_of(file)?;
         let Ok(Some(text)) = self.ctx.head.read(file) else {
             return None;
         };

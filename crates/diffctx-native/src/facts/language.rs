@@ -91,7 +91,7 @@ impl Language {
             "yaml" | "yml" => Self::Config,
             "tf" | "tfvars" => Self::Terraform,
             "sh" | "bash" | "dash" => Self::Shell,
-            "zsh" | "ksh" | "fish" => Self::ShellUnread,
+            "zsh" | "ksh" | "fish" | "bats" => Self::ShellUnread,
             "html" | "htm" => Self::Html,
             "astro" => Self::Astro,
             "swift" => Self::Swift,

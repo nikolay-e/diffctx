@@ -49,8 +49,8 @@ pub use git::{
     git_command, set_git_timeout,
 };
 pub use grep::{
-    Row, files_with_declaration, files_with_word, lines_matching, needle_lines, word_first_lines,
-    word_lines,
+    Row, files_with_declaration, files_with_word, files_with_word_any_case, lines_matching,
+    needle_lines, word_first_lines, word_lines,
 };
 pub use ignore::name_working_tree_changes;
 pub use loss::{Loss, SideTag, Stage};

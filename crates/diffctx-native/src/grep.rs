@@ -76,6 +76,18 @@ pub(crate) fn grep_files_with_word(
         .map(|rels| admitted_files(source, repo_root, rels))
 }
 
+/// The files holding `word` as a whole word in any case: where a name a language
+/// folds (SQL: `NET_TOTAL` calls `Net_Total`) may be spelled another way.
+pub(crate) fn grep_files_with_word_any_case(
+    repo_root: &Path,
+    source: &Source,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Grepped<PathBuf>> {
+    snapshot::files_with_word_any_case(repo_root, word, pathspec)
+        .map(|rels| admitted_files(source, repo_root, rels))
+}
+
 /// The files with a line that declares `name`.
 pub(crate) fn grep_files_with_declaration(
     repo_root: &Path,
