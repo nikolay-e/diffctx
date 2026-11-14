@@ -96,7 +96,7 @@ const SCHEMA_FILE_EXTENSIONS: &[&str] = &[
 /// callers outside the diff of each changed symbol, whether a test guards
 /// each caller, which symbols more than one commit of the range touched,
 /// and the public contracts the range edits.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ImpactOutput {
     pub name: String,
     pub range: Option<String>,
@@ -4416,16 +4416,10 @@ pub fn build_impact(
     // and the cap fires on most large files (#306).
     limits.retain(|r| *r != crate::resource::LimitReason::FragmentLimit);
     let mut output = ImpactOutput {
-        name: state
-            .root_dir
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
+        name: directory_name(&state.root_dir),
         range: diff_range.map(str::to_string),
         index_tree: state.index_tree.clone(),
-        range_name: None,
         symbol: query.map(str::to_string),
-        symbol_named: None,
         untracked_files: changed_files
             .iter()
             .filter(|f| untracked.contains(f.as_str()))
@@ -4439,7 +4433,6 @@ pub fn build_impact(
         stale_references: stale,
         stale_references_omitted: stale_omitted,
         deleted_modules,
-        deleted_modules_omitted: 0,
         named_by,
         named_by_omitted,
         key_searches,
@@ -4449,14 +4442,6 @@ pub fn build_impact(
         commit_count: state.commit_count,
         changed,
         contracts,
-        empty: false,
-        truncated: 0,
-        truncated_possible: 0,
-        needs: 0,
-        truncated_untested: 0,
-        truncated_textual: 0,
-        changed_files_omitted: 0,
-        untracked_files_omitted: 0,
         contracts_omitted,
         limits,
         tests_known: tests.any(),
@@ -4466,17 +4451,13 @@ pub fn build_impact(
         entry_unlisted,
         layout_only,
         lockfile_changes: state.lockfile_changes.clone(),
-        layout_only_omitted: 0,
         traced_definitions,
         withheld_files: state.policy_excluded_count + state.run.withheld_count(),
         unread_directories: state.run.source().unread_directories(),
         unanalysed_files: unanalysed,
-        unanalysed_files_omitted: 0,
-        untraced_omitted: 0,
-        unfinished_omitted: 0,
         run: Some(state.run.clone()),
         cap: IMPACT_TOKEN_CAP,
-        budget_needed: None,
+        ..ImpactOutput::default()
     };
     output.empty = proves_empty(&output);
     output
@@ -5929,62 +5910,19 @@ pub(crate) fn symbol_named_output(
 ) -> ImpactOutput {
     // The files read as text are the run's files not analysed: the header says
     // which, and why.
-    let unread = named.unread.clone();
     ImpactOutput {
-        name: root_dir
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| root_dir.to_string_lossy().to_string()),
-        range: None,
-        index_tree: None,
-        range_name: None,
-        symbol: Some(query.to_string()),
         limits: named.limits.clone(),
+        unanalysed_files: named.unread.clone(),
         symbol_named: Some(named),
-        changed_files: Vec::new(),
-        untracked_files: Vec::new(),
-        deleted_files: Vec::new(),
-        stale_references: Vec::new(),
-        stale_references_omitted: 0,
-        deleted_modules: Vec::new(),
-        deleted_modules_omitted: 0,
-        named_by: Vec::new(),
-        named_by_omitted: 0,
-        key_searches: Vec::new(),
-        key_files_unsearched: 0,
-        collection_reads: Vec::new(),
-        collection_reads_omitted: 0,
-        commit_count: 0,
-        changed: Vec::new(),
-        contracts: Vec::new(),
-        empty: false,
-        truncated: 0,
-        truncated_possible: 0,
-        needs: 0,
-        truncated_untested: 0,
-        truncated_textual: 0,
-        changed_files_omitted: 0,
-        untracked_files_omitted: 0,
-        contracts_omitted: 0,
-        tests_known: false,
-        untested_definitions: 0,
-        untested_unlisted: Vec::new(),
-        untested_called_in_diff: Vec::new(),
-        entry_unlisted: Vec::new(),
-        layout_only: Vec::new(),
-        lockfile_changes: Vec::new(),
-        layout_only_omitted: 0,
-        traced_definitions: 0,
-        withheld_files: 0,
-        unread_directories: Vec::new(),
-        unanalysed_files: unread,
-        unanalysed_files_omitted: 0,
-        untraced_omitted: 0,
-        unfinished_omitted: 0,
-        run: None,
-        cap: IMPACT_TOKEN_CAP,
-        budget_needed: None,
+        ..symbol_blocks_output(root_dir, query)
     }
+}
+
+fn directory_name(root_dir: &Path) -> String {
+    root_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| root_dir.to_string_lossy().to_string())
 }
 
 /// One use of a local, inside the definition it is a local of.
@@ -6010,18 +5948,12 @@ pub(crate) struct LocalOf {
 /// The answer of a `--symbol` query that has blocks of its own to fill in, and no
 /// search of named files.
 fn symbol_blocks_output(root_dir: &Path, query: &str) -> ImpactOutput {
-    let mut output = symbol_named_output(
-        root_dir,
-        query,
-        SymbolNamed {
-            files: 0,
-            rows: Vec::new(),
-            unread: Vec::new(),
-            limits: Vec::new(),
-        },
-    );
-    output.symbol_named = None;
-    output
+    ImpactOutput {
+        name: directory_name(root_dir),
+        symbol: Some(query.to_string()),
+        cap: IMPACT_TOKEN_CAP,
+        ..ImpactOutput::default()
+    }
 }
 
 /// A `--symbol` query that names a module: the module is the definition and the
