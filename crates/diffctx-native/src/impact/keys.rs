@@ -366,6 +366,24 @@ impl Reading {
     }
 }
 
+/// A Swift line that opens with `#` is a macro or a directive (`#externalMacro`),
+/// code that names things as strings, not a comment.
+fn swift_macro(path: &str, text: &str) -> bool {
+    super::extension(path) == "swift" && text.trim_start().starts_with('#')
+}
+
+/// Whether `before`, the text ahead of a string, ends in an argument's label
+/// (`(module: `, `, type: `, `(name=`), not an assignment or a mapping key.
+fn labeled(before: &str) -> bool {
+    let rest = before
+        .trim_end()
+        .trim_end_matches([':', '='])
+        .trim_end()
+        .trim_end_matches(word_char)
+        .trim_end();
+    rest.ends_with(['(', ','])
+}
+
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
 fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
     let spans = quoted_spans(text);
@@ -383,15 +401,28 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
         }
         if let Some(&(from, to)) = spans.iter().find(|(f, t)| *f <= at && end <= *t) {
             let inside = &text[from..to];
-            let head = &text[from..at];
+            // An entry point is `key = module:target`: the target is what it names.
+            let head = text[from..at]
+                .split_once('=')
+                .filter(|(key, _)| {
+                    !key.trim().is_empty() && !key.trim().contains(char::is_whitespace)
+                })
+                .map_or(&text[from..at], |(_, target)| target.trim_start());
             let tail = &text[end..to];
             let qualified = !head.is_empty();
             let lead = text[..from - 1].trim_end().chars().next_back();
+            // A qualified path with nothing after it is a value: a list entry on
+            // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
+            let value =
+                qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
             let placed = reading.values
                 || matches!(lead, Some('(' | ','))
-                || (qualified && matches!(lead, Some('[')));
+                || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
+                || (qualified && lead == Some('['))
+                || value;
             let reference = placed
-                && !inside.contains(char::is_whitespace)
+                && !head.contains(char::is_whitespace)
+                && !tail.contains(char::is_whitespace)
                 && (!qualified || head.ends_with(qualifier))
                 && (tail.is_empty() || tail.starts_with(['(', '=', ':', '[']));
             let query = sql
@@ -458,7 +489,9 @@ fn literal_pattern(names: &[&str]) -> String {
         .collect::<Vec<_>>()
         .join("|");
     let mut forms = vec![
-        format!(r#"["'`]([^"'`[:space:]]*[.:#/\\])?({all})["'`(=:\[]"#),
+        format!(
+            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\])?({all})["'`(=:\[]"#
+        ),
         format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),
         format!(r#"(^|[[:space:]])--?[[:alnum:]-]+[ =]['"]?({all})(['"=[:space:]]|$)"#),
     ];
@@ -476,17 +509,26 @@ fn literal_pattern(names: &[&str]) -> String {
     forms.join("|")
 }
 
+/// A definition's own lines: (file, literal name, lines). A literal inside its
+/// own span is the definition's text, never a use of it.
+pub(super) type OwnSpan<'a> = (&'a str, &'a str, (u32, u32));
+
 impl LiteralNames {
-    /// The lines of the tree at the range's head, outside the change, that spell
-    /// one of `names` as a literal.
-    pub(super) fn build(state: &ScoredState, diff_range: Option<&str>, names: &[&str]) -> Self {
+    /// The lines of the tree at the range's head that spell one of `names` as a
+    /// literal, in any file — one the change edits and the definition's own
+    /// included — outside the definitions' own spans.
+    pub(super) fn build(
+        state: &ScoredState,
+        diff_range: Option<&str>,
+        names: &[&str],
+        own: &[OwnSpan],
+    ) -> Self {
         let mut wanted: Vec<&str> = names.iter().copied().filter(|n| literal_name(n)).collect();
         wanted.sort_unstable();
         wanted.dedup();
         if wanted.is_empty() {
             return Self::default();
         }
-        let changed: rustc_hash::FxHashSet<String> = super::changed_rels(state).collect();
         let head = super::head_of(diff_range);
         let source = state.run.source();
         let mut rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>> =
@@ -520,10 +562,9 @@ impl LiteralNames {
                 );
                 state.run.note_withheld(grepped.withheld);
                 for (path, line, text) in state.run.bounded(&grepped.rows) {
-                    if changed.contains(path)
-                        || super::is_document(path)
+                    if super::is_document(path)
                         || super::mentions::selects_paths(path)
-                        || super::mentions::commented(text)
+                        || (super::mentions::commented(text) && !swift_macro(path, text))
                         || matches!(
                             super::extension(path).as_str(),
                             "diff"
@@ -542,7 +583,15 @@ impl LiteralNames {
                     let Some(reading) = Reading::of(path) else {
                         continue;
                     };
-                    for name in chunk.iter().filter(|n| spells_literally(text, n, reading)) {
+                    let inside = |name: &str| {
+                        own.iter().any(|&(file, own_name, (from, to))| {
+                            file == path && own_name == name && (from..=to).contains(line)
+                        })
+                    };
+                    for name in chunk
+                        .iter()
+                        .filter(|n| !inside(n) && spells_literally(text, n, reading))
+                    {
                         let named = rows.entry((*name).to_string()).or_default();
                         if !named.iter().any(|(p, _)| p == path) {
                             named.push((path.clone(), *line));
