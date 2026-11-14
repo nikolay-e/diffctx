@@ -1,0 +1,46 @@
+name: gen_a_bound_that_is_another_type_parameter_types_its_receiver
+mode: impact
+source: blackbox2-GEN
+tags:
+- java
+- generics
+repo:
+  initial_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 1;
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.core.Repo;
+
+      public class Use {
+          public <U extends Repo, T extends U> int use(T t) {
+              return t.load(1);
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 2;
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - src/main/java/com/acme/core/Repo.java::Repo.load
+  relations:
+  - from: src/main/java/com/acme/app/Use.java::Use.use
+    to: src/main/java/com/acme/core/Repo.java::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 7
+  exact: true
