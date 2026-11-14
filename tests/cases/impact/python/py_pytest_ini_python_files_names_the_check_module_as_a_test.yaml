@@ -62,7 +62,8 @@ expect:
   - pkg/core.py::b
   exact: false
   tested_by:
-    pkg/core.py: checks/check_a.py
+    pkg/ua.py: checks/check_a.py
+    pkg/ub.py: checks/spec_b.py
   not_untested:
   - a
   - b
