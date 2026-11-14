@@ -461,16 +461,27 @@ for p in $live; do kill -KILL "-$p" 2>/dev/null; done
 
     static PIPE: Mutex<Option<ChildStdin>> = Mutex::new(None);
 
-    fn start() -> Option<ChildStdin> {
+    fn start() -> std::io::Result<ChildStdin> {
         let mut shell = super::spawn_command("sh")
             .args(["-c", SCRIPT])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .process_group(0)
-            .spawn()
-            .ok()?;
-        shell.stdin.take()
+            .spawn()?;
+        shell
+            .stdin
+            .take()
+            .ok_or_else(|| std::io::Error::other("the watchdog has no stdin pipe"))
+    }
+
+    /// Without a watchdog a killed run leaves its git children running; the
+    /// run itself is unaffected, so it says so once and goes on.
+    fn unguarded(error: &std::io::Error) {
+        static SAID: std::sync::Once = std::sync::Once::new();
+        SAID.call_once(|| {
+            eprintln!("diffctx: cannot start the orphan guard for git children: {error}");
+        });
     }
 
     /// A line to the watchdog, started on the first. One that cannot be
@@ -480,7 +491,10 @@ for p in $live; do kill -KILL "-$p" 2>/dev/null; done
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if pipe.is_none() {
-            *pipe = start();
+            match start() {
+                Ok(stdin) => *pipe = Some(stdin),
+                Err(error) => unguarded(&error),
+            }
         }
         if let Some(stdin) = pipe.as_mut() {
             if stdin.write_all(line.as_bytes()).is_err() {
