@@ -502,8 +502,62 @@ fn a_zero_beside_not_determined_is_a_claim() -> Result<(), Failed> {
     Ok(())
 }
 
+/// A site stands once: the same line as a row and as a use nothing settles, or a file
+/// with a row that is also listed unread, is the answer contradicting itself.
+fn a_site_has_one_standing() -> Result<(), Failed> {
+    let defined = |rows: Value, gaps: Value, missed: Value| {
+        json!({"definitions": [{
+            "path": "shop/pricing.py", "symbol": "total", "lines": "1-2",
+            "rows": rows, "gaps": gaps, "missed_in": missed,
+        }]})
+    };
+    let row = |standing: &str| charge(standing, "call", None);
+    let gap = |line: u64| {
+        json!([{"kind": "unlanded", "uses": 1,
+            "sites": [{"path": "shop/checkout.py", "line": line, "via": "call"}]}])
+    };
+    let said = |doc: &Value| crate::fact_keys::repeated_facts(doc);
+    let twice = [
+        defined(json!([row("resolved")]), gap(5), json!([])),
+        defined(
+            json!([row("resolved"), row("candidate")]),
+            json!([]),
+            json!([]),
+        ),
+        defined(
+            json!([row("resolved")]),
+            json!([]),
+            json!([{"path": "shop/checkout.py", "lines": [5]}]),
+        ),
+    ];
+    let once = [
+        defined(json!([row("resolved")]), gap(9), json!([])),
+        defined(json!([row("candidate")]), gap(5), json!([])),
+        defined(
+            json!([row("resolved")]),
+            json!([]),
+            json!([{"path": "shop/other.py", "lines": []}]),
+        ),
+    ];
+    let slipped: Vec<String> = twice
+        .iter()
+        .filter(|doc| said(doc).is_empty())
+        .map(|doc| format!("a double standing went unnoticed: {doc}"))
+        .chain(
+            once.iter()
+                .filter(|doc| !said(doc).is_empty())
+                .map(|doc| format!("a single standing was refused: {doc}")),
+        )
+        .collect();
+    if slipped.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(slipped.join("\n")))
+    }
+}
+
 pub(crate) fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 11] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 12] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",
             a1_a_named_test_function_needs_the_answer_to_name_it,
@@ -542,6 +596,7 @@ pub(crate) fn trials() -> Vec<Trial> {
             "a_zero_beside_not_determined_is_a_claim",
             a_zero_beside_not_determined_is_a_claim,
         ),
+        ("a_site_has_one_standing", a_site_has_one_standing),
     ];
     rules
         .into_iter()
