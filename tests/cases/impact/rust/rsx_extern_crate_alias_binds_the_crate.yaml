@@ -1,0 +1,69 @@
+name: rsx_extern_crate_alias_binds_the_crate
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, workspace, extern-crate]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [workspace]
+      members = ["crates/*"]
+      resolver = "2"
+    crates/core-lib/Cargo.toml: |
+      [package]
+      name = "core-lib"
+      version = "0.1.0"
+      edition = "2021"
+    crates/core-lib/src/lib.rs: |
+      pub mod engine;
+    crates/core-lib/src/engine.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 1
+      }
+    crates/old/Cargo.toml: |
+      [package]
+      name = "old"
+      version = "0.1.0"
+      edition = "2015"
+
+      [dependencies]
+      core-lib = { path = "../core-lib" }
+    crates/old/src/lib.rs: |
+      extern crate core_lib as eng;
+
+      pub fn from_2015() -> i32 {
+          eng::engine::step(1)
+      }
+    crates/new/Cargo.toml: |
+      [package]
+      name = "new"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      core-lib = { path = "../core-lib" }
+    crates/new/src/lib.rs: |
+      extern crate core_lib as eng;
+
+      pub fn from_2021() -> i32 {
+          eng::engine::step(1)
+      }
+  changed_files:
+    crates/core-lib/src/engine.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: "engine: add two"
+expect:
+  changed: [crates/core-lib/src/engine.rs::step]
+  relations:
+    - from: "crates/old/src/lib.rs::from_2015"
+      to: "crates/core-lib/src/engine.rs::step"
+      kind: calls
+      resolution: resolved
+      site: 4
+    - from: "crates/new/src/lib.rs::from_2021"
+      to: "crates/core-lib/src/engine.rs::step"
+      kind: calls
+      resolution: resolved
+      site: 4
