@@ -15,6 +15,10 @@
 //! unknown) from a package's (outside), and pick the autoloaded one of two
 //! classes of one name; `classmap` and `files` entries count as autoloaded.
 //!
+//! `class_alias(A::class, 'B')` makes `B` another name of `A` in every file; a call
+//! of a function or a package's method the repository does not declare returns a
+//! value nothing types, which a class of the repository may be.
+//!
 //! What the syntax cannot settle stays a candidate with its reason: a method
 //! called through a receiver nothing types, a call through a supertype that a
 //! subtype overrides. A dynamic name (`$o->$m()`, `new $c`, `$f()`,
@@ -521,13 +525,18 @@ impl Index {
                     }
                     Fact::Import(import) if import.kind != ImportKind::SideEffect => {
                         let region = file.region_at(import.site.bytes.start);
-                        let module: Vec<String> = import
+                        let mut module: Vec<String> = import
                             .module
                             .as_str()
                             .split('\\')
                             .filter(|s| !s.is_empty())
                             .map(str::to_string)
                             .collect();
+                        if import.kind == ImportKind::Dynamic
+                            && import.module.as_str().starts_with('\\')
+                        {
+                            module.insert(0, String::new());
+                        }
                         for (name, alias) in &import.names {
                             let mut path = module.clone();
                             path.push(name.as_str().to_string());
@@ -651,6 +660,9 @@ struct Engine<'w> {
     composer: Composer,
     workspace: &'w WorkspaceModel,
     supers: RefCell<HashMap<usize, Rc<Vec<Super>>>>,
+    /// The names `class_alias` gives a class, by the lowered alias: the file and
+    /// the written path of the class it names.
+    class_aliases: HashMap<String, (usize, u32, Vec<String>)>,
 }
 
 fn plain_relation(use_kind: UseKind) -> Relation {
@@ -675,12 +687,40 @@ fn lower(name: &Name) -> String {
 
 impl<'w> Engine<'w> {
     fn new(ix: Index, composer: Composer, workspace: &'w WorkspaceModel) -> Self {
+        let class_aliases = ix
+            .files
+            .iter()
+            .enumerate()
+            .flat_map(|(f, file)| {
+                file.imports
+                    .iter()
+                    .filter(|i| i.kind == ImportKind::Dynamic)
+                    .map(move |i| {
+                        (
+                            i.local.to_ascii_lowercase(),
+                            (f, i.site.bytes.start, i.path.clone()),
+                        )
+                    })
+            })
+            .collect();
         Self {
             ix,
             composer,
             workspace,
             supers: RefCell::default(),
+            class_aliases,
         }
+    }
+
+    /// The qualified name of the class `class_alias` makes `lowered` another name of.
+    fn aliased(&self, lowered: &str) -> Option<String> {
+        let (f, at, path) = self.class_aliases.get(lowered)?;
+        let (name, qualifier) = path.split_last()?;
+        let qualifier: Vec<Name> = qualifier.iter().map(|s| Name::new(s.as_str())).collect();
+        Some(
+            self.class_name(*f, *at, &qualifier, &Name::new(name.as_str()))
+                .0,
+        )
     }
 
     fn run(&self, ctx: &AnalysisContext) -> (Vec<Definition>, Vec<Binding>, bool) {
@@ -793,6 +833,10 @@ impl<'w> Engine<'w> {
     }
 
     fn find_type(&self, f: usize, fqn: &str, how: EvidenceKind) -> Found {
+        self.find_class(f, fqn, how, true)
+    }
+
+    fn find_class(&self, f: usize, fqn: &str, how: EvidenceKind, aliasing: bool) -> Found {
         let lowered = fqn.to_ascii_lowercase();
         let mut ids: Vec<usize> = self
             .ix
@@ -800,6 +844,11 @@ impl<'w> Engine<'w> {
             .get(&lowered)
             .cloned()
             .unwrap_or_else(Vec::new);
+        if ids.is_empty() && aliasing {
+            if let Some(target) = self.aliased(&lowered) {
+                return self.find_class(f, &target, how, false);
+            }
+        }
         if ids.is_empty() {
             // A file the maps put the class in, whatever its own `namespace` says.
             let short = fqn.rsplit('\\').next().unwrap_or(fqn).to_ascii_lowercase();
@@ -1067,6 +1116,9 @@ impl<'w> Engine<'w> {
     }
 
     /// What a call of `path` (`[f]`, `[Class, m]`, `[Class, ->, p, m]`) returns.
+    /// A function or a method the repository does not declare returns what its
+    /// package decides (`app(X::class)`, `$container->get(X::class)`): a class of
+    /// the repository may be that value, so it is unknown, not foreign.
     fn call_result(&self, f: usize, at: u32, scope: &[Name], path: &[Name], depth: usize) -> Ent {
         if depth > MAX_DEPTH {
             return Ent::Unknown;
@@ -1077,7 +1129,6 @@ impl<'w> Engine<'w> {
         if owner.is_empty() {
             return match self.resolve_function(f, at, &[], name) {
                 Found::Defs(ids, _) if ids.len() == 1 => self.declared_type(ids[0]),
-                Found::External | Found::Nothing => Ent::Foreign,
                 _ => Ent::Unknown,
             };
         }
@@ -1096,6 +1147,7 @@ impl<'w> Engine<'w> {
                 Some((ids, _)) if ids.len() == 1 => self.declared_type(ids[0]),
                 _ => Ent::Unknown,
             },
+            Ent::Foreign => Ent::Unknown,
             other => other,
         }
     }
@@ -1539,6 +1591,20 @@ impl<'w> Engine<'w> {
                 },
                 None => Found::External,
             },
+            ImportKind::Dynamic => {
+                let Some((name, qualifier)) = import.path.split_last() else {
+                    return;
+                };
+                let qualifier: Vec<Name> =
+                    qualifier.iter().map(|s| Name::new(s.as_str())).collect();
+                let (fqn, _) = self.class_name(
+                    f,
+                    import.site.bytes.start,
+                    &qualifier,
+                    &Name::new(name.as_str()),
+                );
+                self.find_type(f, &fqn, EvidenceKind::ImportedName)
+            }
             _ => {
                 // `use A\B;` may name a namespace, which binds no definition.
                 if self.ix.namespaces.contains(&fqn.to_ascii_lowercase())
