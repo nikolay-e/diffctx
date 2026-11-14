@@ -1,0 +1,29 @@
+name: gh718_loop_variable_over_an_annotated_list_is_typed
+mode: symbol
+source: gh#718
+issue_state: open
+tags: [python, loop-variable, typing, receiver]
+repo:
+  initial_files:
+    trace.py: |
+      class Frame:
+          last_instruction: int | None = None
+
+
+      class Stack:
+          frames: list[Frame]
+
+
+      def render(stack: Stack):
+          for frame in stack.frames:
+              if frame.last_instruction is not None:
+                  return frame.last_instruction
+          return None
+query:
+  symbol: Frame.last_instruction
+expect:
+  exact: false
+  definitions: [trace.py::Frame.last_instruction]
+  relations:
+    - {from: trace.py::render, to: trace.py::Frame.last_instruction, kind: reads, resolution: resolved}
+  unknowns: {}

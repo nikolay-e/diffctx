@@ -1,0 +1,60 @@
+name: gh488_struct_field_is_a_definition_with_its_readers
+mode: symbol
+source: gh#488
+issue_state: open
+tags:
+- rust
+- symbol
+- field
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "snap"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub struct Snapshot {
+          pub index_tree: Option<String>,
+      }
+
+      pub fn label(s: &Snapshot) -> &str {
+          s.index_tree.as_deref().unwrap_or("working tree")
+      }
+
+      mod staged;
+    src/staged.rs: |
+      use crate::Snapshot;
+
+      pub fn is_staged(s: &Snapshot) -> bool {
+          s.index_tree.is_some()
+      }
+    web/prefs.ts: |
+      export interface UserPreferences {
+        softPrefs: Record<string, unknown>;
+        theme: string;
+      }
+    web/read.ts: |
+      import type { UserPreferences } from "./prefs";
+
+      export function softCount(p: UserPreferences): number {
+        return Object.keys(p.softPrefs).length;
+      }
+  commit_message: init
+query:
+  symbol: index_tree
+expect:
+  definitions:
+  - src/lib.rs::index_tree
+  relations:
+  - from: src/lib.rs::label
+    to: src/lib.rs::index_tree
+    kind: reads
+    resolution: resolved
+    site: 6
+  - from: src/staged.rs::is_staged
+    to: src/lib.rs::index_tree
+    kind: reads
+    resolution: resolved
+    site: 4
+  exact: true

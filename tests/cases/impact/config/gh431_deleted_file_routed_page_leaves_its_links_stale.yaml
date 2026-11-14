@@ -1,0 +1,43 @@
+name: gh431_deleted_file_routed_page_leaves_its_links_stale
+mode: impact
+source: gh#431
+issue_state: open
+tags:
+- astro
+- stale
+- deleted
+repo:
+  initial_files:
+    astro.config.mjs: |
+      export default {};
+    package.json: |
+      {"name":"site","dependencies":{"astro":"4.16.0"}}
+    src/content/post.md: |
+      ---
+      title: Hello
+      ---
+      Read more about it on [the page](/about).
+    src/layouts/Base.astro: |
+      ---
+      ---
+      <nav><a href="/">Home</a> <a href="/blog/">Blog</a></nav>
+      <slot />
+    src/pages/about.astro: |
+      ---
+      ---
+      <h1>About us</h1>
+    src/pages/blog/index.astro: |
+      ---
+      ---
+      <h1>Blog</h1>
+    src/pages/index.astro: |
+      ---
+      ---
+      <h1>Home</h1>
+  deleted_files:
+  - src/pages/about.astro
+  - src/pages/blog/index.astro
+  commit_message: drop about and blog
+expect:
+  stale: [src/content/post.md, src/layouts/Base.astro]
+  not_stale: [src/pages/index.astro]

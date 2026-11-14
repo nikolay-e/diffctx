@@ -1,0 +1,26 @@
+name: gh713_withheld_importer_keeps_nothing_calls_them_from_being_claimed
+mode: impact
+source: gh#713
+issue_state: open
+tags: [python, absence-claim, withheld, diffctxignore]
+repo:
+  initial_files:
+    .diffctxignore: |
+      vendor/
+    lib/panels.py: |
+      def watch_panels():
+          return 1
+    vendor/app.py: |
+      from lib.panels import watch_panels
+
+      watch_panels()
+  changed_files:
+    lib/panels.py: |
+      def watch_panels():
+          return 2
+expect:
+  exact: false
+  changed: [lib/panels.py::watch_panels]
+  no_negative_claims: true
+  relations:
+    - {from: vendor/app.py, to: 'lib/panels.py::watch_panels', kind: calls, resolution: resolved}
