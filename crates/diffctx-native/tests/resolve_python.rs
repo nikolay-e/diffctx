@@ -281,6 +281,11 @@ fn relation_of(kind: &str) -> Option<Relation> {
 fn compile(expect: &Expect) -> BTreeMap<Node, Vec<Want>> {
     let mut wants: BTreeMap<Node, Vec<Want>> = BTreeMap::new();
     for spec in &expect.relations {
+        // An unresolved relation is a name spelled in a literal or a value: the
+        // named-in channel above the resolver answers it, and no binding states it.
+        if spec.resolution == "unresolved" {
+            continue;
+        }
         let Some(kind) = relation_of(&spec.kind) else {
             continue;
         };
