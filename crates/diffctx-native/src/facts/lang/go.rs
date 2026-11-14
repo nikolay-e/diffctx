@@ -1021,7 +1021,7 @@ impl<'t> Walker<'t> {
             "func_literal" => self.closure(node, cx, cx.scope.clone(), depth),
             "type_conversion_expression" | "type_assertion_expression" => {
                 if let Some(ty) = node.child_by_field_name("type") {
-                    self.type_refs(ty, cx, depth + 1);
+                    self.conversion_target(ty, cx, depth + 1);
                 }
                 if let Some(operand) = node.child_by_field_name("operand") {
                     self.walk(operand, cx, depth + 1);
@@ -1203,6 +1203,25 @@ impl<'t> Walker<'t> {
                     });
                 self.declare(*name, ty, LocalKind::Variable, cx);
             }
+        }
+    }
+
+    /// `Parse[int](s)` parses as a conversion to the generic type `Parse[int]`: when `Parse` names
+    /// a function the resolver binds it, and when it names a type the same call binds the type.
+    fn conversion_target(&mut self, ty: Node<'t>, cx: &Cx, depth: u16) {
+        let Some(callee) = (ty.kind() == "generic_type")
+            .then(|| ty.child_by_field_name("type"))
+            .flatten()
+            .filter(|callee| callee.kind() == "type_identifier")
+        else {
+            return self.type_refs(ty, cx, depth);
+        };
+        let name = self.text(callee);
+        if !self.is_local(name) {
+            self.emit(callee, cx, Receiver::None, UseKind::Call, name, Vec::new());
+        }
+        if let Some(arguments) = ty.child_by_field_name("type_arguments") {
+            self.type_refs(arguments, cx, depth);
         }
     }
 
