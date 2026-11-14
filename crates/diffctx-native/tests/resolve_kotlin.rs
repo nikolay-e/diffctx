@@ -738,11 +738,29 @@ fn cases_root() -> PathBuf {
 /// The Kotlin cases the resolver cannot answer yet, each with the reason. The
 /// list is held both ways: a listed case that turns green fails the run, as does
 /// a red case that is not listed.
-const RED: &[(&str, &str)] = &[(
-    "symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve",
-    "gh#490: the receiver of a call on a companion factory result or on an elvis-return \
-     binding is not typed, so the calls stay candidates instead of resolved",
-)];
+const RED: &[(&str, &str)] = &[
+    (
+        "symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve",
+        "gh#490: the receiver of a call on a companion factory result or on an elvis-return \
+         binding is not typed, so the calls stay candidates instead of resolved",
+    ),
+    (
+        "impact/kotlin/ktg_a_class_type_parameter_bound_types_its_property_receiver",
+        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
+    ),
+    (
+        "impact/kotlin/ktg_a_function_type_parameter_bound_types_its_receiver",
+        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
+    ),
+    (
+        "impact/kotlin/ktg_a_where_clause_bound_types_its_receiver",
+        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
+    ),
+    (
+        "impact/kotlin/ktg_a_bound_after_a_foreign_one_types_its_receiver",
+        "a receiver typed by a type parameter is taken as a foreign type, not its bound",
+    ),
+];
 
 #[test]
 fn the_kotlin_corpus_is_answered_as_the_list_says() {
