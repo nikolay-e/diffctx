@@ -1,0 +1,36 @@
+name: k6_java_symbol_string_only_use_is_named_in
+mode: symbol
+source: synthetic
+tags: [java, literal-name, reflection]
+repo:
+  initial_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      public class Fixtures {
+          public static int reflected(int a) {
+              return a + 1;
+          }
+      }
+    src/main/java/com/acme/app/Caller.java: |
+      package com.acme.app;
+
+      public class Caller {
+          public Object h() throws Exception {
+              return Class.forName("com.acme.app.Fixtures").getMethod("reflected", int.class).invoke(null, 1);
+          }
+      }
+  commit_message: "base"
+query:
+  symbol: reflected
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  definitions:
+    - src/main/java/com/acme/app/Fixtures.java::reflected
+  relations:
+    - from: src/main/java/com/acme/app/Caller.java
+      to: src/main/java/com/acme/app/Fixtures.java::reflected
+      kind: calls
+      resolution: unresolved
