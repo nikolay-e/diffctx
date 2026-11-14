@@ -1552,6 +1552,8 @@ impl<'a> Engine<'a> {
                 }
             }
             Entity::Maybe(_) => Lookup::Untyped,
+            // A structural type is implemented by any class that has the member.
+            Entity::Instance(c) if self.is_protocol(*c) => Lookup::Any,
             Entity::Class(c) | Entity::Instance(c) => self.class_member(*c, name, false),
             Entity::Super(c) => self.class_member(*c, name, true),
             Entity::Def(id) => match self.ix.defs[*id].def.kind {
@@ -1573,6 +1575,14 @@ impl<'a> Engine<'a> {
             Entity::Outside => Lookup::Absent(UnresolvedReason::OutsideProject),
             Entity::Unknown => Lookup::Untyped,
         }
+    }
+
+    /// Whether the class lists `Protocol` among its bases.
+    fn is_protocol(&self, class: usize) -> bool {
+        (self.ix.defs[class].def.signature.as_deref())
+            .map_or(Vec::new(), base_names)
+            .iter()
+            .any(|base| base.rsplit('.').next() == Some("Protocol"))
     }
 
     fn class_member(&self, class: usize, name: &Name, bases_only: bool) -> Lookup {
