@@ -557,7 +557,10 @@ impl LiteralNames {
     /// The files that spell `name` as a literal, one line each; none when the
     /// name is a common word.
     pub(super) fn naming(&self, name: &str) -> Vec<(String, u32)> {
-        let mut named = self.rows.get(name).cloned().unwrap_or_default();
+        let Some(files) = self.rows.get(name) else {
+            return Vec::new();
+        };
+        let mut named = files.clone();
         if named.len() > MAX_LITERAL_FILES {
             return Vec::new();
         }

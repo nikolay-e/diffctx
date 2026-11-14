@@ -140,7 +140,13 @@ impl<'a> TestsReach<'a> {
                 tests_at.entry(f.path()).or_insert_with(|| {
                     let text = state.run.source().read_to_string(Path::new(f.path()));
                     // A read that failed is noted on the run by the source itself.
-                    text.map_or_else(Vec::new, |t| rust::test_functions(&t))
+                    text.map_or_else(Vec::new, |t| {
+                        rust::test_functions(&t).unwrap_or_else(|e| {
+                            tracing::warn!("impact: {} is not read as UTF-8 ({e})", f.path());
+                            state.run.note(crate::resource::LimitReason::ReadFailed);
+                            Vec::new()
+                        })
+                    })
                 });
             }
         }
