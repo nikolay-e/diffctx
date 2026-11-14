@@ -1,0 +1,48 @@
+name: g1q_aliased_package_explicit_instantiation_is_a_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, generics, call, blackbox2]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          return z
+      }
+
+      func Pair[K comparable, V any](k K, v V) map[K]V { return map[K]V{k: v} }
+    app/app.go: |
+      package app
+
+      import c "example.com/app/conv"
+
+      func Run() any { return c.Parse[int]("1") }
+
+      func Both() any { return c.Pair[string, int]("a", 1) }
+  changed_files:
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          if s == "" {
+              panic("empty")
+          }
+          return z
+      }
+
+      func Pair[K comparable, V any](k K, v V) map[K]V { return map[K]V{k: v, k: v} }
+  commit_message: "conv: refuse an empty string"
+expect:
+  changed: [conv/conv.go::Parse, conv/conv.go::Pair]
+  relations:
+    - {from: app/app.go::Run, to: conv/conv.go::Parse, kind: calls, resolution: resolved, site: 5}
+    - {from: app/app.go::Both, to: conv/conv.go::Pair, kind: calls, resolution: resolved, site: 7}
+  never_empty: true
