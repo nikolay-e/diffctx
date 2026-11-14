@@ -11,6 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schemars::JsonSchema;
 use serde::Serialize;
 
+use crate::answer::render::place;
 use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
 use crate::container::{innermost, named_container_of, within};
@@ -731,6 +732,29 @@ fn unfinished_symbol(
             decide::Coverages::partial(decide::Gap::Stopped {
                 reasons: stops.to_vec(),
             }),
+        )
+    }
+}
+
+/// A definition whose file the search could not read: the loss is its answer.
+fn uncovered_symbol(
+    path: String,
+    name: &str,
+    lines: String,
+    kind: String,
+    reason: decide::Reason,
+) -> ChangedSymbol {
+    let gap = decide::Gap::Unaccounted { reason, files: 1 };
+    ChangedSymbol {
+        unresolved: Some(Unknown::Uncovered {
+            why: gap.to_string(),
+        }),
+        ..ChangedSymbol::bare(
+            path,
+            Some(name.to_string()),
+            lines,
+            kind,
+            decide::Coverages::partial(gap),
         )
     }
 }
@@ -2749,7 +2773,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
         verdict
             .also_changed()
             .filter(|u| (u.standing == decide::Standing::Resolved) == resolved)
-            .map(|u| label(&u.file, None, &u.line.to_string()))
+            .map(|u| place(&u.file, None, &u.line.to_string()))
             .collect()
     };
     let (also_changed, possibly_also_changed) = (users(true), users(false));
@@ -2858,6 +2882,13 @@ pub fn build_impact(
                 h.path == path && core.start_line() <= b && core.end_line() >= a
             })
             .collect()
+    };
+    let core_place = |core: &Fragment| {
+        place(
+            &rel(state, core.path()),
+            core.symbol_name.as_deref(),
+            &lines_of(&core.id),
+        )
     };
     let mut untested_definitions = 0usize;
     let mut untested_unlisted: Vec<String> = Vec::new();
@@ -3156,11 +3187,7 @@ pub fn build_impact(
                         .iter()
                         .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))
                 {
-                    let named = label(
-                        &rel(state, core.path()),
-                        core.symbol_name.as_deref(),
-                        &lines_of(&core.id),
-                    );
+                    let named = core_place(core);
                     if !layout_only.contains(&named) {
                         layout_only.push(named);
                     }
@@ -3236,11 +3263,7 @@ pub fn build_impact(
             None => hunk_layout,
         };
         if query.is_none() && layout {
-            layout_only.push(label(
-                &rel(state, core.path()),
-                core.symbol_name.as_deref(),
-                &lines_of(&core.id),
-            ));
+            layout_only.push(core_place(core));
             continue;
         }
         if query.is_none() && py.is_none() && bordering.contains(&core.id) {
@@ -3401,20 +3424,7 @@ pub fn build_impact(
             if owner.is_some_and(|frag| within(&frag.id, core)) {
                 continue;
             }
-            let Some(frag) = owner.filter(|frag| !owned_by_a_nested_definition(frag, u)) else {
-                if u.also_changed {
-                    called_in_diff = true;
-                    let users = if u.standing == decide::Standing::Resolved {
-                        &mut also_changed
-                    } else {
-                        &mut possibly_also_changed
-                    };
-                    users.push(label(&u.file, None, &u.line.to_string()));
-                } else {
-                    loose.push(cell_row(u));
-                }
-                continue;
-            };
+            let frag = owner.filter(|frag| !owned_by_a_nested_definition(frag, u));
             if u.also_changed {
                 called_in_diff = true;
                 let users = if u.standing == decide::Standing::Resolved {
@@ -3422,15 +3432,18 @@ pub fn build_impact(
                 } else {
                     &mut possibly_also_changed
                 };
-                let owner = lifted_caller(file_of(frag), frag);
-                users.push(label(
-                    &u.file,
-                    owner.symbol_name.as_deref(),
-                    &lines_of(&owner.id),
-                ));
-                continue;
+                users.push(match frag {
+                    Some(frag) => {
+                        let owner = lifted_caller(file_of(frag), frag);
+                        place(&u.file, owner.symbol_name.as_deref(), &lines_of(&owner.id))
+                    }
+                    None => place(&u.file, None, &u.line.to_string()),
+                });
+            } else if let Some(frag) = frag {
+                sources.push((frag, FINDING_WEIGHT, Some(reach_of(u))));
+            } else {
+                loose.push(cell_row(u));
             }
-            sources.push((frag, FINDING_WEIGHT, Some(reach_of(u))));
         }
         also_changed.sort();
         also_changed.dedup();
@@ -3891,11 +3904,7 @@ pub fn build_impact(
             }
             // Counted in the header, so named: a count of nothing listed
             // tells the reader neither where nor what (#398).
-            let named = label(
-                &rel(state, core.path()),
-                core.symbol_name.as_deref(),
-                &lines_of(&core.id),
-            );
+            let named = core_place(core);
             if absent {
                 let named = match entry.as_ref().filter(|_| linkless_role) {
                     Some(role) => format!("{named} \u{2014} {role}"),
@@ -3926,11 +3935,7 @@ pub fn build_impact(
             && coverage.all().witness().is_some()
             && !(also_changed.is_empty() && possibly_also_changed.is_empty());
         if only_in_diff && absent {
-            untested_called_in_diff.push(label(
-                &rel(state, core.path()),
-                core.symbol_name.as_deref(),
-                &lines_of(&core.id),
-            ));
+            untested_called_in_diff.push(core_place(core));
         }
         changed.push(ChangedSymbol {
             path: rel(state, core.path()),
@@ -3984,36 +3989,23 @@ pub fn build_impact(
     }) {
         let name = asked.rsplit(':').next().unwrap_or(asked);
         for (path, reason) in cells.iter().flat_map(|cell| cell.lost_namers(name)) {
-            let gap = decide::Gap::Unaccounted { reason, files: 1 };
-            changed.push(ChangedSymbol {
-                unresolved: Some(Unknown::Uncovered {
-                    why: gap.to_string(),
-                }),
-                ..ChangedSymbol::bare(
-                    path.as_str().to_string(),
-                    Some(name.to_string()),
-                    String::new(),
-                    "function",
-                    decide::Coverages::partial(gap),
-                )
-            });
+            changed.push(uncovered_symbol(
+                path.as_str().to_string(),
+                name,
+                String::new(),
+                "function".to_string(),
+                reason,
+            ));
         }
     }
     for (core, reason) in cell_unread {
-        let name = core.symbol_name.as_deref().map_or("", base_symbol);
-        let gap = decide::Gap::Unaccounted { reason, files: 1 };
-        changed.push(ChangedSymbol {
-            unresolved: Some(Unknown::Uncovered {
-                why: gap.to_string(),
-            }),
-            ..ChangedSymbol::bare(
-                rel(state, core.path()),
-                Some(name.to_string()),
-                lines_of(&core.id),
-                format!("{:?}", core.kind).to_lowercase(),
-                decide::Coverages::partial(gap),
-            )
-        });
+        changed.push(uncovered_symbol(
+            rel(state, core.path()),
+            core.symbol_name.as_deref().map_or("", base_symbol),
+            lines_of(&core.id),
+            format!("{:?}", core.kind).to_lowercase(),
+            reason,
+        ));
     }
     let mut traced_apart = 0u64;
     let mut apart_unreached: Vec<&decide::Changed> = Vec::new();
@@ -4022,7 +4014,7 @@ pub fn build_impact(
             continue;
         };
         if query.is_none() && matches!(entry.how, decide::How::Edited { layout_only: true }) {
-            layout_only.push(label(
+            layout_only.push(place(
                 &entry.file,
                 Some(entry.name.as_str()).filter(|_| entry.symbol().is_some()),
                 &format!("{}-{}", entry.lines.0, entry.lines.1),
@@ -4049,7 +4041,7 @@ pub fn build_impact(
         // A definition with no fragment has no test link computed: with tests in
         // view it keeps its row, which claims none; the list that says "no static
         // test link" is for the answer that has no tests to say it against.
-        let named = label(&sym.path, sym.symbol.as_deref(), &sym.lines);
+        let named = place(&sym.path, sym.symbol.as_deref(), &sym.lines);
         let in_a_test_file = crate::testfiles::is_test_path(Path::new(&sym.path));
         let witness = sym.coverage.all().witness();
         match witness.filter(|_| callerless && verdict.complete()) {
@@ -5716,7 +5708,7 @@ fn fold_rows(output: &mut ImpactOutput) {
                             .sites
                             .first()
                             .map_or_else(|| c.lines.clone(), |site| format!("{site}-{site}"));
-                        label(&c.path, c.symbol.as_deref(), &line)
+                        place(&c.path, c.symbol.as_deref(), &line)
                     })
                     .collect(),
                 parameters: if rule == "check-the-default" {
@@ -5742,13 +5734,6 @@ pub fn render_automatic(output: &mut ImpactOutput, cap: u32) -> String {
     let measure = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, true));
     fit_with(output, cap, &measure);
     render(output, true)
-}
-
-fn label(path: &str, symbol: Option<&str>, lines: &str) -> String {
-    match symbol {
-        Some(s) => format!("{path}::{s} ({lines})"),
-        None => format!("{path}:{lines}"),
-    }
 }
 
 /// Names shown on the folded line before the rest is counted.
@@ -6052,6 +6037,4 @@ pub fn layout_only_names(output: &ImpactOutput) -> impl Iterator<Item = &str> {
 }
 
 /// JSON Schema 2020-12 for `diffctx.impact.v2`, pinned by `tests/context_schema.rs`.
-pub fn impact_schema() -> serde_json::Value {
-    crate::answer::v2::impact_v2_schema()
-}
+pub use crate::answer::v2::impact_v2_schema as impact_schema;
