@@ -275,6 +275,25 @@ fn type_name(node: Node, bytes: &[u8]) -> Option<String> {
     }
 }
 
+/// The type as written, qualifier kept and type arguments dropped: `Lib.Inner`
+/// for `Lib.Inner<T>` and `a.b.Repo` for itself. A receiver declared this way
+/// resolves through its qualifier like the imported spelling.
+fn written_type(node: Node, bytes: &[u8]) -> Option<String> {
+    match node.kind() {
+        "type_identifier" => type_name(node, bytes),
+        "generic_type" => written_type(node.named_child(0)?, bytes),
+        "scoped_type_identifier" => {
+            let count = node.named_child_count();
+            let last = type_name(node.named_child(count.checked_sub(1)?)?, bytes)?;
+            match node.named_child(0).filter(|_| count > 1) {
+                Some(scope) => Some(format!("{}.{last}", written_type(scope, bytes)?)),
+                None => Some(last),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn last_identifier(node: Node, bytes: &[u8]) -> Option<String> {
     match node.kind() {
         "scoped_identifier" => node
@@ -328,7 +347,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     };
     let written = |n: &Node| {
         n.child_by_field_name("type")
-            .and_then(|t| type_name(t, bytes))
+            .and_then(|t| written_type(t, bytes))
     };
     match node.kind() {
         "formal_parameter" | "spread_parameter" => {
@@ -408,7 +427,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             let scope = node.parent().map(|c| c.byte_range());
             let caught = child(*node, "catch_type")
                 .and_then(|t| t.named_child(0))
-                .and_then(|t| type_name(t, bytes));
+                .and_then(|t| written_type(t, bytes));
             if let (Some(scope), Some(n)) = (scope, name(node)) {
                 bindings.push(Binding::new(n, caught, scope.start, scope));
             }
@@ -416,7 +435,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
         "instanceof_expression" => {
             let tested = node
                 .child_by_field_name("right")
-                .and_then(|t| type_name(t, bytes));
+                .and_then(|t| written_type(t, bytes));
             if let (Some(scope), Some(n)) = (pattern_scope(node), name(node)) {
                 bindings.push(Binding::new(n, tested, node.end_byte(), scope));
             }
@@ -427,7 +446,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             let parts: Vec<Node> = node.named_children(&mut cursor).collect();
             if let (Some(scope), [kind, .., id]) = (pattern_scope(node), parts.as_slice()) {
                 if let Some(n) = text(*id, bytes).filter(|_| id.kind() == "identifier") {
-                    let typed = type_name(*kind, bytes);
+                    let typed = written_type(*kind, bytes);
                     bindings.push(Binding::new(n.to_string(), typed, node.end_byte(), scope));
                 }
             }
