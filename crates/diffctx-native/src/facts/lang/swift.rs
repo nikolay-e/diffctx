@@ -18,7 +18,7 @@ use crate::facts::kotlin::{
 };
 use crate::facts::lang::kotlin::{Dialect, blob_of};
 use crate::facts::{BlobFacts, Extractor, Language, expired};
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 pub struct SwiftExtractor;
 
@@ -33,9 +33,7 @@ impl Extractor for SwiftExtractor {
             if expired(budget) {
                 blob.deadline();
             } else {
-                blob.losses.push(Loss::Unsupported {
-                    path: RepoPath::new("<blob>").expect("a valid path"),
-                });
+                blob.unsupported();
             }
             return blob;
         };

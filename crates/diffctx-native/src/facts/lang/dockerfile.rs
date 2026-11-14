@@ -29,17 +29,13 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Lexical, LocalKey, Name,
     Namespace, PathMention, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 pub struct DockerfileExtractor;
 
 fn part(span: &Span, offset: usize, len: usize) -> Span {
     let start = span.bytes.start + offset as u32;
     Span::new(start..start + len as u32, span.lines)
-}
-
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
 }
 
 impl Extractor for DockerfileExtractor {
@@ -54,7 +50,7 @@ impl Extractor for DockerfileExtractor {
             return blob;
         }
         let Ok(source) = std::str::from_utf8(text) else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
             return blob;
         };
         (blob.facts, blob.lexical) = Reader::new(source).run();

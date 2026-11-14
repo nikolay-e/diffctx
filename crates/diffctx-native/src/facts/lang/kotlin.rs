@@ -52,9 +52,8 @@ use crate::facts::{
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
-pub(super) const UNBOUND_PATH: &str = "<blob>";
 pub(super) const POLL_EVERY: usize = 256;
 /// Names an unwrapped binding is followed back through to the one that types it.
 const MAX_ALIAS_HOPS: usize = 4;
@@ -80,17 +79,13 @@ impl Extractor for KotlinExtractor {
     }
 }
 
-fn unbound() -> RepoPath {
-    RepoPath::new(UNBOUND_PATH).expect("a valid path")
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Kotlin);
     let Some(tree) = parse_tree(Language::Kotlin, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
         }
         return blob;
     };

@@ -473,6 +473,16 @@ impl BlobFacts {
         });
     }
 
+    /// The text is not one the extractor can read.
+    pub fn unsupported(&mut self) {
+        self.losses.push(Loss::Unsupported { path: unbound() });
+    }
+
+    /// The extractor stopped short of the end of its walk.
+    pub fn extractor_failed(&mut self) {
+        self.losses.push(Loss::ExtractorFailed { path: unbound() });
+    }
+
     /// The budget ran out; everything after this point of the walk was not read.
     pub fn deadline(&mut self) {
         self.losses.push(Loss::Deadline {

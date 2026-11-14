@@ -67,7 +67,7 @@ use crate::facts::{
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Star, TypeName, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;
@@ -84,17 +84,13 @@ impl Extractor for PhpExtractor {
     }
 }
 
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Php);
     let Some(tree) = parse_tree(Language::Php, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
         }
         return blob;
     };
@@ -108,7 +104,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.deadline();
     }
     if walker.too_deep {
-        blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+        blob.extractor_failed();
     }
     blob.facts = std::mem::take(&mut walker.facts);
     blob.record_lexical(root);

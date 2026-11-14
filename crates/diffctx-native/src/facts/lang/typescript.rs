@@ -22,10 +22,9 @@ use crate::facts::{
     Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref,
     Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 /// A blob names no path: the path of a loss is bound by whoever holds the file.
-const UNBOUND_PATH: &str = "<blob>";
 const POLL_EVERY: u32 = 256;
 const MAX_ERROR_RANGES: usize = 64;
 
@@ -198,10 +197,6 @@ fn without_bare_ampersands(source: &str) -> Option<String> {
     changed.then(|| String::from_utf8(out).ok()).flatten()
 }
 
-fn unbound() -> RepoPath {
-    RepoPath::new(UNBOUND_PATH).expect("a valid placeholder path")
-}
-
 fn error_lines(root: Node<'_>) -> Vec<(u32, u32)> {
     if !root.has_error() {
         return Vec::new();
@@ -258,7 +253,7 @@ pub(super) fn extract_as(
         Parsed::Tree(tree) => spelled_without_bare_ampersands(dialect, &source, budget, tree),
         Parsed::Missing => {
             let mut blob = BlobFacts::new(language);
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
             return blob;
         }
         Parsed::Aborted => {

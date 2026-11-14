@@ -46,7 +46,7 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use super::jvm::shared_reader_methods;
-use super::kotlin::{Leaf, POLL_EVERY, UNBOUND_PATH, error_ranges, has_word};
+use super::kotlin::{Leaf, POLL_EVERY, error_ranges, has_word};
 use super::{LineStarts, parse_tree};
 use crate::facts::framework;
 use crate::facts::kotlin as old;
@@ -55,7 +55,7 @@ use crate::facts::{
     Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref, Scope, Span,
     Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 /// Annotations that make a method a test a runner calls.
 const TEST_ANNOTATIONS: &[&str] = &[
@@ -78,17 +78,13 @@ impl Extractor for JavaExtractor {
     }
 }
 
-fn unbound() -> RepoPath {
-    RepoPath::new(UNBOUND_PATH).expect("a valid path")
-}
-
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
     let mut blob = BlobFacts::new(Language::Java);
     let Some(tree) = parse_tree(Language::Java, text, budget) else {
         if expired(budget) {
             blob.deadline();
         } else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
         }
         return blob;
     };

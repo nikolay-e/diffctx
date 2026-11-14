@@ -32,13 +32,9 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Hasher, Language, LocalKey, Namespace, Scope, Span,
     Visibility, hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::{Loss, RunBudget};
 
 pub struct ConfigExtractor;
-
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
-}
 
 impl Extractor for ConfigExtractor {
     fn language(&self) -> Language {
@@ -74,11 +70,11 @@ pub(super) fn blob_of(
     for flaw in &reading.flaws {
         match flaw {
             Flaw::NotUtf8 | Flaw::Unsupported => {
-                blob.losses.push(Loss::Unsupported { path: unbound() });
+                blob.unsupported();
             }
             Flaw::Deadline => blob.deadline(),
             Flaw::TooDeep | Flaw::TooLarge => {
-                blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+                blob.extractor_failed();
             }
             // Its line is among the reading's errors, so it is a parse error
             // above, named and placed.
@@ -90,7 +86,7 @@ pub(super) fn blob_of(
     blob.facts = facts(&reading, source, &cut);
     let failed = |l: &Loss| matches!(l, Loss::ExtractorFailed { .. });
     if cut.get() && !blob.losses.iter().any(failed) {
-        blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+        blob.extractor_failed();
     }
     blob.in_source_order();
     blob

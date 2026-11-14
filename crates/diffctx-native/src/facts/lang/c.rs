@@ -70,7 +70,7 @@ use crate::facts::{
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::{Loss, RepoPath, RunBudget};
+use crate::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;
@@ -101,10 +101,6 @@ impl Extractor for CppExtractor {
     }
 }
 
-fn unbound() -> RepoPath {
-    RepoPath::new("<blob>").expect("a valid path")
-}
-
 /// Whether the text is C++: a class, a namespace, a template or an access
 /// specifier at the start of a line. A `.h` that is, is read as C++.
 fn looks_like_cpp(text: &[u8]) -> bool {
@@ -131,7 +127,7 @@ fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
         if expired(budget) {
             blob.deadline();
         } else {
-            blob.losses.push(Loss::Unsupported { path: unbound() });
+            blob.unsupported();
         }
         return blob;
     };
@@ -145,7 +141,7 @@ fn extract(text: &[u8], budget: &RunBudget, language: Language) -> BlobFacts {
         blob.deadline();
     }
     if walker.too_deep.get() {
-        blob.losses.push(Loss::ExtractorFailed { path: unbound() });
+        blob.extractor_failed();
     }
     blob.facts = std::mem::take(&mut walker.facts);
     blob.record_lexical(root);
