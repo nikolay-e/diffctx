@@ -1206,19 +1206,37 @@ impl<'t> Walker<'t> {
         }
     }
 
-    /// `Parse[int](s)` parses as a conversion to the generic type `Parse[int]`: when `Parse` names
-    /// a function the resolver binds it, and when it names a type the same call binds the type.
+    /// `Parse[int](s)` and `pkg.Parse[int](s)` parse as a conversion to the generic type
+    /// `Parse[int]`: when the name is a function the resolver binds it, and when it is a type the
+    /// same call binds the type.
     fn conversion_target(&mut self, ty: Node<'t>, cx: &Cx, depth: u16) {
         let Some(callee) = (ty.kind() == "generic_type")
             .then(|| ty.child_by_field_name("type"))
             .flatten()
-            .filter(|callee| callee.kind() == "type_identifier")
+            .filter(|callee| matches!(callee.kind(), "type_identifier" | "qualified_type"))
         else {
             return self.type_refs(ty, cx, depth);
         };
-        let name = self.text(callee);
-        if !self.is_local(name) {
-            self.emit(callee, cx, Receiver::None, UseKind::Call, name, Vec::new());
+        if callee.kind() == "qualified_type" {
+            if let (Some(package), Some(name)) = (
+                callee.child_by_field_name("package"),
+                callee.child_by_field_name("name"),
+            ) {
+                let qualifier = vec![Name::new(self.text(package))];
+                self.emit(
+                    name,
+                    cx,
+                    Receiver::None,
+                    UseKind::Call,
+                    self.text(name),
+                    qualifier,
+                );
+            }
+        } else {
+            let name = self.text(callee);
+            if !self.is_local(name) {
+                self.emit(callee, cx, Receiver::None, UseKind::Call, name, Vec::new());
+            }
         }
         if let Some(arguments) = ty.child_by_field_name("type_arguments") {
             self.type_refs(arguments, cx, depth);
