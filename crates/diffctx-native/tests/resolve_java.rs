@@ -757,16 +757,6 @@ const RED: &[(&str, &str)] = &[
          and the class-keyed decoys are withheld by impact, which does not list the users of a \
          class for an added field, so only the full pipeline judges them",
     ),
-    (
-        "impact/java/jv1_qualified_nested_type_receiver_resolves_like_the_imported_spelling",
-        "black-box JV1: a receiver declared with a qualified nested type (`Lib.SNested`) loses \
-         its qualifier, so the call is dropped",
-    ),
-    (
-        "impact/java/jv1_inner_class_and_fully_qualified_receivers_resolve_like_imports",
-        "black-box JV1: a receiver declared with `Lib.Inner` or a fully qualified type loses its \
-         qualifier, so the call is dropped",
-    ),
 ];
 
 #[test]

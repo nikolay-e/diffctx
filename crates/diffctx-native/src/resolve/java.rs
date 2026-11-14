@@ -133,16 +133,24 @@ impl Flat {
     }
 }
 
-/// The outer name of a written type: `a.b.List` is `List`; a primitive is its
-/// own name, which no type of the repository has.
-fn outer_name(written: &str) -> Option<String> {
+/// A written type with its qualifier: `a.b.List` stays `a.b.List`; a primitive
+/// is its own name, which no type of the repository has.
+fn written_path(written: &str) -> Option<String> {
     let text = written.trim().trim_end_matches("...");
-    let last = text.rsplit('.').next()?;
-    (!last.is_empty()
-        && last
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '$'))
-    .then(|| last.to_string())
+    (!text.is_empty()
+        && text.split('.').all(|part| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        }))
+    .then(|| text.to_string())
+}
+
+/// The outer name of a written type: `a.b.List` is `List`.
+fn outer_name(written: &str) -> Option<String> {
+    let path = written_path(written)?;
+    path.rsplit('.').next().map(str::to_string)
 }
 
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
@@ -188,7 +196,7 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                 if kind != DefKind::Constructor && named > 0 {
                     let (_, end, written) = &tokens[named - 1];
                     if !MODIFIERS.contains(&written.as_str()) && flat.next_char(*end) != Some('[') {
-                        sig.declared = outer_name(written);
+                        sig.declared = written_path(written);
                     }
                 }
                 let open = (tokens[named].1..flat.chars.len()).find(|i| flat.chars[*i] == '(');
@@ -213,7 +221,7 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
         }
         DefKind::Field | DefKind::Constant | DefKind::Property | DefKind::Variable => {
             if flat.next_char(tokens[first].1) != Some('[') {
-                sig.declared = outer_name(&tokens[first].2);
+                sig.declared = written_path(&tokens[first].2);
             }
         }
         _ => {}
@@ -694,10 +702,39 @@ impl<'w> Engine<'w> {
     }
 
     fn type_ent(&self, f: usize, scope: &[Name], name: &Name) -> Ent {
+        if let Some((head, rest)) = name.as_str().split_once('.') {
+            return self.qualified_type_ent(f, scope, head, rest);
+        }
         match self.resolve_type(f, scope, name) {
             Found::Defs(ids, _) => Ent::Instance(ids[0]),
             Found::Blocked(_) => Ent::Outside,
             _ => Ent::Foreign(name.clone()),
+        }
+    }
+
+    /// An instance of a type written with its qualifier: `Outer.Nested` through
+    /// the outer type, `a.b.Outer` through the package.
+    fn qualified_type_ent(&self, f: usize, scope: &[Name], head: &str, rest: &str) -> Ent {
+        let last = rest.rsplit('.').next().unwrap_or(rest);
+        let mut entity = match self.resolve_type(f, scope, &Name::new(head)) {
+            Found::Defs(ids, _) => Ent::Type(ids[0]),
+            Found::Blocked(_) => return Ent::Outside,
+            _ if self.ix.packages.contains(head) => Ent::Package(head.to_string()),
+            _ => return Ent::Foreign(Name::new(last)),
+        };
+        for part in rest.split('.') {
+            let part = Name::new(part);
+            entity = match entity {
+                Ent::Type(class) => self
+                    .nested_types(class, &part, 0)
+                    .first()
+                    .map_or(Ent::Unknown, |id| Ent::Type(*id)),
+                other => self.step(f, &other, &part),
+            };
+        }
+        match entity {
+            Ent::Type(id) => Ent::Instance(id),
+            _ => Ent::Foreign(Name::new(last)),
         }
     }
 
@@ -1431,6 +1468,8 @@ mod tests {
         );
         let array = parse_sig(DefKind::Method, "String[] names()");
         assert_eq!(array.declared, None);
+        let qualified = parse_sig(DefKind::Method, "public Lib.Inner<T> make()");
+        assert_eq!(qualified.declared.as_deref(), Some("Lib.Inner"));
     }
 
     #[test]
