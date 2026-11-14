@@ -1,0 +1,38 @@
+name: swift_method_of_a_nested_type_reaches_a_receiver_typed_by_its_outer_name
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [swift, nested-type]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+    Sources/Kit/Feed.swift: |
+      class Feed {
+          struct Page {
+              func render() -> Int { return 1 }
+          }
+      }
+    Sources/Kit/Use.swift: |
+      func usePage(p: Feed.Page) -> Int {
+          return p.render()
+      }
+  changed_files:
+    Sources/Kit/Feed.swift: |
+      class Feed {
+          struct Page {
+              func render() -> Int { return 2 }
+          }
+      }
+  commit_message: "feed: render two"
+expect:
+  changed:
+    - Sources/Kit/Feed.swift::render
+  relations:
+    - from: "Sources/Kit/Use.swift::usePage"
+      to: "Sources/Kit/Feed.swift::render"
+      kind: calls
+      resolution: resolved
+      site: 2
