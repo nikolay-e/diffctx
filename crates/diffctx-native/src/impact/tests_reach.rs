@@ -76,6 +76,10 @@ pub(super) struct TestsReach<'a> {
     /// in-source block, a `unittest.TestCase`, a `TEST_CASE` (the scope that holds
     /// an occurrence decides, never the file's path).
     inline_tests: FxHashSet<&'a FragmentId>,
+    /// The test scopes themselves, by the path the answer prints: a use inside one
+    /// belongs to a test although the fragment that holds it is no test's own (a
+    /// `proptest! { .. }` block sits in the fragment of its module).
+    test_spans: FxHashMap<String, Vec<(u32, u32)>>,
     /// Test files the size cap kept out.
     unread: Vec<String>,
     /// Entries a test runs: binaries (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`:
@@ -160,6 +164,10 @@ impl<'a> TestsReach<'a> {
             })
             .map(|f| &f.id)
             .collect();
+        let test_spans: FxHashMap<String, Vec<(u32, u32)>> = tests_at
+            .iter()
+            .filter_map(|(spelled, spans)| Some((rel_of.get(spelled)?.clone(), spans.clone())))
+            .collect();
         let test_fragments: Vec<&Fragment> = state
             .all_fragments
             .iter()
@@ -199,6 +207,7 @@ impl<'a> TestsReach<'a> {
             named,
             test_fragments,
             inline_tests,
+            test_spans,
             unread,
             runs,
             repo_tests,
@@ -230,6 +239,12 @@ impl<'a> TestsReach<'a> {
                     && !self.cells.of(path).is_some_and(|cell| cell.is_bound(path))
             })
             .cloned()
+    }
+
+    fn in_test_span(&self, shown: &str, line: u32) -> bool {
+        self.test_spans
+            .get(shown)
+            .is_some_and(|spans| spans.iter().any(|&(a, b)| a <= line && line <= b))
     }
 
     pub(super) fn is_test(&self, f: &Fragment) -> bool {
@@ -336,11 +351,14 @@ impl<'a> TestsReach<'a> {
             for (file, line) in cell.users(shown, name, (f.start_line(), f.end_line())) {
                 // A use in a local variable or an arrow is the function's: it is
                 // the function a test calls.
-                match self.by_rel.get(&file).and_then(|fragments| {
+                let user = self.by_rel.get(&file).and_then(|fragments| {
                     cell_caller(fragments, line).map(|user| lifted_caller(fragments, user))
-                }) {
-                    Some(user) => up.fragments.push(user),
-                    None if crate::testfiles::is_test_path(Path::new(&file)) => {
+                });
+                let scoped =
+                    user.is_none_or(|user| !self.is_test(user)) && self.in_test_span(&file, line);
+                match user {
+                    Some(user) if !scoped => up.fragments.push(user),
+                    _ if scoped || crate::testfiles::is_test_path(Path::new(&file)) => {
                         let name = self
                             .cells
                             .of(&file)
@@ -348,7 +366,7 @@ impl<'a> TestsReach<'a> {
                             .map(str::to_string);
                         up.test = Some((file, name));
                     }
-                    None => {}
+                    _ => {}
                 }
             }
             if super::is_pytest_fixture(f) {

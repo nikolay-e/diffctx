@@ -201,6 +201,23 @@ pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
     links
 }
 
+/// The attributes a Rust function carries to be a test, by the last segment of
+/// the path (`tokio::test`, `sqlx::test` are `test`): the built-in one and the
+/// test-framework crates' (`rstest`, `test-case`, `test-strategy`, `quickcheck`,
+/// `wasm-bindgen-test`).
+pub(crate) const RUST_TEST_ATTRIBUTES: &[&str] = &[
+    "test",
+    "rstest",
+    "test_case",
+    "proptest",
+    "quickcheck",
+    "wasm_bindgen_test",
+];
+
+/// The macros whose block makes tests of the functions written inside it:
+/// `proptest! { #[test] fn .. }`, `quickcheck! { fn .. }`.
+pub(crate) const RUST_TEST_MACROS: &[&str] = &["proptest", "quickcheck"];
+
 /// The words a source file spells when its language lets a test live beside the
 /// code it tests, as the token index asks for them before the file is read; none
 /// where the language has no such convention and the path alone decides. The
