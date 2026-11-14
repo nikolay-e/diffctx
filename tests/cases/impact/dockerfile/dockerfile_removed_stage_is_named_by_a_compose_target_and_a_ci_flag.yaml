@@ -16,6 +16,10 @@ repo:
           build:
             context: .
             target: assets-builder
+        api:
+          build:
+            context: .
+            target: runtime
     .github/workflows/image.yml: |
       jobs:
         build:
