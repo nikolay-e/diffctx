@@ -15,6 +15,7 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, Tree};
 
+use super::merge_ranges;
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind,
@@ -217,16 +218,7 @@ fn error_lines(root: Node<'_>) -> Vec<(u32, u32)> {
             stack.extend(kids(node));
         }
     }
-    spans.sort_unstable();
-    let mut merged: Vec<(u32, u32)> = Vec::new();
-    for (from, to) in spans {
-        match merged.last_mut() {
-            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
-            _ => merged.push((from, to)),
-        }
-    }
-    merged.truncate(MAX_ERROR_RANGES);
-    merged
+    merge_ranges(spans, MAX_ERROR_RANGES)
 }
 
 #[derive(Default)]

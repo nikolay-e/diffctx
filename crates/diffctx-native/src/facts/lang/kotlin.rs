@@ -44,7 +44,7 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use super::jvm::shared_reader_methods;
-use super::{LineStarts, parse_tree};
+use super::{ERROR_RANGES_KEPT, LineStarts, parse_tree};
 use crate::facts::framework;
 use crate::facts::kotlin as old;
 use crate::facts::{
@@ -56,7 +56,6 @@ use crate::snapshot::{Loss, RepoPath, RunBudget};
 
 pub(super) const UNBOUND_PATH: &str = "<blob>";
 pub(super) const POLL_EVERY: usize = 256;
-const MAX_ERROR_RANGES: usize = 32;
 /// Names an unwrapped binding is followed back through to the one that types it.
 const MAX_ALIAS_HOPS: usize = 4;
 
@@ -144,7 +143,7 @@ pub(super) fn error_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
             _ => ranges.push((line, line)),
         }
     }
-    ranges.truncate(MAX_ERROR_RANGES);
+    ranges.truncate(ERROR_RANGES_KEPT);
     ranges
 }
 

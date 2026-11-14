@@ -31,7 +31,7 @@ use std::rc::Rc;
 
 use tree_sitter::Node;
 
-use super::{lines_of, parse_tree, span};
+use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, parse_tree, span};
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
@@ -42,7 +42,6 @@ use crate::facts::{
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
 const MAX_DEPTH: u16 = 256;
-const ERROR_RANGES_KEPT: usize = 32;
 const POLL_EVERY: usize = 256;
 
 pub struct PythonExtractor;
@@ -119,16 +118,7 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
             stack.extend(node.children(&mut cursor));
         }
     }
-    ranges.sort_unstable();
-    let mut merged: Vec<(u32, u32)> = Vec::new();
-    for (from, to) in ranges {
-        match merged.last_mut() {
-            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
-            _ => merged.push((from, to)),
-        }
-    }
-    merged.truncate(ERROR_RANGES_KEPT);
-    merged
+    merge_ranges(ranges, ERROR_RANGES_KEPT)
 }
 
 /// Tokens of a declaration written for a reader: a space between two tokens
