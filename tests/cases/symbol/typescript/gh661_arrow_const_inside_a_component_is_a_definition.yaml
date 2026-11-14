@@ -1,0 +1,17 @@
+name: gh661_arrow_const_inside_a_component_is_a_definition
+mode: symbol
+source: gh#661
+issue_state: open
+tags: [typescript, tsx, component-local]
+repo:
+  initial_files:
+    src/Layout.tsx: |
+      export function Layout() {
+        const handleLogout = async () => { console.log("bye"); };
+        const renderActionButtons = () => <button onClick={handleLogout}>Log out</button>;
+        return <div>{renderActionButtons()}</div>;
+      }
+query:
+  symbol: handleLogout
+expect:
+  definitions: [src/Layout.tsx::handleLogout]

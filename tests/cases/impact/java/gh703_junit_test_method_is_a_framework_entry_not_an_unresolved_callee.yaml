@@ -1,0 +1,58 @@
+name: gh703_junit_test_method_is_a_framework_entry_not_an_unresolved_callee
+mode: impact
+source: gh#703
+issue_state: open
+tags: [java, junit, entry-point, unknowns]
+repo:
+  initial_files:
+    src/test/java/shop/ContainersBase.java: |
+      package shop;
+
+      public abstract class ContainersBase {
+          static {
+              System.setProperty("db", "up");
+          }
+      }
+    src/test/java/shop/OrderIT.java: |
+      package shop;
+
+      import org.junit.jupiter.api.BeforeEach;
+      import org.junit.jupiter.api.Test;
+
+      class OrderIT extends ContainersBase {
+          private int total;
+
+          @BeforeEach
+          void setUp() {
+              total = 1;
+          }
+
+          @Test
+          void placesAnOrder() {
+              assert total == 1;
+          }
+      }
+  changed_files:
+    src/test/java/shop/OrderIT.java: |
+      package shop;
+
+      import org.junit.jupiter.api.BeforeEach;
+      import org.junit.jupiter.api.Test;
+
+      class OrderIT extends ContainersBase {
+          private int total;
+
+          @BeforeEach
+          void setUp() {
+              total = 2;
+          }
+
+          @Test
+          void placesAnOrder() {
+              assert total == 2;
+          }
+      }
+expect:
+  exact: false
+  changed: [src/test/java/shop/OrderIT.java::setUp, src/test/java/shop/OrderIT.java::placesAnOrder]
+  unknowns: {}

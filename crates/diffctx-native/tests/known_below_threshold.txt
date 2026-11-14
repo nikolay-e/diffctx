@@ -166,3 +166,23 @@ impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
 impact/python/py_class_attribute_holding_a_changed_class_is_a_caller  # fj#186 open
 impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#186 open
 impact/typescript/ts_hook_type_a_test_passes_by_option_key_has_a_test_link  # fj#166 open
+impact/config/gh412_nix_directory_import_names_its_default_nix  # gh#412 open: `import ./lib` is not resolved to lib/default.nix, only the explicit-file importer is named
+impact/config/gh431_deleted_file_routed_page_leaves_its_links_stale  # gh#431 open: a deleted routed page reports no stale route link
+impact/config/gh638_new_manifest_its_kustomization_does_not_list_is_flagged  # gh#638 open: a new manifest absent from the kustomization resources is not flagged, and the answer claims 0 callers
+impact/java/gh704_sole_implementor_called_through_a_subinterface_has_a_test_link  # gh#704 open: the call through the subinterface stays an unlanded gap with a site, not a candidate row
+impact/java/gh729_untracked_test_calling_a_changed_method_is_analysed  # gh#729 open: the answer states the edge as also_changed/used-by, which the oracle does not read as a relation
+impact/python/gh293_fetch_call_site_links_to_the_route_handler_it_hits  # gh#293 open: a client fetch of a route path is not linked to its handler
+impact/python/gh469_mcp_tool_return_annotation_is_a_published_contract  # gh#469 open: a changed return annotation of an MCP tool is not a changed contract
+impact/python/gh514_handler_reached_by_name_through_a_dict_registry_has_its_test  # gh#514 open: a handler registered by name in a dict is not reached by the test that calls the name
+impact/python/gh637_mcp_tool_docstring_change_is_a_contract  # gh#637 open: a docstring edit of an MCP tool lists no changed contract
+impact/rust/gh434_cochanged_twin_in_another_language_is_named  # gh#434 open: a file that co-changed in every earlier commit is not named
+impact/swift/fj156_framework_delegate_method_is_entered_by_the_framework  # fj#156 open: a delegate method is an unknown through NSObject, not entered by the framework
+impact/terraform/fj193_root_module_under_a_directory_is_hedged  # fj#193 open: a root module under a directory claims a clean absence for a variable no module sets
+symbol/config/gh336_prometheus_alert_name_is_a_definition_with_its_rule_test  # gh#336 open: a PrometheusRule alert is no definition and its promtool test is no test link
+symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # gh#490 open: receivers from a companion factory or an elvis return stay candidates
+symbol/kotlin/gh705_test_naming_a_class_by_its_fqn_string_is_listed  # gh#705 open: a test that names a class by its qualified string is not listed
+symbol/python/gh482_dict_key_readers_across_languages_are_listed  # gh#482 open: readers of a dict key are not listed, only the unrelated function of that name
+symbol/python/gh708_keyword_argument_binds_the_callee_parameter  # gh#708 open: a keyword argument does not bind the callee's parameter
+symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed  # gh#718 open: a loop variable over list[Frame] stays untyped, its reads are unresolved
+symbol/rust/gh488_struct_field_is_a_definition_with_its_readers  # gh#488 open: a Rust struct field is no definition and its readers are not listed
+symbol/sql/fj185_mysql_backticked_function_is_one_name_with_its_bare_calls  # fj#185 open: a backticked MySQL function name is not seeded as a definition

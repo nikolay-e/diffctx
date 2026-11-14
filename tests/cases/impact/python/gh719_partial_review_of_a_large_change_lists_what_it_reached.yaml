@@ -1,0 +1,437 @@
+name: gh719_partial_review_of_a_large_change_lists_what_it_reached
+mode: impact
+source: gh#719
+issue_state: open
+# mode=diff for the merge itself: the schema builds one commit, not a --no-ff merge of
+# reviewed commits. This pins the second half of the issue: a run stopped early
+# (DIFFCTX_TEST_DEADLINE_AFTER_POLLS) still names what it reached, never "none".
+tags: [python, deadline, partial, merge]
+repo:
+  initial_files:
+    README: |
+      base
+  changed_files:
+    pkg/__init__.py: ""
+    pkg/m0.py: |
+      def f0(x):
+          return x
+    pkg/m1.py: |
+      from pkg.m0 import f0
+
+
+      def f1(x):
+          return f0(x) + 1
+    pkg/m2.py: |
+      from pkg.m1 import f1
+
+
+      def f2(x):
+          return f1(x) + 2
+    pkg/m3.py: |
+      from pkg.m2 import f2
+
+
+      def f3(x):
+          return f2(x) + 3
+    pkg/m4.py: |
+      from pkg.m3 import f3
+
+
+      def f4(x):
+          return f3(x) + 4
+    pkg/m5.py: |
+      from pkg.m4 import f4
+
+
+      def f5(x):
+          return f4(x) + 5
+    pkg/m6.py: |
+      from pkg.m5 import f5
+
+
+      def f6(x):
+          return f5(x) + 6
+    pkg/m7.py: |
+      from pkg.m6 import f6
+
+
+      def f7(x):
+          return f6(x) + 7
+    pkg/m8.py: |
+      from pkg.m7 import f7
+
+
+      def f8(x):
+          return f7(x) + 8
+    pkg/m9.py: |
+      from pkg.m8 import f8
+
+
+      def f9(x):
+          return f8(x) + 9
+    pkg/m10.py: |
+      from pkg.m9 import f9
+
+
+      def f10(x):
+          return f9(x) + 10
+    pkg/m11.py: |
+      from pkg.m10 import f10
+
+
+      def f11(x):
+          return f10(x) + 11
+    pkg/m12.py: |
+      from pkg.m11 import f11
+
+
+      def f12(x):
+          return f11(x) + 12
+    pkg/m13.py: |
+      from pkg.m12 import f12
+
+
+      def f13(x):
+          return f12(x) + 13
+    pkg/m14.py: |
+      from pkg.m13 import f13
+
+
+      def f14(x):
+          return f13(x) + 14
+    pkg/m15.py: |
+      from pkg.m14 import f14
+
+
+      def f15(x):
+          return f14(x) + 15
+    pkg/m16.py: |
+      from pkg.m15 import f15
+
+
+      def f16(x):
+          return f15(x) + 16
+    pkg/m17.py: |
+      from pkg.m16 import f16
+
+
+      def f17(x):
+          return f16(x) + 17
+    pkg/m18.py: |
+      from pkg.m17 import f17
+
+
+      def f18(x):
+          return f17(x) + 18
+    pkg/m19.py: |
+      from pkg.m18 import f18
+
+
+      def f19(x):
+          return f18(x) + 19
+    pkg/m20.py: |
+      from pkg.m19 import f19
+
+
+      def f20(x):
+          return f19(x) + 20
+    pkg/m21.py: |
+      from pkg.m20 import f20
+
+
+      def f21(x):
+          return f20(x) + 21
+    pkg/m22.py: |
+      from pkg.m21 import f21
+
+
+      def f22(x):
+          return f21(x) + 22
+    pkg/m23.py: |
+      from pkg.m22 import f22
+
+
+      def f23(x):
+          return f22(x) + 23
+    pkg/m24.py: |
+      from pkg.m23 import f23
+
+
+      def f24(x):
+          return f23(x) + 24
+    pkg/m25.py: |
+      from pkg.m24 import f24
+
+
+      def f25(x):
+          return f24(x) + 25
+    pkg/m26.py: |
+      from pkg.m25 import f25
+
+
+      def f26(x):
+          return f25(x) + 26
+    pkg/m27.py: |
+      from pkg.m26 import f26
+
+
+      def f27(x):
+          return f26(x) + 27
+    pkg/m28.py: |
+      from pkg.m27 import f27
+
+
+      def f28(x):
+          return f27(x) + 28
+    pkg/m29.py: |
+      from pkg.m28 import f28
+
+
+      def f29(x):
+          return f28(x) + 29
+    pkg/m30.py: |
+      from pkg.m29 import f29
+
+
+      def f30(x):
+          return f29(x) + 30
+    pkg/m31.py: |
+      from pkg.m30 import f30
+
+
+      def f31(x):
+          return f30(x) + 31
+    pkg/m32.py: |
+      from pkg.m31 import f31
+
+
+      def f32(x):
+          return f31(x) + 32
+    pkg/m33.py: |
+      from pkg.m32 import f32
+
+
+      def f33(x):
+          return f32(x) + 33
+    pkg/m34.py: |
+      from pkg.m33 import f33
+
+
+      def f34(x):
+          return f33(x) + 34
+    pkg/m35.py: |
+      from pkg.m34 import f34
+
+
+      def f35(x):
+          return f34(x) + 35
+    pkg/m36.py: |
+      from pkg.m35 import f35
+
+
+      def f36(x):
+          return f35(x) + 36
+    pkg/m37.py: |
+      from pkg.m36 import f36
+
+
+      def f37(x):
+          return f36(x) + 37
+    pkg/m38.py: |
+      from pkg.m37 import f37
+
+
+      def f38(x):
+          return f37(x) + 38
+    pkg/m39.py: |
+      from pkg.m38 import f38
+
+
+      def f39(x):
+          return f38(x) + 39
+    pkg/m40.py: |
+      from pkg.m39 import f39
+
+
+      def f40(x):
+          return f39(x) + 40
+    pkg/m41.py: |
+      from pkg.m40 import f40
+
+
+      def f41(x):
+          return f40(x) + 41
+    pkg/m42.py: |
+      from pkg.m41 import f41
+
+
+      def f42(x):
+          return f41(x) + 42
+    pkg/m43.py: |
+      from pkg.m42 import f42
+
+
+      def f43(x):
+          return f42(x) + 43
+    pkg/m44.py: |
+      from pkg.m43 import f43
+
+
+      def f44(x):
+          return f43(x) + 44
+    pkg/m45.py: |
+      from pkg.m44 import f44
+
+
+      def f45(x):
+          return f44(x) + 45
+    pkg/m46.py: |
+      from pkg.m45 import f45
+
+
+      def f46(x):
+          return f45(x) + 46
+    pkg/m47.py: |
+      from pkg.m46 import f46
+
+
+      def f47(x):
+          return f46(x) + 47
+    pkg/m48.py: |
+      from pkg.m47 import f47
+
+
+      def f48(x):
+          return f47(x) + 48
+    pkg/m49.py: |
+      from pkg.m48 import f48
+
+
+      def f49(x):
+          return f48(x) + 49
+    pkg/m50.py: |
+      from pkg.m49 import f49
+
+
+      def f50(x):
+          return f49(x) + 50
+    pkg/m51.py: |
+      from pkg.m50 import f50
+
+
+      def f51(x):
+          return f50(x) + 51
+    pkg/m52.py: |
+      from pkg.m51 import f51
+
+
+      def f52(x):
+          return f51(x) + 52
+    pkg/m53.py: |
+      from pkg.m52 import f52
+
+
+      def f53(x):
+          return f52(x) + 53
+    pkg/m54.py: |
+      from pkg.m53 import f53
+
+
+      def f54(x):
+          return f53(x) + 54
+    pkg/m55.py: |
+      from pkg.m54 import f54
+
+
+      def f55(x):
+          return f54(x) + 55
+    pkg/m56.py: |
+      from pkg.m55 import f55
+
+
+      def f56(x):
+          return f55(x) + 56
+    pkg/m57.py: |
+      from pkg.m56 import f56
+
+
+      def f57(x):
+          return f56(x) + 57
+    pkg/m58.py: |
+      from pkg.m57 import f57
+
+
+      def f58(x):
+          return f57(x) + 58
+    pkg/m59.py: |
+      from pkg.m58 import f58
+
+
+      def f59(x):
+          return f58(x) + 59
+    pkg/m60.py: |
+      from pkg.m59 import f59
+
+
+      def f60(x):
+          return f59(x) + 60
+    pkg/m61.py: |
+      from pkg.m60 import f60
+
+
+      def f61(x):
+          return f60(x) + 61
+    pkg/m62.py: |
+      from pkg.m61 import f61
+
+
+      def f62(x):
+          return f61(x) + 62
+    pkg/m63.py: |
+      from pkg.m62 import f62
+
+
+      def f63(x):
+          return f62(x) + 63
+    pkg/m64.py: |
+      from pkg.m63 import f63
+
+
+      def f64(x):
+          return f63(x) + 64
+    pkg/m65.py: |
+      from pkg.m64 import f64
+
+
+      def f65(x):
+          return f64(x) + 65
+    pkg/m66.py: |
+      from pkg.m65 import f65
+
+
+      def f66(x):
+          return f65(x) + 66
+    pkg/m67.py: |
+      from pkg.m66 import f66
+
+
+      def f67(x):
+          return f66(x) + 67
+    pkg/m68.py: |
+      from pkg.m67 import f67
+
+
+      def f68(x):
+          return f67(x) + 68
+    pkg/m69.py: |
+      from pkg.m68 import f68
+
+
+      def f69(x):
+          return f68(x) + 69
+query:
+  env: {DIFFCTX_TEST_DEADLINE_AFTER_POLLS: "3"}
+expect:
+  exact: false
+  never_empty: true
+  discloses: true

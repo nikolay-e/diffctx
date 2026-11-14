@@ -1,0 +1,2846 @@
+name: gh731_untracked_data_file_is_one_bounded_fragment
+mode: impact
+source: gh#731
+issue_state: open
+# mode=diff: the defect is pack mode (`--diff --mode pack`): 1.20 emits 731 fragments of an
+# untracked JSON, 2.0 one. Impact mode never exploded; this case pins that the code change
+# and the untracked test stay the answer beside the data file.
+tags: [java, untracked, data-file, pack]
+repo:
+  initial_files:
+    src/App.java: |
+      package demo;
+
+      public class App {
+          public int total(int a, int b) {
+              return a + b;
+          }
+      }
+  changed_files:
+    src/App.java: |
+      package demo;
+
+      public class App {
+          public int total(int a, int b) {
+              return a + b + 1;
+          }
+      }
+  worktree: true
+  untracked_files:
+    generated-data.json: |
+      {
+        "rows": [
+          {
+            "id": 0,
+            "name": "item-0",
+            "nested": {
+              "k": 0
+            }
+          },
+          {
+            "id": 1,
+            "name": "item-1",
+            "nested": {
+              "k": 1
+            }
+          },
+          {
+            "id": 2,
+            "name": "item-2",
+            "nested": {
+              "k": 2
+            }
+          },
+          {
+            "id": 3,
+            "name": "item-3",
+            "nested": {
+              "k": 3
+            }
+          },
+          {
+            "id": 4,
+            "name": "item-4",
+            "nested": {
+              "k": 4
+            }
+          },
+          {
+            "id": 5,
+            "name": "item-5",
+            "nested": {
+              "k": 5
+            }
+          },
+          {
+            "id": 6,
+            "name": "item-6",
+            "nested": {
+              "k": 6
+            }
+          },
+          {
+            "id": 7,
+            "name": "item-7",
+            "nested": {
+              "k": 7
+            }
+          },
+          {
+            "id": 8,
+            "name": "item-8",
+            "nested": {
+              "k": 8
+            }
+          },
+          {
+            "id": 9,
+            "name": "item-9",
+            "nested": {
+              "k": 9
+            }
+          },
+          {
+            "id": 10,
+            "name": "item-10",
+            "nested": {
+              "k": 10
+            }
+          },
+          {
+            "id": 11,
+            "name": "item-11",
+            "nested": {
+              "k": 11
+            }
+          },
+          {
+            "id": 12,
+            "name": "item-12",
+            "nested": {
+              "k": 12
+            }
+          },
+          {
+            "id": 13,
+            "name": "item-13",
+            "nested": {
+              "k": 13
+            }
+          },
+          {
+            "id": 14,
+            "name": "item-14",
+            "nested": {
+              "k": 14
+            }
+          },
+          {
+            "id": 15,
+            "name": "item-15",
+            "nested": {
+              "k": 15
+            }
+          },
+          {
+            "id": 16,
+            "name": "item-16",
+            "nested": {
+              "k": 16
+            }
+          },
+          {
+            "id": 17,
+            "name": "item-17",
+            "nested": {
+              "k": 17
+            }
+          },
+          {
+            "id": 18,
+            "name": "item-18",
+            "nested": {
+              "k": 18
+            }
+          },
+          {
+            "id": 19,
+            "name": "item-19",
+            "nested": {
+              "k": 19
+            }
+          },
+          {
+            "id": 20,
+            "name": "item-20",
+            "nested": {
+              "k": 20
+            }
+          },
+          {
+            "id": 21,
+            "name": "item-21",
+            "nested": {
+              "k": 21
+            }
+          },
+          {
+            "id": 22,
+            "name": "item-22",
+            "nested": {
+              "k": 22
+            }
+          },
+          {
+            "id": 23,
+            "name": "item-23",
+            "nested": {
+              "k": 23
+            }
+          },
+          {
+            "id": 24,
+            "name": "item-24",
+            "nested": {
+              "k": 24
+            }
+          },
+          {
+            "id": 25,
+            "name": "item-25",
+            "nested": {
+              "k": 25
+            }
+          },
+          {
+            "id": 26,
+            "name": "item-26",
+            "nested": {
+              "k": 26
+            }
+          },
+          {
+            "id": 27,
+            "name": "item-27",
+            "nested": {
+              "k": 27
+            }
+          },
+          {
+            "id": 28,
+            "name": "item-28",
+            "nested": {
+              "k": 28
+            }
+          },
+          {
+            "id": 29,
+            "name": "item-29",
+            "nested": {
+              "k": 29
+            }
+          },
+          {
+            "id": 30,
+            "name": "item-30",
+            "nested": {
+              "k": 30
+            }
+          },
+          {
+            "id": 31,
+            "name": "item-31",
+            "nested": {
+              "k": 31
+            }
+          },
+          {
+            "id": 32,
+            "name": "item-32",
+            "nested": {
+              "k": 32
+            }
+          },
+          {
+            "id": 33,
+            "name": "item-33",
+            "nested": {
+              "k": 33
+            }
+          },
+          {
+            "id": 34,
+            "name": "item-34",
+            "nested": {
+              "k": 34
+            }
+          },
+          {
+            "id": 35,
+            "name": "item-35",
+            "nested": {
+              "k": 35
+            }
+          },
+          {
+            "id": 36,
+            "name": "item-36",
+            "nested": {
+              "k": 36
+            }
+          },
+          {
+            "id": 37,
+            "name": "item-37",
+            "nested": {
+              "k": 37
+            }
+          },
+          {
+            "id": 38,
+            "name": "item-38",
+            "nested": {
+              "k": 38
+            }
+          },
+          {
+            "id": 39,
+            "name": "item-39",
+            "nested": {
+              "k": 39
+            }
+          },
+          {
+            "id": 40,
+            "name": "item-40",
+            "nested": {
+              "k": 40
+            }
+          },
+          {
+            "id": 41,
+            "name": "item-41",
+            "nested": {
+              "k": 41
+            }
+          },
+          {
+            "id": 42,
+            "name": "item-42",
+            "nested": {
+              "k": 42
+            }
+          },
+          {
+            "id": 43,
+            "name": "item-43",
+            "nested": {
+              "k": 43
+            }
+          },
+          {
+            "id": 44,
+            "name": "item-44",
+            "nested": {
+              "k": 44
+            }
+          },
+          {
+            "id": 45,
+            "name": "item-45",
+            "nested": {
+              "k": 45
+            }
+          },
+          {
+            "id": 46,
+            "name": "item-46",
+            "nested": {
+              "k": 46
+            }
+          },
+          {
+            "id": 47,
+            "name": "item-47",
+            "nested": {
+              "k": 47
+            }
+          },
+          {
+            "id": 48,
+            "name": "item-48",
+            "nested": {
+              "k": 48
+            }
+          },
+          {
+            "id": 49,
+            "name": "item-49",
+            "nested": {
+              "k": 49
+            }
+          },
+          {
+            "id": 50,
+            "name": "item-50",
+            "nested": {
+              "k": 50
+            }
+          },
+          {
+            "id": 51,
+            "name": "item-51",
+            "nested": {
+              "k": 51
+            }
+          },
+          {
+            "id": 52,
+            "name": "item-52",
+            "nested": {
+              "k": 52
+            }
+          },
+          {
+            "id": 53,
+            "name": "item-53",
+            "nested": {
+              "k": 53
+            }
+          },
+          {
+            "id": 54,
+            "name": "item-54",
+            "nested": {
+              "k": 54
+            }
+          },
+          {
+            "id": 55,
+            "name": "item-55",
+            "nested": {
+              "k": 55
+            }
+          },
+          {
+            "id": 56,
+            "name": "item-56",
+            "nested": {
+              "k": 56
+            }
+          },
+          {
+            "id": 57,
+            "name": "item-57",
+            "nested": {
+              "k": 57
+            }
+          },
+          {
+            "id": 58,
+            "name": "item-58",
+            "nested": {
+              "k": 58
+            }
+          },
+          {
+            "id": 59,
+            "name": "item-59",
+            "nested": {
+              "k": 59
+            }
+          },
+          {
+            "id": 60,
+            "name": "item-60",
+            "nested": {
+              "k": 60
+            }
+          },
+          {
+            "id": 61,
+            "name": "item-61",
+            "nested": {
+              "k": 61
+            }
+          },
+          {
+            "id": 62,
+            "name": "item-62",
+            "nested": {
+              "k": 62
+            }
+          },
+          {
+            "id": 63,
+            "name": "item-63",
+            "nested": {
+              "k": 63
+            }
+          },
+          {
+            "id": 64,
+            "name": "item-64",
+            "nested": {
+              "k": 64
+            }
+          },
+          {
+            "id": 65,
+            "name": "item-65",
+            "nested": {
+              "k": 65
+            }
+          },
+          {
+            "id": 66,
+            "name": "item-66",
+            "nested": {
+              "k": 66
+            }
+          },
+          {
+            "id": 67,
+            "name": "item-67",
+            "nested": {
+              "k": 67
+            }
+          },
+          {
+            "id": 68,
+            "name": "item-68",
+            "nested": {
+              "k": 68
+            }
+          },
+          {
+            "id": 69,
+            "name": "item-69",
+            "nested": {
+              "k": 69
+            }
+          },
+          {
+            "id": 70,
+            "name": "item-70",
+            "nested": {
+              "k": 70
+            }
+          },
+          {
+            "id": 71,
+            "name": "item-71",
+            "nested": {
+              "k": 71
+            }
+          },
+          {
+            "id": 72,
+            "name": "item-72",
+            "nested": {
+              "k": 72
+            }
+          },
+          {
+            "id": 73,
+            "name": "item-73",
+            "nested": {
+              "k": 73
+            }
+          },
+          {
+            "id": 74,
+            "name": "item-74",
+            "nested": {
+              "k": 74
+            }
+          },
+          {
+            "id": 75,
+            "name": "item-75",
+            "nested": {
+              "k": 75
+            }
+          },
+          {
+            "id": 76,
+            "name": "item-76",
+            "nested": {
+              "k": 76
+            }
+          },
+          {
+            "id": 77,
+            "name": "item-77",
+            "nested": {
+              "k": 77
+            }
+          },
+          {
+            "id": 78,
+            "name": "item-78",
+            "nested": {
+              "k": 78
+            }
+          },
+          {
+            "id": 79,
+            "name": "item-79",
+            "nested": {
+              "k": 79
+            }
+          },
+          {
+            "id": 80,
+            "name": "item-80",
+            "nested": {
+              "k": 80
+            }
+          },
+          {
+            "id": 81,
+            "name": "item-81",
+            "nested": {
+              "k": 81
+            }
+          },
+          {
+            "id": 82,
+            "name": "item-82",
+            "nested": {
+              "k": 82
+            }
+          },
+          {
+            "id": 83,
+            "name": "item-83",
+            "nested": {
+              "k": 83
+            }
+          },
+          {
+            "id": 84,
+            "name": "item-84",
+            "nested": {
+              "k": 84
+            }
+          },
+          {
+            "id": 85,
+            "name": "item-85",
+            "nested": {
+              "k": 85
+            }
+          },
+          {
+            "id": 86,
+            "name": "item-86",
+            "nested": {
+              "k": 86
+            }
+          },
+          {
+            "id": 87,
+            "name": "item-87",
+            "nested": {
+              "k": 87
+            }
+          },
+          {
+            "id": 88,
+            "name": "item-88",
+            "nested": {
+              "k": 88
+            }
+          },
+          {
+            "id": 89,
+            "name": "item-89",
+            "nested": {
+              "k": 89
+            }
+          },
+          {
+            "id": 90,
+            "name": "item-90",
+            "nested": {
+              "k": 90
+            }
+          },
+          {
+            "id": 91,
+            "name": "item-91",
+            "nested": {
+              "k": 91
+            }
+          },
+          {
+            "id": 92,
+            "name": "item-92",
+            "nested": {
+              "k": 92
+            }
+          },
+          {
+            "id": 93,
+            "name": "item-93",
+            "nested": {
+              "k": 93
+            }
+          },
+          {
+            "id": 94,
+            "name": "item-94",
+            "nested": {
+              "k": 94
+            }
+          },
+          {
+            "id": 95,
+            "name": "item-95",
+            "nested": {
+              "k": 95
+            }
+          },
+          {
+            "id": 96,
+            "name": "item-96",
+            "nested": {
+              "k": 96
+            }
+          },
+          {
+            "id": 97,
+            "name": "item-97",
+            "nested": {
+              "k": 97
+            }
+          },
+          {
+            "id": 98,
+            "name": "item-98",
+            "nested": {
+              "k": 98
+            }
+          },
+          {
+            "id": 99,
+            "name": "item-99",
+            "nested": {
+              "k": 99
+            }
+          },
+          {
+            "id": 100,
+            "name": "item-100",
+            "nested": {
+              "k": 100
+            }
+          },
+          {
+            "id": 101,
+            "name": "item-101",
+            "nested": {
+              "k": 101
+            }
+          },
+          {
+            "id": 102,
+            "name": "item-102",
+            "nested": {
+              "k": 102
+            }
+          },
+          {
+            "id": 103,
+            "name": "item-103",
+            "nested": {
+              "k": 103
+            }
+          },
+          {
+            "id": 104,
+            "name": "item-104",
+            "nested": {
+              "k": 104
+            }
+          },
+          {
+            "id": 105,
+            "name": "item-105",
+            "nested": {
+              "k": 105
+            }
+          },
+          {
+            "id": 106,
+            "name": "item-106",
+            "nested": {
+              "k": 106
+            }
+          },
+          {
+            "id": 107,
+            "name": "item-107",
+            "nested": {
+              "k": 107
+            }
+          },
+          {
+            "id": 108,
+            "name": "item-108",
+            "nested": {
+              "k": 108
+            }
+          },
+          {
+            "id": 109,
+            "name": "item-109",
+            "nested": {
+              "k": 109
+            }
+          },
+          {
+            "id": 110,
+            "name": "item-110",
+            "nested": {
+              "k": 110
+            }
+          },
+          {
+            "id": 111,
+            "name": "item-111",
+            "nested": {
+              "k": 111
+            }
+          },
+          {
+            "id": 112,
+            "name": "item-112",
+            "nested": {
+              "k": 112
+            }
+          },
+          {
+            "id": 113,
+            "name": "item-113",
+            "nested": {
+              "k": 113
+            }
+          },
+          {
+            "id": 114,
+            "name": "item-114",
+            "nested": {
+              "k": 114
+            }
+          },
+          {
+            "id": 115,
+            "name": "item-115",
+            "nested": {
+              "k": 115
+            }
+          },
+          {
+            "id": 116,
+            "name": "item-116",
+            "nested": {
+              "k": 116
+            }
+          },
+          {
+            "id": 117,
+            "name": "item-117",
+            "nested": {
+              "k": 117
+            }
+          },
+          {
+            "id": 118,
+            "name": "item-118",
+            "nested": {
+              "k": 118
+            }
+          },
+          {
+            "id": 119,
+            "name": "item-119",
+            "nested": {
+              "k": 119
+            }
+          },
+          {
+            "id": 120,
+            "name": "item-120",
+            "nested": {
+              "k": 120
+            }
+          },
+          {
+            "id": 121,
+            "name": "item-121",
+            "nested": {
+              "k": 121
+            }
+          },
+          {
+            "id": 122,
+            "name": "item-122",
+            "nested": {
+              "k": 122
+            }
+          },
+          {
+            "id": 123,
+            "name": "item-123",
+            "nested": {
+              "k": 123
+            }
+          },
+          {
+            "id": 124,
+            "name": "item-124",
+            "nested": {
+              "k": 124
+            }
+          },
+          {
+            "id": 125,
+            "name": "item-125",
+            "nested": {
+              "k": 125
+            }
+          },
+          {
+            "id": 126,
+            "name": "item-126",
+            "nested": {
+              "k": 126
+            }
+          },
+          {
+            "id": 127,
+            "name": "item-127",
+            "nested": {
+              "k": 127
+            }
+          },
+          {
+            "id": 128,
+            "name": "item-128",
+            "nested": {
+              "k": 128
+            }
+          },
+          {
+            "id": 129,
+            "name": "item-129",
+            "nested": {
+              "k": 129
+            }
+          },
+          {
+            "id": 130,
+            "name": "item-130",
+            "nested": {
+              "k": 130
+            }
+          },
+          {
+            "id": 131,
+            "name": "item-131",
+            "nested": {
+              "k": 131
+            }
+          },
+          {
+            "id": 132,
+            "name": "item-132",
+            "nested": {
+              "k": 132
+            }
+          },
+          {
+            "id": 133,
+            "name": "item-133",
+            "nested": {
+              "k": 133
+            }
+          },
+          {
+            "id": 134,
+            "name": "item-134",
+            "nested": {
+              "k": 134
+            }
+          },
+          {
+            "id": 135,
+            "name": "item-135",
+            "nested": {
+              "k": 135
+            }
+          },
+          {
+            "id": 136,
+            "name": "item-136",
+            "nested": {
+              "k": 136
+            }
+          },
+          {
+            "id": 137,
+            "name": "item-137",
+            "nested": {
+              "k": 137
+            }
+          },
+          {
+            "id": 138,
+            "name": "item-138",
+            "nested": {
+              "k": 138
+            }
+          },
+          {
+            "id": 139,
+            "name": "item-139",
+            "nested": {
+              "k": 139
+            }
+          },
+          {
+            "id": 140,
+            "name": "item-140",
+            "nested": {
+              "k": 140
+            }
+          },
+          {
+            "id": 141,
+            "name": "item-141",
+            "nested": {
+              "k": 141
+            }
+          },
+          {
+            "id": 142,
+            "name": "item-142",
+            "nested": {
+              "k": 142
+            }
+          },
+          {
+            "id": 143,
+            "name": "item-143",
+            "nested": {
+              "k": 143
+            }
+          },
+          {
+            "id": 144,
+            "name": "item-144",
+            "nested": {
+              "k": 144
+            }
+          },
+          {
+            "id": 145,
+            "name": "item-145",
+            "nested": {
+              "k": 145
+            }
+          },
+          {
+            "id": 146,
+            "name": "item-146",
+            "nested": {
+              "k": 146
+            }
+          },
+          {
+            "id": 147,
+            "name": "item-147",
+            "nested": {
+              "k": 147
+            }
+          },
+          {
+            "id": 148,
+            "name": "item-148",
+            "nested": {
+              "k": 148
+            }
+          },
+          {
+            "id": 149,
+            "name": "item-149",
+            "nested": {
+              "k": 149
+            }
+          },
+          {
+            "id": 150,
+            "name": "item-150",
+            "nested": {
+              "k": 150
+            }
+          },
+          {
+            "id": 151,
+            "name": "item-151",
+            "nested": {
+              "k": 151
+            }
+          },
+          {
+            "id": 152,
+            "name": "item-152",
+            "nested": {
+              "k": 152
+            }
+          },
+          {
+            "id": 153,
+            "name": "item-153",
+            "nested": {
+              "k": 153
+            }
+          },
+          {
+            "id": 154,
+            "name": "item-154",
+            "nested": {
+              "k": 154
+            }
+          },
+          {
+            "id": 155,
+            "name": "item-155",
+            "nested": {
+              "k": 155
+            }
+          },
+          {
+            "id": 156,
+            "name": "item-156",
+            "nested": {
+              "k": 156
+            }
+          },
+          {
+            "id": 157,
+            "name": "item-157",
+            "nested": {
+              "k": 157
+            }
+          },
+          {
+            "id": 158,
+            "name": "item-158",
+            "nested": {
+              "k": 158
+            }
+          },
+          {
+            "id": 159,
+            "name": "item-159",
+            "nested": {
+              "k": 159
+            }
+          },
+          {
+            "id": 160,
+            "name": "item-160",
+            "nested": {
+              "k": 160
+            }
+          },
+          {
+            "id": 161,
+            "name": "item-161",
+            "nested": {
+              "k": 161
+            }
+          },
+          {
+            "id": 162,
+            "name": "item-162",
+            "nested": {
+              "k": 162
+            }
+          },
+          {
+            "id": 163,
+            "name": "item-163",
+            "nested": {
+              "k": 163
+            }
+          },
+          {
+            "id": 164,
+            "name": "item-164",
+            "nested": {
+              "k": 164
+            }
+          },
+          {
+            "id": 165,
+            "name": "item-165",
+            "nested": {
+              "k": 165
+            }
+          },
+          {
+            "id": 166,
+            "name": "item-166",
+            "nested": {
+              "k": 166
+            }
+          },
+          {
+            "id": 167,
+            "name": "item-167",
+            "nested": {
+              "k": 167
+            }
+          },
+          {
+            "id": 168,
+            "name": "item-168",
+            "nested": {
+              "k": 168
+            }
+          },
+          {
+            "id": 169,
+            "name": "item-169",
+            "nested": {
+              "k": 169
+            }
+          },
+          {
+            "id": 170,
+            "name": "item-170",
+            "nested": {
+              "k": 170
+            }
+          },
+          {
+            "id": 171,
+            "name": "item-171",
+            "nested": {
+              "k": 171
+            }
+          },
+          {
+            "id": 172,
+            "name": "item-172",
+            "nested": {
+              "k": 172
+            }
+          },
+          {
+            "id": 173,
+            "name": "item-173",
+            "nested": {
+              "k": 173
+            }
+          },
+          {
+            "id": 174,
+            "name": "item-174",
+            "nested": {
+              "k": 174
+            }
+          },
+          {
+            "id": 175,
+            "name": "item-175",
+            "nested": {
+              "k": 175
+            }
+          },
+          {
+            "id": 176,
+            "name": "item-176",
+            "nested": {
+              "k": 176
+            }
+          },
+          {
+            "id": 177,
+            "name": "item-177",
+            "nested": {
+              "k": 177
+            }
+          },
+          {
+            "id": 178,
+            "name": "item-178",
+            "nested": {
+              "k": 178
+            }
+          },
+          {
+            "id": 179,
+            "name": "item-179",
+            "nested": {
+              "k": 179
+            }
+          },
+          {
+            "id": 180,
+            "name": "item-180",
+            "nested": {
+              "k": 180
+            }
+          },
+          {
+            "id": 181,
+            "name": "item-181",
+            "nested": {
+              "k": 181
+            }
+          },
+          {
+            "id": 182,
+            "name": "item-182",
+            "nested": {
+              "k": 182
+            }
+          },
+          {
+            "id": 183,
+            "name": "item-183",
+            "nested": {
+              "k": 183
+            }
+          },
+          {
+            "id": 184,
+            "name": "item-184",
+            "nested": {
+              "k": 184
+            }
+          },
+          {
+            "id": 185,
+            "name": "item-185",
+            "nested": {
+              "k": 185
+            }
+          },
+          {
+            "id": 186,
+            "name": "item-186",
+            "nested": {
+              "k": 186
+            }
+          },
+          {
+            "id": 187,
+            "name": "item-187",
+            "nested": {
+              "k": 187
+            }
+          },
+          {
+            "id": 188,
+            "name": "item-188",
+            "nested": {
+              "k": 188
+            }
+          },
+          {
+            "id": 189,
+            "name": "item-189",
+            "nested": {
+              "k": 189
+            }
+          },
+          {
+            "id": 190,
+            "name": "item-190",
+            "nested": {
+              "k": 190
+            }
+          },
+          {
+            "id": 191,
+            "name": "item-191",
+            "nested": {
+              "k": 191
+            }
+          },
+          {
+            "id": 192,
+            "name": "item-192",
+            "nested": {
+              "k": 192
+            }
+          },
+          {
+            "id": 193,
+            "name": "item-193",
+            "nested": {
+              "k": 193
+            }
+          },
+          {
+            "id": 194,
+            "name": "item-194",
+            "nested": {
+              "k": 194
+            }
+          },
+          {
+            "id": 195,
+            "name": "item-195",
+            "nested": {
+              "k": 195
+            }
+          },
+          {
+            "id": 196,
+            "name": "item-196",
+            "nested": {
+              "k": 196
+            }
+          },
+          {
+            "id": 197,
+            "name": "item-197",
+            "nested": {
+              "k": 197
+            }
+          },
+          {
+            "id": 198,
+            "name": "item-198",
+            "nested": {
+              "k": 198
+            }
+          },
+          {
+            "id": 199,
+            "name": "item-199",
+            "nested": {
+              "k": 199
+            }
+          },
+          {
+            "id": 200,
+            "name": "item-200",
+            "nested": {
+              "k": 200
+            }
+          },
+          {
+            "id": 201,
+            "name": "item-201",
+            "nested": {
+              "k": 201
+            }
+          },
+          {
+            "id": 202,
+            "name": "item-202",
+            "nested": {
+              "k": 202
+            }
+          },
+          {
+            "id": 203,
+            "name": "item-203",
+            "nested": {
+              "k": 203
+            }
+          },
+          {
+            "id": 204,
+            "name": "item-204",
+            "nested": {
+              "k": 204
+            }
+          },
+          {
+            "id": 205,
+            "name": "item-205",
+            "nested": {
+              "k": 205
+            }
+          },
+          {
+            "id": 206,
+            "name": "item-206",
+            "nested": {
+              "k": 206
+            }
+          },
+          {
+            "id": 207,
+            "name": "item-207",
+            "nested": {
+              "k": 207
+            }
+          },
+          {
+            "id": 208,
+            "name": "item-208",
+            "nested": {
+              "k": 208
+            }
+          },
+          {
+            "id": 209,
+            "name": "item-209",
+            "nested": {
+              "k": 209
+            }
+          },
+          {
+            "id": 210,
+            "name": "item-210",
+            "nested": {
+              "k": 210
+            }
+          },
+          {
+            "id": 211,
+            "name": "item-211",
+            "nested": {
+              "k": 211
+            }
+          },
+          {
+            "id": 212,
+            "name": "item-212",
+            "nested": {
+              "k": 212
+            }
+          },
+          {
+            "id": 213,
+            "name": "item-213",
+            "nested": {
+              "k": 213
+            }
+          },
+          {
+            "id": 214,
+            "name": "item-214",
+            "nested": {
+              "k": 214
+            }
+          },
+          {
+            "id": 215,
+            "name": "item-215",
+            "nested": {
+              "k": 215
+            }
+          },
+          {
+            "id": 216,
+            "name": "item-216",
+            "nested": {
+              "k": 216
+            }
+          },
+          {
+            "id": 217,
+            "name": "item-217",
+            "nested": {
+              "k": 217
+            }
+          },
+          {
+            "id": 218,
+            "name": "item-218",
+            "nested": {
+              "k": 218
+            }
+          },
+          {
+            "id": 219,
+            "name": "item-219",
+            "nested": {
+              "k": 219
+            }
+          },
+          {
+            "id": 220,
+            "name": "item-220",
+            "nested": {
+              "k": 220
+            }
+          },
+          {
+            "id": 221,
+            "name": "item-221",
+            "nested": {
+              "k": 221
+            }
+          },
+          {
+            "id": 222,
+            "name": "item-222",
+            "nested": {
+              "k": 222
+            }
+          },
+          {
+            "id": 223,
+            "name": "item-223",
+            "nested": {
+              "k": 223
+            }
+          },
+          {
+            "id": 224,
+            "name": "item-224",
+            "nested": {
+              "k": 224
+            }
+          },
+          {
+            "id": 225,
+            "name": "item-225",
+            "nested": {
+              "k": 225
+            }
+          },
+          {
+            "id": 226,
+            "name": "item-226",
+            "nested": {
+              "k": 226
+            }
+          },
+          {
+            "id": 227,
+            "name": "item-227",
+            "nested": {
+              "k": 227
+            }
+          },
+          {
+            "id": 228,
+            "name": "item-228",
+            "nested": {
+              "k": 228
+            }
+          },
+          {
+            "id": 229,
+            "name": "item-229",
+            "nested": {
+              "k": 229
+            }
+          },
+          {
+            "id": 230,
+            "name": "item-230",
+            "nested": {
+              "k": 230
+            }
+          },
+          {
+            "id": 231,
+            "name": "item-231",
+            "nested": {
+              "k": 231
+            }
+          },
+          {
+            "id": 232,
+            "name": "item-232",
+            "nested": {
+              "k": 232
+            }
+          },
+          {
+            "id": 233,
+            "name": "item-233",
+            "nested": {
+              "k": 233
+            }
+          },
+          {
+            "id": 234,
+            "name": "item-234",
+            "nested": {
+              "k": 234
+            }
+          },
+          {
+            "id": 235,
+            "name": "item-235",
+            "nested": {
+              "k": 235
+            }
+          },
+          {
+            "id": 236,
+            "name": "item-236",
+            "nested": {
+              "k": 236
+            }
+          },
+          {
+            "id": 237,
+            "name": "item-237",
+            "nested": {
+              "k": 237
+            }
+          },
+          {
+            "id": 238,
+            "name": "item-238",
+            "nested": {
+              "k": 238
+            }
+          },
+          {
+            "id": 239,
+            "name": "item-239",
+            "nested": {
+              "k": 239
+            }
+          },
+          {
+            "id": 240,
+            "name": "item-240",
+            "nested": {
+              "k": 240
+            }
+          },
+          {
+            "id": 241,
+            "name": "item-241",
+            "nested": {
+              "k": 241
+            }
+          },
+          {
+            "id": 242,
+            "name": "item-242",
+            "nested": {
+              "k": 242
+            }
+          },
+          {
+            "id": 243,
+            "name": "item-243",
+            "nested": {
+              "k": 243
+            }
+          },
+          {
+            "id": 244,
+            "name": "item-244",
+            "nested": {
+              "k": 244
+            }
+          },
+          {
+            "id": 245,
+            "name": "item-245",
+            "nested": {
+              "k": 245
+            }
+          },
+          {
+            "id": 246,
+            "name": "item-246",
+            "nested": {
+              "k": 246
+            }
+          },
+          {
+            "id": 247,
+            "name": "item-247",
+            "nested": {
+              "k": 247
+            }
+          },
+          {
+            "id": 248,
+            "name": "item-248",
+            "nested": {
+              "k": 248
+            }
+          },
+          {
+            "id": 249,
+            "name": "item-249",
+            "nested": {
+              "k": 249
+            }
+          },
+          {
+            "id": 250,
+            "name": "item-250",
+            "nested": {
+              "k": 250
+            }
+          },
+          {
+            "id": 251,
+            "name": "item-251",
+            "nested": {
+              "k": 251
+            }
+          },
+          {
+            "id": 252,
+            "name": "item-252",
+            "nested": {
+              "k": 252
+            }
+          },
+          {
+            "id": 253,
+            "name": "item-253",
+            "nested": {
+              "k": 253
+            }
+          },
+          {
+            "id": 254,
+            "name": "item-254",
+            "nested": {
+              "k": 254
+            }
+          },
+          {
+            "id": 255,
+            "name": "item-255",
+            "nested": {
+              "k": 255
+            }
+          },
+          {
+            "id": 256,
+            "name": "item-256",
+            "nested": {
+              "k": 256
+            }
+          },
+          {
+            "id": 257,
+            "name": "item-257",
+            "nested": {
+              "k": 257
+            }
+          },
+          {
+            "id": 258,
+            "name": "item-258",
+            "nested": {
+              "k": 258
+            }
+          },
+          {
+            "id": 259,
+            "name": "item-259",
+            "nested": {
+              "k": 259
+            }
+          },
+          {
+            "id": 260,
+            "name": "item-260",
+            "nested": {
+              "k": 260
+            }
+          },
+          {
+            "id": 261,
+            "name": "item-261",
+            "nested": {
+              "k": 261
+            }
+          },
+          {
+            "id": 262,
+            "name": "item-262",
+            "nested": {
+              "k": 262
+            }
+          },
+          {
+            "id": 263,
+            "name": "item-263",
+            "nested": {
+              "k": 263
+            }
+          },
+          {
+            "id": 264,
+            "name": "item-264",
+            "nested": {
+              "k": 264
+            }
+          },
+          {
+            "id": 265,
+            "name": "item-265",
+            "nested": {
+              "k": 265
+            }
+          },
+          {
+            "id": 266,
+            "name": "item-266",
+            "nested": {
+              "k": 266
+            }
+          },
+          {
+            "id": 267,
+            "name": "item-267",
+            "nested": {
+              "k": 267
+            }
+          },
+          {
+            "id": 268,
+            "name": "item-268",
+            "nested": {
+              "k": 268
+            }
+          },
+          {
+            "id": 269,
+            "name": "item-269",
+            "nested": {
+              "k": 269
+            }
+          },
+          {
+            "id": 270,
+            "name": "item-270",
+            "nested": {
+              "k": 270
+            }
+          },
+          {
+            "id": 271,
+            "name": "item-271",
+            "nested": {
+              "k": 271
+            }
+          },
+          {
+            "id": 272,
+            "name": "item-272",
+            "nested": {
+              "k": 272
+            }
+          },
+          {
+            "id": 273,
+            "name": "item-273",
+            "nested": {
+              "k": 273
+            }
+          },
+          {
+            "id": 274,
+            "name": "item-274",
+            "nested": {
+              "k": 274
+            }
+          },
+          {
+            "id": 275,
+            "name": "item-275",
+            "nested": {
+              "k": 275
+            }
+          },
+          {
+            "id": 276,
+            "name": "item-276",
+            "nested": {
+              "k": 276
+            }
+          },
+          {
+            "id": 277,
+            "name": "item-277",
+            "nested": {
+              "k": 277
+            }
+          },
+          {
+            "id": 278,
+            "name": "item-278",
+            "nested": {
+              "k": 278
+            }
+          },
+          {
+            "id": 279,
+            "name": "item-279",
+            "nested": {
+              "k": 279
+            }
+          },
+          {
+            "id": 280,
+            "name": "item-280",
+            "nested": {
+              "k": 280
+            }
+          },
+          {
+            "id": 281,
+            "name": "item-281",
+            "nested": {
+              "k": 281
+            }
+          },
+          {
+            "id": 282,
+            "name": "item-282",
+            "nested": {
+              "k": 282
+            }
+          },
+          {
+            "id": 283,
+            "name": "item-283",
+            "nested": {
+              "k": 283
+            }
+          },
+          {
+            "id": 284,
+            "name": "item-284",
+            "nested": {
+              "k": 284
+            }
+          },
+          {
+            "id": 285,
+            "name": "item-285",
+            "nested": {
+              "k": 285
+            }
+          },
+          {
+            "id": 286,
+            "name": "item-286",
+            "nested": {
+              "k": 286
+            }
+          },
+          {
+            "id": 287,
+            "name": "item-287",
+            "nested": {
+              "k": 287
+            }
+          },
+          {
+            "id": 288,
+            "name": "item-288",
+            "nested": {
+              "k": 288
+            }
+          },
+          {
+            "id": 289,
+            "name": "item-289",
+            "nested": {
+              "k": 289
+            }
+          },
+          {
+            "id": 290,
+            "name": "item-290",
+            "nested": {
+              "k": 290
+            }
+          },
+          {
+            "id": 291,
+            "name": "item-291",
+            "nested": {
+              "k": 291
+            }
+          },
+          {
+            "id": 292,
+            "name": "item-292",
+            "nested": {
+              "k": 292
+            }
+          },
+          {
+            "id": 293,
+            "name": "item-293",
+            "nested": {
+              "k": 293
+            }
+          },
+          {
+            "id": 294,
+            "name": "item-294",
+            "nested": {
+              "k": 294
+            }
+          },
+          {
+            "id": 295,
+            "name": "item-295",
+            "nested": {
+              "k": 295
+            }
+          },
+          {
+            "id": 296,
+            "name": "item-296",
+            "nested": {
+              "k": 296
+            }
+          },
+          {
+            "id": 297,
+            "name": "item-297",
+            "nested": {
+              "k": 297
+            }
+          },
+          {
+            "id": 298,
+            "name": "item-298",
+            "nested": {
+              "k": 298
+            }
+          },
+          {
+            "id": 299,
+            "name": "item-299",
+            "nested": {
+              "k": 299
+            }
+          },
+          {
+            "id": 300,
+            "name": "item-300",
+            "nested": {
+              "k": 300
+            }
+          },
+          {
+            "id": 301,
+            "name": "item-301",
+            "nested": {
+              "k": 301
+            }
+          },
+          {
+            "id": 302,
+            "name": "item-302",
+            "nested": {
+              "k": 302
+            }
+          },
+          {
+            "id": 303,
+            "name": "item-303",
+            "nested": {
+              "k": 303
+            }
+          },
+          {
+            "id": 304,
+            "name": "item-304",
+            "nested": {
+              "k": 304
+            }
+          },
+          {
+            "id": 305,
+            "name": "item-305",
+            "nested": {
+              "k": 305
+            }
+          },
+          {
+            "id": 306,
+            "name": "item-306",
+            "nested": {
+              "k": 306
+            }
+          },
+          {
+            "id": 307,
+            "name": "item-307",
+            "nested": {
+              "k": 307
+            }
+          },
+          {
+            "id": 308,
+            "name": "item-308",
+            "nested": {
+              "k": 308
+            }
+          },
+          {
+            "id": 309,
+            "name": "item-309",
+            "nested": {
+              "k": 309
+            }
+          },
+          {
+            "id": 310,
+            "name": "item-310",
+            "nested": {
+              "k": 310
+            }
+          },
+          {
+            "id": 311,
+            "name": "item-311",
+            "nested": {
+              "k": 311
+            }
+          },
+          {
+            "id": 312,
+            "name": "item-312",
+            "nested": {
+              "k": 312
+            }
+          },
+          {
+            "id": 313,
+            "name": "item-313",
+            "nested": {
+              "k": 313
+            }
+          },
+          {
+            "id": 314,
+            "name": "item-314",
+            "nested": {
+              "k": 314
+            }
+          },
+          {
+            "id": 315,
+            "name": "item-315",
+            "nested": {
+              "k": 315
+            }
+          },
+          {
+            "id": 316,
+            "name": "item-316",
+            "nested": {
+              "k": 316
+            }
+          },
+          {
+            "id": 317,
+            "name": "item-317",
+            "nested": {
+              "k": 317
+            }
+          },
+          {
+            "id": 318,
+            "name": "item-318",
+            "nested": {
+              "k": 318
+            }
+          },
+          {
+            "id": 319,
+            "name": "item-319",
+            "nested": {
+              "k": 319
+            }
+          },
+          {
+            "id": 320,
+            "name": "item-320",
+            "nested": {
+              "k": 320
+            }
+          },
+          {
+            "id": 321,
+            "name": "item-321",
+            "nested": {
+              "k": 321
+            }
+          },
+          {
+            "id": 322,
+            "name": "item-322",
+            "nested": {
+              "k": 322
+            }
+          },
+          {
+            "id": 323,
+            "name": "item-323",
+            "nested": {
+              "k": 323
+            }
+          },
+          {
+            "id": 324,
+            "name": "item-324",
+            "nested": {
+              "k": 324
+            }
+          },
+          {
+            "id": 325,
+            "name": "item-325",
+            "nested": {
+              "k": 325
+            }
+          },
+          {
+            "id": 326,
+            "name": "item-326",
+            "nested": {
+              "k": 326
+            }
+          },
+          {
+            "id": 327,
+            "name": "item-327",
+            "nested": {
+              "k": 327
+            }
+          },
+          {
+            "id": 328,
+            "name": "item-328",
+            "nested": {
+              "k": 328
+            }
+          },
+          {
+            "id": 329,
+            "name": "item-329",
+            "nested": {
+              "k": 329
+            }
+          },
+          {
+            "id": 330,
+            "name": "item-330",
+            "nested": {
+              "k": 330
+            }
+          },
+          {
+            "id": 331,
+            "name": "item-331",
+            "nested": {
+              "k": 331
+            }
+          },
+          {
+            "id": 332,
+            "name": "item-332",
+            "nested": {
+              "k": 332
+            }
+          },
+          {
+            "id": 333,
+            "name": "item-333",
+            "nested": {
+              "k": 333
+            }
+          },
+          {
+            "id": 334,
+            "name": "item-334",
+            "nested": {
+              "k": 334
+            }
+          },
+          {
+            "id": 335,
+            "name": "item-335",
+            "nested": {
+              "k": 335
+            }
+          },
+          {
+            "id": 336,
+            "name": "item-336",
+            "nested": {
+              "k": 336
+            }
+          },
+          {
+            "id": 337,
+            "name": "item-337",
+            "nested": {
+              "k": 337
+            }
+          },
+          {
+            "id": 338,
+            "name": "item-338",
+            "nested": {
+              "k": 338
+            }
+          },
+          {
+            "id": 339,
+            "name": "item-339",
+            "nested": {
+              "k": 339
+            }
+          },
+          {
+            "id": 340,
+            "name": "item-340",
+            "nested": {
+              "k": 340
+            }
+          },
+          {
+            "id": 341,
+            "name": "item-341",
+            "nested": {
+              "k": 341
+            }
+          },
+          {
+            "id": 342,
+            "name": "item-342",
+            "nested": {
+              "k": 342
+            }
+          },
+          {
+            "id": 343,
+            "name": "item-343",
+            "nested": {
+              "k": 343
+            }
+          },
+          {
+            "id": 344,
+            "name": "item-344",
+            "nested": {
+              "k": 344
+            }
+          },
+          {
+            "id": 345,
+            "name": "item-345",
+            "nested": {
+              "k": 345
+            }
+          },
+          {
+            "id": 346,
+            "name": "item-346",
+            "nested": {
+              "k": 346
+            }
+          },
+          {
+            "id": 347,
+            "name": "item-347",
+            "nested": {
+              "k": 347
+            }
+          },
+          {
+            "id": 348,
+            "name": "item-348",
+            "nested": {
+              "k": 348
+            }
+          },
+          {
+            "id": 349,
+            "name": "item-349",
+            "nested": {
+              "k": 349
+            }
+          },
+          {
+            "id": 350,
+            "name": "item-350",
+            "nested": {
+              "k": 350
+            }
+          },
+          {
+            "id": 351,
+            "name": "item-351",
+            "nested": {
+              "k": 351
+            }
+          },
+          {
+            "id": 352,
+            "name": "item-352",
+            "nested": {
+              "k": 352
+            }
+          },
+          {
+            "id": 353,
+            "name": "item-353",
+            "nested": {
+              "k": 353
+            }
+          },
+          {
+            "id": 354,
+            "name": "item-354",
+            "nested": {
+              "k": 354
+            }
+          },
+          {
+            "id": 355,
+            "name": "item-355",
+            "nested": {
+              "k": 355
+            }
+          },
+          {
+            "id": 356,
+            "name": "item-356",
+            "nested": {
+              "k": 356
+            }
+          },
+          {
+            "id": 357,
+            "name": "item-357",
+            "nested": {
+              "k": 357
+            }
+          },
+          {
+            "id": 358,
+            "name": "item-358",
+            "nested": {
+              "k": 358
+            }
+          },
+          {
+            "id": 359,
+            "name": "item-359",
+            "nested": {
+              "k": 359
+            }
+          },
+          {
+            "id": 360,
+            "name": "item-360",
+            "nested": {
+              "k": 360
+            }
+          },
+          {
+            "id": 361,
+            "name": "item-361",
+            "nested": {
+              "k": 361
+            }
+          },
+          {
+            "id": 362,
+            "name": "item-362",
+            "nested": {
+              "k": 362
+            }
+          },
+          {
+            "id": 363,
+            "name": "item-363",
+            "nested": {
+              "k": 363
+            }
+          },
+          {
+            "id": 364,
+            "name": "item-364",
+            "nested": {
+              "k": 364
+            }
+          },
+          {
+            "id": 365,
+            "name": "item-365",
+            "nested": {
+              "k": 365
+            }
+          },
+          {
+            "id": 366,
+            "name": "item-366",
+            "nested": {
+              "k": 366
+            }
+          },
+          {
+            "id": 367,
+            "name": "item-367",
+            "nested": {
+              "k": 367
+            }
+          },
+          {
+            "id": 368,
+            "name": "item-368",
+            "nested": {
+              "k": 368
+            }
+          },
+          {
+            "id": 369,
+            "name": "item-369",
+            "nested": {
+              "k": 369
+            }
+          },
+          {
+            "id": 370,
+            "name": "item-370",
+            "nested": {
+              "k": 370
+            }
+          },
+          {
+            "id": 371,
+            "name": "item-371",
+            "nested": {
+              "k": 371
+            }
+          },
+          {
+            "id": 372,
+            "name": "item-372",
+            "nested": {
+              "k": 372
+            }
+          },
+          {
+            "id": 373,
+            "name": "item-373",
+            "nested": {
+              "k": 373
+            }
+          },
+          {
+            "id": 374,
+            "name": "item-374",
+            "nested": {
+              "k": 374
+            }
+          },
+          {
+            "id": 375,
+            "name": "item-375",
+            "nested": {
+              "k": 375
+            }
+          },
+          {
+            "id": 376,
+            "name": "item-376",
+            "nested": {
+              "k": 376
+            }
+          },
+          {
+            "id": 377,
+            "name": "item-377",
+            "nested": {
+              "k": 377
+            }
+          },
+          {
+            "id": 378,
+            "name": "item-378",
+            "nested": {
+              "k": 378
+            }
+          },
+          {
+            "id": 379,
+            "name": "item-379",
+            "nested": {
+              "k": 379
+            }
+          },
+          {
+            "id": 380,
+            "name": "item-380",
+            "nested": {
+              "k": 380
+            }
+          },
+          {
+            "id": 381,
+            "name": "item-381",
+            "nested": {
+              "k": 381
+            }
+          },
+          {
+            "id": 382,
+            "name": "item-382",
+            "nested": {
+              "k": 382
+            }
+          },
+          {
+            "id": 383,
+            "name": "item-383",
+            "nested": {
+              "k": 383
+            }
+          },
+          {
+            "id": 384,
+            "name": "item-384",
+            "nested": {
+              "k": 384
+            }
+          },
+          {
+            "id": 385,
+            "name": "item-385",
+            "nested": {
+              "k": 385
+            }
+          },
+          {
+            "id": 386,
+            "name": "item-386",
+            "nested": {
+              "k": 386
+            }
+          },
+          {
+            "id": 387,
+            "name": "item-387",
+            "nested": {
+              "k": 387
+            }
+          },
+          {
+            "id": 388,
+            "name": "item-388",
+            "nested": {
+              "k": 388
+            }
+          },
+          {
+            "id": 389,
+            "name": "item-389",
+            "nested": {
+              "k": 389
+            }
+          },
+          {
+            "id": 390,
+            "name": "item-390",
+            "nested": {
+              "k": 390
+            }
+          },
+          {
+            "id": 391,
+            "name": "item-391",
+            "nested": {
+              "k": 391
+            }
+          },
+          {
+            "id": 392,
+            "name": "item-392",
+            "nested": {
+              "k": 392
+            }
+          },
+          {
+            "id": 393,
+            "name": "item-393",
+            "nested": {
+              "k": 393
+            }
+          },
+          {
+            "id": 394,
+            "name": "item-394",
+            "nested": {
+              "k": 394
+            }
+          },
+          {
+            "id": 395,
+            "name": "item-395",
+            "nested": {
+              "k": 395
+            }
+          },
+          {
+            "id": 396,
+            "name": "item-396",
+            "nested": {
+              "k": 396
+            }
+          },
+          {
+            "id": 397,
+            "name": "item-397",
+            "nested": {
+              "k": 397
+            }
+          },
+          {
+            "id": 398,
+            "name": "item-398",
+            "nested": {
+              "k": 398
+            }
+          },
+          {
+            "id": 399,
+            "name": "item-399",
+            "nested": {
+              "k": 399
+            }
+          }
+        ]
+      }
+    test/NewTest.java: |
+      package demo;
+
+      public class NewTest {
+          public void more() {
+              new App().total(3, 4);
+          }
+      }
+expect:
+  exact: false
+  changed: [src/App.java::total]
+  never_empty: true

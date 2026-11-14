@@ -1,0 +1,96 @@
+name: gh648_mass_rename_and_delete_answers_partially_at_the_deadline
+mode: impact
+source: gh#648
+issue_state: open
+# The field shape (465 R100 renames + 1,000 deletions past 300 s) does not
+# reproduce synthetically (fx/648: 1.20 40 s, 2.0 21 s). The case pins the
+# contract instead: with the deadline already expired the answer is partial,
+# says so, and still names the one edited file; R100 renames are no change.
+tags: [python, rename, deletion, deadline, partial]
+repo:
+  initial_files:
+    old/app/m1.py: |
+      def f1(x):
+          return x + 1
+    old/app/m2.py: |
+      def f2(x):
+          return x + 2
+    old/app/m3.py: |
+      def f3(x):
+          return x + 3
+    old/app/m4.py: |
+      def f4(x):
+          return x + 4
+    old/app/m5.py: |
+      def f5(x):
+          return x + 5
+    old/app/m6.py: |
+      def f6(x):
+          return x + 6
+    old/app/m7.py: |
+      def f7(x):
+          return x + 7
+    old/app/m8.py: |
+      def f8(x):
+          return x + 8
+    del/sub/d1.py: |
+      def g1(x):
+          return x * 1
+    del/sub/d2.py: |
+      def g2(x):
+          return x * 2
+    del/sub/d3.py: |
+      def g3(x):
+          return x * 3
+    del/sub/d4.py: |
+      def g4(x):
+          return x * 4
+    del/sub/d5.py: |
+      def g5(x):
+          return x * 5
+    del/sub/d6.py: |
+      def g6(x):
+          return x * 6
+    del/sub/d7.py: |
+      def g7(x):
+          return x * 7
+    del/sub/d8.py: |
+      def g8(x):
+          return x * 8
+    keep.py: |
+      def keep():
+          return 1
+    use.py: |
+      from keep import keep
+
+
+      def run():
+          return keep()
+  renamed_files:
+    old/app/m1.py: newapp/m1.py
+    old/app/m2.py: newapp/m2.py
+    old/app/m3.py: newapp/m3.py
+    old/app/m4.py: newapp/m4.py
+    old/app/m5.py: newapp/m5.py
+    old/app/m6.py: newapp/m6.py
+    old/app/m7.py: newapp/m7.py
+    old/app/m8.py: newapp/m8.py
+  deleted_files:
+    - del/sub/d1.py
+    - del/sub/d2.py
+    - del/sub/d3.py
+    - del/sub/d4.py
+    - del/sub/d5.py
+    - del/sub/d6.py
+    - del/sub/d7.py
+    - del/sub/d8.py
+  changed_files:
+    keep.py: |
+      def keep():
+          return 2
+query:
+  env: {DIFFCTX_TEST_DEADLINE_EXPIRED: "1"}
+expect:
+  exact: false
+  never_empty: true
+  discloses: true

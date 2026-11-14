@@ -1,0 +1,25 @@
+name: fj185_mysql_backticked_function_is_one_name_with_its_bare_calls
+mode: symbol
+source: fj#185
+issue_state: open
+tags: [sql, quoting, spelling]
+repo:
+  initial_files:
+    db/V1__fn.sql: |
+      CREATE FUNCTION `order_total`(oid INT) RETURNS INT
+      DETERMINISTIC
+      RETURN (SELECT SUM(amount) FROM `orders` WHERE id = oid);
+    db/V2__use.sql: |
+      CREATE VIEW order_report AS
+        SELECT id, order_total(id) AS total FROM orders;
+query:
+  symbol: order_total
+expect:
+  definitions:
+  - db/V1__fn.sql::order_total
+  relations:
+  - from: db/V2__use.sql::order_report
+    to: db/V1__fn.sql::order_total
+    kind: calls
+    resolution: resolved
+    site: 2

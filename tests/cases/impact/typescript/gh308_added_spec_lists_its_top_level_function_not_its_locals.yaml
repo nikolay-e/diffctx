@@ -1,0 +1,34 @@
+name: gh308_added_spec_lists_its_top_level_function_not_its_locals
+mode: impact
+source: gh#308
+issue_state: open
+tags:
+- typescript
+- added-file
+- locals
+repo:
+  initial_files:
+    package.json: |
+      {"name":"web","devDependencies":{"@playwright/test":"1.48.0"}}
+  changed_files:
+    tests/e2e/page-frame.mocked.spec.ts: |
+      import { test, expect } from '@playwright/test';
+
+      async function walkPlace(page) {
+        const phone = page.getByTestId('phone');
+        const title = await phone.textContent();
+        return title;
+      }
+
+      test('frame shows the title', async ({ page }) => {
+        const element = page.getByRole('heading');
+        const level = await element.getAttribute('aria-level');
+        const title = await walkPlace(page);
+        expect(level).toBe('1');
+        expect(title).toContain('Player');
+      });
+  commit_message: add page-frame spec
+expect:
+  changed:
+  - tests/e2e/page-frame.mocked.spec.ts::walkPlace
+  exact: true

@@ -1,0 +1,39 @@
+name: gh729_untracked_test_calling_a_changed_method_is_analysed
+mode: impact
+source: gh#729
+issue_state: open
+tags: [java, untracked, test-link]
+repo:
+  initial_files:
+    src/App.java: |
+      package demo;
+
+      public class App {
+          public int total(int a, int b) {
+              return a + b;
+          }
+      }
+  changed_files:
+    src/App.java: |
+      package demo;
+
+      public class App {
+          public int total(int a, int b) {
+              return a + b + 1;
+          }
+      }
+  worktree: true
+  untracked_files:
+    test/NewTest.java: |
+      package demo;
+
+      public class NewTest {
+          public void more() {
+              new App().total(3, 4);
+          }
+      }
+expect:
+  exact: false
+  changed: [src/App.java::total]
+  relations:
+    - {from: test/NewTest.java::more, to: src/App.java::total, kind: calls, resolution: resolved, site: 5}

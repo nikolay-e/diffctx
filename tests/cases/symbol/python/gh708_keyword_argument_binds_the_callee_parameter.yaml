@@ -1,0 +1,53 @@
+name: gh708_keyword_argument_binds_the_callee_parameter
+mode: symbol
+source: gh#708
+issue_state: open
+tags: [python, keyword-argument, parameter, dataflow]
+repo:
+  initial_files:
+    bot/__init__.py: ""
+    bot/config.py: |
+      import os
+
+
+      class Settings:
+          def __init__(self) -> None:
+              self.tz_offset_hours = float(os.environ.get("BOT_TZ_OFFSET", "0"))
+
+
+      SETTINGS = Settings()
+    bot/client.py: |
+      from bot.config import SETTINGS
+      from record.tools import build_context
+
+
+      def refresh(user_id: int) -> dict:
+          return build_context(user_id, tz_offset_hours=SETTINGS.tz_offset_hours)
+    record/__init__.py: ""
+    record/tools.py: |
+      from datetime import timedelta, timezone
+      from record.zones import person_zone
+
+
+      def _zone(tz_offset_hours: float | None):
+          if tz_offset_hours is None:
+              return person_zone()
+          return timezone(timedelta(hours=tz_offset_hours))
+
+
+      def build_context(user_id: int, tz_offset_hours: float | None = None) -> dict:
+          return {"user": user_id, "zone": str(_zone(tz_offset_hours))}
+    record/zones.py: |
+      from datetime import timezone
+
+
+      def person_zone():
+          return timezone.utc
+query:
+  symbol: tz_offset_hours
+expect:
+  exact: false
+  definitions: [bot/config.py::tz_offset_hours, record/tools.py::build_context]
+  relations:
+    - {from: bot/client.py::refresh, to: bot/config.py::tz_offset_hours, kind: reads, site: 6}
+    - {from: bot/client.py::refresh, to: record/tools.py::build_context, kind: calls, site: 6}

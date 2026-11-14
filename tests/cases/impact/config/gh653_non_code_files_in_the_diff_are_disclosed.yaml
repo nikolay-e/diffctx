@@ -1,0 +1,37 @@
+name: gh653_non_code_files_in_the_diff_are_disclosed
+mode: impact
+source: gh#653
+issue_state: open
+tags: [config, bpmn, xml, disclosure]
+repo:
+  initial_files:
+    src/pay.py: |
+      def charge(x):
+          return x
+    src/use.py: |
+      from src.pay import charge
+
+
+      def run():
+          return charge(1)
+    proc/order.bpmn: |
+      <?xml version="1.0"?>
+      <definitions><process id="p"><serviceTask id="a"/></process></definitions>
+    proc/app.xml: |
+      <config><a>1</a></config>
+  worktree: true
+  changed_files:
+    src/pay.py: |
+      def charge(x):
+          return x * 2
+    proc/order.bpmn: |
+      <?xml version="1.0"?>
+      <definitions><process id="p"><serviceTask id="a"/><serviceTask id="b"/></process></definitions>
+    proc/app.xml: |
+      <config><a>2</a></config>
+expect:
+  exact: false
+  discloses: true
+  changed: [src/pay.py::charge]
+  relations:
+    - {from: src/use.py::run, to: src/pay.py::charge, kind: calls, site: 5}
