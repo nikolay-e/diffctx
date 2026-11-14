@@ -182,6 +182,3 @@ symbol/python/gh708_keyword_argument_binds_the_callee_parameter  # gh#708 open: 
 symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed  # gh#718 open: a loop variable over list[Frame] stays untyped, its reads are unresolved
 symbol/rust/gh488_struct_field_is_a_definition_with_its_readers  # gh#488 open: a Rust struct field is no definition and its readers are not listed
 symbol/sql/fj185_mysql_backticked_function_is_one_name_with_its_bare_calls  # fj#185 open: a backticked MySQL function name is not seeded as a definition
-impact/cpp/chx_h_header_out_of_line_members_bind_like_an_hpp_header  # black-box CHX: a C++ definition and its declaration in a .h differ in language, the pairing misses and the callers hedge
-impact/cpp/chx_c_looking_h_header_with_a_cpp_definition_keeps_its_callers_complete  # black-box CHX: same, plain C-looking .h
-impact/cpp/chx_h_header_function_used_only_by_another_changed_function_is_folded  # black-box CHX: same, the changed-only use is not folded
