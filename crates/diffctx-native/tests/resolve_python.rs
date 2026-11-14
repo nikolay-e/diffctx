@@ -764,6 +764,27 @@ const RED: &[(&str, &str)] = &[
         "impact/python/py_class_attribute_holding_a_changed_class_is_a_caller",
         "fj#186: open ticket; the case asserts what the engine does not yet answer",
     ),
+    (
+        "impact/python/gh293_fetch_call_site_links_to_the_route_handler_it_hits",
+        "gh#293: a client `fetch` of a route path is a cross-language link to the handler that no \
+         Python binding states; no resolver nor channel links them yet",
+    ),
+    (
+        "symbol/python/gh482_dict_key_readers_across_languages_are_listed",
+        "gh#482: a read of a dict key (`v[\"tone\"]`, `.get(\"verdict\")`, `s.verdict`) binds to \
+         the function that builds the dict in no resolver; only the unrelated function of that \
+         name is listed",
+    ),
+    (
+        "symbol/python/gh708_keyword_argument_binds_the_callee_parameter",
+        "gh#708: a keyword argument does not bind the callee's parameter, so the parameter is no \
+         definition of the queried name and the callee is not listed",
+    ),
+    (
+        "symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed",
+        "gh#718: a loop variable over a `list[Frame]` attribute stays untyped, so its reads are \
+         not resolved to the member",
+    ),
 ];
 
 #[test]
