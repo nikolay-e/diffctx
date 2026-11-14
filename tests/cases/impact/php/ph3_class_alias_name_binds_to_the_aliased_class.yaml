@@ -1,0 +1,94 @@
+name: ph3_class_alias_name_binds_to_the_aliased_class
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- class-alias
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}, "files": ["src/aliases.php"]}}
+    src/aliases.php: |
+      <?php
+
+      class_alias(\App\Lib\Mailer::class, 'LegacyMailer');
+      class_alias('App\Lib\Mailer', 'App\Legacy\OldMailer');
+    src/Lib/Mailer.php: |
+      <?php
+
+      namespace App\Lib;
+
+      class Mailer
+      {
+          public function send(): int
+          {
+              return 1;
+          }
+
+          public static function viaStatic(): int
+          {
+              return 1;
+          }
+      }
+    src/App/Svc.php: |
+      <?php
+
+      namespace App\App;
+
+      class Svc
+      {
+          public function viaNew(): int
+          {
+              return (new \LegacyMailer())->send();
+          }
+
+          public function viaStaticName(): int
+          {
+              return \LegacyMailer::viaStatic();
+          }
+
+          public function viaNamespacedAlias(): int
+          {
+              return (new \App\Legacy\OldMailer())->send();
+          }
+      }
+  changed_files:
+    src/Lib/Mailer.php: |
+      <?php
+
+      namespace App\Lib;
+
+      class Mailer
+      {
+          public function send(): int
+          {
+              return 2;
+          }
+
+          public static function viaStatic(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change a class reached through its class_alias names
+expect:
+  changed:
+  - src/Lib/Mailer.php::Mailer.send
+  - src/Lib/Mailer.php::Mailer.viaStatic
+  relations:
+  - from: src/App/Svc.php::Svc.viaNew
+    to: src/Lib/Mailer.php::Mailer.send
+    kind: calls
+    resolution: resolved
+    site: 9
+  - from: src/App/Svc.php::Svc.viaStaticName
+    to: src/Lib/Mailer.php::Mailer.viaStatic
+    kind: calls
+    resolution: resolved
+    site: 14
+  - from: src/App/Svc.php::Svc.viaNamespacedAlias
+    to: src/Lib/Mailer.php::Mailer.send
+    kind: calls
+    resolution: resolved
+    site: 19

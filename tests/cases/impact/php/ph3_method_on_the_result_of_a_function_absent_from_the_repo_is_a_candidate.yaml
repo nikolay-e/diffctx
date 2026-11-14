@@ -1,0 +1,80 @@
+name: ph3_method_on_the_result_of_a_function_absent_from_the_repo_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- laravel
+- container
+- absence-claim
+repo:
+  initial_files:
+    src/Lib/Mailer.php: |
+      <?php
+
+      namespace App\Lib;
+
+      class Mailer
+      {
+          public function send(): int
+          {
+              return 1;
+          }
+      }
+    src/App/Svc.php: |
+      <?php
+
+      namespace App\App;
+
+      use App\Lib\Mailer;
+
+      class Svc
+      {
+          public function viaApp(): int
+          {
+              return app(Mailer::class)->send();
+          }
+
+          public function viaResolve(): int
+          {
+              return resolve(Mailer::class)->send();
+          }
+
+          public function viaExternal(): int
+          {
+              return external_fn()->send();
+          }
+      }
+  changed_files:
+    src/Lib/Mailer.php: |
+      <?php
+
+      namespace App\Lib;
+
+      class Mailer
+      {
+          public function send(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change a method called on the result of an absent function
+expect:
+  changed:
+  - src/Lib/Mailer.php::Mailer.send
+  relations:
+  - from: src/App/Svc.php::Svc.viaApp
+    to: src/Lib/Mailer.php::Mailer.send
+    kind: calls
+    resolution: candidate
+    site: 11
+  - from: src/App/Svc.php::Svc.viaResolve
+    to: src/Lib/Mailer.php::Mailer.send
+    kind: calls
+    resolution: candidate
+    site: 16
+  - from: src/App/Svc.php::Svc.viaExternal
+    to: src/Lib/Mailer.php::Mailer.send
+    kind: calls
+    resolution: candidate
+    site: 21
