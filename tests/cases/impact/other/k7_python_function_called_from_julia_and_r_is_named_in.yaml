@@ -1,0 +1,37 @@
+name: k7_python_function_called_from_julia_and_r_is_named_in
+mode: impact
+source: synthetic
+tags: [other, ffi, tier3, word-scan, false-absence]
+repo:
+  initial_files:
+    py/cleaning.py: |
+      def clean_frame(df):
+          return df
+
+
+      def clean_table(df):
+          return df
+    src/pipeline.jl: |
+      using PyCall
+      cleaning = pyimport("cleaning")
+      out = cleaning.clean_frame(df)
+    R/pipeline.R: |
+      library(reticulate)
+      source_python("py/cleaning.py")
+      out <- clean_table(df)
+  changed_files:
+    py/cleaning.py: |
+      def clean_frame(df):
+          return df.dropna()
+
+
+      def clean_table(df):
+          return df.dropna()
+  commit_message: "cleaning: drop missing rows"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/pipeline.jl, to: py/cleaning.py::clean_frame, kind: calls, resolution: unresolved}
+    - {from: R/pipeline.R, to: py/cleaning.py::clean_table, kind: calls, resolution: unresolved}
