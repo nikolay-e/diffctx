@@ -1500,11 +1500,13 @@ fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile>
                     reason: Reason::Embedded,
                 } => (file, "embedded_code", vec![*line]),
                 Hedge::Unread { file, loss } => match decide::effect_of(loss) {
-                    // A file a use stands in is listed as that use; its loss stays
-                    // in the coverage, which says it was read in part.
+                    // A file a use stands in is listed as that use, and its loss stays
+                    // in the coverage. A file read in part is named still: the lines
+                    // the parse lost may hold a caller beside the one it recovered.
                     Effect::File(reason) | Effect::Subtree(reason, _)
                         if file.as_str() != own
-                            && !verdict.uses.iter().any(|u| u.file == file.as_str()) =>
+                            && (matches!(reason, decide::Reason::Unparsed)
+                                || !verdict.uses.iter().any(|u| u.file == file.as_str())) =>
                     {
                         (file, reason.row_reason(), Vec::new())
                     }
