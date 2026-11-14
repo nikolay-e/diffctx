@@ -1349,6 +1349,12 @@ impl<'t> Walker<'t> {
         };
         let kind = Self::use_for_call(node);
         if is_name(function.kind()) {
+            if split_path(self.text(function))
+                .last()
+                .is_some_and(|n| n.eq_ignore_ascii_case("class_alias"))
+            {
+                self.class_alias(node, cx);
+            }
             let mut segments = split_path(self.text(function));
             if let Some(name) = segments.pop() {
                 let receiver = if segments.is_empty() {
@@ -1381,6 +1387,70 @@ impl<'t> Walker<'t> {
         if let Some(arguments) = node.child_by_field_name("arguments") {
             self.arguments(arguments, cx, depth + 1);
         }
+    }
+
+    /// `class_alias(A::class, 'B')`: `B` is another name of `A` for the whole
+    /// program, stated as an import the file makes of `A` under that name.
+    fn class_alias(&mut self, node: Node<'t>, cx: &Cx) {
+        let Some(arguments) = node.child_by_field_name("arguments") else {
+            return;
+        };
+        let written: Vec<Node<'t>> = named_children(arguments)
+            .into_iter()
+            .filter_map(|a| named_children(a).into_iter().next())
+            .collect();
+        let [original, alias] = written.as_slice() else {
+            return;
+        };
+        let (Some(alias), Some(original)) =
+            (self.plain_string(*alias), self.class_written(*original))
+        else {
+            return;
+        };
+        let mut segments = split_path(&original);
+        let Some(last) = segments.pop() else { return };
+        let absolute = original.starts_with('\\');
+        let module = format!(
+            "{}{}",
+            if absolute { "\\" } else { "" },
+            segments.join("\\")
+        );
+        self.facts.push(Fact::Import(Import {
+            site: span(node),
+            enclosing: cx.scope.clone(),
+            module: ModulePath::new(module.as_str()),
+            relative: 0,
+            kind: ImportKind::Dynamic,
+            names: vec![(
+                Name::new(last.as_str()),
+                Some(Name::new(alias.trim_start_matches('\\'))),
+            )],
+            star: Star::None,
+            default: None,
+        }));
+    }
+
+    /// A string written without interpolation, its escapes of a backslash undone.
+    fn plain_string(&self, node: Node<'t>) -> Option<String> {
+        let text = self.text(node);
+        let inner = match node.kind() {
+            "string" | "encapsed_string" => text.get(1..text.len().checked_sub(1)?)?,
+            _ => return None,
+        };
+        (!inner.is_empty() && !inner.contains('$')).then(|| inner.replace("\\\\", "\\"))
+    }
+
+    /// The class an argument names: `A::class` as written, or a string, which is
+    /// always absolute.
+    fn class_written(&self, node: Node<'t>) -> Option<String> {
+        if node.kind() == "class_constant_access_expression" {
+            let children = named_children(node);
+            let (scope, name) = (children.first()?, children.last()?);
+            return (is_name(scope.kind()) && self.text(*name).eq_ignore_ascii_case("class"))
+                .then(|| self.text(*scope).to_string());
+        }
+        self.plain_string(node)
+            .map(|s| format!("\\{}", s.trim_start_matches('\\')))
     }
 
     /// `$o->m()`, `$o->p`: a call or a read through the chain written before it.
