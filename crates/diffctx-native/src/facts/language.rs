@@ -76,7 +76,7 @@ impl Language {
             return Some(Self::HelmValues);
         }
         Some(match extension.as_str() {
-            "py" | "pyi" => Self::Python,
+            "py" | "pyi" | "pyw" => Self::Python,
             "js" | "jsx" | "mjs" | "cjs" => Self::JavaScript,
             "ts" | "tsx" | "mts" | "cts" => Self::TypeScript,
             "rs" => Self::Rust,
