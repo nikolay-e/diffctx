@@ -1,0 +1,37 @@
+name: k6_php_symbol_callable_string_is_named_in
+mode: symbol
+source: synthetic
+tags: [php, literal-name, callable-string]
+repo:
+  initial_files:
+    src/hooks.php: |
+      <?php
+
+      function app_compare(int $a, int $b): int
+      {
+          return $a <=> $b;
+      }
+    src/Sorter.php: |
+      <?php
+
+      namespace App;
+
+      class Sorter
+      {
+          public function sort(array $xs): array
+          {
+              usort($xs, 'app_compare');
+              return $xs;
+          }
+      }
+  commit_message: "base"
+query:
+  symbol: app_compare
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  definitions:
+    - src/hooks.php::app_compare
+  relations:
+    - {from: src/Sorter.php, to: src/hooks.php::app_compare, kind: calls, resolution: unresolved}

@@ -1,0 +1,57 @@
+name: k6_java_reflection_in_a_file_the_commit_also_edits
+mode: impact
+source: synthetic
+tags: [java, literal-name, reflection, changed-file]
+repo:
+  initial_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      public class Fixtures {
+          public static int reflected(int a) {
+              return a + 1;
+          }
+      }
+    src/main/java/com/acme/app/Caller.java: |
+      package com.acme.app;
+
+      public class Caller {
+          public Object h() throws Exception {
+              return Class.forName("com.acme.app.Fixtures").getMethod("reflected", int.class).invoke(null, 1);
+          }
+
+          public String other() {
+              return "a";
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      public class Fixtures {
+          public static int reflected(int a) {
+              return a + 2;
+          }
+      }
+    src/main/java/com/acme/app/Caller.java: |
+      package com.acme.app;
+
+      public class Caller {
+          public Object h() throws Exception {
+              return Class.forName("com.acme.app.Fixtures").getMethod("reflected", int.class).invoke(null, 1);
+          }
+
+          public String other() {
+              return "b";
+          }
+      }
+  commit_message: "fixtures: reflected adds two; caller other says b"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Caller.java
+      to: src/main/java/com/acme/app/Fixtures.java::reflected
+      kind: calls
+      resolution: unresolved
