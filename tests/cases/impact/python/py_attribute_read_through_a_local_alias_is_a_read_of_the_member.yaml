@@ -1,0 +1,49 @@
+name: py_attribute_read_through_a_local_alias_is_a_read_of_the_member
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, alias, typed-receiver, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/opts.py: |
+      class Internals:
+          dns_lookup = None
+          retries = 1
+
+
+      class Options:
+          internals: Internals = Internals()
+    pkg/native.py: |
+      from pkg.opts import Options
+
+
+      def create(options: Options):
+          internals = options.internals
+          return internals.dns_lookup
+    pkg/other.py: |
+      class Cache:
+          dns_lookup = "cache"
+
+
+      def lookup(cache):
+          return cache.dns_lookup
+  changed_files:
+    pkg/opts.py: |
+      class Internals:
+          dns_lookup = "system"
+          retries = 1
+
+
+      class Options:
+          internals: Internals = Internals()
+  commit_message: "opts: resolve names through the system"
+expect:
+  relations:
+    - from: "pkg/native.py::create"
+      to: "pkg/opts.py::Internals.dns_lookup"
+      kind: reads
+      resolution: resolved
+      site: 6
+  decoys:
+    pkg/opts.py::Internals.dns_lookup: [pkg/other.py::lookup]

@@ -1,0 +1,49 @@
+name: ts_removed_optional_interface_method_keeps_its_optional_call_site
+mode: impact
+source: gh#367
+issue_state: closed
+tags: [typescript, removed-definition, optional-call, contract]
+repo:
+  initial_files:
+    src/audio/engine.ts: |
+      export interface AudioEngine {
+        play(): void;
+        setNormalizationGain?(gainDb: number | null): void;
+      }
+    src/audio/webEngine.ts: |
+      import type { AudioEngine } from './engine';
+
+      export class WebEngine implements AudioEngine {
+        play(): void {}
+
+        setNormalizationGain(gainDb: number | null): void {
+          void gainDb;
+        }
+      }
+    src/store/player.ts: |
+      import type { AudioEngine } from '../audio/engine';
+
+      export function applyGain(engine: AudioEngine, gain: number): void {
+        engine.setNormalizationGain?.(gain);
+      }
+  changed_files:
+    src/audio/engine.ts: |
+      export interface AudioEngine {
+        play(): void;
+      }
+    src/audio/webEngine.ts: |
+      import type { AudioEngine } from './engine';
+
+      export class WebEngine implements AudioEngine {
+        play(): void {}
+      }
+  commit_message: "audio: drop normalization gain"
+expect:
+  removed: [setNormalizationGain]
+  relations:
+    - from: "src/store/player.ts::applyGain"
+      to: "src/audio/engine.ts::setNormalizationGain"
+      kind: "calls"
+      resolution: "candidate"
+      site: 4
+  contracts: [src/audio/engine.ts]

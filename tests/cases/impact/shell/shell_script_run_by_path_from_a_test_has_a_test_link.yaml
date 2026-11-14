@@ -1,0 +1,37 @@
+name: shell_script_run_by_path_from_a_test_has_a_test_link
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- shell
+- script-path
+- tests-reach
+repo:
+  initial_files:
+    scripts/deploy.sh: |
+      deploy() {
+        echo deploying
+      }
+
+      deploy
+    tests/test_deploy.py: |
+      import subprocess
+
+
+      def test_the_script_deploys():
+          subprocess.run(["bash", "scripts/deploy.sh"], check=True)
+  changed_files:
+    scripts/deploy.sh: |
+      deploy() {
+        echo shipping
+      }
+
+      deploy
+  commit_message: Change what the deploy script prints
+expect:
+  changed:
+  - scripts/deploy.sh::deploy
+  tested_by:
+    scripts/deploy.sh: tests/test_deploy.py
+  not_untested:
+  - deploy

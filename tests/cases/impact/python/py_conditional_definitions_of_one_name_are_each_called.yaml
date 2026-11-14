@@ -1,0 +1,44 @@
+name: py_conditional_definitions_of_one_name_are_each_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, conditional-binding, candidate]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      import sys
+
+      if sys.platform == "win32":
+          def plat(x):
+              return x + 1
+      else:
+          def plat(x):
+              return x + 10
+    app/__init__.py: ""
+    app/u.py: |
+      from pkg.core import plat
+
+
+      def useplat():
+          return plat(1)
+    tests/test_u.py: |
+      from app.u import useplat
+
+
+      def test_useplat():
+          assert useplat() == 11
+  changed_files:
+    pkg/core.py: |
+      import sys
+
+      if sys.platform == "win32":
+          def plat(x):
+              return x + 1
+      else:
+          def plat(x):
+              return x + 20
+  commit_message: "core: ten becomes twenty"
+expect:
+  relations:
+    - {from: "app/u.py::useplat", to: "pkg/core.py::plat", kind: calls, resolution: candidate, site: 5}

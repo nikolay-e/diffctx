@@ -1,0 +1,36 @@
+name: shell_top_level_call_is_a_caller
+mode: impact
+source: gh#497
+issue_state: closed
+tags:
+- shell
+- top-level
+- smoke
+repo:
+  initial_files:
+    run.sh: |
+      #!/bin/sh
+      check() {
+        echo a
+      }
+
+      check
+  changed_files:
+    run.sh: |
+      #!/bin/sh
+      check() {
+        echo b
+      }
+
+      check
+  commit_message: Change shell top level call is a caller
+expect:
+  changed:
+  - run.sh::check
+  relations:
+  - from: run.sh
+    to: run.sh::check
+    kind: calls
+    resolution: resolved
+    site: 6
+  exact: true

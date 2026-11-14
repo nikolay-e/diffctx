@@ -1,0 +1,56 @@
+name: gh312_tested_by_names_only_the_spec_that_reaches_the_caller
+mode: impact
+source: gh#312
+issue_state: open
+tags:
+- typescript
+- tests
+- playwright
+repo:
+  initial_files:
+    package.json: |
+      {"name":"site","devDependencies":{"@playwright/test":"1.48.0"}}
+    src/derivative/fan.ts: |
+      import { arrow } from "../engine/graph";
+
+      export function mid(a: number, b: number): number {
+        return arrow((a + b) / 2);
+      }
+    src/engine/graph.ts: |
+      export function arrow(x: number): number {
+        return x + 1;
+      }
+    src/engine/timeline.ts: |
+      import { arrow } from "./graph";
+
+      export function step(t: number): number {
+        return arrow(t) * 2;
+      }
+    tests/timeline.spec.ts: |
+      import { test, expect } from "@playwright/test";
+      import { step } from "../src/engine/timeline";
+
+      test("step doubles", () => {
+        expect(step(1)).toBe(4);
+      });
+  changed_files:
+    src/engine/graph.ts: |
+      export function arrow(x: number): number {
+        return x + 2;
+      }
+  commit_message: change
+expect:
+  relations:
+  - from: src/derivative/fan.ts::mid
+    to: src/engine/graph.ts::arrow
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/engine/timeline.ts::step
+    to: src/engine/graph.ts::arrow
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: true
+  tested_by:
+    src/engine/timeline.ts::step: tests/timeline.spec.ts

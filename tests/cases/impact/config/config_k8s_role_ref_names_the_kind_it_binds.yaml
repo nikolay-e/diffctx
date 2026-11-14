@@ -1,0 +1,71 @@
+name: config_k8s_role_ref_names_the_kind_it_binds
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- decoy
+- rbac
+repo:
+  initial_files:
+    rbac/clusterrole.yaml: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: viewer
+      rules:
+        - apiGroups: ['']
+          resources: [pods]
+          verbs: [get]
+    rbac/role.yaml: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: viewer
+        namespace: shop
+      rules: []
+    rbac/binding.yaml: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: ci
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: viewer
+      subjects: []
+    rbac/binding-local.yaml: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: local
+        namespace: shop
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: viewer
+      subjects: []
+  changed_files:
+    rbac/clusterrole.yaml: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: viewer
+      rules:
+        - apiGroups: ['']
+          resources: [pods]
+          verbs: [get, list]
+  commit_message: Change config k8s role ref names the kind it binds
+expect:
+  relations:
+  - from: rbac/binding.yaml
+    to: rbac/clusterrole.yaml
+    kind: reads
+    resolution: resolved
+    site: 8
+  exact: true
+  decoys:
+    rbac/clusterrole.yaml:
+    - rbac/binding-local.yaml
+    - rbac/role.yaml

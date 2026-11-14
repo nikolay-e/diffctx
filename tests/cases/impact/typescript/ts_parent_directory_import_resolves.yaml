@@ -1,0 +1,31 @@
+name: ts_parent_directory_import_resolves
+mode: impact
+source: gh#445
+issue_state: closed
+tags: [typescript, relative-import, nested-layout]
+repo:
+  initial_files:
+    src/net/store.ts: |
+      export class Store {
+        items: string[] = [];
+      }
+    src/views/west.ts: |
+      import { Store } from '../net/store';
+
+      export function showWest() {
+        return new Store();
+      }
+  changed_files:
+    src/net/store.ts: |
+      export class Store {
+        constructor(readonly base: string) {}
+        items: string[] = [];
+      }
+  commit_message: "store: require a base"
+expect:
+  relations:
+    - from: "src/views/west.ts::showWest"
+      to: "src/net/store.ts::Store"
+      kind: "instantiates"
+      resolution: "resolved"
+      site: 4

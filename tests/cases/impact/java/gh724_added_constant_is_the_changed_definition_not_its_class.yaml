@@ -1,0 +1,52 @@
+name: gh724_added_constant_is_the_changed_definition_not_its_class
+mode: impact
+source: gh#724
+issue_state: open
+tags: [java, constants, granularity, decoys]
+repo:
+  initial_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+          public static final String CART = "cart";
+
+          private Keys() {
+          }
+      }
+    src/main/java/app/UserView.java: |
+      package app;
+
+      public class UserView {
+          public String key() {
+              return Keys.USER;
+          }
+      }
+    src/main/java/app/OrderView.java: |
+      package app;
+
+      public class OrderView {
+          public String key() {
+              return Keys.ORDER + Keys.CART;
+          }
+      }
+  changed_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+          public static final String CART = "cart";
+          public static final String COUPON = "coupon";
+
+          private Keys() {
+          }
+      }
+  worktree: true
+expect:
+  exact: false
+  changed: [src/main/java/app/Keys.java::COUPON]
+  decoys: {COUPON: [src/main/java/app/UserView.java, src/main/java/app/OrderView.java]}

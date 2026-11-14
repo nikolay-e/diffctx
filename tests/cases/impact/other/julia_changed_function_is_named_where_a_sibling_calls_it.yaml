@@ -1,0 +1,28 @@
+name: julia_changed_function_is_named_where_a_sibling_calls_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- julia
+- false-absence
+repo:
+  initial_files:
+    src/util.jl: |
+      function double_it(x)
+        x
+      end
+    src/main.jl: |
+      include("util.jl")
+      println(double_it(2))
+  changed_files:
+    src/util.jl: |
+      function double_it(x)
+        x * 2
+      end
+  commit_message: Change julia double_it body
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [src/main.jl]

@@ -1,0 +1,34 @@
+name: objc_changed_method_is_named_where_a_sibling_calls_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- objc
+- false-absence
+repo:
+  initial_files:
+    src/Util.m: |
+      #import "Util.h"
+      @implementation Util
+      - (int)doubleIt:(int)x {
+        return x;
+      }
+      @end
+    src/Main.m: |
+      #import "Util.h"
+      int main() { [[Util new] doubleIt:2]; }
+  changed_files:
+    src/Util.m: |
+      #import "Util.h"
+      @implementation Util
+      - (int)doubleIt:(int)x {
+        return x * 2;
+      }
+      @end
+  commit_message: Change objc doubleIt body
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [src/Main.m]

@@ -1,0 +1,36 @@
+name: java_static_method_imported_with_a_kotlin_alias_is_never_a_clean_absence
+mode: impact
+source: fj#159
+issue_state: open
+tags: [java, kotlin, jvm, absence-claim, neighbour-language, import-alias]
+repo:
+  initial_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int roundedTotal(int amount) {
+              return amount;
+          }
+      }
+    src/main/kotlin/app/Checkout.kt: |
+      package app
+
+      import shop.Pricing.roundedTotal as rt
+
+      fun charge(amount: Int): Int = rt(amount)
+  changed_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int roundedTotal(int amount) {
+              return amount + 1;
+          }
+      }
+  commit_message: "pricing: round up by one"
+expect:
+  changed: [src/main/java/shop/Pricing.java::Pricing.roundedTotal]
+  exact: false
+  never_empty: true
+  no_negative_claims: true

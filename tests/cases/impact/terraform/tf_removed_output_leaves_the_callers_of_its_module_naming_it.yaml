@@ -1,0 +1,44 @@
+name: tf_removed_output_leaves_the_callers_of_its_module_naming_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- module
+- removal
+repo:
+  initial_files:
+    main.tf: |
+      module "net" {
+        source = "./modules/net"
+      }
+
+      output "v" {
+        value = module.net.vpc
+      }
+    modules/net/main.tf: |
+      output "vpc" {
+        value = "a"
+      }
+
+      output "keep" {
+        value = "k"
+      }
+  changed_files:
+    modules/net/main.tf: |
+      output "keep" {
+        value = "k"
+      }
+  commit_message: tf removed output leaves the callers of its module naming it
+expect:
+  changed:
+  - modules/net/main.tf::output.vpc
+  relations:
+  - from: main.tf::output.v
+    to: modules/net/main.tf::output.vpc
+    kind: reads
+    resolution: resolved
+    site: 6
+  exact: true
+  removed:
+  - vpc

@@ -1,0 +1,36 @@
+name: py_import_rebound_in_the_importing_module_keeps_the_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, conditional-binding, candidate]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def compute(x):
+          return x + 1
+    app/__init__.py: ""
+    app/u.py: |
+      try:
+          from pkg.core import compute
+      except ImportError:
+          compute = None
+
+
+      def tryimp():
+          return compute(1)
+    tests/test_u.py: |
+      from app.u import tryimp
+
+
+      def test_tryimp():
+          assert tryimp() == 2
+  changed_files:
+    pkg/core.py: |
+      def compute(x):
+          return x + 2
+  commit_message: "core: add two"
+expect:
+  changed: [pkg/core.py::compute]
+  relations:
+    - {from: "app/u.py::tryimp", to: "pkg/core.py::compute", kind: calls, resolution: candidate, site: 8}

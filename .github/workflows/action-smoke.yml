@@ -118,6 +118,21 @@ jobs:
           # Both endpoints of the analyzed range must exist locally.
           fetch-depth: 0
 
+      # The default pin is the last release; the legs that install from dist
+      # take the branch's own version, and the PyPI leg keeps the default.
+      - name: Read the version the action installs
+        id: tree
+        shell: bash
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: |
+          if [ "$SOURCE" = pypi ]; then
+            version=$(sed -n '/^  diffctx-version:/,/default:/s/.*default: *//p' action.yml)
+          else
+            version=$(cut -d'"' -f2 src/diffctx/version.py)
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Download this branch's wheel
         if: matrix.source != 'pypi'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
@@ -132,6 +147,7 @@ jobs:
           PIP_FIND_LINKS: ${{ matrix.source != 'pypi' && format('{0}/dist', github.workspace) || '' }}
           PIP_NO_INDEX: ${{ matrix.source != 'pypi' && '1' || '' }}
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           format: ${{ matrix.format }}
           scoring: ${{ matrix.scoring }}
           budget: ${{ matrix.budget }}
@@ -218,6 +234,11 @@ jobs:
       - name: Assert the checkout really is shallow
         run: test "$(git rev-parse --is-shallow-repository)" = "true"
 
+      - name: Read the version of this branch's wheel
+        id: tree
+        shell: bash
+        run: echo "version=$(cut -d'"' -f2 src/diffctx/version.py)" >> "$GITHUB_OUTPUT"
+
       - name: Download this branch's wheel
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
@@ -231,6 +252,7 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/dist
           PIP_NO_INDEX: '1'
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           format: md
           budget: '4000'
 
@@ -264,6 +286,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read the version of this branch's wheel
+        id: tree
+        shell: bash
+        run: echo "version=$(cut -d'"' -f2 src/diffctx/version.py)" >> "$GITHUB_OUTPUT"
+
       - name: Download this branch's wheel
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
@@ -277,6 +304,7 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/dist
           PIP_NO_INDEX: '1'
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           format: md
           scoring: ego
           budget: '8000'
@@ -291,6 +319,7 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/dist
           PIP_NO_INDEX: '1'
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           mode: impact
           format: md
           output-path: ${{ runner.temp }}/diffctx-impact.md
@@ -350,6 +379,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read the version of this branch's wheel
+        id: tree
+        shell: bash
+        run: echo "version=$(cut -d'"' -f2 src/diffctx/version.py)" >> "$GITHUB_OUTPUT"
+
       - name: Download this branch's wheel
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
@@ -363,6 +397,7 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/dist
           PIP_NO_INDEX: '1'
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           diff-range: HEAD~1..HEAD
           budget: '4000'
 
@@ -397,6 +432,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read the version of this branch's wheel
+        id: tree
+        shell: bash
+        run: echo "version=$(cut -d'"' -f2 src/diffctx/version.py)" >> "$GITHUB_OUTPUT"
+
       - name: Download this branch's wheel
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
@@ -411,6 +451,7 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/dist
           PIP_NO_INDEX: '1'
         with:
+          diffctx-version: ${{ steps.tree.outputs.version }}
           diff-range: HEAD..HEAD
           fail-on-empty: 'true'
 

@@ -1,0 +1,42 @@
+name: py_call_as_the_value_of_a_same_named_keyword_is_a_caller
+mode: symbol
+source: gh#636
+issue_state: open
+tags: [python, keyword-argument, same-name-field, tests-reach]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/agree.py: |
+      def agreement(night, values):
+          return {"night": night, "n": len(values)}
+    pkg/types.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Report:
+          agreement: dict
+    pkg/service.py: |
+      from .agree import agreement
+      from .types import Report
+
+
+      def build(night, values):
+          return Report(
+              agreement=agreement(
+                  night=night,
+                  values=values,
+              ),
+          )
+    tests/test_service.py: |
+      from pkg.service import build
+
+
+      def test_build():
+          assert build(1, [1, 2]).agreement["n"] == 2
+query:
+  symbol: agreement
+expect:
+  relations:
+    - {from: "pkg/service.py::build", to: "pkg/agree.py::agreement", kind: calls, resolution: resolved, site: 7}
+    - {from: "tests/test_service.py", to: "pkg/service.py::build", kind: tests_reach, resolution: resolved}

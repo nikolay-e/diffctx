@@ -12,11 +12,11 @@ import re
 import shutil
 import subprocess
 import sys
-from importlib.metadata import version
 from pathlib import Path
 
 import pytest
 
+from diffctx._diffctx import BUILD_LABEL
 from tests.framework.pygit2_backend import Pygit2Repo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -191,7 +191,9 @@ def test_a_commit_line_that_ends_in_a_failing_command_is_still_reviewed(tmp_path
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
 @pytest.mark.parametrize("bash", _bashes())
 def test_a_session_on_an_older_plugin_hears_once_that_a_newer_one_is_installed(tmp_path, pending_change, bash):
-    running = version("diffctx")
+    # The hook names the running build as the engine labels it: a development
+    # tree is `2.0.0-dev.0` there and `2.0.0.dev0` in the Python metadata.
+    running = BUILD_LABEL.removesuffix("+source")
     plugins = tmp_path / "plugins"
     for name in (running, "999.0.0"):
         (plugins / name).mkdir(parents=True)
@@ -343,16 +345,18 @@ def test_the_plugin_script_launches_on_a_search_in_a_repository(tmp_path, pendin
     elsewhere = json.loads(_search(pending_change, "Grep", "total", session="s5"))
     elsewhere["cwd"] = str(tmp_path)
     assert "shop/checkout.py::charge" in _context(run(json.dumps(elsewhere)))
+    # Inside a repository every Bash line launches, since a program may commit
+    # whatever its text shows: this one is no search, and answers nothing.
     assert run(_search(pending_change, "Bash", "ls | grep total")) == ""
-    assert calls.read_text().count("\n") == 5
+    assert calls.read_text().count("\n") == 6
     # A clean tree is searched too (#628); a directory outside git launches nothing.
     subprocess.run(["git", "checkout", "-q", "--", "."], cwd=pending_change, check=True)
     assert "shop/checkout.py::charge" in _context(run(_search(pending_change, "Bash", "grep -rn total .", session="s6")))
-    assert calls.read_text().count("\n") == 6
+    assert calls.read_text().count("\n") == 7
     outside = json.loads(_search(pending_change, "Bash", "grep -rn total .", session="s7"))
     outside["cwd"] = str(tmp_path)
     assert run(json.dumps(outside)) == ""
-    assert calls.read_text().count("\n") == 6, "outside a repository nothing launches"
+    assert calls.read_text().count("\n") == 7, "outside a repository nothing launches"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
@@ -372,6 +376,7 @@ def test_a_session_waiting_on_a_background_line_launches_on_any_event(tmp_path, 
     }
     event = json.loads(_event(pending_change, "PreToolUse", "ls"))
     event["session_id"] = "s7"
+    event["cwd"] = str(tmp_path)
 
     def run() -> None:
         result = subprocess.run(
@@ -380,12 +385,40 @@ def test_a_session_waiting_on_a_background_line_launches_on_any_event(tmp_path, 
         assert result.returncode == 0, result.stderr
 
     run()
-    assert not calls.exists(), "nothing waits: a line without git launches nothing"
+    assert not calls.exists(), "nothing waits: a line outside a repository launches nothing"
     seen = tmp_path / "cache" / "diffctx" / "seen"
     seen.mkdir(parents=True)
     (seen / "pending.s7").write_text("[]", encoding="utf-8")
     run()
     assert calls.read_text().count("\n") == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")
+@pytest.mark.parametrize("bash", _bashes())
+def test_the_plugin_script_launches_on_any_line_in_a_repository(tmp_path, pending_change, bash):
+    # A script that commits shows no git on its line; git's record of the
+    # repository the call runs in says what it did (T19).
+    calls = tmp_path / "calls"
+    launcher = tmp_path / "diffctx"
+    launcher.write_text(f'#!/bin/sh\necho >> "{calls}"\ncat >/dev/null\n', encoding="utf-8")
+    launcher.chmod(0o755)
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache"),
+        "DIFFCTX_HOOK_BIN": str(launcher),
+    }
+    for event_name in ("PreToolUse", "PostToolUse"):
+        result = subprocess.run(
+            [bash, str(IMPACT_SCRIPT)],
+            input=_event(pending_change, event_name, "./scripts/release.sh"),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+    assert calls.read_text().count("\n") == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the plugin scripts are exercised under POSIX bash")

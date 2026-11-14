@@ -1,0 +1,33 @@
+name: dockerfile_from_a_stage_reaches_the_stage_built_from_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- from
+- stage
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS base
+      RUN apk add curl
+
+      FROM base AS app
+      COPY app.sh /app.sh
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS base
+      RUN apk add curl git
+
+      FROM base AS app
+      COPY app.sh /app.sh
+  commit_message: Change from a stage reaches the stage built from it
+expect:
+  changed:
+  - Dockerfile::base
+  relations:
+  - from: Dockerfile::app
+    to: Dockerfile::base
+    kind: reads
+    resolution: resolved
+    site: 4

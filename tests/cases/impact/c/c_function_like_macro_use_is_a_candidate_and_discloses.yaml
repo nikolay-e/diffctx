@@ -1,0 +1,30 @@
+name: c_function_like_macro_use_is_a_candidate_and_discloses
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- macro
+repo:
+  initial_files:
+    src/clamp.h: |
+      #define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+    src/use.c: |
+      #include "clamp.h"
+
+      int limit(int v)
+      {
+          return CLAMP(v, 0, 10);
+      }
+  changed_files:
+    src/clamp.h: |
+      #define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (hi))
+  commit_message: Change function like macro use is a candidate and discloses
+expect:
+  relations:
+  - from: src/use.c::limit
+    to: src/clamp.h::CLAMP
+    kind: calls
+    resolution: candidate
+    site: 5
+  discloses: true

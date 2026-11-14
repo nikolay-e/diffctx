@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shlex
@@ -17,13 +16,13 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from diffctx._diffctx import BUILD_LABEL, CancelToken, fit_artifact
+from diffctx._diffctx import BUILD_LABEL, CancelToken
 from diffctx._diffctx import DEFAULT_TIMEOUT as _ENGINE_DEFAULT_TIMEOUT
 
 # Every module a tool call needs is imported here, at startup, never inside the
 # call: a running server whose package is replaced on disk (`uv tool install
 # --force`) otherwise dies on its first lazy import (#291).
-from diffctx._native import GitError, build_diff_context, build_impact, build_locate
+from diffctx._native import Delivery, GitError, deliver
 from diffctx.clipboard import ClipboardError, copy_to_clipboard
 from diffctx.tokens import count_tokens
 
@@ -157,81 +156,65 @@ def _git_failure(diff_ref: str, e: GitError) -> ValueError:
     return ValueError(f"Git error: {e}")
 
 
-async def _locate_response(
-    validated_path: Path, diff_range: str, budget_tokens: int, clipboard: bool, max_tokens: int, scoping: _Scoping
-) -> str:
-    try:
-        payload = await _run_with_deadline(
-            "diffctx_context",
-            partial(
-                build_locate,
-                root_dir=validated_path,
-                diff_range=diff_range,
-                budget_tokens=budget_tokens,
-                timeout=_DEFAULT_TIMEOUT_SECONDS,
-                paths=scoping.engine_paths,
-            ),
-            scoping.deadline_hint,
-        )
-    except GitError as e:
-        raise _git_failure(diff_range, e) from e
-    payload = _without_overflow_list(payload)
-    if clipboard:
-        degraded_notice = await _copy_or_degrade(payload)
-        if degraded_notice is None:
-            item_count = json.loads(payload).get("item_count", 0)
-            return f"Copied locate JSON ({item_count} items) to clipboard"
-        payload = degraded_notice + payload
-    return _capped_by_max_tokens(payload, max_tokens, "lower budget_tokens or narrow diff_range")
-
-
-# The pre-commit answer (#310): what the change reaches outside its own
-# diff, as text, capped by the engine on its serialized size. An empty
-# impact is a finding, not a failure, and it is what the plugin hook stays
-# silent on.
-async def _impact_response(
-    validated_path: Path,
+# A reply is the engine's one `Delivery`, fitted to `max_tokens` there: the cap
+# is a ceiling the engine holds the answer under (the note and a clipboard
+# notice charged with it), so a budget above it is fitted to it, never refused.
+# `_capped_by_max_tokens` only catches what the engine cannot promise: the least
+# an answer can say, or a patch bundled whole, outgrowing the ceiling by itself.
+async def _reply(
+    scope: Path,
+    mode: str,
     diff_range: str,
-    clipboard: bool,
-    max_tokens: int,
-    budget_tokens: int,
+    *,
     scoping: _Scoping,
+    budget_tokens: int | None,
+    max_tokens: int,
+    clipboard: bool,
+    copied: Callable[[Delivery], str],
+    hint: str,
+    note: str = "",
     symbol: str | None = None,
+    unfold: bool = False,
+    include_raw_diff: bool = False,
+    include_overflow: bool = False,
 ) -> str:
-    try:
-        payload = await _run_with_deadline(
-            "diffctx_context",
-            partial(
-                build_impact,
-                root_dir=validated_path,
-                diff_range=diff_range,
-                timeout=_DEFAULT_TIMEOUT_SECONDS,
-                paths=scoping.engine_paths,
-                markdown=True,
-                symbol=symbol,
-                budget=budget_tokens,
-            ),
-            scoping.deadline_hint,
-        )
-    except GitError as e:
-        raise _git_failure(diff_range, e) from e
+    async def delivered(envelope: str) -> Delivery:
+        try:
+            return await _run_with_deadline(
+                "diffctx_context",
+                partial(
+                    deliver,
+                    root_dir=scope,
+                    mode=mode,
+                    diff_range=diff_range,
+                    symbol=symbol,
+                    paths=scoping.engine_paths,
+                    budget=budget_tokens,
+                    ceiling=max_tokens,
+                    envelope=envelope,
+                    format="json" if mode == "locate" else "md",
+                    unfold=unfold,
+                    timeout=_DEFAULT_TIMEOUT_SECONDS,
+                    with_raw_diff=include_raw_diff,
+                    # The candidates a budget left behind are listed only when asked
+                    # for: on a large diff the list alone cost thousands of tokens
+                    # (#289). Their count is always stated; the engine charges the
+                    # list to the ceiling.
+                    overflow=include_overflow,
+                ),
+                scoping.deadline_hint,
+            )
+        except GitError as e:
+            raise _git_failure(diff_range, e) from e
+
+    delivery = await delivered(note)
     if clipboard:
-        degraded_notice = await _copy_or_degrade(payload)
+        degraded_notice = await _copy_or_degrade(delivery.text.removeprefix(note))
         if degraded_notice is None:
-            return "Copied impact summary to clipboard"
-        payload = degraded_notice + payload
-    return _capped_by_max_tokens(payload, max_tokens, "narrow diff_range")
-
-
-# The overflow list is up to 50 paths an agent never feeds back: the locate
-# protocol continues through `items`, and on a large diff the list alone cost
-# thousands of tokens (#289). `overflow_count` and `coverage.next_up` keep the
-# two facts it carried.
-def _without_overflow_list(payload: str) -> str:
-    doc = json.loads(payload)
-    if not doc.pop("overflow", None):
-        return payload
-    return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+            return copied(delivery)
+        # Charged with the answer, so the reply keeps within the ceiling.
+        delivery = await delivered(note + degraded_notice)
+    return _capped_by_max_tokens(delivery.text, max_tokens, hint)
 
 
 # An agent's question is almost always about the work in front of it, not the
@@ -268,32 +251,25 @@ def _default_diff_ref(repo: Path) -> str:
     return "HEAD~1..HEAD"
 
 
-def _validate_budget_tokens(budget_tokens: int) -> None:
-    if budget_tokens < -1:
+def _validate_budget_tokens(budget_tokens: int | None) -> None:
+    if budget_tokens is not None and budget_tokens < -1:
         raise ValueError(
             f"budget_tokens must be >= -1 (-1 = unlimited, capped by max_tokens; "
             f"0 = no fragments, changed files listed as omitted), got {budget_tokens}"
         )
 
 
-def _budget_within(budget_tokens: int, max_tokens: int) -> tuple[int, str]:
-    """The budget the answer is fitted to, and the line that says it was lowered.
+def _budget_note(budget_tokens: int | None, max_tokens: int) -> str:
+    """The line that says a budget asked for was lowered to the ceiling (#645).
 
-    An answer fitted past max_tokens was refused whole, and a caller who asked
-    for more than the cap got nothing (#645). -1 is "capped by max_tokens".
-    The note's own tokens come out of the budget, so the reply stays within.
+    The engine fits the answer to max_tokens and charges this line with it. -1 is
+    "capped by max_tokens". No budget asked for lowers nothing: the engine's own
+    default for the mode applies.
     """
-    if 0 <= budget_tokens <= max_tokens:
-        return budget_tokens, ""
+    if budget_tokens is None or 0 <= budget_tokens <= max_tokens:
+        return ""
     asked = "unlimited" if budget_tokens == -1 else f"{budget_tokens:,}"
-    note = f"Note: budget_tokens={asked} is above max_tokens={max_tokens:,}; the answer is fitted to max_tokens.\n\n"
-    return max(1, max_tokens - count_tokens(note).count), note
-
-
-def _with_note(note: str, reply: str, max_tokens: int) -> str:
-    if not note or reply.startswith("diffctx_context: output is"):
-        return reply
-    return _capped_by_max_tokens(note + reply, max_tokens, "lower budget_tokens or narrow diff_range")
+    return f"Note: budget_tokens={asked} is above max_tokens={max_tokens:,}; the answer is fitted to max_tokens.\n\n"
 
 
 def _validate_max_tokens(max_tokens: int) -> None:
@@ -370,29 +346,41 @@ async def diffctx_context(
     repo_path: str,
     diff_ref: str | None = None,
     mode: str = "impact",
-    budget_tokens: int = 8000,
+    budget_tokens: int | None = None,
     fragment_ids: list[str] | None = None,
     clipboard: bool = False,
     max_tokens: int = _DEFAULT_MAX_TOKENS,
     include_raw_diff: bool = False,
     symbol: str | None = None,
     paths: list[str] | None = None,
+    unfold: bool = False,
+    include_overflow: bool = False,
 ) -> str:
     validated_path = validate_repo_path(repo_path)
     scope = validate_scope(repo_path)
     _validate_max_tokens(max_tokens)
     _validate_budget_tokens(budget_tokens)
-    budget_tokens, note = _budget_within(budget_tokens, max_tokens)
+    note = _budget_note(budget_tokens, max_tokens)
     engine_paths = validate_scope_paths(paths, scope, validated_path) if paths else []
     if symbol is not None:
         if diff_ref or fragment_ids or mode != "impact":
             raise ValueError(
-                'symbol looks the name up in the working tree: call again with mode="impact" '
-                "and drop diff_ref and fragment_ids"
+                'symbol looks the name up in the working tree: call again with mode="impact" and drop diff_ref and fragment_ids'
             )
-        scoping = _scoping(paths, engine_paths, f"--symbol {shlex.quote(symbol)}")
-        reply = await _impact_response(scope, "", clipboard, max_tokens, budget_tokens, scoping, symbol=symbol)
-        return _with_note(note, reply, max_tokens)
+        return await _reply(
+            scope,
+            "impact",
+            "",
+            scoping=_scoping(paths, engine_paths, f"--symbol {shlex.quote(symbol)}"),
+            budget_tokens=budget_tokens,
+            max_tokens=max_tokens,
+            clipboard=clipboard,
+            copied=_copied_impact,
+            hint="narrow diff_range",
+            note=note,
+            symbol=symbol,
+            unfold=unfold,
+        )
     ref = diff_ref if diff_ref else await anyio.to_thread.run_sync(_default_diff_ref, validated_path)
 
     # fragment_ids is the second half of the locate flow, so it decides the
@@ -408,14 +396,42 @@ async def diffctx_context(
         raise ValueError(f'mode must be "pack", "locate" or "impact", got {mode!r}')
     if include_raw_diff and mode != "pack":
         raise ValueError(f'mode="{mode}" emits no source; include_raw_diff applies to mode="pack" only')
-    scoping = _scoping(paths, engine_paths, f"--diff {shlex.quote(ref)} --mode {mode}")
-    if mode == "impact":
-        reply = await _impact_response(scope, ref, clipboard, max_tokens, budget_tokens, scoping)
-        return _with_note(note, reply, max_tokens)
-    if mode == "locate":
-        return await _locate_response(scope, ref, budget_tokens, clipboard, max_tokens, scoping)
-    reply = await _pack_response(scope, ref, budget_tokens, clipboard, max_tokens, include_raw_diff, scoping)
-    return _with_note(note, reply, max_tokens)
+    if include_overflow and mode != "locate":
+        raise ValueError(f'include_overflow applies to mode="locate" only, got mode="{mode}"')
+    shape = {
+        "impact": (_copied_impact, "narrow diff_range"),
+        "locate": (_copied_locate, "lower budget_tokens or narrow diff_range"),
+        "pack": (_copied_pack, "lower budget_tokens, narrow diff_ref, or use clipboard=true"),
+    }
+    copied, hint = shape[mode]
+    return await _reply(
+        scope,
+        mode,
+        ref,
+        scoping=_scoping(paths, engine_paths, f"--diff {shlex.quote(ref)} --mode {mode}"),
+        budget_tokens=budget_tokens,
+        max_tokens=max_tokens,
+        clipboard=clipboard,
+        copied=copied,
+        hint=hint,
+        # Locate's reply is a JSON document: a note before it would break it.
+        note="" if mode == "locate" else note,
+        unfold=unfold,
+        include_raw_diff=include_raw_diff,
+        include_overflow=include_overflow,
+    )
+
+
+def _copied_impact(_: Delivery) -> str:
+    return "Copied impact summary to clipboard"
+
+
+def _copied_locate(delivery: Delivery) -> str:
+    return f"Copied locate JSON ({delivery.listed} items) to clipboard"
+
+
+def _copied_pack(delivery: Delivery) -> str:
+    return f"Copied diff context ({delivery.listed} fragments) to clipboard"
 
 
 async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: list[str], clipboard: bool, max_tokens: int) -> str:
@@ -430,41 +446,6 @@ async def _fetch_response(validated_path: Path, diff_ref: str, fragment_ids: lis
             return f"Copied {fetched.resolved} of {len(fragment_ids)} fragments to clipboard"
         content = degraded_notice + content
     return _capped_by_max_tokens(content, max_tokens, "fetch fewer fragment_ids")
-
-
-async def _pack_response(
-    validated_path: Path,
-    diff_ref: str,
-    budget_tokens: int,
-    clipboard: bool,
-    max_tokens: int,
-    include_raw_diff: bool,
-    scoping: _Scoping,
-) -> str:
-    try:
-        result = await _run_with_deadline(
-            "diffctx_context",
-            partial(
-                build_diff_context,
-                root_dir=validated_path,
-                diff_range=diff_ref,
-                budget_tokens=budget_tokens,
-                timeout=_DEFAULT_TIMEOUT_SECONDS,
-                with_raw_diff=include_raw_diff,
-                paths=scoping.engine_paths,
-            ),
-            scoping.deadline_hint,
-        )
-    except GitError as e:
-        raise _git_failure(diff_ref, e) from e
-    fitted, content = fit_artifact(result, "md")
-    if clipboard:
-        degraded_notice = await _copy_or_degrade(content)
-        if degraded_notice is None:
-            frag_count = fitted.get("fragment_count", 0)
-            return f"Copied diff context ({frag_count} fragments) to clipboard"
-        content = degraded_notice + content
-    return _capped_by_max_tokens(content, max_tokens, "lower budget_tokens, narrow diff_ref, or use clipboard=true")
 
 
 # Tree-map and glob-read predate `diffctx_context` and are strictly wider than a

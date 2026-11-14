@@ -1,0 +1,42 @@
+name: py_package_reexport_of_a_changed_function_is_its_public_surface
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, reexport, public-surface]
+repo:
+  initial_files:
+    pkg/__init__.py: |
+      from .decorators import command as command
+    pkg/decorators.py: |
+      from typing import overload
+
+
+      @overload
+      def command(name: None) -> int: ...
+
+
+      @overload
+      def command(name: str) -> str: ...
+
+
+      def command(name=None):
+          return name
+  changed_files:
+    pkg/decorators.py: |
+      from typing import overload
+
+
+      @overload
+      def command(name: None) -> int: ...
+
+
+      @overload
+      def command(name: str, cls: int = 0) -> str: ...
+
+
+      def command(name=None, cls=None):
+          return name
+  commit_message: "decorators: command takes a class"
+expect:
+  relations:
+    - {from: "pkg/__init__.py", to: "pkg/decorators.py::command", kind: reexports, resolution: resolved, site: 1}

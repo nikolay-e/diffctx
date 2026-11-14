@@ -1,73 +1,50 @@
-//! Typed facts a language's parse tree states about a file — its package,
-//! what it imports, what it extends — for the edge layer to consume without
-//! re-reading the text with regular expressions.
+//! The facts layer of the 2.0 architecture: what an [`Extractor`] says about a
+//! blob ([`BlobFacts`]), the cache keyed by blob ([`FactsCache`]), the facts of a
+//! file of a snapshot ([`facts_of`]) and what a range did to the definitions
+//! ([`semantic_changes`]). It reads a repository only through `crate::snapshot`
+//! (`tests/facts_isolation.rs` holds it). `java` and `kotlin` are the one syntax
+//! walk the Kotlin, Java and Swift extractors translate into facts, and the
+//! fragmenter shares; they are held to the layering by no more than that.
 //!
-//! The fragmenter parses every file and drops the tree; the edge builders
-//! then regex-scanned the same text, and each language's reader grew patch
-//! by patch (Scala was on its fifth, #243). A fact walked off the tree
-//! carries what the grammar knows: a brace group spanning lines, a rename,
-//! an import inside a comment that is not an import at all.
+//! An empty value is never how a failed read or a lost fact looks here: the
+//! methods that make one (`Result::ok`, `unwrap_or_default`) and a direct read of
+//! the disk or of a child process are denied in this module. A justified use
+//! carries `#[allow(clippy::disallowed_methods, reason = "...")]`.
 
+#![deny(clippy::disallowed_methods)]
+
+pub mod config;
 pub mod java;
 pub mod kotlin;
-pub mod python;
-pub mod scala;
-pub mod swift;
+pub mod shell;
 
-use rustc_hash::FxHashSet;
+mod blob;
+mod cache;
+mod changes;
+mod extractor;
+mod file;
+pub mod framework;
+mod grammar;
+mod hash;
+mod ids;
+pub mod lang;
+mod language;
+mod lexical;
+mod model;
+mod module;
 
-/// One import clause: `prefix.{selectors}` plus whether it ends in a wildcard.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ImportFact {
-    pub prefix: String,
-    pub selectors: Vec<String>,
-    pub wildcard: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct LanguageFacts {
-    pub package: Option<String>,
-    pub imports: Vec<ImportFact>,
-    pub inherits: FxHashSet<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeclKind {
-    Function,
-    Class,
-    /// A name an assignment binds or a body states as a member — `TABLE =
-    /// …`, `self.x = …`, a field, an interface member: a declaration the
-    /// fragmenter does not cut on its own.
-    Assignment,
-}
-
-#[derive(Debug, Clone)]
-pub struct Declaration {
-    pub name: String,
-    pub kind: DeclKind,
-    /// Decorators included.
-    pub lines: (u32, u32),
-    /// The class whose body declares it: a method, a field.
-    pub class: Option<String>,
-    /// The function it is local to: only that function's lines reach it.
-    pub scope: Option<(u32, u32)>,
-}
-
-/// The declaration named `name` a fragment spanning `lines` stands for: the
-/// first one opening inside it, else the innermost one around it (a chunk
-/// of a long function).
-pub fn declared<'d>(
-    declarations: &'d [Declaration],
-    name: &str,
-    lines: (u32, u32),
-) -> Option<&'d Declaration> {
-    let named = || declarations.iter().filter(|d| d.name == name);
-    named()
-        .filter(|d| lines.0 <= d.lines.0 && d.lines.0 <= lines.1)
-        .min_by_key(|d| d.lines.0)
-        .or_else(|| {
-            named()
-                .filter(|d| d.lines.0 <= lines.0 && d.lines.1 >= lines.1)
-                .max_by_key(|d| d.lines.0)
-        })
-}
+pub use blob::blob_oid;
+pub use cache::{
+    CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir,
+};
+pub use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes};
+pub use extractor::{Extractor, Registry, expired};
+pub use file::facts_of;
+pub use hash::{Hasher, hash_text, hash_tokens};
+pub use ids::{ModulePath, Name, ProjectId, Span, TypeName};
+pub use language::Language;
+pub use model::{
+    BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind,
+    EntryPoint, Export, Fact, FileFacts, Framework, Import, ImportKind, Lexical, Local, LocalKey,
+    LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
+};

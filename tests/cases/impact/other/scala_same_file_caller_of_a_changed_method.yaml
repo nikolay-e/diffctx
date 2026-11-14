@@ -1,0 +1,56 @@
+name: scala_same_file_caller_of_a_changed_method
+mode: impact
+source: gh#604
+issue_state: open
+tags:
+- tier3
+- scala
+- same-file
+repo:
+  initial_files:
+    src/main/scala/app/Users.scala: |
+      package app
+
+      class Users {
+        def findOne(id: Int): String = {
+          val prefix = "user-"
+          prefix + id
+        }
+
+        def toReport(id: Int): String = findOne(id).toUpperCase
+      }
+    src/main/scala/app/Main.scala: |
+      package app
+
+      object Main {
+        def show(): String = new Users().findOne(1)
+      }
+  changed_files:
+    src/main/scala/app/Users.scala: |
+      package app
+
+      class Users {
+        def findOne(id: Int): String = {
+          val prefix = "user-"
+          prefix + id.toString
+        }
+
+        def toReport(id: Int): String = findOne(id).toUpperCase
+      }
+  commit_message: Change scala same file caller of a changed method
+expect:
+  changed:
+  - src/main/scala/app/Users.scala::Users.findOne
+  relations:
+  - from: src/main/scala/app/Users.scala::Users.toReport
+    to: src/main/scala/app/Users.scala::Users.findOne
+    kind: calls
+    resolution: candidate
+    site: 9
+  - from: src/main/scala/app/Main.scala::Main.show
+    to: src/main/scala/app/Users.scala::Users.findOne
+    kind: calls
+    resolution: candidate
+    site: 4
+  exact: true
+  no_negative_claims: true

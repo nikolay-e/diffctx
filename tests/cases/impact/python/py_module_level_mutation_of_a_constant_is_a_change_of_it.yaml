@@ -1,0 +1,43 @@
+name: py_module_level_mutation_of_a_constant_is_a_change_of_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, module-level, mutation]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/decoders.py: |
+      try:
+          import brotli
+      except ImportError:
+          brotli = None
+
+      SUPPORTED_DECODERS = {"gzip": 1, "br": 2}
+    pkg/client.py: |
+      from pkg.decoders import SUPPORTED_DECODERS
+
+      ACCEPT_ENCODING = ", ".join(
+          [key for key in SUPPORTED_DECODERS.keys() if key != "identity"]
+      )
+    pkg/other.py: |
+      SUPPORTED_DECODERS = {}
+      SUPPORTED_DECODERS.pop("br", None)
+  changed_files:
+    pkg/decoders.py: |
+      try:
+          import brotli
+      except ImportError:
+          brotli = None
+
+      SUPPORTED_DECODERS = {"gzip": 1, "br": 2}
+
+      if brotli is None:
+          SUPPORTED_DECODERS.pop("br")
+  commit_message: "decoders: no brotli, no br"
+expect:
+  exact: false
+  changed: [pkg/decoders.py::SUPPORTED_DECODERS]
+  relations:
+    - {from: "pkg/client.py", to: "pkg/decoders.py::SUPPORTED_DECODERS", kind: reads, resolution: resolved, site: 4}
+  decoys:
+    pkg/decoders.py::SUPPORTED_DECODERS: [pkg/other.py]

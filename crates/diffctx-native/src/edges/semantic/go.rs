@@ -17,7 +17,13 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_go_file(path: &Path) -> bool {
-    GO_EXTENSIONS.contains(base::file_ext(path).as_str())
+    GO_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+}
+
+fn is_go_test_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with("_test.go"))
 }
 
 static IMPORT_LINE_RE: Lazy<Regex> =
@@ -155,7 +161,7 @@ fn count_referencing_files<'a>(
         .collect()
 }
 
-pub struct GoEdgeBuilder;
+pub(crate) struct GoEdgeBuilder;
 
 impl GoEdgeBuilder {
     fn build_indices<'a>(
@@ -326,6 +332,9 @@ impl EdgeBuilder for GoEdgeBuilder {
                 &no_imports
             };
 
+            let link_import = |edges: &mut EdgeDict, ids: &[FragmentId]| {
+                add_edges_from_ids(edges, &gf.id, ids, import_weight, reverse_factor);
+            };
             for imp in imports {
                 let imp_pkg = imp.split('/').next_back().unwrap_or(imp).to_lowercase();
                 // Direct lookup: the previous full-map scan was
@@ -333,13 +342,7 @@ impl EdgeBuilder for GoEdgeBuilder {
                 // kubernetes-scale commit (#196).
                 if !pkg_capped(&imp_pkg) {
                     if let Some(frag_ids) = pkg_to_frags.get(&imp_pkg) {
-                        add_edges_from_ids(
-                            &mut edges,
-                            &gf.id,
-                            frag_ids,
-                            import_weight,
-                            reverse_factor,
-                        );
+                        link_import(&mut edges, frag_ids);
                     }
                 }
                 // Last-component index instead of a full scan: the old form
@@ -358,13 +361,7 @@ impl EdgeBuilder for GoEdgeBuilder {
                             || imp.contains(&format!("/{}/", path_str))
                         {
                             if let Some(frag_ids) = path_to_frags.get(*path_str) {
-                                add_edges_from_ids(
-                                    &mut edges,
-                                    &gf.id,
-                                    frag_ids,
-                                    import_weight,
-                                    reverse_factor,
-                                );
+                                link_import(&mut edges, frag_ids);
                             }
                         }
                     }
@@ -544,6 +541,19 @@ impl EdgeBuilder for GoEdgeBuilder {
                     }
                 }
             }
+            // A package's tests sit beside it and import nothing of it, so no
+            // import leads to them: the tests of a file this walk reached are what
+            // guards it, as a Python test importing the module is.
+            for reached in &next_frontier {
+                let Some(dir) = reached.parent() else {
+                    continue;
+                };
+                for test in &go_candidates {
+                    if test.parent() == Some(dir) && is_go_test_file(test) {
+                        discovered.insert(test.clone());
+                    }
+                }
+            }
             if next_frontier.is_empty() {
                 break;
             }
@@ -553,5 +563,50 @@ impl EdgeBuilder for GoEdgeBuilder {
         let mut result: Vec<PathBuf> = discovered.into_iter().collect();
         result.sort();
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found(files: &[(&str, &str)], changed: &[&str]) -> Vec<String> {
+        let cache: FxHashMap<PathBuf, String> = files
+            .iter()
+            .map(|(path, text)| (PathBuf::from(path), (*text).to_string()))
+            .collect();
+        let candidates: Vec<PathBuf> = files.iter().map(|(path, _)| PathBuf::from(path)).collect();
+        let changed: Vec<PathBuf> = changed.iter().map(PathBuf::from).collect();
+        GoEdgeBuilder
+            .discover_related_files(&changed, &candidates, None, Some(&cache))
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_test_of_a_caller_is_found_though_it_imports_nothing() {
+        let files = [
+            (
+                "pricing/pricing.go",
+                "package pricing\n\nfunc Total() int { return 1 }\n",
+            ),
+            (
+                "checkout/checkout.go",
+                "package checkout\n\nimport \"example.com/app/pricing\"\n\nfunc Charge() int { return pricing.Total() }\n",
+            ),
+            (
+                "checkout/checkout_test.go",
+                "package checkout\n\nimport \"testing\"\n\nfunc TestCharge(t *testing.T) { Charge() }\n",
+            ),
+            (
+                "legacy/legacy_test.go",
+                "package legacy\n\nimport \"testing\"\n",
+            ),
+        ];
+        assert_eq!(
+            found(&files, &["pricing/pricing.go"]),
+            ["checkout/checkout.go", "checkout/checkout_test.go"]
+        );
     }
 }

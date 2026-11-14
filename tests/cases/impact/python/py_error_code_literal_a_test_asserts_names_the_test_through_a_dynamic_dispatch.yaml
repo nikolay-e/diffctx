@@ -1,0 +1,91 @@
+name: py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
+mode: impact
+source: gh#328
+issue_state: open
+tags:
+- python
+- literal-channel
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    app/__init__.py: ''
+    app/errors.py: |
+      class ApiError(Exception):
+          def __init__(self, code, status):
+              super().__init__(code)
+              self.code = code
+              self.status = status
+    app/ledger.py: |
+      from app.errors import ApiError
+
+
+      def check_event(event):
+          if not isinstance(event, dict):
+              raise ApiError("not_an_object", 422)
+          if "hlc" not in event:
+              raise ApiError("malformed_hlc", 422)
+          return event
+
+
+      def check_field(event):
+          if "field" not in event:
+              raise ApiError("invalid_field", 422)
+          return event
+    app/ingest.py: |
+      import importlib
+
+
+      def ingest(kind, payload):
+          ledger = importlib.import_module("app.ledger")
+          return getattr(ledger, "check_" + kind)(payload)
+    tests/test_ledger.py: |
+      import pytest
+
+      from app.errors import ApiError
+      from app.ingest import ingest
+
+
+      def test_a_payload_without_an_hlc_is_rejected():
+          with pytest.raises(ApiError) as caught:
+              ingest("event", {"value": 1})
+          assert caught.value.code == "malformed_hlc"
+    tests/test_fields.py: |
+      import pytest
+
+      from app.errors import ApiError
+      from app.ingest import ingest
+
+
+      def test_a_payload_without_a_field_is_rejected():
+          with pytest.raises(ApiError) as caught:
+              ingest("field", {"hlc": 1})
+          assert caught.value.code == "invalid_field"
+  changed_files:
+    app/ledger.py: |
+      from app.errors import ApiError
+
+
+      def check_event(event):
+          if not isinstance(event, dict):
+              raise ApiError("not_an_object", 422)
+          if "hlc" not in event or not event["hlc"]:
+              raise ApiError("malformed_hlc", 422)
+          return event
+
+
+      def check_field(event):
+          if "field" not in event:
+              raise ApiError("invalid_field", 422)
+          return event
+  commit_message: Reject an empty hlc as well as a missing one
+expect:
+  changed:
+  - app/ledger.py::check_event
+  tested_by:
+    app/ledger.py: tests/test_ledger.py
+  not_untested:
+  - check_event
+  decoys:
+    app/ledger.py::check_event:
+    - tests/test_fields.py

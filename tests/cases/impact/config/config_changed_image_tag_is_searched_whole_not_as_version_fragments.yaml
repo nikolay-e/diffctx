@@ -1,0 +1,30 @@
+name: config_changed_image_tag_is_searched_whole_not_as_version_fragments
+mode: impact
+source: gh#707
+issue_state: open
+tags:
+- config
+- docker
+- named-by
+- decoy
+repo:
+  initial_files:
+    a.yaml: |
+      image: reg/app:2.14.1-debian13@sha256:aaa
+    b.yaml: |
+      image: reg/other:3.10.1-debian13@sha256:bbb
+    c.yaml: |
+      image: reg/app:2.14.1-debian13@sha256:aaa
+    Dockerfile: |
+      FROM reg/base:0.9.1-debian13
+  changed_files:
+    a.yaml: |
+      image: reg/app:2.14.3-debian13@sha256:ccc
+  worktree: true
+  commit_message: Bump the app image
+expect:
+  named_by:
+  - c.yaml
+  not_named_by:
+  - b.yaml
+  - Dockerfile

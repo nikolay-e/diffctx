@@ -1,0 +1,31 @@
+name: gh623_removed_definition_with_a_caller_is_reported
+mode: impact
+source: gh#623
+issue_state: open
+# The issue's failure needs a git whose `show` fails (PATH shim, fx/623/bin/git);
+# the harness cannot inject that, so this case pins only the answer a working
+# base read must give: the removal and its caller.
+tags: [python, removed, base-read]
+repo:
+  initial_files:
+    legacy.py: |
+      def old_rate():
+          return 1
+
+
+      def rate():
+          return 2
+    user.py: |
+      from legacy import old_rate
+
+
+      def use_old():
+          return old_rate()
+  changed_files:
+    legacy.py: |
+      def rate():
+          return 2
+expect:
+  removed: [old_rate]
+  relations:
+    - {from: user.py::use_old, to: legacy.py::old_rate, kind: calls, resolution: resolved, site: 5}

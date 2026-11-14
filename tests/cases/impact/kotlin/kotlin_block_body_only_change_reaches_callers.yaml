@@ -1,0 +1,71 @@
+name: kotlin_block_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, body-only, block-body, smoke]
+repo:
+  initial_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      object Pricing {
+          fun total(items: List<Int>): Int {
+              var sum = 0
+              for (item in items) {
+                  sum += item
+              }
+              return sum
+          }
+      }
+    src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      class Checkout {
+          fun charge(items: List<Int>): Int = Pricing.total(items) + 1
+      }
+    src/main/kotlin/shop/Report.kt: |
+      package shop
+
+      fun build(items: List<Int>): String = "total=" + Pricing.total(items)
+    src/main/kotlin/legacy/Pricing.kt: |
+      package legacy
+
+      object Pricing {
+          fun total(items: List<Int>): Int = items.size
+      }
+
+      fun legacySum(items: List<Int>): Int = Pricing.total(items)
+    src/main/kotlin/shop/Notes.kt: |
+      package shop
+
+      // Pricing.total(items) is documented here
+      val note = "Pricing.total(items)"
+  changed_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      object Pricing {
+          fun total(items: List<Int>): Int {
+              var sum = 0
+              for (item in items) {
+                  sum += item * 2
+              }
+              return maxOf(sum, 0)
+          }
+      }
+  commit_message: "pricing: double each item and never go negative"
+expect:
+  changed: [src/main/kotlin/shop/Pricing.kt::Pricing.total]
+  relations:
+    - from: "src/main/kotlin/shop/Checkout.kt::Checkout.charge"
+      to: "src/main/kotlin/shop/Pricing.kt::Pricing.total"
+      kind: calls
+      resolution: resolved
+      site: 4
+    - from: "src/main/kotlin/shop/Report.kt::build"
+      to: "src/main/kotlin/shop/Pricing.kt::Pricing.total"
+      kind: calls
+      resolution: resolved
+      site: 3
+  decoys:
+    src/main/kotlin/shop/Pricing.kt::Pricing.total: [src/main/kotlin/legacy/Pricing.kt, src/main/kotlin/shop/Notes.kt]

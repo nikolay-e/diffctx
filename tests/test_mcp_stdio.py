@@ -26,12 +26,14 @@ _TOOL_SNAPSHOT = {
             "clipboard",
             "diff_ref",
             "fragment_ids",
+            "include_overflow",
             "include_raw_diff",
             "max_tokens",
             "mode",
             "paths",
             "repo_path",
             "symbol",
+            "unfold",
         ],
         ["repo_path"],
     ),
@@ -152,7 +154,7 @@ async def test_the_default_surface_over_real_stdio(argv, workspace):
         # {"result": "<escaped JSON>"} and clients rendered that instead.
         assert located.structured_content is None
         doc = json.loads(located.content[0].text)
-        assert doc["schema"] == "diffctx.locate.v1"
+        assert doc["schema"] == "diffctx.locate.v2"
         assert any(item["path"] == "src/calc.py" for item in doc["items"])
 
     # The server runs in a directory holding mcp/: a client launching it is

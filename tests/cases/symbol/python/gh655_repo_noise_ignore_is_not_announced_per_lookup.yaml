@@ -1,0 +1,32 @@
+name: gh655_repo_noise_ignore_is_not_announced_per_lookup
+mode: symbol
+source: gh#655
+issue_state: open
+# The defect is the per-lookup "N file(s) naming it withheld by ignore rules"
+# line (text form) for files the repo's own .diffctx/ignore withholds; the
+# schema has no negative disclosure field, so this pins the answer around it.
+tags: [python, ignore, disclosure]
+repo:
+  initial_files:
+    .diffctx/ignore: |
+      fixtures/
+    src/a.py: |
+      def total(x):
+          return x
+    src/b.py: |
+      from src.a import total
+
+
+      def use():
+          return total(1)
+    fixtures/case1.yaml: |
+      name: case1
+      call: total
+    fixtures/case2.yaml: |
+      name: case2
+      call: total
+query:
+  symbol: total
+expect:
+  definitions: [src/a.py::total]
+  callers: {total: [src/b.py::use]}

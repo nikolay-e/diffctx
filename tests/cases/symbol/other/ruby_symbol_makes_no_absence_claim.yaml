@@ -1,0 +1,26 @@
+name: ruby_symbol_makes_no_absence_claim
+mode: symbol
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- ruby
+- symbol
+repo:
+  initial_files:
+    lib/greeter.rb: |
+      class Greeter
+        def hello(name)
+          "hi #{name}"
+        end
+      end
+  commit_message: Change ruby symbol makes no absence claim
+query:
+  symbol: hello
+expect:
+  unknowns:
+    hello: not_modelled
+  definitions:
+  - lib/greeter.rb::Greeter.hello
+  discloses: true
+  no_negative_claims: true

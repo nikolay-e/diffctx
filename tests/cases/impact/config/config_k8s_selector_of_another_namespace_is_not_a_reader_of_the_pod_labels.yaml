@@ -1,0 +1,71 @@
+name: config_k8s_selector_of_another_namespace_is_not_a_reader_of_the_pod_labels
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- selector
+- candidate
+- namespace
+- decoy
+repo:
+  initial_files:
+    shop/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+        namespace: shop
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+    shop/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+        namespace: shop
+      spec:
+        selector:
+          app: web
+    staging/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+        namespace: staging
+      spec:
+        selector:
+          app: web
+  changed_files:
+    shop/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+        namespace: shop
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: ui
+          spec:
+            containers: []
+  commit_message: Change config k8s selector of another namespace is not a reader of the pod labels
+expect:
+  relations:
+  - from: shop/svc.yaml
+    to: shop/web.yaml
+    kind: reads
+    resolution: candidate
+    site: 8
+  exact: true
+  decoys:
+    shop/web.yaml:
+    - staging/svc.yaml

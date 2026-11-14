@@ -1,0 +1,31 @@
+name: kotlin_symbol_backtick_name_has_a_caller
+mode: symbol
+source: fj#173
+issue_state: closed
+tags:
+- kotlin
+- backticks
+- calls
+repo:
+  initial_files:
+    src/main/kotlin/names/Names.kt: |
+      package names
+
+      fun `top level spaced`(): Int = 1
+    src/main/kotlin/names/Use.kt: |
+      package names
+
+      fun use() = `top level spaced`()
+  commit_message: Seed a call of a Kotlin name with spaces
+query:
+  symbol: '`top level spaced`'
+expect:
+  relations:
+  - from: src/main/kotlin/names/Use.kt::use
+    to: src/main/kotlin/names/Names.kt::top level spaced
+    kind: calls
+    resolution: resolved
+    site: 3
+  exact: false
+  definitions:
+  - src/main/kotlin/names/Names.kt::top level spaced

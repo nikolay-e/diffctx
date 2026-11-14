@@ -1,0 +1,124 @@
+name: py_caller_with_many_calls_names_every_call_site
+mode: symbol
+source: gh#472
+issue_state: closed
+tags: [python, call-sites, long-function]
+repo:
+  initial_files:
+    owners.py: |
+      def stated_owner(row):
+          return row.owner
+
+    networth.py: |
+      from owners import stated_owner
+
+
+      def net_worth_terms(rows):
+          terms = []
+          terms.append(stated_owner(rows[0]))
+          terms.append(rows[1].amount * 2)
+          terms.append(rows[2].amount * 3)
+          terms.append(rows[0].amount * 4)
+          terms.append(rows[1].amount * 5)
+          terms.append(rows[2].amount * 6)
+          terms.append(rows[0].amount * 7)
+          terms.append(stated_owner(rows[1]))
+          terms.append(rows[2].amount * 9)
+          terms.append(rows[0].amount * 10)
+          terms.append(rows[1].amount * 11)
+          terms.append(rows[2].amount * 12)
+          terms.append(rows[0].amount * 13)
+          terms.append(rows[1].amount * 14)
+          terms.append(rows[2].amount * 15)
+          terms.append(rows[0].amount * 16)
+          terms.append(rows[1].amount * 17)
+          terms.append(rows[2].amount * 18)
+          terms.append(rows[0].amount * 19)
+          terms.append(rows[1].amount * 20)
+          terms.append(rows[2].amount * 21)
+          terms.append(rows[0].amount * 22)
+          terms.append(rows[1].amount * 23)
+          terms.append(rows[2].amount * 24)
+          terms.append(rows[0].amount * 25)
+          terms.append(rows[1].amount * 26)
+          terms.append(rows[2].amount * 27)
+          terms.append(rows[0].amount * 28)
+          terms.append(stated_owner(rows[1]))
+          terms.append(rows[2].amount * 30)
+          terms.append(rows[0].amount * 31)
+          terms.append(rows[1].amount * 32)
+          terms.append(rows[2].amount * 33)
+          terms.append(rows[0].amount * 34)
+          terms.append(rows[1].amount * 35)
+          terms.append(rows[2].amount * 36)
+          terms.append(rows[0].amount * 37)
+          terms.append(rows[1].amount * 38)
+          terms.append(rows[2].amount * 39)
+          terms.append(rows[0].amount * 40)
+          terms.append(rows[1].amount * 41)
+          terms.append(rows[2].amount * 42)
+          terms.append(rows[0].amount * 43)
+          terms.append(rows[1].amount * 44)
+          terms.append(rows[2].amount * 45)
+          terms.append(rows[0].amount * 46)
+          terms.append(stated_owner(rows[1]))
+          terms.append(rows[2].amount * 48)
+          terms.append(rows[0].amount * 49)
+          terms.append(rows[1].amount * 50)
+          terms.append(rows[2].amount * 51)
+          terms.append(rows[0].amount * 52)
+          terms.append(rows[1].amount * 53)
+          terms.append(rows[2].amount * 54)
+          terms.append(rows[0].amount * 55)
+          terms.append(rows[1].amount * 56)
+          terms.append(rows[2].amount * 57)
+          terms.append(rows[0].amount * 58)
+          terms.append(rows[1].amount * 59)
+          terms.append(rows[2].amount * 60)
+          terms.append(rows[0].amount * 61)
+          terms.append(rows[1].amount * 62)
+          terms.append(rows[2].amount * 63)
+          terms.append(rows[0].amount * 64)
+          terms.append(rows[1].amount * 65)
+          terms.append(rows[2].amount * 66)
+          terms.append(rows[0].amount * 67)
+          terms.append(rows[1].amount * 68)
+          terms.append(rows[2].amount * 69)
+          terms.append(rows[0].amount * 70)
+          terms.append(stated_owner(rows[1]))
+          terms.append(rows[2].amount * 72)
+          terms.append(rows[0].amount * 73)
+          terms.append(rows[1].amount * 74)
+          terms.append(rows[2].amount * 75)
+          terms.append(rows[0].amount * 76)
+          terms.append(rows[1].amount * 77)
+          terms.append(rows[2].amount * 78)
+          terms.append(rows[0].amount * 79)
+          terms.append(rows[1].amount * 80)
+          terms.append(rows[2].amount * 81)
+          terms.append(rows[0].amount * 82)
+          terms.append(rows[1].amount * 83)
+          terms.append(rows[2].amount * 84)
+          terms.append(rows[0].amount * 85)
+          terms.append(rows[1].amount * 86)
+          terms.append(rows[2].amount * 87)
+          terms.append(rows[0].amount * 88)
+          terms.append(rows[1].amount * 89)
+          terms.append(rows[2].amount * 90)
+          terms.append(rows[0].amount * 91)
+          terms.append(rows[1].amount * 92)
+          terms.append(rows[2].amount * 93)
+          terms.append(rows[0].amount * 94)
+          terms.append(rows[1].amount * 95)
+          return terms
+
+query:
+  symbol: stated_owner
+expect:
+  definitions: [owners.py::stated_owner]
+  relations:
+    - {from: "networth.py::net_worth_terms", to: "owners.py::stated_owner", kind: calls, resolution: resolved, site: 6}
+    - {from: "networth.py::net_worth_terms", to: "owners.py::stated_owner", kind: calls, resolution: resolved, site: 13}
+    - {from: "networth.py::net_worth_terms", to: "owners.py::stated_owner", kind: calls, resolution: resolved, site: 34}
+    - {from: "networth.py::net_worth_terms", to: "owners.py::stated_owner", kind: calls, resolution: resolved, site: 52}
+    - {from: "networth.py::net_worth_terms", to: "owners.py::stated_owner", kind: calls, resolution: resolved, site: 76}

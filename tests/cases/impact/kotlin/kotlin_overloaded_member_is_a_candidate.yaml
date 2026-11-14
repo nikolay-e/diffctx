@@ -1,0 +1,40 @@
+name: kotlin_overloaded_member_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- overload
+- candidate
+repo:
+  initial_files:
+    src/main/kotlin/p/Store.kt: |
+      package p
+
+      class Store {
+          fun put(key: String): Int = key.length
+          fun put(key: String, ttl: Int): Int = key.length + ttl
+      }
+    src/main/kotlin/p/User.kt: |
+      package p
+
+      fun use(s: Store): Int = s.put("a")
+  changed_files:
+    src/main/kotlin/p/Store.kt: |
+      package p
+
+      class Store {
+          fun put(key: String): Int = key.length + 0
+          fun put(key: String, ttl: Int): Int = key.length + ttl
+      }
+  commit_message: Change kotlin overloaded member is a candidate
+expect:
+  changed:
+  - src/main/kotlin/p/Store.kt::Store.put
+  relations:
+  - from: src/main/kotlin/p/User.kt::use
+    to: src/main/kotlin/p/Store.kt::Store.put
+    kind: calls
+    resolution: candidate
+    site: 3
+  exact: true

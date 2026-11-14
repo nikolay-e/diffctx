@@ -6,10 +6,10 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{commit_all, diffctx, fill, fill_steps, repo, write};
+use support::{commit_all, diffctx, diffctx_unclocked, fill, fill_steps, repo, write};
 
 fn symbol_markdown(repo: &Path, name: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([".", "--symbol", name, "-q", "-f", "md"])
         .output()
@@ -23,7 +23,7 @@ fn symbol_markdown(repo: &Path, name: &str) -> String {
 }
 
 fn impact_markdown_within(repo: &Path, budget: &str) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -31,6 +31,8 @@ fn impact_markdown_within(repo: &Path, budget: &str) -> String {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "md",
             "--budget",
@@ -47,7 +49,7 @@ fn impact_markdown_within(repo: &Path, budget: &str) -> String {
 }
 
 fn impact_markdown(repo: &Path) -> String {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -55,6 +57,8 @@ fn impact_markdown(repo: &Path) -> String {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "md",
         ])
@@ -70,7 +74,8 @@ fn impact_markdown(repo: &Path) -> String {
 
 /// #389: `out = []; out.append(x)` appends to a list, whatever else defines
 /// `append`. The same name through a `Report` is the caller, and through a
-/// parameter nothing types it stays possible.
+/// parameter nothing types it stays possible in a module that imports
+/// `report`; a script that never does has no hedge (gh#666).
 #[test]
 fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     let report = |body: &str| {
@@ -94,7 +99,11 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
                 "writer.py",
                 "from report import Report\n\n\ndef write():\n    r = Report()\n    r.append(\"x\")\n",
             ),
-            ("loose.py", "def emit(w):\n    w.append(\"y\")\n"),
+            (
+                "loose.py",
+                "import report\n\n\ndef emit(w):\n    w.append(\"y\")\n",
+            ),
+            ("stray.py", "def drain(w):\n    w.append(\"z\")\n"),
         ],
         &[("report.py", &report("self.lines.append(text.strip())"))],
     );
@@ -103,6 +112,14 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     assert!(md.contains("possibly called from loose.py::emit"), "{md}");
     assert!(!md.contains("lists.py"), "{md}");
     assert!(!md.contains("built.py"), "{md}");
+    assert!(
+        !md.contains("stray.py::"),
+        "a script no import reaches is no row: {md}"
+    );
+    assert!(
+        md.contains("possibly called from loose.py:5, stray.py:2"),
+        "the gap names the two reads its count holds: {md}"
+    );
 }
 
 /// #389 on TypeScript: `new Map()` is a `Map`, and its `get` is not
@@ -154,10 +171,13 @@ fn a_read_through_an_untyped_receiver_is_counted_not_dropped() {
     );
     assert!(!md.contains("nothing calls them"), "{md}");
     assert!(!md.contains("called from app.py"), "{md}");
+    // Its reads are undetermined; its calls were searched whole.
+    assert!(md.contains("no call found in the analysed scope"), "{md}");
 }
 
-/// A read and a call through the same untyped receiver (`if engine.switch:
-/// engine.switch()`) is a possible caller: the call says more than the read.
+/// A read and a call through the same untyped receiver (`if w.switch:
+/// w.switch()`) is a possible caller of a module that imports the class's: the
+/// call says more than the read.
 #[test]
 fn a_call_beside_a_read_through_one_receiver_stays_a_possible_caller() {
     let engine = |n: u32| format!("class Engine:\n    def switch(self):\n        return {n}\n");
@@ -166,7 +186,7 @@ fn a_call_beside_a_read_through_one_receiver_stays_a_possible_caller() {
             ("engine.py", &engine(1)),
             (
                 "client.py",
-                "def run(engine):\n    if engine.switch:\n        return engine.switch()\n",
+                "import engine\n\n\ndef run(w):\n    if w.switch:\n        return w.switch()\n",
             ),
         ],
         &[("engine.py", &engine(2))],
@@ -557,7 +577,8 @@ fn a_test_that_runs_the_binary_reaches_main() {
 
 /// R1: a word match is listed as text, never counted or rendered as a caller.
 /// #681: a removed shell function whose name sits in another script's path and
-/// argument. Forgejo #115: a Python constant named by a shell variable in a
+/// argument is no caller, and the shell facts read that script whole, so it is no
+/// textual row either: the cell found no use of the function in it. Forgejo #115: a Python constant named by a shell variable in a
 /// template. A C# method called from another file (the lexical tier: no binding
 /// model reads C#). A resolved Python caller beside them stays a caller.
 #[test]
@@ -616,13 +637,24 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     let section = "Named in code outside the diff (a textual match, not a resolved binding):";
     let (head, text) = md.split_once(section).unwrap_or_else(|| panic!("{md}"));
     assert!(head.contains("1 caller(s) outside the diff"), "{md}");
+    // A language without a cell never claims a complete set: its definition
+    // carries the gap that names it.
+    let rates = json["definitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["path"] == "src/Rates.cs")
+        .unwrap_or_else(|| panic!("{json}"));
     assert!(
-        head.contains("1 caller(s) outside the diff, 3 named only textually (not resolved)"),
-        "{md}"
+        rates["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled")),
+        "{json}"
     );
-    for row in ["hooks/cap.sh:", "ops/run.sh.j2", "src/Invoice.cs:"] {
+    for row in ["ops/run.sh.j2", "src/Invoice.cs:"] {
         assert!(text.contains(row), "{row}: {md}");
     }
+    assert!(!md.contains("hooks/cap.sh"), "{md}");
     // The row cites the line that spells the name, not its function's start.
     assert!(text.contains("src/Invoice.cs:3 names Rate"), "{md}");
     for shown_as_caller in ["hooks/cap.sh", "ops/run.sh.j2", "src/Invoice.cs"] {
@@ -631,13 +663,13 @@ fn a_word_match_is_listed_as_text_never_as_a_caller() {
     assert!(!md.contains("callers may be missing"), "{md}");
     assert!(!md.contains("Callers outside Python"), "{md}");
     assert!(head.contains("called from core/cart.py::checkout"), "{md}");
-    let evidence: Vec<&str> = json["changed"]
+    let evidence: Vec<&str> = json["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .flat_map(|c| c["callers"].as_array().unwrap())
+        .flat_map(|c| c["rows"].as_array().unwrap())
         .filter(|c| c["path"] == "src/Invoice.cs")
-        .map(|c| c["evidence"].as_str().unwrap())
+        .map(|c| c["standing"].as_str().unwrap())
         .collect();
     assert_eq!(evidence, ["name"], "{json}");
 }
@@ -693,6 +725,36 @@ fn names_too_common_to_trace_fold_into_one_line() {
     assert!(!md.contains("called from src/app/Main.scala"), "{md}");
 }
 
+/// A name defined in forty modules is "too common to trace" before any
+/// definition is searched: a same-file call of each `run` is not a row per
+/// definition, it is the noise the one folded line stands for.
+#[test]
+fn a_name_in_forty_modules_is_folded_before_any_definition_is_searched() {
+    let modules: Vec<(String, String)> = (0..40)
+        .map(|i| {
+            (
+                format!("lib/mod{i}.rb"),
+                format!(
+                    "class Mod{i}\n  def run(arg)\n    arg + 1\n  end\n\n  def helper{i}(a)\n    run(a)\n  end\nend\n"
+                ),
+            )
+        })
+        .collect();
+    let files: Vec<(&str, &str)> = modules
+        .iter()
+        .map(|(path, body)| (path.as_str(), body.as_str()))
+        .collect();
+    let tmp = repo(&files, &[]);
+    let md = symbol_markdown(tmp.path(), "run");
+    assert!(
+        md.contains("- 40 changed definition(s) with names too common to trace by name (ruby has no binding model here"),
+        "{md}"
+    );
+    assert!(!md.contains("named only textually"), "{md}");
+    assert!(!md.contains("callers not resolved: `run`"), "{md}");
+    assert!(md.len() < 1000, "{md}");
+}
+
 /// What names a changed file by path is context, never at a caller's
 /// expense: under a tight cap the same callers show with or without the
 /// configs that name the file, its omitted-count line included.
@@ -743,7 +805,7 @@ fn named_by_never_displaces_a_caller() {
 }
 
 fn impact_json(repo: &Path) -> serde_json::Value {
-    let out = diffctx()
+    let out = diffctx_unclocked()
         .current_dir(repo)
         .args([
             "--diff",
@@ -751,6 +813,8 @@ fn impact_json(repo: &Path) -> serde_json::Value {
             "--mode",
             "impact",
             "-q",
+            // The suite asserts what is resolved and what is unknown, not what is folded.
+            "--unfold",
             "-f",
             "json",
         ])
@@ -805,18 +869,28 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         let tmp = repo(&[(path, before), reader], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], false, "{path}: {json}");
-        let listed = json["unanalysed_files"]
+        let listed = json["coverage"]["unanalysed"]["items"]
             .as_array()
             .cloned()
             .unwrap_or_default();
+        // A page is read by the TypeScript cell now: a change outside its scripts
+        // is code outside any tracked definition, still named and never a zero.
+        let (reason, wording) = if *path == "web/index.html" {
+            (
+                "outside_definitions",
+                "changed code outside any tracked definition",
+            )
+        } else {
+            ("content_untraced", "not followed")
+        };
         assert!(
             listed
                 .iter()
-                .any(|f| f["path"] == *path && f["reason"] == "content_untraced"),
+                .any(|f| f["path"] == *path && f["reason"] == reason),
             "{path}: {json}"
         );
         let md = impact_markdown(tmp.path());
-        assert!(md.contains("not followed"), "{path}: {md}");
+        assert!(md.contains(wording), "{path}: {md}");
         assert!(!md.contains("No resolved static callers"), "{path}: {md}");
     }
 
@@ -861,8 +935,50 @@ fn a_change_whose_readers_nothing_traces_is_named_never_a_clean_zero() {
         let tmp = repo(&[(path, before)], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], true, "{path}: {json}");
-        assert!(json.get("unanalysed_files").is_none(), "{path}: {json}");
+        assert!(json["coverage"]["unanalysed"].is_null(), "{path}: {json}");
     }
+}
+
+/// A Dockerfile and a configuration are traced by their cell inside and
+/// between the files; what builds or applies them lies outside. Nothing
+/// naming the file is a gap, never a clean zero; a workflow that builds it by
+/// its path is the reader, and the answer names it instead.
+#[test]
+fn a_dockerfile_nothing_names_is_a_gap_and_one_a_workflow_builds_is_named() {
+    let before = "FROM alpine\nENV PORT=80\n";
+    let after = "FROM alpine\nENV PORT=8080\n";
+    let unnamed = repo(&[("Dockerfile", before)], &[("Dockerfile", after)]);
+    let json = impact_json(unnamed.path());
+    assert_eq!(json["empty"], false, "{json}");
+    assert!(
+        json["coverage"]["unanalysed"]["items"]
+            .as_array()
+            .is_some_and(|files| files
+                .iter()
+                .any(|f| f["path"] == "Dockerfile" && f["reason"] == "content_untraced")),
+        "{json}"
+    );
+
+    let built = repo(
+        &[
+            ("Dockerfile", before),
+            (
+                ".github/workflows/ci.yml",
+                "jobs:\n  image:\n    steps:\n      - run: docker build -f Dockerfile .\n",
+            ),
+        ],
+        &[("Dockerfile", after)],
+    );
+    let json = impact_json(built.path());
+    assert!(
+        json["named"]["by_path"]["items"]
+            .as_array()
+            .is_some_and(|rows| rows
+                .iter()
+                .any(|r| r["target"] == "Dockerfile" && r["path"] == ".github/workflows/ci.yml")),
+        "{json}"
+    );
+    assert!(json["coverage"]["unanalysed"].is_null(), "{json}");
 }
 
 /// #563: a changed document is named by the config or code that reads it
@@ -986,9 +1102,10 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
         let tmp = repo(&[(path, before)], &[(path, after)]);
         let json = impact_json(tmp.path());
         assert_eq!(json["empty"], false, "{path}: {json}");
-        let unresolved = json["changed"][0]["unresolved"].as_str().unwrap_or("");
+        let gaps = json["definitions"][0]["gaps"].as_array();
         assert!(
-            unresolved.contains(via) && unresolved.contains("not traced"),
+            gaps.is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains(via)))),
             "{path}: {json}"
         );
     }
@@ -1038,12 +1155,70 @@ fn a_member_only_dispatch_can_reach_is_named_never_dead() {
         )],
     );
     let json = impact_json(tmp.path());
-    let total = &json["changed"][0];
+    let total = &json["definitions"][0];
     assert!(
-        total["callers"].as_array().is_some_and(|c| !c.is_empty()),
+        total["rows"].as_array().is_some_and(|c| !c.is_empty()),
         "{json}"
     );
-    assert!(total.get("unresolved").is_none(), "{json}");
+    assert!(total.get("gaps").is_none(), "{json}");
+}
+
+/// gh#736: a method of a `NamedTuple` (or a `TypedDict`, a `Generic`) overrides
+/// nothing, so no call goes through that base and the answer never blames it.
+/// With no caller the method is one nothing calls; a method of a class with a
+/// real base keeps naming that base.
+#[test]
+fn a_typing_construct_is_no_dispatch_route_for_its_methods() {
+    let class = |base: &str, body: u8| {
+        format!(
+            "from typing import NamedTuple\n\n\nclass Bundle({base}):\n    copies: int\n\n    def total(self):\n        def add(a):\n            return a + {body}\n        return add(1)\n"
+        )
+    };
+    for base in ["NamedTuple", "typing.NamedTuple", "Generic[T]"] {
+        let tmp = repo(
+            &[("pkg/core.py", &class(base, 1))],
+            &[("pkg/core.py", &class(base, 2))],
+        );
+        let json = impact_json(tmp.path());
+        assert!(
+            json["unlisted"]["no_caller"]["items"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|i| i["symbol"] == "total")),
+            "{base}: {json}"
+        );
+        assert!(!json.to_string().contains("overridable"), "{base}: {json}");
+    }
+    let tmp = repo(
+        &[("pkg/core.py", &class("Base", 1))],
+        &[("pkg/core.py", &class("Base", 2))],
+    );
+    let json = impact_json(tmp.path());
+    assert!(
+        json["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains("Base")))),
+        "{json}"
+    );
+    // The names are Python's: a Java class extending a type of its own called
+    // `Generic` keeps that route.
+    let java = |body: u8| {
+        format!(
+            "public class Impl extends Generic {{\n    @Override\n    public int total() {{\n        return {body};\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo(
+        &[("src/Impl.java", &java(1))],
+        &[("src/Impl.java", &java(2))],
+    );
+    let json = impact_json(tmp.path());
+    assert!(
+        json["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "overridable"
+                && g["via"].as_str().is_some_and(|v| v.contains("Generic")))),
+        "{json}"
+    );
 }
 
 /// #442: an edit that changes the code's tokens, the block a line sits in
@@ -1164,7 +1339,10 @@ fn an_edit_a_formatter_cannot_make_is_never_layout() {
     ] {
         let tmp = repo(&[("schemas/s.yaml", before)], &[("schemas/s.yaml", after)]);
         let json = impact_json(tmp.path());
-        let contracts = json["contracts"].as_array().cloned().unwrap_or_default();
+        let contracts = json["contracts"]["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(
             contracts.iter().any(|c| c["kind"] == "schema"),
             "{after:?}: {json}"
@@ -1215,11 +1393,12 @@ fn an_edit_a_formatter_cannot_make_is_never_layout() {
     for (path, before, after, (caller, caller_src, listed)) in &layout {
         let tmp = repo(&[(path, before), (caller, caller_src)], &[(path, after)]);
         let json = impact_json(tmp.path());
-        let skipped = json["layout_only"].as_array().cloned().unwrap_or_default();
+        let skipped = json["unlisted"]["layout_only"]["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(
-            skipped.iter().any(|s| s
-                .as_str()
-                .is_some_and(|s| s.starts_with(&format!("{path}::")))),
+            skipped.iter().any(|s| s["path"] == *path),
             "{path}: {after:?}\n{json}"
         );
         let md = impact_markdown(tmp.path());
@@ -1288,12 +1467,12 @@ fn a_coverage_block_added_by_the_fit_names_its_counts_unknown() {
     );
     let cut = pack_json(tmp.path(), &["--budget", "900"], None);
     assert!(
-        cut["fragment_count"].as_u64().is_some_and(|n| n > 0),
+        cut["fragments"].as_array().is_some_and(|f| !f.is_empty()),
         "{cut}"
     );
     let coverage = &cut["coverage"];
     assert!(
-        coverage["limit_reasons"]
+        coverage["limits"]
             .as_array()
             .is_some_and(|r| r.iter().any(|r| r == "selection_budget_exceeded")),
         "{cut}"
@@ -1377,12 +1556,12 @@ fn a_name_nothing_defines_is_listed_where_files_spell_it() {
         .expect("run diffctx");
     assert!(json.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&json.stdout).expect("json");
-    assert_eq!(doc["symbol_named"]["files"], 15, "{doc:#}");
+    assert_eq!(doc["spelled"]["files"], 15, "{doc:#}");
     assert_eq!(
-        doc["symbol_named"]["rows"][0]["path"], "rules/backup.yaml",
+        doc["spelled"]["rows"][0]["path"], "rules/backup.yaml",
         "{doc:#}"
     );
-    assert_eq!(doc["symbol_named"]["rows"][0]["line"], 3, "{doc:#}");
+    assert_eq!(doc["spelled"]["rows"][0]["line"], 3, "{doc:#}");
 
     let none = diffctx()
         .current_dir(tmp.path())
@@ -1477,10 +1656,13 @@ fn a_file_over_the_size_cap_that_names_the_symbol_is_read() {
         ),
         "{md}"
     );
+    // The facts read the over-cap test whole: it is the test of the subclass, and no
+    // hedge about an unread file is left to print.
     assert!(
-        md.contains("tests/test_child.py names ChildServer but was not read (over the size cap)"),
+        md.contains("pkg/server.py::ChildServer (4-4) — reachable from tests: tests/test_child.py"),
         "{md}"
     );
+    assert!(!md.contains("was not read (over the size cap)"), "{md}");
     assert!(
         md.contains("called from pkg/small.py::make (4-5) — no static test link found\n"),
         "{md}"
@@ -1567,7 +1749,9 @@ fn a_content_entry_lists_the_calls_reading_its_collection() {
     let json = impact_json(tmp.path());
     assert_eq!(json["empty"], false, "{json}");
     assert_eq!(
-        json["collection_reads"].as_array().map(Vec::len),
+        json["named"]["collections"]["items"]
+            .as_array()
+            .map(Vec::len),
         Some(4),
         "{json}"
     );
@@ -1575,7 +1759,7 @@ fn a_content_entry_lists_the_calls_reading_its_collection() {
     let control = repo(&base, &[("site/README.md", "# Site\n\nA portfolio.\n")]);
     let json = impact_json(control.path());
     assert_eq!(json["empty"], true, "{json}");
-    assert!(json.get("collection_reads").is_none(), "{json}");
+    assert!(json["named"]["collections"].is_null(), "{json}");
 }
 
 /// #579: a call inside a long function is a call from that function. Its
@@ -1624,12 +1808,12 @@ fn a_call_in_a_long_function_is_the_function_s_call() {
     let a = caller("processA");
     assert!(a.contains("processA (6-"), "{md}");
     assert!(
-        a.ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+        a.ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt::runs via run"),
         "{md}"
     );
     assert!(
         caller("processB")
-            .ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt via run"),
+            .ends_with("reachable from tests: src/test/kotlin/demo/WorkerTest.kt::runs via run"),
         "{md}"
     );
     let c = caller("processC");
@@ -1727,7 +1911,7 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     );
     let doc = impact_json(infra.path());
     assert!(
-        doc["named_by"]
+        doc["named"]["by_path"]["items"]
             .to_string()
             .contains("deploy/cron-foo-check.yaml"),
         "{doc:#}"
@@ -1762,25 +1946,37 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     );
     let doc = impact_json(site.path());
     assert_eq!(doc["empty"], false, "{doc:#}");
-    let missed = doc["changed"].to_string();
+    let missed = doc["definitions"].to_string();
     assert!(missed.contains("src/pages/index.astro"), "{doc:#}");
     assert!(!missed.contains("README.md"), "{doc:#}");
     // A plain word in a data file is no reader of a function named `total`.
     assert!(!missed.contains("data/labels.json"), "{doc:#}");
+    let dates = doc["definitions"]
+        .as_array()
+        .and_then(|d| d.iter().find(|d| d["symbol"] == "formatDate"))
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    assert_eq!(dates["coverage"]["calls"]["complete"], false, "{doc:#}");
     let text = impact_markdown(site.path());
     assert!(
-        text.contains(", 1 named only textually (not resolved)"),
+        text.contains("callers unresolved for `formatDate`"),
         "{text}"
     );
     assert!(
-        text.contains("src/pages/index.astro:2 names formatDate"),
+        text.contains("possibly called from src/pages/index.astro:4"),
         "{text}"
     );
     assert!(!text.contains("callers may be missing"), "{text}");
 }
 
+/// Whether a definition says no binding model reads its language.
+fn not_modelled(definition: &serde_json::Value) -> bool {
+    definition["gaps"]
+        .as_array()
+        .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled"))
+}
+
 /// #505: a verdict needs a model. A changed method whose only caller is in
-/// its own file, in a language no binding model reads (C#, Ruby, C, PHP),
+/// its own file, in a language no binding model reads (C#, Ruby),
 /// read `empty`, "nothing calls them", and the hook said the commit reached
 /// nothing. Its callers are now unresolved, named; a cross-file caller the
 /// graph links and a Python same-file caller are still found.
@@ -1797,28 +1993,13 @@ fn a_verdict_needs_a_model() {
             "class Users\n  def find_one(id)\n    id\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
             "class Users\n  def find_one(id)\n    id + 1\n  end\n\n  def to_report(id)\n    find_one(id)\n  end\nend\n",
         ),
-        (
-            "src/users.c",
-            "int find_one(int id) {\n  return id;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
-            "int find_one(int id) {\n  return id + 1;\n}\n\nint to_report(int id) {\n  return find_one(id);\n}\n",
-        ),
-        (
-            "src/Users.php",
-            "<?php\nclass Users {\n  function findOne($id) {\n    return $id;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
-            "<?php\nclass Users {\n  function findOne($id) {\n    return $id + 1;\n  }\n  function toReport($id) {\n    return $this->findOne($id);\n  }\n}\n",
-        ),
     ];
     for (path, base, change) in unmodelled {
         let tmp = repo(&[(path, base)], &[(path, change)]);
         let doc = impact_json(tmp.path());
         assert_eq!(doc["empty"], false, "{path}: {doc:#}");
-        let changed = doc["changed"].as_array().cloned().unwrap_or_default();
-        assert!(
-            changed.iter().any(|c| c["unresolved"]
-                .as_str()
-                .is_some_and(|u| u.contains("no binding model"))),
-            "{path}: {doc:#}"
-        );
+        let changed = doc["definitions"].as_array().cloned().unwrap_or_default();
+        assert!(changed.iter().any(|c| not_modelled(c)), "{path}: {doc:#}");
     }
     let python = repo(
         &[(
@@ -1832,7 +2013,7 @@ fn a_verdict_needs_a_model() {
     );
     let doc = impact_json(python.path());
     assert!(
-        doc["changed"][0]["unresolved"].is_null(),
+        !not_modelled(&doc["definitions"][0]),
         "a modelled language answers itself: {doc:#}"
     );
     let linked = repo(
@@ -1852,16 +2033,84 @@ fn a_verdict_needs_a_model() {
         )],
     );
     let doc = impact_json(linked.path());
+    // A definition in a language without a cell carries the gap that names the
+    // language, and its calls are not complete.
     assert!(
-        doc["changed"][0]["unresolved"].is_null()
-            && doc["changed"][0]["callers"][0]["path"] == "src/Report.cs",
+        doc["definitions"][0]["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.iter().any(|g| g["kind"] == "not_modelled")),
+        "a definition without a cell carries the gap naming its language: {doc:#}"
+    );
+    assert_eq!(
+        doc["definitions"][0]["coverage"]["calls"]["complete"], false,
+        "{doc:#}"
+    );
+    assert!(
+        doc["definitions"][0]["rows"][0]["path"] == "src/Report.cs",
         "a caller the graph links is still found: {doc:#}"
     );
 }
 
+/// Tier 3 never claims an absence (T5): a changed function nothing calls, in
+/// a language no model reads, is named as not modelled, and neither the
+/// impact answer nor `--symbol` says that nothing calls it.
+#[test]
+fn a_language_without_a_model_never_claims_an_absence() {
+    let unmodelled: &[(&str, &str, &str, &str)] = &[
+        (
+            "lib/users.rb",
+            "orphan",
+            "class Users\n  def orphan(id)\n    id\n  end\nend\n",
+            "class Users\n  def orphan(id)\n    id + 1\n  end\nend\n",
+        ),
+        (
+            "src/Users.cs",
+            "Orphan",
+            "class Users {\n  int Orphan(int id) {\n    return id;\n  }\n}\n",
+            "class Users {\n  int Orphan(int id) {\n    return id + 1;\n  }\n}\n",
+        ),
+        (
+            "src/app/Users.scala",
+            "orphan",
+            "package app\n\nobject Users {\n  def orphan(id: Int): Int = {\n    id\n  }\n}\n",
+            "package app\n\nobject Users {\n  def orphan(id: Int): Int = {\n    id + 1\n  }\n}\n",
+        ),
+    ];
+    let absence = [
+        "nothing calls them",
+        "No resolved static callers",
+        "0 caller(s)",
+        "no caller found",
+    ];
+    for (path, symbol, base, change) in unmodelled {
+        let tmp = repo(&[(path, base)], &[(path, change)]);
+        let doc = impact_json(tmp.path());
+        assert_eq!(doc["empty"], false, "{path}: {doc:#}");
+        let named = doc["definitions"].as_array().cloned().unwrap_or_default();
+        assert!(
+            named
+                .iter()
+                .any(|c| c["symbol"] == *symbol && not_modelled(c)),
+            "{path}: {doc:#}"
+        );
+        for (door, md) in [
+            ("impact", impact_markdown(tmp.path())),
+            ("symbol", symbol_markdown(tmp.path(), symbol)),
+        ] {
+            assert!(md.contains("callers unresolved for"), "{path} {door}: {md}");
+            for claim in absence {
+                assert!(!md.contains(claim), "{path} {door}: {claim}\n{md}");
+            }
+        }
+    }
+}
+
 /// #505, #591: a hedge needs reach. A file over the size cap that spells a
 /// changed name but never names its module calls another of that name, so
-/// it is no "callers may be missing"; one that imports the module keeps it.
+/// it is no "callers may be missing". One that imports the module is read whole
+/// by the facts layer: its calls are listed as callers, and no hedge is due
+/// for what was read. A hedge stays for a file the facts layer read only in
+/// part (`a_broken_parse_hedges_only_callers_of_its_own_runtime`).
 #[test]
 fn a_hedge_needs_reach() {
     let pad = |n: usize| -> String {
@@ -1879,26 +2128,34 @@ fn a_hedge_needs_reach() {
         ("reports/__init__.py", ""),
     ];
     let change: &[(&str, &str)] = &[("billing/years.py", "def summary(x):\n    return x + 1\n")];
-    let missed = |extra: (&str, String)| {
+    let answer = |extra: (&str, String)| {
         let mut files: Vec<(&str, &str)> = base.to_vec();
         files.push((extra.0, extra.1.as_str()));
         let tmp = repo(&files, change);
         let len = std::fs::metadata(tmp.path().join(extra.0)).unwrap().len();
         assert!(len > 100_000, "{} is {len} bytes, under the cap", extra.0);
-        let doc = impact_json(tmp.path());
-        doc["changed"][0]["missed_in"].clone()
+        impact_json(tmp.path())["definitions"][0].clone()
+    };
+    let in_file = |changed: &serde_json::Value, path: &str| {
+        changed["rows"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|c| c["path"] == path)
     };
     let unrelated = format!("def summary(x):\n    return x\n{}", pad(4000));
+    let changed = answer(("reports/engine.py", unrelated));
     assert!(
-        missed(("reports/engine.py", unrelated)).is_null(),
-        "a file that never names billing cannot call billing.years.summary"
+        changed["missed_in"].is_null() && !in_file(&changed, "reports/engine.py"),
+        "a file that never names billing cannot call billing.years.summary: {changed}"
     );
     let importer = format!("from billing.years import summary\n{}", pad(4000));
-    assert_eq!(
-        missed(("reports/engine.py", importer))[0]["path"],
-        "reports/engine.py",
-        "a file that imports the module keeps its hedge"
+    let changed = answer(("reports/engine.py", importer));
+    assert!(
+        in_file(&changed, "reports/engine.py"),
+        "a file that imports the module is read whole and its calls are callers: {changed}"
     );
+    assert!(changed["missed_in"].is_null(), "{changed}");
 }
 
 /// #644: a bare file name names any file of that name. With a root and a
@@ -2038,6 +2295,23 @@ fn a_test_is_run_by_its_runner() {
     assert_no_negative_claim(&impact_markdown(kotlin.path()));
 }
 
+/// Python has no block scope: a name bound in the main guard is a module-level
+/// definition, so `--symbol` finds it instead of reporting that nothing
+/// defines it.
+#[test]
+fn a_binding_in_the_main_guard_is_found_by_symbol() {
+    let script = repo(
+        &[(
+            "job.py",
+            "def run(n):\n    return n\n\n\nif __name__ == '__main__':\n    outcome = run(1)\n    print(outcome)\n",
+        )],
+        &[],
+    );
+    let md = symbol_markdown(script.path(), "outcome");
+    assert!(!md.contains("no definition found"), "{md}");
+    assert!(md.contains("job.py::outcome"), "{md}");
+}
+
 /// Forgejo #111: a module's own `if __name__ == "__main__":` guard calling a
 /// changed function is not a caller outside the diff and not a test gap; the
 /// definition says it runs as a script. A Go and a Java `main` are program
@@ -2120,7 +2394,9 @@ fn a_script_guard_and_a_program_main_are_entry_points_not_callers() {
         md.contains("no static test link:\n  - src/main.rs::main"),
         "{md}"
     );
-    assert!(!md.contains(ENTRY_LIST), "{md}");
+    // The changed test is entered by its runner and named there; `main` is not.
+    let roles = md.split_once(ENTRY_LIST).map_or("", |(_, roles)| roles);
+    assert!(!roles.contains("src/main.rs::main"), "{md}");
 
     let go = repo(
         &[
@@ -2188,7 +2464,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     let md = impact_markdown(api.path());
     assert!(md.contains(ENTRY_LIST), "{md}");
     assert!(
-        md.contains("api.py::reviews (6-8) — registered by `router.get` — reached through the framework, not traced"),
+        md.contains("api.py::reviews (6-8) — entry point: route GET /reviews (fastapi)"),
         "{md}"
     );
     assert!(
@@ -2196,7 +2472,10 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
         "{md}"
     );
     assert!(!md.contains("referenced from api.py"), "{md}");
-    assert!(md.contains("0 caller(s) outside the diff"), "{md}");
+    // The registration passes the function as an argument: a leak, so its calls
+    // stay unresolved beside the role, and it is named, never read as absent.
+    assert!(md.contains("callers unresolved for `list_items`"), "{md}");
+    assert!(!md.contains("0 caller(s) outside the diff"), "{md}");
     // The negative control: a plain function keeps its claim.
     let (claims, roles) = md.split_once(ENTRY_LIST).unwrap_or_else(|| panic!("{md}"));
     assert!(
@@ -2205,7 +2484,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     );
     assert!(!roles.contains("api.py::plain"), "{md}");
     assert!(
-        !claims.contains("api.py::reviews") && !claims.contains("api.py::list_items"),
+        !claims.contains("api.py::reviews") && !claims.contains("  - api.py::list_items"),
         "{md}"
     );
 
@@ -2233,7 +2512,7 @@ fn a_registered_or_dispatched_handler_is_named_not_untested() {
     let linked = server(true);
     let md = impact_markdown(linked.path());
     assert!(
-        md.contains("dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py via make_server"),
+        md.contains("dispatched by `BaseHTTPRequestHandler`; reachable from tests: tests/test_server.py::test_server via make_server"),
         "{md}"
     );
     assert_no_negative_claim(&md);
@@ -2419,7 +2698,8 @@ fn a_generated_file_is_listed_under_its_source() {
 /// method, and a project that never imports the module cannot reach it. In a
 /// monorepo of independent projects such a guess stays inside the project
 /// that can import the definition; the sibling's `x.impact` and `w.write`
-/// are not possible callers, the same project's still are.
+/// are not possible callers, the same project's still are when the module
+/// names the definition's (a script that never does is no hedge, gh#666).
 #[test]
 fn an_untyped_guess_stays_within_its_project_root() {
     let item = |attr: &str| format!("class Item:\n    label = 1\n{attr}");
@@ -2431,7 +2711,10 @@ fn an_untyped_guess_stays_within_its_project_root() {
             ("a/src/models/__init__.py", &item("    impact = 1\n")),
             ("a/src/use.py", "def look(y):\n    return y.impact\n"),
             ("a/src/spool.py", &spool("return data")),
-            ("a/src/emit.py", "def emit(w):\n    w.write(\"y\")\n"),
+            (
+                "a/src/emit.py",
+                "import spool\n\n\ndef emit(w):\n    w.write(\"y\")\n",
+            ),
             ("b/pyproject.toml", manifest),
             (
                 "b/src/analytics/q.py",
@@ -2485,4 +2768,385 @@ fn a_data_files_prose_is_no_consumer_and_code_ranks_first() {
     assert!(!md.contains("dump.json"), "{md}");
     assert!(!md.contains("ci/job.yaml:2"), "{md}");
     assert_eq!(md.matches("docs-site/").count(), 1, "{md}");
+}
+
+/// What `--diff HEAD~1..HEAD --mode impact` (or `--symbol`) printed with the
+/// run's deadline cut at its `polls`-th poll, whatever the clock says.
+fn stopped_at(repo: &Path, args: &[&str], polls: u64) -> std::process::Output {
+    diffctx()
+        .current_dir(repo)
+        .env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", polls.to_string())
+        .args(args)
+        .args(["-q", "-f", "md"])
+        .output()
+        .expect("run diffctx")
+}
+
+/// A run the deadline cut printed "0 caller(s) outside the diff found in a
+/// partial run" for definitions it had not looked at: the count of a search
+/// that never finished, as if it had (root A). Whatever poll the stop falls
+/// on, every changed definition is either listed with its callers or named as
+/// not determined, and the header never counts without saying the run stopped.
+#[test]
+fn a_stopped_run_names_the_definitions_it_did_not_finish_never_a_count_of_nothing() {
+    const WIDTH: usize = 6;
+    let source = |k: u32| -> Vec<(String, String)> {
+        (0..WIDTH)
+            .map(|i| {
+                (
+                    format!("pkg/m{i}.py"),
+                    format!("def f{i}(x):\n    return x + {k}\n"),
+                )
+            })
+            .collect()
+    };
+    let mut base = source(1);
+    for i in 0..WIDTH {
+        base.push((
+            format!("app/use{i}.py"),
+            format!("from pkg.m{i} import f{i}\n\n\ndef run{i}(x):\n    return f{i}(x)\n"),
+        ));
+    }
+    let base: Vec<(&str, &str)> = base.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let change = source(2);
+    let change: Vec<(&str, &str)> = change
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo(&base, &change);
+    let args = ["--diff", "HEAD~1..HEAD", "--mode", "impact"];
+    let whole = impact_markdown(tmp.path());
+    for i in 0..WIDTH {
+        assert!(
+            whole.contains(&format!("called from app/use{i}.py::run{i}")),
+            "{whole}"
+        );
+    }
+    let finished =
+        |out: &std::process::Output| !String::from_utf8_lossy(&out.stdout).contains("(partial:");
+    let sweep = support::sweep_polls(|n| stopped_at(tmp.path(), &args, n), finished);
+    assert!(sweep.len() > 1, "no poll stopped the run");
+    for (n, out) in &sweep {
+        assert!(
+            out.status.success(),
+            "poll {n}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let md = String::from_utf8_lossy(&out.stdout);
+        if finished(out) {
+            assert_eq!(md, whole, "poll {n}: a run that finished answers whole");
+            continue;
+        }
+        let header = md.lines().next().unwrap_or_default();
+        assert!(
+            !header.contains("caller(s)") || header.contains("before the run stopped"),
+            "poll {n}: a count of what a stopped run reached, as if it were all:\n{md}"
+        );
+        for i in 0..WIDTH {
+            assert!(
+                md.contains(&format!("pkg/m{i}.py")),
+                "poll {n}: pkg/m{i}.py is neither listed with its callers nor named as not determined:\n{md}"
+            );
+        }
+    }
+
+    let symbol = ["--symbol", "f0"];
+    let sweep = support::sweep_polls(
+        |n| stopped_at(tmp.path(), &symbol, n),
+        |out| out.status.success() && finished(out),
+    );
+    for (n, out) in &sweep {
+        let (md, err) = (
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        if out.status.success() && finished(out) {
+            assert!(
+                md.contains("called from app/use0.py::run0"),
+                "poll {n}: {md}"
+            );
+        } else if out.status.success() {
+            assert!(
+                md.contains("before the run stopped") || md.contains("callers not determined"),
+                "poll {n}: a stopped lookup says nothing of it:\n{md}"
+            );
+        } else {
+            assert!(
+                err.contains("the run stopped") || err.contains("deadline"),
+                "poll {n}: a lookup that ended in an error names why:\n{err}"
+            );
+        }
+    }
+}
+
+/// fj#157: the fit polled nothing, so limits that ended inside it ran on past them.
+/// A stop on one of its polls sheds what is left at once and names itself: every
+/// caller counted, none listed. A stop before the fit never gives that answer.
+#[test]
+fn a_stop_inside_the_fit_sheds_the_rest_at_once_and_names_it() {
+    let users: String = (0..150)
+        .map(|i| format!("\n\ndef use_{i}(x):\n    return target(x) + {i}\n"))
+        .collect();
+    let users = format!("from core import target\n{users}");
+    let base = [
+        ("core.py", "def target(x):\n    return x\n"),
+        ("users.py", users.as_str()),
+    ];
+    let tmp = repo(&base, &[("core.py", "def target(x):\n    return x + 1\n")]);
+    // (stopped, callers counted, rows listed) of the answer cut at poll `n`.
+    let at = |n: u64| {
+        let out = diffctx()
+            .current_dir(tmp.path())
+            .env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string())
+            .args("--diff HEAD~1..HEAD --mode impact -q --unfold -f json".split(' '))
+            .output()
+            .expect("run diffctx");
+        let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
+        let listed = doc["definitions"][0]["rows"].as_array().map_or(0, Vec::len);
+        let stopped = doc["coverage"].to_string().contains("deadline");
+        (stopped, doc["summary"]["callers"]["n"].as_u64(), listed)
+    };
+    let sweep = support::sweep_polls(at, |answer| !answer.0);
+    let last = &sweep[sweep.len().saturating_sub(17)..];
+    assert!(
+        last.iter()
+            .any(|(_, answer)| *answer == (true, Some(150), 0)),
+        "{last:?}"
+    );
+}
+
+/// A nested `Builder` whose qualified supertypes all end in `.Builder<Builder>`
+/// resolves, by its last segment, to the class itself: nine of them made the
+/// supertype walks `9^7` steps long and a Kotlin run never finished. The walks
+/// remember the types they entered, so the work is bounded by the distinct
+/// types reachable, and the lookup answers whole. The answer is asserted, never
+/// the time: a run that did not finish would be partial.
+#[test]
+fn a_nested_builder_naming_itself_in_nine_supertypes_is_answered_whole() {
+    const SUPERTYPES: usize = 9;
+    let mut files: Vec<(String, String)> = (1..=SUPERTYPES)
+        .map(|i| {
+            (
+                format!("P{i}.kt"),
+                format!(
+                    "package p\n\ninterface P{i} {{\n  interface Builder<T> {{\n    fun mark{i}(): T\n  }}\n}}\n"
+                ),
+            )
+        })
+        .collect();
+    files.push((
+        "Other.kt".into(),
+        "package p\n\nclass Other {\n  fun addX(): Int = 1\n}\n".into(),
+    ));
+    let supertypes = (1..=SUPERTYPES)
+        .map(|i| format!("P{i}.Builder<Builder>"))
+        .collect::<Vec<_>>()
+        .join(",\n      ");
+    files.push((
+        "F.kt".into(),
+        format!(
+            "package p\n\nclass F {{\n  class Builder :\n      {supertypes} {{\n    fun use(): Int {{\n      return addX()\n    }}\n  }}\n}}\n"
+        ),
+    ));
+    let base: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
+    let tmp = repo(&base, &[("README.md", "# demo\n")]);
+    let md = symbol_markdown(tmp.path(), "addX");
+    assert!(!md.contains("(partial:"), "{md}");
+    assert!(md.contains("Other.kt::addX"), "{md}");
+}
+
+/// gh#713: a changed definition whose only caller sits in a file the run
+/// withholds is not one "nothing calls". The run read what it could, so it says
+/// that no caller was found in the analysed scope, and why that is all it says.
+#[test]
+fn a_definition_beside_a_withheld_file_is_never_one_nothing_calls() {
+    let tmp = repo(
+        &[
+            (".diffctx/ignore", "app/tests/\n"),
+            ("app/__init__.py", ""),
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+            ("tests/test_other.py", "def test_x():\n    assert True\n"),
+        ],
+        &[
+            ("app/conf.py", "def workers(cpu):\n    return cpu * 2 + 1\n"),
+            (
+                "app/tests/test_conf.py",
+                "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 3\n",
+            ),
+        ],
+    );
+    let md = impact_markdown(tmp.path());
+    let header = md.lines().next().unwrap_or_default();
+    assert!(
+        header.contains(
+            "1 file(s) withheld by ignore rules, no caller found outside the diff in the analysed scope"
+        ),
+        "{md}"
+    );
+    assert!(!md.contains("nothing calls them"), "{md}");
+    assert!(!md.contains("0 caller(s)"), "{md}");
+    assert!(
+        md.contains(
+            "Changed, no caller found in the analysed scope (1 file(s) withheld by ignore rules), no static test link:\n  - app/conf.py::workers"
+        ),
+        "{md}"
+    );
+}
+
+/// gh#713: `empty` says the change reaches nothing, which holds only when no
+/// file the run withheld could name it. A change whose only possible reader is
+/// withheld is not empty, and the answer counts the withheld file; the same
+/// change with nothing withheld is.
+#[test]
+fn a_change_only_a_withheld_file_could_read_is_not_empty() {
+    let base = [
+        (".diffctx/ignore", "app/tests/\n"),
+        ("app/__init__.py", ""),
+        ("app/conf.py", "def workers(cpu):\n    return cpu * 2\n"),
+    ];
+    let conf = ("app/conf.py", "def workers(cpu):\n    return cpu * 2 + 1\n");
+
+    let withheld = repo(
+        &base,
+        &[
+            conf,
+            (
+                "app/tests/test_conf.py",
+                "from app.conf import workers\n\n\ndef test_workers():\n    assert workers(1) == 3\n",
+            ),
+        ],
+    );
+    let json = impact_json(withheld.path());
+    assert_eq!(json["empty"], false, "{json}");
+    assert_eq!(json["inventory"]["withheld"], 1, "{json}");
+    let md = impact_markdown(withheld.path());
+    assert!(
+        md.lines()
+            .next()
+            .is_some_and(|header| header.contains("1 file(s) withheld by ignore rules")),
+        "{md}"
+    );
+    assert!(!md.contains("No resolved static callers"), "{md}");
+
+    let open = repo(&base, &[conf]);
+    let json = impact_json(open.path());
+    assert_eq!(json["empty"], true, "{json}");
+}
+
+/// An untyped read of a member leaves the member's reads undetermined and says
+/// nothing against its calls: the answer states both, and the second is a finding
+/// the first does not cancel. One shape per language the facts' resolvers read.
+fn assert_reads_undetermined_calls_found(
+    md: &str,
+    json: &serde_json::Value,
+    name: &str,
+    site: (&str, u32),
+) {
+    let read = format!("1 read(s) of `.{name}`");
+    assert!(
+        md.contains(&format!("callers not resolved: {read}")),
+        "{md}"
+    );
+    assert!(md.contains("no call found in the analysed scope"), "{md}");
+    assert!(!md.contains("nothing calls them"), "{md}");
+    let row = json["definitions"]
+        .as_array()
+        .and_then(|rows| {
+            // A field is named by its class (`Cart.total`).
+            rows.iter().find(|c| {
+                c["symbol"]
+                    .as_str()
+                    .is_some_and(|s| s.rsplit('.').next() == Some(name))
+            })
+        })
+        .unwrap_or_else(|| panic!("{name} is not listed: {json:#}"));
+    assert!(
+        row["gaps"]
+            .as_array()
+            .is_some_and(|gaps| gaps.contains(&serde_json::json!({
+                "kind": "unlanded",
+                "name": name,
+                "uses": 1,
+                "sites": [{"path": site.0, "line": site.1, "via": "read"}]
+            }))),
+        "{json:#}"
+    );
+    assert_eq!(row["coverage"]["reads"]["complete"], false, "{json:#}");
+    assert_eq!(row["coverage"]["calls"]["complete"], true, "{json:#}");
+    assert_eq!(row["rows"].as_array().map(Vec::len), Some(0), "{json:#}");
+}
+
+#[test]
+fn a_typescript_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found()
+{
+    let tmp = repo(
+        &[
+            ("src/cart.ts", "export class Cart {\n  total = 1;\n}\n"),
+            (
+                "src/checkout.ts",
+                "export function checkout(cart) {\n  return cart.total;\n}\n",
+            ),
+        ],
+        &[("src/cart.ts", "export class Cart {\n  total = 2;\n}\n")],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+        ("src/checkout.ts", 2),
+    );
+}
+
+#[test]
+fn a_rust_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found() {
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/lib.rs", "pub mod cart;\npub mod checkout;\n"),
+            ("src/cart.rs", "pub struct Cart {\n    pub total: u32,\n}\n"),
+            (
+                "src/checkout.rs",
+                "use crate::cart::Cart;\n\npub fn totals(carts: Vec<Cart>) -> Vec<u32> {\n    carts.iter().map(|c| c.total).collect()\n}\n",
+            ),
+        ],
+        &[("src/cart.rs", "pub struct Cart {\n    pub total: u64,\n}\n")],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+        ("src/checkout.rs", 4),
+    );
+}
+
+#[test]
+fn a_kotlin_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the_calls_found() {
+    let tmp = repo(
+        &[
+            (
+                "src/main/kotlin/Cart.kt",
+                "class Cart {\n    val total: Int = 1\n}\n",
+            ),
+            (
+                "src/main/kotlin/Checkout.kt",
+                "fun checkout(carts: List<Cart>): List<Int> = carts.map { it.total }\n",
+            ),
+        ],
+        &[(
+            "src/main/kotlin/Cart.kt",
+            "class Cart {\n    val total: Int = 2\n}\n",
+        )],
+    );
+    assert_reads_undetermined_calls_found(
+        &impact_markdown(tmp.path()),
+        &impact_json(tmp.path()),
+        "total",
+        ("src/main/kotlin/Checkout.kt", 1),
+    );
 }

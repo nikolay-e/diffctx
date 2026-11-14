@@ -1,0 +1,68 @@
+name: swift_extension_member_on_a_builtin_type_reaches_a_typed_receiver
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [swift, extension]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+    Sources/Kit/Defs.swift: |
+      import Foundation
+
+      extension Int {
+          func nickel() -> Int { return self + 5 }
+          static func fromWords(_ s: String) -> Int { return s.count }
+      }
+
+      extension String {
+          var shouty: String { return uppercased() }
+      }
+    Sources/Kit/Uses.swift: |
+      func useInt(n: Int) -> Int {
+          return n.nickel()
+      }
+
+      func useStatic() -> Int {
+          return Int.fromWords("x")
+      }
+
+      func useString(s: String) -> String {
+          return s.shouty
+      }
+  changed_files:
+    Sources/Kit/Defs.swift: |
+      import Foundation
+
+      extension Int {
+          func nickel() -> Int { return self + 6 }
+          static func fromWords(_ s: String) -> Int { return s.count + 1 }
+      }
+
+      extension String {
+          var shouty: String { return uppercased() + "!" }
+      }
+  commit_message: "kit: bump the builtin extensions"
+expect:
+  changed:
+    - Sources/Kit/Defs.swift::nickel
+    - Sources/Kit/Defs.swift::fromWords
+    - Sources/Kit/Defs.swift::shouty
+  relations:
+    - from: "Sources/Kit/Uses.swift::useInt"
+      to: "Sources/Kit/Defs.swift::nickel"
+      kind: calls
+      resolution: resolved
+      site: 2
+    - from: "Sources/Kit/Uses.swift::useStatic"
+      to: "Sources/Kit/Defs.swift::fromWords"
+      kind: calls
+      resolution: resolved
+      site: 6
+    - from: "Sources/Kit/Uses.swift::useString"
+      to: "Sources/Kit/Defs.swift::shouty"
+      kind: reads
+      resolution: resolved
+      site: 10

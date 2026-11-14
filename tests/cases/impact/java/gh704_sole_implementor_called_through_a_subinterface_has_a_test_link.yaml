@@ -1,0 +1,67 @@
+name: gh704_sole_implementor_called_through_a_subinterface_has_a_test_link
+mode: impact
+source: gh#704
+issue_state: open
+tags: [java, interface-dispatch, test-link]
+repo:
+  initial_files:
+    src/main/java/shop/Api.java: |
+      package shop;
+
+      public interface Api {
+          int price(int qty);
+      }
+    src/main/java/shop/Impl.java: |
+      package shop;
+
+      public class Impl implements Api {
+          @Override
+          public int price(int qty) {
+              return qty * 2;
+          }
+      }
+    src/test/java/shop/RemoteClient.java: |
+      package shop;
+
+      public interface RemoteClient extends Api {
+      }
+    src/test/java/shop/Clients.java: |
+      package shop;
+
+      public final class Clients {
+          public static RemoteClient remote() {
+              return null;
+          }
+      }
+    src/test/java/shop/PriceTest.java: |
+      package shop;
+
+      import org.junit.jupiter.api.Test;
+
+      class PriceTest {
+          @Test
+          void pricesTwoItems() {
+              RemoteClient client = Clients.remote();
+              client.price(2);
+          }
+      }
+  changed_files:
+    src/main/java/shop/Impl.java: |
+      package shop;
+
+      public class Impl implements Api {
+          @Override
+          public int price(int qty) {
+              return qty * 3;
+          }
+      }
+expect:
+  exact: false
+  changed: [src/main/java/shop/Impl.java::price]
+  relations:
+    - from: src/test/java/shop/PriceTest.java
+      to: src/main/java/shop/Impl.java::price
+      kind: calls
+      resolution: candidate
+      site: 9
+  not_untested: [price]

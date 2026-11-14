@@ -1,0 +1,43 @@
+name: py_function_passed_through_functools_partial_is_a_pass
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, pass-as-value, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/hooks.py: |
+      def print_headers(request, http2=False):
+          return request
+    pkg/main.py: |
+      import functools
+
+      from pkg.hooks import print_headers
+
+
+      def main(http2):
+          hooks = {}
+          hooks["request"] = [functools.partial(print_headers, http2=http2)]
+          return hooks
+    pkg/legacy.py: |
+      def print_headers(request):
+          return None
+
+
+      def run():
+          return print_headers(1)
+  changed_files:
+    pkg/hooks.py: |
+      def print_headers(request, http2=False):
+          return request, http2
+  commit_message: "hooks: print the http2 flag"
+expect:
+  changed: [pkg/hooks.py::print_headers]
+  relations:
+    - from: "pkg/main.py::main"
+      to: "pkg/hooks.py::print_headers"
+      kind: passes_as_value
+      resolution: resolved
+      site: 8
+  decoys:
+    pkg/hooks.py::print_headers: [pkg/legacy.py::run]

@@ -1,0 +1,40 @@
+name: py_assigned_local_shadowing_a_function_is_not_a_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, shadowed-local, decoy]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/prompts.py: |
+      def prompt(text):
+          return input(text)
+
+
+      def ask(text):
+          return prompt(text).strip()
+
+
+      def confirm(text):
+          prompt = text + " [y/N]"
+          return prompt.endswith("y")
+  changed_files:
+    shop/prompts.py: |
+      def prompt(text):
+          return input(text + ": ")
+
+
+      def ask(text):
+          return prompt(text).strip()
+
+
+      def confirm(text):
+          prompt = text + " [y/N]"
+          return prompt.endswith("y")
+  commit_message: "prompts: end the prompt with a colon"
+expect:
+  changed: [shop/prompts.py::prompt]
+  relations:
+    - {from: "shop/prompts.py::ask", to: "shop/prompts.py::prompt", kind: calls, resolution: resolved, site: 6}
+  decoys:
+    shop/prompts.py::prompt: [shop/prompts.py::confirm]

@@ -1,0 +1,131 @@
+name: config_argo_template_ref_names_the_workflow_template_it_runs
+mode: impact
+source: gh#301
+issue_state: open
+tags:
+- config
+- argo
+- kubernetes
+- configures
+- decoy
+repo:
+  initial_files:
+    wf/control-freshness.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: control-freshness
+      spec:
+        entrypoint: push
+        arguments:
+          parameters:
+            - name: control
+            - name: status
+        templates:
+          - name: push
+            container:
+              image: alpine:3.20
+              command: [sh, -c, "echo push"]
+    wf/control-report.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: control-report
+      spec:
+        entrypoint: push
+        templates:
+          - name: push
+            container:
+              image: alpine:3.20
+              command: [sh, -c, "echo report"]
+    wf/cron-renovate.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: CronWorkflow
+      metadata:
+        name: renovate-run
+      spec:
+        schedule: "0 4 * * *"
+        workflowSpec:
+          entrypoint: main
+          templates:
+            - name: main
+              steps:
+                - - name: push
+                    templateRef:
+                      name: control-freshness
+                      template: push
+                    arguments:
+                      parameters:
+                        - name: control
+                          value: renovate
+    wf/cron-nightly-qa.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: CronWorkflow
+      metadata:
+        name: nightly-qa
+      spec:
+        schedule: "0 2 * * *"
+        workflowSpec:
+          entrypoint: main
+          templates:
+            - name: main
+              steps:
+                - - name: push
+                    templateRef:
+                      name: control-freshness
+                      template: push
+                    arguments:
+                      parameters:
+                        - name: control
+                          value: qa
+    wf/cron-report.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: CronWorkflow
+      metadata:
+        name: weekly-report
+      spec:
+        schedule: "0 6 * * 1"
+        workflowSpec:
+          entrypoint: main
+          templates:
+            - name: main
+              steps:
+                - - name: push
+                    templateRef:
+                      name: control-report
+                      template: push
+  changed_files:
+    wf/control-freshness.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: WorkflowTemplate
+      metadata:
+        name: control-freshness
+      spec:
+        entrypoint: push
+        arguments:
+          parameters:
+            - name: control
+            - name: status
+            - name: version
+        templates:
+          - name: push
+            container:
+              image: alpine:3.20
+              command: [sh, -c, "echo push"]
+  commit_message: Add a version parameter to the control-freshness template
+expect:
+  relations:
+  - from: wf/cron-renovate.yaml
+    to: wf/control-freshness.yaml
+    kind: configures
+    resolution: resolved
+  - from: wf/cron-nightly-qa.yaml
+    to: wf/control-freshness.yaml
+    kind: configures
+    resolution: resolved
+  exact: false
+  decoys:
+    wf/control-freshness.yaml:
+    - wf/cron-report.yaml
+    - wf/control-report.yaml
+  no_negative_claims: true

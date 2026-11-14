@@ -3,6 +3,8 @@
 //! parameters, and the resource limits that were in force. Deterministic by
 //! construction — no timings live here, those stay in `latency`.
 
+pub mod state;
+
 use std::path::Path;
 
 use schemars::JsonSchema;
@@ -19,7 +21,7 @@ pub const BUILD_LABEL: &str = match option_env!("DIFFCTX_BUILD_SHA") {
     None => concat!(env!("CARGO_PKG_VERSION"), "+source"),
 };
 
-pub const SCHEMA: &str = "diffctx.provenance.v1";
+pub const SCHEMA: &str = "diffctx.provenance.v2";
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Engine {
@@ -31,8 +33,6 @@ pub struct Engine {
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Input {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub diff_range: Option<String>,
     /// Resolved object ids, so the record still names the input after the
     /// ref moves. `head` is absent when the right side of the diff is the
     /// working tree — a bare `--diff`, `--diff HEAD~2`, a duration window.
@@ -53,7 +53,7 @@ pub struct Selection {
 }
 
 #[derive(Serialize, JsonSchema, Clone, Debug)]
-pub struct ProvenanceV1 {
+pub struct Provenance {
     pub schema: &'static str,
     pub engine: Engine,
     pub input: Input,
@@ -81,49 +81,76 @@ pub fn full_record_requested() -> bool {
 /// selection block is attached by whichever renderer spends the budget.
 #[derive(Clone, Debug)]
 pub struct RunProvenance {
+    /// The range as the run was asked: `range.spec` of the answer carries it,
+    /// so the record names the sides only, by id.
+    pub range: Option<String>,
     pub input: Input,
     pub effective_config: EffectiveConfigV1,
 }
 
 impl RunProvenance {
+    /// A revision git cannot be asked about is the run's error: a record that
+    /// leaves its input unnamed would pass for one with no committed side.
     pub fn new(
         root_dir: &Path,
         diff_range: Option<&str>,
         effective_config: EffectiveConfigV1,
-    ) -> Self {
+    ) -> crate::snapshot::Result<Self> {
         let (base_rev, head_rev) = diff_range
-            .map(crate::git::split_diff_range)
+            .map(crate::snapshot::split_diff_range)
             .unwrap_or((None, None));
         // `git diff X` compares X with the working tree; only `A..B` names a
         // committed right side.
         let working_tree = head_rev.is_none();
         // A staged snapshot's head is a tree, named by its own id.
-        let head = head_rev.as_deref().and_then(|rev| {
-            crate::git::rev_oid(root_dir, rev).or_else(|| {
-                rev.bytes()
+        let head = match head_rev.as_deref() {
+            Some(rev) => match crate::snapshot::rev_oid(root_dir, rev)? {
+                Some(oid) => Some(oid),
+                None => rev
+                    .bytes()
                     .all(|b| b.is_ascii_hexdigit())
-                    .then(|| rev.to_string())
-            })
-        });
-        let base = base_rev
-            .as_deref()
-            .or(diff_range)
-            .or(Some("HEAD"))
-            .and_then(|rev| crate::git::rev_oid(root_dir, rev));
-        Self {
+                    .then(|| rev.to_string()),
+            },
+            None => None,
+        };
+        let base = crate::snapshot::rev_oid(
+            root_dir,
+            base_rev.as_deref().or(diff_range).unwrap_or("HEAD"),
+        )?;
+        Ok(Self {
+            range: diff_range.map(str::to_string),
             input: Input {
-                diff_range: diff_range.map(str::to_string),
                 base,
                 head,
                 working_tree,
             },
             effective_config,
+        })
+    }
+
+    /// The record of a run the deadline stopped before it could resolve a revision:
+    /// the range as asked, no id for either side, which says it was not read.
+    pub fn without_revisions(
+        diff_range: Option<&str>,
+        effective_config: crate::effective_config::EffectiveConfigV1,
+    ) -> Self {
+        let (_, head_rev) = diff_range
+            .map(crate::snapshot::split_diff_range)
+            .unwrap_or((None, None));
+        Self {
+            range: diff_range.map(str::to_string),
+            input: Input {
+                base: None,
+                head: None,
+                working_tree: head_rev.is_none(),
+            },
+            effective_config,
         }
     }
 
-    pub fn finish(&self, selection: Option<Selection>) -> ProvenanceV1 {
+    pub fn finish(&self, selection: Option<Selection>) -> Provenance {
         let full = full_record_requested();
-        ProvenanceV1 {
+        Provenance {
             schema: SCHEMA,
             engine: Engine {
                 name: "diffctx",

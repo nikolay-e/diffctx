@@ -5,6 +5,9 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::weights::EDGE_WEIGHTS;
+use crate::testfiles::{
+    JVM_TEST_SUFFIX_EXTENSIONS, JVM_TEST_SUFFIXES, is_test_file, naming_links, target_name_of_test,
+};
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
@@ -12,10 +15,6 @@ use super::super::base::{self, EdgeBuilder, add_edge_unidirectional, path_to_mod
 
 static IMPORT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))").unwrap());
-
-fn is_test_file(path: &Path) -> bool {
-    crate::testfiles::is_test_path(path) || base::file_ext(path) == ".t"
-}
 
 fn extract_imports(content: &str) -> FxHashSet<String> {
     let mut imports = FxHashSet::default();
@@ -40,56 +39,7 @@ fn has_direct_import(test_imports: &FxHashSet<String>, src_module: &str) -> bool
         .any(|imp| imp == src_module || imp.ends_with(&suffix))
 }
 
-fn extract_target_name_from_test(test_name: &str) -> Option<String> {
-    let lower = test_name.to_lowercase();
-    if lower.starts_with("test_") {
-        return Some(lower[5..].to_string());
-    }
-    if lower.ends_with("_test") {
-        return Some(lower[..lower.len() - 5].to_string());
-    }
-    if lower.contains(".test") {
-        return Some(lower.split(".test").next()?.to_string());
-    }
-    if lower.contains(".spec") {
-        return Some(lower.split(".spec").next()?.to_string());
-    }
-    if test_name.starts_with("Test")
-        && test_name.len() > 4
-        && test_name.as_bytes()[4].is_ascii_uppercase()
-    {
-        return Some(test_name[4..].to_lowercase());
-    }
-    if test_name.ends_with("Tests") && test_name.len() > 5 {
-        return Some(test_name[..test_name.len() - 5].to_lowercase());
-    }
-    // Kotest/Spek `FooSpec`, Maven Failsafe `FooIT`.
-    if test_name.ends_with("Spec") && test_name.len() > 4 {
-        return Some(test_name[..test_name.len() - 4].to_lowercase());
-    }
-    if test_name.ends_with("IT")
-        && test_name.len() > 2
-        && test_name.as_bytes()[test_name.len() - 3].is_ascii_lowercase()
-    {
-        return Some(test_name[..test_name.len() - 2].to_lowercase());
-    }
-    if test_name.ends_with("Test") && test_name.len() > 4 {
-        return Some(test_name[..test_name.len() - 4].to_lowercase());
-    }
-    None
-}
-
-/// JVM test classes are named after their subject: `FooTest`, `FooTests`,
-/// `FooSpec`, `FooIT` (stems lower-cased).
-pub(crate) const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
-pub(crate) const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] =
-    &[".java", ".kt", ".kts", ".scala", ".groovy"];
-
-pub struct TestEdgeBuilder;
-
-/// Same ambiguity bar as the c-family and path-reference caps: a stem carried
-/// by more files than this cannot name a target.
-const MAX_GLOBAL_TARGET_FILES: usize = 8;
+pub(crate) struct TestEdgeBuilder;
 
 impl EdgeBuilder for TestEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -97,118 +47,55 @@ impl EdgeBuilder for TestEdgeBuilder {
         let weight_naming = EDGE_WEIGHTS["test_naming"].forward;
         let test_reverse_weight = EDGE_WEIGHTS["test_reverse"].forward;
 
-        let mut test_frags: Vec<&Fragment> = Vec::new();
+        let mut files: Vec<&str> = Vec::new();
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
         let mut test_frags_by_path: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
-        let mut by_base: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
-
         for f in fragments {
-            let path = Path::new(f.path());
-            if is_test_file(path) {
-                test_frags.push(f);
-                test_frags_by_path.entry(f.path()).or_default().push(f);
-            } else {
-                let stem = base::file_stem_lower(path);
-                by_base.entry(stem).or_default().push(f);
+            if seen.insert(f.path()) {
+                files.push(f.path());
             }
-        }
-
-        let mut module_cache: FxHashMap<String, String> = FxHashMap::default();
-        for src_list in by_base.values() {
-            for sf in src_list {
-                let path_str = sf.path().to_string();
-                module_cache
-                    .entry(path_str)
-                    .or_insert_with_key(|_| path_to_module(Path::new(sf.path()), repo_root));
+            if is_test_file(Path::new(f.path())) {
+                test_frags_by_path.entry(f.path()).or_default().push(f);
             }
         }
 
         let reps = base::file_representatives(fragments);
-
         let mut edges: EdgeDict = FxHashMap::default();
+        let mut imports_of: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
 
         // The naming convention names a FILE, so the relation is carried by
         // the two files' representatives (base::file_representatives; see its
         // doc on the accepted reachability trade, #208). One pair per
-        // (test file, source file), not per fragment pair.
-        let mut linked_file_pairs: FxHashSet<(&str, &str)> = FxHashSet::default();
-
-        // One pass per test FILE, not per test fragment: everything below is
-        // file-level (stem, imports, representatives), and a home-assistant
-        // test suite holds thousands of fragments per stem — re-resolving the
-        // same candidate set per fragment burned 37s to emit 2.5k edges
-        // (#196).
-        let mut seen_test_files: FxHashSet<&str> = FxHashSet::default();
-        for test_frag in &test_frags {
-            if !seen_test_files.insert(test_frag.path()) {
-                continue;
-            }
-            let test_stem = base::file_stem_string(Path::new(test_frag.path()));
-            let target_name = match extract_target_name_from_test(&test_stem) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            // `config_test` names `config` — but which one? envoy holds 520
-            // files with that stem, and pairing every test fragment with every
-            // fragment of every one of them put 180M edges out of this builder
-            // alone (half of dcbench hung in the graph build). Co-location
-            // resolves it the way the naming convention means it: the test's
-            // own directory first, then a global fallback only while the stem
-            // stays rare enough to identify a file.
-            let candidates = by_base.get(&target_name).map(Vec::as_slice).unwrap_or(&[]);
-            let test_dir = Path::new(test_frag.path()).parent();
-            let same_dir: Vec<&&Fragment> = candidates
-                .iter()
-                .filter(|sf| Path::new(sf.path()).parent() == test_dir)
-                .collect();
-            let chosen: Vec<&&Fragment> = if !same_dir.is_empty() {
-                same_dir
-            } else {
-                let distinct_files: FxHashSet<&str> =
-                    candidates.iter().map(|sf| sf.path()).collect();
-                if distinct_files.len() > MAX_GLOBAL_TARGET_FILES {
-                    continue;
-                }
-                candidates.iter().collect()
-            };
-
-            let Some(test_rep) = reps.get(test_frag.path()) else {
+        // (test file, source file), not per fragment pair; which pairs the
+        // convention links is `testfiles::naming_links`.
+        for (test, source) in naming_links(&files) {
+            let (Some(test_rep), Some(src_rep)) = (reps.get(test), reps.get(source)) else {
                 continue;
             };
             // Imports come from EVERY fragment of the test file: module-level
             // import statements land in a gap fragment appended AFTER the
             // definitions, so reading only the first fragment (the old
             // import_cache) never saw them and `test_direct` never fired for
-            // tree-sitter languages. Computed here, past the continues, so
-            // only test files that actually produce edges pay the regex.
-            let test_imports: FxHashSet<String> = test_frags_by_path
-                .get(test_frag.path())
-                .map(|frs| {
-                    frs.iter()
-                        .flat_map(|f| extract_imports(&f.content))
-                        .collect()
-                })
-                .unwrap_or_default();
-            for src_frag in chosen {
-                if !linked_file_pairs.insert((test_frag.path(), src_frag.path())) {
-                    continue;
-                }
-                let Some(src_rep) = reps.get(src_frag.path()) else {
-                    continue;
-                };
-                let src_module = module_cache
-                    .get(src_frag.path())
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-                let weight = if has_direct_import(&test_imports, src_module) {
-                    weight_direct
-                } else {
-                    weight_naming
-                };
-
-                add_edge_unidirectional(&mut edges, test_rep, src_rep, weight);
-                add_edge_unidirectional(&mut edges, src_rep, test_rep, test_reverse_weight);
-            }
+            // tree-sitter languages. Read once per test file that produces an
+            // edge.
+            let test_imports = imports_of.entry(test).or_insert_with(|| {
+                test_frags_by_path
+                    .get(test)
+                    .map(|frs| {
+                        frs.iter()
+                            .flat_map(|f| extract_imports(&f.content))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+            let src_module = path_to_module(Path::new(source), repo_root);
+            let weight = if has_direct_import(test_imports, &src_module) {
+                weight_direct
+            } else {
+                weight_naming
+            };
+            add_edge_unidirectional(&mut edges, test_rep, src_rep, weight);
+            add_edge_unidirectional(&mut edges, src_rep, test_rep, test_reverse_weight);
         }
 
         edges
@@ -233,13 +120,13 @@ impl EdgeBuilder for TestEdgeBuilder {
         let mut discovered: Vec<PathBuf> = Vec::new();
 
         for changed_file in changed {
-            let ext = base::file_ext(changed_file);
+            let ext = crate::languages::file_ext(changed_file);
             let stem = base::file_stem_string(changed_file);
 
             if is_test_file(changed_file) {
-                if let Some(target) = extract_target_name_from_test(&stem) {
+                if let Some(target) = target_name_of_test(&stem) {
                     for c in candidate_by_stem.get(&target).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext {
+                        if crate::languages::file_ext(c) == ext {
                             discovered.push(c.clone());
                         }
                     }
@@ -251,7 +138,7 @@ impl EdgeBuilder for TestEdgeBuilder {
                     format!("{}_test", stem_lower),
                 ] {
                     for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }
@@ -261,7 +148,7 @@ impl EdgeBuilder for TestEdgeBuilder {
                     for suffix in JVM_TEST_SUFFIXES {
                         let test_stem = format!("{stem_lower}{suffix}");
                         for c in candidate_by_stem.get(&test_stem).unwrap_or(&vec![]) {
-                            if base::file_ext(c) == ext && is_test_file(c) {
+                            if crate::languages::file_ext(c) == ext && is_test_file(c) {
                                 discovered.push(c.clone());
                             }
                         }
@@ -275,12 +162,12 @@ impl EdgeBuilder for TestEdgeBuilder {
                     let stem_test = format!("{stem_lower}.test");
                     let stem_spec = format!("{stem_lower}.spec");
                     for c in candidate_by_stem.get(&stem_test).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }
                     for c in candidate_by_stem.get(&stem_spec).unwrap_or(&vec![]) {
-                        if base::file_ext(c) == ext && is_test_file(c) {
+                        if crate::languages::file_ext(c) == ext && is_test_file(c) {
                             discovered.push(c.clone());
                         }
                     }

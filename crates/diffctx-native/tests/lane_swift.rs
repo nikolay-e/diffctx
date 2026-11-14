@@ -10,13 +10,13 @@ use std::path::Path;
 use serde_json::Value;
 
 mod support;
-use support::{diffctx, repo};
+use support::{NO_WALL_DEADLINE, diffctx, repo};
 
 fn run(repo: &Path, args: &[&str]) -> Value {
     let out = diffctx()
         .current_dir(repo)
         .args(args)
-        .args(["-q", "--timeout", "600"])
+        .args(["-q", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(
@@ -36,7 +36,7 @@ fn impact(repo: &Path) -> Value {
 }
 
 fn changed<'a>(doc: &'a Value, path: &str, name: &str) -> &'a Value {
-    doc["changed"]
+    doc["definitions"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["path"] == path && c["symbol"] == name))
         .unwrap_or_else(|| panic!("{path}::{name} not in {doc:#}"))
@@ -44,7 +44,7 @@ fn changed<'a>(doc: &'a Value, path: &str, name: &str) -> &'a Value {
 
 /// `path::caller-symbol evidence` of every caller of `path::name`.
 fn callers(doc: &Value, path: &str, name: &str) -> Vec<String> {
-    let mut out: Vec<String> = changed(doc, path, name)["callers"]
+    let mut out: Vec<String> = changed(doc, path, name)["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -53,7 +53,7 @@ fn callers(doc: &Value, path: &str, name: &str) -> Vec<String> {
                 "{}::{} {}",
                 c["path"].as_str().unwrap(),
                 c["symbol"].as_str().unwrap_or("-"),
-                c["evidence"].as_str().unwrap(),
+                c["standing"].as_str().unwrap(),
             )
         })
         .collect();
@@ -336,12 +336,24 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
         callers(&doc, path, "toDto"),
         [
             format!("{svc}::details resolved"),
-            format!("{svc}::viaInterface candidate"),
             format!("{svc}::viaLocal resolved"),
             format!("{svc}::viaThis resolved"),
         ]
     );
-    let details = changed(&doc, path, "toDto")["callers"]
+    // The call through the interface is a `Dispatch` candidate of the resolver;
+    // the fold table folds a candidate of a body-only change into a count, which
+    // still names it.
+    let folded = changed(&doc, path, "toDto")["folded"].as_array().unwrap();
+    assert_eq!(folded.len(), 1, "{folded:?}");
+    assert_eq!(folded[0]["rule"], "untyped-receiver");
+    assert_eq!(
+        folded[0]["count"],
+        serde_json::json!({"n": 1, "exact": false})
+    );
+    let example = &folded[0]["examples"][0];
+    assert_eq!(example["path"], svc, "{folded:?}");
+    assert_eq!(example["symbol"], "viaInterface", "{folded:?}");
+    let details = changed(&doc, path, "toDto")["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -349,7 +361,7 @@ fn a_java_receiver_typed_by_its_field_resolves_among_same_named_methods() {
         .unwrap()
         .clone();
     assert_eq!(
-        details["tested_by"],
+        details["guard"]["test"],
         "src/test/java/com/acme/svc/DrugServiceTest.java"
     );
 }
@@ -412,7 +424,7 @@ fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
         ],
     );
     let doc = impact(tmp.path());
-    let mut contracts: Vec<String> = doc["contracts"]
+    let mut contracts: Vec<String> = doc["contracts"]["items"]
         .as_array()
         .unwrap()
         .iter()
@@ -438,12 +450,12 @@ fn a_test_file_changes_no_contract_and_a_shipped_fixture_library_does() {
     );
 }
 
-/// #537: a file whose parse broke on one line was read everywhere else: a
-/// name it spells elsewhere is found like any other and puts no hedge on
-/// the definition; a name spelled on the broken line keeps it, whatever of
-/// the call the parse recovered.
+/// #537: a file whose parse broke on one line. By the plan (Rev 17 phase 1:
+/// any loss takes a file out of "bound") a broken file that spells the name is
+/// hedged whichever line broke, and a broken file that does not spell it is
+/// not; the callers the parse recovered are still named.
 #[test]
-fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
+fn a_partial_parse_hedges_the_files_that_spell_the_name_and_not_the_others() {
     let tmp = repo(
         &[
             ("api.swift", "func load() -> Int {\n    return 1\n}\n"),
@@ -454,6 +466,10 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
             (
                 "Broken.swift",
                 "func other() -> Int {\n    let w = load(1 +)\n    return w\n}\n",
+            ),
+            (
+                "Aside.swift",
+                "func aside(_ rate: Double) -> Double {\n    let s = (rate +)\n    return s\n}\n",
             ),
         ],
         &[("api.swift", "func load() -> Int {\n    return 2\n}\n")],
@@ -466,7 +482,9 @@ fn a_partial_parse_hedges_only_the_names_on_the_lines_it_broke_on() {
         .iter()
         .map(|f| f["path"].as_str().unwrap())
         .collect();
-    assert_eq!(missed, ["Broken.swift"]);
+    assert!(missed.contains(&"Broken.swift"), "{missed:?}");
+    assert!(missed.contains(&"Panel.swift"), "{missed:?}");
+    assert!(!missed.contains(&"Aside.swift"), "{missed:?}");
     assert_eq!(
         callers(&doc, "api.swift", "load"),
         [
@@ -490,7 +508,7 @@ fn a_cast_with_a_default_in_a_trailing_closure_parses() {
         &[("a.swift", &gaps("$0 + Double($1[\"frames\"] as? Int ?? 1)"))],
     );
     let doc = impact(tmp.path());
-    let unanalysed: Vec<&str> = doc["unanalysed_files"]
+    let unanalysed: Vec<&str> = doc["coverage"]["unanalysed"]["items"]
         .as_array()
         .into_iter()
         .flatten()

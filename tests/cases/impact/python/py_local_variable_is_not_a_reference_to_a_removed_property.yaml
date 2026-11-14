@@ -1,0 +1,42 @@
+name: py_local_variable_is_not_a_reference_to_a_removed_property
+mode: impact
+source: gh#589
+issue_state: closed
+tags: [python, removed-definition, local-binding, decoy]
+repo:
+  initial_files:
+    catalog.py: |
+      import hashlib
+
+
+      class Source:
+          def __init__(self, ident: str) -> None:
+              self.ident = ident
+
+          @property
+          def fingerprint(self) -> str:
+              return hashlib.sha256(self.ident.encode()).hexdigest()
+
+
+      def store(source: Source, excerpt: str) -> str:
+          fingerprint = hashlib.sha256(f"{source.ident}{excerpt}".encode()).hexdigest()
+          return fingerprint
+  changed_files:
+    catalog.py: |
+      import hashlib
+
+
+      class Source:
+          def __init__(self, ident: str) -> None:
+              self.ident = ident
+
+
+      def store(source: Source, excerpt: str) -> str:
+          fingerprint = hashlib.sha256(f"{source.ident}{excerpt}".encode()).hexdigest()
+          return fingerprint
+  commit_message: "catalog: drop the fingerprint property"
+expect:
+  callers:
+    fingerprint: []
+  decoys:
+    fingerprint: [catalog.py::store]

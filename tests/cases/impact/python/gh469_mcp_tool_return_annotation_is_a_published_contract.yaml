@@ -1,0 +1,51 @@
+name: gh469_mcp_tool_return_annotation_is_a_published_contract
+mode: impact
+source: gh#469
+issue_state: open
+tags:
+- python
+- mcp
+- contract
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "demo"
+      version = "0.1"
+      dependencies = ["mcp"]
+    server/app.py: |
+      from typing import Any
+
+      from mcp.server.fastmcp import FastMCP
+
+      mcp = FastMCP("demo")
+
+
+      @mcp.tool()
+      def get_status(name: str) -> dict[str, Any]:
+          return {"name": name, "ok": True}
+
+
+      @mcp.tool()
+      def ping() -> str:
+          return "pong"
+  changed_files:
+    server/app.py: |
+      from typing import Any
+
+      from mcp.server.fastmcp import FastMCP
+
+      mcp = FastMCP("demo")
+
+
+      @mcp.tool()
+      def get_status(name: str) -> dict:
+          return {"name": name, "ok": True}
+
+
+      @mcp.tool()
+      def ping() -> str:
+          return "pong"
+  commit_message: narrow return
+expect:
+  contracts: [server/app.py]

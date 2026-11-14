@@ -1,0 +1,92 @@
+name: rust_constant_read_by_its_own_files_function
+mode: impact
+source: gh#503
+issue_state: closed
+tags:
+- rust
+- constant
+- reads
+- tests
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod other;
+      pub mod panel;
+    src/panel.rs: |
+      const PANEL_LINE: &str = "Mixer panel:";
+      const PANEL_KEYS: [&str; 2] = ["tone", "mix"];
+
+      fn knobs(line: &str) -> usize {
+          if line.starts_with(PANEL_LINE) { PANEL_KEYS.len() } else { 0 }
+      }
+
+      pub fn read_panel(line: &str) -> usize {
+          knobs(line)
+      }
+
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn reads_knobs() {
+              assert!(super::read_panel("Mixer panel: {}") > 0);
+          }
+      }
+    src/other.rs: |
+      const PANEL_LINE: &str = "other";
+
+      pub fn own() -> usize {
+          PANEL_LINE.len()
+      }
+  changed_files:
+    src/panel.rs: |
+      const PANEL_LINE: &str = "Mixer pa";
+      const PANEL_KEYS: [&str; 3] = ["tone", "mix", "gain"];
+
+      fn knobs(line: &str) -> usize {
+          if line.starts_with(PANEL_LINE) { PANEL_KEYS.len() } else { 0 }
+      }
+
+      pub fn read_panel(line: &str) -> usize {
+          knobs(line)
+      }
+
+      #[cfg(test)]
+      mod tests {
+          #[test]
+          fn reads_knobs() {
+              assert!(super::read_panel("Mixer panel: {}") > 0);
+          }
+      }
+  commit_message: Change rust constant read by its own files function
+expect:
+  changed:
+  - src/panel.rs::PANEL_LINE
+  - src/panel.rs::PANEL_KEYS
+  relations:
+  - from: src/panel.rs::knobs
+    to: src/panel.rs::PANEL_LINE
+    kind: reads
+    resolution: resolved
+    site: 5
+  - from: src/panel.rs::knobs
+    to: src/panel.rs::PANEL_KEYS
+    kind: reads
+    resolution: resolved
+    site: 5
+  - from: src/panel.rs::reads_knobs
+    to: src/panel.rs::read_panel
+    kind: tests_reach
+    resolution: resolved
+    site: 16
+  exact: true
+  decoys:
+    src/panel.rs::PANEL_LINE:
+    - src/other.rs
+  not_untested:
+  - PANEL_LINE
+  - PANEL_KEYS

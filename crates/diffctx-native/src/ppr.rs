@@ -178,7 +178,7 @@ fn ppr_push_csr(
 /// We surface this to Python so calibration / final-eval rows can be
 /// filtered in post-analysis (PolyBench / Multi-SWE-bench instances
 /// with >20k fragments are the primary suspects).
-pub struct PprResult {
+pub(crate) struct PprResult {
     pub scores: FxHashMap<FragmentId, f64>,
     pub truncated: bool,
     pub forward_pushes: usize,
@@ -195,8 +195,8 @@ pub struct PprResult {
     pub seeded: bool,
 }
 
-pub fn personalized_pagerank(
-    graph: &mut Graph,
+pub(crate) fn personalized_pagerank(
+    graph: &Graph,
     seeds: &FxHashSet<FragmentId>,
     alpha: f64,
     tol: f64,
@@ -255,6 +255,7 @@ pub fn personalized_pagerank(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::graph_of;
     use std::sync::Arc;
 
     fn fid(path: &str, start: u32, end: u32) -> FragmentId {
@@ -263,39 +264,33 @@ mod tests {
 
     #[test]
     fn ppr_empty_graph() {
-        let mut g = Graph::new();
+        let g = graph_of(&[], &[]);
         let seeds = FxHashSet::default();
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-4, 0.4, None).scores;
         assert!(result.is_empty());
     }
 
     #[test]
     fn ppr_single_node() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
-        g.add_node(a.clone());
+        let g = graph_of(&[&a], &[]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-4, 0.4, None).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-4, 0.4, None).scores;
         assert!((result[&a] - 1.0).abs() < 1e-6);
     }
 
     #[test]
     fn ppr_chain_scores_decrease() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 1.0);
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         assert!(result[&a] > result[&b]);
         assert!(result[&b] > result[&c]);
@@ -303,20 +298,17 @@ mod tests {
 
     #[test]
     fn ppr_normalizes_to_one() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 1.0);
-        g.add_edge(c.clone(), a.clone(), 0.5);
+        let g = graph_of(
+            &[&a, &b, &c],
+            &[(&a, &b, 1.0), (&b, &c, 1.0), (&c, &a, 0.5)],
+        );
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         let total: f64 = result.values().sum();
         assert!((total - 1.0).abs() < 1e-6);
@@ -324,12 +316,9 @@ mod tests {
 
     #[test]
     fn ppr_with_seed_weights() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
+        let g = graph_of(&[&a, &b], &[(&a, &b, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -339,31 +328,35 @@ mod tests {
         sw.insert(a.clone(), 0.9);
         sw.insert(b.clone(), 0.1);
 
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.4, Some(&sw)).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-6, 0.4, Some(&sw)).scores;
         assert!(result[&a] > result[&b]);
     }
 
-    fn build_star_graph() -> (Graph, FragmentId) {
-        let mut g = Graph::new();
+    fn star_graph(n_leaves: usize) -> (Graph, FragmentId) {
         let center = fid("center.rs", 1, 10);
-        g.add_node(center.clone());
-        for i in 0..5 {
-            let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
-            g.add_node(leaf.clone());
-            g.add_edge(center.clone(), leaf.clone(), 1.0);
-            g.add_edge(leaf.clone(), center.clone(), 1.0);
-        }
-        (g, center)
+        let leaves: Vec<FragmentId> = (0..n_leaves)
+            .map(|i| fid(&format!("leaf_{i}.rs"), 1, 10))
+            .collect();
+        let nodes: Vec<&FragmentId> = std::iter::once(&center).chain(&leaves).collect();
+        let edges: Vec<(&FragmentId, &FragmentId, f64)> = leaves
+            .iter()
+            .flat_map(|leaf| [(&center, leaf, 1.0), (leaf, &center, 1.0)])
+            .collect();
+        (graph_of(&nodes, &edges), center)
+    }
+
+    fn build_star_graph() -> (Graph, FragmentId) {
+        star_graph(5)
     }
 
     #[test]
     fn ppr_is_deterministic_across_calls() {
-        let (mut g1, center) = build_star_graph();
-        let (mut g2, _) = build_star_graph();
+        let (g1, center) = build_star_graph();
+        let (g2, _) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center).collect();
 
-        let r1 = personalized_pagerank(&mut g1, &seeds, 0.6, 1e-6, 0.4, None).scores;
-        let r2 = personalized_pagerank(&mut g2, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let r1 = personalized_pagerank(&g1, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let r2 = personalized_pagerank(&g2, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         assert_eq!(r1.len(), r2.len());
         for (id, v1) in &r1 {
@@ -374,12 +367,12 @@ mod tests {
 
     #[test]
     fn ppr_converges_under_tighter_tolerance() {
-        let (mut g_loose, center) = build_star_graph();
-        let (mut g_tight, _) = build_star_graph();
+        let (g_loose, center) = build_star_graph();
+        let (g_tight, _) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center).collect();
 
-        let loose = personalized_pagerank(&mut g_loose, &seeds, 0.6, 1e-2, 0.4, None).scores;
-        let tight = personalized_pagerank(&mut g_tight, &seeds, 0.6, 1e-6, 0.4, None).scores;
+        let loose = personalized_pagerank(&g_loose, &seeds, 0.6, 1e-2, 0.4, None).scores;
+        let tight = personalized_pagerank(&g_tight, &seeds, 0.6, 1e-6, 0.4, None).scores;
 
         let max_diff = loose
             .iter()
@@ -393,9 +386,9 @@ mod tests {
 
     #[test]
     fn ppr_symmetric_star_assigns_equal_mass_to_leaves() {
-        let (mut g, center) = build_star_graph();
+        let (g, center) = build_star_graph();
         let seeds: FxHashSet<FragmentId> = std::iter::once(center.clone()).collect();
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None).scores;
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-8, 0.5, None).scores;
 
         let leaf_scores: Vec<f64> = (0..5)
             .map(|i| result[&fid(&format!("leaf_{i}.rs"), 1, 10)])
@@ -414,15 +407,15 @@ mod tests {
     /// reduces PPR mass concentration on hub nodes without removing them.
     ///
     /// Two graphs are compared:
-    ///   - Naive: a leaf-to-hub graph built directly via `Graph::add_edge`, no suppression.
+    ///   - Naive: a leaf-to-hub graph built by `graph_of`, no suppression.
     ///   - Suppressed: same topology built via `build_graph` with non-exempt category,
     ///     which triggers `apply_hub_suppression` for in-degree above the median.
     ///
     /// Expected: hub mass is materially reduced; non-hub mass is largely preserved.
     #[test]
     fn claim_7_hub_suppression_reduces_hub_mass_without_removal() {
-        use crate::graph::{EdgeCategory, build_graph};
-        use crate::types::{Fragment, FragmentKind};
+        use crate::graph::build_graph;
+        use crate::types::{EdgeCategory, Fragment, FragmentKind};
 
         let n_leaves = 20usize;
         let hub = fid("hub.rs", 1, 10);
@@ -430,15 +423,13 @@ mod tests {
             .map(|i| fid(&format!("leaf_{i}.rs"), 1, 10))
             .collect();
 
-        let mut naive = Graph::new();
-        naive.add_node(hub.clone());
-        for leaf in &leaves {
-            naive.add_node(leaf.clone());
-            naive.add_edge(leaf.clone(), hub.clone(), 1.0);
-        }
-        for i in 0..n_leaves - 1 {
-            naive.add_edge(leaves[i].clone(), leaves[i + 1].clone(), 1.0);
-        }
+        let nodes: Vec<&FragmentId> = std::iter::once(&hub).chain(&leaves).collect();
+        let naive_edges: Vec<(&FragmentId, &FragmentId, f64)> = leaves
+            .iter()
+            .map(|leaf| (leaf, &hub, 1.0))
+            .chain(leaves.windows(2).map(|w| (&w[0], &w[1], 1.0)))
+            .collect();
+        let naive = graph_of(&nodes, &naive_edges);
 
         let fragments: Vec<Fragment> = std::iter::once(hub.clone())
             .chain(leaves.iter().cloned())
@@ -465,16 +456,16 @@ mod tests {
                 EdgeCategory::Generic,
             );
         }
-        let mut suppressed = build_graph(&fragments, edges, categories);
+        let suppressed = build_graph(&fragments, edges, categories);
 
         let seeds: FxHashSet<FragmentId> = leaves.iter().take(3).cloned().collect();
         let alpha = 0.6;
         let tol = 1e-8;
         let blend = 1.0;
 
-        let r_naive = personalized_pagerank(&mut naive, &seeds, alpha, tol, blend, None).scores;
+        let r_naive = personalized_pagerank(&naive, &seeds, alpha, tol, blend, None).scores;
         let r_suppressed =
-            personalized_pagerank(&mut suppressed, &seeds, alpha, tol, blend, None).scores;
+            personalized_pagerank(&suppressed, &seeds, alpha, tol, blend, None).scores;
 
         let hub_naive = r_naive.get(&hub).copied().unwrap_or(0.0);
         let hub_suppressed = r_suppressed.get(&hub).copied().unwrap_or(0.0);
@@ -512,28 +503,28 @@ mod tests {
     /// of the two score vectors should be high on a connected graph.
     #[test]
     fn claim_10_ppr_and_ego_rankings_correlate_on_synthetic_graph() {
-        let mut g = Graph::new();
         let nodes: Vec<FragmentId> = (0..30).map(|i| fid(&format!("n_{i}.rs"), 1, 10)).collect();
-        for n in &nodes {
-            g.add_node(n.clone());
-        }
         let mut rng = 0xC0FFEE_u64;
         let xorshift = crate::test_rng::xorshift;
+        let mut index_pairs: Vec<(usize, usize)> = Vec::new();
         for i in 0..nodes.len() {
             for _ in 0..3 {
                 let j = (xorshift(&mut rng) as usize) % nodes.len();
                 if i != j {
-                    g.add_edge(nodes[i].clone(), nodes[j].clone(), 1.0);
+                    index_pairs.push((i, j));
                 }
             }
         }
-        for i in 0..nodes.len() {
-            let next = (i + 1) % nodes.len();
-            g.add_edge(nodes[i].clone(), nodes[next].clone(), 1.0);
-        }
+        index_pairs.extend((0..nodes.len()).map(|i| (i, (i + 1) % nodes.len())));
+        let node_refs: Vec<&FragmentId> = nodes.iter().collect();
+        let edges: Vec<(&FragmentId, &FragmentId, f64)> = index_pairs
+            .iter()
+            .map(|&(i, j)| (&nodes[i], &nodes[j], 1.0))
+            .collect();
+        let g = graph_of(&node_refs, &edges);
 
         let seeds: FxHashSet<FragmentId> = nodes.iter().take(2).cloned().collect();
-        let ppr_scores = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None).scores;
+        let ppr_scores = personalized_pagerank(&g, &seeds, 0.6, 1e-8, 0.5, None).scores;
         let ego_scores = g.ego_graph(&seeds, 3);
 
         let common: Vec<FragmentId> = nodes
@@ -609,17 +600,9 @@ mod tests {
     #[test]
     fn ppr_matches_closed_form_on_symmetric_star() {
         for &(alpha, n_leaves) in &[(0.6, 5usize), (0.5, 4usize), (0.85, 7usize)] {
-            let mut g = Graph::new();
-            let center = fid("center.rs", 1, 10);
-            g.add_node(center.clone());
-            for i in 0..n_leaves {
-                let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
-                g.add_node(leaf.clone());
-                g.add_edge(center.clone(), leaf.clone(), 1.0);
-                g.add_edge(leaf.clone(), center.clone(), 1.0);
-            }
+            let (g, center) = star_graph(n_leaves);
             let seeds: FxHashSet<FragmentId> = std::iter::once(center.clone()).collect();
-            let result = personalized_pagerank(&mut g, &seeds, alpha, 1e-10, 0.5, None).scores;
+            let result = personalized_pagerank(&g, &seeds, alpha, 1e-10, 0.5, None).scores;
 
             let expected_center = 1.0 / (1.0 + alpha);
             let expected_leaf = alpha / (n_leaves as f64 * (1.0 + alpha));
@@ -646,17 +629,13 @@ mod tests {
     }
 
     fn build_three_cycle() -> Graph {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a, b.clone(), 1.0);
-        g.add_edge(b, c.clone(), 1.0);
-        g.add_edge(c, fid("a.rs", 1, 10), 1.0);
-        g
+        graph_of(
+            &[&a, &b, &c],
+            &[(&a, &b, 1.0), (&b, &c, 1.0), (&c, &a, 1.0)],
+        )
     }
 
     /// `max_pushes = n * PPR.push_scale_factor` (3*100=300 for this
@@ -669,11 +648,11 @@ mod tests {
     /// exactly to convergence at push 300".
     #[test]
     fn ppr_truncates_under_tight_tolerance_and_high_alpha() {
-        let mut g = build_three_cycle();
+        let g = build_three_cycle();
         let a = fid("a.rs", 1, 10);
         let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
 
-        let result = personalized_pagerank(&mut g, &seeds, 0.99, 1e-12, 0.5, None);
+        let result = personalized_pagerank(&g, &seeds, 0.99, 1e-12, 0.5, None);
 
         assert!(
             result.truncated,
@@ -688,11 +667,11 @@ mod tests {
 
     #[test]
     fn ppr_does_not_truncate_under_loose_tolerance() {
-        let mut g = build_three_cycle();
+        let g = build_three_cycle();
         let a = fid("a.rs", 1, 10);
         let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
 
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-6, 0.5, None);
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-6, 0.5, None);
 
         assert!(
             !result.truncated,
@@ -706,18 +685,13 @@ mod tests {
         // existing fixtures (full cycle, symmetric star) has a node with
         // zero out-weight; `ppr_push_csr`'s `total_w <= 0.0` branch is
         // only exercised here.
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 1.0);
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 1.0)]);
 
         let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
-        let result = personalized_pagerank(&mut g, &seeds, 0.6, 1e-8, 0.5, None);
+        let result = personalized_pagerank(&g, &seeds, 0.6, 1e-8, 0.5, None);
 
         assert!(result.seeded);
         let total: f64 = result.scores.values().sum();
@@ -735,22 +709,16 @@ mod tests {
 
         // Baseline: a real, present, positively-weighted seed produces a
         // non-empty, seeded result.
-        let mut g_present = Graph::new();
-        g_present.add_node(a.clone());
-        g_present.add_node(b.clone());
-        g_present.add_edge(a.clone(), b.clone(), 1.0);
+        let g_present = graph_of(&[&a, &b], &[(&a, &b, 1.0)]);
         let seeds_present: FxHashSet<FragmentId> = std::iter::once(a.clone()).collect();
-        let present = personalized_pagerank(&mut g_present, &seeds_present, 0.6, 1e-6, 0.5, None);
+        let present = personalized_pagerank(&g_present, &seeds_present, 0.6, 1e-6, 0.5, None);
         assert!(present.seeded);
         assert!(!present.scores.is_empty());
 
         // A seed id that matches no node in the graph.
-        let mut g_absent = Graph::new();
-        g_absent.add_node(a.clone());
-        g_absent.add_node(b.clone());
-        g_absent.add_edge(a.clone(), b.clone(), 1.0);
+        let g_absent = graph_of(&[&a, &b], &[(&a, &b, 1.0)]);
         let seeds_absent: FxHashSet<FragmentId> = std::iter::once(ghost).collect();
-        let absent = personalized_pagerank(&mut g_absent, &seeds_absent, 0.6, 1e-6, 0.5, None);
+        let absent = personalized_pagerank(&g_absent, &seeds_absent, 0.6, 1e-6, 0.5, None);
         assert!(
             !absent.seeded,
             "a seed id absent from the graph must not be reported as seeded"
@@ -762,15 +730,12 @@ mod tests {
         // reachable when every changed line in a hunk maps to a deleted
         // fragment. Same empty `scores` / zero pushes as the absent-seed
         // case above, but `seeded` must still tell them apart.
-        let mut g_zeroed = Graph::new();
-        g_zeroed.add_node(a.clone());
-        g_zeroed.add_node(b.clone());
-        g_zeroed.add_edge(a.clone(), b.clone(), 1.0);
+        let g_zeroed = graph_of(&[&a, &b], &[(&a, &b, 1.0)]);
         let seeds_zeroed: FxHashSet<FragmentId> = std::iter::once(a.clone()).collect();
         let mut zero_weights: FxHashMap<FragmentId, f64> = FxHashMap::default();
         zero_weights.insert(a, 0.0);
         let zeroed = personalized_pagerank(
-            &mut g_zeroed,
+            &g_zeroed,
             &seeds_zeroed,
             0.6,
             1e-6,
@@ -794,8 +759,8 @@ mod tests {
 
     #[test]
     fn ppr_excludes_self_loop_and_infinite_weight_and_stays_finite() {
-        use crate::graph::{EdgeCategory, build_graph};
-        use crate::types::{Fragment, FragmentKind};
+        use crate::graph::build_graph;
+        use crate::types::{EdgeCategory, Fragment, FragmentKind};
 
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
@@ -818,9 +783,9 @@ mod tests {
         edges.insert((b.clone(), b.clone()), f64::INFINITY); // self-loop AND non-finite
         cats.insert((b.clone(), b.clone()), EdgeCategory::Semantic);
 
-        let mut graph = build_graph(&frags, edges, cats);
+        let graph = build_graph(&frags, edges, cats);
         let seeds: FxHashSet<FragmentId> = std::iter::once(a).collect();
-        let result = personalized_pagerank(&mut graph, &seeds, 0.6, 1e-6, 0.5, None);
+        let result = personalized_pagerank(&graph, &seeds, 0.6, 1e-6, 0.5, None);
 
         assert!(result.seeded);
         assert!(

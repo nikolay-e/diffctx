@@ -1,6 +1,6 @@
 //! Kotlin facts from the fwcd grammar (`brokk-tree-sitter-kotlin`), read once
-//! per blob and shared by the fragmenter, the JVM edge builder, `--symbol`
-//! and impact: the declared package, the imports with their aliases, every
+//! per blob and shared by the fragmenter, the JVM edge builder and the Kotlin,
+//! Java and Swift extractors: the declared package, the imports with their aliases, every
 //! top-level and member declaration with its owners, receiver, visibility,
 //! declared type, header and annotations, the supertypes each type names,
 //! every use site (call, property access, type use, callable reference) with
@@ -90,14 +90,7 @@ pub struct Declaration {
     pub is_override: bool,
     /// An `inner class`, which sees the instance that holds it.
     pub inner: bool,
-    /// A member with no body: an interface or `abstract` method, which every
-    /// implementation has to provide.
-    pub abstract_member: bool,
     pub annotations: Vec<String>,
-    /// Parameters a call has to pass: those without a default. `None` for
-    /// what takes no parameter list.
-    pub required_params: Option<usize>,
-    pub params: Option<usize>,
     pub start_line: u32,
     pub end_line: u32,
     pub span: Range<usize>,
@@ -110,16 +103,6 @@ pub struct Declaration {
 }
 
 impl Declaration {
-    /// What identifies the declaration across revisions of its file.
-    pub fn key(&self) -> (&[String], &str, &'static str, Option<&str>) {
-        (
-            &self.owners,
-            &self.name,
-            self.kind,
-            self.receiver.as_deref(),
-        )
-    }
-
     pub fn is_type(&self) -> bool {
         matches!(
             self.kind,
@@ -219,18 +202,6 @@ pub struct KotlinFacts {
 }
 
 impl KotlinFacts {
-    pub fn partial(&self) -> bool {
-        !self.error_lines.is_empty()
-    }
-
-    /// The innermost declaration holding a byte.
-    pub fn declaration_at_byte(&self, at: usize) -> Option<&Declaration> {
-        self.declarations
-            .iter()
-            .filter(|d| d.span.contains(&at))
-            .min_by_key(|d| d.span.len())
-    }
-
     /// The declaration a fragment starting at `line` stands for.
     pub fn declaration_named(&self, name: &str, line: u32) -> Option<&Declaration> {
         self.declarations
@@ -254,13 +225,6 @@ impl KotlinFacts {
 
     pub fn is_text(&self, byte: usize) -> bool {
         self.text.iter().any(|r| r.contains(&byte))
-    }
-
-    /// The type declared here, by its name and owners.
-    pub fn type_named(&self, name: &str) -> Option<&Declaration> {
-        self.declarations
-            .iter()
-            .find(|d| d.is_type() && d.name == name)
     }
 
     pub fn supertypes_of(&self, name: &str) -> &[String] {
@@ -295,6 +259,10 @@ fn remember(content: &str, facts: Arc<KotlinFacts>) {
 /// The facts of one blob: from the parse the fragmenter already made of the
 /// same bytes when there was one, else from a parse of their own. `None`
 /// when the grammar is not compiled in or the parse timed out.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a poisoned cache lock is a miss: the blob is parsed again"
+)]
 pub fn facts(content: &str) -> Option<Arc<KotlinFacts>> {
     if let Some(hit) = CACHE
         .lock()
@@ -347,7 +315,7 @@ pub(super) fn walk<'t, O: Clone>(
     facts
 }
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     let mut facts = walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
@@ -442,7 +410,7 @@ pub fn name_of(node: &Node, bytes: &[u8]) -> Option<String> {
     let found = node
         .children(&mut cursor)
         .find(|c| matches!(c.kind(), "simple_identifier" | "type_identifier"))?;
-    text(found, bytes).map(|t| t.trim_matches('`').to_string())
+    name_text(found, bytes).map(str::to_string)
 }
 
 /// A declaration inside a function, a lambda, an `init` block or an
@@ -508,23 +476,22 @@ pub fn end_with_accessors(node: &Node) -> (u32, usize) {
 }
 
 fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -> Declaration {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration the grammar gives no name node is recorded nameless"
+    )]
     let name = declared_name(node, bytes).unwrap_or_default();
     let modifiers = child(*node, "modifiers");
     let visibility = modifiers.and_then(|m| visibility_of(m, bytes));
     let is_override = modifiers.is_some_and(|m| has_word(m, bytes, "override"));
     let effective = effective_visibility(visibility, is_override, owners);
     let body = body_of(node);
-    let owner_is_interface = node
-        .parent()
-        .and_then(|p| p.parent())
-        .is_some_and(|t| declaration_kind(&t) == Some("interface"));
-    let abstract_member = kind == "fun"
-        && body.is_none()
-        && (owner_is_interface || modifiers.is_some_and(|m| has_word(m, bytes, "abstract")));
     let (end_line, end_byte) = end_with_accessors(node);
-    let (params, required_params) = child(*node, "function_value_parameters")
-        .map(|p| count_params(p))
-        .map_or((None, None), |(a, r)| (Some(a), Some(r)));
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
+    let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     Declaration {
         name,
         kind,
@@ -538,10 +505,7 @@ fn declaration(node: &Node, kind: &'static str, owners: &Owners, bytes: &[u8]) -
         effective,
         is_override,
         inner: modifiers.is_some_and(|m| has_word(m, bytes, "inner")),
-        abstract_member,
-        annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
-        required_params,
-        params,
+        annotations,
         start_line: line_of(*node),
         end_line,
         span: node.start_byte()..end_byte,
@@ -587,6 +551,11 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
     let modifiers = child(*node, "modifiers");
     let visibility = modifiers.and_then(|m| visibility_of(m, bytes));
     let is_override = modifiers.is_some_and(|m| has_word(m, bytes, "override"));
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
+    let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     facts.declarations.push(Declaration {
         name,
         kind: "property",
@@ -598,10 +567,7 @@ fn constructor_property(node: &Node, owners: &Owners, bytes: &[u8], facts: &mut 
         effective: effective_visibility(visibility, is_override, owners),
         is_override,
         inner: false,
-        abstract_member: false,
-        annotations: modifiers.map(|m| annotations(m, bytes)).unwrap_or_default(),
-        required_params: None,
-        params: None,
+        annotations,
         start_line: line_of(*node),
         end_line: node.end_position().row as u32 + 1,
         span: node.byte_range(),
@@ -675,7 +641,7 @@ fn parameter_bindings(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
                     .children(&mut cursor)
                     .find(|c| c.kind() == "simple_identifier")
                 {
-                    if let Some(name) = text(id, bytes) {
+                    if let Some(name) = name_text(id, bytes) {
                         bindings.push(Binding::new(
                             name.to_string(),
                             first_child_type(node, bytes),
@@ -749,7 +715,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                     // `Obj::f` reads `Obj` as much as it names `f`.
                     push(text(*recv, bytes), UseKind::Access, None, *recv);
                     (
-                        text(*recv, bytes).map(|t| Receiver::Name(t.to_string())),
+                        name_text(*recv, bytes).map(|t| Receiver::Name(t.to_string())),
                         *target,
                     )
                 }
@@ -768,7 +734,7 @@ fn uses_at(node: &Node, bytes: &[u8], uses: &mut Vec<Use>) {
                     Receiver::Path(
                         path[..path.len() - 1]
                             .iter()
-                            .filter_map(|p| text(*p, bytes).map(str::to_string))
+                            .filter_map(|p| name_text(*p, bytes).map(str::to_string))
                             .collect(),
                     )
                 });
@@ -835,14 +801,14 @@ fn is_bare_reference(node: &Node) -> bool {
 
 fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
     match node.kind() {
-        "simple_identifier" | "type_identifier" => text(node, bytes)
+        "simple_identifier" | "type_identifier" => name_text(node, bytes)
             .map(|t| Receiver::Name(t.to_string()))
             .unwrap_or(Receiver::Expr),
         "this_expression" => Receiver::This,
         "call_expression" => node
             .named_child(0)
             .filter(|c| c.kind() == "simple_identifier")
-            .and_then(|c| text(c, bytes))
+            .and_then(|c| name_text(c, bytes))
             .map_or(Receiver::Expr, |callee| Receiver::Call(callee.to_string())),
         "navigation_expression" => {
             let mut parts = Vec::new();
@@ -850,7 +816,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
             loop {
                 let Some(name) = child(current, "navigation_suffix")
                     .and_then(|s| child(s, "simple_identifier"))
-                    .and_then(|n| text(n, bytes))
+                    .and_then(|n| name_text(n, bytes))
                 else {
                     return Receiver::Expr;
                 };
@@ -858,7 +824,7 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
                 match current.named_child(0) {
                     Some(inner) if inner.kind() == "navigation_expression" => current = inner,
                     Some(inner) if inner.kind() == "simple_identifier" => {
-                        if let Some(head) = text(inner, bytes) {
+                        if let Some(head) = name_text(inner, bytes) {
                             parts.push(head.to_string());
                         }
                         break;
@@ -934,7 +900,7 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
     match head.kind() {
         "simple_identifier" => Some(InitCall {
             receiver: None,
-            callee: text(head, bytes)?.to_string(),
+            callee: name_text(head, bytes)?.to_string(),
         }),
         "navigation_expression" => {
             let receiver = head
@@ -943,8 +909,8 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
             let callee =
                 child(head, "navigation_suffix").and_then(|s| child(s, "simple_identifier"))?;
             Some(InitCall {
-                receiver: Some(text(receiver, bytes)?.to_string()),
-                callee: text(callee, bytes)?.to_string(),
+                receiver: Some(name_text(receiver, bytes)?.to_string()),
+                callee: name_text(callee, bytes)?.to_string(),
             })
         }
         _ => None,
@@ -957,24 +923,6 @@ fn first_child_type(node: &Node, bytes: &[u8]) -> Option<String> {
         .children(&mut cursor)
         .find(|c| matches!(c.kind(), "user_type" | "nullable_type"))?;
     last_type_name(found, bytes)
-}
-
-fn count_params(params: Node) -> (usize, usize) {
-    let mut cursor = params.walk();
-    let all: Vec<Node> = params
-        .named_children(&mut cursor)
-        .filter(|c| c.kind() == "parameter")
-        .collect();
-    // A default value follows its parameter as a sibling expression.
-    let mut defaults = 0;
-    let mut cursor = params.walk();
-    let children: Vec<Node> = params.children(&mut cursor).collect();
-    for w in children.windows(2) {
-        if w[0].kind() == "parameter" && w[1].kind() == "=" {
-            defaults += 1;
-        }
-    }
-    (all.len(), all.len().saturating_sub(defaults))
 }
 
 fn visibility_of(modifiers: Node, bytes: &[u8]) -> Option<Visibility> {
@@ -1037,26 +985,45 @@ fn last_type_name(node: Node, bytes: &[u8]) -> Option<String> {
         .children(&mut cursor)
         .filter(|c| c.kind() == "type_identifier")
         .last()?;
-    text(last, bytes).map(str::to_string)
+    name_text(last, bytes).map(str::to_string)
 }
 
-/// Records a use of `name` at `at`; no name, or an empty one, is none.
+/// A name without the backticks Kotlin and Swift let one write around it:
+/// `` `my fn` `` and `my fn` are one name.
+pub(super) fn unquoted(written: &str) -> &str {
+    written.trim_matches('`')
+}
+
+/// The name an identifier node writes.
+pub(super) fn name_text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
+    text(node, bytes).map(unquoted)
+}
+
+/// Records a use of the name `written` at `at`; no name, or an empty one, is
+/// none. The name is recorded bare and its site moves past the opening
+/// backtick, so the site still reads as the name.
 pub(super) fn push_use(
     uses: &mut Vec<Use>,
-    name: Option<&str>,
+    written: Option<&str>,
     kind: UseKind,
     receiver: Option<Receiver>,
     at: Node,
 ) {
-    if let Some(name) = name.filter(|n| !n.is_empty()) {
-        uses.push(Use {
-            name: name.to_string(),
-            kind,
-            receiver,
-            at: at.start_byte(),
-            line: line_of(at),
-        });
+    let Some(written) = written else {
+        return;
+    };
+    let name = unquoted(written);
+    if name.is_empty() {
+        return;
     }
+    let opening = written.len() - written.trim_start_matches('`').len();
+    uses.push(Use {
+        name: name.to_string(),
+        kind,
+        receiver,
+        at: at.start_byte() + opening,
+        line: line_of(at),
+    });
 }
 
 pub(super) fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
@@ -1089,12 +1056,15 @@ fn dotted(identifier: Node, bytes: &[u8]) -> String {
     identifier
         .children(&mut cursor)
         .filter(|c| c.kind() == "simple_identifier")
-        .filter_map(|c| text(c, bytes))
-        .map(|t| t.trim_matches('`'))
+        .filter_map(|c| name_text(c, bytes))
         .collect::<Vec<_>>()
         .join(".")
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a node whose bytes are not UTF-8 has no identifier text"
+)]
 pub(super) fn text<'a>(node: Node, bytes: &'a [u8]) -> Option<&'a str> {
     node.utf8_text(bytes).ok()
 }
@@ -1152,7 +1122,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     #[test]
     fn package_and_imports_are_the_declared_ones_aliases_included() {
         let f = facts_of();
-        assert!(!f.partial());
+        assert!(f.error_lines.is_empty(), "{:?}", f.error_lines);
         assert_eq!(f.package.as_deref(), Some("com.acme.matrix"));
         assert_eq!(
             f.imported("resolveTag").map(|i| i.path.as_str()),
@@ -1184,8 +1154,6 @@ fun `weird name`() = 1 // tagFor in a comment\n";
             Some(Visibility::Internal),
             "a public member of an internal class"
         );
-        assert_eq!(execute.required_params, Some(0));
-        assert_eq!(execute.params, Some(2));
         assert_eq!(
             decl(&f, "run").effective,
             Some(Visibility::Internal),
@@ -1206,7 +1174,6 @@ fun `weird name`() = 1 // tagFor in a comment\n";
         );
         assert!(f.declarations.iter().all(|d| d.name != "local"), "a local");
         let save = decl(&f, "save");
-        assert!(save.abstract_member);
         assert_eq!(save.annotations, ["Throws"]);
         assert_eq!(decl(&f, "Worker").annotations, ["Service"]);
         assert_eq!(decl(&f, "weird name").effective, Some(Visibility::Public));
@@ -1291,7 +1258,7 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     fn a_type_the_tree_did_not_read_is_a_parse_gap_and_a_clean_file_has_none() {
         let clean = facts("package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n")
             .expect("kotlin grammar");
-        assert!(!clean.partial(), "{:?}", clean.error_lines);
+        assert!(clean.error_lines.is_empty(), "{:?}", clean.error_lines);
         let mut gap = (*clean).clone();
         gap.declarations.retain(|d| d.name != "A");
         let source = "package a\n\n// class Ghost in a comment\nval s = \"class Phantom\"\n\n@JvmInline\nvalue class Meters(val v: Double)\n\nclass A {\n    companion object Factory\n}\n";
@@ -1302,7 +1269,10 @@ fun `weird name`() = 1 // tagFor in a comment\n";
     fn a_broken_declaration_is_reported_and_the_rest_survives() {
         let f = facts("class A {\n    fun ok() = 1\n}\nclass B {\n    fun broken(: Int {\n}\n")
             .expect("kotlin grammar");
-        assert!(f.partial());
+        assert!(
+            !f.error_lines.is_empty(),
+            "a broken declaration is an error"
+        );
         assert!(f.declarations.iter().any(|d| d.name == "ok"));
     }
 }

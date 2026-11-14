@@ -1,0 +1,33 @@
+name: dockerfile_copy_from_by_index_reaches_the_stage
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- copy-from
+- index
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM node:20
+      RUN npm ci
+
+      FROM alpine:3.20
+      COPY --from=0 /app /app
+  changed_files:
+    Dockerfile: |
+      FROM node:20
+      RUN npm install
+
+      FROM alpine:3.20
+      COPY --from=0 /app /app
+  commit_message: Change copy from by index reaches the stage
+expect:
+  changed:
+  - Dockerfile::0
+  relations:
+  - from: Dockerfile::1
+    to: Dockerfile::0
+    kind: reads
+    resolution: resolved
+    site: 5

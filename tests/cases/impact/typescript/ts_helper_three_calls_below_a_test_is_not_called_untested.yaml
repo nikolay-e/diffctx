@@ -1,0 +1,59 @@
+name: ts_helper_three_calls_below_a_test_is_not_called_untested
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- hop-limit
+repo:
+  initial_files:
+    src/size.ts: |
+      export function bodySize(body: string | undefined): number | undefined {
+        if (body === undefined) {
+          return undefined;
+        }
+        return body.length;
+      }
+    src/request.ts: |
+      import {bodySize} from './size';
+
+      export class Request {
+        finalize(body?: string): string {
+          const size = bodySize(body);
+          return String(size);
+        }
+
+        flush(body?: string): string {
+          return this.finalize(body);
+        }
+      }
+    src/client.ts: |
+      import {Request} from './request';
+
+      export function send(body?: string): string {
+        return new Request().flush(body);
+      }
+
+      export const client = {post: send};
+    test/client.test.ts: |
+      import test from 'ava';
+      import {client} from '../src/client';
+
+      test('posts a body', t => {
+        t.is(client.post('sup'), '3');
+      });
+  changed_files:
+    src/size.ts: |
+      export function bodySize(body: string | undefined): number | undefined {
+        if (body === undefined || body === '') {
+          return undefined;
+        }
+        return body.length;
+      }
+  commit_message: Treat an empty body as no size
+expect:
+  changed:
+  - src/size.ts::bodySize
+  not_untested:
+  - bodySize

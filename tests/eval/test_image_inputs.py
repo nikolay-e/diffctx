@@ -62,7 +62,10 @@ def test_eval_dependency_group_covers_evaluation_imports():
     import_re = re.compile(r"^\s*(?:import|from)\s+(\w+)", re.MULTILINE)
     stdlib = set(sys.stdlib_module_names)
     needed = set()
+    oracle = REPO_ROOT / "eval" / "oracle"  # an independent project with its own pyproject and lock
     for py in (REPO_ROOT / "eval").rglob("*.py"):
+        if oracle in py.parents:
+            continue
         for m in import_re.finditer(py.read_text()):
             mod = m.group(1)
             if mod in stdlib or mod in STDLIB_OR_LOCAL:

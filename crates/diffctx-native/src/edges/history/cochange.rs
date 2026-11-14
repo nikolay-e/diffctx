@@ -9,7 +9,7 @@ use crate::types::{Fragment, FragmentId};
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
 
-pub struct CochangeEdgeBuilder;
+pub(crate) struct CochangeEdgeBuilder;
 
 impl CochangeEdgeBuilder {
     /// The commits up to the range's base — not whatever is checked out, and
@@ -18,7 +18,7 @@ impl CochangeEdgeBuilder {
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
         let head = crate::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
         let limit = format!("-n{}", COCHANGE.commits_limit);
-        let stdout = crate::git::run_git(
+        let stdout = crate::snapshot::run_git(
             repo_root,
             &[
                 "log",

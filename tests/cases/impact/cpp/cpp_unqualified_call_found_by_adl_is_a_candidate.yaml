@@ -1,0 +1,37 @@
+name: cpp_unqualified_call_found_by_adl_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- adl
+repo:
+  initial_files:
+    src/vec.hpp: |
+      namespace geo {
+      struct Vec { int x; };
+      int norm(Vec v) { return v.x + 0; }
+      }
+    src/len.cpp: |
+      #include "vec.hpp"
+
+      int len(geo::Vec v)
+      {
+          return norm(v);
+      }
+  changed_files:
+    src/vec.hpp: |
+      namespace geo {
+      struct Vec { int x; };
+      int norm(Vec v) { return v.x + 1; }
+      }
+  commit_message: Change unqualified call found by adl is a candidate
+expect:
+  changed:
+  - src/vec.hpp::geo.norm
+  relations:
+  - from: src/len.cpp::len
+    to: src/vec.hpp::geo.norm
+    kind: calls
+    resolution: candidate
+    site: 5

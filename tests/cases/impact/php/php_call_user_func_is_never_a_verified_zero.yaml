@@ -1,0 +1,44 @@
+name: php_call_user_func_is_never_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- dynamic
+- absence-claim
+repo:
+  initial_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 1;
+          }
+      }
+    src/Runner.php: |
+      <?php
+
+      function run(array $callback)
+      {
+          return call_user_func($callback);
+      }
+  changed_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change call user func is never a verified zero
+expect:
+  changed:
+  - src/Greeter.php::Greeter.hello
+  discloses: true
+  no_negative_claims: true

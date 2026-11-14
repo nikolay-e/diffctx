@@ -1,0 +1,26 @@
+name: gh637_mcp_tool_docstring_change_is_a_contract
+mode: impact
+source: gh#637
+issue_state: open
+tags: [python, mcp, docstring, contract]
+repo:
+  initial_files:
+    srv/tools.py: |
+      from mcp.server.fastmcp import FastMCP
+      mcp = FastMCP("demo")
+      @mcp.tool()
+      def get_total(day: str) -> dict:
+          """The day's total. `flagged` means two sources disagree."""
+          return {"day": day, "flagged": False}
+  worktree: true
+  changed_files:
+    srv/tools.py: |
+      from mcp.server.fastmcp import FastMCP
+      mcp = FastMCP("demo")
+      @mcp.tool()
+      def get_total(day: str) -> dict:
+          """The day's total. `flagged` means two sources disagree; `assessable: false` means nobody can say which."""
+          return {"day": day, "flagged": False}
+expect:
+  changed: [srv/tools.py::get_total]
+  contracts: [srv/tools.py]

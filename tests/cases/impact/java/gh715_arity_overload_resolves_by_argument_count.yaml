@@ -1,0 +1,60 @@
+name: gh715_arity_overload_resolves_by_argument_count
+mode: impact
+source: gh#715
+issue_state: open
+tags: [java, overloads, arity]
+repo:
+  initial_files:
+    src/main/java/calc/Calc.java: |
+      package calc;
+
+      public interface Calc {
+          long count(long n);
+
+          long count(long n, boolean strict);
+      }
+    src/main/java/calc/Report.java: |
+      package calc;
+
+      public class Report {
+          private final Calc calc;
+
+          public Report(Calc calc) {
+              this.calc = calc;
+          }
+
+          public long total() {
+              return calc.count(5L);
+          }
+      }
+    src/test/java/calc/ReportTest.java: |
+      package calc;
+
+      import org.junit.jupiter.api.Test;
+
+      class ReportTest {
+          @Test
+          void totals() {
+              new Report(n -> n).total();
+          }
+      }
+  changed_files:
+    src/main/java/calc/Calc.java: |
+      package calc;
+
+      public interface Calc {
+          default long count(long n) {
+              return count(n, false);
+          }
+
+          long count(long n, boolean strict);
+      }
+  worktree: true
+expect:
+  exact: false
+  relations:
+    - from: src/main/java/calc/Report.java::total
+      to: src/main/java/calc/Calc.java::count
+      kind: calls
+      resolution: resolved
+      site: 11

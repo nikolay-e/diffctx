@@ -1,0 +1,37 @@
+name: config_basename_in_prose_data_and_foreign_paths_is_no_reference
+mode: impact
+source: gh#673
+issue_state: open
+tags:
+- config
+- named-by
+- decoy
+- data
+repo:
+  initial_files:
+    README.md: |
+      # demo
+    .gitignore: |
+      node_modules/
+    scripts/check.sh: |
+      #!/bin/sh
+      for r in "$HOME/other-project/README.md"; do [ -f "$r" ]; done
+    data/dump.json: |
+      {"issues":[{"msg":"setup steps are in README.md"}]}
+    data/corpus.tsv: "id\tpath\n1\t/home/someone/elsewhere/README.md\n"
+    data/exports/Chat 1: |
+      user: I updated README.md
+      assistant: README.md looks fine
+  changed_files:
+    README.md: |
+      # demo
+
+      more
+  worktree: true
+  commit_message: Change config basename in prose data and foreign paths is no reference
+expect:
+  not_named_by:
+  - scripts/check.sh
+  - data/dump.json
+  - data/corpus.tsv
+  - data/exports/Chat 1

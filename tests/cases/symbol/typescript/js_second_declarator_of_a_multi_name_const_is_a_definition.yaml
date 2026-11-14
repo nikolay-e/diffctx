@@ -1,0 +1,15 @@
+name: js_second_declarator_of_a_multi_name_const_is_a_definition
+mode: symbol
+source: gh#730
+issue_state: open
+tags: [javascript, multi-declarator]
+repo:
+  initial_files:
+    m.js: |
+      const S = 1, T = 2;
+      export function f() { return S + T; }
+query:
+  symbol: T
+expect:
+  definitions: [m.js::T]
+  callers: {T: [m.js::f]}

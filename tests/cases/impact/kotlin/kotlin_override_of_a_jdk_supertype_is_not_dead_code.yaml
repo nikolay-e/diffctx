@@ -1,0 +1,83 @@
+name: kotlin_override_of_a_jdk_supertype_is_not_dead_code
+mode: impact
+source: gh#566
+issue_state: closed
+tags:
+- kotlin
+- override
+- framework-entry
+repo:
+  initial_files:
+    src/main/kotlin/scan/LibraryScanner.kt: |
+      package scan
+
+      import java.nio.file.FileVisitResult
+      import java.nio.file.Files
+      import java.nio.file.Path
+      import java.nio.file.SimpleFileVisitor
+      import java.nio.file.attribute.BasicFileAttributes
+
+      class LibraryScanner {
+          private class Collector : SimpleFileVisitor<Path>() {
+              val seen = mutableListOf<Path>()
+
+              override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                  seen.add(file)
+                  return FileVisitResult.CONTINUE
+              }
+          }
+
+          fun scan(root: Path): List<Path> {
+              val visitor = Collector()
+              Files.walkFileTree(root, visitor)
+              return visitor.seen
+          }
+      }
+    src/test/kotlin/scan/LibraryScannerTest.kt: |
+      package scan
+
+      import java.nio.file.Path
+      import kotlin.test.Test
+
+      class LibraryScannerTest {
+          @Test
+          fun scans() {
+              LibraryScanner().scan(Path.of("."))
+          }
+      }
+  changed_files:
+    src/main/kotlin/scan/LibraryScanner.kt: |
+      package scan
+
+      import java.nio.file.FileVisitResult
+      import java.nio.file.Files
+      import java.nio.file.Path
+      import java.nio.file.SimpleFileVisitor
+      import java.nio.file.attribute.BasicFileAttributes
+
+      class LibraryScanner {
+          private class Collector : SimpleFileVisitor<Path>() {
+              val seen = mutableListOf<Path>()
+
+              override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                  seen.add(file.toAbsolutePath())
+                  return FileVisitResult.CONTINUE
+              }
+          }
+
+          fun scan(root: Path): List<Path> {
+              val visitor = Collector()
+              Files.walkFileTree(root, visitor)
+              return visitor.seen
+          }
+      }
+  commit_message: Change kotlin override of a jdk supertype is not dead code
+expect:
+  changed:
+  - src/main/kotlin/scan/LibraryScanner.kt::LibraryScanner.Collector.visitFile
+  unknowns:
+    visitFile: overridable
+  callers:
+    visitFile: []
+  not_untested:
+  - visitFile

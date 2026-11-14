@@ -1,0 +1,28 @@
+name: shell_symbol_sourced_variable_is_a_definition
+mode: symbol
+source: gh#659
+issue_state: open
+tags:
+- shell
+- variables
+- source
+repo:
+  initial_files:
+    lib.sh: |
+      FOO='a|b'
+    user.sh: |
+      . ./lib.sh
+      echo "$FOO"
+  commit_message: Change shell symbol sourced variable is a definition
+query:
+  symbol: FOO
+expect:
+  relations:
+  - from: user.sh
+    to: lib.sh::FOO
+    kind: reads
+    resolution: resolved
+    site: 2
+  exact: true
+  definitions:
+  - lib.sh::FOO

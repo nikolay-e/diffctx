@@ -1,0 +1,46 @@
+name: ts_jest_test_regex_in_package_json_names_the_check_file_as_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- jest-config
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "web",
+        "version": "1.0.0",
+        "jest": { "testRegex": "/probes/.*\\.probe\\.tsx?$" }
+      }
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+    src/page.ts: |
+      import { shout } from "./format";
+
+      export function page() {
+        return shout("b");
+      }
+    probes/page.probe.ts: |
+      import { page } from "../src/page";
+
+      test("page", () => expect(page()).toBe("B"));
+    other/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+  commit_message: change shout
+expect:
+  changed:
+  - src/format.ts::shout
+  exact: false
+  tested_by:
+    src/page.ts: probes/page.probe.ts
+  not_untested:
+  - shout

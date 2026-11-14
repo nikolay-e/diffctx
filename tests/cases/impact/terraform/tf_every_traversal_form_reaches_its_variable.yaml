@@ -1,0 +1,69 @@
+name: tf_every_traversal_form_reaches_its_variable
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- body-only
+- decoy
+repo:
+  initial_files:
+    main.tf: |
+      variable "n" {
+        default = ["a"]
+      }
+
+      variable "nn" {
+        default = "x"
+      }
+
+      resource "terraform_data" "all" {
+        input = "${var.n[0]} ${length(var.n)} ${var.nn}"
+        output = [for x in var.n : x]
+
+        dynamic "rule" {
+          for_each = var.n
+          content {
+            port = rule.value
+          }
+        }
+      }
+
+      resource "terraform_data" "bound" {
+        input = [for n in var.nn : n.id]
+      }
+  changed_files:
+    main.tf: |
+      variable "n" {
+        default = ["b"]
+      }
+
+      variable "nn" {
+        default = "x"
+      }
+
+      resource "terraform_data" "all" {
+        input = "${var.n[0]} ${length(var.n)} ${var.nn}"
+        output = [for x in var.n : x]
+
+        dynamic "rule" {
+          for_each = var.n
+          content {
+            port = rule.value
+          }
+        }
+      }
+
+      resource "terraform_data" "bound" {
+        input = [for n in var.nn : n.id]
+      }
+  commit_message: tf every traversal form reaches its variable
+expect:
+  changed:
+  - main.tf::var.n
+  relations:
+  - from: main.tf::terraform_data.all
+    to: main.tf::var.n
+    kind: reads
+    resolution: resolved
+  exact: true

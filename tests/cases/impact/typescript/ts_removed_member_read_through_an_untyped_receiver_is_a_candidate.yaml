@@ -1,0 +1,31 @@
+name: ts_removed_member_read_through_an_untyped_receiver_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, removed-definition, absence-claim, untyped-receiver]
+repo:
+  initial_files:
+    src/errors.ts: |
+      export class ApiError {
+        message: string = '';
+        request: string = '';
+      }
+    src/report.ts: |
+      export function describe(err) {
+        return err.request;
+      }
+  changed_files:
+    src/errors.ts: |
+      export class ApiError {
+        message: string = '';
+      }
+  commit_message: "errors: drop the request property"
+expect:
+  removed: [src/errors.ts::request]
+  relations:
+  - from: "src/report.ts::describe"
+    to: "src/errors.ts::request"
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true

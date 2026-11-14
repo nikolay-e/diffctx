@@ -1,0 +1,79 @@
+name: py_table_registered_tool_a_test_calls_by_name_has_a_test_link
+mode: impact
+source: gh#720
+issue_state: open
+tags:
+- python
+- registry
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    tools.py: |
+      def get_x():
+          return 1
+
+
+      def get_unlisted():
+          return 2
+
+
+      TOOLS = (("get_x", get_x, False),)
+
+
+      def register(tool):
+          for name, fn, mutating in TOOLS:
+              tool(name, mutating=mutating)(fn)
+    server.py: |
+      import tools
+
+      TABLE = {}
+
+
+      def tool(name, mutating=False):
+          def deco(fn):
+              TABLE[name] = fn
+              return fn
+
+          return deco
+
+
+      def make_server():
+          tools.register(tool)
+          return TABLE
+
+
+      async def call_tool(server, name, args):
+          return server[name](**args)
+    tests/test_tools.py: |
+      from server import call_tool, make_server
+
+
+      async def test_get_x():
+          server = make_server()
+          await call_tool(server, "get_x", {})
+  changed_files:
+    tools.py: |
+      def get_x():
+          return 3
+
+
+      def get_unlisted():
+          return 4
+
+
+      TOOLS = (("get_x", get_x, False),)
+
+
+      def register(tool):
+          for name, fn, mutating in TOOLS:
+              tool(name, mutating=mutating)(fn)
+  commit_message: Change what the tools return
+expect:
+  changed:
+  - tools.py::get_x
+  - tools.py::get_unlisted
+  not_untested:
+  - get_x
+  untested:
+  - get_unlisted

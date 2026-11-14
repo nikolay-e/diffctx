@@ -1,0 +1,63 @@
+name: config_ini_key_is_read_and_set_by_code
+mode: impact
+source: gh#305
+issue_state: open
+tags:
+- config
+- ini
+- reads
+- writes
+- decoy
+repo:
+  initial_files:
+    alembic.ini: |
+      [alembic]
+      script_location = migrations
+      sqlalchemy.url = postgresql://localhost/app
+    migrations/env.py: |
+      from alembic import context
+
+
+      def run_migrations():
+          config = context.config
+          return config.get_main_option("sqlalchemy.url")
+    tests/e2e/conftest.py: |
+      def db_config(config, db_url):
+          config.set_main_option("sqlalchemy.url", db_url)
+          return config
+    start.sh: |
+      #!/bin/sh
+      alembic -c alembic.ini upgrade head
+    bot/tests/test_fmt.py: |
+      import logging
+
+
+      def test_formatter():
+          assert logging.Formatter('%(message)s')
+  changed_files:
+    alembic.ini: |
+      [alembic]
+      script_location = migrations
+      sqlalchemy.url = postgresql+psycopg2://localhost/app
+  commit_message: Change config ini key is read and set by code
+expect:
+  relations:
+  - from: migrations/env.py::run_migrations
+    to: alembic.ini
+    kind: reads
+    resolution: candidate
+    site: 6
+  - from: tests/e2e/conftest.py::db_config
+    to: alembic.ini
+    kind: writes
+    resolution: candidate
+    site: 2
+  - from: start.sh
+    to: alembic.ini
+    kind: references_path
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    alembic.ini:
+    - bot/tests/test_fmt.py

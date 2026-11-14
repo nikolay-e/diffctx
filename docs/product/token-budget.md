@@ -57,7 +57,15 @@ One consequence is deliberate: when the summary alone exceeds the budget, the
 summary is what you get and no fragment is selected. A changed path is never
 dropped to fit — a reader who cannot see what changed is worse off than one who
 is over budget — so on a very wide change a very small `--budget` is a request
-the artifact cannot honour, and it says so by containing nothing else.
+the artifact cannot honour, and it says so by containing nothing else — and, since
+2.0.0, in words: `fit.least` in JSON and YAML holds the tokens the least answer takes
+(a budget of that size delivers it), and Markdown and text open with a "budget too
+small" line. Locate does the same.
+
+`--mode locate` bounds the document as printed. The ranked candidates the budget left
+out are always counted (`overflow.total`); their entries, without bodies, are listed
+only with `--overflow` (MCP `include_overflow`) and are charged like any other byte, so
+a tight budget sheds them first.
 
 Whether 48k is the right ceiling is open (#167). The measured trade on
 react-native, all 35 cases scored twice: dropping to `--budget 8000` costs
@@ -99,13 +107,31 @@ hand-assembled `git diff` + `diffctx` bundle.
   path cannot be resolved inside the repository is dropped too.
 - **Untracked files do not appear** in it. `git diff` does not show them;
   diffctx still fragments them into the selected context as usual.
-- **Python surfaces only.** The `pip`/`pipx` CLI, the Python API
+- **Every door can ask for it.** The CLIs (`--with-raw-diff`, pack mode only; the
+  `pip`/`pipx` CLI and the standalone binary alike), the Python API
   (`build_diff_context(..., with_raw_diff=True)`) and the MCP server
-  (`diffctx_context(mode="pack", include_raw_diff=true)`) support it. The standalone
-  Rust binary (`cargo install diffctx`, `npx`, the Docker image) has no such
-  flag in this release.
+  (`diffctx_context(mode="pack", include_raw_diff=true)`) pass the same request
+  to the engine and get the same patch.
 
 Rendering per format: a fenced ` ```diff ` block under a `## Raw diff` heading
 in Markdown, a `raw_diff` block scalar in YAML, a `raw_diff` string field in
 JSON, and an indented `raw diff:` section in text — always ahead of the
 fragments.
+
+## The MCP server: `budget_tokens` and the `max_tokens` ceiling
+
+`diffctx_context` takes two numbers that mean different things. `budget_tokens`
+is what the caller asks for, with the CLI's meaning: omit it and each mode uses
+its own default — 2 000 tokens for `impact`, the auto budget above for `locate`
+and `pack` — so "under 2k tokens" holds for an impact answer through the MCP as
+it does at the command line; `-1` is unlimited and `0` leaves no fragments.
+
+`max_tokens` (default 25 000) is a ceiling on the whole reply, the notes in it
+included, and the engine holds the answer under it. A budget above it is lowered
+to it and the reply opens with a note saying so; an answer larger than the
+ceiling is cut to it the way a budget cuts it, never refused whole. Only a
+ceiling below the least an answer can say (the header and the first omitted
+name for `impact`, the change inventory for `pack`, one item per changed file for
+`locate`) sends a notice instead, naming how many tokens the answer takes. The
+raw diff, which `--budget` does not charge, counts against the ceiling: it is
+in the reply.

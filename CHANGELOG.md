@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Provenance is `diffctx.provenance.v2`: it drops `input.diff_range`, which
+  repeated `range.spec` (two more commit ids in every artifact); `base` and
+  `head` stay.
+
 - Untyped name matches (the config-to-code scan and the shared-identifier
   fallback) are one category, `key_match`, which replaces `config_generic`
   (still accepted wherever a category is typed). A name match between two
@@ -58,6 +62,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Dockerfile's `ENV` and `ARG` no longer link it to every `.env` file, and
   two Kubernetes manifests no longer link because they run the same image;
   both relations come from the typed key links.
+- Every door delivers what the engine hands it. What an empty diff exits with
+  (4) and says, the early-stop disclosure, the token summary, the redaction
+  line and the share of the raw diff are decided once, so the Python CLI and
+  the native binary word them alike: a locate run that finds nothing now names
+  the hint the other modes do, and the native binary says when it redacted a
+  secret. The Python CLI's impact and locate output goes out through the same
+  writer as pack, so a closed pipe ends it with 141 there too. The native
+  binary takes `--with-raw-diff` (pack mode only), and bundles the same patch
+  the Python CLI does.
+- The MCP tool's `max_tokens` is a ceiling the reply is fitted to, not a check
+  made after it: an answer larger than it is cut to it instead of refused, and
+  only a ceiling below the least an answer can say still sends the notice.
+  `budget_tokens` defaults to none, so each mode's own default applies as at
+  the command line: 2 000 for impact, the auto budget for locate and pack (the
+  tool said 8 000 for all three). The raw diff counts against `max_tokens`.
 
 ### Fixed
 

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
 
 fn is_clojure_file(path: &Path) -> bool {
     base::has_ext(path, &[".clj", ".cljs", ".cljc", ".edn"])
@@ -69,7 +69,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&DEFN_RE, content).collect()
 }
 
-pub struct ClojureEdgeBuilder;
+pub(crate) struct ClojureEdgeBuilder;
 
 impl EdgeBuilder for ClojureEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -85,7 +85,7 @@ impl EdgeBuilder for ClojureEdgeBuilder {
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut ns_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
         for f in &frags {
             if let Some(ns) = extract_ns(&f.content) {
                 let leaf = ns.split('.').last().unwrap_or(&ns).to_lowercase();
@@ -95,7 +95,6 @@ impl EdgeBuilder for ClojureEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -110,43 +109,16 @@ impl EdgeBuilder for ClojureEdgeBuilder {
                     base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
                 }
             }
-            for cap in CALL_RE.captures_iter(&f.content) {
-                let full = &cap[1];
-                if let Some(func) = full.split('/').last() {
-                    if self_defs.contains(func) || CLJ_KEYWORDS.contains(func) {
-                        continue;
-                    }
-                    if let Some(targets) = name_to_defs.get(&func.to_lowercase()) {
-                        add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                    }
-                }
-            }
-            for id in &f.identifiers {
-                if self_defs.contains(id) || CLJ_KEYWORDS.contains(id.as_str()) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            let calls = base::captures1(&CALL_RE, &f.content)
+                .filter_map(|full| full.rsplit('/').next().map(str::to_string))
+                .filter(|func| !CLJ_KEYWORDS.contains(func.as_str()));
+            defs.link_except(&mut edges, &f.id, calls, &self_defs, fn_w);
+            let idents = f.identifiers.iter();
+            let idents = idents.filter(|id| !CLJ_KEYWORDS.contains(id.as_str()));
+            defs.link_except(&mut edges, &f.id, idents, &self_defs, fn_w);
         }
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            is_clojure_file,
-            extract_requires,
-        )
-    }
+    discover_by_refs!(is_clojure_file, extract_requires);
 }

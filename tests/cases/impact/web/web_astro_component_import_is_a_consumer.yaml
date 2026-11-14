@@ -1,0 +1,42 @@
+name: web_astro_component_import_is_a_consumer
+mode: impact
+source: gh#597
+issue_state: open
+tags:
+- web
+- astro
+- imports
+repo:
+  initial_files:
+    src/components/Index.astro: |
+      ---
+      const { items } = Astro.props;
+      ---
+      <ul>{items.map((i) => <li>{i}</li>)}</ul>
+    src/pages/index.astro: |
+      ---
+      import Index from "../components/Index.astro";
+      ---
+      <Index items={[]} />
+    src/pages/about.astro: |
+      ---
+      ---
+      <p>about</p>
+  changed_files:
+    src/components/Index.astro: |
+      ---
+      const { items } = Astro.props;
+      ---
+      <ol>{items.map((i) => <li>{i}</li>)}</ol>
+  commit_message: Change web astro component import is a consumer
+expect:
+  relations:
+  - from: src/pages/index.astro
+    to: src/components/Index.astro
+    kind: imports
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    src/components/Index.astro:
+    - src/pages/about.astro

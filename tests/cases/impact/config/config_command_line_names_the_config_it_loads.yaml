@@ -1,0 +1,39 @@
+name: config_command_line_names_the_config_it_loads
+mode: impact
+source: gh#393
+issue_state: closed
+tags:
+- config
+- docker
+- named-by
+repo:
+  initial_files:
+    gunicorn.conf.py: |
+      workers = 2
+      bind = '0.0.0.0:8000'
+    Dockerfile: |
+      FROM python:3.12-slim
+      WORKDIR /srv
+      COPY gunicorn.conf.py .
+      COPY app.py .
+      CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
+    app.py: |
+      app = None
+    README.md: |
+      # demo
+  changed_files:
+    gunicorn.conf.py: |
+      workers = 4
+      bind = '0.0.0.0:8000'
+  commit_message: Change config command line names the config it loads
+expect:
+  relations:
+  - from: Dockerfile
+    to: gunicorn.conf.py
+    kind: references_path
+    resolution: resolved
+  exact: true
+  decoys:
+    gunicorn.conf.py:
+    - README.md
+    - app.py

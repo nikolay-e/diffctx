@@ -1,0 +1,72 @@
+name: rust_match_arm_in_a_deleted_fn_is_no_removed_member
+mode: impact
+source: gh#515
+issue_state: closed
+tags:
+- rust
+- removal
+- match
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod hook;
+      pub mod other;
+    src/hook.rs: |
+      pub struct Event {
+          pub id: u32,
+      }
+
+      impl Event {
+          pub fn new(id: u32) -> Self {
+              Event { id }
+          }
+      }
+
+      pub fn record_head(r: Result<u32, String>) -> u32 {
+          match r {
+              Ok(v) => v,
+              Err(_) => 0,
+          }
+      }
+
+      pub fn keep() -> u32 {
+          1
+      }
+    src/other.rs: |
+      pub fn handle(r: Result<u32, ()>) -> u32 {
+          match r {
+              Ok(v) => v,
+              Err(_) => 9,
+          }
+      }
+  changed_files:
+    src/hook.rs: |
+      pub struct Event {
+          pub id: u32,
+      }
+
+      impl Event {
+          pub fn new(id: u32) -> Self {
+              Event { id }
+          }
+      }
+
+      pub fn keep() -> u32 {
+          1
+      }
+  commit_message: Change rust match arm in a deleted fn is no removed member
+expect:
+  changed:
+  - src/hook.rs::record_head
+  decoys:
+    src/hook.rs::record_head:
+    - src/other.rs
+  callers:
+    record_head: []
+  removed:
+  - record_head

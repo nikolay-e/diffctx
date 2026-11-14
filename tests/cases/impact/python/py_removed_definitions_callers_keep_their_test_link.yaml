@@ -1,0 +1,37 @@
+name: py_removed_definitions_callers_keep_their_test_link
+mode: impact
+source: gh#450
+issue_state: closed
+tags: [python, removed-definition, tests-reach, import-line, smoke]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/helpers.py: |
+      def helper(x):
+          return x * 2
+
+
+      def other(x):
+          return x
+    shop/cart.py: |
+      from shop.helpers import helper
+
+
+      def total(x):
+          return helper(x)
+    tests/test_cart.py: |
+      from shop.cart import total
+
+
+      def test_total():
+          assert total(2) == 4
+  changed_files:
+    shop/helpers.py: |
+      def other(x):
+          return x
+  commit_message: "helpers: drop helper"
+expect:
+  removed: [helper]
+  relations:
+    - {from: "shop/cart.py::total", to: "shop/helpers.py::helper", kind: calls, resolution: resolved, site: 5}
+    - {from: "tests/test_cart.py", to: "shop/cart.py::total", kind: tests_reach, resolution: resolved}

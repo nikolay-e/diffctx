@@ -1,0 +1,63 @@
+name: c_call_through_a_function_pointer_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- function-pointer
+repo:
+  initial_files:
+    src/events.c: |
+      typedef int (*handler_t)(int);
+
+      static handler_t current;
+
+      static int on_event(int e)
+      {
+          return e + 1;
+      }
+
+      void setup(void)
+      {
+          current = on_event;
+      }
+
+      int fire(int e)
+      {
+          return current(e);
+      }
+  changed_files:
+    src/events.c: |
+      typedef int (*handler_t)(int);
+
+      static handler_t current;
+
+      static int on_event(int e)
+      {
+          return e + 2;
+      }
+
+      void setup(void)
+      {
+          current = on_event;
+      }
+
+      int fire(int e)
+      {
+          return current(e);
+      }
+  commit_message: Change call through a function pointer is a candidate
+expect:
+  changed:
+  - src/events.c::on_event
+  relations:
+  - from: src/events.c::setup
+    to: src/events.c::on_event
+    kind: passes_as_value
+    resolution: resolved
+    site: 12
+  - from: src/events.c::fire
+    to: src/events.c::on_event
+    kind: calls
+    resolution: candidate
+    site: 17

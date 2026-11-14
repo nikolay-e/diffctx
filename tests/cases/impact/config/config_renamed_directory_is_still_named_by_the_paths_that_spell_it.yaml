@@ -1,0 +1,28 @@
+name: config_renamed_directory_is_still_named_by_the_paths_that_spell_it
+mode: impact
+source: synthetic
+tags: [config, literal-name, directory-rename]
+repo:
+  initial_files:
+    apps/pricing/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pricing
+    argocd/pricing.yaml: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      spec:
+        source:
+          path: apps/pricing
+    scripts/render.sh: |
+      #!/bin/sh
+      kustomize build apps/pricing > out.yaml
+  renamed_files:
+    apps/pricing: apps/pricing-svc
+  commit_message: "move the pricing app"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  stale: [argocd/pricing.yaml, scripts/render.sh]

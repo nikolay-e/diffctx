@@ -9,12 +9,13 @@ use serde::{Deserialize, Serialize};
 use crate::config::bm25::BM25;
 use crate::config::tokenization::TOKENIZATION;
 use crate::discovery::DiscoveryContext;
-use crate::git;
+use crate::snapshot;
 
-// Bump whenever identifier extraction changes (regex, lowercasing, length
-// filtering): the epoch is part of the on-disk cache key, so stale entries
-// are invalidated instead of silently poisoning results.
-pub const TOKENIZER_EPOCH: u32 = 1;
+// The digest of the sources that make tokens (`build.rs`: identifier extraction,
+// its configuration, the stopword lists): it is part of the on-disk cache key,
+// so a build that tokenizes differently reads no entry of another instead of
+// silently poisoning results.
+const TOKENIZER_FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/tokens_fingerprint.in"));
 
 // Size cap for the on-disk token cache, overridable with
 // DIFFCTX_TOKEN_CACHE_MAX_BYTES (0 = unlimited). The cache is a pure speedup,
@@ -23,12 +24,12 @@ const DEFAULT_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const CACHE_SHARDS: u64 = 256;
 const SHARD_EVICTION_TARGET_FRACTION: f64 = 0.8;
 
-pub struct DocTokens {
+pub(crate) struct DocTokens {
     pub term_counts: FxHashMap<String, u32>,
     pub total_len: u32,
 }
 
-pub struct TokenCorpus {
+pub(crate) struct TokenCorpus {
     pub docs: Vec<(PathBuf, DocTokens)>,
 }
 
@@ -49,17 +50,24 @@ fn shared_min_token_length() -> usize {
 }
 
 impl TokenCorpus {
-    pub fn build(ctx: &DiscoveryContext) -> Self {
+    pub(crate) fn build(ctx: &DiscoveryContext) -> Self {
         let t0 = Instant::now();
         let min_len = shared_min_token_length();
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
         let store = TokenCacheStore::open(min_len);
         let oids = if store.is_some() {
-            match ctx.source.list_blobs(&[]) {
-                Some(Ok(blobs)) => blobs.into_iter().map(|b| (b.path, b.oid)).collect(),
-                // The working tree's ids would key another state's tokens.
-                Some(Err(_)) => FxHashMap::default(),
-                None => resolve_cacheable_oids(&ctx.root_dir),
+            if ctx.source.revision().is_none() {
+                resolve_cacheable_oids(&ctx.root_dir)
+            } else {
+                match ctx.source.list() {
+                    Ok(listing) => listing
+                        .blobs
+                        .iter()
+                        .filter_map(|b| Some((b.path.clone(), b.oid.clone()?)))
+                        .collect(),
+                    // The working tree's ids would key another state's tokens.
+                    Err(_) => FxHashMap::default(),
+                }
             }
         } else {
             FxHashMap::default()
@@ -115,10 +123,11 @@ impl TokenCorpus {
 // fall through to a direct read+tokenize, which keeps cold and warm runs
 // bit-equivalent. Any git failure disables keying entirely for the run.
 fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
-    let Ok(entries) = git::run_git_z(root_dir, &["ls-files", "-s", "-z"]) else {
+    let Ok(entries) = snapshot::run_git_z(root_dir, &["ls-files", "-s", "-z"]) else {
         return FxHashMap::default();
     };
-    let Ok(dirty_parts) = git::run_git_z(root_dir, &["diff-files", "--name-only", "-z"]) else {
+    let Ok(dirty_parts) = snapshot::run_git_z(root_dir, &["diff-files", "--name-only", "-z"])
+    else {
         return FxHashMap::default();
     };
     let dirty: FxHashSet<PathBuf> = dirty_parts
@@ -166,7 +175,7 @@ impl TokenCacheStore {
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .or_else(default_cache_root)?;
-        let dir = root.join(format!("v{TOKENIZER_EPOCH}-l{min_token_length}"));
+        let dir = root.join(format!("{TOKENIZER_FINGERPRINT:016x}-l{min_token_length}"));
         std::fs::create_dir_all(&dir).ok()?;
         Some(Self { dir })
     }
@@ -406,7 +415,7 @@ mod tests {
     }
 
     fn git(repo: &Path, args: &[&str]) {
-        let out = git::git_command(repo)
+        let out = snapshot::git_command(repo)
             .args(args)
             .env("GIT_AUTHOR_NAME", "test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")

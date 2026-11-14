@@ -1,0 +1,330 @@
+# The name is spelled in a file of the group, and every spelling is one the
+# contract explains: a comment is no occurrence, a string literal is a mention
+# and a local that shadows the name is not the definition. The answer is still
+# a clean absence. A language with no string class (shell: a word is code) has
+# no string seed.
+- name: python_comment
+  family: python
+  kind: comment
+  files:
+    shop/notes.py: |
+      # total is computed elsewhere
+
+
+      def note():
+          return 1
+- name: python_string
+  family: python
+  kind: string
+  files:
+    shop/labels.py: |
+      LABEL = "total"
+
+
+      def label():
+          return "the total"
+- name: python_local
+  family: python
+  kind: local
+  files:
+    shop/local.py: |
+      def run(items):
+          total = 0
+          for n in items:
+              total += n
+          return total
+- name: typescript_comment
+  family: typescript
+  kind: comment
+  files:
+    src/notes.ts: |
+      // total is computed elsewhere
+      export function note() {
+        return 1;
+      }
+- name: typescript_string
+  family: typescript
+  kind: string
+  files:
+    src/labels.ts: |
+      export const label = "total";
+      export const other = 'the total';
+- name: typescript_local
+  family: typescript
+  kind: local
+  files:
+    src/local.ts: |
+      export function run(items: number[]) {
+        let total = 0;
+        for (const n of items) {
+          total += n;
+        }
+        return total;
+      }
+- name: rust_comment
+  family: rust
+  kind: comment
+  files:
+    src/lib.rs: |
+      pub mod notes;
+      pub mod pricing;
+      pub mod util;
+    src/notes.rs: |
+      // total is computed elsewhere
+      pub fn note() -> i64 {
+          1
+      }
+- name: rust_string
+  family: rust
+  kind: string
+  files:
+    src/lib.rs: |
+      pub mod labels;
+      pub mod pricing;
+      pub mod util;
+    src/labels.rs: |
+      pub const LABEL: &str = "total";
+- name: rust_local
+  family: rust
+  kind: local
+  files:
+    src/lib.rs: |
+      pub mod local;
+      pub mod pricing;
+      pub mod util;
+    src/local.rs: |
+      pub fn run(items: &[i64]) -> i64 {
+          let mut total = 0;
+          for n in items {
+              total += n;
+          }
+          total
+      }
+- name: kotlin_comment
+  family: kotlin
+  kind: comment
+  files:
+    src/main/kotlin/shop/Notes.kt: |
+      package shop
+
+      // total is computed elsewhere
+      fun note(): Int {
+          return 1
+      }
+- name: kotlin_string
+  family: kotlin
+  kind: string
+  files:
+    src/main/kotlin/shop/Labels.kt: |
+      package shop
+
+      val label = "total"
+- name: kotlin_local
+  family: kotlin
+  kind: local
+  files:
+    src/main/kotlin/shop/Local.kt: |
+      package shop
+
+      fun run(items: List<Int>): Int {
+          var total = 0
+          for (n in items) {
+              total += n
+          }
+          return total
+      }
+- name: java_comment
+  family: java
+  kind: comment
+  files:
+    src/main/java/shop/Notes.java: |
+      package shop;
+
+      // total is computed elsewhere
+      public class Notes {
+          public static int note() {
+              return 1;
+          }
+      }
+- name: java_string
+  family: java
+  kind: string
+  files:
+    src/main/java/shop/Labels.java: |
+      package shop;
+
+      public class Labels {
+          public static final String LABEL = "total";
+      }
+- name: java_local
+  family: java
+  kind: local
+  files:
+    src/main/java/shop/Local.java: |
+      package shop;
+
+      public class Local {
+          public static int run(int[] items) {
+              int total = 0;
+              for (int n : items) total += n;
+              return total;
+          }
+      }
+- name: go_comment
+  family: go
+  kind: comment
+  files:
+    notes/notes.go: |
+      package notes
+
+      // Total is computed elsewhere
+      func Note() int {
+          return 1
+      }
+- name: go_string
+  family: go
+  kind: string
+  files:
+    labels/labels.go: |
+      package labels
+
+      const Label = "Total"
+
+      const Raw = `the Total`
+- name: go_local
+  family: go
+  kind: local
+  files:
+    local/local.go: |
+      package local
+
+      func Run(items []int) int {
+          Total := 0
+          for _, n := range items {
+              Total += n
+          }
+          return Total
+      }
+- name: php_comment
+  family: php
+  kind: comment
+  files:
+    src/Notes.php: |
+      <?php
+
+      namespace Shop;
+
+      // total is computed elsewhere
+      class Notes
+      {
+          public static function note(): int
+          {
+              return 1;
+          }
+      }
+- name: php_string
+  family: php
+  kind: string
+  files:
+    src/Labels.php: |
+      <?php
+
+      namespace Shop;
+
+      class Labels
+      {
+          public const LABEL = 'total';
+      }
+- name: php_local
+  family: php
+  kind: local
+  files:
+    src/Local.php: |
+      <?php
+
+      namespace Shop;
+
+      class Local
+      {
+          public static function run(array $items): int
+          {
+              $total = 0;
+              foreach ($items as $n) {
+                  $total += $n;
+              }
+              return $total;
+          }
+      }
+- name: c_comment
+  family: c
+  kind: comment
+  files:
+    src/notes.c: |
+      /* total is computed elsewhere */
+      int note(void)
+      {
+          return 1;
+      }
+- name: c_string
+  family: c
+  kind: string
+  files:
+    src/labels.c: |
+      const char *label = "total";
+- name: c_local
+  family: c
+  kind: local
+  files:
+    src/local.c: |
+      int run(const int *items, int n)
+      {
+          int total = 0;
+          for (int i = 0; i < n; i++) {
+              total += items[i];
+          }
+          return total;
+      }
+- name: shell_comment
+  family: shell
+  kind: comment
+  files:
+    scripts/labels.sh: |
+      # total is computed elsewhere
+      echo labels
+- name: shell_local
+  family: shell
+  kind: local
+  files:
+    scripts/local.sh: |
+      run() {
+        local total=0
+        total=$((total + 1))
+        echo "$total"
+      }
+- name: swift_comment
+  family: swift
+  kind: comment
+  files:
+    Sources/Shop/Notes.swift: |
+      // total is computed elsewhere
+      func note() -> Int {
+          return 1
+      }
+- name: swift_string
+  family: swift
+  kind: string
+  files:
+    Sources/Shop/Labels.swift: |
+      let label = "total"
+- name: swift_local
+  family: swift
+  kind: local
+  files:
+    Sources/Shop/Local.swift: |
+      func run(_ items: [Int]) -> Int {
+          var total = 0
+          for n in items {
+              total += n
+          }
+          return total
+      }

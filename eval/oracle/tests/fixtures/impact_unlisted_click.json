@@ -1,0 +1,234 @@
+{
+ "coverage": {
+  "scope": {
+   "complete": true
+  }
+ },
+ "definitions": [
+  {
+   "change": {
+    "delta": {
+     "body": true,
+     "decorators": false,
+     "doc": false,
+     "signature": false,
+     "visibility": false
+    },
+    "kind": "edited"
+   },
+   "coverage": {
+    "calls": {
+     "complete": true
+    },
+    "reads": {
+     "complete": true
+    }
+   },
+   "kind": "function",
+   "lines": "3355-3420",
+   "path": "src/click/core.py",
+   "rows": [
+    {
+     "class": "call",
+     "folded_by": "untyped-receiver",
+     "guard": {
+      "also": [
+       {
+        "name": "test_chaining_help",
+        "test": "tests/test_chain.py"
+       },
+       {
+        "name": "test_subcommand_metavar_marks_optional",
+        "test": "tests/test_commands.py"
+       }
+      ],
+      "name": "test_basic_group",
+      "state": "linked",
+      "test": "tests/test_basic.py"
+     },
+     "lines": "2356-2438",
+     "path": "src/click/core.py",
+     "reason": "dispatch",
+     "sites": [
+      2386
+     ],
+     "standing": "candidate",
+     "symbol": "__init__"
+    }
+   ],
+   "shed": {},
+   "symbol": "_parse_decls"
+  },
+  {
+   "change": {
+    "delta": {
+     "body": true,
+     "decorators": false,
+     "doc": false,
+     "signature": false,
+     "visibility": false
+    },
+    "kind": "edited"
+   },
+   "coverage": {
+    "calls": {
+     "complete": true
+    },
+    "reads": {
+     "complete": true
+    }
+   },
+   "kind": "function",
+   "lines": "3862-3881",
+   "path": "src/click/core.py",
+   "rows": [
+    {
+     "class": "call",
+     "folded_by": "untyped-receiver",
+     "guard": {
+      "also": [
+       {
+        "name": "test_chaining_help",
+        "test": "tests/test_chain.py"
+       },
+       {
+        "name": "test_subcommand_metavar_marks_optional",
+        "test": "tests/test_commands.py"
+       }
+      ],
+      "name": "test_basic_group",
+      "state": "linked",
+      "test": "tests/test_basic.py"
+     },
+     "lines": "2356-2438",
+     "path": "src/click/core.py",
+     "reason": "dispatch",
+     "sites": [
+      2386
+     ],
+     "standing": "candidate",
+     "symbol": "__init__"
+    }
+   ],
+   "shed": {},
+   "symbol": "_parse_decls"
+  }
+ ],
+ "empty": false,
+ "fit": {
+  "cap": 2000,
+  "needs": 900
+ },
+ "inventory": {
+  "changed": {
+   "items": [
+    "CHANGES.md",
+    "docs/upgrade-guides.md",
+    "src/click/core.py",
+    "tests/test_arguments.py",
+    "tests/test_deprecations.py",
+    "tests/test_options.py"
+   ],
+   "total": 6
+  }
+ },
+ "name": "click",
+ "named": {
+  "by_path": {
+   "items": [
+    {
+     "class": "config",
+     "line": 73,
+     "path": "pyproject.toml",
+     "target": "CHANGES.md"
+    },
+    {
+     "class": "code",
+     "line": 977,
+     "path": "tests/test_arguments.py",
+     "target": "tests/test_options.py"
+    },
+    {
+     "class": "code",
+     "line": 402,
+     "path": "tests/test_basic.py",
+     "target": "tests/test_options.py"
+    },
+    {
+     "class": "code",
+     "line": 43,
+     "path": "tests/test_defaults.py",
+     "target": "tests/test_options.py"
+    },
+    {
+     "class": "code",
+     "line": 73,
+     "path": "tests/test_defaults.py",
+     "target": "tests/test_arguments.py"
+    },
+    {
+     "class": "code",
+     "line": 271,
+     "path": "tests/test_options.py",
+     "target": "tests/test_arguments.py"
+    }
+   ],
+   "total": 8
+  }
+ },
+ "provenance": {
+  "engine": {
+   "name": "diffctx",
+   "version": "2.0.0-dev.0"
+  }
+ },
+ "range": {
+  "commits": 1,
+  "kind": "committed",
+  "spec": "b90faad1788bc030bb3320938f07c9189f42d7d0~1..b90faad1788bc030bb3320938f07c9189f42d7d0"
+ },
+ "schema": "diffctx.impact.v2",
+ "summary": {
+  "callers": {
+   "exact": true,
+   "n": 0
+  },
+  "definitions": 2,
+  "files": 6,
+  "folded": 0,
+  "possible": 2,
+  "shed": 0,
+  "traced": 71,
+  "untested_callers": 0
+ },
+ "tests": {
+  "definitions_without_link": {
+   "exact": true,
+   "n": 3
+  },
+  "hops": 2,
+  "known": true
+ },
+ "unlisted": {
+  "called_in_diff": {
+   "items": [
+    {
+     "lines": "108-125",
+     "path": "src/click/core.py",
+     "symbol": "_outside_click_stacklevel"
+    },
+    {
+     "lines": "2482-2517",
+     "path": "src/click/core.py",
+     "symbol": "_check_name_is_usable"
+    },
+    {
+     "lines": "3335-3353",
+     "path": "src/click/core.py",
+     "symbol": "_check_name_is_normalized"
+    }
+   ],
+   "total": 3
+  }
+ }
+}

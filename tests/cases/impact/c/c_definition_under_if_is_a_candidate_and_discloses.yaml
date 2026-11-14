@@ -1,0 +1,52 @@
+name: c_definition_under_if_is_a_candidate_and_discloses
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- conditional
+- absence-claim
+repo:
+  initial_files:
+    src/plat.c: |
+      #ifdef WIN
+      int plat(void)
+      {
+          return 1;
+      }
+      #else
+      int plat(void)
+      {
+          return 2;
+      }
+      #endif
+    src/main.c: |
+      int plat(void);
+
+      int main(void)
+      {
+          return plat();
+      }
+  changed_files:
+    src/plat.c: |
+      #ifdef WIN
+      int plat(void)
+      {
+          return 1;
+      }
+      #else
+      int plat(void)
+      {
+          return 3;
+      }
+      #endif
+  commit_message: Change definition under if is a candidate and discloses
+expect:
+  relations:
+  - from: src/main.c::main
+    to: src/plat.c::plat
+    kind: calls
+    resolution: candidate
+    site: 5
+  discloses: true
+  no_negative_claims: true

@@ -1,0 +1,62 @@
+name: kotlin_method_and_its_caller_change_in_one_range
+mode: impact
+source: gh#687
+issue_state: open
+tags:
+- kotlin
+- in-diff-callers
+- unknowns
+repo:
+  initial_files:
+    src/main/kotlin/demo/Copier.kt: |
+      package demo
+
+      object Copier {
+          fun copy(chunks: List<Int>): Int {
+              var sent = 0
+              for (c in chunks) sent += c
+              return sent
+          }
+      }
+  changed_files:
+    src/main/kotlin/demo/Copier.kt: |
+      package demo
+
+      object Copier {
+          fun copy(chunks: List<Int>, throttle: Throttle? = null): Int {
+              var sent = 0
+              for (c in chunks) {
+                  throttle?.admit(c)
+                  sent += c
+              }
+              return sent
+          }
+      }
+    src/main/kotlin/demo/Throttle.kt: |
+      package demo
+
+      class Throttle(
+          private val perSecond: Double,
+          private val burst: Long,
+          private val nanoTime: () -> Long = System::nanoTime,
+          private val sleepMillis: (Long) -> Unit = { Thread.sleep(it) },
+      ) {
+          private var permits = burst.toDouble()
+          private var refilledAt = nanoTime()
+
+          fun admit(bytes: Int) {
+              permits -= bytes
+              if (permits < 0) sleepMillis(1)
+              refilledAt = nanoTime()
+          }
+
+          companion object {
+              const val MULTIPLE = 3
+
+              fun forRate(bytesPerSecond: Double?): Throttle? =
+                  bytesPerSecond?.let { Throttle(it * MULTIPLE, 1024) }
+          }
+      }
+  commit_message: Change kotlin method and its caller change in one range
+expect:
+  unknowns: {}

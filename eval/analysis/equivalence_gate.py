@@ -39,6 +39,11 @@ def load_run(d: Path) -> dict[str, dict]:
                     "used_tokens": r.get("used_tokens"),
                     "file_recall": float(r.get("file_recall") or 0.0),
                     "file_precision": float(r.get("file_precision") or 0.0),
+                    "instance_id": r["instance_id"],
+                    "line_recall": r.get("line_recall"),
+                    "nontrivial_file_recall": ex.get("nontrivial_file_recall"),
+                    "language": ex.get("language"),
+                    "engine_version": ex.get("engine_version"),
                 }
     return out
 

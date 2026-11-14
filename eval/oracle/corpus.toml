@@ -1,0 +1,218 @@
+# The oracle's corpus (T10): public repositories under permissive licences, each pinned at a commit.
+# Pins were read with `git ls-remote <url> HEAD` on 2026-10-31; licences from the hosting API.
+# Indexers are pinned in tools/package.json (npm, with integrity hashes in tools/package-lock.json).
+
+[sampling]
+# The fresh seed (Revision 18, C4): one draw of the operating system's CSPRNG on 2026-11-13, used by nothing before. The
+# earlier seeds were 20261031 (every commit its runs sampled is in spent_commits.txt) and 20261112 (index-only rounds that
+# chose the repositories below read its first commits' exclusions, so it would be a tuning set). A new seed is drawn after
+# a defect is fixed from a row the previous draw produced, never before.
+seed = 753568482
+spent = "spent_commits.txt"  # commits never drawn again
+fast_commits = 10  # sampled commits per repository for the `oracle` label
+history = 800      # commits back from the pin the sample is drawn from
+max_code_files = 12  # a commit touching more code files says little about one definition
+definitions_per_repo = 40  # `--symbol` queries per repository
+
+# Sampled commits per language, split evenly over its repositories. Sized per (language, mode, relation) cell from the
+# paired intervals of the earlier runs: n = n0 * (w0 / 0.20)^2, capped to one quiet machine's eight hours (886 commits,
+# 6.56 h of 6.8 h). Go is sized from its measured index time (3.74 s per commit) and usable share (0.986).
+[sampling.commits]
+python = 132
+typescript = 345
+rust = 48
+kotlin = 48
+go = 205
+java = 108
+
+[completeness]
+min_file_ratio = 0.9  # an index covering fewer present code files than this is incomplete
+
+[timeouts]
+index_seconds = 1800
+diffctx_seconds = 300
+
+# Release binaries, each pinned by version and a SHA-256 per build (the digest GitHub reports for the asset).
+# scip v0.10.0, read 2026-10-31 from the GitHub releases API; the project moved from the sourcegraph to the scip-code
+# organisation in 2026, and on 2026-11-06 the release page there listed the same four digests (the darwin-arm64
+# archive downloaded from the new URL hashes to the pinned value). rust-analyzer 2026-10-26 (weekly stable) and
+# scip-java v0.14.1 (2026-11-05), read from the GitHub releases API.
+
+[tools.scip]
+version = "0.10.0"
+url = "https://github.com/scip-code/scip/releases/download/v{version}/scip-{platform}.tar.gz"
+platforms = "os-arch"
+archive = "tar.gz"
+
+[tools.scip.sha256]
+darwin-amd64 = "e1d5eb355e5fcfc1c6d6479dd94cb9334c24262a34e38ff514dd5a2231b779ec"  # pragma: allowlist secret
+darwin-arm64 = "7ea200390e0790b3da8999b7b1cd4e3597700dcb3d354911872523bfe0090779"  # pragma: allowlist secret
+linux-amd64 = "eeb28ebbff443c01609fb1691809958f3f0c7a8651af689a5bc8560061cd8ab0"  # pragma: allowlist secret
+linux-arm64 = "6ab677dc2c4bf2955975d0530766152e45daaa988f9404068d8adecacd0bb24c"  # pragma: allowlist secret
+
+[tools.rust-analyzer]
+version = "2026-10-26"
+url = "https://github.com/rust-lang/rust-analyzer/releases/download/{version}/rust-analyzer-{platform}.gz"
+platforms = "triple"
+archive = "gz"
+
+[tools.rust-analyzer.sha256]
+aarch64-apple-darwin = "8fb90cb58f5910d8d8b24ac1a93cca49f053365cbf0eb3c682144ad0a0027dcf"  # pragma: allowlist secret
+aarch64-unknown-linux-gnu = "1b225c4c9ae329ca96e8a75a5bbcb5562a7f1d25c57c8b55d3e02299a3dbe836"  # pragma: allowlist secret
+x86_64-apple-darwin = "b3e4904877bcf7013a4a342c449cff1bf0ea0b91d5a1a30ac8df3d32142519c0"  # pragma: allowlist secret
+x86_64-unknown-linux-gnu = "4c83773525f93b636ed79761389568b4d2a89c05fa7ecc440245032d49ad80ce"  # pragma: allowlist secret
+
+[tools.scip-go]
+version = "0.2.9"
+url = "https://github.com/scip-code/scip-go/releases/download/v{version}/scip-go-{platform}.tar.gz"
+platforms = "os-arch"
+archive = "tar.gz"
+
+[tools.scip-go.sha256]
+darwin-arm64 = "3d8a0c14d0617debcf0c38debe4532d201c89c38a85eaac641da2200bb36d68f"  # pragma: allowlist secret
+linux-amd64 = "4ec4e45ecdbe6f43055ed555254e049f46f28389ade438db3d59679651fa1292"  # pragma: allowlist secret
+linux-arm64 = "81a196420b1ee64a8820a59287f4bb9cab1849bc3d4e13c97a3130f75d8540fd"  # pragma: allowlist secret
+
+[tools.scip-java]
+version = "0.14.1"
+url = "https://github.com/scip-code/scip-java/releases/download/v{version}/scip-java-v{version}"
+platforms = "any"
+archive = "file"
+
+[tools.scip-java.sha256]
+any = "06be799e2d9914e142ede285bb21c0f077e9ea84b6a835c90893c2fb048eeb53"  # pragma: allowlist secret
+
+[[repo]]
+name = "click"
+url = "https://github.com/pallets/click.git"
+language = "python"
+license = "BSD-3-Clause"
+sha = "2247b35ea1c47c727d7a06e51fa280e12a863ff6"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "httpx"
+url = "https://github.com/encode/httpx.git"
+language = "python"
+license = "BSD-3-Clause"
+sha = "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "rich"
+url = "https://github.com/Textualize/rich.git"
+language = "python"
+license = "MIT"
+sha = "9d8f9a372cc5916fd4781fec207ced7ddac2f08f"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "got"
+url = "https://github.com/sindresorhus/got.git"
+language = "typescript"
+license = "MIT"
+sha = "6b5aafc1cd538998728be6f45c65b0f80bae01b2"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "hono"
+url = "https://github.com/honojs/hono.git"
+language = "typescript"
+license = "MIT"
+sha = "17ad0e21f5a91c939eeafa3df05793a8ea60f016"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "express"
+url = "https://github.com/expressjs/express.git"
+language = "typescript"
+flavor = "javascript"
+license = "MIT"
+sha = "1c6f1b0fe4000977b9a7b4f34097e4d527dd9824"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "fd"
+url = "https://github.com/sharkdp/fd.git"
+language = "rust"
+license = "Apache-2.0 OR MIT"
+sha = "8b14e8dc5f1bd8c2656d735e80f1e6335b335bbf"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "hyperfine"
+url = "https://github.com/sharkdp/hyperfine.git"
+language = "rust"
+license = "Apache-2.0 OR MIT"
+sha = "c5161524980522320c7d3425e714cc0965a869a5"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "kotlinpoet"
+url = "https://github.com/square/kotlinpoet.git"
+language = "kotlin"
+license = "Apache-2.0"
+sha = "d67e333d682de65620bf82c46c5b41038e1e450f"  # pragma: allowlist secret gitleaks:allow
+
+# hoplite is out: 19 of the 24 commits sampled from it (and 22 of jackson-annotations', 12 of jackson-core's) were excluded
+# by commit age (a Gradle or JDK level JDK 21 cannot run, a SNAPSHOT parent no longer published), above the 20 % the C3 rule
+# allows. Replacements: the first Kotlin and Java libraries a git-only prediction put at or below 20 % (`p5/index`), by the
+# order fixed before any of them was looked at.
+
+[[repo]]
+name = "github-workflows-kt"
+url = "https://github.com/typesafegithub/github-workflows-kt.git"
+language = "kotlin"
+license = "Apache-2.0"
+sha = "e3056235acd5fc543c20da0022fa41af226522d2"  # pragma: allowlist secret gitleaks:allow
+
+# Go repositories, chosen by Revision 18's C3 in a fixed order before any engine answer on them: more than 20 % of the
+# commits sampled from chi, cobra and testify were excluded before `go.mod` (no module file, nothing indexed). An index-only
+# round over each candidate measured the share: gin 0/24, urfave/cli 0/24, go-toml 1/24 (fasthttp 20/24 and lo 5/24 were
+# out: files built for another OS, a nested module). On the fresh seed's whole draw, 68 commits per repository, go-toml
+# predicts 20 excluded (29.4 %): the window reaches Go v1 history without a module file. It is replaced by echo, the first
+# entry of the list written before the run (`p5/index/GO_REPLACEMENTS.md`: echo 16.2 %, then tablewriter 17.6 %).
+
+[[repo]]
+name = "gin"
+url = "https://github.com/gin-gonic/gin.git"
+language = "go"
+license = "MIT"
+sha = "0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "cli"
+url = "https://github.com/urfave/cli.git"
+language = "go"
+license = "MIT"
+sha = "d5c06cb04479eeacbbb9378ea26261b6be516320"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "echo"
+url = "https://github.com/labstack/echo.git"
+language = "go"
+license = "MIT"
+sha = "53cdb2be42cccf61da4a9c6efefb769c4daac0e5"  # pragma: allowlist secret gitleaks:allow
+
+# Java is indexed by scip-java through the repository's Maven build, which runs in a container (see runners.py).
+# gson (Error Prone's flags) and javapoet (enforcer rules) do not build under scip-java's compiler plugin, and
+# commons-lang and commons-io build without producing an index: these three index. jackson-core and jackson-annotations
+# are out (see the Kotlin note above); github-api and HikariCP replace them.
+
+[[repo]]
+name = "jsoup"
+url = "https://github.com/jhy/jsoup.git"
+language = "java"
+license = "MIT"
+sha = "d90d57521d931db7bf7ee464a4c0a1a9293db088"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "github-api"
+url = "https://github.com/hub4j/github-api.git"
+language = "java"
+license = "MIT"
+sha = "1e029e3946a4cae0af347355b0c097dd732490ea"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "HikariCP"
+url = "https://github.com/brettwooldridge/HikariCP.git"
+language = "java"
+license = "Apache-2.0"
+sha = "a4d93f4f85517f90e632b795486d7102e933d7ff"  # pragma: allowlist secret gitleaks:allow

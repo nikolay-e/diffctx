@@ -1,0 +1,51 @@
+name: cpp_removed_field_read_in_the_middle_of_a_chain_is_not_absent
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [cpp, removed-definition, absence-claim, chain]
+repo:
+  initial_files:
+    src/err.hpp: |
+      struct Req {
+          const char *url;
+      };
+
+      struct ApiError {
+          Req *request;
+          int code;
+      };
+    src/report.cpp: |
+      #include "err.hpp"
+
+      const char *describe(ApiError *e)
+      {
+          return e->request->url;
+      }
+
+      const char *loose(void *p)
+      {
+          return p->request->url;
+      }
+  changed_files:
+    src/err.hpp: |
+      struct Req {
+          const char *url;
+      };
+
+      struct ApiError {
+          int code;
+      };
+  commit_message: "drop the request field"
+expect:
+  removed: [src/err.hpp::request]
+  relations:
+  - from: src/report.cpp::describe
+    to: src/err.hpp::request
+    kind: reads
+    resolution: resolved
+  - from: src/report.cpp::loose
+    to: src/err.hpp::request
+    kind: reads
+    resolution: candidate
+  exact: false
+  never_empty: true

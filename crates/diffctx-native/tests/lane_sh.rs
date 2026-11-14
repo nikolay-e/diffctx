@@ -8,13 +8,13 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 mod support;
-use support::{diffctx, repo_steps, set};
+use support::{NO_WALL_DEADLINE, diffctx, repo_steps, set};
 
 fn run(repo: &Path, args: &[&str]) -> serde_json::Value {
     let out = diffctx()
         .current_dir(repo)
         .args(args)
-        .args(["-q", "-f", "json", "--timeout", "600"])
+        .args(["-q", "-f", "json", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(
@@ -34,7 +34,7 @@ fn symbol(repo: &Path, name: &str) -> serde_json::Value {
 }
 
 fn changed<'a>(out: &'a serde_json::Value, path: &str, name: &str) -> &'a serde_json::Value {
-    out["changed"]
+    out["definitions"]
         .as_array()
         .expect("changed")
         .iter()
@@ -45,7 +45,7 @@ fn changed<'a>(out: &'a serde_json::Value, path: &str, name: &str) -> &'a serde_
 /// The callers listed under `path::name`: `path::symbol`, or `path@sites`
 /// for one without a name, `possibly … (reason)` for a candidate.
 fn callers(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> {
-    changed(out, path, name)["callers"]
+    changed(out, path, name)["rows"]
         .as_array()
         .expect("callers")
         .iter()
@@ -61,7 +61,7 @@ fn callers(out: &serde_json::Value, path: &str, name: &str) -> BTreeSet<String> 
                     format!("{file}@{}", sites.join(","))
                 }
             };
-            match c["evidence"].as_str() {
+            match c["standing"].as_str() {
                 Some("candidate") => format!("possibly {at} ({})", c["reason"].as_str().unwrap()),
                 _ => at,
             }
@@ -272,7 +272,7 @@ fn calls_inside_compound_commands_are_callers() {
         );
     }
     assert!(
-        out["changed"]
+        out["definitions"]
             .as_array()
             .unwrap()
             .iter()
@@ -280,7 +280,7 @@ fn calls_inside_compound_commands_are_callers() {
         "{out:#}"
     );
     assert!(
-        out["unanalysed_files"]
+        out["coverage"]["unanalysed"]["items"]
             .as_array()
             .is_none_or(|u| u.iter().all(|f| f["path"] != "bin/call")),
         "an extensionless script read whole is no unanalysed file: {out:#}"
@@ -311,11 +311,12 @@ fn calls_inside_compound_commands_are_callers() {
     );
 }
 
-/// #521: tree-sitter-bash breaks on an escaped quote in `"${VAR:=…}"`, and
-/// every name the script spelled became a hedge. The broken span is local:
-/// a name in an `echo` argument after it was read; one inside it was not.
+/// #521: tree-sitter-bash breaks on an escaped quote in `"${VAR:=…}"`. By the
+/// plan (Rev 17 phase 1: any loss takes a file out of "bound") a broken file
+/// that spells the name is hedged, wherever on its lines the name stands; a
+/// broken file that does not spell it, and a file that parses, are not.
 #[test]
-fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
+fn a_broken_file_is_hedged_when_it_spells_the_name_and_not_otherwise() {
     let tmp = repo_steps(&[
         &[
             ("lib.sh", "helper() {\n  echo one\n}\n"),
@@ -331,6 +332,10 @@ fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
                 "c.sh",
                 "#!/bin/bash\n: \"${SEL:=a[x=\\\"t\\\"], helper[y=\\\"u\\\"]}\"\n",
             ),
+            (
+                "d.sh",
+                "#!/bin/bash\n: \"${SEL:=input[type=\\\"text\\\"], input[type=\\\"email\\\"]}\"\necho \"$SEL\"\n",
+            ),
         ],
         &[("lib.sh", "helper() {\n  echo two\n}\n")],
     ]);
@@ -339,7 +344,7 @@ fn a_broken_parse_hedges_only_the_names_it_could_not_read() {
         .as_array()
         .map(|m| m.iter().filter_map(|f| f["path"].as_str()).collect())
         .unwrap_or_default();
-    assert_eq!(missed, ["c.sh"], "{out:#}");
+    assert_eq!(missed, ["a.sh", "c.sh"], "{out:#}");
 }
 
 const V1: &str = "CREATE SCHEMA lib;\n\nCREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER\nLANGUAGE plpgsql AS $$\nDECLARE\n  n INTEGER;\nBEGIN\n  UPDATE books SET refreshed = now() WHERE album = target_album;\n  GET DIAGNOSTICS n = ROW_COUNT;\n  RETURN n;\nEND;\n$$;\n";
@@ -387,12 +392,14 @@ fn sql_routines_and_views_are_definitions_with_callers() {
             "{query}: {out:#}"
         );
         assert!(
-            out["contracts"].as_array().is_none_or(Vec::is_empty),
+            out["contracts"]["items"]
+                .as_array()
+                .is_none_or(Vec::is_empty),
             "a query changes no schema: {out:#}"
         );
     }
     let view = symbol(tmp.path(), "book_view");
-    let referenced: Vec<&str> = changed(&view, "db/V5__view.sql", "book_view")["callers"]
+    let referenced: Vec<&str> = changed(&view, "db/V5__view.sql", "book_view")["rows"]
         .as_array()
         .unwrap()
         .iter()

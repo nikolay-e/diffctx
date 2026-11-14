@@ -33,9 +33,11 @@ check() {
 draft=$(gh release view "v${VERSION}" --repo "$REPO" --json isDraft --jq '.isDraft' 2>/dev/null || echo "missing")
 check "GitHub Release v${VERSION} isDraft" "false" "$draft"
 check "release tags off main" "" "$(bash .github/scripts/release-tags.sh | paste -sd' ' -)"
-unpublished=$(for tag in $(git tag -l 'v*'); do
-  [[ "$(gh release view "$tag" --repo "$REPO" --json isDraft --jq '.isDraft' 2>/dev/null)" = false ]] || echo "$tag"
-done | paste -sd' ' -)
+if unpublished=$(bash .github/scripts/unpublished-release-tags.sh); then
+  unpublished=$(printf '%s\n' "$unpublished" | paste -sd' ' -)
+else
+  unpublished="check failed"
+fi
 check "release tags without a published release" "" "$unpublished"
 
 assets=$(sed -nE "s/.*target: '([^']+)', archive: '([^']+)'.*/diffctx-${VERSION}-\1.\2/p" packaging/npm/install.js | sort)
@@ -48,10 +50,19 @@ check "packaging/npm/checksums.json keys = install.js targets" "$(printf '%s\n' 
 
 latest=$(curl --proto =https --proto-redir =https -fsS https://pypi.org/pypi/diffctx/json | jq -r '.info.version' || true)
 check "PyPI latest" "$VERSION" "$latest"
-pypi_files=$(curl --proto =https --proto-redir =https -fsS "https://pypi.org/pypi/diffctx/${VERSION}/json" | jq -r '.urls[].filename' || true)
+release=$(curl --proto =https --proto-redir =https -fsS "https://pypi.org/pypi/diffctx/${VERSION}/json" || true)
+pypi_files=$(printf '%s' "$release" | jq -r '.urls[].filename' 2>/dev/null || true)
+# The abi3 wheel carries the floor the checked release declared, not the one main declares now.
+requires_python=$(printf '%s' "$release" | jq -r '.info.requires_python // empty' 2>/dev/null || true)
+abis=(cp314-cp314t)
+if [[ "$requires_python" =~ ^\>=3\.([0-9]+)(,.*)?$ ]]; then
+  abis=("cp3${BASH_REMATCH[1]}-abi3" "${abis[@]}")
+else
+  check "PyPI requires_python of ${VERSION} names a >=3.N floor" "parsed" "unparsed '${requires_python}'"
+fi
 for platform in manylinux_2_28_x86_64 manylinux_2_28_aarch64 'macosx_[0-9_]+_arm64' 'macosx_[0-9_]+_x86_64' \
   win_amd64 win_arm64; do
-  for abi in cp310-abi3 cp314-cp314t; do
+  for abi in "${abis[@]}"; do
     have=$(printf '%s\n' "$pypi_files" | grep -cE "^diffctx-${VERSION}-${abi}-${platform}\.whl$" || true)
     check "PyPI ${abi} wheel ${platform}" "1" "$have"
   done

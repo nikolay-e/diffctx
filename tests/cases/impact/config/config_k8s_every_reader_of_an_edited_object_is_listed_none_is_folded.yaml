@@ -1,0 +1,90 @@
+name: config_k8s_every_reader_of_an_edited_object_is_listed_none_is_folded
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- no-fold
+- configmap
+repo:
+  initial_files:
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: shared
+      data:
+        mode: fast
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                envFrom:
+                  - configMapRef:
+                      name: shared
+    k8s/worker.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                envFrom:
+                  - configMapRef:
+                      name: shared
+    k8s/nightly.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: nightly
+      spec:
+        schedule: "0 3 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: job
+                    env:
+                      - name: MODE
+                        valueFrom:
+                          configMapKeyRef:
+                            name: shared
+                            key: mode
+  changed_files:
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: shared
+      data:
+        mode: slow
+  commit_message: Change config k8s every reader of an edited object is listed none is folded
+expect:
+  relations:
+  - from: k8s/web.yaml
+    to: k8s/configmap.yaml
+    kind: reads
+    resolution: resolved
+    site: 12
+  - from: k8s/worker.yaml
+    to: k8s/configmap.yaml
+    kind: reads
+    resolution: resolved
+    site: 12
+  - from: k8s/nightly.yaml
+    to: k8s/configmap.yaml
+    kind: reads
+    resolution: resolved
+    site: 17
+  exact: true

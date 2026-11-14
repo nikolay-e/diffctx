@@ -1,0 +1,44 @@
+name: gh293_fetch_call_site_links_to_the_route_handler_it_hits
+mode: impact
+source: gh#293
+issue_state: open
+tags:
+- python
+- typescript
+- http
+- route
+repo:
+  initial_files:
+    api/main.py: |
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+
+      @app.get("/api/items")
+      def list_items():
+          return [{"id": 1}]
+    web/items.ts: |
+      export async function loadItems(): Promise<unknown> {
+        const res = await fetch("/api/items");
+        return res.json();
+      }
+  changed_files:
+    api/main.py: |
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+
+      @app.get("/api/items")
+      def list_items():
+          return {"items": [{"id": 1}]}
+  commit_message: change
+expect:
+  relations:
+  - from: web/items.ts::loadItems
+    to: api/main.py::list_items
+    kind: calls
+    resolution: candidate
+    site: 2
+  exact: false

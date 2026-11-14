@@ -4,41 +4,31 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::pipeline::{ScoredState, SelectionOutcome};
-use crate::provenance::{incoming_attribution, seed_hops};
+use crate::answer::envelope::{self, Inventory};
+use crate::answer::v2::{Fit, Listing, Range};
+use crate::run_provenance::state::{
+    ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files, incoming_attribution,
+    seed_hops,
+};
 use crate::types::{Fragment, FragmentId};
 
-pub const LOCATE_SCHEMA: &str = "diffctx.locate.v1";
+pub const LOCATE_SCHEMA: &str = "diffctx.locate.v2";
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct LocateOutput {
     pub schema: &'static str,
     pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub commit_message: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub commit_messages: Vec<String>,
-    /// Commits in the range when that is more than `commit_messages` lists.
-    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
-    pub commit_count: usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub changed_files: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deleted_files: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub renamed_files: Vec<RenameEntry>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub lockfile_changes: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub ignored_changes: Vec<String>,
-    #[serde(skip_serializing_if = "crate::render::is_zero", default)]
-    pub policy_excluded_count: usize,
-    pub budget_tokens: u32,
+    /// The range, and the newest of its commits' messages (sanitized: the one free
+    /// text locate prints).
+    pub range: Range,
+    #[serde(default, skip_serializing_if = "Inventory::is_empty")]
+    pub inventory: Inventory,
+    /// The budget the list was cut to, and what that cost it.
+    pub fit: Fit,
     /// Blast-radius counts over the ranked items (#135): distinct files,
     /// changed vs context fragments, and how many ranked items (changed or
     /// context) are tests.
     pub summary: Summary,
-    pub item_count: usize,
     pub items: Vec<LocateItem>,
     /// What the run could NOT see or could not fit (#136).
     ///
@@ -48,28 +38,45 @@ pub struct LocateOutput {
     #[serde(default, skip_serializing_if = "Coverage::is_clean")]
     pub coverage: Coverage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
-    /// Ranked candidates that did not fit `budget_tokens`, without bodies.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub overflow: Vec<OverflowItem>,
-    /// True total behind `overflow`, which is capped at `MAX_OVERFLOW_ITEMS`.
-    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
-    pub overflow_count: usize,
+    pub provenance: Option<crate::run_provenance::Provenance>,
+    /// Ranked candidates the budget left behind. The count is always stated; the
+    /// entries, without bodies, only when asked for (`--overflow`), and then they
+    /// are charged to the budget like every other byte.
+    #[serde(default, skip_serializing_if = "Listing::is_empty")]
+    pub overflow: Listing<OverflowItem>,
     /// Present only when the sanitizer replaced a credential-shaped string in
     /// a commit message, the one free text locate prints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redactions: Option<crate::sanitize::Redactions>,
 }
 
-// The reference is serde's contract for `skip_serializing_if`, not a choice.
-#[allow(clippy::trivially_copy_pass_by_ref)]
 /// The overflow list is a pointer to what was skipped, not a second selection.
 /// Past this many entries it stops being a hint and starts being the cost the
 /// budget existed to avoid.
 pub const MAX_OVERFLOW_ITEMS: usize = 50;
 
-#[derive(Serialize, JsonSchema, Default)]
+#[derive(Serialize, JsonSchema, Default, Clone)]
 pub struct Coverage {
+    /// What stopped the run short of a complete pass, in the one vocabulary
+    /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
+    /// complete run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limits: Vec<crate::resource::LimitReason>,
+    /// Limits the run hit that cost these items nothing: graph caps, and
+    /// per-file caps on files the answer does not touch (#306).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capped: Vec<crate::resource::LimitReason>,
+    /// The files behind the per-file reasons in `limits`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limited_files: Vec<crate::resource::LimitedFile>,
+    /// How well the selection could see the change.
+    #[serde(default, skip_serializing_if = "Selection::is_clean")]
+    pub selection: Selection,
+}
+
+/// The selection-quality facts of a locate run.
+#[derive(Serialize, JsonSchema, Default, Clone)]
+pub struct Selection {
     /// Changed files with no symbol-level structure: every fragment is a
     /// chunk/section fallback, so the parser could not see inside them and
     /// nothing was pulled in by symbol.
@@ -93,20 +100,8 @@ pub struct Coverage {
     /// candidates the budget correctly ignored; "scores at least as high as the
     /// weakest selected item" was worse than useless, because raising the budget
     /// lowers that bar and so *increased* the reported gap.
-    #[serde(default, skip_serializing_if = "crate::render::is_zero")]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub next_up: usize,
-    /// What stopped the run short of a complete pass, in the one vocabulary
-    /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
-    /// complete run.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limit_reasons: Vec<crate::resource::LimitReason>,
-    /// Limits the run hit that cost these items nothing: graph caps, and
-    /// per-file caps on files the answer does not touch (#306).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capped: Vec<crate::resource::LimitReason>,
-    /// The files behind the per-file reasons in `limit_reasons`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limited_files: Vec<crate::resource::LimitedFile>,
     /// Changed files with no ranked item at all: the inventory says they
     /// changed, the budget or the selection left nothing of them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -115,29 +110,34 @@ pub struct Coverage {
     /// the size cap) — absent for a reason no budget or selection controls.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub no_fragment_changed_files: Vec<String>,
-    /// Documented heuristic in [0, 1], NOT a probability and not a promise:
-    /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.
-    /// It says how much of the changed surface the run could see and fit — it
-    /// cannot say whether what it selected is the right thing.
-    pub confidence: f64,
 }
 
-impl Coverage {
-    /// A run with nothing to disclose. `confidence` alone is not a finding:
-    /// emitting the block for it would put a number in every response and
-    /// invite it to be read as a quality score.
-    pub fn is_clean(&self) -> bool {
+// The reference is serde's contract for `skip_serializing_if`, not a choice.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+impl Selection {
+    fn is_clean(&self) -> bool {
         self.unparsed_files.is_empty()
             && self.zero_edge_files.is_empty()
             && !self.ppr_truncated
             && self.next_up == 0
-            && self.limit_reasons.is_empty()
             && self.unrepresented_changed_files.is_empty()
             && self.no_fragment_changed_files.is_empty()
     }
 }
 
-#[derive(Serialize, JsonSchema)]
+impl Coverage {
+    /// A run with nothing to disclose. A cap nothing needed is not a finding:
+    /// emitting the block for it would put a line in every response.
+    pub fn is_clean(&self) -> bool {
+        self.limits.is_empty() && self.selection.is_clean()
+    }
+}
+
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct OverflowItem {
     pub path: String,
     pub lines: String,
@@ -148,7 +148,7 @@ pub struct OverflowItem {
     pub why: String,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct Summary {
     pub files: usize,
     pub changed: usize,
@@ -172,71 +172,83 @@ impl Summary {
 }
 
 impl LocateOutput {
+    /// A list that says nothing a caller can act on: no item and no file deleted,
+    /// renamed, locked, withheld or ignored.
+    pub fn carries_nothing(&self) -> bool {
+        self.items.is_empty() && !self.inventory.says_something_without_fragments()
+    }
+
     /// #300: the budget bounds what the reader receives, and that is the
-    /// serialized document — a row per item costs more than the item's own
-    /// tokens. The overflow list is a capped pointer the MCP surface strips,
-    /// so it is not charged. Past the budget: context from the tail, then a
-    /// changed file's second and later items; the first item of every
-    /// changed file stays. Each dropped item is counted in `overflow_count`
-    /// and the cut is recorded as a limit.
-    pub fn fit_to(&mut self, budget: u32) {
-        let cost = |o: &Self| {
-            let mut doc = serde_json::to_value(o).unwrap_or_default();
-            if let Some(map) = doc.as_object_mut() {
-                map.remove("overflow");
-            }
-            crate::tokenizer::count_tokens(&doc.to_string())
-        };
-        if budget == 0 || cost(self) <= budget {
+    /// document as the door prints it — a row per item costs more than the item's
+    /// own tokens. Past the budget: the listed overflow, then context from the
+    /// tail, then a changed file's second and later items; the first item of
+    /// every changed file stays. Each dropped item is counted in `overflow` and
+    /// the cut is recorded as a limit. The overflow entries are in the document
+    /// only when `list_overflow`, and charged then.
+    pub fn fit_to(&mut self, budget: u32, list_overflow: bool) {
+        if !list_overflow {
+            self.overflow.items.clear();
+        }
+        if budget == 0 {
             return;
         }
-        while cost(self) > budget {
-            let row = |i: &LocateItem| {
-                crate::tokenizer::count_tokens(&serde_json::to_string(i).unwrap_or_default())
-            };
-            let mut over = cost(self).saturating_sub(budget);
-            let before = self.items.len();
-            while over > 0 {
-                let victim = self
-                    .items
-                    .iter()
-                    .rposition(|i| i.role.is_none())
-                    .or_else(|| {
-                        self.items.iter().enumerate().rev().find_map(|(at, i)| {
-                            self.items[..at]
-                                .iter()
-                                .any(|earlier| earlier.path == i.path)
-                                .then_some(at)
-                        })
-                    });
-                let Some(at) = victim else { break };
-                over = over.saturating_sub(row(&self.items[at]));
-                self.items.remove(at);
-            }
-            if self.items.len() == before {
-                break;
-            }
-            self.overflow_count += before - self.items.len();
-            self.summary = Summary::of(&self.items);
-            self.item_count = self.items.len();
-            let reason = crate::resource::LimitReason::SelectionBudgetExceeded;
-            if !self.coverage.limit_reasons.contains(&reason) {
-                self.coverage.limit_reasons.push(reason);
-                self.coverage.limit_reasons.sort();
-            }
+        let cost = |o: &Self| {
+            crate::tokenizer::count_tokens(&format!(
+                "{}\n",
+                serde_json::to_string(o).unwrap_or_default()
+            ))
+        };
+        self.fit.needs = cost(self).div_ceil(100) * 100;
+        if cost(self) <= budget {
+            return;
+        }
+        crate::fit::shed_to_fit(self, budget, &cost);
+        // The least the answer can say may outgrow the budget: said, not cut into.
+        let least = cost(self);
+        if least > budget {
+            self.fit.least = Some(least);
         }
     }
 }
 
-#[derive(Serialize, JsonSchema)]
-pub struct RenameEntry {
-    pub from: String,
-    pub to: String,
+impl crate::fit::Shed for LocateOutput {
+    /// A listed overflow entry; then the last context item; then a changed file's
+    /// second and later items, the first item of every changed file staying. An
+    /// item is counted in `overflow` and the cut is recorded as a limit.
+    fn shed_one(&mut self) -> bool {
+        if self.overflow.items.pop().is_some() {
+            return true;
+        }
+        let victim = self
+            .items
+            .iter()
+            .rposition(|i| i.role.is_none())
+            .or_else(|| {
+                self.items.iter().enumerate().rev().find_map(|(at, i)| {
+                    self.items[..at]
+                        .iter()
+                        .any(|earlier| earlier.path == i.path)
+                        .then_some(at)
+                })
+            });
+        let Some(at) = victim else {
+            return false;
+        };
+        self.items.remove(at);
+        self.overflow.total += 1;
+        self.summary = Summary::of(&self.items);
+        let reason = crate::resource::LimitReason::SelectionBudgetExceeded;
+        if !self.coverage.limits.contains(&reason) {
+            self.coverage.limits.push(reason);
+            self.coverage.limits.sort();
+        }
+        true
+    }
 }
 
 /// Rank is the array position (items are emitted in selection order);
 /// `role` is serialized only for `"changed"` — absence means context.
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct LocateItem {
     pub path: String,
     pub lines: String,
@@ -290,7 +302,7 @@ fn group_of(path: &str, kind: crate::types::FragmentKind) -> Option<&'static str
     None
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Reason {
     /// The fragment overlaps the diff hunks — it IS the change.
@@ -361,11 +373,8 @@ fn build_coverage(
         .iter()
         .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
         .collect();
-    let fragmentless = crate::pipeline::fragmentless_changed_files(
-        &state.root_dir,
-        &state.changed_files,
-        &state.all_fragments,
-    );
+    let fragmentless =
+        fragmentless_changed_files(&state.root_dir, &state.changed_files, &state.all_fragments);
 
     // One grouping pass, not one scan per changed file: the naive form is
     // O(changed x all_fragments) with a path allocation per pair, and both
@@ -386,7 +395,7 @@ fn build_coverage(
         let frags = by_file.get(file).unwrap_or(&empty);
         if frags.is_empty() {
             // Deleted, ignored, or never fragmented: absence here is already
-            // reported by deleted_files / lockfile_changes, and claiming it as
+            // reported by the inventory's deleted and lockfiles lists, and claiming it as
             // a parse failure would be a second, wrong story about it.
             continue;
         }
@@ -419,61 +428,37 @@ fn build_coverage(
     zero_edge.sort();
     zero_edge.dedup();
 
-    let n_changed = changed.len().max(1) as f64;
-    let parsed_share = 1.0 - unparsed.len() as f64 / n_changed;
-    let linked_share = 1.0 - zero_edge.len() as f64 / n_changed;
-    // Context only: a changed fragment that did not fit is a budget floor
-    // problem, and counting it here would make a tiny budget look like a
-    // discovery failure. Note `budget_tokens` in the output is what the CALLER
-    // asked for; what selection actually had is that minus the change summary
-    // (#241), so headroom is only readable from this block, never from
-    // `budget_tokens - Σ tokens`.
-    let selected_context = outcome
-        .selected
-        .iter()
-        .filter(|f| !state.core_ids.contains(&f.id))
-        .count();
-    // Against what one more budget step would add, not against the whole
-    // admitted universe. Selecting 21 of 3153 admitted candidates is a budget
-    // working correctly, and reading that as 0.7% coverage made `confidence` 0.0
-    // on every real run.
-    let fit_share = if selected_context + next_up == 0 {
-        1.0
-    } else {
-        selected_context as f64 / (selected_context + next_up) as f64
-    };
-    let truncated = state.scoring_result.ppr_truncated;
-    let raw = parsed_share * linked_share * fit_share - if truncated { 0.1 } else { 0.0 };
-    let about = crate::pipeline::answer_paths(state, outcome.selected.iter());
-    let (limit_reasons, capped, limited_files) =
+    let about = answer_paths(state, outcome.selected.iter());
+    let (limits, capped, limited_files) =
         crate::resource::classify_limits(&state.run, &[], &|p| about.contains(p));
 
     Coverage {
-        unparsed_files: unparsed,
-        zero_edge_files: zero_edge,
-        ppr_truncated: truncated,
-        next_up,
-        limit_reasons,
+        limits,
         capped,
         limited_files,
-        unrepresented_changed_files: {
-            let represented: FxHashSet<String> = outcome
-                .selected
+        selection: Selection {
+            unparsed_files: unparsed,
+            zero_edge_files: zero_edge,
+            ppr_truncated: state.scoring_result.ppr_truncated,
+            next_up,
+            unrepresented_changed_files: {
+                let represented: FxHashSet<String> = outcome
+                    .selected
+                    .iter()
+                    .map(|f| rel_path(state, f.id.path.as_ref()))
+                    .collect();
+                changed
+                    .iter()
+                    .filter(|p| !represented.contains(*p) && !fragmentless.contains(*p))
+                    .cloned()
+                    .collect()
+            },
+            no_fragment_changed_files: changed
                 .iter()
-                .map(|f| rel_path(state, f.id.path.as_ref()))
-                .collect();
-            changed
-                .iter()
-                .filter(|p| !represented.contains(*p) && !fragmentless.contains(*p))
+                .filter(|p| fragmentless.contains(*p))
                 .cloned()
-                .collect()
+                .collect(),
         },
-        no_fragment_changed_files: changed
-            .iter()
-            .filter(|p| fragmentless.contains(*p))
-            .cloned()
-            .collect(),
-        confidence: (raw.clamp(0.0, 1.0) * 1e2).round() / 1e2,
     }
 }
 
@@ -565,14 +550,14 @@ fn overflow_why(
     }
 }
 
-/// Renders the shared selection outcome as the `diffctx.locate.v1` navigation
+/// Renders the shared selection outcome as the `diffctx.locate.v2` navigation
 /// list: ranked fragments with provenance reasons and NO source bodies. Uses
 /// only the edge metadata and relevance the pipeline already computed.
 pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOutput {
     let rel = &state.scoring_result.rel_scores;
     let hops = seed_hops(state);
     let attribution = incoming_attribution(state);
-    let (overflow, overflow_count, next_up) = build_overflow(state, outcome, &hops, &attribution);
+    let (overflow, overflow_total, next_up) = build_overflow(state, outcome, &hops, &attribution);
 
     let items: Vec<LocateItem> = outcome
         .selected
@@ -616,46 +601,45 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
     let mut coverage = build_coverage(state, outcome, next_up, &attribution);
     if !redactions.is_empty() {
         coverage
-            .limit_reasons
+            .limits
             .push(crate::resource::LimitReason::SanitizationRedaction);
-        coverage.limit_reasons.sort();
-        coverage.limit_reasons.dedup();
+        coverage.limits.sort();
+        coverage.limits.dedup();
     }
 
     LocateOutput {
-        commit_count: crate::render::listed_commit_total(state.commit_count, commit_messages.len()),
         schema: LOCATE_SCHEMA,
         name: state
             .root_dir
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
-        commit_message,
-        commit_messages,
-        changed_files: state
-            .changed_files
-            .iter()
-            .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
-            .collect(),
-        deleted_files: state.deleted_files.clone(),
-        renamed_files: state
-            .renamed_files
-            .iter()
-            .map(|(from, to)| RenameEntry {
-                from: from.clone(),
-                to: to.clone(),
-            })
-            .collect(),
-        lockfile_changes: state.lockfile_changes.clone(),
-        ignored_changes: state.ignored_changes.clone(),
-        policy_excluded_count: state.policy_excluded_count,
-        budget_tokens: outcome.effective_budget,
+        range: envelope::range_of(
+            state.provenance.range.as_deref(),
+            state.index_tree.as_deref(),
+            state.commit_count,
+            envelope::messages_of(commit_message, commit_messages),
+        ),
+        inventory: Inventory::new(
+            state
+                .changed_files
+                .iter()
+                .map(|p| rel_path(state, p.to_string_lossy().as_ref()))
+                .collect(),
+            state.deleted_files.clone(),
+            state.renamed_files.clone(),
+            state.lockfile_changes.clone(),
+            state.ignored_changes.clone(),
+            state.policy_excluded_count,
+        ),
+        fit: envelope::fit_of(outcome.budget_requested, outcome.effective_budget),
         summary: Summary::of(&items),
-        item_count: items.len(),
         items,
         coverage,
-        overflow,
-        overflow_count,
+        overflow: Listing {
+            total: overflow_total,
+            items: overflow,
+        },
         redactions: (!redactions.is_empty()).then_some(redactions),
         provenance: Some(
             state
@@ -665,7 +649,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
     }
 }
 
-/// JSON Schema 2020-12 for `diffctx.locate.v1`, generated from the type and
+/// JSON Schema 2020-12 for `diffctx.locate.v2`, generated from the type and
 /// pinned by `tests/context_schema.rs`.
 pub fn locate_schema() -> serde_json::Value {
     let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
@@ -681,9 +665,9 @@ mod tests {
     /// locate carried its own test-file rule until it was delegated to
     /// `crate::testfiles`. It lowercased the path first, so every CamelCase
     /// convention was invisible and `summary.tests` in the blast-radius view
-    /// (#135) undercounted. The bitcheck fixture is this repo, whose tests are
-    /// all `test_*.py` under `tests/` — a shape both rules agree on — so the
-    /// divergence only shows up on cases like these.
+    /// (#135) undercounted. This repository's own tests are all `test_*.py`
+    /// under `tests/` — a shape both rules agree on — so the divergence only
+    /// shows up on cases like these.
     #[test]
     fn the_grouping_uses_the_shared_test_classifier() {
         for path in [
@@ -722,5 +706,109 @@ mod tests {
             Some("test")
         );
         assert_eq!(group_of("src/model.rs", FragmentKind::Struct), Some("type"));
+    }
+
+    fn item(path: &str, role: Option<&'static str>) -> LocateItem {
+        LocateItem {
+            path: path.to_string(),
+            lines: "1-5".to_string(),
+            kind: "function".to_string(),
+            symbol: None,
+            role,
+            group: None,
+            score: 0.5,
+            tokens: 10,
+            reasons: vec![Reason::PostPass],
+        }
+    }
+
+    fn answer(items: Vec<LocateItem>, overflow_total: usize) -> LocateOutput {
+        LocateOutput {
+            schema: LOCATE_SCHEMA,
+            name: "repo".to_string(),
+            range: envelope::worktree_range(),
+            inventory: Inventory::default(),
+            fit: envelope::fit_of(None, 0),
+            summary: Summary::of(&items),
+            items,
+            coverage: Coverage::default(),
+            provenance: None,
+            overflow: Listing {
+                total: overflow_total,
+                items: (0..overflow_total.min(5))
+                    .map(|i| OverflowItem {
+                        path: format!("other_{i}.py"),
+                        lines: "1-5".to_string(),
+                        score: 0.1,
+                        tokens: 10,
+                        why: "post-pass candidate".to_string(),
+                    })
+                    .collect(),
+            },
+            redactions: None,
+        }
+    }
+
+    fn cost(output: &LocateOutput) -> u32 {
+        crate::tokenizer::count_tokens(&format!("{}\n", serde_json::to_string(output).unwrap()))
+    }
+
+    /// The overflow is counted whether or not it is listed; the entries come only
+    /// when asked for.
+    #[test]
+    fn an_unrequested_overflow_is_counted_and_not_listed() {
+        let mut out = answer(vec![item("a.py", Some("changed"))], 7);
+        out.fit_to(100_000, false);
+        assert_eq!(out.overflow.total, 7);
+        assert!(out.overflow.items.is_empty());
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["overflow"]["total"], 7);
+        assert!(json.get("overflow_count").is_none());
+
+        let mut listed = answer(vec![item("a.py", Some("changed"))], 7);
+        listed.fit_to(100_000, true);
+        assert_eq!(listed.overflow.items.len(), 5);
+    }
+
+    /// A listed overflow is charged, and the first thing a tight budget takes: no
+    /// ranked item goes while an entry of the pointer list is left, and what it
+    /// sheds stays counted.
+    #[test]
+    fn a_listed_overflow_is_charged_and_shed_before_any_item() {
+        let items = vec![
+            item("a.py", Some("changed")),
+            item("b.py", None),
+            item("c.py", None),
+        ];
+        let mut out = answer(items, 7);
+        let full = cost(&out);
+        out.fit_to(full - 1, true);
+        assert_eq!(out.items.len(), 3, "an item went before the overflow");
+        assert!(out.overflow.items.len() < 5);
+        assert_eq!(out.overflow.total, 7);
+        assert!(out.fit.least.is_none());
+        assert!(cost(&out) < full);
+    }
+
+    /// Below the least the answer can say it says so, and cuts nothing more: the
+    /// first item of every changed file stays, and every shed item is counted.
+    #[test]
+    fn a_budget_below_the_least_is_declared() {
+        let items = vec![
+            item("a.py", Some("changed")),
+            item("a.py", Some("changed")),
+            item("b.py", None),
+        ];
+        let mut out = answer(items, 0);
+        out.fit_to(1, false);
+        assert_eq!(out.items.len(), 1);
+        assert_eq!(out.items[0].path, "a.py");
+        assert_eq!(out.overflow.total, 2);
+        assert!(out.fit.least.is_some_and(|least| least > 1));
+        assert!(
+            out.coverage
+                .limits
+                .contains(&crate::resource::LimitReason::SelectionBudgetExceeded)
+        );
     }
 }

@@ -1,0 +1,24 @@
+name: ts_removed_private_constant_is_listed_alone
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, removed-definition, e2]
+repo:
+  initial_files:
+    src/util.ts: |
+      const factor = 7;
+
+      export function price(a: number): number {
+        return a * factor;
+      }
+  changed_files:
+    src/util.ts: |
+      export function price(a: number): number {
+        return a * 7;
+      }
+  commit_message: "util: inline the factor"
+# Every removed definition of a cell language is listed, a private constant too:
+# with the readers the head still has, or as one nothing references.
+expect:
+  changed: [src/util.ts::factor, src/util.ts::price]
+  removed: [factor]

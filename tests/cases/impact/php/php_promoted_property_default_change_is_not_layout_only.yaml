@@ -1,0 +1,56 @@
+name: php_promoted_property_default_change_is_not_layout_only
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- layout
+- promoted-property
+- false-absence
+repo:
+  initial_files:
+    src/Settings.php: |
+      <?php
+
+      namespace App;
+
+      class Settings
+      {
+          public function __construct(public int $retries = 3, public string $mode = 'fast')
+          {
+          }
+      }
+    src/Client.php: |
+      <?php
+
+      namespace App;
+
+      class Client
+      {
+          public function attempts(): int
+          {
+              $s = new Settings();
+              return $s->retries;
+          }
+      }
+  changed_files:
+    src/Settings.php: |
+      <?php
+
+      namespace App;
+
+      class Settings
+      {
+          public function __construct(public int $retries = 0, public string $mode = 'fast')
+          {
+          }
+      }
+  commit_message: Change the default of a promoted property
+expect:
+  relations:
+  - from: src/Client.php::attempts
+    to: src/Settings.php::retries
+    kind: reads
+    resolution: resolved
+    site: 10
+  exact: false

@@ -1,0 +1,69 @@
+name: config_k8s_edited_selector_is_reached_with_the_objects_it_selected_and_now_selects
+mode: impact
+source: fj#155
+issue_state: open
+tags: [config, kubernetes, selector, candidate, decoy]
+repo:
+  initial_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+    k8s/api.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          metadata:
+            labels:
+              app: api
+          spec:
+            containers: []
+    k8s/db.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: db
+      spec:
+        template:
+          metadata:
+            labels:
+              app: db
+          spec:
+            containers: []
+    k8s/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: front
+      spec:
+        selector:
+          app: web
+  changed_files:
+    k8s/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: front
+      spec:
+        selector:
+          app: api
+  commit_message: "front: route to the api pods"
+expect:
+  exact: false
+  # the edit moves the service from the web pods to the api pods; the answer
+  # must not read as a change nothing depends on, and the db pods are untouched
+  never_empty: true
+  no_negative_claims: true
+  decoys:
+    k8s/svc.yaml: [k8s/db.yaml]

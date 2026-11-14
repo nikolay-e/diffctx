@@ -1,0 +1,50 @@
+name: py_class_attribute_holding_a_changed_class_is_a_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- callers
+- class-attribute
+repo:
+  initial_files:
+    shop/highlight.py: |
+      class Highlighter:
+          pass
+
+
+      class ReprHighlighter(Highlighter):
+          highlights = [r"(?P<url>https?://[a-z]*)"]
+    shop/handler.py: |
+      from typing import ClassVar, Type
+
+      from shop.highlight import Highlighter, ReprHighlighter
+
+
+      class Handler:
+          HIGHLIGHTER_CLASS: ClassVar[Type[Highlighter]] = ReprHighlighter
+
+          def __init__(self):
+              self.highlighter = self.HIGHLIGHTER_CLASS()
+    tests/test_handler.py: |
+      from shop.handler import Handler
+
+
+      def test_handler_builds_a_highlighter():
+          assert Handler().highlighter is not None
+  changed_files:
+    shop/highlight.py: |
+      class Highlighter:
+          pass
+
+
+      class ReprHighlighter(Highlighter):
+          highlights = [r"(?P<url>https?://[a-z~]*)"]
+  commit_message: Allow a tilde in a url
+expect:
+  changed:
+  - shop/highlight.py::highlights
+  exact: false
+  callers:
+    highlights:
+    - shop/handler.py::HIGHLIGHTER_CLASS

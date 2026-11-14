@@ -1,0 +1,51 @@
+name: gh420_annotated_module_constant_is_a_definition_with_its_readers
+mode: symbol
+source: gh#420
+issue_state: open
+tags:
+- python
+- symbol
+- constant
+repo:
+  initial_files:
+    src/kit/consts.py: |
+      from typing import Any
+
+      TABLE: dict[str, Any] = {"a": 1}
+      PLAIN = {"b": 2}
+
+
+      def use():
+          return TABLE["a"], PLAIN["b"]
+    src/kit/reader.py: |
+      from src.kit.consts import TABLE
+
+
+      def lookup(k):
+          return TABLE.get(k)
+    src/lib/math.ts: |
+      export const digitsValue = (s: string): number => Number(s.replace(/\D/g, ""));
+    src/lib/use.ts: |
+      import { digitsValue } from "./math";
+
+      export function show(s: string): string {
+        return String(digitsValue(s));
+      }
+  commit_message: init
+query:
+  symbol: TABLE
+expect:
+  definitions:
+  - src/kit/consts.py::TABLE
+  relations:
+  - from: src/kit/consts.py::use
+    to: src/kit/consts.py::TABLE
+    kind: reads
+    resolution: resolved
+    site: 8
+  - from: src/kit/reader.py::lookup
+    to: src/kit/consts.py::TABLE
+    kind: reads
+    resolution: resolved
+    site: 5
+  exact: true

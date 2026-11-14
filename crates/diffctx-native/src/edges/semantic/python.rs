@@ -24,7 +24,7 @@ use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, path_to_module};
 
 fn is_python_file(path: &Path) -> bool {
-    PYTHON_EXTENSIONS.contains(base::file_ext(path).as_str())
+    PYTHON_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w.]+)").unwrap());
@@ -194,7 +194,7 @@ fn module_targets(
     (reps, defs)
 }
 
-pub struct PythonEdgeBuilder;
+pub(crate) struct PythonEdgeBuilder;
 
 impl EdgeBuilder for PythonEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -267,8 +267,9 @@ impl EdgeBuilder for PythonEdgeBuilder {
         let mut file_aliases: FxHashMap<&str, FxHashMap<String, (String, String)>> =
             FxHashMap::default();
         for f in &py_frags {
-            for (local, target) in crate::bindings::python_bindings(&f.content).names {
-                if let crate::bindings::Target::Member { module, name } = target {
+            for (local, target) in super::legacy::python_imports::python_bindings(&f.content).names
+            {
+                if let super::legacy::python_imports::Target::Member { module, name } = target {
                     if local == name {
                         continue;
                     }

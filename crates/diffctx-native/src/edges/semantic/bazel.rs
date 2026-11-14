@@ -35,7 +35,7 @@ fn is_bazel_file(path: &Path) -> bool {
     if BAZEL_NAMES.contains(name.as_str()) {
         return true;
     }
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     ext == ".bzl" || ext == ".bazel"
 }
 
@@ -95,7 +95,7 @@ fn ref_to_filename(r: &str) -> String {
         .to_lowercase()
 }
 
-pub struct BazelEdgeBuilder;
+pub(crate) struct BazelEdgeBuilder;
 
 impl EdgeBuilder for BazelEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -232,7 +232,7 @@ impl EdgeBuilder for BazelEdgeBuilder {
         let mut changed_paths: FxHashSet<String> = FxHashSet::default();
         for f in &bazel_changed {
             changed_paths.insert(f.to_string_lossy().to_string());
-            if base::file_ext(f) == ".bzl" {
+            if crate::languages::file_ext(f) == ".bzl" {
                 if let Some(stem) = f.file_stem() {
                     changed_paths.insert(stem.to_string_lossy().to_string());
                 }

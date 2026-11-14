@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder};
 
 fn is_nim_file(path: &Path) -> bool {
     base::has_ext(path, &[".nim", ".nims"])
@@ -94,7 +94,7 @@ fn extract_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct NimEdgeBuilder;
+pub(crate) struct NimEdgeBuilder;
 
 impl EdgeBuilder for NimEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -108,10 +108,7 @@ impl EdgeBuilder for NimEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["nim_import"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -138,9 +135,7 @@ impl EdgeBuilder for NimEdgeBuilder {
                 } else {
                     fn_w
                 };
-                if let Some(targets) = name_to_defs.get(&name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
-                }
+                defs.link_one(&mut edges, &f.id, name, w);
             }
         }
         edges

@@ -1,0 +1,56 @@
+name: config_mention_classes_name_a_script_as_a_command_and_a_config_value
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- config
+- named-by
+- mention-class
+- decoy
+repo:
+  initial_files:
+    scripts/entry.sh: |
+      #!/bin/sh
+      echo starting
+    Dockerfile: |
+      FROM alpine
+      COPY scripts/entry.sh /entry.sh
+    .github/workflows/ci.yml: |
+      name: ci
+      on: push
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - run: ./scripts/entry.sh
+    config/app.yaml: |
+      entry: scripts/entry.sh
+    docs/usage.md: |
+      Run scripts/entry.sh to start the service.
+    .dockerignore: |
+      scripts/entry.sh
+    data/runs.csv: |
+      id,script
+      1,scripts/entry.sh
+    tools/notes.py: |
+      # scripts/entry.sh is the entry point of the service
+      NOTE = 1
+  changed_files:
+    scripts/entry.sh: |
+      #!/bin/sh
+      echo started
+  commit_message: Change what the entry script prints
+expect:
+  named_by:
+  - Dockerfile
+  - .github/workflows/ci.yml
+  - config/app.yaml
+  not_named_by:
+  - docs/usage.md
+  - .dockerignore
+  - data/runs.csv
+  - tools/notes.py
+  mention_class:
+    Dockerfile: command
+    .github/workflows/ci.yml: command
+    config/app.yaml: config

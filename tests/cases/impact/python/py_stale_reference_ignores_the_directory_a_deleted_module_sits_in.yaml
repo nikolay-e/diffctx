@@ -1,0 +1,44 @@
+name: py_stale_reference_ignores_the_directory_a_deleted_module_sits_in
+mode: impact
+source: gh#725
+issue_state: open
+tags: [python, stale-reference, decoy, directory]
+repo:
+  initial_files:
+    game/game.py: |
+      import tkinter
+
+
+      def run():
+          return tkinter
+    game/engine.py: |
+      def step(n):
+          return n + 1
+    game/README.md: |
+      # Game
+
+      ```
+      uv run pytest      # from game/
+      ```
+    game/web.py: |
+      import pathlib
+
+
+      def build():
+          raise SystemExit("assets missing: run npm ci in game/ first")
+    game/NOTES.md: |
+      # Notes
+
+      Start the old window with `python3 game/game.py`.
+    game/tests/test_engine.py: |
+      from engine import step
+
+
+      def test_step():
+          assert step(1) == 2
+  deleted_files:
+    - game/game.py
+  commit_message: "drop the old window"
+expect:
+  stale: [game/NOTES.md]
+  not_stale: [game/README.md, game/web.py]

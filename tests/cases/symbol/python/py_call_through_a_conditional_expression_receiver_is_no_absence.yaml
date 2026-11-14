@@ -1,0 +1,21 @@
+name: py_call_through_a_conditional_expression_receiver_is_no_absence
+mode: symbol
+source: fj#167
+tags: [python, receiver-typing, conditional-expression, absence-claim]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/store.py: |
+      class Store:
+          def add_local(self, item):
+              return item
+    shop/sync.py: |
+      def sync(primary, fallback, use_primary):
+          (primary if use_primary else fallback).add_local(1)
+query:
+  symbol: add_local
+expect:
+  definitions: [shop/store.py::add_local]
+  exact: false
+  never_empty: true
+  no_negative_claims: true

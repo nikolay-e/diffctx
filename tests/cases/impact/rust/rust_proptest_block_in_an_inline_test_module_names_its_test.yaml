@@ -1,0 +1,58 @@
+name: rust_proptest_block_in_an_inline_test_module_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- test-attribute
+- proptest
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod core;
+      pub mod c;
+    src/core.rs: |
+      pub fn fc(x: i32) -> i32 {
+          x + 1
+      }
+    src/c.rs: |
+      pub fn use_c() -> i32 {
+          crate::core::fc(1)
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use proptest::prelude::*;
+
+          proptest! {
+              #[test]
+              fn tc(_n in 0..10i32) {
+                  prop_assert_eq!(super::use_c(), 2);
+              }
+          }
+      }
+    tests/other.rs: |
+      #[test]
+      fn unrelated() {
+          assert!(true);
+      }
+  changed_files:
+    src/core.rs: |
+      pub fn fc(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: change fc
+expect:
+  changed:
+  - src/core.rs::fc
+  exact: false
+  tested_by:
+    src/c.rs: src/c.rs
+  not_untested:
+  - fc

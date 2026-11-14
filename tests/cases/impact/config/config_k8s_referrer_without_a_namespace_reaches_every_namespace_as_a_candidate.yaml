@@ -1,0 +1,58 @@
+name: config_k8s_referrer_without_a_namespace_reaches_every_namespace_as_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- namespace
+- candidate
+repo:
+  initial_files:
+    prod/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: settings
+        namespace: prod
+      data:
+        mode: fast
+    staging/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: settings
+        namespace: staging
+      data:
+        mode: fast
+    app.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                envFrom:
+                  - configMapRef:
+                      name: settings
+  changed_files:
+    prod/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: settings
+        namespace: prod
+      data:
+        mode: slow
+  commit_message: Change config k8s referrer without a namespace reaches every namespace as a candidate
+expect:
+  relations:
+  - from: app.yaml
+    to: prod/configmap.yaml
+    kind: reads
+    resolution: candidate
+    site: 12
+  exact: true

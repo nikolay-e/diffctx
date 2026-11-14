@@ -1,0 +1,147 @@
+name: gh726_deleted_package_nobody_imports_names_no_member_callers
+mode: impact
+source: gh#726
+issue_state: open
+tags: [python, deleted-package, decoys]
+repo:
+  initial_files:
+    other/o1.py: |
+      def f1(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o2.py: |
+      def f2(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o3.py: |
+      def f3(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o4.py: |
+      def f4(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o5.py: |
+      def f5(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o6.py: |
+      def f6(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o7.py: |
+      def f7(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    other/o8.py: |
+      def f8(obj, logger):
+          logger.info(obj.title)
+          obj.run(); obj.start(); obj.get(); obj.close()
+          return obj.run()
+    pkg/__init__.py: |
+    pkg/m1.py: |
+      class Svc1:
+          logger = None
+          title = ''
+          def run(self): return 1
+          def start(self): return 2
+          def get(self): return 3
+          def close(self): return 4
+    pkg/m2.py: |
+      class Svc2:
+          logger = None
+          title = ''
+          def run(self): return 1
+          def start(self): return 2
+          def get(self): return 3
+          def close(self): return 4
+    pkg/m3.py: |
+      class Svc3:
+          logger = None
+          title = ''
+          def run(self): return 1
+          def start(self): return 2
+          def get(self): return 3
+          def close(self): return 4
+    pkg/m4.py: |
+      class Svc4:
+          logger = None
+          title = ''
+          def run(self): return 1
+          def start(self): return 2
+          def get(self): return 3
+          def close(self): return 4
+    pkg/m5.py: |
+      class Svc5:
+          logger = None
+          title = ''
+          def run(self): return 1
+          def start(self): return 2
+          def get(self): return 3
+          def close(self): return 4
+  deleted_files: [pkg/__init__.py, pkg/m1.py, pkg/m2.py, pkg/m3.py, pkg/m4.py, pkg/m5.py]
+expect:
+  exact: false
+  removed: [pkg/m1.py, pkg/m2.py, pkg/m3.py, pkg/m4.py, pkg/m5.py]
+  decoys:
+    run:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py
+    start:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py
+    get:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py
+    close:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py
+    title:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py
+    logger:
+    - other/o1.py
+    - other/o2.py
+    - other/o3.py
+    - other/o4.py
+    - other/o5.py
+    - other/o6.py
+    - other/o7.py
+    - other/o8.py

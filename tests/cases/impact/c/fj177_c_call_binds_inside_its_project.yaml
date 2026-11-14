@@ -1,0 +1,45 @@
+name: fj177_c_call_binds_inside_its_project
+mode: impact
+source: fj#177
+issue_state: open
+tags: [c, project-boundary, decoy]
+repo:
+  initial_files:
+    alpha/Makefile: |
+      all:
+      	cc -o alpha main.c util.c
+    alpha/util.c: |
+      int scale(int x) {
+          return x * 2;
+      }
+    alpha/main.c: |
+      int scale(int x);
+
+      int main(void) {
+          return scale(3);
+      }
+    beta/Makefile: |
+      all:
+      	cc -o beta app.c lib.c
+    beta/lib.c: |
+      int scale(int x) {
+          return x * 3;
+      }
+    beta/app.c: |
+      int scale(int x);
+
+      int run(void) {
+          return scale(4);
+      }
+  changed_files:
+    alpha/util.c: |
+      int scale(int x) {
+          return x * 5;
+      }
+  commit_message: "alpha: scale by five"
+expect:
+  exact: false
+  relations:
+    - {from: alpha/main.c::main, to: alpha/util.c::scale, kind: calls, site: 4}
+  decoys:
+    alpha/util.c::scale: [beta/app.c]

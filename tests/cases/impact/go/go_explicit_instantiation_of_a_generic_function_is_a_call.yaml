@@ -1,0 +1,40 @@
+name: go_explicit_instantiation_of_a_generic_function_is_a_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, generics, call]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          return z
+      }
+    conv/conv_test.go: |
+      package conv
+
+      import "testing"
+
+      func TestParse(t *testing.T) { _ = Parse[int]("1") }
+  changed_files:
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          if s == "" {
+              panic("empty")
+          }
+          return z
+      }
+  commit_message: "conv: refuse an empty string"
+expect:
+  changed: [conv/conv.go::Parse]
+  callers:
+    conv/conv.go::Parse: [conv/conv_test.go::TestParse]

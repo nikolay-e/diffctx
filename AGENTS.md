@@ -17,6 +17,45 @@ Setup, suite shape and the per-case YAML corpus gate
 (`crates/diffctx-native/tests/known_below_threshold.txt`, bidirectional: a
 listed case that starts passing also fails) are in `CONTRIBUTING.md`.
 
+## Fixes enter by root, behind a gate
+
+- A new issue is tied to its root first; the root is fixed, not the instance.
+- An instance fix is allowed for a false "all clear", a leak or a broken
+  delivery, or when it ships with a class test.
+- A class test is a case under `tests/cases/{diff,impact,symbol}/` or a
+  metamorphic, fault-sweep or hook-property test, red on the PR's base and green
+  on its head (`.github/scripts/class-test.sh`). The PR body states it in the
+  `Class test:` field, or as `Class test: none — truth|leak|delivery gh#N`.
+- No new language, framework or mode until every Tier-1 cell has a declared,
+  verified state.
+- One root is merged and measured at a time; agents work only inside a cell that
+  already has a gate.
+- A fix on the integration branch labels its issue `fixed-unreleased` and
+  comments `Fixed on relay/arch in <sha>; gate: <case path or test name>`.
+- Commits reference issues as `gh#N` or `fj#N`, never a bare `#N` and never a
+  closing keyword; nothing closes an issue but a release.
+- A release closes every issue carrying the label, after the published artifacts
+  pass the smoke (`scripts/release/close-released.py`).
+- The tree carries the next development version; every user pin (plugin, Action,
+  docs, `server.json`, npm, Scoop, `CITATION.cff`) stays on the last release
+  until a release moves it.
+- Language tiers are the table in the README and in
+  `crates/diffctx-native/src/vocabulary.rs`; Tier 3 is "not modelled" and never
+  claims an absence.
+
+## Product size is a ratchet
+
+- **R-budget.** Product lines live in `budget.toml` and grow only by the
+  owner's word, recorded as a `Budget-raise:` commit trailer quoting it (a
+  `[debt.*]` row of `budget.toml`, covering only the paths it names and repaid
+  at the switch it names, grows the same way); every stream names `+X/−Y` up front.
+- **R-layer.** A fix for one reason that touches more than one language
+  family's resolver or extractor is in the wrong layer: move it to shared code,
+  language differences as data, a table row never a function or closure
+  (`tests/test_tables_are_data.py`).
+- **R-delete.** After each landing, a deletion-only pass: tests green, fewer
+  lines, nothing added.
+
 ## History reads as epochs
 
 `main` is a sequence of epochs — one commit per coherent chunk of the
@@ -51,11 +90,6 @@ output-changing fix is whether the new output is right — shown on a fixture
 whose right answer is known, and by reading each corpus case that flips,
 never by its byte distance from the old output.
 
-- **A claimed pure refactor** cites `scripts/bitcheck.sh` (`record` on the
-  pre-change build, `check` after: 30 cells against a worktree pinned at a
-  fixed SHA — pack and locate per range and scoring mode, impact per range,
-  three `--symbol` lookups). It drives the native binary only; `writer.py`,
-  `_native/` and `mcp/` need their own byte-diff through the installed wheel.
 - **The full corpus** (`cargo test --release --test yaml_cases`) is the only
   net over the per-language edge and parser tables; a fix that flips cases
   reads them and edits the bidirectional baseline in the same commit.

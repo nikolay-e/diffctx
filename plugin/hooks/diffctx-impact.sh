@@ -13,8 +13,10 @@ export UV_ISOLATED=1
 
 [[ "${CLAUDE_PLUGIN_OPTION_IMPACT_HOOK:-true}" == "true" ]] || exit 0
 
-# Read the event once and leave every other Bash call alone before starting
-# anything: the matcher is every Bash call, the interest is a few.
+# Read the event once and leave a call outside any git work tree alone before
+# starting anything: the matcher is every Bash call, and inside a repository
+# whatever a line runs may commit, so git's record decides what it did, not the
+# line's text (T19).
 payload=$(cat 2>/dev/null) || exit 0
 case "$payload" in
 *'"PreToolUse"'*) event=pretooluse hook_event=PreToolUse ;;
@@ -24,17 +26,15 @@ case "$payload" in
 *) exit 0 ;;
 esac
 
-# After a text search for a name the hook answers where it is defined, who
-# calls it and which tests reach them (#337, #628), in a repository, clean
-# or not. A search heads its statement (`… | grep` filters output). Only the
-# command is read for a search or a `cd`: the payload also carries the
-# tool's output, and a `cd /srv` the grep printed is not where it ran.
-searches_a_repository() {
+# Whether the call runs in a git work tree, where a program of any kind may
+# commit: its refs are recorded before and compared after (T19), so a script
+# that commits is reviewed though its line shows no git. The `cd` target of
+# the command and a Grep tool's `path` move the directory; only the command is
+# read for it, since the payload also carries the tool's output, and a `cd
+# /srv` the grep printed is not where it ran.
+inside_a_repository() {
   local command='' re='"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
   [[ $payload =~ $re ]] && command=${BASH_REMATCH[1]}
-  re='"tool_name"[[:space:]]*:[[:space:]]*"Grep"'
-  local search='(^|"|[;&(])[[:space:]]*(git[[:space:]]+grep|e?grep|fgrep|rg|ag|ack)[[:space:]]'
-  [[ $payload =~ $re || $command =~ $search ]] || return 1
   local dir=.
   re='"cwd"[[:space:]]*:[[:space:]]*"([^"]*)"'
   [[ $payload =~ $re ]] && dir=${BASH_REMATCH[1]}
@@ -57,7 +57,7 @@ waits_for_background_line() {
 }
 case "$payload" in
 *'git '* | *'gh '*) ;;
-*) waits_for_background_line || { [[ $event != pretooluse ]] && searches_a_repository; } || exit 0 ;;
+*) waits_for_background_line || inside_a_repository || exit 0 ;;
 esac
 
 # The launched version for the log's last field, so an audit can tell an old
@@ -70,11 +70,13 @@ spec="diffctx[mcp]==1.20.0"
 # is logged here, or an audit could not tell it from a hook with nothing to say.
 # The binary's own log, not the `hook.log` an older pin rotates (#555).
 log_failure() {
-  local dir="${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx" session=-
+  local dir="${DIFFCTX_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-}/.cache}}/diffctx" session=- call=-
   local re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]+)"'
   [[ $payload =~ $re ]] && session=${BASH_REMATCH[1]}
+  re='"tool_use_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9_-]+)"'
+  [[ $payload =~ $re ]] && call=${BASH_REMATCH[1]}
   mkdir -p "$dir" 2>/dev/null &&
-    printf '%s %s %s - - error:%s - - %s\n' "$(date +%s)" "$session" "$hook_event" "$1" "${spec##*==}" >>"$dir/hook-runs.log" 2>/dev/null
+    printf '%s %s %s - - error:%s - - call=%s roots=- %s\n' "$(date +%s)" "$session" "$hook_event" "$1" "$call" "${spec##*==}" >>"$dir/hook-runs.log" 2>/dev/null
   return 0
 }
 

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
 
 fn is_elixir_file(path: &Path) -> bool {
     base::has_ext(path, &[".ex", ".exs"])
@@ -51,7 +51,7 @@ fn extract_func_defs(content: &str) -> FxHashSet<String> {
     base::captures1(&DEF_RE, content).collect()
 }
 
-pub struct ElixirEdgeBuilder;
+pub(crate) struct ElixirEdgeBuilder;
 
 impl EdgeBuilder for ElixirEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -67,7 +67,7 @@ impl EdgeBuilder for ElixirEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["elixir_use"].reverse_factor;
 
         let mut module_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        let mut fn_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let fns = base::DefIndex::new(&frags, reverse_factor, extract_func_defs);
         for f in &frags {
             for m in extract_module_defs(&f.content) {
                 let leaf = m.split('.').last().unwrap_or(&m).to_lowercase();
@@ -77,7 +77,6 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
-            base::index_lower(&mut fn_to_frags, extract_func_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
@@ -108,32 +107,10 @@ impl EdgeBuilder for ElixirEdgeBuilder {
                     add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
                 }
             }
-            for id in &f.identifiers {
-                if self_fns.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = fn_to_frags.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            fns.link_except(&mut edges, &f.id, &f.identifiers, &self_fns, fn_w);
         }
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            is_elixir_file,
-            extract_refs,
-        )
-    }
+    discover_by_refs!(is_elixir_file, extract_refs);
 }

@@ -1,0 +1,23 @@
+name: gh675_symbol_lists_scripts_that_run_its_file_by_path
+mode: symbol
+source: gh#675
+issue_state: open
+tags: [shell, by-path, executes]
+repo:
+  initial_files:
+    bin/list.sh: |
+      #!/bin/sh
+      scan() {
+        find "$1" -name "*.md"
+      }
+      scan "${1:-.}"
+    bin/report.sh: |
+      #!/bin/sh
+      root=$(cd "$(dirname "$0")/.." && pwd)
+      "$root/bin/list.sh" . | wc -l
+query:
+  symbol: scan
+expect:
+  definitions: [bin/list.sh::scan]
+  exact: false
+  named_by: [bin/report.sh]

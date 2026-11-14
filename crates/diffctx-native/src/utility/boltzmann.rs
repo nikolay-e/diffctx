@@ -9,7 +9,7 @@ fn boltzmann_weight(rel_score: f64, token_count: u32, beta: f64) -> f64 {
     rel_score * (-beta * token_count as f64).exp()
 }
 
-pub fn boltzmann_select(
+pub(crate) fn boltzmann_select(
     fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,
@@ -94,7 +94,7 @@ pub fn boltzmann_select(
     }
 }
 
-pub fn calibrate_beta(
+pub(crate) fn calibrate_beta(
     fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,

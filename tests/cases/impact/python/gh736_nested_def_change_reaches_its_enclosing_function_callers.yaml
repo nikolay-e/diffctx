@@ -1,0 +1,42 @@
+name: gh736_nested_def_change_reaches_its_enclosing_function_callers
+mode: impact
+source: gh#736
+issue_state: open
+tags: [python, nested-def, namedtuple, unknowns]
+repo:
+  initial_files:
+    pkg/__init__.py: |
+    pkg/core.py: |
+      from typing import NamedTuple
+
+      class Bundle(NamedTuple):
+          by_day: dict
+          copies: int
+
+      def build(rows):
+          def served(key):
+              return {r["day"]: r[key] for r in rows if key in r}
+          return Bundle(by_day=served("a"), copies=len(served("b")))
+    tests/test_core.py: |
+      from pkg.core import build
+
+      def test_build():
+          assert build([{"day": 1, "a": 2}]).by_day == {1: 2}
+  changed_files:
+    pkg/core.py: |
+      from typing import NamedTuple
+
+      class Bundle(NamedTuple):
+          by_day: dict
+          copies: int
+
+      def build(rows):
+          def served(key):
+              return {r["day"]: r[key] for r in rows if key in r and r[key] is not None}
+          return Bundle(by_day=served("a"), copies=len(served("b")))
+expect:
+  exact: false
+  changed: [pkg/core.py::build]
+  relations:
+    - {from: tests/test_core.py::test_build, to: pkg/core.py::build, kind: calls, resolution: resolved, site: 4}
+  unknowns: {}

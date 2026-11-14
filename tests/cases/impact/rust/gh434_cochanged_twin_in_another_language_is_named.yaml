@@ -1,0 +1,47 @@
+name: gh434_cochanged_twin_in_another_language_is_named
+mode: impact
+source: gh#434
+issue_state: open
+tags:
+- rust
+- python
+- cochange
+repo:
+  initial_files:
+    README.md: |
+      x
+      y1
+      y2
+    py/_app.py: |
+      def empty_hint(n):
+          return "nothing changed" if n == 0 else "changed"
+      # rev 1
+      # rev 2
+      # rev 3
+      # rev 4
+      # rev 5
+      # rev 6
+    src/main.rs: |
+      pub fn empty_hint(n: usize) -> &'static str {
+          if n == 0 { "nothing changed" } else { "changed" }
+      }
+      // rev 1
+      // rev 2
+      // rev 3
+      // rev 4
+      // rev 5
+      // rev 6
+  changed_files:
+    src/main.rs: |
+      pub fn empty_hint(n: usize) -> &'static str {
+          if n == 0 { "no changes" } else { "changed" }
+      }
+      // rev 1
+      // rev 2
+      // rev 3
+      // rev 4
+      // rev 5
+      // rev 6
+  commit_message: reword hint
+expect:
+  named_by: [py/_app.py]

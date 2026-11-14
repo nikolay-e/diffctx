@@ -61,62 +61,26 @@ fn is_github_actions(path: &Path) -> bool {
 }
 
 fn is_gitlab_ci(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == ".gitlab-ci.yml" || name == ".gitlab-ci.yaml" || name.starts_with("gitlab-ci")
 }
 
 fn is_jenkinsfile(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "jenkinsfile" || name.ends_with(".jenkinsfile") || name.ends_with(".jenkins")
 }
 
 fn is_circleci(path: &Path) -> bool {
-    let path_str = path.to_string_lossy().to_lowercase();
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    path_str.contains(".circleci") && (name == "config.yml" || name == "config.yaml")
-}
-
-fn is_travis(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    name == ".travis.yml" || name == ".travis.yaml"
+    let name = base::lower_file_name(path);
+    path.to_string_lossy().to_lowercase().contains(".circleci")
+        && (name == "config.yml" || name == "config.yaml")
 }
 
 fn is_azure_pipelines(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "azure-pipelines.yml"
         || name == "azure-pipelines.yaml"
         || name.starts_with("azure-pipeline")
-}
-
-fn is_tox(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    name == "tox.ini"
-}
-
-fn is_nox(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    name == "noxfile.py"
 }
 
 fn is_ci_file(path: &Path) -> bool {
@@ -124,10 +88,11 @@ fn is_ci_file(path: &Path) -> bool {
         || is_gitlab_ci(path)
         || is_jenkinsfile(path)
         || is_circleci(path)
-        || is_travis(path)
+        || matches!(
+            base::lower_file_name(path).as_str(),
+            ".travis.yml" | ".travis.yaml" | "tox.ini" | "noxfile.py"
+        )
         || is_azure_pipelines(path)
-        || is_tox(path)
-        || is_nox(path)
 }
 
 fn extract_script_refs(content: &str) -> FxHashSet<String> {
@@ -232,7 +197,7 @@ fn package_json_ref(content: &str) -> Option<String> {
         .then(|| "package.json".to_string())
 }
 
-pub struct CICDEdgeBuilder;
+pub(super) struct CICDEdgeBuilder;
 
 impl EdgeBuilder for CICDEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

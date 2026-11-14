@@ -4,22 +4,16 @@
 // so every case here makes the disk say something different from the index.
 
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use tempfile::TempDir;
 
 mod support;
+use _diffctx::snapshot::git_command;
 use support::{diffctx, write};
 
 fn git_out(repo: &Path, args: &[&str]) -> Output {
-    Command::new("git")
-        .current_dir(repo)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(args)
-        .output()
-        .expect("run git")
+    git_command(repo).args(args).output().expect("run git")
 }
 
 fn git(repo: &Path, args: &[&str]) {
@@ -90,12 +84,12 @@ fn markdown(repo: &Path, range: &str) -> String {
 }
 
 fn callers(doc: &serde_json::Value, symbol: &str) -> Vec<String> {
-    let mut found: Vec<String> = doc["changed"]
+    let mut found: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|c| c["symbol"] == symbol)
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| {
             format!(
                 "{}::{}",
@@ -109,7 +103,7 @@ fn callers(doc: &serde_json::Value, symbol: &str) -> Vec<String> {
 }
 
 fn changed_symbols(doc: &serde_json::Value) -> Vec<String> {
-    let mut found: Vec<String> = doc["changed"]
+    let mut found: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -159,7 +153,10 @@ fn an_unstaged_file_is_not_part_of_the_staged_change() {
         "from shop.pricing import total\n\n\ndef summarize(rows):\n    return total(rows)\n",
     );
     let doc = impact(repo, "staged");
-    assert_eq!(doc["changed_files"], serde_json::json!(["shop/pricing.py"]));
+    assert_eq!(
+        doc["inventory"]["changed"]["items"],
+        serde_json::json!(["shop/pricing.py"])
+    );
     assert_eq!(callers(&doc, "total"), vec!["shop/checkout.py::charge"]);
 }
 
@@ -250,8 +247,11 @@ fn staged_deletes_and_renames_are_what_stale_references_search() {
     git(repo, &["rm", "-q", "shop/billing.py"]);
     write(repo, "Dockerfile", "COPY shop/ /app/\n");
     let doc = impact(repo, "staged");
-    assert_eq!(doc["deleted_files"], serde_json::json!(["shop/billing.py"]));
-    let stale = doc["stale_references"].to_string();
+    assert_eq!(
+        doc["inventory"]["deleted"]["items"],
+        serde_json::json!(["shop/billing.py"])
+    );
+    let stale = doc["stale"]["items"].to_string();
     assert!(
         stale.contains("Dockerfile"),
         "the index's Dockerfile still names the deleted file; the disk's does not: {doc}"
@@ -276,7 +276,7 @@ fn the_first_commit_is_reviewed_against_the_empty_tree() {
         );
         git(repo, &["add", "-A"]);
         let doc = impact(repo, "staged");
-        let files = doc["changed_files"].to_string();
+        let files = doc["inventory"]["changed"]["items"].to_string();
         assert!(
             files.contains("lib.py") && files.contains("app.py"),
             "{format:?}: {doc}"
@@ -294,7 +294,7 @@ fn an_empty_index_diff_is_an_empty_change_set() {
     let repo = tmp.path();
     write(repo, "shop/pricing.py", TOTAL_CHANGED);
     let doc = impact(repo, "staged");
-    assert_eq!(doc["changed_files"], serde_json::json!([]));
+    assert!(doc["inventory"]["changed"].is_null(), "{doc}");
     assert_eq!(doc["empty"], true);
     let text = markdown(repo, "staged");
     assert!(text.contains("No changes to analyse."), "{text}");
@@ -368,12 +368,12 @@ fn the_snapshot_identity_is_the_index_tree_and_every_spelling_agrees() {
         .trim()
         .to_string();
     let staged = impact(repo, "staged");
-    assert_eq!(staged["index_tree"], tree.as_str());
+    assert_eq!(staged["range"]["index_tree"], tree.as_str());
     let cached = impact(repo, "--cached");
     let hook_form = impact(repo, &format!("HEAD..{tree}"));
     for other in [&cached, &hook_form] {
-        assert_eq!(other["index_tree"], staged["index_tree"]);
-        assert_eq!(other["changed"], staged["changed"]);
+        assert_eq!(other["range"]["index_tree"], staged["range"]["index_tree"]);
+        assert_eq!(other["definitions"], staged["definitions"]);
     }
     let text = markdown(repo, "staged");
     assert!(
@@ -436,7 +436,7 @@ fn every_mode_reads_the_staged_change_from_the_index() {
         args.extend_from_slice(mode);
         let doc = json_of(repo, &args);
         assert_eq!(
-            doc["changed_files"],
+            doc["inventory"]["changed"]["items"],
             serde_json::json!(["shop/pricing.py"]),
             "{mode:?}: {doc}"
         );
@@ -461,7 +461,7 @@ fn a_staged_rename_and_mode_change_are_read_in_every_mode() {
         let mut args = vec![".", "--diff", "staged", "-q", "-f", "json"];
         args.extend_from_slice(mode);
         let doc = json_of(repo, &args);
-        let changed: Vec<&str> = doc["changed_files"]
+        let changed: Vec<&str> = doc["inventory"]["changed"]["items"]
             .as_array()
             .unwrap()
             .iter()
@@ -532,7 +532,7 @@ fn a_built_tree_is_no_staged_change_and_migration_prose_no_schema() {
         "{text}"
     );
     let doc = impact(repo, &format!("HEAD..{}", tree.trim()));
-    let contracts = doc["contracts"].to_string();
+    let contracts = doc["contracts"]["items"].to_string();
     assert!(contracts.contains("V2__users.sql"), "{doc}");
     assert!(!contracts.contains("PLAN.md"), "{doc}");
 }

@@ -1,0 +1,62 @@
+name: py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none
+mode: impact
+source: gh#417
+issue_state: open
+tags:
+- python
+- console-script
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "pkg"
+      version = "0.1.0"
+
+      [project.scripts]
+      pkg = "pkg.interfaces.cli.main:run_from_cli"
+      pkg-admin = "pkg.interfaces.cli.admin:run"
+    pkg/__init__.py: ''
+    pkg/interfaces/__init__.py: ''
+    pkg/interfaces/cli/__init__.py: ''
+    pkg/interfaces/cli/main.py: |
+      import sys
+
+      from pkg.interfaces.cli import graph
+
+
+      def run_from_cli():
+          return graph.main(sys.argv[1:])
+    pkg/interfaces/cli/graph.py: |
+      def main(argv):
+          return len(argv)
+    pkg/interfaces/cli/admin.py: |
+      def run():
+          return 0
+    tests/test_cli.py: |
+      import subprocess
+      import sys
+      from pathlib import Path
+
+
+      def test_the_graph_command_runs():
+          exe = Path(sys.executable).with_name("pkg")
+          done = subprocess.run([str(exe), "graph", "x"], capture_output=True)
+          assert done.returncode == 0
+  changed_files:
+    pkg/interfaces/cli/graph.py: |
+      def main(argv):
+          return len(argv) - 1
+    pkg/interfaces/cli/admin.py: |
+      def run():
+          return 1
+  commit_message: Change what the graph and admin commands return
+expect:
+  changed:
+  - pkg/interfaces/cli/graph.py::main
+  - pkg/interfaces/cli/admin.py::run
+  not_untested:
+  - main
+  untested:
+  - run

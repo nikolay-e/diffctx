@@ -1,0 +1,42 @@
+name: ws_kotlin_nested_build_homonym_is_no_caller
+mode: impact
+source: gh#649
+issue_state: open
+tags: [kotlin, workspace, project-root, nested, same-package, decoy, body-only]
+repo:
+  initial_files:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+    build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.size
+    src/main/kotlin/shop/Report.kt: |
+      package shop
+
+      fun build(items: List<Int>): String = "total=" + total(items)
+    extras/legacy/build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    extras/legacy/src/main/kotlin/shop/Checkout.kt: |
+      package shop
+
+      fun charge(cart: List<Int>): Int = total(cart)
+  changed_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun total(items: List<Int>): Int = items.sum()
+  commit_message: "pricing: sum the items"
+expect:
+  changed: [src/main/kotlin/shop/Pricing.kt::total]
+  relations:
+    - {from: "src/main/kotlin/shop/Report.kt::build", to: "src/main/kotlin/shop/Pricing.kt::total", kind: calls,
+       resolution: resolved, site: 3}
+  decoys:
+    "src/main/kotlin/shop/Pricing.kt::total": [extras/legacy/src/main/kotlin/shop/Checkout.kt]

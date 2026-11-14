@@ -1,0 +1,43 @@
+name: config_k8s_suffix_field_is_a_candidate_not_a_resolved_reader
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- candidate
+- suffix
+repo:
+  initial_files:
+    k8s/pvc.yaml: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        storageClassName: fast
+        resources:
+          requests:
+            storage: 1Gi
+    k8s/storageclass.yaml: |
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: fast
+      provisioner: example.com/disk
+  changed_files:
+    k8s/storageclass.yaml: |
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: fast
+      provisioner: example.com/ssd
+  commit_message: Change config k8s suffix field is a candidate not a resolved reader
+expect:
+  relations:
+  - from: k8s/pvc.yaml
+    to: k8s/storageclass.yaml
+    kind: reads
+    resolution: candidate
+    site: 6
+  exact: true

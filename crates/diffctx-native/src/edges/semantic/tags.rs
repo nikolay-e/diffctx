@@ -22,7 +22,7 @@ static SYNTAX_WORDS: once_cell::sync::Lazy<rustc_hash::FxHashSet<&'static str>> 
             .collect()
     });
 
-pub struct TagsEdgeBuilder;
+pub(crate) struct TagsEdgeBuilder;
 
 impl EdgeBuilder for TagsEdgeBuilder {
     fn is_fallback(&self) -> bool {
@@ -48,7 +48,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
             // them, and a fallback edge on a keyword is noise with weight.
             // Config files keep every word: there the fallback is the link.
             let code = crate::config::extensions::CODE_EXTENSIONS
-                .contains(base::file_ext(Path::new(path)).as_str());
+                .contains(crate::languages::file_ext(Path::new(path)).as_str());
             let mut keys: FxHashSet<String> = FxHashSet::default();
             for ident in &f.identifiers {
                 keys.insert(cache.key(ident).to_string());

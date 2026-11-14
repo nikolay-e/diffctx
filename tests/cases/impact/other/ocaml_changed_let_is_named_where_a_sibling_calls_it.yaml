@@ -1,0 +1,25 @@
+name: ocaml_changed_let_is_named_where_a_sibling_calls_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- ocaml
+- false-absence
+repo:
+  initial_files:
+    src/util.ml: |
+      let double_it x =
+        x
+    bin/main.ml: |
+      let () = print_int (Util.double_it 2)
+  changed_files:
+    src/util.ml: |
+      let double_it x =
+        x * 2
+  commit_message: Change ocaml double_it body
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [bin/main.ml]

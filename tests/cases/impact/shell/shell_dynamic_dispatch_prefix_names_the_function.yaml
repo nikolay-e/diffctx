@@ -1,0 +1,29 @@
+name: shell_dynamic_dispatch_prefix_names_the_function
+mode: impact
+source: synthetic
+tags: [shell, literal-name, dynamic-dispatch]
+repo:
+  initial_files:
+    scripts/lib/common.sh: |
+      #!/usr/bin/env bash
+      cmd_deploy() {
+        echo deploy
+      }
+    scripts/release.sh: |
+      #!/usr/bin/env bash
+      DIR="$(cd "$(dirname "$0")" && pwd)"
+      . "$DIR/lib/common.sh"
+      "cmd_$1"
+  changed_files:
+    scripts/lib/common.sh: |
+      #!/usr/bin/env bash
+      cmd_deploy() {
+        echo deploy-v2
+      }
+  commit_message: "common: deploy says v2"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: scripts/release.sh, to: scripts/lib/common.sh::cmd_deploy, kind: calls, resolution: unresolved}

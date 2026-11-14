@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_ocaml_file(path: &Path) -> bool {
     base::has_ext(path, &[".ml", ".mli"])
@@ -47,7 +47,7 @@ fn extract_module_refs(content: &str) -> FxHashSet<String> {
     base::captures1(&MODULE_REF_RE, content).collect()
 }
 
-pub struct OCamlEdgeBuilder;
+pub(crate) struct OCamlEdgeBuilder;
 
 impl EdgeBuilder for OCamlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -63,10 +63,7 @@ impl EdgeBuilder for OCamlEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["ocaml_open"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         // `open` brings a module into the whole file: the relation leaves from
         // the file's representative, where its seeds are lifted to.
@@ -87,44 +84,16 @@ impl EdgeBuilder for OCamlEdgeBuilder {
                     open_w,
                     reverse_factor,
                 );
-                if let Some(targets) = name_to_defs.get(&open_name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, open_w, reverse_factor);
-                }
+                defs.link_one(&mut edges, &f.id, &open_name, open_w);
             }
-            for mref in extract_module_refs(&f.content) {
-                if self_defs.contains(&mref) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&mref.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, mod_w, reverse_factor);
-                }
-            }
-            for id in &f.identifiers {
-                if self_defs.contains(id) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&id.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
-                }
-            }
+            let mrefs = extract_module_refs(&f.content);
+            defs.link_except(&mut edges, &f.id, mrefs, &self_defs, mod_w);
+            defs.link_except(&mut edges, &f.id, &f.identifiers, &self_defs, fn_w);
         }
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_ocaml_file(p),
-            |c| extract_opens(c).into_iter().chain(extract_module_refs(c)),
-        )
-    }
+    discover_by_refs!(|p| is_ocaml_file(p), |c| extract_opens(c)
+        .into_iter()
+        .chain(extract_module_refs(c)));
 }

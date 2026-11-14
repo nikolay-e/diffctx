@@ -1,0 +1,42 @@
+name: shell_library_name_two_files_carry_is_ambiguous
+mode: symbol
+source: gh#533
+issue_state: closed
+tags:
+- shell
+- source
+- ambiguity
+repo:
+  initial_files:
+    a/util.sh: |
+      helper() {
+        echo a
+      }
+    b/util.sh: |
+      helper() {
+        echo b
+      }
+    c/use.sh: |
+      source "$ROOT/util.sh"
+      helper
+    d/pinned.sh: |
+      source "$(dirname "$0")/../a/util.sh"
+      helper
+  commit_message: Change shell library name two files carry is ambiguous
+query:
+  symbol: a/util.sh:helper
+expect:
+  relations:
+  - from: d/pinned.sh
+    to: a/util.sh::helper
+    kind: calls
+    resolution: resolved
+    site: 2
+  - from: c/use.sh
+    to: a/util.sh::helper
+    kind: calls
+    resolution: candidate
+    site: 2
+  exact: true
+  definitions:
+  - a/util.sh::helper

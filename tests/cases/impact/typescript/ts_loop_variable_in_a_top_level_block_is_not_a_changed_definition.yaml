@@ -1,0 +1,44 @@
+name: ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
+mode: impact
+source: fj#94
+issue_state: open
+tags: [typescript, javascript, changed-definition, loop-variable, top-level-block, decoy]
+repo:
+  initial_files:
+    test/regression.mjs: |
+      function ok(cond, label) {
+        if (!cond) throw new Error(label);
+      }
+
+      export function spectrum(n) {
+        return n * 2;
+      }
+
+      {
+        const bins = [];
+        for (let i = 0; i < 3; i++) bins[i] = spectrum(i);
+        ok(bins.length === 3, 'bins');
+      }
+  changed_files:
+    test/regression.mjs: |
+      function ok(cond, label) {
+        if (!cond) throw new Error(label);
+      }
+
+      export function spectrum(n) {
+        return n * 2;
+      }
+
+      {
+        const bins = [];
+        for (let i = 0; i < 10; i++) bins[i] = spectrum(i);
+        for (let k = 1; k <= 20; k++) bins[k] = -20;
+        ok(bins.length === 20, 'bins');
+      }
+  commit_message: "regression: widen the spectrum block"
+expect:
+  exact: false
+  # no definition named i or k exists; any unknown the answer names would be
+  # about them ("callers may be missing: named in N file(s)")
+  unknowns: {}
+  never_empty: true

@@ -1,0 +1,42 @@
+name: go_one_letter_packages_with_a_stray_syntax_error_name_the_caller_or_are_partial
+mode: impact
+source: fj#161
+issue_state: open
+tags: [go, one-letter, parse-error, absence-claim]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/m
+
+      go 1.22
+    a/a.go: |
+      package a
+
+      func Target() int {
+      	return 1
+      }
+    b/b.go: |
+      package b
+
+      import "example.com/m/a"
+
+      func Call() int {
+      	return a.Target()
+      }
+
+      func broken() int {
+      	return (1 +
+      }
+  changed_files:
+    a/a.go: |
+      package a
+
+      func Target() int {
+      	return 2
+      }
+  commit_message: "a: change the target"
+expect:
+  changed: [a/a.go::Target]
+  exact: false
+  never_empty: true
+  no_negative_claims: true

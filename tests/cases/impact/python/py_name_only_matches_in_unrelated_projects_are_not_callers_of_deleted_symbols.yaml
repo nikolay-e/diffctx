@@ -1,0 +1,32 @@
+name: py_name_only_matches_in_unrelated_projects_are_not_callers_of_deleted_symbols
+mode: impact
+source: gh#471
+issue_state: closed
+tags: [python, removed-definition, project-root, name-match, decoy]
+repo:
+  initial_files:
+    proj_a/pyproject.toml: |
+      [project]
+      name = "proj-a"
+      version = "0.1.0"
+    proj_a/src/api/__init__.py: ""
+    proj_a/src/api/forecast.py: |
+      def get_forecast(city):
+          return {"city": city}
+    proj_b/pyproject.toml: |
+      [project]
+      name = "proj-b"
+      version = "0.1.0"
+    proj_b/src/b_mcp/__init__.py: ""
+    proj_b/src/b_mcp/server.py: |
+      def handle(request):
+          get_forecast = request.get("forecast")
+          return get_forecast
+  deleted_files:
+    - proj_a/src/api/forecast.py
+  commit_message: "api: retire the forecast endpoint"
+expect:
+  callers:
+    get_forecast: []
+  decoys:
+    get_forecast: [proj_b/src/b_mcp/server.py]

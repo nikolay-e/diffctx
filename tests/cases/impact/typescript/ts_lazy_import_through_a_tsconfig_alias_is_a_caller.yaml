@@ -1,0 +1,45 @@
+name: ts_lazy_import_through_a_tsconfig_alias_is_a_caller
+mode: impact
+source: gh#581
+issue_state: open
+tags: [typescript, react-lazy, dynamic-import, tsconfig-paths]
+repo:
+  initial_files:
+    tsconfig.json: |
+      { "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] }, "jsx": "react-jsx" } }
+    src/App.tsx: |
+      import { lazy, Suspense } from 'react';
+      import { Direct } from '@/pages/Direct';
+
+      const Lazy = lazy(() => import('@/pages/Lazy').then((m) => ({ default: m.Lazy })));
+
+      export function App() {
+        return (
+          <Suspense>
+            <Direct />
+            <Lazy />
+          </Suspense>
+        );
+      }
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="a">lazy</div>;
+      }
+    src/pages/Direct.tsx: |
+      export function Direct() {
+        return <div className="a">direct</div>;
+      }
+  changed_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="b">lazy</div>;
+      }
+    src/pages/Direct.tsx: |
+      export function Direct() {
+        return <div className="b">direct</div>;
+      }
+  commit_message: "pages: restyle"
+expect:
+  relations:
+    - {from: "src/App.tsx::App", to: "src/pages/Direct.tsx::Direct", kind: instantiates, resolution: resolved, site: 9}
+    - {from: "src/App.tsx", to: "src/pages/Lazy.tsx::Lazy", kind: imports, resolution: resolved, site: 4}

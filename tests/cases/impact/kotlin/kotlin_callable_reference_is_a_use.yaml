@@ -1,0 +1,33 @@
+name: kotlin_callable_reference_is_a_use
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- passes-as-value
+repo:
+  initial_files:
+    src/main/kotlin/p/Math.kt: |
+      package p
+
+      fun double(x: Int): Int = x * 2
+    src/main/kotlin/p/User.kt: |
+      package p
+
+      fun all(items: List<Int>): List<Int> = items.map(::double)
+  changed_files:
+    src/main/kotlin/p/Math.kt: |
+      package p
+
+      fun double(x: Int): Int = x + x
+  commit_message: Change kotlin callable reference is a use
+expect:
+  changed:
+  - src/main/kotlin/p/Math.kt::double
+  relations:
+  - from: src/main/kotlin/p/User.kt::all
+    to: src/main/kotlin/p/Math.kt::double
+    kind: passes_as_value
+    resolution: resolved
+    site: 3
+  exact: true

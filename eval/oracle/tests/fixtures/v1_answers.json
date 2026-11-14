@@ -1,0 +1,969 @@
+[
+ {
+  "answer": {
+   "changed": [],
+   "changed_files": [
+    "setup.py"
+   ],
+   "commit_count": 1,
+   "empty": true,
+   "name": "httpx",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": true,
+   "limits": [],
+   "targets": {},
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [],
+   "changed_files": [
+    "rich/panel.py"
+   ],
+   "commit_count": 1,
+   "empty": true,
+   "layout_only": [
+    "rich/panel.py::Panel (17-39)"
+   ],
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": true,
+   "limits": [],
+   "targets": {
+    "rich/panel.py::Panel": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/panel.py::Panel",
+     "missed_in": [],
+     "unresolved": "changed only in comments, formatting or position: callers not traced"
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [],
+   "changed_files": [
+    "httpx/_config.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "httpx",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true,
+   "unanalysed_files": [
+    {
+     "language": "python",
+     "lines": [
+      9,
+      9
+     ],
+     "path": "httpx/_config.py",
+     "reason": "outside_definitions"
+    }
+   ]
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {},
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [
+    "httpx/_config.py"
+   ],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [],
+   "changed_files": [
+    "rich/traceback.py"
+   ],
+   "commit_count": 1,
+   "empty": true,
+   "entry_unlisted": [
+    "rich/traceback.py::render_stack (594-660) \u2014 registered by `group` \u2014 reached through the framework, not traced"
+   ],
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "09a06560",
+  "expected": {
+   "empty": true,
+   "limits": [],
+   "targets": {
+    "rich/traceback.py::render_stack": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/traceback.py::render_stack",
+     "missed_in": [],
+     "unresolved": "entered by a runner or the framework: callers not traced"
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "also_changed": [
+      "tests/test_utils.py::test_echo_via_pager (312-451)"
+     ],
+     "callers": [],
+     "kind": "property",
+     "lines": "15-15",
+     "path": "src/click/_compat.py",
+     "symbol": "MAC"
+    }
+   ],
+   "changed_files": [
+    "src/click/_compat.py",
+    "tests/test_utils.py"
+   ],
+   "commit_count": 1,
+   "empty": true,
+   "name": "click",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": true,
+   "limits": [],
+   "targets": {
+    "src/click/_compat.py::MAC": {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "tests/test_utils.py::test_echo_via_pager",
+       "kind": null,
+       "relation": "also_changed"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "src/click/_compat.py::MAC",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [],
+     "kind": "function",
+     "lines": "618-625",
+     "path": "rich/syntax.py",
+     "symbol": "__rich_console__",
+     "unresolved": "1 read(s) of `.__rich_console__` through a receiver the binding model cannot type"
+    }
+   ],
+   "changed_files": [
+    "rich/syntax.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "rich/syntax.py::__rich_console__": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/syntax.py::__rich_console__",
+     "missed_in": [],
+     "unresolved": "1 read(s) of `.__rich_console__` through a receiver the binding model cannot type"
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [],
+     "entry": "test (run by the test runner)",
+     "kind": "function",
+     "lines": "1806-1812",
+     "path": "tests/test_options.py",
+     "symbol": "convert",
+     "unresolved": "3 read(s) of `.convert` through a receiver the binding model cannot type"
+    }
+   ],
+   "changed_files": [
+    "tests/test_options.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "click",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "tests/test_options.py::convert": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": "test (run by the test runner)",
+     "gapped": [],
+     "key": "tests/test_options.py::convert",
+     "missed_in": [],
+     "unresolved": "3 read(s) of `.convert` through a receiver the binding model cannot type"
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [],
+     "kind": "function",
+     "lines": "494-546",
+     "missed_in": [
+      {
+       "language": "python",
+       "path": "src/click/core.py",
+       "reason": "too_large"
+      }
+     ],
+     "path": "src/click/utils.py",
+     "symbol": "_detect_program_name"
+    }
+   ],
+   "changed_files": [
+    "CHANGES.rst",
+    "src/click/utils.py",
+    "tests/test_utils.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "click",
+   "named_by": [
+    {
+     "line": 1,
+     "path": "MANIFEST.in",
+     "target": "CHANGES.rst"
+    }
+   ],
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "09a06560",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "src/click/utils.py::_detect_program_name": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "src/click/utils.py::_detect_program_name",
+     "missed_in": [
+      "src/click/core.py"
+     ],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [
+      {
+       "evidence": "candidate",
+       "file_tested": true,
+       "lines": "213-214",
+       "path": "rich/progress.py",
+       "reason": "receiver_unresolved",
+       "sites": [
+        214
+       ],
+       "symbol": "fileno",
+       "weight": 1.0
+      }
+     ],
+     "kind": "function",
+     "lines": "56-57",
+     "path": "rich/file_proxy.py",
+     "symbol": "fileno",
+     "untested": true
+    }
+   ],
+   "changed_files": [
+    "CHANGELOG.md",
+    "rich/file_proxy.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true,
+   "untested_definitions": 1
+  },
+  "engine": "067b3514",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "rich/file_proxy.py::fileno": {
+     "callers": [
+      {
+       "evidence": "candidate",
+       "folded_by": null,
+       "from_key": "rich/progress.py::fileno",
+       "kind": null,
+       "relation": "call"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/file_proxy.py::fileno",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [
+      {
+       "evidence": "candidate",
+       "file_tested": true,
+       "folded_by": "untyped-receiver",
+       "lines": "479-598",
+       "path": "rich/markdown.py",
+       "reason": "receiver_unresolved",
+       "sites": [
+        574
+       ],
+       "symbol": "__rich_console__",
+       "weight": 1.0
+      }
+     ],
+     "kind": "function",
+     "lines": "229-231",
+     "path": "rich/markdown.py",
+     "symbol": "create",
+     "untested": true
+    }
+   ],
+   "changed_files": [
+    "rich/markdown.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true,
+   "untested_definitions": 1
+  },
+  "engine": "w5r2-unfold",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "rich/markdown.py::create": {
+     "callers": [
+      {
+       "evidence": "candidate",
+       "folded_by": "untyped-receiver",
+       "from_key": "rich/markdown.py::__rich_console__",
+       "kind": null,
+       "relation": "call"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/markdown.py::create",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "also_changed": [
+      "rich/spinner.py:117-132"
+     ],
+     "callers": [],
+     "kind": "property",
+     "lines": "123-128",
+     "path": "rich/spinner.py",
+     "symbol": "all_spinners"
+    }
+   ],
+   "changed_files": [
+    "rich/spinner.py"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "rich",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true,
+   "unanalysed_files": [
+    {
+     "language": "python",
+     "lines": [
+      130,
+      130
+     ],
+     "path": "rich/spinner.py",
+     "reason": "outside_definitions"
+    }
+   ],
+   "untested_called_in_diff": [
+    "rich/spinner.py::all_spinners (123-128)"
+   ],
+   "untested_definitions": 1
+  },
+  "engine": "w5r2",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "rich/spinner.py::all_spinners": {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "rich/spinner.py::span:117-132",
+       "kind": null,
+       "relation": "also_changed"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "rich/spinner.py::all_spinners",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [
+    "rich/spinner.py"
+   ],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [],
+     "folded": [
+      {
+       "count": 1,
+       "exact": true,
+       "examples": [
+        "lib/application.js::init (61-61)"
+       ],
+       "kind": "calls",
+       "rule": "untyped-receiver",
+       "sharing": 1
+      }
+     ],
+     "kind": "method",
+     "lines": "85-136",
+     "path": "lib/application.js",
+     "symbol": "defaultConfiguration"
+    }
+   ],
+   "changed_files": [
+    "History.md",
+    "lib/application.js",
+    "test/req.query.js"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "express",
+   "named_by": [
+    {
+     "line": 88,
+     "path": "package.json",
+     "target": "History.md"
+    },
+    {
+     "line": 211,
+     "path": "test/app.render.js",
+     "target": "lib/application.js"
+    }
+   ],
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "w5r2",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "lib/application.js::defaultConfiguration": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "lib/application.js::defaultConfiguration",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "lines": "25-46",
+       "path": "test/app.router.js",
+       "sites": [
+        44
+       ],
+       "tested_by": "test/app.router.js",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "lines": "365-383",
+       "path": "test/res.send.js",
+       "sites": [
+        381
+       ],
+       "tested_by": "test/res.send.js",
+       "weight": 1.0
+      },
+      {
+       "evidence": "reexport",
+       "folded_by": "imports-a-body",
+       "lines": "18-18",
+       "path": "test/support/utils.js",
+       "relation": "reexports",
+       "sites": [
+        18
+       ],
+       "weight": 1.0
+      }
+     ],
+     "entry": "test (run by the test runner)",
+     "kind": "function",
+     "lines": "78-84",
+     "path": "test/support/utils.js",
+     "symbol": "shouldSkipQuery"
+    }
+   ],
+   "changed_files": [
+    "test/support/utils.js"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "express",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true
+  },
+  "engine": "w5r2-unfold",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "test/support/utils.js::shouldSkipQuery": {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "test/app.router.js::<module>",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "test/res.send.js::<module>",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "reexport",
+       "folded_by": "imports-a-body",
+       "from_key": "test/support/utils.js::<module>",
+       "kind": null,
+       "relation": "reexports"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": "test (run by the test runner)",
+     "gapped": [],
+     "key": "test/support/utils.js::shouldSkipQuery",
+     "missed_in": [],
+     "unresolved": null
+    }
+   },
+   "truncated": 0,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ },
+ {
+  "answer": {
+   "changed": [
+    {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "15-18",
+       "path": "source/as-promise/types.ts",
+       "sites": [
+        16
+       ],
+       "symbol": "constructor",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "80-164",
+       "path": "source/core/errors.ts",
+       "sites": [
+        81,
+        96,
+        109,
+        121,
+        136,
+        152,
+        162
+       ],
+       "symbol": "constructor",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "1091-1102",
+       "path": "source/core/index.ts",
+       "sites": [
+        1098
+       ],
+       "symbol": "_error",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "309-415",
+       "path": "source/core/index.ts",
+       "sites": [
+        320,
+        374,
+        398
+       ],
+       "symbol": "_beforeError",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "485-510",
+       "path": "source/core/index.ts",
+       "sites": [
+        506
+       ],
+       "symbol": "_destroy",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "870-909",
+       "path": "source/core/index.ts",
+       "sites": [
+        895
+       ],
+       "symbol": "_onRequest",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "file_tested": true,
+       "lines": "121-126",
+       "path": "source/core/response.ts",
+       "sites": [
+        124
+       ],
+       "symbol": "constructor",
+       "weight": 1.0
+      },
+      {
+       "evidence": "resolved",
+       "lines": "845-849",
+       "path": "test/hooks.ts",
+       "sites": [
+        848
+       ],
+       "tested_by": "test/hooks.ts",
+       "weight": 1.0
+      }
+     ],
+     "kind": "class",
+     "lines": "19-28",
+     "path": "source/core/errors.ts",
+     "symbol": "RequestError"
+    },
+    {
+     "callers": [],
+     "kind": "property",
+     "lines": "20-20",
+     "path": "source/core/errors.ts",
+     "symbol": "input",
+     "unresolved": "1 read(s) of `.input` through a receiver the binding model cannot type"
+    },
+    {
+     "callers": [],
+     "callers_omitted": 81,
+     "kind": "omitted",
+     "lines": "",
+     "omitted": [
+      {
+       "callers_omitted": 81,
+       "definition": "test/helpers/invalid-url.ts::invalidUrl",
+       "lines": "4-12"
+      }
+     ],
+     "path": "(changed definitions)",
+     "unresolved": "1 changed definition(s) omitted: the answer cap; --budget 5400 shows them"
+    }
+   ],
+   "changed_files": [
+    "source/core/errors.ts",
+    "test/arguments.ts",
+    "test/error.ts",
+    "test/helpers.ts",
+    "test/helpers/invalid-url.ts"
+   ],
+   "commit_count": 1,
+   "empty": false,
+   "name": "got",
+   "range": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "schema": "diffctx.impact.v1",
+   "tests_known": true,
+   "truncated": 81
+  },
+  "engine": "w5r2",
+  "expected": {
+   "empty": false,
+   "limits": [],
+   "targets": {
+    "(changed definitions)::<module>": {
+     "callers": [],
+     "callers_omitted": 81,
+     "entry": null,
+     "gapped": [],
+     "key": "(changed definitions)::<module>",
+     "missed_in": [],
+     "unresolved": "1 changed definition(s) omitted: the answer cap; --budget 5400 shows them"
+    },
+    "source/core/errors.ts::RequestError": {
+     "callers": [
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/as-promise/types.ts::constructor",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/errors.ts::constructor",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/index.ts::_error",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/index.ts::_beforeError",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/index.ts::_destroy",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/index.ts::_onRequest",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "source/core/response.ts::constructor",
+       "kind": null,
+       "relation": "call"
+      },
+      {
+       "evidence": "resolved",
+       "folded_by": null,
+       "from_key": "test/hooks.ts::<module>",
+       "kind": null,
+       "relation": "call"
+      }
+     ],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "source/core/errors.ts::RequestError",
+     "missed_in": [],
+     "unresolved": null
+    },
+    "source/core/errors.ts::input": {
+     "callers": [],
+     "callers_omitted": 0,
+     "entry": null,
+     "gapped": [],
+     "key": "source/core/errors.ts::input",
+     "missed_in": [],
+     "unresolved": "1 read(s) of `.input` through a receiver the binding model cannot type"
+    },
+    "test/helpers/invalid-url.ts::invalidUrl": {
+     "callers": [],
+     "callers_omitted": 81,
+     "entry": null,
+     "gapped": [],
+     "key": "test/helpers/invalid-url.ts::invalidUrl",
+     "missed_in": [],
+     "unresolved": "1 changed definition(s) omitted: the answer cap; --budget 5400 shows them"
+    }
+   },
+   "truncated": 81,
+   "truncated_unattributed": 0,
+   "unanalysed": [],
+   "unnamed_omitted": 0
+  },
+  "name": "xxxxxxxxxxxxxxxx"
+ }
+]

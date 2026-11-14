@@ -25,9 +25,9 @@ def test_a_negated_path_stays_in_the_diff_context(tmp_path):
 
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1")
 
-    assert "NEWDOC.md" in (result.get("changed_files") or [])
-    assert not result.get("ignored_changes"), "nothing here is ignored"
-    assert not result.get("policy_excluded_count")
+    assert "NEWDOC.md" in (result.get("inventory", {}).get("changed", {}).get("items") or [])
+    assert not result.get("inventory", {}).get("ignored", {}).get("items"), "nothing here is ignored"
+    assert not result.get("inventory", {}).get("withheld")
     rendered = diffctx.to_yaml(result)
     assert "Some text here." in rendered
 
@@ -50,4 +50,4 @@ def test_a_diffctx_ignore_negation_reincludes_the_path(tmp_path):
     assert "KEEP_CHANGED" in rendered
     # The positive policy pattern still withholds, as a count (#188/#85).
     assert "DROP_CHANGED" not in rendered
-    assert result.get("policy_excluded_count") == 1
+    assert result.get("inventory", {}).get("withheld") == 1

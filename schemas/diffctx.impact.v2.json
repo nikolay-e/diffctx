@@ -1,0 +1,2104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImpactV2",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "symbol": {
+      "description": "The name asked for, on a `--symbol` query.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "spelled": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Spelled"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "inventory": {
+      "$ref": "#/$defs/Inventory"
+    },
+    "definitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Definition"
+      }
+    },
+    "omitted": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Omitted"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "unlisted": {
+      "$ref": "#/$defs/Unlisted"
+    },
+    "contracts": {
+      "$ref": "#/$defs/Listing6"
+    },
+    "stale": {
+      "$ref": "#/$defs/Listing7"
+    },
+    "named": {
+      "$ref": "#/$defs/Named"
+    },
+    "deleted_modules": {
+      "$ref": "#/$defs/Listing10"
+    },
+    "tests": {
+      "$ref": "#/$defs/Tests"
+    },
+    "coverage": {
+      "$ref": "#/$defs/RunCoverage"
+    },
+    "empty": {
+      "description": "Nothing outside the diff depends on the change, and no search left a gap.",
+      "type": "boolean"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    },
+    "fit": {
+      "$ref": "#/$defs/Fit"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "provenance",
+    "range",
+    "definitions",
+    "tests",
+    "coverage",
+    "empty",
+    "summary",
+    "fit"
+  ],
+  "$defs": {
+    "Provenance": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        }
+      },
+      "required": [
+        "engine"
+      ]
+    },
+    "Engine": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "Range": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/RangeKind"
+        },
+        "spec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index_tree": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commits": {
+          "description": "Commits the range holds.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "messages": {
+          "description": "The newest of those commits' messages, subject and body: locate and pack\ncarry them, impact does not.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "RangeKind": {
+      "type": "string",
+      "enum": [
+        "committed",
+        "staged",
+        "worktree",
+        "window",
+        "symbol"
+      ]
+    },
+    "Spelled": {
+      "description": "A name no file defines, spelled in files.",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NamedFile"
+          }
+        },
+        "gap": {
+          "description": "What this build read as text and could not tell a definition in.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Gap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "files",
+        "rows"
+      ]
+    },
+    "NamedFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "description": "The first line that spells the name.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ]
+    },
+    "Gap": {
+      "description": "Why a search of a definition's uses is not complete: the closed vocabulary that\nreplaces v1's sentence in `unresolved`.",
+      "oneOf": [
+        {
+          "description": "Uses of the name that nothing resolves or rules out: an untyped receiver, a\nname no import binds.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unlanded"
+            },
+            "name": {
+              "type": "string"
+            },
+            "uses": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "sites": {
+              "description": "The first of them; the rest are counted in `uses`.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Site"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "uses"
+          ]
+        },
+        {
+          "description": "The two sides of the range pair the definition in more than one way.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unpaired"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "base_unresolved"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ]
+        },
+        {
+          "description": "The run stopped before the search finished.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "stopped"
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LimitReason"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "reasons"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "outside_scope"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "`files` of the definition's interaction group the run could neither read as\nsource nor rule out by the names they spell: why, in `reason`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unaccounted"
+            },
+            "reason": {
+              "$ref": "#/$defs/Reason"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "reason",
+            "files"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "withheld"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "untracked"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "name": {
+              "description": "The block-scoped binding no tracked definition stands for, when one does.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "A member of a trait, or the implementation of one: calls arrive through\n`dyn Trait` and generic bounds.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "dispatched"
+            },
+            "via": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "via"
+          ]
+        },
+        {
+          "description": "`files` that could name it declare items through a macro (`what`) that is\nnot expanded.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "macros"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "what": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "files",
+            "what"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "capped"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "not_traced"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "A name defined in many files of a language without a binding model.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ambiguous"
+            },
+            "name": {
+              "type": "string"
+            },
+            "definitions": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "language": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "definitions",
+            "language"
+          ]
+        },
+        {
+          "description": "Code in a language no binding model reads.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "not_modelled"
+            },
+            "language": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "language"
+          ]
+        },
+        {
+          "description": "No direct caller was found, and a supertype, an interface or the runtime can\ncall it through `via`, which nothing traces.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "overridable"
+            },
+            "via": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "via"
+          ]
+        },
+        {
+          "description": "`files` hold a template that was read around, not expanded.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "templated"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "`files` of a chart or release whose values or context are not determined.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "context_unbound"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "`files` generate objects whose names are not written in any file.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "rendered_elsewhere"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "`pointers` name a source outside the repository, which was not followed.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "external_source"
+            },
+            "pointers": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "pointers"
+          ]
+        },
+        {
+          "description": "`files` run or read a path the shell computes at run time.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "source_flag"
+            },
+            "files": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ]
+        },
+        {
+          "description": "Untracked directories the read of the checkout did not enter: `total` of\nthem, `directories` the first named. A use of the name in them is unknown.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unread_directories"
+            },
+            "directories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "total": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "directories",
+            "total"
+          ]
+        }
+      ]
+    },
+    "Site": {
+      "description": "A candidate use: where it is, and what it may be.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "via": {
+          "$ref": "#/$defs/Via"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "via"
+      ]
+    },
+    "Via": {
+      "description": "How the answer words a candidate use.",
+      "type": "string",
+      "enum": [
+        "call",
+        "read",
+        "unbound",
+        "embedded"
+      ]
+    },
+    "LimitReason": {
+      "description": "Why a run did not do everything it could have. One vocabulary for every\nphase; consumers read `coverage.limits` and never a per-subsystem\nboolean.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "file_too_large",
+            "total_byte_limit",
+            "candidate_limit",
+            "edge_contribution_limit",
+            "edge_limit",
+            "need_limit",
+            "discovery_truncated",
+            "diffusion_truncated",
+            "deadline",
+            "evidence_budget_exceeded",
+            "selection_budget_exceeded",
+            "sanitization_redaction"
+          ]
+        },
+        {
+          "description": "A file cut to `max_fragments_per_file`: what the diff touched survives\nthe cut, the rest is the longest fragments only.",
+          "type": "string",
+          "const": "fragment_limit"
+        },
+        {
+          "description": "A changed or context file that was not UTF-8 and was decoded lossily;\n`coverage.lossy_files` names them.",
+          "type": "string",
+          "const": "non_utf8_content"
+        },
+        {
+          "description": "The caller withdrew the request (an MCP cancellation, the MCP\ndeadline): work stopped at the next poll instead of running on\ndetached.",
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "description": "A git read the answer depends on failed (`git grep`, a file\nlisting): what it would have found is unknown, never none.",
+          "type": "string",
+          "const": "read_failed"
+        }
+      ]
+    },
+    "Reason": {
+      "description": "Why a file of a definition's interaction group is not accounted for.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "read_failed",
+            "changed",
+            "too_large",
+            "not_read",
+            "unparsed",
+            "no_extractor",
+            "failed",
+            "ambiguous",
+            "manifest"
+          ]
+        },
+        {
+          "description": "The file is of the group, spells a name, and no cell binds names to this\ndefinition's language.",
+          "type": "string",
+          "const": "other_language"
+        },
+        {
+          "description": "The definition is in no group, or its group holds no file.",
+          "type": "string",
+          "const": "no_group"
+        }
+      ]
+    },
+    "Inventory": {
+      "type": "object",
+      "properties": {
+        "changed": {
+          "$ref": "#/$defs/Listing"
+        },
+        "untracked": {
+          "$ref": "#/$defs/Listing"
+        },
+        "deleted": {
+          "$ref": "#/$defs/Listing"
+        },
+        "lockfiles": {
+          "$ref": "#/$defs/Listing"
+        },
+        "withheld": {
+          "description": "Files the run withheld (ignore rules, secret names): not read.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      }
+    },
+    "Listing": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Definition": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "description": "Head-side lines; base-side when the change is a removal.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "The definition's kind; absent when v1 said only that it was removed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "change": {
+          "$ref": "#/$defs/Change"
+        },
+        "local_of": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LocalOf"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "commits": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "entry": {
+          "description": "The role that gives it an implicit caller: a runner, a registry, `main`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "guard": {
+          "description": "Whether a test reaches the definition itself; stated only when none does.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Guard"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Row"
+          }
+        },
+        "folded": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Fold"
+          }
+        },
+        "also_changed": {
+          "description": "Users the range changes too, resolved: the diff's own lines.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DefRef"
+          }
+        },
+        "possibly_also_changed": {
+          "description": "Users the range changes too whose binding is not resolved.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DefRef"
+          }
+        },
+        "coverage": {
+          "$ref": "#/$defs/Searched"
+        },
+        "missed_in": {
+          "description": "Files in view that spell the name but were not analysed whole: a use there is\nnot seen, so an empty `rows` says nothing about them.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnanalysedFile"
+          }
+        },
+        "gaps": {
+          "description": "Why the search is incomplete, in words of the closed vocabulary.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gap"
+          }
+        },
+        "shed": {
+          "$ref": "#/$defs/ShedRows"
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "change",
+        "rows",
+        "coverage",
+        "shed"
+      ]
+    },
+    "Change": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ChangeKind"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Delta"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "description": "`moved` or `renamed`, when the pairing says so.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "ChangeKind": {
+      "type": "string",
+      "enum": [
+        "added",
+        "removed",
+        "edited",
+        "layout_only"
+      ]
+    },
+    "Delta": {
+      "description": "What differs between the two sides of an edited definition: the folding\ntable's own reading.",
+      "type": "object",
+      "properties": {
+        "signature": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "boolean"
+        },
+        "doc": {
+          "type": "boolean"
+        },
+        "visibility": {
+          "type": "boolean"
+        },
+        "decorators": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "signature",
+        "body",
+        "doc",
+        "visibility",
+        "decorators"
+      ]
+    },
+    "LocalOf": {
+      "description": "A definition that is a local of another, not one of its own: its uses are the\nones inside the enclosing one.",
+      "type": "object",
+      "properties": {
+        "enclosing": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "enclosing"
+      ]
+    },
+    "Guard": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/GuardState"
+        },
+        "test": {
+          "description": "The first test file (`linked`) in path order, or the unread one (`unread`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The function of that test, where the answer resolved it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "The function between the caller and the test.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "also": {
+          "description": "The other tests that reach the caller at the same fewest hops: the first\nof each test file, then the rest, in path then name order, three tests in all.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardTest"
+          }
+        },
+        "more": {
+          "description": "How many more reach it beyond those named.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "registrar": {
+          "description": "The decorator (`registered`), or the framework's own sentence (`entry_point`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state"
+      ]
+    },
+    "GuardState": {
+      "description": "Whether a test reaches a caller: v1's `tested_by`, `tested_via`, `file_tested`,\n`registered_by` and `unread_test`, as one state and what names it.",
+      "oneOf": [
+        {
+          "description": "A test reaches it by a static link.",
+          "type": "string",
+          "const": "linked"
+        },
+        {
+          "description": "A test reaches its file but none of the paths to it.",
+          "type": "string",
+          "const": "file_only"
+        },
+        {
+          "description": "Tests were in view and none reaches it.",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "A decorator registers it: whatever reads the registry reaches it.",
+          "type": "string",
+          "const": "registered"
+        },
+        {
+          "description": "A framework enters it (a route, a command, a job): `registrar` states how.",
+          "type": "string",
+          "const": "entry_point"
+        },
+        {
+          "description": "A test file the size cap kept out names it.",
+          "type": "string",
+          "const": "unread"
+        },
+        {
+          "description": "No test file was in view.",
+          "type": "string",
+          "const": "no_tests"
+        },
+        {
+          "description": "The search for a test is open above the definition: a test past the naming\nbound, a use whose account holds a hedge, or a stopped run. A test may be\nthere, so no absence is claimed.",
+          "type": "string",
+          "const": "not_established"
+        }
+      ]
+    },
+    "GuardTest": {
+      "description": "A test that reaches a caller, beyond the first the guard names.",
+      "type": "object",
+      "properties": {
+        "test": {
+          "description": "The test file.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The test function, where the answer resolved it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "The function between the caller and the test.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "test"
+      ]
+    },
+    "Row": {
+      "description": "A use of a changed definition (v1's `Caller`).",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "string"
+        },
+        "sites": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "class": {
+          "$ref": "#/$defs/Class"
+        },
+        "kind": {
+          "description": "What the row does (`calls`, `reads`, ...), stated only where the (language,\nrelation) cell is precise; absent elsewhere.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "standing": {
+          "$ref": "#/$defs/Standing"
+        },
+        "reason": {
+          "description": "Why a candidate is one (`receiver_unresolved`, `import_unresolved`, ...).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "guard": {
+          "$ref": "#/$defs/Guard"
+        },
+        "folded_by": {
+          "description": "The rule of the folding table that would fold the row; only under `unfold`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "lines",
+        "class",
+        "standing",
+        "guard"
+      ]
+    },
+    "Class": {
+      "description": "How a row uses the definition, coarsely and always.",
+      "type": "string",
+      "enum": [
+        "call",
+        "reference",
+        "implementation",
+        "reexports"
+      ]
+    },
+    "Standing": {
+      "description": "How sure the resolver is of a row.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "resolved",
+            "candidate"
+          ]
+        },
+        {
+          "description": "A word match: listed as text, never counted as a caller.",
+          "type": "string",
+          "const": "name"
+        }
+      ]
+    },
+    "Fold": {
+      "description": "Rows of one definition the folding table says the change cannot have affected,\ncounted in one line.",
+      "type": "object",
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "count": {
+          "$ref": "#/$defs/Count"
+        },
+        "examples": {
+          "description": "Tests first, then by path and line.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DefRef"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sharing": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "rule",
+        "kind",
+        "count",
+        "examples"
+      ]
+    },
+    "Count": {
+      "description": "A number of uses, and whether it is the whole: `exact` only under the witness\nof a complete search, otherwise `n` is the least there are.",
+      "type": "object",
+      "properties": {
+        "n": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "exact": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "n",
+        "exact"
+      ]
+    },
+    "DefRef": {
+      "description": "A definition, named where a v1 string said `path::symbol (lines)`.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "lines"
+      ]
+    },
+    "Searched": {
+      "description": "Calls (calls, constructions, overrides) and reads (reads, writes, a value passed\non) are searched, and can be known, apart.",
+      "type": "object",
+      "properties": {
+        "calls": {
+          "$ref": "#/$defs/Search"
+        },
+        "reads": {
+          "$ref": "#/$defs/Search"
+        }
+      },
+      "required": [
+        "calls",
+        "reads"
+      ]
+    },
+    "Search": {
+      "description": "What the search of one group of relations covered. `complete` is the witness: no\nrow of the group in the answer then means no such use exists in the analysed\nscope, and a count over it is exact.",
+      "type": "object",
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gap"
+          }
+        }
+      },
+      "required": [
+        "complete"
+      ]
+    },
+    "UnanalysedFile": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "`no_grammar`, `parse_timeout`, `parse_failed` (nothing read),\n`parse_partial` (read but for the error lines), `too_large` (over the\nsize cap), `unreadable`, `content_untraced`: a file outside code\nwhose keys, values or rules something may read, of which only the\nlines naming the file by path were searched, or `outside_definitions`:\ncode the range changed that no tracked definition holds (a module-level\nstatement, a `__main__` block), whose effect is not traced.",
+          "type": "string"
+        },
+        "lines": {
+          "description": "Where the parse broke, the first few lines; for `outside_definitions`,\nthe first and last line of each changed run, in pairs.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ]
+    },
+    "ShedRows": {
+      "description": "Rows the answer cap shed, by what they were: the ledger every total of shed rows\nis a sum of, filled where the rows are shed.",
+      "type": "object",
+      "properties": {
+        "resolved": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "candidate": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "name": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "untested": {
+          "description": "Of those, the rows no static test link reaches.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      }
+    },
+    "Omitted": {
+      "description": "What the answer cap shed whole: the one count of definitions, the names that\nfit, and the budget that shows them.",
+      "type": "object",
+      "properties": {
+        "definitions": {
+          "$ref": "#/$defs/Listing2"
+        },
+        "shed": {
+          "description": "The rows of every shed definition, named or not: the names are capped, this is\nnot.",
+          "$ref": "#/$defs/ShedRows"
+        },
+        "needs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "incomplete": {
+          "description": "Of the shed definitions, named or not, those whose search for calls was not\ncomplete: the counts that include their rows are the least there are.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "definitions",
+        "shed",
+        "needs"
+      ]
+    },
+    "Listing2": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OmittedDefinition"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "OmittedDefinition": {
+      "description": "A definition the cap shed, and what it had.",
+      "type": "object",
+      "properties": {
+        "def": {
+          "$ref": "#/$defs/DefRef"
+        },
+        "shed": {
+          "$ref": "#/$defs/ShedRows"
+        },
+        "incomplete": {
+          "description": "Its search for calls was not complete when it was shed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "def",
+        "shed"
+      ]
+    },
+    "Unlisted": {
+      "description": "Changed definitions the answer does not list as entries, each for a reason.",
+      "type": "object",
+      "properties": {
+        "no_caller": {
+          "description": "Complete searches found no caller: the absence claim.",
+          "$ref": "#/$defs/Listing3"
+        },
+        "called_in_diff": {
+          "$ref": "#/$defs/Listing3"
+        },
+        "entered_by": {
+          "$ref": "#/$defs/Listing4"
+        },
+        "layout_only": {
+          "$ref": "#/$defs/Listing5"
+        }
+      }
+    },
+    "Listing3": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Unreached"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Unreached": {
+      "description": "A definition listed apart from the entries, with the role that gives it an\nimplicit caller when it has one (a runner, a registry): the role is why a missing\ntest link is a finding there.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "string"
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "lines"
+      ]
+    },
+    "Listing4": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Entered"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Entered": {
+      "type": "object",
+      "properties": {
+        "def": {
+          "$ref": "#/$defs/DefRef"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "def",
+        "role"
+      ]
+    },
+    "Listing5": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DefRef"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Listing6": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contract"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Contract": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ]
+    },
+    "Listing7": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StaleRef"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "StaleRef": {
+      "description": "A line that still names a path the change deleted or renamed.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "target": {
+          "type": "string"
+        },
+        "how": {
+          "$ref": "#/$defs/How"
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "class": {
+          "description": "The kind of place the line sits in: a script names the path as a command, a\ndocument only talks about it.",
+          "$ref": "#/$defs/Class2"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "target",
+        "how",
+        "class"
+      ]
+    },
+    "How": {
+      "type": "string",
+      "enum": [
+        "deleted",
+        "renamed"
+      ]
+    },
+    "Class2": {
+      "description": "The kind of place a path is mentioned in.",
+      "oneOf": [
+        {
+          "description": "A string or an identifier of a source file.",
+          "type": "string",
+          "const": "code"
+        },
+        {
+          "description": "A value of a structured config.",
+          "type": "string",
+          "const": "config"
+        },
+        {
+          "description": "A line that starts a program.",
+          "type": "string",
+          "const": "command"
+        },
+        {
+          "description": "A document, a patch, a comment, a sentence.",
+          "type": "string",
+          "const": "prose"
+        },
+        {
+          "description": "Rows of data, a log, a file no tool reads.",
+          "type": "string",
+          "const": "data"
+        },
+        {
+          "description": "An ignore or attribute file: it selects paths and reads none.",
+          "type": "string",
+          "const": "ignore_list"
+        }
+      ]
+    },
+    "Named": {
+      "description": "Lines outside the diff that name a changed file by its path, or by a key it\nchanged.",
+      "type": "object",
+      "properties": {
+        "by_path": {
+          "$ref": "#/$defs/Listing8"
+        },
+        "by_key": {
+          "$ref": "#/$defs/Listing8"
+        },
+        "key_searches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KeySearch"
+          }
+        },
+        "collections": {
+          "$ref": "#/$defs/Listing9"
+        }
+      }
+    },
+    "Listing8": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PathReference"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "PathReference": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "target": {
+          "description": "The changed file the line names.",
+          "type": "string"
+        },
+        "key": {
+          "description": "A key the change touched in `target`, which the line spells: a\ntextual match, not a resolved binding (#686).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "class": {
+          "$ref": "#/$defs/Class2"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "target",
+        "class"
+      ]
+    },
+    "KeySearch": {
+      "description": "A changed file outside code whose changed keys were searched as text.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "named": {
+          "description": "The lines outside the diff naming any of them.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "keys",
+        "named"
+      ]
+    },
+    "Listing9": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CollectionRead"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "CollectionRead": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "collection": {
+          "description": "The collection the call names; absent when the name is computed at\nrun time, so the call may read any collection.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ]
+    },
+    "Listing10": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeletedModule"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "DeletedModule": {
+      "description": "A module the range deletes, answered as a module.\n\nThe files that still import it, or none, and the definitions it held counted\nonce. A definition something outside the diff still uses keeps its own row.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "definitions": {
+          "description": "The definitions it held.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "listed": {
+          "description": "How many of them have a row of their own.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "importers": {
+          "description": "The files at the head that import it, a few by path.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "more_importers": {
+          "description": "Importers beyond those named.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "dynamic_import": {
+          "description": "No importer was found and an import whose name is computed at run time\ncould reach it: \"no importers\" is what was found, not a proof.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "definitions"
+      ]
+    },
+    "Tests": {
+      "type": "object",
+      "properties": {
+        "known": {
+          "description": "Whether any test file was in view: without one, an absent link says nothing.",
+          "type": "boolean"
+        },
+        "hops": {
+          "description": "How many call hops a static test link reaches.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "definitions_without_link": {
+          "$ref": "#/$defs/Count"
+        }
+      },
+      "required": [
+        "known",
+        "hops",
+        "definitions_without_link"
+      ]
+    },
+    "RunCoverage": {
+      "description": "What the run did not cover as a whole.",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Search"
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LimitReason"
+          }
+        },
+        "unanalysed": {
+          "$ref": "#/$defs/Listing11"
+        },
+        "untraced_omitted": {
+          "description": "Of the unanalysed files left out of the listing, those outside code that only\ntheir path was searched for.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "not_searched": {
+          "description": "Definitions the run stopped before it searched and the cap then dropped.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "keys_unsearched": {
+          "description": "Changed configs whose keys and values the capped text search left out.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scope"
+      ]
+    },
+    "Listing11": {
+      "description": "A list and its total, which travel together: the items shown are the first of\n`total`.",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnanalysedFile"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ]
+    },
+    "Summary": {
+      "description": "The totals the Markdown header prints, from the same leaves.",
+      "type": "object",
+      "properties": {
+        "definitions": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "callers": {
+          "$ref": "#/$defs/Count"
+        },
+        "possible": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "folded": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "shed": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "untested_callers": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "traced": {
+          "description": "Changed definitions whose callers were traced; none with comments or\nformatting only is \"callers not traced\", not \"no callers\".",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "definitions",
+        "callers",
+        "possible",
+        "folded",
+        "shed",
+        "untested_callers",
+        "files",
+        "traced"
+      ]
+    },
+    "Fit": {
+      "description": "The cap the answer was fitted to.",
+      "type": "object",
+      "properties": {
+        "asked": {
+          "description": "The budget asked for; absent when the run sized the answer itself.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "cap": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "needs": {
+          "description": "What showing everything would take, to the next hundred tokens; absent\nuntil a fit measured it.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "least": {
+          "description": "Set when the least the answer can say still outgrows the cap.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "exempt": {
+          "description": "Tokens the cap does not charge: a raw diff, which is input verbatim.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "cap"
+      ]
+    }
+  }
+}

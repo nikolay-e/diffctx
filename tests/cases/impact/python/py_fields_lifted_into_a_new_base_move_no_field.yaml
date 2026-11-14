@@ -1,0 +1,41 @@
+name: py_fields_lifted_into_a_new_base_move_no_field
+mode: impact
+source: gh#712
+issue_state: open
+tags: [python, removed, fields, inheritance]
+repo:
+  initial_files:
+    models.py: |
+      from pydantic import BaseModel
+
+
+      class Item(BaseModel):
+          note: str
+          amount: int
+          kind: str
+    service.py: |
+      from models import Item
+
+
+      def show(item: Item):
+          return item
+  changed_files:
+    models.py: |
+      from pydantic import BaseModel
+
+
+      class _Base(BaseModel):
+          note: str
+          amount: int
+
+
+      class Item(_Base):
+          kind: str
+  commit_message: "models: lift the shared fields into a base"
+# gh#712: the other direction. `note` and `amount` are still fields of `Item`,
+# now inherited: nothing is removed.
+expect:
+  removed: []
+  changed: [models.py::Item]
+  exact: false
+  never_empty: true

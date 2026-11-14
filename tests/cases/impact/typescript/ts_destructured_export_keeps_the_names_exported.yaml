@@ -1,0 +1,51 @@
+name: ts_destructured_export_keeps_the_names_exported
+mode: impact
+source: fj#126
+issue_state: open
+tags: [typescript, destructured-export, contract, removed-definition]
+repo:
+  initial_files:
+    src/articles.ts: |
+      const ARTICLES = [{ id: 1 }];
+
+      function catalog(items: { id: number }[]) {
+        return {
+          article: (id: number) => items.find((i) => i.id === id),
+          articleGroups: () => [items],
+          relatedArticles: (id: number) => items.filter((i) => i.id !== id),
+        };
+      }
+
+      export function article(id: number) {
+        return ARTICLES.find((i) => i.id === id);
+      }
+
+      export function articleGroups() {
+        return [ARTICLES];
+      }
+
+      export function relatedArticles(id: number) {
+        return ARTICLES.filter((i) => i.id !== id);
+      }
+    src/page.ts: |
+      import { article, articleGroups, relatedArticles } from './articles';
+
+      export function render(id: number) {
+        return [article(id), articleGroups(), relatedArticles(id)];
+      }
+  changed_files:
+    src/articles.ts: |
+      const ARTICLES = [{ id: 1 }];
+
+      function catalog(items: { id: number }[]) {
+        return {
+          article: (id: number) => items.find((i) => i.id === id),
+          articleGroups: () => [items],
+          relatedArticles: (id: number) => items.filter((i) => i.id !== id),
+        };
+      }
+
+      export const { article, articleGroups, relatedArticles } = catalog(ARTICLES);
+  commit_message: "articles: build the accessors from one catalog"
+expect:
+  not_contracts: [src/articles.ts]

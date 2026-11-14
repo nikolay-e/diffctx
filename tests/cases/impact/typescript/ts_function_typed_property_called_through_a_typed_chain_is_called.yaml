@@ -1,0 +1,46 @@
+name: ts_function_typed_property_called_through_a_typed_chain_is_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- typescript
+- call-of-property
+- interface-member
+repo:
+  initial_files:
+    src/t.ts: |
+      export interface RetryOptions {
+        calculateDelay: (n: number) => number;
+      }
+      export interface Options {
+        retry: RetryOptions;
+      }
+    src/u.ts: |
+      import type {Options, RetryOptions} from './t';
+
+      export function delay(o: Options): number {
+        return o.retry.calculateDelay(1);
+      }
+      export const direct = (r: RetryOptions) => r.calculateDelay(2);
+  changed_files:
+    src/t.ts: |
+      export interface RetryOptions {
+        calculateDelay: (n: bigint) => bigint;
+      }
+      export interface Options {
+        retry: RetryOptions;
+      }
+  commit_message: ts function typed property called through a typed chain is called
+expect:
+  relations:
+  - from: src/u.ts::delay
+    to: src/t.ts::RetryOptions.calculateDelay
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/u.ts::direct
+    to: src/t.ts::RetryOptions.calculateDelay
+    kind: calls
+    resolution: resolved
+    site: 6
+  exact: true

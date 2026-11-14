@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_graphql_file(path: &Path) -> bool {
     base::has_ext(path, &[".graphql", ".gql"])
@@ -63,7 +63,7 @@ fn extract_extends(content: &str) -> FxHashSet<String> {
     base::captures1(&EXTEND_RE, content).collect()
 }
 
-pub struct GraphqlEdgeBuilder;
+pub(crate) struct GraphqlEdgeBuilder;
 
 impl EdgeBuilder for GraphqlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -76,46 +76,20 @@ impl EdgeBuilder for GraphqlEdgeBuilder {
         let extend_w = EDGE_WEIGHTS["graphql_extend"].forward;
         let reverse_factor = EDGE_WEIGHTS["graphql_type_ref"].reverse_factor;
 
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
         for f in &frags {
             let self_defs = extract_defs(&f.content);
-            for ext_name in extract_extends(&f.content) {
-                if let Some(targets) = name_to_defs.get(&ext_name.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, targets, extend_w, reverse_factor);
-                }
-            }
-            for tref in extract_type_refs(&f.content) {
-                if self_defs.contains(&tref) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&tref.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, type_w, reverse_factor);
-                }
-            }
+            defs.link(&mut edges, &f.id, extract_extends(&f.content), extend_w);
+            let trefs = extract_type_refs(&f.content);
+            defs.link_except(&mut edges, &f.id, trefs, &self_defs, type_w);
         }
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_graphql_file(p),
-            |c| extract_type_refs(c).into_iter().chain(extract_extends(c)),
-        )
-    }
+    discover_by_refs!(|p| is_graphql_file(p), |c| extract_type_refs(c)
+        .into_iter()
+        .chain(extract_extends(c)));
 }

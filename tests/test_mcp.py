@@ -203,7 +203,7 @@ class TestGetDiffContext:
             {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         doc = json.loads(_get_text(result))
-        assert doc["schema"] == "diffctx.locate.v1"
+        assert doc["schema"] == "diffctx.locate.v2"
         assert doc["items"]
         assert all(i["reasons"] for i in doc["items"])
 
@@ -213,11 +213,11 @@ class TestGetDiffContext:
 
         args = {"repo_path": str(mcp_repo.path), "mode": "locate"}
         clean = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert clean["commit_message"] == "add subtract function"
+        assert clean["range"]["messages"][0] == "add subtract function"
 
         (mcp_repo.path / "src" / "extra.py").write_text("from calc import add\n\nX = add(2, 2)\n", encoding="utf-8")
         dirty = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert dirty["changed_files"] == ["src/extra.py"]
+        assert dirty["inventory"]["changed"]["items"] == ["src/extra.py"]
 
     @pytest.mark.asyncio
     async def test_head_means_the_uncommitted_work_and_says_where_the_last_commit_is(self, server, mcp_repo):
@@ -244,22 +244,31 @@ class TestGetDiffContext:
         repo.add_file("one.py", "x = 1\n")
         repo.commit("first")
         doc = json.loads(_get_text(await server.call_tool("diffctx_context", {"repo_path": str(repo.path), "mode": "locate"})))
-        assert doc["schema"] == "diffctx.locate.v1"
-        assert doc.get("changed_files", []) == []
+        assert doc["schema"] == "diffctx.locate.v2"
+        assert doc.get("inventory", {}).get("changed", {}).get("items", []) == []
 
     @pytest.mark.asyncio
-    async def test_locate_keeps_the_overflow_count_but_not_the_list(self, server, mcp_repo):
+    async def test_locate_counts_the_overflow_and_lists_it_only_on_request(self, server, mcp_repo):
         import json
 
         from diffctx._native import build_locate
 
         engine = json.loads(build_locate(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=40, timeout=60))
-        assert engine["overflow"], "the fixture must overflow for this test to mean anything"
+        assert engine["overflow"]["total"], "the fixture must overflow for this test to mean anything"
 
         args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "budget_tokens": 40}
         doc = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert "overflow" not in doc
-        assert doc["overflow_count"] == engine["overflow_count"]
+        assert not doc["overflow"].get("items")
+        assert doc["overflow"]["total"] == engine["overflow"]["total"]
+
+        asked = json.loads(_get_text(await server.call_tool("diffctx_context", {**args, "include_overflow": True})))
+        assert asked["overflow"]["total"] >= len(asked["overflow"].get("items", []))
+
+    @pytest.mark.asyncio
+    async def test_include_overflow_is_refused_outside_locate(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "include_overflow": True}
+        with pytest.raises(ToolError, match="locate"):
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
@@ -281,7 +290,7 @@ class TestGetDiffContext:
         )
         text = _get_text(result)
         assert "clipboard unavailable" in text
-        assert '"diffctx.locate.v1"' in text
+        assert '"diffctx.locate.v2"' in text
 
     @pytest.mark.asyncio
     async def test_locate_respects_max_tokens_cap(self, server, mcp_repo):
@@ -291,7 +300,7 @@ class TestGetDiffContext:
         )
         text = _get_text(result)
         assert "exceeding max_tokens" in text
-        assert "diffctx.locate.v1" not in text
+        assert "diffctx.locate.v2" not in text
 
     @pytest.mark.asyncio
     async def test_invalid_mode_is_rejected(self, server, mcp_repo):
@@ -565,11 +574,11 @@ class TestBudgetTokensValidation:
                 "diff_ref": "HEAD~1..HEAD",
                 "mode": "locate",
                 "budget_tokens": -1,
-                "max_tokens": 50,
+                "max_tokens": 1,
             },
         )
         text = _get_text(result)
-        assert "exceeding max_tokens=50" in text
+        assert "exceeding max_tokens=1" in text
         assert "Nothing was returned" in text
 
 
@@ -641,11 +650,11 @@ class TestTokenBudgetGuardExecutes:
                 "diff_ref": "HEAD~1..HEAD",
                 "mode": "locate",
                 "budget_tokens": -1,
-                "max_tokens": 100,
+                "max_tokens": 1,
             },
         )
         text = _get_text(result)
-        assert "exceeding max_tokens=100" in text
+        assert "exceeding max_tokens=1" in text
 
     @pytest.mark.asyncio
     async def test_diffctx_context_under_generous_budget_returns_content(self, server, big_file_repo):
@@ -848,9 +857,9 @@ class TestClipboardCopies:
         reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
 
         pasted = json.loads(self._pasted(sink))
-        assert pasted["schema"] == "diffctx.locate.v1"
-        assert pasted["item_count"] == len(pasted["items"]) > 0
-        assert reply == f"Copied locate JSON ({pasted['item_count']} items) to clipboard"
+        assert pasted["schema"] == "diffctx.locate.v2"
+        assert len(pasted["items"]) > 0
+        assert reply == f"Copied locate JSON ({len(pasted['items'])} items) to clipboard"
 
     @pytest.mark.asyncio
     async def test_the_pack_reply_counts_the_fragments_it_copied(self, server, mcp_repo, sink):
@@ -861,9 +870,9 @@ class TestClipboardCopies:
         reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
 
         assert self._pasted(sink) == inline
-        engine = build_diff_context(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=8000, timeout=60)
-        assert engine["fragment_count"] > 0
-        assert reply == f"Copied diff context ({engine['fragment_count']} fragments) to clipboard"
+        engine = build_diff_context(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", timeout=60)
+        assert engine["fragments"]
+        assert reply == f"Copied diff context ({len(engine['fragments'])} fragments) to clipboard"
 
 
 class TestRepoPathWalksUpToRoot:
@@ -1108,7 +1117,13 @@ class TestPathsScopeAMonorepo:
     @pytest.mark.asyncio
     async def test_a_file_scope_analyses_that_file_alone_as_the_cli_does(self, server, monorepo):
         text = await self._ask(server, monorepo.path, paths=["svc_a/calc.py"])
-        assert "1 changed file(s), 0 caller(s)" in text
+        assert "1 changed file(s)" in text
+        # The scope holds one file; the files outside it that may call it were left
+        # out, so the answer claims no absence and says why (Revision 11 item 2:
+        # an absence needs a complete search).
+        assert "0 caller(s)" not in text
+        assert "nothing calls them" not in text
+        assert "file(s) outside the run's pathspecs were left out" in text
         assert "svc_a/main.py" not in text
 
     @pytest.mark.asyncio
@@ -1248,7 +1263,7 @@ class TestProgressiveDisclosure:
                 },
             )
         )
-        assert "diffctx.locate.v1" not in text
+        assert "diffctx.locate.v2" not in text
         assert "def add(a, b):" in text
 
     @pytest.mark.asyncio

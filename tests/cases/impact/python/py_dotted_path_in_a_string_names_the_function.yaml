@@ -1,0 +1,33 @@
+name: py_dotted_path_in_a_string_names_the_function
+mode: impact
+source: synthetic
+tags: [python, literal-name, importlib]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def dotted():
+          return 1
+    app/hooks.py: |
+      import importlib
+
+      HOOKS = ["pkg.core.dotted"]
+
+
+      def load():
+          out = []
+          for path in HOOKS:
+              mod, _, name = path.rpartition(".")
+              out.append(getattr(importlib.import_module(mod), name))
+          return out
+  changed_files:
+    pkg/core.py: |
+      def dotted():
+          return 2
+  commit_message: "core: dotted returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/hooks.py, to: pkg/core.py::dotted, kind: calls, resolution: unresolved}

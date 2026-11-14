@@ -39,7 +39,7 @@ the Python API returns the same artifact as a dict; the MCP server exposes it
 as one tool (`diffctx_context`) that an agent calls with a repository path and
 a diff range and gets the selected fragments back — `mode=locate` for a ranked
 list without bodies, `fragment_ids` to fetch specific ones. The artifact is
-schema-versioned (`diffctx.context.v1`, JSON Schema in `schemas/`) and carries
+schema-versioned (`diffctx.context.v2`, JSON Schema in `schemas/`) and carries
 provenance (engine version, effective-configuration hash, tokenizer), so a
 consumer can tell two runs apart without diffing their text.
 

@@ -1,0 +1,58 @@
+name: ts_class_method_calls_are_linked
+mode: impact
+source: gh#444
+issue_state: closed
+tags: [typescript, class-method, receiver-typing, smoke]
+repo:
+  initial_files:
+    src/net/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id}`;
+        }
+      }
+
+      export function itemUrl(id: string): string {
+        return `/items/${id}`;
+      }
+    src/views/typed.ts: |
+      import { Store } from '../net/store';
+
+      export function showTyped(store: Store, id: string): string {
+        return store.loadItem(id);
+      }
+    src/views/loose.ts: |
+      export function showLoose(store: any, id: string): string {
+        return store.loadItem(id);
+      }
+    src/views/link.ts: |
+      import { itemUrl } from '../net/store';
+
+      export function link(id: string): string {
+        return itemUrl(id);
+      }
+  changed_files:
+    src/net/store.ts: |
+      export class Store {
+        loadItem(id: string): string {
+          return `item:${id.trim()}`;
+        }
+      }
+
+      export function itemUrl(id: string): string {
+        return `/items/${encodeURIComponent(id)}`;
+      }
+  commit_message: "store: normalise ids"
+expect:
+  relations:
+    - from: "src/views/typed.ts::showTyped"
+      to: "src/net/store.ts::loadItem"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - from: "src/views/loose.ts::showLoose"
+      to: "src/net/store.ts::loadItem"
+      kind: "calls"
+      resolution: "candidate"
+      site: 2
+    - {from: "src/views/link.ts::link", to: "src/net/store.ts::itemUrl", kind: calls, resolution: resolved, site: 4}

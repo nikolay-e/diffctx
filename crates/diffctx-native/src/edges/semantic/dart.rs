@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -9,7 +9,7 @@ use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_by_refs, link_by_name,
 };
 
 fn is_dart_file(path: &Path) -> bool {
@@ -90,7 +90,7 @@ fn extract_calls(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct DartEdgeBuilder;
+pub(crate) struct DartEdgeBuilder;
 
 impl EdgeBuilder for DartEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -174,20 +174,5 @@ impl EdgeBuilder for DartEdgeBuilder {
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_dart_file(p),
-            extract_refs,
-        )
-    }
+    discover_by_refs!(|p| is_dart_file(p), extract_refs);
 }

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,14 +8,14 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, add_edge, discover_by_refs};
 
 fn is_prisma_file(path: &Path) -> bool {
     base::has_ext(path, &[".prisma"])
 }
 
 fn is_prisma_consumer(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     matches!(ext.as_str(), ".ts" | ".js" | ".tsx" | ".jsx")
 }
 
@@ -40,7 +40,7 @@ fn extract_type_refs(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct PrismaEdgeBuilder;
+pub(crate) struct PrismaEdgeBuilder;
 
 impl EdgeBuilder for PrismaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -55,23 +55,14 @@ impl EdgeBuilder for PrismaEdgeBuilder {
         let schema_rev = EDGE_WEIGHTS["prisma_schema"].reverse_factor;
         let client_rev = EDGE_WEIGHTS["prisma_client"].reverse_factor;
 
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &schema_frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let schemas = base::DefIndex::new(&schema_frags, schema_rev, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
         for f in &schema_frags {
             let self_defs = extract_defs(&f.content);
-            for tref in extract_type_refs(&f.content) {
-                if self_defs.contains(&tref) {
-                    continue;
-                }
-                if let Some(targets) = name_to_defs.get(&tref.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, schema_w, schema_rev);
-                }
-            }
+            let trefs = extract_type_refs(&f.content);
+            schemas.link_except(&mut edges, &f.id, trefs, &self_defs, schema_w);
         }
 
         let consumer_frags: Vec<&Fragment> = fragments
@@ -89,24 +80,9 @@ impl EdgeBuilder for PrismaEdgeBuilder {
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_prisma_file(p),
-            |c| {
-                extract_type_refs(c)
-                    .into_iter()
-                    .chain(["prisma".to_string()])
-            },
-        )
-    }
+    discover_by_refs!(|p| is_prisma_file(p), |c| {
+        extract_type_refs(c)
+            .into_iter()
+            .chain(["prisma".to_string()])
+    });
 }

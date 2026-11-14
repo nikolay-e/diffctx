@@ -1,0 +1,53 @@
+name: shell_symbol_python_heredoc_caller_is_disclosed
+mode: symbol
+source: gh#427
+issue_state: closed
+tags:
+- shell
+- python
+- heredoc
+- discloses
+repo:
+  initial_files:
+    src/__init__.py: |2+
+
+    src/seed_demo_data.py: |
+      def seed_demo_data(n):
+          return list(range(n))
+    scripts/seed.sh: |
+      #!/bin/sh
+      python - <<'EOF'
+      from src.seed_demo_data import seed_demo_data
+      seed_demo_data(3)
+      EOF
+    scripts/note.sh: |
+      #!/bin/sh
+      echo "run seed_demo_data after the migration"
+    tests/test_seed.py: |
+      from src.seed_demo_data import seed_demo_data
+
+
+      def test_seed():
+          assert seed_demo_data(2) == [0, 1]
+  commit_message: Change shell symbol python heredoc caller is disclosed
+query:
+  symbol: seed_demo_data
+expect:
+  relations:
+  - from: tests/test_seed.py::test_seed
+    to: src/seed_demo_data.py::seed_demo_data
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: scripts/seed.sh
+    to: src/seed_demo_data.py::seed_demo_data
+    kind: calls
+    resolution: unresolved
+    site: 2
+  exact: true
+  decoys:
+    src/seed_demo_data.py::seed_demo_data:
+    - scripts/note.sh
+  definitions:
+  - src/seed_demo_data.py::seed_demo_data
+  discloses: true

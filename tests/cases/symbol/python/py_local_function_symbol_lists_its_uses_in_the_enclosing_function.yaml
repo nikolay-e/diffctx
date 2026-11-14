@@ -1,0 +1,22 @@
+name: py_local_function_symbol_lists_its_uses_in_the_enclosing_function
+mode: symbol
+source: synthetic
+issue_state: closed
+tags: [python, nested-function, local-of-definition]
+# Revision 12.3 (W5-N): `tax` never leaves `total`, so it is a local of
+# `src/pricing.py::total`; `--symbol tax` says so and lists its uses inside it.
+repo:
+  initial_files:
+    src/pricing.py: |
+      def total(items):
+          def tax(x):
+              return x * 0.2
+
+          net = sum(i.price for i in items)
+          return net + tax(net)
+query:
+  symbol: tax
+expect:
+  definitions: [src/pricing.py::tax]
+  relations:
+    - {from: "src/pricing.py::total", to: "src/pricing.py::tax", kind: calls, resolution: resolved, site: 6}

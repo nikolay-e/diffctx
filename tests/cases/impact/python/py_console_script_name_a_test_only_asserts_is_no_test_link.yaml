@@ -1,0 +1,35 @@
+name: py_console_script_name_a_test_only_asserts_is_no_test_link
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- console-script
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "tool"
+      version = "0.1.0"
+
+      [project.scripts]
+      mytool = "tool.cli:main"
+    tool/__init__.py: ''
+    tool/cli.py: |
+      def main():
+          return 0
+    tests/test_names.py: |
+      def test_the_script_is_named_for_the_tool():
+          assert "mytool" == "mytool"
+  changed_files:
+    tool/cli.py: |
+      def main():
+          return 2
+  commit_message: Change the exit code of the console script
+expect:
+  changed:
+  - tool/cli.py::main
+  untested:
+  - main

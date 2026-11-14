@@ -440,7 +440,7 @@ fn build_module_source_edges(
     }
 }
 
-pub struct TerraformEdgeBuilder;
+pub(crate) struct TerraformEdgeBuilder;
 
 impl EdgeBuilder for TerraformEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

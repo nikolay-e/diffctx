@@ -1,0 +1,63 @@
+name: py_deleted_script_names_no_callers_by_word
+mode: impact
+source: gh#470
+issue_state: closed
+tags: [python, removed-definition, common-word, decoy, cross-language]
+repo:
+  initial_files:
+    scripts/rotate-key.py: |
+      import sys
+
+
+      def die(message):
+          sys.exit(message)
+
+
+      def get_age_key(path):
+          return open(path).read()
+
+
+      def run(path):
+          return get_age_key(path)
+
+
+      def main():
+          run(sys.argv[1])
+
+
+      if __name__ == "__main__":
+          main()
+    scripts/check-rules.py: |
+      import subprocess
+
+
+      def check():
+          return subprocess.run(["true"], check=True)
+    scripts/setup.sh: |
+      #!/bin/sh
+      die() {
+        echo "$1" >&2
+        exit 1
+      }
+
+      [ -n "$HOME" ] || die "no home"
+    scripts/other.py: |
+      def main():
+          return 0
+
+
+      if __name__ == "__main__":
+          main()
+  deleted_files:
+    - scripts/rotate-key.py
+  commit_message: "scripts: retire the key rotation script"
+expect:
+  callers:
+    die: []
+    get_age_key: []
+    run: []
+    main: []
+  decoys:
+    die: [scripts/setup.sh]
+    run: [scripts/check-rules.py]
+    main: [scripts/other.py]

@@ -1,0 +1,41 @@
+name: cpp_namespace_alias_typed_parameter_with_a_system_include_keeps_the_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [cpp, namespace-alias, system-include]
+repo:
+  initial_files:
+    include/geo/vec.h: |
+      #pragma once
+      namespace geo {
+      class Vec {
+      public:
+          Vec(int x, int y);
+          int dot(const Vec& o) const;
+      private:
+          int x_, y_;
+      };
+      }
+    src/vec.cpp: |
+      #include "geo/vec.h"
+      namespace geo {
+      Vec::Vec(int x, int y) : x_(x), y_(y) {}
+      int Vec::dot(const Vec& o) const { return x_ * o.x_ + y_ * o.y_; }
+      }
+    src/main.cpp: |
+      #include <vector>
+      #include "geo/vec.h"
+      namespace g = geo;
+      int run(const g::Vec& a) { return a.dot(a); }
+  changed_files:
+    src/vec.cpp: |
+      #include "geo/vec.h"
+      namespace geo {
+      Vec::Vec(int x, int y) : x_(x), y_(y) {}
+      int Vec::dot(const Vec& o) const { return x_ * o.x_ - y_ * o.y_; }
+      }
+  commit_message: "vec: subtract the second product"
+expect:
+  changed: [src/vec.cpp::dot]
+  relations:
+    - {from: "src/main.cpp::run", to: "src/vec.cpp::dot", kind: calls, resolution: resolved, site: 4}

@@ -1,0 +1,70 @@
+name: php_psr4_picks_the_autoloaded_class_of_two_with_one_name
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- psr-4
+- composer
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}}}
+    src/Invoice.php: |
+      <?php
+      namespace App;
+
+      class Invoice
+      {
+          public function total(): int
+          {
+              return 1;
+          }
+      }
+    legacy/Invoice.php: |
+      <?php
+      namespace App;
+
+      class Invoice
+      {
+          public function total(): int
+          {
+              return 0;
+          }
+      }
+    src/Cart.php: |
+      <?php
+      namespace App;
+
+      class Cart
+      {
+          public function pay(Invoice $i): int
+          {
+              return $i->total();
+          }
+      }
+  changed_files:
+    src/Invoice.php: |
+      <?php
+      namespace App;
+
+      class Invoice
+      {
+          public function total(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change psr4 picks the autoloaded class of two with one name
+expect:
+  changed:
+  - src/Invoice.php::Invoice.total
+  relations:
+  - from: src/Cart.php::Cart.pay
+    to: src/Invoice.php::Invoice.total
+    kind: calls
+    resolution: resolved
+    site: 8
+  decoys:
+    src/Invoice.php::Invoice.total:
+    - legacy/Invoice.php

@@ -1,6 +1,5 @@
 //! Java facts from `tree-sitter-java`, in the shape of the Kotlin facts, so
-//! one binding model (`kotlin_bindings`) reads the JVM's two languages
-//! (#335).
+//! one extractor body reads the JVM's two languages (#335).
 //!
 //! An anonymous class is a type of its own, named for what it instantiates
 //! (`new Service`): its members are reached through that supertype, never by
@@ -17,16 +16,11 @@ use super::kotlin::{
     line_of, push_use, squash, text, walk,
 };
 
-pub fn facts(content: &str) -> Option<KotlinFacts> {
-    let tree = crate::parsers::parse_tree("java", content)?;
-    Some(extract(tree.root_node(), content.as_bytes()))
-}
-
 /// The types around a node: each name, its visibility, and whether it is an
 /// interface, whose members are public unless they say otherwise.
 type Owners = Vec<(String, Option<Visibility>, bool)>;
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
@@ -140,10 +134,12 @@ fn declarations(
         .child_by_field_name("body")
         .or_else(|| child(*node, "class_body"));
     let header_end = body.map_or_else(|| node.end_byte(), |b| b.start_byte());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
     let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     let in_interface = owners.last().is_some_and(|(_, _, interface)| *interface);
-    let abstract_member =
-        kind == "fun" && body.is_none() && (in_interface || has_modifier(modifiers, "abstract"));
     let own = visibility.or(in_interface.then_some(Visibility::Public));
     names
         .into_iter()
@@ -164,10 +160,7 @@ fn declarations(
             // a nested interface, enum or record is static.
             inner: anonymous
                 || (node.kind() == "class_declaration" && !has_modifier(modifiers, "static")),
-            abstract_member,
             annotations: annotations.clone(),
-            required_params: None,
-            params: None,
             start_line: line_of(*node),
             end_line: node.end_position().row as u32 + 1,
             span: node.byte_range(),
@@ -193,10 +186,7 @@ fn record_component(node: &Node, owners: &Owners, bytes: &[u8]) -> Option<Declar
         effective: Some(Visibility::Private),
         is_override: false,
         inner: false,
-        abstract_member: false,
         annotations: Vec::new(),
-        required_params: None,
-        params: None,
         start_line: line_of(*node),
         end_line: node.end_position().row as u32 + 1,
         span: node.byte_range(),
@@ -666,7 +656,8 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
 }\n";
 
     fn facts_of() -> KotlinFacts {
-        facts(SOURCE).expect("java grammar")
+        let tree = crate::parsers::parse_tree("java", SOURCE).expect("java grammar");
+        extract(tree.root_node(), SOURCE.as_bytes())
     }
 
     fn decl<'a>(f: &'a KotlinFacts, name: &str) -> &'a Declaration {
@@ -679,7 +670,7 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
     #[test]
     fn package_imports_and_declarations_read_off_the_tree() {
         let f = facts_of();
-        assert!(!f.partial(), "{:?}", f.error_lines);
+        assert!(f.error_lines.is_empty(), "{:?}", f.error_lines);
         assert_eq!(f.package.as_deref(), Some("com.acme.svc"));
         assert_eq!(
             f.imported("DrugMapper").map(|i| i.path.as_str()),
@@ -716,7 +707,6 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
         );
         assert_eq!(decl(&f, "MedicineService").annotations, ["Service"]);
         let save = decl(&f, "save");
-        assert!(save.abstract_member);
         assert_eq!(
             save.effective,
             Some(Visibility::Internal),

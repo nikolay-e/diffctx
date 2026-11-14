@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_r_file(path: &Path) -> bool {
     base::has_ext(path, &[".r", ".rmd"])
@@ -52,7 +52,7 @@ fn extract_calls(content: &str) -> FxHashSet<String> {
         .collect()
 }
 
-pub struct RLangEdgeBuilder;
+pub(crate) struct RLangEdgeBuilder;
 
 impl EdgeBuilder for RLangEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -66,10 +66,7 @@ impl EdgeBuilder for RLangEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["r_source"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
-        }
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
@@ -87,28 +84,11 @@ impl EdgeBuilder for RLangEdgeBuilder {
                 } else {
                     fn_w
                 };
-                if let Some(targets) = name_to_defs.get(&call.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, w, reverse_factor);
-                }
+                defs.link_one(&mut edges, &f.id, &call, w);
             }
         }
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            is_r_file,
-            extract_sources,
-        )
-    }
+    discover_by_refs!(is_r_file, extract_sources);
 }

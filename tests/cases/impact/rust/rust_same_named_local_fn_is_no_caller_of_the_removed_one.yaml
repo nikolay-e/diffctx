@@ -1,0 +1,67 @@
+name: rust_same_named_local_fn_is_no_caller_of_the_removed_one
+mode: impact
+source: gh#548
+issue_state: closed
+tags:
+- rust
+- shadowing
+- removal
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod graph_export;
+      pub mod pybridge;
+    src/graph_export.rs: |
+      pub fn graph_to_json_string(x: &str) -> String {
+          format!("{{\"g\":\"{x}\"}}")
+      }
+
+      pub fn graph_to_graphml_string(x: &str) -> String {
+          format!("<g>{x}</g>")
+      }
+
+      pub fn keep() -> u32 {
+          1
+      }
+    src/pybridge.rs: |
+      macro_rules! wrap_pyfunction {
+          ($f:ident, $m:expr) => {
+              $m.push(stringify!($f))
+          };
+      }
+
+      fn graph_to_json_string(pg: &str, level: &str) -> String {
+          format!("{pg}:{level}")
+      }
+
+      fn graph_to_graphml_string(pg: &str, level: &str) -> String {
+          format!("{pg}/{level}")
+      }
+
+      pub fn register(m: &mut Vec<&'static str>) {
+          wrap_pyfunction!(graph_to_json_string, m);
+          wrap_pyfunction!(graph_to_graphml_string, m);
+      }
+  changed_files:
+    src/graph_export.rs: |
+      pub fn keep() -> u32 {
+          1
+      }
+  commit_message: Change rust same named local fn is no caller of the removed one
+expect:
+  changed:
+  - src/graph_export.rs::graph_to_json_string
+  - src/graph_export.rs::graph_to_graphml_string
+  decoys:
+    src/graph_export.rs::graph_to_json_string:
+    - src/pybridge.rs
+    src/graph_export.rs::graph_to_graphml_string:
+    - src/pybridge.rs
+  removed:
+  - graph_to_json_string
+  - graph_to_graphml_string

@@ -20,7 +20,7 @@ permissions: {}
   workflow_dispatch:
     inputs:
       expect_version:
-        description: 'Version every channel must serve (default: src/diffctx/version.py)'
+        description: 'Version every channel must serve (default: the last release, as server.json records it)'
         required: false
         default: ''
       file_issue:
@@ -49,7 +49,7 @@ jobs:
         run: |
           version="$INPUT_VERSION"
           if [ -z "$version" ]; then
-            version=$(cut -d'"' -f2 src/diffctx/version.py)
+            version=$(jq -r .version server.json)
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "expecting $version everywhere"

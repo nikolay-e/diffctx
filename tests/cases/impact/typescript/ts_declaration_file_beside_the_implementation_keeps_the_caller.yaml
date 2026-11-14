@@ -1,0 +1,31 @@
+name: ts_declaration_file_beside_the_implementation_keeps_the_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, declaration-file, candidate]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"tsd","version":"0.0.0"}
+    lib/math.js: |
+      export function compute(x) {
+        return x + 1;
+      }
+    lib/math.d.ts: |
+      export declare function compute(x: number): number;
+    src/use.ts: |
+      import { compute } from "../lib/math";
+      export function useIt() { return compute(1); }
+    test/use.test.ts: |
+      import { useIt } from "../src/use";
+      test("u", () => expect(useIt()).toBe(2));
+  changed_files:
+    lib/math.js: |
+      export function compute(x) {
+        return x + 2;
+      }
+  commit_message: "math: add two"
+expect:
+  changed: [lib/math.js::compute]
+  relations:
+    - {from: "src/use.ts::useIt", to: "lib/math.js::compute", kind: calls, resolution: candidate, site: 2}
