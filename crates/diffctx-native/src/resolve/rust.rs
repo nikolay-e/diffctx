@@ -20,7 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use super::index::scope_path;
-use super::solved::before_deadline;
+use super::solved::{Gathered, before_deadline, gather_of, reader_of};
 use super::twins::{self, Outcome, Typed};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -29,11 +29,11 @@ use super::{
 use crate::facts::FileFacts;
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, Import, Language, Name, Namespace,
-    Receiver, Ref, Scope, UseKind, Visibility, expired, facts_of,
+    Receiver, Ref, Scope, UseKind, Visibility,
 };
 use crate::snapshot::workspace::CrateKind;
 use crate::snapshot::{
-    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotError, SnapshotReader, Stage,
+    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotError, SnapshotReader,
     WorkspaceModel,
 };
 
@@ -145,32 +145,13 @@ pub struct RustResolver {
 impl RustResolver {
     /// Resolves every Rust file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Rust) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if file.language() == Language::Rust {
-                    losses.extend(file.losses());
-                    read.push(entry.path.clone());
-                    files.push(file);
-                }
-            }
-        }
+        let reader = reader_of(ctx, side);
+        let Gathered {
+            mut losses,
+            files,
+            read,
+            ..
+        } = gather_of(ctx, side, cache, Language::Rust)?;
         let index = Index::build(files, &ctx.workspace);
         let public = index
             .files

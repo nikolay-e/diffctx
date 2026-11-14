@@ -19,7 +19,7 @@ use std::rc::Rc;
 
 use super::index::{ImportRec, Index, Path, Spec, join, scope_path};
 use super::modules::ModuleRes;
-use super::solved::before_deadline;
+use super::solved::{Gathered, before_deadline, gather, reader_of};
 use super::twins;
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
@@ -28,10 +28,10 @@ use super::{
 use crate::facts::lang::python::is_dotted_name;
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref, Scope,
-    UseKind, expired, facts_of,
+    UseKind,
 };
 use crate::snapshot::{
-    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
+    AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, WorkspaceModel,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many
@@ -50,35 +50,23 @@ pub struct PythonResolver {
 impl PythonResolver {
     /// Resolves every Python file of `side`, found by extension or shebang.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            let language = Language::from_path(&entry.path);
-            let python = language == Some(Language::Python)
-                || (language.is_none() && Language::needs_shebang(&entry.path));
-            if !python {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if file.language() == Language::Python {
-                    losses.extend(file.losses());
-                    read.push(entry.path.clone());
-                    files.push(file);
-                }
-            }
-        }
+        let reader = reader_of(ctx, side);
+        let Gathered {
+            mut losses,
+            files,
+            read,
+            ..
+        } = gather(
+            ctx,
+            side,
+            cache,
+            |entry, _| {
+                let language = Language::from_path(&entry.path);
+                language == Some(Language::Python)
+                    || (language.is_none() && Language::needs_shebang(&entry.path))
+            },
+            |file| file.language() == Language::Python,
+        )?;
         let engine = Engine::new(
             Index::build(files, &ctx.workspace),
             &ctx.workspace,

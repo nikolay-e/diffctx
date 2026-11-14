@@ -24,14 +24,13 @@
 use std::collections::HashSet;
 
 use super::index::dir_of;
+use super::solved::{Gathered, gather_of};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, unresolved,
 };
-use crate::facts::{
-    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, expired, facts_of,
-};
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, Result, SideTag, Stage, normalize_lexical};
+use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope};
+use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag, normalize_lexical};
 
 /// The bindings of one snapshot's Dockerfiles.
 pub struct DockerfileResolver {
@@ -63,30 +62,13 @@ struct FileRec {
 impl DockerfileResolver {
     /// Resolves every Dockerfile of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files: Vec<FileFacts> = Vec::new();
-        let mut losses = Vec::new();
-        let mut read_paths = Vec::new();
-        for entry in &listing.entries {
-            if Language::from_path(&entry.path) != Some(Language::Dockerfile) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read_paths.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+        let Gathered {
+            losses,
+            files,
+            read: read_paths,
+            listing,
+            ..
+        } = gather_of(ctx, side, cache, Language::Dockerfile)?;
         let paths: HashSet<&str> = listing.entries.iter().map(|e| e.path.as_str()).collect();
         let mut directories: HashSet<&str> = HashSet::new();
         for &path in &paths {

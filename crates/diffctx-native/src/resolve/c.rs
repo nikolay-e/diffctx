@@ -31,13 +31,14 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::index::{Path, dir_of, join, normalise};
+use super::solved::{Gathered, gather, reader_of};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable, unresolved,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, LocalKey,
-    Name, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, facts_of,
+    Name, Receiver, Ref, Scope, Span, UseKind, Visibility, expired,
 };
 use crate::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
@@ -97,45 +98,36 @@ pub struct CResolver {
 impl CResolver {
     /// Resolves every C file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
+        let reader = reader_of(ctx, side);
         let mut commands: Vec<Bytes> = Vec::new();
-        for entry in &listing.entries {
-            if entry.path.file_name() == "compile_commands.json" {
-                match reader.read(&entry.path) {
-                    Ok(Some(read)) => commands.push(read),
-                    Ok(None) => {}
-                    Err(_) => losses.push(Loss::ReadFailed {
-                        path: entry.path.clone(),
-                        side,
-                    }),
+        let Gathered {
+            listing,
+            files,
+            mut losses,
+            read,
+        } = gather(
+            ctx,
+            side,
+            cache,
+            |entry, losses| {
+                if entry.path.file_name() == "compile_commands.json" {
+                    match reader.read(&entry.path) {
+                        Ok(Some(read)) => commands.push(read),
+                        Ok(None) => {}
+                        Err(_) => losses.push(Loss::ReadFailed {
+                            path: entry.path.clone(),
+                            side,
+                        }),
+                    }
+                    return false;
                 }
-                continue;
-            }
-            if !matches!(
-                Language::from_path(&entry.path),
-                Some(Language::C | Language::Cpp)
-            ) {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+                matches!(
+                    Language::from_path(&entry.path),
+                    Some(Language::C | Language::Cpp)
+                )
+            },
+            |_| true,
+        )?;
         let ix = Index::build(files);
         let hints = include_hints(&commands, &ix);
         let builds = build_trees(

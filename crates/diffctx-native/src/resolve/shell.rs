@@ -26,15 +26,14 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::solved::{Gathered, gather};
 use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
 use crate::facts::shell::{PathHead, PathUse};
-use crate::facts::{
-    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope, UseKind, expired, facts_of,
-};
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, normalize_lexical};
+use crate::facts::{DefKey, DefKind, Fact, FactsCache, Language, Name, Scope, UseKind};
+use crate::snapshot::{AnalysisContext, Result, SideTag, normalize_lexical};
 
 /// The bindings of one snapshot's shell scripts.
 pub struct ShellResolver {
@@ -275,36 +274,23 @@ fn resolutions(
 impl ShellResolver {
     /// Resolves every shell script of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
-        let reader = match side {
-            SideTag::Base => &ctx.base,
-            SideTag::Head => &ctx.head,
-        };
-        let listing = cache.listing(reader)?;
-        let mut files: Vec<FileFacts> = Vec::new();
-        let mut losses = Vec::new();
-        let mut read = Vec::new();
-        for entry in &listing.entries {
-            let language = Language::from_path(&entry.path);
-            let script = matches!(language, Some(Language::Shell | Language::ShellUnread))
-                || (language.is_none() && Language::needs_shebang(&entry.path));
-            if !script {
-                continue;
-            }
-            if expired(&ctx.run) {
-                losses.push(Loss::Deadline {
-                    stage: Stage::Search,
-                });
-                break;
-            }
-            if let Some(file) = facts_of(ctx, side, cache, &entry.path)? {
-                if !matches!(file.language(), Language::Shell | Language::ShellUnread) {
-                    continue;
-                }
-                losses.extend(file.losses());
-                read.push(entry.path.clone());
-                files.push(file);
-            }
-        }
+        let Gathered {
+            losses,
+            files,
+            read,
+            listing,
+            ..
+        } = gather(
+            ctx,
+            side,
+            cache,
+            |entry, _| {
+                let language = Language::from_path(&entry.path);
+                matches!(language, Some(Language::Shell | Language::ShellUnread))
+                    || (language.is_none() && Language::needs_shebang(&entry.path))
+            },
+            |file| matches!(file.language(), Language::Shell | Language::ShellUnread),
+        )?;
 
         let mut index = Index {
             paths: listing.entries.iter().map(|e| e.path.as_str()).collect(),
