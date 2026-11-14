@@ -1,0 +1,41 @@
+name: cpp_typedef_typed_local_with_a_system_include_keeps_the_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [cpp, typedef, system-include]
+repo:
+  initial_files:
+    include/geo/vec.h: |
+      #pragma once
+      namespace geo {
+      class Vec {
+      public:
+          Vec(int x, int y);
+          int dot(const Vec& o) const;
+      private:
+          int x_, y_;
+      };
+      }
+    src/vec.cpp: |
+      #include "geo/vec.h"
+      namespace geo {
+      Vec::Vec(int x, int y) : x_(x), y_(y) {}
+      int Vec::dot(const Vec& o) const { return x_ * o.x_ + y_ * o.y_; }
+      }
+    src/main.cpp: |
+      #include <vector>
+      #include "geo/vec.h"
+      typedef geo::Vec V;
+      int run() { V a(1, 2); return a.dot(a); }
+  changed_files:
+    src/vec.cpp: |
+      #include "geo/vec.h"
+      namespace geo {
+      Vec::Vec(int x, int y) : x_(x), y_(y) {}
+      int Vec::dot(const Vec& o) const { return x_ * o.x_ - y_ * o.y_; }
+      }
+  commit_message: "vec: subtract the second product"
+expect:
+  changed: [src/vec.cpp::Vec.dot]
+  relations:
+    - {from: "src/main.cpp::run", to: "src/vec.cpp::Vec.dot", kind: calls, resolution: candidate, site: 4}
