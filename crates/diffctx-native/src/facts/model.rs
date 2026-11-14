@@ -30,6 +30,14 @@ pub enum Disambig {
     Cfg(String),
 }
 
+impl Disambig {
+    /// Whether the twin stands for its siblings on another path through the code
+    /// (a `cfg`, a branch of an `if`): neither an overload nor a declaration of them.
+    pub fn is_alternative(&self) -> bool {
+        matches!(self, Self::Cfg(tag) if !matches!(tag.as_str(), "TYPE_CHECKING" | "declaration"))
+    }
+}
+
 /// A definition's identity inside its module: no line numbers, no byte offsets.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct LocalKey {
