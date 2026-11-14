@@ -449,12 +449,20 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
 /// is the number of resolved caller rows and the calls counted beside them (word
 /// matches are no callers), and a
 /// "called from" or "referenced from" line needs a resolved row behind it.
+/// Each form is fit to the cap on its own size, so a budgeted answer that shed
+/// rows is read against the same invocation asked with no budget: every row the
+/// text states is in it, and every row the budgeted JSON kept is in the text
+/// unless the text counts callers as omitted.
 fn check_text(answer: &Answer, failures: &mut Vec<String>) {
     let Some(markdown) = answer.markdown.as_deref() else {
         return;
     };
-    let resolved = answer
-        .caller_rows
+    let shed = answer.truncated > 0;
+    let stated = match (&answer.unbudgeted_rows, shed) {
+        (Some(unbudgeted), true) => unbudgeted,
+        _ => &answer.caller_rows,
+    };
+    let resolved = stated
         .iter()
         .filter(|(_, evidence)| evidence == "resolved")
         .count()
@@ -470,13 +478,16 @@ fn check_text(answer: &Answer, failures: &mut Vec<String>) {
             .rev()
             .collect();
         let counted = digits.parse::<usize>().ok();
-        if answer.truncated == 0 && counted.is_some_and(|n| n != resolved) {
+        if counted.is_some_and(|n| n != resolved) {
             failures.push(format!(
                 "the text header counts {digits} caller(s) outside the diff; \
                  the JSON has {resolved} resolved caller row(s)"
             ));
         }
     }
+    let omitted =
+        markdown.contains("caller(s) omitted") || markdown.contains("caller(s) are not listed");
+    let mut listed: Vec<&str> = Vec::new();
     for line in markdown.lines() {
         let line = line.trim_start();
         let Some(rest) = line
@@ -495,13 +506,26 @@ fn check_text(answer: &Answer, failures: &mut Vec<String>) {
             },
             |(path, _)| path,
         );
-        if !answer
-            .caller_rows
+        listed.push(path);
+        if !stated
             .iter()
             .any(|(p, evidence)| p == path && evidence == "resolved")
         {
             failures.push(format!(
                 "the text lists `{target}` as a caller; the JSON has no resolved caller row for `{path}`"
+            ));
+        }
+    }
+    if shed && !omitted {
+        for (path, _) in answer
+            .caller_rows
+            .iter()
+            .filter(|(_, evidence)| evidence == "resolved")
+            .filter(|(path, _)| !listed.contains(&path.as_str()))
+        {
+            failures.push(format!(
+                "the JSON keeps a resolved caller row for `{path}` under its budget; \
+                 the text neither lists it nor counts callers as omitted"
             ));
         }
     }
