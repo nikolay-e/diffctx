@@ -201,7 +201,7 @@ pub(crate) fn classify(rel: &str) -> Option<FileClass> {
         "proto" => FileClass::Proto,
         "json" => FileClass::Json,
         "mk" => FileClass::Script,
-        "py" => FileClass::Code(CodeLang::Python),
+        "py" | "pyw" => FileClass::Code(CodeLang::Python),
         "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "vue" | "svelte" => {
             FileClass::Code(CodeLang::Js)
         }

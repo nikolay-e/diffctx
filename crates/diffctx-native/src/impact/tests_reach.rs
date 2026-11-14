@@ -96,6 +96,8 @@ pub(super) struct TestsReach<'a> {
     stops: RefCell<FxHashMap<FragmentId, bool>>,
     /// Whether the search above the fragment is open, per fragment.
     above: RefCell<FxHashMap<FragmentId, bool>>,
+    /// The files the runners' configurations declare tests, whatever their names.
+    declared: DeclaredTests,
 }
 
 impl<'a> TestsReach<'a> {
@@ -236,6 +238,7 @@ impl<'a> TestsReach<'a> {
             memo: RefCell::default(),
             stops: RefCell::default(),
             above: RefCell::default(),
+            declared,
         }
     }
 
@@ -261,6 +264,11 @@ impl<'a> TestsReach<'a> {
                     && !self.cells.of(path).is_some_and(|cell| cell.is_bound(path))
             })
             .cloned()
+    }
+
+    /// A test file by its name or by a runner's configuration, as the answer prints it.
+    fn is_test_file(&self, shown: &str) -> bool {
+        crate::testfiles::is_test_path(Path::new(shown)) || self.declared.is_test(shown)
     }
 
     fn in_test_span(&self, shown: &str, line: u32) -> bool {
@@ -380,7 +388,7 @@ impl<'a> TestsReach<'a> {
                     user.is_none_or(|user| !self.is_test(user)) && self.in_test_span(&file, line);
                 match user {
                     Some(user) if !scoped => up.fragments.push(user),
-                    _ if scoped || crate::testfiles::is_test_path(Path::new(&file)) => {
+                    _ if scoped || self.is_test_file(&file) => {
                         let name = self
                             .cells
                             .of(&file)
@@ -659,9 +667,7 @@ impl<'a> TestsReach<'a> {
         reaches_file: &dyn Fn(&Fragment, &Fragment) -> bool,
     ) -> bool {
         if let Some((cell, shown)) = self.cell_of(caller) {
-            return cell
-                .reached_from(shown)
-                .any(|user| crate::testfiles::is_test_path(Path::new(user)))
+            return cell.reached_from(shown).any(|user| self.is_test_file(user))
                 || self
                     .test_fragments
                     .iter()
