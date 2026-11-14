@@ -528,14 +528,19 @@ impl<'w> Engine<'w> {
     /// The named type as the file at `scope` means it.
     fn resolve_type(&self, f: usize, scope: &[Name], name: &Name) -> Found {
         let file = &self.ix.files[f];
-        let typed = |ids: &[usize]| -> Vec<usize> {
+        let types = |ids: &[usize]| -> Vec<usize> {
             ids.iter()
                 .copied()
                 .filter(|id| {
                     let rec = &self.ix.defs[*id];
-                    is_type(rec.def.kind) && !is_extension(&rec.def) && rec.def.local.name == *name
+                    is_type(rec.def.kind) && !is_extension(&rec.def)
                 })
                 .collect()
+        };
+        let typed = |ids: &[usize]| -> Vec<usize> {
+            let mut ids = types(ids);
+            ids.retain(|id| self.ix.defs[*id].def.local.name == *name);
+            ids
         };
         for depth in (0..=scope.len()).rev() {
             let local = file.children.get(&scope[..depth]).map(|ids| typed(ids));
@@ -544,7 +549,8 @@ impl<'w> Engine<'w> {
             }
         }
         if let Some(import) = file.imports.iter().find(|i| i.local.as_ref() == Some(name)) {
-            let ids = typed(&self.import_targets(import));
+            // An import that renames (`as M`) names a type of another spelling.
+            let ids = types(&self.import_targets(import));
             return if ids.is_empty() {
                 Found::External
             } else {
