@@ -553,31 +553,31 @@ fn values_of(holder: &Holder, text: &str, key: &str) -> Vec<String> {
     match holder {
         Holder::Ini(section) => ini_values(text, section, key),
         Holder::Toml(at) => {
-            let table = toml::from_str::<toml::Table>(text).ok();
-            let value = table
-                .as_ref()
-                .and_then(|table| crate::snapshot::workspace::toml_at(table, at))
-                .and_then(|holder| holder.get(key));
-            crate::snapshot::workspace::toml_strings(value)
+            let parsed = toml::from_str::<toml::Table>(text)
+                .ok()
+                .and_then(|table| serde_json::to_value(table).ok());
+            strings_at(parsed, at, key)
                 .iter()
                 .flat_map(|words| words.split_whitespace().map(str::to_string))
                 .collect()
         }
-        Holder::Json(at) => {
-            let mut value = serde_json::from_str::<serde_json::Value>(text).ok();
-            for segment in *at {
-                value = value.and_then(|v| v.get(segment).cloned());
-            }
-            match value.and_then(|v| v.get(key).cloned()) {
-                Some(serde_json::Value::String(one)) => vec![one],
-                Some(serde_json::Value::Array(items)) => items
-                    .into_iter()
-                    .filter_map(|item| item.as_str().map(str::to_string))
-                    .collect(),
-                _ => Vec::new(),
-            }
-        }
+        Holder::Json(at) => strings_at(serde_json::from_str(text).ok(), at, key),
         Holder::Script => script_values(text, key),
+    }
+}
+
+/// The string, or the strings of the list, `key` holds in `value` beneath `at`.
+fn strings_at(mut value: Option<serde_json::Value>, at: &[&str], key: &str) -> Vec<String> {
+    for segment in at {
+        value = value.and_then(|v| v.get(segment).cloned());
+    }
+    match value.and_then(|v| v.get(key).cloned()) {
+        Some(serde_json::Value::String(one)) => vec![one],
+        Some(serde_json::Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
