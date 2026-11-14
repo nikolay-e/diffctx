@@ -511,7 +511,7 @@ fn literal_pattern(names: &[&str]) -> String {
 
 /// A definition's own lines: (file, literal name, lines). A literal inside its
 /// own span is the definition's text, never a use of it.
-pub(super) type OwnSpan<'a> = (&'a str, &'a str, (u32, u32));
+pub(super) type OwnSpan = (String, String, (u32, u32));
 
 impl LiteralNames {
     /// The lines of the tree at the range's head that spell one of `names` as a
@@ -584,8 +584,8 @@ impl LiteralNames {
                         continue;
                     };
                     let inside = |name: &str| {
-                        own.iter().any(|&(file, own_name, (from, to))| {
-                            file == path && own_name == name && (from..=to).contains(line)
+                        own.iter().any(|(file, own_name, (from, to))| {
+                            file == path && own_name == name && (*from..=*to).contains(line)
                         })
                     };
                     for name in chunk
