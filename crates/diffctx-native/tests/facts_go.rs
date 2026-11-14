@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 use _diffctx::facts::lang::go::GoExtractor;
 use _diffctx::facts::{
     BlobFacts, Def, DefKind, EntryKind, Export, Extractor, Fact, Import, ImportKind, LocalKey,
-    Receiver, Ref, Scope, Star, TypeName, Visibility,
+    ModulePath, Receiver, Ref, Scope, Star, TypeName, Visibility,
 };
 use _diffctx::snapshot::{Loss, RunBudget, Stage};
 
@@ -352,6 +352,36 @@ fn an_explicit_instantiation_of_a_generic_function_is_a_call() {
             "Call Pair in def:F",
             "TypeUse Celsius in def:F",
         ]
+    );
+}
+
+#[test]
+fn a_package_qualified_explicit_instantiation_is_a_call_of_the_member() {
+    let lines = ref_lines(
+        "package p\n\nfunc F() {\n\t_ = conv.Parse[int](\"1\")\n\t_ = c.Pair[Celsius, string](1, \"a\")\n}\n",
+    );
+    assert_eq!(
+        lines,
+        [
+            "Call conv.Parse in def:F",
+            "Call c.Pair in def:F",
+            "TypeUse Celsius in def:F",
+        ]
+    );
+}
+
+#[test]
+fn a_linkname_directive_is_a_call_named_by_the_import_path() {
+    let blob = extract(
+        "package p\n\n//go:linkname local example.com/app/lib.linked\nfunc local() int\n\n//go:linkname m example.com/app/lib.T.m\nfunc m()\n",
+    );
+    assert_eq!(
+        refs(&blob).into_iter().map(ref_line).collect::<Vec<_>>(),
+        ["Call linked in module"]
+    );
+    assert_eq!(
+        receiver_of(&blob, "linked").0,
+        &Receiver::Module(ModulePath::new("example.com/app/lib"))
     );
 }
 

@@ -31,6 +31,8 @@
 //!   struct literal is a `Write` of that field on `T`. A name handed to a call
 //!   as an argument is a `PassAsValue`; a name elsewhere a `Read`; the target of
 //!   an assignment, `++` or `--` a `Write`; a name in a type position a `TypeUse`.
+//! - A `//go:linkname local path/pkg.name` directive is a `Call` of `name` with
+//!   `Receiver::Module` of the import path, sited at the directive.
 //! - A function literal that is an argument of a call is a `Scope::Callback`
 //!   wrapped around the definition that holds it; any other is part of it.
 //! - `func main()` of a package `main` is `Main`; `TestX(t *testing.T)` and its
@@ -269,6 +271,7 @@ impl<'t> Walker<'t> {
             }
             match child.kind() {
                 "comment" => {
+                    self.linkname(child, &cx);
                     docs.push(self.text(child));
                     continue;
                 }
@@ -291,6 +294,33 @@ impl<'t> Walker<'t> {
             }
             docs.clear();
         }
+    }
+
+    /// `//go:linkname local path/pkg.name` makes the bodiless `local` the function `name` of
+    /// the package at the import path: a call of it, named by the path and sited at the directive.
+    fn linkname(&mut self, comment: Node<'t>, cx: &Cx) {
+        let mut words = self
+            .text(comment)
+            .strip_prefix("//go:linkname ")
+            .map(str::split_whitespace)
+            .into_iter()
+            .flatten();
+        let (Some(_local), Some(target)) = (words.next(), words.next()) else {
+            return;
+        };
+        let Some((path, name)) = target.rsplit_once('.') else {
+            return;
+        };
+        // `path/pkg.Type.method` names a method, which this does not bind.
+        if path
+            .rsplit('/')
+            .next()
+            .is_some_and(|last| last.contains('.'))
+        {
+            return;
+        }
+        let receiver = Receiver::Module(ModulePath::new(path));
+        self.emit(comment, cx, receiver, UseKind::Call, name, Vec::new());
     }
 
     // ---- imports

@@ -177,6 +177,10 @@ struct Index {
     members: HashMap<(usize, Name), Vec<usize>>,
     /// Methods by name: what an untyped receiver may be.
     methods: HashMap<Name, Vec<usize>>,
+    /// The workspace's Go modules, longest path first, and the package of each directory:
+    /// where a path no import names leads.
+    modules: Vec<(String, String)>,
+    by_dir: HashMap<String, usize>,
 }
 
 fn dir_of(path: &str) -> String {
@@ -226,6 +230,8 @@ impl Index {
             .collect();
         modules.sort_by_key(|(module, _)| std::cmp::Reverse(module.len()));
         index.link_imports(&modules, &by_dir);
+        index.modules = modules;
+        index.by_dir = by_dir;
         index
     }
 
@@ -1049,9 +1055,22 @@ impl Engine<'_> {
                 let start = self.type_of_text(f, t.as_str());
                 self.member_outcome(f, start, &r.qualifier, r, EvidenceKind::Constructed)
             }
-            Receiver::SelfType | Receiver::Module(_) | Receiver::Unknown => {
-                self.untyped_outcome(f, r)
-            }
+            Receiver::Module(path) => self.linked_outcome(path.as_str(), r),
+            Receiver::SelfType | Receiver::Unknown => self.untyped_outcome(f, r),
+        }
+    }
+
+    /// The function a `//go:linkname` directive names by import path: the package's own,
+    /// unexported ones included.
+    fn linked_outcome(&self, path: &str, r: &Ref) -> Outcome {
+        match self.ix.locate(&self.ix.modules, &self.ix.by_dir, path) {
+            Located::External => Outcome::Unresolved(UnresolvedReason::External),
+            Located::Missing => Outcome::Unresolved(UnresolvedReason::MissingModule),
+            Located::Package(p) => self
+                .item(p, r.name.as_str(), Want::Any)
+                .map_or(Outcome::Unresolved(UnresolvedReason::NoBinding), |d| {
+                    Outcome::Found(d, EvidenceKind::ModuleAttribute)
+                }),
         }
     }
 
