@@ -83,17 +83,8 @@ pub(crate) fn error_lines(root: TsNode) -> Vec<(u32, u32)> {
     merge_ranges(ranges)
 }
 
-pub(super) fn merge_ranges(mut ranges: Vec<(u32, u32)>) -> Vec<(u32, u32)> {
-    ranges.sort_unstable();
-    let mut merged: Vec<(u32, u32)> = Vec::new();
-    for (from, to) in ranges {
-        match merged.last_mut() {
-            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
-            _ => merged.push((from, to)),
-        }
-    }
-    merged.truncate(ERROR_RANGES_KEPT);
-    merged
+pub(super) fn merge_ranges(ranges: Vec<(u32, u32)>) -> Vec<(u32, u32)> {
+    crate::facts::lang::merge_ranges(ranges, ERROR_RANGES_KEPT)
 }
 
 /// The named children of a node that are not comments, in order.

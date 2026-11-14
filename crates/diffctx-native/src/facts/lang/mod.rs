@@ -225,6 +225,23 @@ fn lines_of(node: Node) -> (u32, u32) {
     (first, last.max(first))
 }
 
+/// How many ranges of unread lines a file's facts keep.
+pub(crate) const ERROR_RANGES_KEPT: usize = 32;
+
+/// Sorted ranges with the touching ones joined, the first `keep` of them.
+pub(crate) fn merge_ranges(mut ranges: Vec<(u32, u32)>, keep: usize) -> Vec<(u32, u32)> {
+    ranges.sort_unstable();
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for (from, to) in ranges {
+        match merged.last_mut() {
+            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
+            _ => merged.push((from, to)),
+        }
+    }
+    merged.truncate(keep);
+    merged
+}
+
 fn span(node: Node) -> Span {
     Span {
         bytes: node.start_byte() as u32..node.end_byte() as u32,
