@@ -1815,6 +1815,31 @@ fn a_lock_file_change_is_named_never_empty() {
     assert!(md.contains("  - uv.lock"), "{md}");
 }
 
+/// #641: a lock file is a changed file, in the text header as in the JSON, and
+/// `mise.lock` is one like the rest.
+#[test]
+fn lock_files_are_counted_as_changed_files_and_mise_lock_is_one() {
+    let tmp = repo(
+        &[("Dockerfile", "FROM alpine\n"), ("uv.lock", "x==1\n")],
+        &[
+            ("Dockerfile", "FROM alpine:3\n"),
+            ("uv.lock", "x==2\n"),
+            ("mise.lock", "node = \"20\"\n"),
+        ],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["summary"]["files"], 3, "{doc:#}");
+    let locks: Vec<&str> = doc["inventory"]["lockfiles"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(locks, ["mise.lock", "uv.lock"], "{doc:#}");
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(md.contains(": 3 changed file(s)"), "{md}");
+}
+
 /// #387: callers that could not be resolved are not "0 callers" (Scala,
 /// which has no binding model to resolve them). The header names them, or
 /// one such row reads like the rest among many (#506).
