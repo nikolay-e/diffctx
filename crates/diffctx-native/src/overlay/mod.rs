@@ -28,7 +28,7 @@ fn reader_of(path: &str) -> Option<Reader> {
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)?;
     match ext.as_str() {
-        "py" | "pyi" => Some(Reader::Python),
+        "py" | "pyi" | "pyw" => Some(Reader::Python),
         // A page's inline scripts are JavaScript (#420).
         "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "mts" | "cts" | "html" | "htm" => {
             Some(Reader::Js)

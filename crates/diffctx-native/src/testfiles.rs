@@ -32,6 +32,9 @@ const TEST_DIRS: &[&str] = &["test", "tests", "__tests__", "spec", "specs"];
 /// `selftest` is a tool's own suite (`selftest.mjs`, `lib-selftest.mjs`, #428).
 const SEGMENT_MARKERS: &[&str] = &["test", "tests", "spec", "specs", "selftest", "selftests"];
 
+/// Cypress's default `specPattern` is `*.cy.*`; a bare `cy` is no marker.
+const CYPRESS_SUFFIX: &str = ".cy";
+
 /// CamelCase markers, compared against the original case — the capital letter
 /// *is* the word boundary.
 const CAMEL_MARKERS: &[&str] = &["Test", "Tests", "Spec", "Specs"];
@@ -48,6 +51,7 @@ fn has_test_directory(path: &Path) -> bool {
 fn has_marker_segment(stem: &str) -> bool {
     stem.split(['_', '-', '.'])
         .any(|segment| SEGMENT_MARKERS.contains(&segment.to_lowercase().as_str()))
+        || stem.ends_with(CYPRESS_SUFFIX)
 }
 
 /// True when `stem` carries a capitalised marker at a CamelCase boundary:
@@ -116,6 +120,9 @@ pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
     }
     if lower.contains(".spec") {
         return Some(lower.split(".spec").next()?.to_string());
+    }
+    if let Some(target) = lower.strip_suffix(CYPRESS_SUFFIX) {
+        return Some(target.to_string());
     }
     if test_name.starts_with("Test")
         && test_name.len() > 4
@@ -417,26 +424,37 @@ pub(crate) fn rust_doc_example_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
 enum Holder {
     /// An INI section (`[pytest]`, `[tool:pytest]`).
     Ini(&'static str),
-    /// A TOML table (`[tool.pytest.ini_options]`).
+    /// A TOML table, or the tables of an array of tables (`[tool.pytest.ini_options]`,
+    /// Cargo's `[[test]]`).
     Toml(&'static [&'static str]),
     /// A JSON object, the document when the path is empty (`package.json`'s `jest`).
     Json(&'static [&'static str]),
+    /// A YAML mapping, the document when the path is empty (`.mocharc.yml`).
+    Yaml(&'static [&'static str]),
     /// A script that exports an object: the key and its literals are read off the text.
     Script,
+    /// The object a script holds under the key (vitest's `test: { .. }`), read at
+    /// its own level: the `include` of a nested `coverage` object is not its own.
+    ScriptBlock(&'static str),
 }
 
 /// How the values of a key name files.
 #[derive(Clone, Copy)]
 enum Declares {
-    /// Glob patterns (`testMatch`, `python_files`).
+    /// Glob patterns (`testMatch`, `python_files`); a `!` in front excludes.
     Globs,
     /// Regular expressions over the path (`testRegex`).
     Regex,
+    /// Glob patterns of files that are not tests (`exclude`, `testIgnore`).
+    Excludes,
+    /// Directories beneath which the declared files are looked for (`testpaths`).
+    Scope,
 }
 
 /// A test runner whose configuration decides which files are tests: the
 /// configuration files, the keys, and the files the patterns judge. A runner is a
-/// row; a pattern with no `/` judges the file's name where `names_only`.
+/// row; a pattern with no `/` judges the file's name where `names_only`. A
+/// configuration file name ending in `.*` stands for any script extension.
 struct Runner {
     config_files: &'static [(&'static str, Holder)],
     keys: &'static [(&'static str, Declares)],
@@ -457,7 +475,10 @@ static RUNNERS: &[Runner] = &[
                 Holder::Toml(&["tool", "pytest", "ini_options"]),
             ),
         ],
-        keys: &[("python_files", Declares::Globs)],
+        keys: &[
+            ("python_files", Declares::Globs),
+            ("testpaths", Declares::Scope),
+        ],
         extensions: &["py"],
         names_only: true,
     },
@@ -465,10 +486,7 @@ static RUNNERS: &[Runner] = &[
         config_files: &[
             ("package.json", Holder::Json(&["jest"])),
             ("jest.config.json", Holder::Json(&[])),
-            ("jest.config.js", Holder::Script),
-            ("jest.config.cjs", Holder::Script),
-            ("jest.config.mjs", Holder::Script),
-            ("jest.config.ts", Holder::Script),
+            ("jest.config.*", Holder::Script),
         ],
         keys: &[
             ("testMatch", Declares::Globs),
@@ -477,14 +495,75 @@ static RUNNERS: &[Runner] = &[
         extensions: SCRIPT_EXTENSIONS,
         names_only: false,
     },
+    Runner {
+        config_files: &[
+            ("vitest.config.*", Holder::ScriptBlock("test")),
+            ("vite.config.*", Holder::ScriptBlock("test")),
+        ],
+        keys: &[
+            ("include", Declares::Globs),
+            ("exclude", Declares::Excludes),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        names_only: false,
+    },
+    Runner {
+        config_files: &[
+            ("package.json", Holder::Json(&["mocha"])),
+            (".mocharc.json", Holder::Json(&[])),
+            (".mocharc.yml", Holder::Yaml(&[])),
+            (".mocharc.yaml", Holder::Yaml(&[])),
+            (".mocharc.*", Holder::Script),
+        ],
+        keys: &[("spec", Declares::Globs)],
+        extensions: SCRIPT_EXTENSIONS,
+        names_only: false,
+    },
+    Runner {
+        config_files: &[("playwright.config.*", Holder::Script)],
+        keys: &[
+            ("testMatch", Declares::Globs),
+            ("testIgnore", Declares::Excludes),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        names_only: false,
+    },
+    Runner {
+        config_files: &[("cypress.config.*", Holder::Script)],
+        keys: &[
+            ("specPattern", Declares::Globs),
+            ("excludeSpecPattern", Declares::Excludes),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        names_only: false,
+    },
+    Runner {
+        config_files: &[("Cargo.toml", Holder::Toml(&["test"]))],
+        keys: &[("path", Declares::Globs)],
+        extensions: &["rs"],
+        names_only: false,
+    },
 ];
+
+fn is_config_named(config: &str, name: &str) -> bool {
+    match config.strip_suffix(".*") {
+        Some(stem) => name
+            .strip_prefix(stem)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .is_some_and(|extension| SCRIPT_EXTENSIONS.contains(&extension)),
+        None => config == name,
+    }
+}
 
 /// One runner's patterns over the files beneath the directory of its configuration.
 struct Declared {
     dir: String,
     extensions: &'static [&'static str],
     names_only: bool,
-    patterns: Vec<regex::Regex>,
+    include: Vec<regex::Regex>,
+    exclude: Vec<regex::Regex>,
+    /// Where the runner looks when it names directories; empty when it looks everywhere.
+    scope: Vec<regex::Regex>,
 }
 
 /// The test files the repository's runner configurations declare, beyond the
@@ -500,26 +579,29 @@ impl DeclaredTests {
         for path in paths {
             let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
             for runner in RUNNERS {
-                let Some((_, holder)) = runner.config_files.iter().find(|(n, _)| *n == name) else {
+                let Some((_, holder)) = runner
+                    .config_files
+                    .iter()
+                    .find(|(config, _)| is_config_named(config, name))
+                else {
                     continue;
                 };
                 let Some(text) = read(path) else { continue };
-                let patterns: Vec<regex::Regex> = runner
-                    .keys
-                    .iter()
-                    .flat_map(|&(key, how)| {
-                        values_of(holder, &text, key)
-                            .into_iter()
-                            .filter_map(move |value| pattern_of(&value, how))
-                    })
-                    .collect();
-                if !patterns.is_empty() {
-                    declared.push(Declared {
-                        dir: dir.to_string(),
-                        extensions: runner.extensions,
-                        names_only: runner.names_only,
-                        patterns,
-                    });
+                let mut rules = Declared {
+                    dir: dir.to_string(),
+                    extensions: runner.extensions,
+                    names_only: runner.names_only,
+                    include: Vec::new(),
+                    exclude: Vec::new(),
+                    scope: Vec::new(),
+                };
+                for &(key, how) in runner.keys {
+                    for (value, literal) in values_of(holder, &text, key) {
+                        rules.add(&value, literal, how);
+                    }
+                }
+                if !rules.include.is_empty() {
+                    declared.push(rules);
                 }
             }
         }
@@ -537,48 +619,98 @@ impl DeclaredTests {
             else {
                 return false;
             };
+            let rooted = format!("/{beneath}");
+            let judges =
+                |pattern: &regex::Regex| pattern.is_match(beneath) || pattern.is_match(&rooted);
+            let name = beneath.rsplit('/').next().unwrap_or(beneath);
             declared.extensions.contains(&extension)
-                && declared.patterns.iter().any(|pattern| {
-                    let name = beneath.rsplit('/').next().unwrap_or(beneath);
+                && (declared.scope.is_empty() || declared.scope.iter().any(judges))
+                && declared.include.iter().any(|pattern| {
                     pattern.is_match(if declared.names_only { name } else { beneath })
-                        || pattern.is_match(&format!("/{beneath}"))
+                        || pattern.is_match(&rooted)
                 })
+                && !declared.exclude.iter().any(judges)
         })
     }
 }
 
-/// The values a runner's configuration gives `key`: a list of strings or one string
-/// (split at whitespace where a glob list is written as words).
-fn values_of(holder: &Holder, text: &str, key: &str) -> Vec<String> {
+impl Declared {
+    fn add(&mut self, value: &str, literal: bool, how: Declares) {
+        let pattern = |glob: &str| {
+            if literal {
+                regex::Regex::new(glob).ok()
+            } else {
+                glob_regex(
+                    glob.trim_start_matches("<rootDir>/")
+                        .trim_start_matches("./"),
+                )
+            }
+        };
+        match how {
+            Declares::Globs => match value.strip_prefix('!').filter(|_| !literal) {
+                Some(excluded) => self.exclude.extend(pattern(excluded)),
+                None => self.include.extend(pattern(value)),
+            },
+            Declares::Regex => self.include.extend(regex::Regex::new(value).ok()),
+            Declares::Excludes => self.exclude.extend(pattern(value)),
+            Declares::Scope => {
+                let dir = value.trim_start_matches("./").trim_end_matches('/');
+                if !matches!(dir, "" | ".") {
+                    self.scope.extend(glob_regex(&format!("{dir}{{,/**}}")));
+                }
+            }
+        }
+    }
+}
+
+/// The values a runner's configuration gives `key`, each with whether a script
+/// wrote it as a regular expression literal: a list of strings or one string (split
+/// at whitespace where a glob list is written as words).
+fn values_of(holder: &Holder, text: &str, key: &str) -> Vec<(String, bool)> {
+    let strings = |values: Vec<String>| values.into_iter().map(|v| (v, false)).collect();
     match holder {
-        Holder::Ini(section) => ini_values(text, section, key),
+        Holder::Ini(section) => strings(ini_values(text, section, key)),
         Holder::Toml(at) => {
             let parsed = toml::from_str::<toml::Table>(text)
                 .ok()
                 .and_then(|table| serde_json::to_value(table).ok());
-            strings_at(parsed, at, key)
-                .iter()
-                .flat_map(|words| words.split_whitespace().map(str::to_string))
-                .collect()
+            strings(
+                strings_at(parsed, at, key)
+                    .iter()
+                    .flat_map(|words| words.split_whitespace().map(str::to_string))
+                    .collect(),
+            )
         }
-        Holder::Json(at) => strings_at(serde_json::from_str(text).ok(), at, key),
+        Holder::Json(at) => strings(strings_at(serde_json::from_str(text).ok(), at, key)),
+        Holder::Yaml(at) => strings(strings_at(serde_yaml::from_str(text).ok(), at, key)),
         Holder::Script => script_values(text, key),
+        Holder::ScriptBlock(scope) => script_values(&object_under(text, scope), key),
     }
 }
 
-/// The string, or the strings of the list, `key` holds in `value` beneath `at`.
-fn strings_at(mut value: Option<serde_json::Value>, at: &[&str], key: &str) -> Vec<String> {
+/// The strings `key` holds in the objects beneath `at`: a string, or the strings of
+/// a list; an array of tables on the way (`[[test]]`) is every table of it.
+fn strings_at(root: Option<serde_json::Value>, at: &[&str], key: &str) -> Vec<String> {
+    fn items(value: &serde_json::Value) -> Vec<&serde_json::Value> {
+        value
+            .as_array()
+            .map_or_else(|| vec![value], |list| list.iter().collect())
+    }
+    let mut nodes: Vec<serde_json::Value> = root.into_iter().collect();
     for segment in at {
-        value = value.and_then(|v| v.get(segment).cloned());
+        nodes = nodes
+            .iter()
+            .filter_map(|node| node.get(segment))
+            .flat_map(items)
+            .cloned()
+            .collect();
     }
-    match value.and_then(|v| v.get(key).cloned()) {
-        Some(serde_json::Value::String(one)) => vec![one],
-        Some(serde_json::Value::Array(items)) => items
-            .into_iter()
-            .filter_map(|item| item.as_str().map(str::to_string))
-            .collect(),
-        _ => Vec::new(),
-    }
+    nodes
+        .iter()
+        .filter_map(|node| node.get(key))
+        .flat_map(items)
+        .filter_map(|value| value.as_str().map(str::to_string))
+        .collect()
 }
 
 /// `key = a b` of an INI section, with the indented lines that continue it.
@@ -609,16 +741,74 @@ fn ini_values(text: &str, section: &str, key: &str) -> Vec<String> {
     words
 }
 
-/// The string literals that follow `key:` in a script, up to the end of its list
-/// (`testMatch: ["a", 'b']`) or the one literal (`testRegex: "x"`).
-fn script_values(text: &str, key: &str) -> Vec<String> {
+/// Whether the word found at `at` in `text` is the tail of a longer one (`latest`).
+fn names_a_longer_word(text: &str, at: usize) -> bool {
+    text[..at]
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// What the objects a script writes under `key` hold at their own level: the text
+/// inside each `key: { .. }` without the objects nested in it.
+fn object_under(text: &str, key: &str) -> String {
+    let mut held = String::new();
+    for (at, _) in text.match_indices(key) {
+        if names_a_longer_word(text, at) {
+            continue;
+        }
+        let Some(body) = text[at + key.len()..]
+            .trim_start_matches(['"', '\''])
+            .trim_start()
+            .strip_prefix(':')
+            .and_then(|value| value.trim_start().strip_prefix('{'))
+        else {
+            continue;
+        };
+        let mut depth = 0usize;
+        let mut quote: Option<char> = None;
+        let mut escaped = false;
+        for c in body.chars() {
+            if let Some(open) = quote {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == open {
+                    quote = None;
+                }
+            } else if matches!(c, '"' | '\'' | '`') {
+                quote = Some(c);
+            } else if c == '{' {
+                depth += 1;
+            } else if c == '}' {
+                match depth.checked_sub(1) {
+                    Some(inner) => depth = inner,
+                    None => break,
+                }
+                continue;
+            }
+            if depth == 0 {
+                held.push(c);
+            }
+        }
+        held.push('\n');
+    }
+    held
+}
+
+/// The literals that follow `key:` in a script, up to the end of its list
+/// (`testMatch: ["a", 'b']`) or the one literal (`testRegex: "x"`); a `/…/`
+/// literal is a regular expression, which the second field of the pair says.
+fn script_values(text: &str, key: &str) -> Vec<(String, bool)> {
     let mut values = Vec::new();
-    let mut rest = text;
-    while let Some(at) = rest.find(key) {
-        let after = rest[at + key.len()..]
+    for (at, _) in text.match_indices(key) {
+        if names_a_longer_word(text, at) {
+            continue;
+        }
+        let after = text[at + key.len()..]
             .trim_start_matches(['"', '\''])
             .trim_start();
-        rest = &rest[at + key.len()..];
         let Some(value) = after.strip_prefix(':') else {
             continue;
         };
@@ -629,7 +819,7 @@ fn script_values(text: &str, key: &str) -> Vec<String> {
         };
         let mut chars = body.chars();
         while let Some(quote) = chars.next() {
-            if !matches!(quote, '"' | '\'' | '`') {
+            if !matches!(quote, '"' | '\'' | '`' | '/') {
                 // Commas and blanks between a list's literals; anything else
                 // (a variable, the closing bracket) ends what is read.
                 if many && (quote == ',' || quote.is_whitespace()) {
@@ -637,11 +827,17 @@ fn script_values(text: &str, key: &str) -> Vec<String> {
                 }
                 break;
             }
+            let regex = quote == '/';
             let mut literal = String::new();
             let mut escaped = false;
             for c in chars.by_ref() {
                 if escaped {
-                    if !matches!(c, '\\' | '"' | '\'' | '`') {
+                    let plain = if regex {
+                        c == '/'
+                    } else {
+                        matches!(c, '\\' | '"' | '\'' | '`')
+                    };
+                    if !plain {
                         literal.push('\\');
                     }
                     literal.push(c);
@@ -654,24 +850,19 @@ fn script_values(text: &str, key: &str) -> Vec<String> {
                     literal.push(c);
                 }
             }
-            values.push(literal);
+            values.push((literal, regex));
             if !many {
                 break;
+            }
+            if regex {
+                chars = chars
+                    .as_str()
+                    .trim_start_matches(char::is_alphabetic)
+                    .chars();
             }
         }
     }
     values
-}
-
-fn pattern_of(value: &str, how: Declares) -> Option<regex::Regex> {
-    match how {
-        Declares::Regex => regex::Regex::new(value).ok(),
-        Declares::Globs => glob_regex(
-            value
-                .trim_start_matches("<rootDir>/")
-                .trim_start_matches("./"),
-        ),
-    }
 }
 
 /// A glob as an anchored regular expression: `*` and `?` stay within a segment,
