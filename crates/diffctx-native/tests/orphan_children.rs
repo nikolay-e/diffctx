@@ -7,6 +7,7 @@
 #![cfg(unix)]
 
 use std::ffi::CString;
+use std::fmt::Write as _;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -31,7 +32,7 @@ const PATTERNS_PER_SEARCH: usize = 50;
 const REMOVED_NAMES: usize = 2000;
 
 /// Counts the patterns of every `git grep` (its `-e` arguments, and the lines of
-/// a `-f` file), and with FAKE_GREP_STALL set stalls the first search that
+/// a `-f` file), and with `FAKE_GREP_STALL` set stalls the first search that
 /// carries more than one: the one a removed definition's names go to. `exec`,
 /// so the stalled process is git's own pid and nothing it forks.
 const GREP_SHIM: &str = r#"#!/bin/sh
@@ -72,7 +73,7 @@ impl Fixture {
         init_repo(&repo);
         let mut module = String::new();
         for i in 0..names {
-            module.push_str(&format!("def removed_handler_{i}\n  {i}\nend\n\n"));
+            writeln!(module, "def removed_handler_{i}\n  {i}\nend\n").unwrap();
         }
         std::fs::write(repo.join("handlers.rb"), module).unwrap();
         git(&repo, &["add", "-A"]);

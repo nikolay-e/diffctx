@@ -64,6 +64,10 @@ const MAX_REMOVED_HITS_PER_FILE: usize = 20;
 /// Past this many lines a removed name is a common word: unresolved, not
 /// traced.
 pub(crate) const MAX_REMOVED_NAME_HITS: usize = 500;
+/// Removed names whose callers are searched for. A module of tens of thousands
+/// of definitions is a generated file: its first names are traced and the rest
+/// are named as not (fj#211).
+const MAX_REMOVED_NAMES_TRACED: usize = 2000;
 /// Unanalysed files kept when the answer must shrink; the rest are counted.
 const MAX_UNANALYSED_LISTED: usize = 6;
 /// Unanalysed paths the text names per language; the reader holds the diff.
@@ -4896,10 +4900,17 @@ fn removed_definitions(
             ));
         }
     }
-    // One grep for every removed name, its lines handed to the names they
-    // spell as a word: a deleted 1000-function module ran 1000 greps and
+    // One grep for each chunk of removed names, its lines handed to the names
+    // they spell as a word: a deleted 1000-function module ran 1000 greps and
     // outlived the deadline.
-    let names: Vec<String> = removed.iter().map(|(n, _, _, _, _)| n.clone()).collect();
+    let names: Vec<String> = removed
+        .iter()
+        .take(MAX_REMOVED_NAMES_TRACED)
+        .map(|(n, _, _, _, _)| n.clone())
+        .collect();
+    if removed.len() > names.len() {
+        state.run.note(crate::resource::LimitReason::CandidateLimit);
+    }
     let wanted: FxHashSet<&str> = names.iter().map(String::as_str).collect();
     let mut hits_of: FxHashMap<&str, Vec<(String, u32, String)>> = FxHashMap::default();
     let grepped = read_or_note(
@@ -4927,7 +4938,9 @@ fn removed_definitions(
     }
     let holders = definition_holders(state);
     let mut out = Vec::new();
-    for (name, path_removed, (path_at_base, lines), exported, _) in removed {
+    for (at, (name, path_removed, (path_at_base, lines), exported, _)) in
+        removed.into_iter().enumerate()
+    {
         if !state.run.check() {
             break;
         }
@@ -4940,10 +4953,16 @@ fn removed_definitions(
         // A name on this many lines is a common word, not a reference to the
         // removed definition: tracing it by name lists noise and, on a
         // monorepo, never finishes.
-        let unresolved = (hits.len() > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
-            name: name.to_string(),
-            lines: hits.len(),
-        });
+        let unresolved = if at >= MAX_REMOVED_NAMES_TRACED {
+            Some(Unknown::Unfinished {
+                stops: vec![crate::resource::LimitReason::CandidateLimit],
+            })
+        } else {
+            (hits.len() > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
+                name: name.to_string(),
+                lines: hits.len(),
+            })
+        };
         let hits = if unresolved.is_some() {
             Vec::new()
         } else {

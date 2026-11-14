@@ -416,7 +416,115 @@ pub fn git_command(root: &Path) -> Command {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
+    #[cfg(target_os = "linux")]
+    die_with_parent(&mut cmd);
     cmd
+}
+
+/// A git child dies with the process that started it, however that process
+/// ends: SIGKILL, or a supervisor's SIGTERM, left `git grep` running for 17
+/// hours (fj#211). Linux asks the kernel, which signals the child when the
+/// thread that forked it exits; every other Unix has the watchdog below. Windows
+/// has neither: a killed run leaves its git running there.
+#[cfg(target_os = "linux")]
+fn die_with_parent(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: between fork and exec only async-signal-safe calls run: prctl(2),
+    // getppid(2) and raise(3).
+    #[allow(unsafe_code)]
+    unsafe {
+        let parent = libc::getpid();
+        cmd.pre_exec(move || {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
+            // The parent may have died before the request took hold.
+            if libc::getppid() != parent {
+                libc::raise(libc::SIGKILL);
+            }
+            Ok(())
+        });
+    }
+}
+
+/// macOS and the other Unixes cannot ask the kernel to kill a child with its
+/// parent, and a handler in this process never sees SIGKILL. One `sh` per
+/// process does it from outside: it reads the pids of the supervised children
+/// from a pipe and, when the pipe ends (this process is gone, by any signal),
+/// kills the process groups still listed.
+#[cfg(all(unix, not(target_os = "linux")))]
+mod watchdog {
+    use std::io::Write;
+    use std::os::unix::process::CommandExt;
+    use std::process::{Child, ChildStdin, Command, Stdio};
+    use std::sync::Mutex;
+
+    /// `+pid` lists a group, `-pid` unlists it (a finished child's pid is
+    /// reused). Signals aimed at this process's terminal group must not take the
+    /// watchdog with them: it is the one thing that outlives them.
+    const SCRIPT: &str = r#"trap '' INT HUP TERM
+live=' '
+while IFS= read -r line; do
+  p=${line#?}
+  case $line in
+    +*) live="$live$p " ;;
+    -*)
+      pat=" $p "
+      case $live in
+        *"$pat"*) before=${live%%"$pat"*}; after=${live#*"$pat"}; live="$before $after" ;;
+      esac ;;
+  esac
+done
+for p in $live; do kill -KILL -- "-$p" 2>/dev/null; done
+"#;
+
+    static PIPE: Mutex<Option<ChildStdin>> = Mutex::new(None);
+
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the watchdog is the one process besides git that this module starts"
+    )]
+    fn start() -> Option<ChildStdin> {
+        let mut shell = Command::new("sh")
+            .args(["-c", SCRIPT])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .ok()?;
+        shell.stdin.take()
+    }
+
+    /// A line to the watchdog, started on the first. One that cannot be
+    /// delivered ends the watchdog; the next line starts another.
+    fn tell(line: &str) {
+        let mut pipe = PIPE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if pipe.is_none() {
+            *pipe = start();
+        }
+        if let Some(stdin) = pipe.as_mut() {
+            if stdin.write_all(line.as_bytes()).is_err() {
+                *pipe = None;
+            }
+        }
+    }
+
+    /// A child the watchdog kills if this process dies before the guard does.
+    pub(super) struct Watched(u32);
+
+    impl Watched {
+        pub(super) fn new(child: &Child) -> Self {
+            tell(&format!("+{}\n", child.id()));
+            Self(child.id())
+        }
+    }
+
+    impl Drop for Watched {
+        fn drop(&mut self) {
+            tell(&format!("-{}\n", self.0));
+        }
+    }
 }
 
 /// `cat-file --batch` children not yet handed to their owner's wait.
@@ -563,6 +671,8 @@ fn await_pipe(rx: Option<PipeRead>, limits: &Limits) -> Result<Vec<u8>> {
 /// neither a stalled child nor a descendant that inherited a pipe can hold the
 /// caller past the deadline.
 fn supervise(mut child: Child, limits: &Limits) -> Result<Output> {
+    #[cfg(all(unix, not(target_os = "linux")))]
+    let _watched = watchdog::Watched::new(&child);
     let stdout = child
         .stdout
         .take()
