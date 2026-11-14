@@ -283,9 +283,6 @@ fn count_text_lines(source: &Source, path: &Path) -> Option<u32> {
     })
 }
 
-/// Heavy phase: clone/parse/fragment/discover/tokenize/score. Independent
-/// of `tau`/`core_budget_fraction`. Designed to be computed ONCE per
-/// instance and reused across an arbitrary number of selection cells.
 /// Everything `compute_scored_state` decides BEFORE any parsing: the hunk
 /// set after the disclosure policy ran, the changed-file list after every
 /// exclusion, and the display/count lists those policies owe the output.
@@ -332,11 +329,8 @@ enum ChangeSet {
 
 /// The diff plus, for a working-tree range, the untracked files — which are
 /// changes with no diff of their own, so git never reports them and they have
-/// to be synthesised as whole-file hunks.
-///
-/// Shared with `--full`. It used to call `parse_diff` alone, which made
-/// `diffctx . --full` blind to every new file in the tree while the default
-/// mode saw them: the escape hatch that promises MORE context returned less.
+/// to be synthesised as whole-file hunks. `--full` needs them as much as the
+/// default mode does.
 pub(crate) fn collect_hunks_with_untracked(
     root_dir: &Path,
     diff_range: Option<&str>,
@@ -458,14 +452,9 @@ fn ignore_disclosure(
     (ignored_display, policy_excluded_paths)
 }
 
-/// The changed paths git reports for a diff that yields no text hunk at all —
-/// a mode flip, a submodule pointer, a `-diff` attribute — minus everything
-/// the run withholds. Listed so the artifact says "changed, unrepresented"
-/// where it used to say nothing.
 /// What the range's head no longer holds: a deleted path and a rename's
 /// old name. Their bodies exist only at the base, so none of them is the
-/// change's content; `--full` once showed a deleted file's old body as
-/// changed (#409).
+/// change's content (#409).
 fn gone_at_head(root_dir: &Path, names: &diff_parse::DiffNames) -> FxHashSet<PathBuf> {
     names
         .deleted
@@ -479,6 +468,9 @@ fn is_gone(gone: &FxHashSet<PathBuf>, file: &Path) -> bool {
     gone.contains(&dunce::canonicalize(file).unwrap_or_else(|_| file.to_path_buf()))
 }
 
+/// The changed paths git reports for a diff that yields no text hunk at all —
+/// a mode flip, a submodule pointer, a `-diff` attribute — minus everything
+/// the run withholds, so the artifact says "changed, unrepresented".
 fn hunkless_changed_files(
     root_dir: &Path,
     source: &Source,
@@ -593,8 +585,7 @@ fn resolve_change_set(
     // changed set below, so seeds and discovery still find them.
     let excluded = gone_at_head(root_dir, &names);
     // Display lists for the output header: deletions and renames produce no
-    // fragments, but silently omitting them misrepresents the diff (a
-    // deletion-only commit used to render as a bare two-line skeleton).
+    // fragments, but silently omitting them misrepresents the diff.
     let (deleted_display, renamed_display) = deletion_rename_displays(root_dir, &source, &names);
     let changed_files: Vec<PathBuf> = changed_files
         .into_iter()
@@ -1456,9 +1447,6 @@ pub fn compute_scored_state_anchored(
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
     // against NaN is false, so the negated form is the one that rejects it.
-    // The old form let NaN through into the PPR damping factor, where it
-    // silently turned every score into NaN and the run returned an ordering
-    // that meant nothing.
     if !(alpha > 0.0 && alpha < 1.0) {
         anyhow::bail!("alpha must be in (0, 1), got {}", alpha);
     }
@@ -1882,12 +1870,10 @@ pub struct ScoredFragments {
     pub changed_lines: FxHashMap<FragmentId, f64>,
 }
 
-/// One heavy phase for every caller. The product pipeline arrives here from
-/// git and discovery; the corpus harness from an in-memory repository. Both
-/// used to spell these steps out separately, which is how the harness once
-/// measured a system nobody runs (#149) and why the fork survived a first
-/// consolidation of the selection half (#232). `repo_root` is `None` for the
-/// harness — the strategies that need a filesystem do without one there.
+/// One heavy phase for every caller: the product pipeline arrives here from
+/// git and discovery, the corpus harness from an in-memory repository (#149,
+/// #232). `repo_root` is `None` for the harness — the strategies that need a
+/// filesystem do without one there.
 pub fn score_from_fragments(
     mut all_fragments: Vec<Fragment>,
     hunks: &[crate::types::DiffHunk],
@@ -2033,8 +2019,7 @@ pub struct PostpassOutcome {
 /// Selection + the two admission-gated post-passes — the git-free part of
 /// the chain, shared by the product pipeline (`run_selection`) and the
 /// in-memory corpus harness so the harness scores the shipped system by
-/// construction. It used to be re-spelled by hand in `memory_pipeline.rs`,
-/// which is how the harness once measured a system nobody runs (#149).
+/// construction (#149).
 #[allow(clippy::too_many_arguments)]
 pub fn select_and_postpass(
     scoring_result: &ScoringResult,
@@ -2051,13 +2036,10 @@ pub fn select_and_postpass(
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
     // an unspecified tau resolves to the ungated operating point instead of
-    // the default. Which is why tau travels as an `Option` all the way from
-    // the CLI and the Python bridge: it used to arrive as a bare `f64` and the
-    // raise was triggered by COMPARING it to the default, so an ungated sweep
-    // cell asking for exactly 0.12 was silently given 0.30 and had no way to
-    // ask for the value it had named. The effective value is logged: an
-    // ablation cell that does not say whether it ran gated is not comparable
-    // with one that did (#245).
+    // the default. That is why tau travels as an `Option` from the CLI and the
+    // Python bridge: a cell asking for exactly 0.12 must get 0.12. The
+    // effective value is logged, since a cell that does not say whether it ran
+    // gated is not comparable with one that did (#245).
     let ungated = scoring_result.admissible_files.is_none();
     let tau = match tau {
         Some(requested) => requested,
@@ -2157,17 +2139,10 @@ pub fn select_and_postpass(
 
 /// What the change summary costs before a single fragment is selected.
 ///
-/// `--budget` is documented as a cap on the output in three places, and until
-/// #241 it bounded only the fragments: the changed-file list, the
-/// deleted/renamed/lockfile/ignored lists and the commit message rendered for
-/// free. On an 83-file range that envelope was ~1.3k tokens and `--budget 0`
-/// still emitted 2.4k — the selection dutifully under budget while the artifact
-/// was three times over it. Charging the envelope first is what makes the
-/// number mean what the docs claim.
-///
-/// Shared by the product pipeline and the corpus harness on purpose: a budget
-/// the harness spends differently is a harness measuring a system nobody runs
-/// (#149).
+/// `--budget` caps the whole artifact, so the changed-file list, the
+/// deleted/renamed/lockfile/ignored lists and the commit message are charged
+/// first and selection spends the rest. Shared with the corpus harness so a
+/// budget is spent the same way in both (#149, #241).
 pub fn envelope_tokens_of(state: &ScoredState) -> u32 {
     let mut listed: Vec<String> = state
         .changed_files
@@ -2485,7 +2460,7 @@ fn is_git_repo(path: &Path) -> snapshot::Result<bool> {
 }
 
 /// Which of `rel_paths` (repo-root-relative) the engine withholds — the
-/// question the MCP fetch used to answer with a different engine (#228). A
+/// question the MCP fetch asks (#228). A
 /// directory that is no repository has no ignore rules to read, and the
 /// secret names still apply; a repository whose policy cannot be read
 /// withholds everything rather than publish what it asked to keep out.
@@ -2717,11 +2692,8 @@ fn build_diff_context_full(
         None,
     )?;
     let secret_excluded_paths = withhold_secret_hunks(&root_dir, &source, &mut hunks);
-    // What `--full` withholds, it must still own up to. It used to drop secret
-    // and policy-excluded paths in silence, so a run that had removed files
-    // from its answer was indistinguishable from one with nothing to remove —
-    // the same misreading ("the diff did not touch this") that #188 fixed for
-    // the default mode.
+    // What `--full` withholds, it must still own up to: a run that removed
+    // files from its answer must not read as one with nothing to remove (#188).
     let mut withheld = FullWithheld {
         policy_excluded_count: secret_excluded_paths.len(),
         ignored_changes: Vec::new(),
@@ -3069,12 +3041,9 @@ fn select_full_mode(all_fragments: &[Fragment], changed_files: &[PathBuf]) -> Ve
 mod tests {
     use super::*;
 
-    /// The raw-diff bundle decides which sections it may disclose by resolving
-    /// each `diff --git` header against the repo root. That guard used to be a
-    /// second, independent copy of the one in `diff_parse::parse_path_line`, carrying
-    /// the same lexical-prefix hole; both now share `diff_parse::resolve_in_repo`, so
-    /// this pins that a section naming a path outside the root is dropped
-    /// rather than bundled.
+    /// The raw-diff bundle resolves each `diff --git` header against the repo
+    /// root to decide what it may disclose; this pins that a section naming a
+    /// path outside the root is dropped rather than bundled.
     #[test]
     fn a_raw_diff_section_escaping_the_root_resolves_to_nothing() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
