@@ -1,0 +1,32 @@
+name: config_a_dockerfile_stage_is_a_definition_and_a_lock_file_is_no_other_file
+mode: impact
+source: gh#641
+issue_state: open
+# A build stage is a definition, the unnamed first one included. The header
+# count and mise.lock's class are asserted in tests/impact.rs.
+tags: [config, lockfile, dockerfile]
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine
+      RUN echo 1
+    uv.lock: |
+      version = 1
+      [[package]]
+      name = "a"
+      version = "1"
+  changed_files:
+    Dockerfile: |
+      FROM alpine
+      RUN echo 2
+    uv.lock: |
+      version = 1
+      [[package]]
+      name = "a"
+      version = "2"
+    mise.lock: |
+      [tools]
+      node = "20"
+expect:
+  changed:
+    - Dockerfile::0

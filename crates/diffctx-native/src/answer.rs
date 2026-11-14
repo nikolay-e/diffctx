@@ -207,7 +207,7 @@ pub struct Tally {
     pub shed: usize,
     /// Definitions in the document, the omitted entry among them.
     pub listed: usize,
-    /// Changed files, listed or not, deleted ones included.
+    /// Changed files, listed or not, deleted ones and lock files included.
     pub changed_files: usize,
     pub deleted_files: usize,
     /// Untracked files, listed or not.
@@ -277,7 +277,9 @@ impl Tally {
             shed_from_listed,
             shed: shed_from_listed + omitted.total(),
             listed: defs.len() + usize::from(doc.omitted.is_some()),
-            changed_files: doc.inventory.changed.total + doc.inventory.deleted.total,
+            changed_files: doc.inventory.changed.total
+                + doc.inventory.deleted.total
+                + doc.inventory.lockfiles.total,
             deleted_files: doc.inventory.deleted.total,
             untracked: doc.inventory.untracked.total,
             collection_reads: doc.named.collections.total,
