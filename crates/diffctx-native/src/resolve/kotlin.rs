@@ -214,8 +214,9 @@ fn is_keyword(tokens: &[(usize, usize, String)], at: usize) -> bool {
 }
 
 /// The type parameters a header declares with the bounds written on them or in
-/// its `where` clause. A function's list stands right after `fun`; a type's
-/// after its name (a `<` after a function's receiver is the receiver's own).
+/// its `where` clause. Kotlin's function list stands right after `fun`; a type's
+/// and Swift's function's after the name (a `<` after a Kotlin function's
+/// receiver is the receiver's own).
 fn type_params(
     flat: &Flat,
     tokens: &[(usize, usize, String)],
@@ -228,7 +229,7 @@ fn type_params(
     while flat.top.get(at).is_some_and(|c| c.is_whitespace()) {
         at += 1;
     }
-    if !matches!(kind, DefKind::Function | DefKind::Method) {
+    if !matches!(kind, DefKind::Function | DefKind::Method) || tokens[keyword].2 == "func" {
         while flat
             .top
             .get(at)
@@ -271,10 +272,13 @@ fn bound_of_param(part: &str, params: &mut Vec<(String, Vec<String>)>, declares:
     }) else {
         return;
     };
-    let bound = bound.and_then(outer_name);
+    let bound: Vec<String> = bound
+        .into_iter()
+        .flat_map(|b| b.split('&').filter_map(outer_name))
+        .collect();
     match params.iter_mut().find(|(n, _)| n == name) {
         Some((_, bounds)) => bounds.extend(bound),
-        None if declares => params.push((name.to_string(), bound.into_iter().collect())),
+        None if declares => params.push((name.to_string(), bound)),
         None => {}
     }
 }
@@ -1828,6 +1832,29 @@ impl<'w> Engine<'w> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swift_header_gives_its_type_parameters_with_their_bounds() {
+        let function = parse_sig(
+            DefKind::Function,
+            "func use<T: Marker & Repo, U>(_ t: T, _ u: U) -> Int where U: Other",
+        );
+        assert_eq!(
+            function.type_params,
+            [
+                (
+                    "T".to_string(),
+                    vec!["Marker".to_string(), "Repo".to_string()]
+                ),
+                ("U".to_string(), vec!["Other".to_string()]),
+            ]
+        );
+        let kotlin = parse_sig(DefKind::Function, "fun <T : Repo> Box<T>.use(): Int");
+        assert_eq!(
+            kotlin.type_params,
+            [("T".to_string(), vec!["Repo".to_string()])]
+        );
+    }
 
     #[test]
     fn a_class_header_gives_its_modifiers_and_supertypes() {
