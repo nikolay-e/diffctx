@@ -1,0 +1,81 @@
+name: k4b_vitest_include_names_the_check_file_as_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- vitest-config
+- k4b
+repo:
+  initial_files:
+    vitest.config.ts: |
+      import { defineConfig } from "vitest/config";
+
+      export default defineConfig({ test: { include: ["qa/**/*.check.ts"] } });
+    qa/page.check.ts: |
+      import { page } from "../src/page";
+
+      it("page", () => expect(page()).toBe("B"));
+    qa/note.helper.ts: |
+      import { note } from "../src/note";
+
+      export const noted = () => note();
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trim();
+      }
+    src/page.ts: |
+      import { shout } from "./format";
+
+      export function page() {
+        return shout("b");
+      }
+    src/note.ts: |
+      import { whisper } from "./format";
+
+      export function note() {
+        return whisper("B");
+      }
+    src/rumble.ts: |
+      import { mutter } from "./format";
+
+      export function rumble() {
+        return mutter(" b ");
+      }
+    libs/core/test/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLocaleLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trimStart();
+      }
+  commit_message: change all three
+expect:
+  changed:
+  - src/format.ts::shout
+  - src/format.ts::whisper
+  - src/format.ts::mutter
+  exact: false
+  tested_by:
+    src/page.ts: qa/page.check.ts
+  not_untested:
+  - shout
+  untested:
+  - whisper

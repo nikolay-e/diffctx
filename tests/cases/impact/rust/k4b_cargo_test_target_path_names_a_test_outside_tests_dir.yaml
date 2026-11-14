@@ -1,0 +1,78 @@
+name: k4b_cargo_test_target_path_names_a_test_outside_tests_dir
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- cargo-config
+- k4b
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "rcp"
+      version = "0.1.0"
+      edition = "2021"
+
+      [lib]
+      path = "lib/root.rs"
+
+      [[test]]
+      name = "acceptance"
+      path = "checks/acceptance.rs"
+    lib/root.rs: |
+      pub mod core;
+      pub mod users;
+      pub mod others;
+    lib/core.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 1
+      }
+
+      pub fn leap(x: i32) -> i32 {
+          x + 1
+      }
+    lib/users.rs: |
+      pub fn use_step() -> i32 {
+          crate::core::step(1)
+      }
+    lib/others.rs: |
+      pub fn use_leap() -> i32 {
+          crate::core::leap(1)
+      }
+    checks/acceptance.rs: |
+      #[test]
+      fn acceptance() {
+          assert_eq!(rcp::users::use_step(), 3);
+      }
+    checks/undeclared.rs: |
+      pub fn drive() -> i32 {
+          rcp::others::use_leap()
+      }
+    tests/other.rs: |
+      #[test]
+      fn other() {
+          assert_eq!(rcp::core::step(0), 2);
+      }
+  changed_files:
+    lib/core.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 2
+      }
+
+      pub fn leap(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: change both
+expect:
+  changed:
+  - lib/core.rs::step
+  - lib/core.rs::leap
+  exact: false
+  tested_by:
+    lib/users.rs: checks/acceptance.rs
+  not_untested:
+  - step
+  untested:
+  - leap
