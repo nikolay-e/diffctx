@@ -41,6 +41,9 @@ pub(crate) struct Answer {
     pub tests_known: bool,
     /// Every caller row of the JSON, word matches included: (path, evidence).
     pub caller_rows: Vec<(String, String)>,
+    /// The caller rows of the same invocation asked with no budget, read only
+    /// when the budgeted JSON shed rows: what the text may state.
+    pub unbudgeted_rows: Option<Vec<(String, String)>>,
     /// Callers the engine shed to fit its cap; the text header counts them.
     pub truncated: u64,
     /// Calls the answer states as a count, not as rows, which the text header
@@ -127,6 +130,13 @@ pub(crate) fn run(case: &Case, name: &str) -> Result<Answer, String> {
             ..Answer::default()
         },
     };
+    if answer.truncated > 0 {
+        if let Some(output) = ask_with(&repo, case, "json", Some(UNBUDGETED))? {
+            let doc: Value = serde_json::from_slice(&output.stdout)
+                .map_err(|e| format!("the unbudgeted answer is not JSON: {e}"))?;
+            answer.unbudgeted_rows = Some(extract(&doc)?.caller_rows);
+        }
+    }
     if case.expect.no_negative_claims || case.mode == Mode::Impact {
         let output = ask(&repo, case, "md")?;
         if let Some(output) = &output {
@@ -293,6 +303,19 @@ fn supports_unfold() -> bool {
 /// The binary's answer in `format`, or `None` when a `--symbol` lookup names
 /// a symbol nothing defines (the binary exits nonzero saying so).
 fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>, String> {
+    ask_with(repo, case, format, None)
+}
+
+/// A budget no corpus answer reaches: the answer the cap shed nothing from.
+const UNBUDGETED: &str = "1000000";
+
+/// `ask`, with the case's own `--budget` replaced by `budget` when given.
+fn ask_with(
+    repo: &Materialised,
+    case: &Case,
+    format: &str,
+    budget: Option<&str>,
+) -> Result<Option<Output>, String> {
     let mut args: Vec<String> = Vec::new();
     match case.mode {
         Mode::Impact => {
@@ -314,7 +337,18 @@ fn ask(repo: &Materialised, case: &Case, format: &str) -> Result<Option<Output>,
     if supports_unfold() {
         args.push("--unfold".into());
     }
-    args.extend(case.query.args.iter().cloned());
+    let mut own = case.query.args.iter();
+    while let Some(arg) = own.next() {
+        match (budget, arg.as_str()) {
+            (Some(_), "--budget") => {
+                own.next();
+            }
+            _ => args.push(arg.clone()),
+        }
+    }
+    if let Some(budget) = budget {
+        args.extend(["--budget".into(), budget.into()]);
+    }
 
     let mut command = binary();
     let output = command
