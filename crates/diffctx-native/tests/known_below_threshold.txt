@@ -123,9 +123,6 @@ impact/python/py_generated_file_is_not_a_separate_consumer_of_its_source  # fj#1
 # Other languages (W1-C), triaged at integration 1.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
 impact/go/go_new_with_an_expression_parses  # gh#690 open: tree-sitter-go 0.25 reads `new(` as a type argument list, so Go 1.26 `new(42)` is a parse error and the file is honestly analysed in part; waits on a grammar that parses it
-impact/other/dart_changed_method_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
-impact/other/elixir_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
-impact/other/lua_changed_function_nothing_calls_is_not_modelled  # synthetic open (Tier-3 absence claim)
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
 symbol/other/erlang_symbol_type_alias_is_a_definition  # gh#616 open
