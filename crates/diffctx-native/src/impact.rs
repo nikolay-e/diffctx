@@ -1484,6 +1484,7 @@ impl UntracedNamers {
         state: &ScoredState,
         cores: &[&Fragment],
         removed: &[&str],
+        own: &[keys::OwnSpan],
         diff_range: Option<&str>,
     ) -> Self {
         let literal_names: Vec<&str> = cores
@@ -1492,7 +1493,7 @@ impl UntracedNamers {
             .chain(removed.iter().copied())
             .map(literal_base)
             .collect();
-        let literal = keys::LiteralNames::build(state, diff_range, &literal_names);
+        let literal = keys::LiteralNames::build(state, diff_range, &literal_names, own);
         let mut needles: Vec<String> = cores
             .iter()
             .filter_map(|c| c.symbol_name.as_deref().map(base_symbol))
@@ -3408,16 +3409,36 @@ pub fn build_impact(
         (state.core_ids.contains(id) && !bordering.contains(id))
             || (query.is_none() && in_a_hunk(id))
     };
-    let untraced = if query.is_none() {
+    let untraced = {
         let _t = crate::profile::detail("impact.setup.untraced", "");
         let removed: Vec<&str> = cell_removed
             .iter()
             .chain(&cell_apart)
             .map(|e| e.name.as_str())
             .collect();
-        UntracedNamers::build(state, &cores, &removed, diff_range)
-    } else {
-        UntracedNamers::default()
+        let own: Vec<(String, String, (u32, u32))> = cell_defs
+            .values()
+            .chain(&cell_apart)
+            .map(|e| (e.file.clone(), literal_base(&e.name).to_string(), e.lines))
+            .chain(
+                cores
+                    .iter()
+                    .filter(|c| !cell_defs.contains_key(&c.id))
+                    .map(|c| {
+                        let name = c.symbol_name.as_deref().map_or("", literal_base);
+                        (
+                            rel(state, c.path()),
+                            name.to_string(),
+                            (c.start_line(), c.end_line()),
+                        )
+                    }),
+            )
+            .collect();
+        let own: Vec<keys::OwnSpan> = own
+            .iter()
+            .map(|(file, name, lines)| (file.as_str(), name.as_str(), *lines))
+            .collect();
+        UntracedNamers::build(state, &cores, &removed, &own, diff_range)
     };
     drop(setup);
     crate::profile::count("impact.cores", cores.len() as u64);
