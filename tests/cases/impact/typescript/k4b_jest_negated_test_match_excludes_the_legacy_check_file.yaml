@@ -1,0 +1,79 @@
+name: k4b_jest_negated_test_match_excludes_the_legacy_check_file
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- jest-config
+- k4b
+repo:
+  initial_files:
+    jest.config.js: |
+      module.exports = { testMatch: ["**/qa/**/*.check.ts", "!**/qa/legacy/**"] };
+    qa/page.check.ts: |
+      import { page } from "../src/page";
+
+      test("page", () => expect(page()).toBe("B"));
+    qa/legacy/note.check.ts: |
+      import { note } from "../../src/note";
+
+      test("note", () => expect(note()).toBe("b"));
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trim();
+      }
+    src/page.ts: |
+      import { shout } from "./format";
+
+      export function page() {
+        return shout("b");
+      }
+    src/note.ts: |
+      import { whisper } from "./format";
+
+      export function note() {
+        return whisper("B");
+      }
+    src/rumble.ts: |
+      import { mutter } from "./format";
+
+      export function rumble() {
+        return mutter(" b ");
+      }
+    libs/core/test/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLocaleLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trimStart();
+      }
+  commit_message: change all three
+expect:
+  changed:
+  - src/format.ts::shout
+  - src/format.ts::whisper
+  - src/format.ts::mutter
+  exact: false
+  tested_by:
+    src/page.ts: qa/page.check.ts
+  not_untested:
+  - shout
+  untested:
+  - whisper
