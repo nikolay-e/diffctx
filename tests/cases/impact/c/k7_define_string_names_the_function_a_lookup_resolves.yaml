@@ -1,0 +1,35 @@
+name: k7_define_string_names_the_function_a_lookup_resolves
+mode: impact
+source: synthetic
+tags: [c, literal-name, preprocessor, false-absence]
+repo:
+  initial_files:
+    src/plugin.c: |
+      int on_event(void)
+      {
+          return 1;
+      }
+    src/names.h: |
+      #define HANDLER_NAME "on_event"
+    src/dl.c: |
+      #include <dlfcn.h>
+      #include "names.h"
+
+      int load(void)
+      {
+          void *f = dlsym(RTLD_DEFAULT, HANDLER_NAME);
+          return f != 0;
+      }
+  changed_files:
+    src/plugin.c: |
+      int on_event(void)
+      {
+          return 2;
+      }
+  commit_message: "plugin: on_event returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/names.h, to: src/plugin.c::on_event, kind: calls, resolution: unresolved}

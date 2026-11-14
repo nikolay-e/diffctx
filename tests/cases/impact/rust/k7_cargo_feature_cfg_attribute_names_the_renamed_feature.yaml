@@ -1,0 +1,34 @@
+name: k7_cargo_feature_cfg_attribute_names_the_renamed_feature
+mode: impact
+source: synthetic
+tags: [rust, config, key-search, cfg-attribute, false-absence]
+repo:
+  initial_files:
+    core/Cargo.toml: |
+      [package]
+      name = "core"
+      version = "0.1.0"
+      edition = "2021"
+
+      [features]
+      fast-math = []
+    core/src/lib.rs: |
+      #[cfg(feature = "fast-math")]
+      pub fn mul(a: f64, b: f64) -> f64 { a * b }
+      #[cfg(not(feature = "fast-math"))]
+      pub fn mul(a: f64, b: f64) -> f64 { (a * b).round() }
+  changed_files:
+    core/Cargo.toml: |
+      [package]
+      name = "core"
+      version = "0.1.0"
+      edition = "2021"
+
+      [features]
+      simd = []
+  commit_message: "core: the feature is called simd"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  named_by: [core/src/lib.rs]

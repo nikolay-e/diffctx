@@ -1,0 +1,82 @@
+name: k7_c_function_bound_by_a_foreign_language_is_named_in
+mode: impact
+source: synthetic
+tags: [other, ffi, tier3, word-scan, false-absence]
+repo:
+  initial_files:
+    native/native.h: |
+      int nt_zig_cents(int a, int b);
+      int nt_jl_cents(int a, int b);
+      int nt_ml_cents(int a, int b);
+      int nt_rb_cents(int a, int b);
+      int nt_lua_cents(int a, int b);
+      int nt_nim_cents(int a, int b);
+      int nt_dlang_cents(int a, int b);
+      int nt_hs_cents(int a, int b);
+    native/native.c: |
+      #include "native.h"
+      int nt_zig_cents(int a, int b) { return a + b; }
+      int nt_jl_cents(int a, int b) { return a + b; }
+      int nt_ml_cents(int a, int b) { return a + b; }
+      int nt_rb_cents(int a, int b) { return a + b; }
+      int nt_lua_cents(int a, int b) { return a + b; }
+      int nt_nim_cents(int a, int b) { return a + b; }
+      int nt_dlang_cents(int a, int b) { return a + b; }
+      int nt_hs_cents(int a, int b) { return a + b; }
+    src/main.zig: |
+      extern fn nt_zig_cents(a: c_int, b: c_int) c_int;
+      pub fn main() void { _ = nt_zig_cents(1, 2); }
+    src/Native.jl: |
+      total() = ccall((:nt_jl_cents, "libnative"), Cint, (Cint, Cint), 1, 2)
+    src/native.ml: |
+      external nt_ml_cents : int -> int -> int = "nt_ml_cents"
+      let total = nt_ml_cents 1 2
+    lib/native.rb: |
+      require 'ffi'
+      module Native
+        extend FFI::Library
+        ffi_lib 'native'
+        attach_function :nt_rb_cents, [:int, :int], :int
+      end
+      Native.nt_rb_cents(1, 2)
+    src/native.lua: |
+      local ffi = require("ffi")
+      ffi.cdef[[ int nt_lua_cents(int a, int b); ]]
+      local lib = ffi.load("native")
+      print(lib.nt_lua_cents(1, 2))
+    src/native.nim: |
+      proc nt_nim_cents(a, b: cint): cint {.importc, header: "../native/native.h".}
+      echo nt_nim_cents(1, 2)
+    src/native.d: |
+      extern (C) int nt_dlang_cents(int a, int b);
+      void main() { auto x = nt_dlang_cents(1, 2); }
+    src/Native.hs: |
+      {-# LANGUAGE ForeignFunctionInterface #-}
+      module Native where
+      foreign import ccall "nt_hs_cents" ntHsCents :: Int -> Int -> Int
+      total = ntHsCents 1 2
+  changed_files:
+    native/native.c: |
+      #include "native.h"
+      int nt_zig_cents(int a, int b) { return a + b + 1; }
+      int nt_jl_cents(int a, int b) { return a + b + 1; }
+      int nt_ml_cents(int a, int b) { return a + b + 1; }
+      int nt_rb_cents(int a, int b) { return a + b + 1; }
+      int nt_lua_cents(int a, int b) { return a + b + 1; }
+      int nt_nim_cents(int a, int b) { return a + b + 1; }
+      int nt_dlang_cents(int a, int b) { return a + b + 1; }
+      int nt_hs_cents(int a, int b) { return a + b + 1; }
+  commit_message: "native: every cents function adds one"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/main.zig, to: native/native.c::nt_zig_cents, kind: calls, resolution: unresolved}
+    - {from: src/Native.jl, to: native/native.c::nt_jl_cents, kind: calls, resolution: unresolved}
+    - {from: src/native.ml, to: native/native.c::nt_ml_cents, kind: calls, resolution: unresolved}
+    - {from: lib/native.rb, to: native/native.c::nt_rb_cents, kind: calls, resolution: unresolved}
+    - {from: src/native.lua, to: native/native.c::nt_lua_cents, kind: calls, resolution: unresolved}
+    - {from: src/native.nim, to: native/native.c::nt_nim_cents, kind: calls, resolution: unresolved}
+    - {from: src/native.d, to: native/native.c::nt_dlang_cents, kind: calls, resolution: unresolved}
+    - {from: src/Native.hs, to: native/native.c::nt_hs_cents, kind: calls, resolution: unresolved}
