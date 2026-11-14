@@ -1206,6 +1206,122 @@ fn outside_definitions(cells: &Cells) -> Vec<UnanalysedFile> {
         .collect()
 }
 
+/// Changed code that no changed definition holds, in a file the run read no
+/// definition of it from: an unnamed definition (`def`, `defn`, a dotted Lua
+/// function), a body its signature does not span, a class member the facts do not
+/// model, a migration's `ALTER`. What it does to its readers is not traced, so the
+/// answer says so, and the names its lines and its enclosing header spell are
+/// searched as text.
+struct Nameless {
+    path: String,
+    runs: Vec<(u32, u32)>,
+    terms: Vec<String>,
+}
+
+/// The line above `line` that opens the block it sits in: the nearest one with a
+/// smaller indentation, where a definition states its name.
+fn header_above(text: &str, line: u32) -> Option<&str> {
+    let rows: Vec<&str> = text.lines().collect();
+    let at = line.checked_sub(1)? as usize;
+    let indent = |l: &str| l.len() - l.trim_start().len();
+    let own = indent(rows.get(at)?);
+    rows[..at]
+        .iter()
+        .rev()
+        .find(|l| !l.trim().is_empty() && indent(l) < own)
+        .copied()
+}
+
+/// The words a line spells that a reader may spell back. A bare keyword in capitals
+/// (`RENAME`, `ALTER`) names nothing.
+fn name_terms(line: &str) -> impl Iterator<Item = String> + '_ {
+    keys::key_words(line).filter(|w| {
+        w.chars()
+            .any(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+    })
+}
+
+fn nameless_changes(
+    state: &ScoredState,
+    cells: &Cells,
+    held: &FxHashMap<String, Vec<(u32, u32)>>,
+) -> Vec<Nameless> {
+    let outside: FxHashMap<String, Vec<(u32, u32)>> = cells
+        .iter()
+        .flat_map(decide::Cell::outside_definitions)
+        .collect();
+    let source = state.run.source();
+    let changed: FxHashSet<String> = changed_rels(state).collect();
+    let mut out: Vec<Nameless> = Vec::new();
+    for h in state.hunk_texts.iter().filter(|h| !h.layout) {
+        let path = h.path.as_str();
+        // A file the range adds has no reader to lose, but a migration alters
+        // what other files already name.
+        let sql = extension(path) == "sql";
+        let added_file = h.old_start == 0 && h.old_len == 0 && !sql;
+        let code: Vec<&str> = h
+            .added
+            .iter()
+            .chain(&h.removed)
+            .map(String::as_str)
+            .filter(|l| l.chars().any(char::is_alphanumeric))
+            .collect();
+        if added_file
+            || code.is_empty()
+            || !changed.contains(path)
+            || !(is_code_file(path) || sql)
+            || crate::testfiles::is_test_path(Path::new(path))
+        {
+            continue;
+        }
+        let (first, last) = h.new_range();
+        let touches = |&(lo, hi): &(u32, u32)| lo <= last && hi >= first;
+        let accounted = match cells.of(path) {
+            // What a cell reads is its own: a removal is its removal, and
+            // lines outside its definitions are its `outside_definitions`.
+            Some(cell) => {
+                h.added.is_empty()
+                    || cell
+                        .changed()
+                        .iter()
+                        .any(|d| d.file == path && touches(&d.lines))
+                    || outside
+                        .get(path)
+                        .is_some_and(|spans| spans.iter().any(touches))
+            }
+            None => held
+                .get(path)
+                .is_some_and(|spans| spans.iter().any(touches)),
+        };
+        if accounted {
+            continue;
+        }
+        let text = source.read_to_string(&state.root_dir.join(path));
+        let header = text.as_deref().and_then(|t| header_above(t, first));
+        let terms: Vec<String> = code
+            .into_iter()
+            .chain(header)
+            .flat_map(name_terms)
+            .collect();
+        match out.iter_mut().find(|n| n.path == path) {
+            Some(n) => {
+                n.runs.push((first, last));
+                n.terms.extend(terms);
+            }
+            None => out.push(Nameless {
+                path: path.to_string(),
+                runs: vec![(first, last)],
+                terms,
+            }),
+        }
+    }
+    for n in &mut out {
+        n.terms.sort();
+        n.terms.dedup();
+    }
+    out
+}
+
 fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFile> {
     let mut fragmented: FxHashMap<String, bool> = FxHashMap::default();
     for f in state.run.bounded(&state.all_fragments) {
@@ -2930,6 +3046,12 @@ pub fn build_impact(
         .collect();
     cores.sort_by(|a, b| a.id.cmp(&b.id));
     cores.dedup_by(|a, b| a.id == b.id);
+    let mut held: FxHashMap<String, Vec<(u32, u32)>> = FxHashMap::default();
+    for c in &cores {
+        held.entry(rel(state, c.path()))
+            .or_default()
+            .push((c.start_line(), c.end_line()));
+    }
 
     let analysed = state.analysed_range.as_deref().or(diff_range);
     let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
@@ -4270,6 +4392,11 @@ pub fn build_impact(
     } else {
         (Vec::new(), 0)
     };
+    let nameless = if query.is_none() {
+        nameless_changes(state, &cells, &held)
+    } else {
+        Vec::new()
+    };
     let (mut unanalysed, cell_read_configs, consumed_outside, lost_configs) = if query.is_none() {
         // A file the run did not analyse whole has its own reason, which already
         // says its effect is unknown: it is never listed twice. The rest come
@@ -4353,6 +4480,21 @@ pub fn build_impact(
             .filter(|o| !others.iter().any(|f| f.path == o.path))
             .collect();
         all.extend(others);
+        for n in &nameless {
+            if !all.iter().any(|f| f.path == n.path) {
+                all.push(UnanalysedFile {
+                    language: crate::languages::get_language_for_file(&n.path),
+                    path: n.path.clone(),
+                    reason: OUTSIDE_DEFINITIONS,
+                    lines: n
+                        .runs
+                        .iter()
+                        .take(MAX_OUTSIDE_RUNS)
+                        .flat_map(|&(first, last)| [first, last])
+                        .collect(),
+                });
+            }
+        }
         (all, cell_read, consumed_outside, lost_configs)
     } else {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())
@@ -4366,12 +4508,16 @@ pub fn build_impact(
             .map(|f| f.path.clone())
             .chain(cell_read_configs)
             .chain(lost_configs.iter().cloned())
+            .chain(nameless.iter().map(|n| n.path.clone()))
             .collect();
         let (refs, omitted, searches, unsearched, unread) =
-            key_references(state, &cells, &untraced);
+            key_references(state, &cells, &untraced, &nameless);
         unanalysed.extend(unread);
+        // A search of the names a nameless change touches is no trace of it.
         unanalysed.retain(|f| {
-            lost_configs.contains(&f.path) || !searches.iter().any(|k| k.path == f.path)
+            lost_configs.contains(&f.path)
+                || nameless.iter().any(|n| n.path == f.path)
+                || !searches.iter().any(|k| k.path == f.path)
         });
         named_by.extend(refs);
         named_by_omitted += omitted;
@@ -4866,7 +5012,10 @@ fn dead_modules(
 /// never `replicas`) and values (`up{job="demo"}`, `ghcr.io/acme/web:1.2`).
 /// Only a structured config has keys and values; a template's or a
 /// stylesheet's words are prose and selectors.
-fn changed_keys(state: &ScoredState, path: &str) -> Vec<String> {
+fn changed_keys(state: &ScoredState, path: &str, nameless: &[Nameless]) -> Vec<String> {
+    if let Some(n) = nameless.iter().find(|n| n.path == path) {
+        return n.terms.clone();
+    }
     if !is_config_file(path) {
         return Vec::new();
     }
@@ -4929,6 +5078,7 @@ fn key_references(
     state: &ScoredState,
     cells: &Cells,
     untraced: &[String],
+    nameless: &[Nameless],
 ) -> (
     Vec<PathReference>,
     usize,
@@ -4949,7 +5099,7 @@ fn key_references(
                 .filter(|(target, ..)| target == path)
                 .map(|(_, key, ..)| key.clone())
                 .collect();
-            (index, path, changed_keys(state, path), readers)
+            (index, path, changed_keys(state, path, nameless), readers)
         })
         .filter(|(_, _, words, readers)| !words.is_empty() || !readers.is_empty())
         .collect();
