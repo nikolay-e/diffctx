@@ -3025,19 +3025,20 @@ impl Cell {
             gaps.push(gap);
         }
         let found = self.occurrences(changed, &gaps);
-        // A line a resolved use stands on is settled: another occurrence of the
-        // name on it (a keyword argument's name, the second spelling of a shorthand)
-        // is no second standing of the same site.
-        let settled: HashSet<(&str, u32)> = uses
+        // A relation a resolved use stands on at a line is settled there: another
+        // occurrence of the name on it (a keyword argument's name, the second
+        // spelling of a shorthand) is no second standing of the same site. A value
+        // the use hands on (returned, collected) still hedges the calls it leaves.
+        let settled: HashSet<(&str, u32, Relation)> = uses
             .iter()
             .chain(&found.callers)
             .filter(|u| u.standing == Standing::Resolved)
-            .map(|u| (u.file.as_str(), u.line))
+            .map(|u| (u.file.as_str(), u.line, u.relation))
             .collect();
         let hedges: Vec<(Relation, Hedge)> = (found.hedges.iter())
-            .filter(|(_, hedge)| {
+            .filter(|(relation, hedge)| {
                 !matches!(hedge, Hedge::Candidate { file, line, .. }
-                    if settled.contains(&(file.as_str(), *line)))
+                    if settled.contains(&(file.as_str(), *line, *relation)))
             })
             .cloned()
             .collect();
