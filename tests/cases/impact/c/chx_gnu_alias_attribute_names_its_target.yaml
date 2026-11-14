@@ -1,0 +1,59 @@
+name: chx_gnu_alias_attribute_names_its_target
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- literal-name
+- gnu-attribute
+repo:
+  initial_files:
+    include/lib.h: |
+      int alias_target(int a);
+      int public_alias(int a);
+      int weak_target(int a);
+      int weak_alias(int a);
+    src/lib.c: |
+      #include "../include/lib.h"
+
+      int alias_target(int a) { return a + 1; }
+
+      int public_alias(int a) __attribute__((alias("alias_target")));
+
+      int weak_target(int a) { return a + 1; }
+
+      int weak_alias(int a) __attribute__((weak, alias("weak_target")));
+    src/app.c: |
+      #include "../include/lib.h"
+
+      int app(void) { return public_alias(1) + weak_alias(2); }
+  changed_files:
+    src/lib.c: |
+      #include "../include/lib.h"
+
+      int alias_target(int a) { return a + 2; }
+
+      int public_alias(int a) __attribute__((alias("alias_target")));
+
+      int weak_target(int a) { return a + 2; }
+
+      int weak_alias(int a) __attribute__((weak, alias("weak_target")));
+  commit_message: Change the targets of two GNU alias attributes
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  changed:
+  - src/lib.c::alias_target
+  - src/lib.c::weak_target
+  relations:
+  - from: src/lib.c::public_alias
+    to: src/lib.c::alias_target
+    kind: passes_as_value
+    resolution: candidate
+    site: 5
+  - from: src/lib.c::weak_alias
+    to: src/lib.c::weak_target
+    kind: passes_as_value
+    resolution: candidate
+    site: 9
