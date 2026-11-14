@@ -1,0 +1,47 @@
+name: cpp_changed_inline_conversion_operator_is_not_absent
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- operator
+- false-absence
+repo:
+  initial_files:
+    src/core.h: |
+      #pragma once
+      class Handle {
+      public:
+          explicit Handle(int fd) : fd_(fd) {}
+          explicit operator bool() const { return fd_ >= 0; }
+          operator int() const { return fd_; }
+      private:
+          int fd_;
+      };
+    src/use.cpp: |
+      #include "core.h"
+
+      int use_handle() {
+          Handle h(3);
+          if (h) {
+              int raw = h;
+              return raw;
+          }
+          return 0;
+      }
+  changed_files:
+    src/core.h: |
+      #pragma once
+      class Handle {
+      public:
+          explicit Handle(int fd) : fd_(fd) {}
+          explicit operator bool() const { return fd_ > 0; }
+          operator int() const { return fd_ + 1; }
+      private:
+          int fd_;
+      };
+  commit_message: Change handle conversion operators
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
