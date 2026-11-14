@@ -109,6 +109,9 @@ struct Sig {
     init: Option<(Option<String>, String)>,
     /// The outer names of the supertypes a type states.
     supers: Vec<String>,
+    /// The type parameters the header declares, each with the outer names of
+    /// its bounds: `<T : Repo>` and `where T : Repo` alike.
+    type_params: Vec<(String, Vec<String>)>,
 }
 
 impl Sig {
@@ -210,6 +213,72 @@ fn is_keyword(tokens: &[(usize, usize, String)], at: usize) -> bool {
     }
 }
 
+/// The type parameters a header declares with the bounds written on them or in
+/// its `where` clause. A function's list stands right after `fun`; a type's
+/// after its name (a `<` after a function's receiver is the receiver's own).
+fn type_params(
+    flat: &Flat,
+    tokens: &[(usize, usize, String)],
+    keyword: usize,
+    kind: DefKind,
+    body_end: usize,
+) -> Vec<(String, Vec<String>)> {
+    let mut params: Vec<(String, Vec<String>)> = Vec::new();
+    let mut at = tokens[keyword].1;
+    while flat.top.get(at).is_some_and(|c| c.is_whitespace()) {
+        at += 1;
+    }
+    if !matches!(kind, DefKind::Function | DefKind::Method) {
+        while flat
+            .top
+            .get(at)
+            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '$' | '`'))
+        {
+            at += 1;
+        }
+    }
+    if flat.top.get(at) == Some(&'<') {
+        let close =
+            (at + 1..flat.chars.len()).find(|i| flat.chars[*i] == '>' && flat.depth[*i] == 1);
+        let end = close.unwrap_or(flat.chars.len());
+        let mut part_start = at + 1;
+        for i in at + 1..=end {
+            if i == end || (flat.chars[i] == ',' && flat.depth[i] == 1) {
+                bound_of_param(&flat.text(part_start..i), &mut params, true);
+                part_start = i + 1;
+            }
+        }
+    }
+    if let Some((_, from, _)) = tokens[keyword..].iter().find(|(_, _, t)| t == "where") {
+        let mut part_start = *from;
+        for i in *from..=body_end.max(*from) {
+            if i >= body_end || (flat.top[i] == ',') {
+                bound_of_param(&flat.text(part_start..i), &mut params, false);
+                part_start = i + 1;
+            }
+        }
+    }
+    params
+}
+
+/// One `T : Bound` of a parameter list or a `where` clause.
+fn bound_of_param(part: &str, params: &mut Vec<(String, Vec<String>)>, declares: bool) {
+    let (head, bound) = part.split_once(':').unzip();
+    let head = head.unwrap_or(part);
+    let Some(name) = head.split_whitespace().last().filter(|n| {
+        n.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    }) else {
+        return;
+    };
+    let bound = bound.and_then(outer_name);
+    match params.iter_mut().find(|(n, _)| n == name) {
+        Some((_, bounds)) => bounds.extend(bound),
+        None if declares => params.push((name.to_string(), bound.into_iter().collect())),
+        None => {}
+    }
+}
+
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
     let flat = Flat::new(text, jvm::KOTLIN);
     let tokens = flat.tokens();
@@ -257,6 +326,12 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                 body_end = equals;
             }
         }
+    }
+    if !matches!(
+        kind,
+        DefKind::Property | DefKind::Variable | DefKind::Constant | DefKind::Field
+    ) {
+        sig.type_params = type_params(&flat, &tokens, at, kind, body_end);
     }
     match kind {
         DefKind::Property | DefKind::Variable | DefKind::Constant | DefKind::Field => {
@@ -874,7 +949,7 @@ impl<'w> Engine<'w> {
             scope.pop();
         }
         if let Some(written) = &rec.sig.declared {
-            return self.type_ent(rec.file, &scope, &Name::new(written.as_str()));
+            return self.bound_ent(rec.file, &scope, Some(id), &Name::new(written.as_str()));
         }
         match &rec.sig.init {
             Some((receiver, callee)) => {
@@ -900,6 +975,73 @@ impl<'w> Engine<'w> {
             Found::Blocked(_) => Ent::Outside,
             _ => Ent::Foreign(name.clone()),
         }
+    }
+
+    /// The bounds of the type parameter `name` as the declaration `own` and the
+    /// ones around `scope` state them, the innermost declaring it; none when no
+    /// declaration does.
+    fn type_param_bounds(
+        &self,
+        f: usize,
+        scope: &[Name],
+        own: Option<usize>,
+        name: &Name,
+    ) -> Option<Vec<Name>> {
+        let bounds_in = |ids: &[usize]| -> Option<Vec<Name>> {
+            let mut found: Option<Vec<Name>> = None;
+            for id in ids {
+                let params = &self.ix.defs[*id].sig.type_params;
+                if let Some((_, bounds)) = params.iter().find(|(n, _)| n == name.as_str()) {
+                    found
+                        .get_or_insert_with(Vec::new)
+                        .extend(bounds.iter().map(|b| Name::new(b.as_str())));
+                }
+            }
+            found
+        };
+        if let Some(found) = own.and_then(|id| bounds_in(&[id])) {
+            return Some(found);
+        }
+        let file = &self.ix.files[f];
+        (1..=scope.len()).rev().find_map(|depth| {
+            let ids = file.by_path.get(&scope[..depth])?;
+            bounds_in(ids)
+        })
+    }
+
+    /// What a written type stands for, one entity per bound when it is a type
+    /// parameter: a value of such a type has the members of each of its bounds.
+    fn type_ents(
+        &self,
+        f: usize,
+        scope: &[Name],
+        own: Option<usize>,
+        name: &Name,
+        depth: usize,
+    ) -> Vec<Ent> {
+        if let Some(bounds) = self.type_param_bounds(f, scope, own, name) {
+            if depth >= MAX_DEPTH {
+                return vec![Ent::Unknown];
+            }
+            let ents: Vec<Ent> = bounds
+                .iter()
+                .flat_map(|bound| self.type_ents(f, scope, own, bound, depth + 1))
+                .collect();
+            if !ents.is_empty() {
+                return ents;
+            }
+        }
+        vec![self.type_ent(f, scope, name)]
+    }
+
+    /// [`Self::type_ents`] as one entity: the first bound of the repository.
+    fn bound_ent(&self, f: usize, scope: &[Name], own: Option<usize>, name: &Name) -> Ent {
+        let mut ents = self.type_ents(f, scope, own, name, 0);
+        let at = ents
+            .iter()
+            .position(|e| matches!(e, Ent::Instance(_)))
+            .unwrap_or(0);
+        ents.swap_remove(at)
     }
 
     /// An alias stands for what it aliases when that is a type of the repository.
@@ -1629,16 +1771,16 @@ impl<'w> Engine<'w> {
         if r.qualifier.is_empty() {
             return Head::Bare;
         }
-        let mut entity = match &r.receiver {
+        let (heads, how) = match &r.receiver {
             Receiver::Typed(written) => (
-                self.type_ent(f, scope, &Name::new(written.as_str())),
+                self.type_ents(f, scope, None, &Name::new(written.as_str()), 0),
                 EvidenceKind::TypedReceiver,
             ),
             Receiver::CallResult(chain) => (
-                self.call_result(f, scope, chain, 0),
+                vec![self.call_result(f, scope, chain, 0)],
                 EvidenceKind::Constructed,
             ),
-            Receiver::Unknown => (Ent::Unknown, EvidenceKind::TypedReceiver),
+            Receiver::Unknown => (vec![Ent::Unknown], EvidenceKind::TypedReceiver),
             Receiver::SelfType => {
                 let mut found = (Ent::Unknown, EvidenceKind::SelfReceiver);
                 for implicit in self.implicit(f, scope) {
@@ -1647,20 +1789,44 @@ impl<'w> Engine<'w> {
                         break;
                     }
                 }
-                found
+                (vec![found.0], found.1)
             }
             Receiver::None | Receiver::Module(_) | Receiver::New(_) => (
-                self.head_entity(f, scope, &r.qualifier[0], 0),
+                vec![self.head_entity(f, scope, &r.qualifier[0], 0)],
                 EvidenceKind::ModuleAttribute,
             ),
         };
         // A typed or constructed head is the first name of the chain itself; the
         // self receiver stands before it.
         let skip = usize::from(!matches!(r.receiver, Receiver::SelfType));
-        for name in r.qualifier.iter().skip(skip) {
-            entity.0 = self.step(f, scope, &entity.0, name, 0);
+        let mut walked: Vec<Ent> = heads
+            .into_iter()
+            .map(|mut entity| {
+                for name in r.qualifier.iter().skip(skip) {
+                    entity = self.step(f, scope, &entity, name, 0);
+                }
+                entity
+            })
+            .collect();
+        // A type parameter with several bounds: the one that has the member.
+        let at = if walked.len() > 1 {
+            walked
+                .iter()
+                .position(|e| self.holds_member(e, &r.name))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        Head::Resolved(walked.swap_remove(at), how)
+    }
+
+    fn holds_member(&self, entity: &Ent, name: &Name) -> bool {
+        match entity {
+            Ent::Instance(class) | Ent::Type(class) => self
+                .members_of(*class, name, matches!(entity, Ent::Type(_)), 0)
+                .is_some(),
+            _ => false,
         }
-        Head::Resolved(entity.0, entity.1)
     }
 
     // ---- overrides
