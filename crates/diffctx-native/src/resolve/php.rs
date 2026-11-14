@@ -1311,7 +1311,13 @@ impl<'w> Engine<'w> {
             return unresolved(UnresolvedReason::Opaque);
         }
         if self.open_above(class, 0) {
-            unresolved(UnresolvedReason::ExternalBase)
+            // A parent outside the repository may forward a call by `__call` or
+            // `__callStatic` (a facade does) to any class.
+            unresolved(if call {
+                UnresolvedReason::Opaque
+            } else {
+                UnresolvedReason::ExternalBase
+            })
         } else {
             unresolved(UnresolvedReason::NoMember)
         }
