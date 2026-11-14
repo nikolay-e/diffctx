@@ -1,0 +1,28 @@
+name: tsx_babel_module_resolver_alias_binds_the_import
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, babel, alias]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"al","version":"0.0.0"}
+    .babelrc: |
+      {"plugins":[["module-resolver",{"alias":{"Lib":"./src/lib"}}]]}
+    src/lib/core.ts: |
+      export function compute(x: number) {
+        return x + 1;
+      }
+    src/app/use.ts: |
+      import { compute } from "Lib/core";
+      export const useIt = () => compute(1);
+  changed_files:
+    src/lib/core.ts: |
+      export function compute(x: number) {
+        return x + 2;
+      }
+  commit_message: "core: add two"
+expect:
+  changed: [src/lib/core.ts::compute]
+  relations:
+    - {from: "src/app/use.ts::useIt", to: "src/lib/core.ts::compute", kind: calls, resolution: resolved, site: 2}
