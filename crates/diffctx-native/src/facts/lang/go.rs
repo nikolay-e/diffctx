@@ -44,7 +44,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
-use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span};
+use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span};
 use crate::facts::{
     BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -95,31 +95,22 @@ impl Extractor for GoExtractor {
 }
 
 fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
-    let mut blob = BlobFacts::new(Language::Go);
-    let Some(tree) = parse_tree(Language::Go, text, budget) else {
-        if expired(budget) {
-            blob.deadline();
-        } else {
-            blob.unsupported();
-        }
-        return blob;
-    };
-    let root = tree.root_node();
-    if root.has_error() {
-        blob.parse_error(error_lines(root));
-    }
-    let mut walker = Walker::new(text, budget);
-    walker.run(root);
-    if walker.halted {
-        blob.deadline();
-    }
-    if walker.too_deep {
-        blob.extractor_failed();
-    }
-    blob.facts = std::mem::take(&mut walker.facts);
-    blob.record_lexical(root);
-    blob.in_source_order();
-    blob
+    read_tree(
+        Language::Go,
+        Language::Go,
+        text,
+        budget,
+        error_lines,
+        |root, blob| {
+            let mut walker = Walker::new(text, budget);
+            walker.run(root);
+            blob.walked(
+                std::mem::take(&mut walker.facts),
+                walker.halted,
+                walker.too_deep,
+            );
+        },
+    )
 }
 
 /// A construct the walk of the file reads, wherever the grammar put it: the

@@ -483,6 +483,17 @@ impl BlobFacts {
         self.losses.push(Loss::ExtractorFailed { path: unbound() });
     }
 
+    /// The facts a tree walk read, and the limits it stopped at.
+    pub fn walked(&mut self, facts: Vec<Fact>, halted: bool, too_deep: bool) {
+        if halted {
+            self.deadline();
+        }
+        if too_deep {
+            self.extractor_failed();
+        }
+        self.facts = facts;
+    }
+
     /// The budget ran out; everything after this point of the walk was not read.
     pub fn deadline(&mut self) {
         self.losses.push(Loss::Deadline {
