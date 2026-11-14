@@ -1057,8 +1057,24 @@ fn resolve_symbol_change_set(
         None => scope.to_vec(),
     };
     let named = grep::grep_files_with_word(root_dir, &run.source(), name, &pathspec)?;
-    let withheld = named.withheld;
+    let mut withheld = named.withheld;
     let mut files = named.rows;
+    // SQL folds the case of a routine's name: its files are searched in any case.
+    if let Ok(folded) =
+        grep::grep_files_with_word_any_case(root_dir, &run.source(), name, &pathspec)
+    {
+        withheld.extend(folded.withheld);
+        withheld.sort();
+        withheld.dedup();
+        let fresh: Vec<PathBuf> = folded
+            .rows
+            .into_iter()
+            .filter(|f| {
+                f.extension().is_some_and(|e| e.eq_ignore_ascii_case("sql")) && !files.contains(f)
+            })
+            .collect();
+        files.extend(fresh);
+    }
     files.retain(|f| !is_lockfile_path(f));
     let named_in = files.len();
     if files.len() > MAX_SYMBOL_FILES {
@@ -1157,15 +1173,24 @@ fn resolve_symbol_change_set(
     let is_definition = |f: &&Fragment| {
         crate::container::named_container_of(f, &fragments).is_some_and(|c| c.id == f.id)
     };
+    // SQL names its routines without regard to case: `Net_Total` and `NET_TOTAL`
+    // are one function.
+    let named = |f: &Fragment, wanted: &str| {
+        f.symbol_name.as_deref().is_some_and(|n| {
+            n == wanted
+                || (n.eq_ignore_ascii_case(wanted)
+                    && crate::languages::get_language_for_file(f.path()) == Some("sql"))
+        })
+    };
     let mut definitions: Vec<&Fragment> = fragments
         .iter()
-        .filter(|f| f.symbol_name.as_deref() == Some(full.as_str()))
+        .filter(|f| named(f, full.as_str()))
         .filter(is_definition)
         .collect();
     if definitions.is_empty() {
         definitions = fragments
             .iter()
-            .filter(|f| f.symbol_name.as_deref() == Some(name))
+            .filter(|f| named(f, name))
             .filter(is_definition)
             .filter(|f| qualifier.is_none_or(|q| owned_by(f, q)))
             .collect();

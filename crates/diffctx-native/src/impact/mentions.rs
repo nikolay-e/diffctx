@@ -81,7 +81,7 @@ pub(super) fn class_of(
         Class::Data
     } else if is_document(path)
         || matches!(extension(path).as_str(), "diff" | "patch")
-        || commented(text)
+        || commented_in(path, text)
         || prints_a_name(text)
         || (!is_code_file(path) && token.is_some_and(|t| is_prose_about(text, t)))
     {
@@ -446,6 +446,7 @@ pub(super) fn stale_references(
         let targets = &targets;
         let sharing = &sharing;
         let landed = &landed;
+        let directory_names = &directory_names;
         let root = root.as_str();
         // A module name in a file the family binds is that family's: it names the
         // deleted module only where the family's imports landed on it, and
@@ -459,8 +460,15 @@ pub(super) fn stale_references(
                     .filter(|(t, _)| t != path)
                     .filter_map(move |(t, kind)| {
                         let basename = t.rsplit('/').next().unwrap_or(t);
-                        // A path that ends a sentence carries its full stop.
+                        // A path that ends a sentence carries its full stop; a directory
+                        // is spelled with its slash too (`COPY apps/pricing/ /dst`, `paths:
+                        // apps/pricing/**`).
                         let token = m.as_str().trim_end_matches('.');
+                        let token = if directory_names.contains(t) {
+                            token.trim_end_matches('/')
+                        } else {
+                            token
+                        };
                         let unique = !surviving.contains(basename) && sharing[basename] == 1;
                         naming(token, path, t, unique, root)
                             .filter(|n| {
@@ -527,6 +535,28 @@ pub(super) fn reads_imports(path: &str) -> bool {
 pub(super) fn commented(text: &str) -> bool {
     let t = text.trim_start();
     ["#", "//", "/*", "* "].iter().any(|m| t.starts_with(m)) || t == "*"
+}
+
+/// `commented`, read as the file's language reads it: a `#` opens a comment in a
+/// script or a config, and a directive, an attribute or a macro in C, Rust and
+/// Swift (`#define X "name"`, `#[cfg(feature = "x")]`, `#externalMacro`).
+pub(super) fn commented_in(path: &str, text: &str) -> bool {
+    let hash_is_code = matches!(
+        extension(path).as_str(),
+        "c" | "h"
+            | "cc"
+            | "cpp"
+            | "cxx"
+            | "hpp"
+            | "hh"
+            | "hxx"
+            | "m"
+            | "mm"
+            | "rs"
+            | "swift"
+            | "cs"
+    );
+    !(hash_is_code && text.trim_start().starts_with('#')) && commented(text)
 }
 
 /// An ignore or attribute file lists paths to include or exclude them; it

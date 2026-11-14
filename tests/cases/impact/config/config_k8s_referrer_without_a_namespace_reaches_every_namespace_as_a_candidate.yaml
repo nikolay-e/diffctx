@@ -55,4 +55,9 @@ expect:
     kind: reads
     resolution: candidate
     site: 12
+  - from: staging/configmap.yaml
+    to: prod/configmap.yaml
+    kind: references_path
+    resolution: candidate
+    site: 7
   exact: true
