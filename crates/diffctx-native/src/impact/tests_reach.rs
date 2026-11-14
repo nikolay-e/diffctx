@@ -33,7 +33,7 @@ use super::{
     base_symbol, cell_caller, changed_rels, lifted_caller, names_word, read_or_note, rel,
     spelled_lines, spelling_files,
 };
-use crate::testfiles::naming_links;
+use crate::testfiles::{DeclaredTests, naming_links};
 use crate::tokens::Names;
 use crate::vocabulary::family::Group;
 
@@ -150,6 +150,22 @@ impl<'a> TestsReach<'a> {
                 if !scopes.is_empty() {
                     tests_at.insert(spelled, scopes);
                 }
+            }
+        }
+        // Files the runner's configuration declares tests, whatever their names.
+        let repo_paths = read_or_note(state, state.run.source().list_paths(&state.root_dir));
+        let declared = DeclaredTests::read(
+            &repo_paths.iter().map(String::as_str).collect::<Vec<_>>(),
+            |path| {
+                state
+                    .run
+                    .source()
+                    .read_to_string(&state.root_dir.join(path))
+            },
+        );
+        for (&spelled, shown) in &rel_of {
+            if declared.is_test(shown) {
+                tests_at.entry(spelled).or_default().push((1, u32::MAX));
             }
         }
         let inline_tests: FxHashSet<&FragmentId> = state

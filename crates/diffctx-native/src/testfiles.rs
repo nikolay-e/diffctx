@@ -412,6 +412,334 @@ pub(crate) fn rust_doc_example_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
     found
 }
 
+/// Where a runner's configuration file holds the keys that say which files are
+/// tests.
+enum Holder {
+    /// An INI section (`[pytest]`, `[tool:pytest]`).
+    Ini(&'static str),
+    /// A TOML table (`[tool.pytest.ini_options]`).
+    Toml(&'static [&'static str]),
+    /// A JSON object, the document when the path is empty (`package.json`'s `jest`).
+    Json(&'static [&'static str]),
+    /// A script that exports an object: the key and its literals are read off the text.
+    Script,
+}
+
+/// How the values of a key name files.
+#[derive(Clone, Copy)]
+enum Declares {
+    /// Glob patterns (`testMatch`, `python_files`).
+    Globs,
+    /// Regular expressions over the path (`testRegex`).
+    Regex,
+}
+
+/// A test runner whose configuration decides which files are tests: the
+/// configuration files, the keys, and the files the patterns judge. A runner is a
+/// row; a pattern with no `/` judges the file's name where `names_only`.
+struct Runner {
+    config_files: &'static [(&'static str, Holder)],
+    keys: &'static [(&'static str, Declares)],
+    extensions: &'static [&'static str],
+    names_only: bool,
+}
+
+const SCRIPT_EXTENSIONS: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
+
+static RUNNERS: &[Runner] = &[
+    Runner {
+        config_files: &[
+            ("pytest.ini", Holder::Ini("pytest")),
+            ("tox.ini", Holder::Ini("pytest")),
+            ("setup.cfg", Holder::Ini("tool:pytest")),
+            (
+                "pyproject.toml",
+                Holder::Toml(&["tool", "pytest", "ini_options"]),
+            ),
+        ],
+        keys: &[("python_files", Declares::Globs)],
+        extensions: &["py"],
+        names_only: true,
+    },
+    Runner {
+        config_files: &[
+            ("package.json", Holder::Json(&["jest"])),
+            ("jest.config.json", Holder::Json(&[])),
+            ("jest.config.js", Holder::Script),
+            ("jest.config.cjs", Holder::Script),
+            ("jest.config.mjs", Holder::Script),
+            ("jest.config.ts", Holder::Script),
+        ],
+        keys: &[
+            ("testMatch", Declares::Globs),
+            ("testRegex", Declares::Regex),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        names_only: false,
+    },
+];
+
+/// One runner's patterns over the files beneath the directory of its configuration.
+struct Declared {
+    dir: String,
+    extensions: &'static [&'static str],
+    names_only: bool,
+    patterns: Vec<regex::Regex>,
+}
+
+/// The test files the repository's runner configurations declare, beyond the
+/// naming convention: a file `checks/check_a.py` is a test where `python_files`
+/// says `check_*.py`. A configuration that cannot be read declares nothing.
+#[derive(Default)]
+pub(crate) struct DeclaredTests(Vec<Declared>);
+
+impl DeclaredTests {
+    /// Reads the configuration files among `paths` (repository-relative) through `read`.
+    pub(crate) fn read(paths: &[&str], read: impl Fn(&str) -> Option<String>) -> Self {
+        let mut declared = Vec::new();
+        for path in paths {
+            let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+            for runner in RUNNERS {
+                let Some((_, holder)) = runner.config_files.iter().find(|(n, _)| *n == name) else {
+                    continue;
+                };
+                let Some(text) = read(path) else { continue };
+                let patterns: Vec<regex::Regex> = runner
+                    .keys
+                    .iter()
+                    .flat_map(|&(key, how)| {
+                        values_of(holder, &text, key)
+                            .into_iter()
+                            .filter_map(move |value| pattern_of(&value, how))
+                    })
+                    .collect();
+                if !patterns.is_empty() {
+                    declared.push(Declared {
+                        dir: dir.to_string(),
+                        extensions: runner.extensions,
+                        names_only: runner.names_only,
+                        patterns,
+                    });
+                }
+            }
+        }
+        Self(declared)
+    }
+
+    pub(crate) fn is_test(&self, path: &str) -> bool {
+        let Some(extension) = Path::new(path).extension().and_then(|e| e.to_str()) else {
+            return false;
+        };
+        self.0.iter().any(|declared| {
+            let Some(beneath) = (declared.dir.is_empty())
+                .then_some(path)
+                .or_else(|| path.strip_prefix(declared.dir.as_str())?.strip_prefix('/'))
+            else {
+                return false;
+            };
+            declared.extensions.contains(&extension)
+                && declared.patterns.iter().any(|pattern| {
+                    let name = beneath.rsplit('/').next().unwrap_or(beneath);
+                    pattern.is_match(if declared.names_only { name } else { beneath })
+                        || pattern.is_match(&format!("/{beneath}"))
+                })
+        })
+    }
+}
+
+/// The values a runner's configuration gives `key`: a list of strings or one string
+/// (split at whitespace where a glob list is written as words).
+fn values_of(holder: &Holder, text: &str, key: &str) -> Vec<String> {
+    match holder {
+        Holder::Ini(section) => ini_values(text, section, key),
+        Holder::Toml(at) => {
+            let table = toml::from_str::<toml::Table>(text).ok();
+            let value = table
+                .as_ref()
+                .and_then(|table| crate::snapshot::workspace::toml_at(table, at))
+                .and_then(|holder| holder.get(key));
+            crate::snapshot::workspace::toml_strings(value)
+                .iter()
+                .flat_map(|words| words.split_whitespace().map(str::to_string))
+                .collect()
+        }
+        Holder::Json(at) => {
+            let mut value = serde_json::from_str::<serde_json::Value>(text).ok();
+            for segment in *at {
+                value = value.and_then(|v| v.get(segment).cloned());
+            }
+            match value.and_then(|v| v.get(key).cloned()) {
+                Some(serde_json::Value::String(one)) => vec![one],
+                Some(serde_json::Value::Array(items)) => items
+                    .into_iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect(),
+                _ => Vec::new(),
+            }
+        }
+        Holder::Script => script_values(text, key),
+    }
+}
+
+/// `key = a b` of an INI section, with the indented lines that continue it.
+fn ini_values(text: &str, section: &str, key: &str) -> Vec<String> {
+    let mut in_section = false;
+    let mut found = false;
+    let mut words = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if found {
+            if line.starts_with([' ', '\t']) && !trimmed.is_empty() {
+                words.extend(trimmed.split_whitespace().map(str::to_string));
+                continue;
+            }
+            break;
+        }
+        if let Some(name) = trimmed.strip_prefix('[').and_then(|t| t.strip_suffix(']')) {
+            in_section = name.trim() == section;
+        } else if in_section {
+            if let Some((name, value)) = trimmed.split_once(['=', ':']) {
+                if name.trim() == key {
+                    found = true;
+                    words.extend(value.split_whitespace().map(str::to_string));
+                }
+            }
+        }
+    }
+    words
+}
+
+/// The string literals that follow `key:` in a script, up to the end of its list
+/// (`testMatch: ["a", 'b']`) or the one literal (`testRegex: "x"`).
+fn script_values(text: &str, key: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(key) {
+        let after = rest[at + key.len()..]
+            .trim_start_matches(['"', '\''])
+            .trim_start();
+        rest = &rest[at + key.len()..];
+        let Some(value) = after.strip_prefix(':') else {
+            continue;
+        };
+        let value = value.trim_start();
+        let (body, many) = match value.strip_prefix('[') {
+            Some(list) => (list, true),
+            None => (value, false),
+        };
+        let mut chars = body.chars();
+        while let Some(quote) = chars.next() {
+            if !matches!(quote, '"' | '\'' | '`') {
+                // Commas and blanks between a list's literals; anything else
+                // (a variable, the closing bracket) ends what is read.
+                if many && (quote == ',' || quote.is_whitespace()) {
+                    continue;
+                }
+                break;
+            }
+            let mut literal = String::new();
+            let mut escaped = false;
+            for c in chars.by_ref() {
+                if escaped {
+                    if !matches!(c, '\\' | '"' | '\'' | '`') {
+                        literal.push('\\');
+                    }
+                    literal.push(c);
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == quote {
+                    break;
+                } else {
+                    literal.push(c);
+                }
+            }
+            values.push(literal);
+            if !many {
+                break;
+            }
+        }
+    }
+    values
+}
+
+fn pattern_of(value: &str, how: Declares) -> Option<regex::Regex> {
+    match how {
+        Declares::Regex => regex::Regex::new(value).ok(),
+        Declares::Globs => glob_regex(
+            value
+                .trim_start_matches("<rootDir>/")
+                .trim_start_matches("./"),
+        ),
+    }
+}
+
+/// A glob as an anchored regular expression: `*` and `?` stay within a segment,
+/// `**/` spans segments, `[..]` classes, `{a,b}` alternatives and the extglob
+/// groups `?(..)`, `*(..)`, `+(..)`, `@(..)`. A negated group `!(..)` is not
+/// read: the pattern then declares nothing.
+fn glob_regex(glob: &str) -> Option<regex::Regex> {
+    let chars: Vec<char> = glob.chars().collect();
+    let mut out = String::from("^");
+    let mut closers: Vec<&str> = Vec::new();
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        let next = chars.get(at + 1).copied();
+        match c {
+            '*' if next == Some('*') => {
+                at += 1;
+                if chars.get(at + 1) == Some(&'/') {
+                    at += 1;
+                    out.push_str("(?:.*/)?");
+                } else {
+                    out.push_str(".*");
+                }
+            }
+            '*' | '?' | '+' | '@' | '!' if next == Some('(') => {
+                if c == '!' {
+                    return None;
+                }
+                at += 1;
+                out.push_str("(?:");
+                closers.push(match c {
+                    '?' => ")?",
+                    '*' => ")*",
+                    '+' => ")+",
+                    _ => ")",
+                });
+            }
+            '*' => out.push_str("[^/]*"),
+            '?' => out.push_str("[^/]"),
+            '{' => {
+                out.push_str("(?:");
+                closers.push(")");
+            }
+            '(' => {
+                out.push_str("(?:");
+                closers.push(")");
+            }
+            '}' | ')' => out.push_str(closers.pop()?),
+            '|' | ',' if !closers.is_empty() => out.push('|'),
+            '[' => {
+                let close = chars[at..].iter().position(|&c| c == ']')? + at;
+                let class: String = chars[at + 1..close].iter().collect();
+                out.push('[');
+                out.push_str(&class.replacen('!', "^", usize::from(class.starts_with('!'))));
+                out.push(']');
+                at = close;
+            }
+            other => out.push_str(&regex::escape(&other.to_string())),
+        }
+        at += 1;
+    }
+    if !closers.is_empty() {
+        return None;
+    }
+    out.push('$');
+    regex::Regex::new(&out).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
