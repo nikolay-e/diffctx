@@ -961,11 +961,10 @@ impl<'w> Engine<'w> {
     /// What the first name of a chain stands for.
     fn head_entity(&self, f: usize, scope: &[Name], name: &Name, depth: usize) -> Ent {
         if self.ix.swift && name.as_str() == "Self" {
-            for implicit in self.implicit(f, scope) {
-                match implicit {
-                    Implicit::Class(class, _) => return Ent::Type(class),
-                    Implicit::Foreign(own) => return Ent::Foreign(own),
-                }
+            match self.implicit(f, scope).into_iter().next() {
+                Some(Implicit::Class(class, _)) => return Ent::Type(class),
+                Some(Implicit::Foreign(own)) => return Ent::Foreign(own),
+                None => {}
             }
         }
         for implicit in self.implicit(f, scope) {

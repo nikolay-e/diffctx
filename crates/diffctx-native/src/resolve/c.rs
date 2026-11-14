@@ -1918,7 +1918,10 @@ impl Engine<'_> {
             Receiver::SelfType => class = self.class_of_scope(scope),
             Receiver::Typed(t) | Receiver::New(t) => {
                 class = self.type_class(f, scope, t.as_str(), 0);
-                let short = t.as_str().rsplit("::").next().unwrap_or_default();
+                let short = t
+                    .as_str()
+                    .rsplit_once("::")
+                    .map_or(t.as_str(), |(_, short)| short);
                 foreign = class.is_none() && !self.ix.by_short.contains_key(short);
             }
             Receiver::CallResult(path) => {
