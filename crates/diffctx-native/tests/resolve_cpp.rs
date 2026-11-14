@@ -917,3 +917,24 @@ fn objects_are_instantiations_and_their_members_resolve() {
         vec![sides.clone(), sides]
     );
 }
+
+/// A receiver typed by a name the resolver cannot follow (a namespace alias of
+/// an alias) is no library type when the project defines that name: its member
+/// is a candidate among the project's methods of that name.
+#[test]
+fn an_unfollowed_type_the_project_defines_is_no_library_receiver() {
+    let fx = snapshot(&[
+        (
+            "src/vec.hpp",
+            "namespace geo {\nclass Vec {\npublic:\n    int dot(const Vec& o) const { return 1; }\n};\n}\n",
+        ),
+        (
+            "src/use.cpp",
+            "#include \"vec.hpp\"\n\nnamespace g = geo;\nnamespace h = g;\nint run(const h::Vec& a) { return a.dot(a); }\n",
+        ),
+    ]);
+    assert_eq!(
+        fx.lands_at("src/use.cpp", "dot", 5),
+        "candidate(UntypedReceiver) src/vec.hpp::geo.Vec.dot"
+    );
+}
