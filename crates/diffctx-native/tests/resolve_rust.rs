@@ -669,6 +669,10 @@ fn cases_root() -> PathBuf {
 /// does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
+        "impact/rust/rsx_extern_crate_alias_binds_the_crate",
+        "RSX: `extern crate core_lib as eng;` binds nothing, so every path through `eng` is unresolved",
+    ),
+    (
         "impact/rust/rust_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
         "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
     ),
