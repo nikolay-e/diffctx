@@ -62,8 +62,7 @@ pub(crate) struct CompactEdge {
 
 /// Node-interned edge list: the memory-bounded intermediate between
 /// edge collection and graph construction. `idx_to_node` is the sorted,
-/// deduplicated fragment-id universe, so CSR node indexing built from it
-/// is identical to the ordering `Graph::freeze` produces.
+/// deduplicated fragment-id universe.
 #[cfg(test)]
 struct CompactEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
@@ -163,9 +162,6 @@ impl EdgeCategoryTable {
 }
 
 pub struct Graph {
-    nodes: FxHashSet<FragmentId>,
-    fwd: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
-    rev: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
     edge_categories: EdgeCategoryTable,
     csr_cache: Option<(CsrGraph, CsrGraph)>,
     pub cap_stats: EdgeCapStats,
@@ -174,9 +170,6 @@ pub struct Graph {
 impl Graph {
     pub fn new() -> Self {
         Self {
-            nodes: FxHashSet::default(),
-            fwd: FxHashMap::default(),
-            rev: FxHashMap::default(),
             edge_categories: EdgeCategoryTable::default(),
             csr_cache: None,
             cap_stats: EdgeCapStats::default(),
@@ -198,70 +191,20 @@ impl Graph {
         self.edge_categories.entries.len()
     }
 
-    pub fn add_node(&mut self, node: FragmentId) {
-        self.nodes.insert(node);
-    }
-
-    pub fn add_edge(&mut self, src: FragmentId, dst: FragmentId, weight: f64) {
-        if weight.is_nan() || weight.is_infinite() || weight <= 0.0 {
-            return;
-        }
-        if src == dst {
-            return;
-        }
-        debug_assert!(
-            self.csr_cache.is_none(),
-            "add_edge called after Graph was frozen"
-        );
-
-        let fwd_nbrs = self.fwd.entry(src.clone()).or_default();
-        let existing = fwd_nbrs.get(&dst).copied().unwrap_or(0.0);
-        let new_weight = existing.max(weight);
-        fwd_nbrs.insert(dst.clone(), new_weight);
-
-        let rev_nbrs = self.rev.entry(dst).or_default();
-        rev_nbrs.insert(src, new_weight);
-    }
-
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.fwd_csr().map_or(0, |fwd| fwd.n)
     }
 
     pub fn edge_count(&self) -> usize {
-        if let Some((fwd, _)) = &self.csr_cache {
-            return fwd.indices.len();
-        }
-        self.fwd.values().map(|nbrs| nbrs.len()).sum()
+        self.fwd_csr().map_or(0, |fwd| fwd.indices.len())
     }
 
-    /// Convert the build-time hashmap representation into CSR and drop the hashmaps.
-    /// After freeze, fwd/rev are empty and all reads go through CSR.
-    pub fn freeze(&mut self) {
-        if self.csr_cache.is_some() {
-            return;
-        }
-
-        let mut nodes: Vec<FragmentId> = self.nodes.iter().cloned().collect();
-        nodes.sort();
-
-        let node_to_idx: FxHashMap<FragmentId, u32> = nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.clone(), i as u32))
-            .collect();
-
-        let fwd = std::mem::take(&mut self.fwd);
-        let rev = std::mem::take(&mut self.rev);
-
-        let fwd_csr = build_csr_owned(fwd, &nodes, &node_to_idx);
-        let rev_csr = build_csr_owned(rev, &nodes, &node_to_idx);
-
-        self.csr_cache = Some((fwd_csr, rev_csr));
-    }
-
-    pub fn to_csr(&mut self) -> &(CsrGraph, CsrGraph) {
-        self.freeze();
-        self.csr_cache.as_ref().unwrap()
+    /// The forward and reverse CSR of an assembled graph, which every graph with
+    /// a node is.
+    pub fn to_csr(&self) -> &(CsrGraph, CsrGraph) {
+        self.csr_cache
+            .as_ref()
+            .expect("a graph with nodes is assembled with its CSR")
     }
 
     pub fn fwd_csr(&self) -> Option<&CsrGraph> {
@@ -413,53 +356,6 @@ fn bfs_from_seed_with_path_weight(
         }
     }
     result
-}
-
-fn build_csr_owned(
-    adj: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
-    nodes: &[FragmentId],
-    node_to_idx: &FxHashMap<FragmentId, u32>,
-) -> CsrGraph {
-    let n = nodes.len();
-    let total_edges: usize = adj.values().map(|v| v.len()).sum();
-
-    let mut indptr = vec![0u32; n + 1];
-    let mut indices = Vec::with_capacity(total_edges);
-    let mut weights = Vec::with_capacity(total_edges);
-
-    for (i, node) in nodes.iter().enumerate() {
-        if let Some(nbrs) = adj.get(node) {
-            let mut edges: Vec<(u32, f64)> = nbrs
-                .iter()
-                .filter_map(|(dst, &w)| node_to_idx.get(dst).map(|&idx| (idx, w)))
-                .collect();
-            edges.sort_by_key(|&(idx, _)| idx);
-            for (idx, w) in edges {
-                indices.push(idx);
-                weights.push(w);
-            }
-        }
-        indptr[i + 1] = indices.len() as u32;
-    }
-
-    let mut out_weight_sum = vec![0.0f64; n];
-    for i in 0..n {
-        let s = indptr[i] as usize;
-        let e = indptr[i + 1] as usize;
-        if e > s {
-            out_weight_sum[i] = weights[s..e].iter().sum();
-        }
-    }
-
-    CsrGraph {
-        n,
-        indptr,
-        indices,
-        weights,
-        out_weight_sum,
-        node_to_idx: node_to_idx.clone(),
-        idx_to_node: nodes.to_vec(),
-    }
 }
 
 /// Hub-suppression damping factors, precomputed from dedup-aware degree
@@ -672,9 +568,7 @@ pub(crate) struct CappedEdges {
 }
 
 /// Build a CSR from (src, dst, weight) triples over the interned node
-/// universe. Sorting by (src, dst) reproduces the neighbor ordering the
-/// hashmap-based `freeze` path produced (neighbors sorted by dst index),
-/// so weights, out-weight sums, and traversal results are bit-identical.
+/// universe, neighbors sorted by dst index.
 fn build_csr_from_pairs(
     mut pairs: Vec<(u32, u32, f64)>,
     idx_to_node: &[FragmentId],
@@ -724,7 +618,7 @@ fn build_csr_from_pairs(
 /// Graph-construction path for pre-capped edges from the two-pass
 /// pipeline: suppression and the per-source cap already ran, so only
 /// the category table and CSR assembly remain.
-pub(crate) fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph {
+pub(crate) fn build_graph_capped(capped: CappedEdges) -> Graph {
     let CappedEdges {
         node_to_idx,
         idx_to_node,
@@ -739,7 +633,7 @@ pub(crate) fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) ->
         cap_stats.edges_dropped_by_cap,
         cap_stats.nodes_capped,
     );
-    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
+    assemble_graph(node_to_idx, idx_to_node, edges, cap_stats)
 }
 
 /// Materialized-edge construction path behind the map-based `build_graph`
@@ -748,7 +642,7 @@ pub(crate) fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) ->
 /// inside `edges::collect_capped_edges` via `SuppressionFactors::from_counters`
 /// and enters at `build_graph_capped`.
 #[cfg(test)]
-fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
+fn build_graph_compact(compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,
         idx_to_node,
@@ -768,13 +662,11 @@ fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
         cap_stats.nodes_capped,
     );
 
-    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
+    assemble_graph(node_to_idx, idx_to_node, edges, cap_stats)
 }
 
 /// Self-loops and non-finite/non-positive weights must never reach a live
-/// graph: they used to be rejected only by `Graph::add_edge`'s guard, which
-/// has no production caller (both real construction paths route through
-/// here). An infinite weight makes `out_weight_sum` infinite, every
+/// graph. An infinite weight makes `out_weight_sum` infinite, every
 /// normalized PPR transition probability NaN, and the score map come back
 /// empty with exit 0 -- silently shipping core-only context.
 fn is_valid_edge(e: &CompactEdge) -> bool {
@@ -790,7 +682,6 @@ fn is_valid_edge(e: &CompactEdge) -> bool {
 /// fired (capped-away edges exported with `weight: 0.0`, `edge_count`
 /// mismatching `len(edges)` in the same JSON document).
 fn assemble_graph(
-    fragments: &[Fragment],
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     edges: Vec<CompactEdge>,
@@ -818,9 +709,6 @@ fn assemble_graph(
     let rev_csr = build_csr_from_pairs(rev_pairs, &idx_to_node, &node_to_idx);
 
     let mut graph = Graph::new();
-    for frag in fragments {
-        graph.nodes.insert(frag.id.clone());
-    }
     graph.edge_categories =
         EdgeCategoryTable::from_sorted_parts(node_to_idx, idx_to_node, category_entries);
     graph.cap_stats = cap_stats;
@@ -863,13 +751,44 @@ pub(crate) fn build_graph(
         });
     }
     dedup_compact_edges(&mut compact_edges);
-    build_graph_compact(
-        fragments,
-        CompactEdges {
-            node_to_idx,
-            idx_to_node,
-            edges: compact_edges,
-        },
+    build_graph_compact(CompactEdges {
+        node_to_idx,
+        idx_to_node,
+        edges: compact_edges,
+    })
+}
+
+/// A graph over `nodes` with the given weighted edges, assembled the way the
+/// pipeline assembles one: duplicate pairs keep the largest weight, and
+/// self-loops, non-finite and non-positive weights are dropped.
+#[cfg(test)]
+pub(crate) fn graph_of(nodes: &[&FragmentId], edges: &[(&FragmentId, &FragmentId, f64)]) -> Graph {
+    let mut idx_to_node: Vec<FragmentId> = nodes.iter().map(|n| (*n).clone()).collect();
+    idx_to_node.sort();
+    idx_to_node.dedup();
+    let node_to_idx: FxHashMap<FragmentId, u32> = idx_to_node
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.clone(), i as u32))
+        .collect();
+    let mut compact_edges: Vec<CompactEdge> = edges
+        .iter()
+        .filter_map(|&(src, dst, weight)| {
+            Some(CompactEdge {
+                src: *node_to_idx.get(src)?,
+                dst: *node_to_idx.get(dst)?,
+                weight,
+                category: EdgeCategory::Generic,
+                naming: false,
+            })
+        })
+        .collect();
+    dedup_compact_edges(&mut compact_edges);
+    assemble_graph(
+        node_to_idx,
+        idx_to_node,
+        compact_edges,
+        EdgeCapStats::default(),
     )
 }
 
@@ -889,16 +808,10 @@ mod tests {
     }
 
     #[test]
-    fn add_edge_takes_max_weight() {
-        let mut g = Graph::new();
+    fn duplicate_edges_keep_the_largest_weight() {
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_edge(a.clone(), b.clone(), 0.5);
-        g.add_edge(a.clone(), b.clone(), 0.8);
-        g.add_edge(a.clone(), b.clone(), 0.3);
-        g.freeze();
+        let g = graph_of(&[&a, &b], &[(&a, &b, 0.5), (&a, &b, 0.8), (&a, &b, 0.3)]);
 
         let fwd = collect_forward(&g, &a);
         assert_eq!(fwd.len(), 1);
@@ -907,17 +820,18 @@ mod tests {
     }
 
     #[test]
-    fn add_edge_drops_invalid_weights() {
-        let mut g = Graph::new();
+    fn invalid_weights_make_no_edge() {
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_edge(a.clone(), b.clone(), f64::NAN);
-        g.add_edge(a.clone(), b.clone(), f64::INFINITY);
-        g.add_edge(a.clone(), b.clone(), -1.0);
-        g.add_edge(a.clone(), b.clone(), 0.0);
-        g.freeze();
+        let g = graph_of(
+            &[&a, &b],
+            &[
+                (&a, &b, f64::NAN),
+                (&a, &b, f64::INFINITY),
+                (&a, &b, -1.0),
+                (&a, &b, 0.0),
+            ],
+        );
 
         assert!(collect_forward(&g, &a).is_empty());
         assert_eq!(g.edge_count(), 0);
@@ -925,15 +839,10 @@ mod tests {
 
     #[test]
     fn csr_round_trip() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 2.0);
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 2.0)]);
 
         let (fwd, _rev) = g.to_csr();
         assert_eq!(fwd.n, 3);
@@ -943,16 +852,10 @@ mod tests {
 
     #[test]
     fn ego_graph_scores() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 1.0);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -966,16 +869,10 @@ mod tests {
 
     #[test]
     fn ego_graph_sums_over_seeds() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let v = fid("v.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(v.clone());
-        g.add_edge(a.clone(), v.clone(), 1.0);
-        g.add_edge(b.clone(), v.clone(), 1.0);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &v], &[(&a, &v, 1.0), (&b, &v, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -992,16 +889,10 @@ mod tests {
 
     #[test]
     fn ego_graph_uses_path_weight() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 0.7);
-        g.add_edge(b.clone(), c.clone(), 0.4);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 0.7), (&b, &c, 0.4)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -1022,8 +913,7 @@ mod tests {
 
     #[test]
     fn ego_graph_empty() {
-        let mut g = Graph::new();
-        g.freeze();
+        let g = graph_of(&[], &[]);
         let seeds = FxHashSet::default();
         let scores = g.ego_graph(&seeds, 2);
         assert!(scores.is_empty());

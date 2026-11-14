@@ -134,10 +134,10 @@ impl ScoringStrategy for PPRScoring {
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let seeds = lift_to_files(all_fragments, core_ids);
         let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
-        let mut g = graph::build_graph_capped(all_fragments, capped);
+        let g = graph::build_graph_capped(capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
-            &mut g,
+            &g,
             core_ids,
             self.alpha,
             PPR.convergence_tolerance,
@@ -237,7 +237,7 @@ impl ScoringStrategy for EgoGraphScoring {
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let seeds = lift_to_files(all_fragments, core_ids);
         let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
-        let g = graph::build_graph_capped(all_fragments, capped);
+        let g = graph::build_graph_capped(capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let mut rel_scores = g.ego_graph_weighted(&seeds, self.max_depth);
 
