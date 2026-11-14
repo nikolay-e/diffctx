@@ -576,6 +576,20 @@ impl<'w> Engine<'w> {
                 return self.pick(f, ids, EvidenceKind::StarImport);
             }
         }
+        // Swift writes a type nested in another by its outer type's name; the
+        // facts keep the last name only.
+        if self.ix.swift {
+            let nested: Vec<usize> = (self.ix.types.get(name).into_iter().flatten().copied())
+                .filter(|id| {
+                    let rec = &self.ix.defs[*id];
+                    !rec.def.local.container.is_empty()
+                        && self.ix.files[rec.file].package == file.package
+                })
+                .collect();
+            if !nested.is_empty() {
+                return self.pick(f, nested, EvidenceKind::ModuleAttribute);
+            }
+        }
         Found::Nothing
     }
 
@@ -874,6 +888,14 @@ impl<'w> Engine<'w> {
 
     fn type_ent(&self, f: usize, scope: &[Name], name: &Name) -> Ent {
         match self.resolve_type(f, scope, name) {
+            // Types of one name in different containers are different types.
+            Found::Defs(ids, _)
+                if ids.iter().any(|i| {
+                    self.ix.defs[*i].def.local.container != self.ix.defs[ids[0]].def.local.container
+                }) =>
+            {
+                Ent::Unknown
+            }
             Found::Defs(ids, _) => self.alias_target(ids[0]),
             Found::Blocked(_) => Ent::Outside,
             _ => Ent::Foreign(name.clone()),
@@ -938,6 +960,14 @@ impl<'w> Engine<'w> {
 
     /// What the first name of a chain stands for.
     fn head_entity(&self, f: usize, scope: &[Name], name: &Name, depth: usize) -> Ent {
+        if self.ix.swift && name.as_str() == "Self" {
+            for implicit in self.implicit(f, scope) {
+                match implicit {
+                    Implicit::Class(class, _) => return Ent::Type(class),
+                    Implicit::Foreign(own) => return Ent::Foreign(own),
+                }
+            }
+        }
         for implicit in self.implicit(f, scope) {
             if let Implicit::Class(class, instance) = implicit {
                 if let Some((ids, _)) = self.members_of(class, name, !instance, 0) {
@@ -962,7 +992,10 @@ impl<'w> Engine<'w> {
         if self.ix.packages.contains(text) {
             return Ent::Package(text.to_string());
         }
-        if text.starts_with(char::is_uppercase) {
+        if self.ix.swift && text.starts_with(char::is_uppercase) {
+            // A type the repository may extend (`extension Int`).
+            Ent::Foreign(name.clone())
+        } else if text.starts_with(char::is_uppercase) {
             Ent::External
         } else {
             Ent::Unknown
@@ -1103,6 +1136,11 @@ impl<'w> Engine<'w> {
         name: &Name,
         wanted: fn(DefKind) -> bool,
     ) -> Option<usize> {
+        if let Ent::Foreign(own) = from {
+            if let Some(id) = self.extension_member(f, own, name, wanted) {
+                return Some(id);
+            }
+        }
         let ids = self.ix.extensions.get(name)?;
         let file = &self.ix.files[f];
         ids.iter().copied().find(|id| {
@@ -1134,6 +1172,32 @@ impl<'w> Engine<'w> {
                 Ent::Foreign(own) => *own == receiver,
                 _ => false,
             }
+        })
+    }
+
+    /// A member `name` of a Swift `extension` of a type the repository does not
+    /// declare (`extension Int { … }`).
+    fn extension_member(
+        &self,
+        f: usize,
+        own: &Name,
+        name: &Name,
+        wanted: fn(DefKind) -> bool,
+    ) -> Option<usize> {
+        let file = &self.ix.files[f];
+        self.ix.ext_types.get(own)?.iter().find_map(|ext| {
+            let ext = &self.ix.defs[*ext];
+            self.ix.files[ext.file]
+                .children
+                .get(&ext.path)?
+                .iter()
+                .copied()
+                .find(|c| {
+                    let k = &self.ix.defs[*c];
+                    k.def.local.name == *name
+                        && wanted(k.def.kind)
+                        && self.extension_visible(f, *c, file)
+                })
         })
     }
 
