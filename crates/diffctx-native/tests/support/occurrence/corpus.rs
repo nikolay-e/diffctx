@@ -151,7 +151,10 @@ fn grammar(family: Family) -> Result<Grammar, &'static str> {
             package: Some((r"(?m)^package \w+", "package pricing")),
         },
         Family::C => Grammar {
-            langs: vec![(".c", c()), (".h", c())],
+            langs: vec![
+                (".c", c()),
+                (".h", Language::new(tree_sitter_cpp::LANGUAGE)),
+            ],
             path: |b| format!("src/occ_{b}"),
             header: "#include \"pricing.h\"\n",
             package: None,
