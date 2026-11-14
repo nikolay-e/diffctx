@@ -1,0 +1,75 @@
+name: k6_java_method_source_in_a_test_file_the_commit_also_edits
+mode: impact
+source: synthetic
+tags: [java, literal-name, method-source, changed-file]
+repo:
+  initial_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      import java.util.stream.Stream;
+
+      public class Fixtures {
+          public static Stream<Integer> numbers() {
+              return Stream.of(1, 2);
+          }
+      }
+    src/test/java/com/acme/app/NumTest.java: |
+      package com.acme.app;
+
+      import org.junit.jupiter.api.Test;
+      import org.junit.jupiter.params.ParameterizedTest;
+      import org.junit.jupiter.params.provider.MethodSource;
+
+      class NumTest {
+          @ParameterizedTest
+          @MethodSource("com.acme.app.Fixtures#numbers")
+          void positive(int n) {
+              assert n > 0;
+          }
+
+          @Test
+          void other() {
+              assert "a".length() == 1;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      import java.util.stream.Stream;
+
+      public class Fixtures {
+          public static Stream<Integer> numbers() {
+              return Stream.of(0, 2);
+          }
+      }
+    src/test/java/com/acme/app/NumTest.java: |
+      package com.acme.app;
+
+      import org.junit.jupiter.api.Test;
+      import org.junit.jupiter.params.ParameterizedTest;
+      import org.junit.jupiter.params.provider.MethodSource;
+
+      class NumTest {
+          @ParameterizedTest
+          @MethodSource("com.acme.app.Fixtures#numbers")
+          void positive(int n) {
+              assert n > 0;
+          }
+
+          @Test
+          void other() {
+              assert "ab".length() == 2;
+          }
+      }
+  commit_message: "fixtures: numbers starts at zero; other test checks two letters"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/test/java/com/acme/app/NumTest.java
+      to: src/main/java/com/acme/app/Fixtures.java::numbers
+      kind: calls
+      resolution: unresolved
