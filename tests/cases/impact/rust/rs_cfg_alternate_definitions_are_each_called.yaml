@@ -1,0 +1,44 @@
+name: rs_cfg_alternate_definitions_are_each_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, cfg, conditional-binding, candidate]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "rsc"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod core;
+      pub mod users;
+    src/core.rs: |
+      #[cfg(windows)]
+      pub fn plat() -> i32 {
+          2
+      }
+
+      #[cfg(not(windows))]
+      pub fn plat() -> i32 {
+          1
+      }
+    src/users.rs: |
+      pub fn uses_plat() -> i32 {
+          crate::core::plat()
+      }
+  changed_files:
+    src/core.rs: |
+      #[cfg(windows)]
+      pub fn plat() -> i32 {
+          2
+      }
+
+      #[cfg(not(windows))]
+      pub fn plat() -> i32 {
+          10
+      }
+  commit_message: "core: ten for the rest"
+expect:
+  relations:
+    - {from: "src/users.rs::uses_plat", to: "src/core.rs::plat", kind: calls, resolution: candidate, site: 2}

@@ -1,0 +1,42 @@
+name: py_protocol_typed_receiver_reaches_a_structural_implementer
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, protocol, dispatch, candidate]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/proto.py: |
+      from typing import Protocol
+
+
+      class Greeter(Protocol):
+          def greet(self) -> str: ...
+    pkg/impl.py: |
+      class English:
+          def greet(self) -> str:
+              return "hi"
+    app/__init__.py: ""
+    app/speaker.py: |
+      from pkg.proto import Greeter
+
+
+      def say(g: Greeter) -> str:
+          return g.greet()
+    tests/test_say.py: |
+      from app.speaker import say
+      from pkg.impl import English
+
+
+      def test_say():
+          assert say(English()) == "hi"
+  changed_files:
+    pkg/impl.py: |
+      class English:
+          def greet(self) -> str:
+              return "hello"
+  commit_message: "impl: greet says hello"
+expect:
+  changed: [pkg/impl.py::English.greet]
+  relations:
+    - {from: "app/speaker.py::say", to: "pkg/impl.py::English.greet", kind: calls, resolution: candidate, site: 5}

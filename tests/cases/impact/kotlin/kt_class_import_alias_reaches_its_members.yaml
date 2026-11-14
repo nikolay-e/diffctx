@@ -1,0 +1,58 @@
+name: kt_class_import_alias_reaches_its_members
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, import-alias]
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      class Money(val v: Int) {
+          fun double(): Money {
+              return Money(v * 2)
+          }
+
+          companion object {
+              fun zero(): Money {
+                  return Money(0)
+              }
+          }
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.core.Money as M
+
+      fun start() = M.zero()
+      fun twice(m: M) = m.double()
+  changed_files:
+    src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      class Money(val v: Int) {
+          fun double(): Money {
+              return Money(v * 2 + 0)
+          }
+
+          companion object {
+              fun zero(): Money {
+                  return Money(1)
+              }
+          }
+      }
+  commit_message: "money: zero is one"
+expect:
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::start"
+      to: "src/main/kotlin/com/acme/core/Money.kt::Money.Companion.zero"
+      kind: calls
+      resolution: resolved
+      site: 5
+    - from: "src/main/kotlin/com/acme/app/Use.kt::twice"
+      to: "src/main/kotlin/com/acme/core/Money.kt::Money.double"
+      kind: calls
+      resolution: resolved
+      site: 6

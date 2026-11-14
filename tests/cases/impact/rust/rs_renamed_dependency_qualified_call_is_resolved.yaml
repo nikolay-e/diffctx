@@ -1,0 +1,48 @@
+name: rs_renamed_dependency_qualified_call_is_resolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, workspace, dependency-rename]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [workspace]
+      members = ["crates/*"]
+      resolver = "2"
+    crates/core-lib/Cargo.toml: |
+      [package]
+      name = "core-lib"
+      version = "0.1.0"
+      edition = "2021"
+    crates/core-lib/src/lib.rs: |
+      pub mod engine;
+    crates/core-lib/src/engine.rs: |
+      pub fn inline_path(x: i32) -> i32 {
+          x + 1
+      }
+    crates/app/Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      eng = { package = "core-lib", path = "../core-lib" }
+    crates/app/src/lib.rs: |
+      pub fn a() -> i32 {
+          eng::engine::inline_path(1)
+      }
+  changed_files:
+    crates/core-lib/src/engine.rs: |
+      pub fn inline_path(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: "engine: add two"
+expect:
+  changed: [crates/core-lib/src/engine.rs::inline_path]
+  relations:
+    - from: "crates/app/src/lib.rs::a"
+      to: "crates/core-lib/src/engine.rs::inline_path"
+      kind: calls
+      resolution: resolved
+      site: 2
