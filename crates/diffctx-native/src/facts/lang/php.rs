@@ -57,7 +57,7 @@ use std::rc::Rc;
 
 use tree_sitter::Node;
 
-use super::walker::hash_outside;
+use super::walker::{hash_outside, hash_tree, is_member};
 use super::{
     ERROR_RANGES_KEPT, children as named_children, lines_of, merge_ranges, parse_tree, span,
     through_errors,
@@ -545,7 +545,7 @@ impl<'t> Walker<'t> {
             signature: Some(signature),
             decorators,
             visibility,
-            body_hash: body.map_or(0, |b| self.hash_tree(b, members, None)),
+            body_hash: body.map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
             text_hash: hash_outside(self.bytes, node, members),
             doc_hash: self.doc_hash(doc),
         }));
@@ -578,34 +578,6 @@ impl<'t> Walker<'t> {
             tokens.pop();
         }
         join_tokens(&tokens)
-    }
-
-    fn hash_tree(&self, root: Node<'t>, members: &[Node<'t>], skip: Option<Node<'t>>) -> u64 {
-        let mut hash = Hasher::new();
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            let held = node.id() != root.id()
-                && (members.iter().any(|m| m.id() == node.id())
-                    || skip.is_some_and(|s| s.id() == node.id()));
-            if node.kind() == "comment" || held {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
-        hash.finish().unwrap_or(0)
     }
 
     // ---- types
@@ -859,7 +831,7 @@ impl<'t> Walker<'t> {
             signature: Some(signature),
             decorators,
             visibility,
-            body_hash: value.map_or(0, |v| self.hash_tree(v, &[], None)),
+            body_hash: value.map_or(0, |v| hash_tree(self.bytes, v, |_| false)),
             text_hash: hasher.finish().unwrap_or(0),
             doc_hash: self.doc_hash(doc),
         }));

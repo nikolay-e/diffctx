@@ -32,6 +32,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use super::walker::hash_tree_into;
 use super::{
     ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span, through_errors,
 };
@@ -467,7 +468,7 @@ impl<'t> Walker<'t> {
         let mut body_hash = Hasher::new();
         body_hash.bytes(&[0]);
         if let Some(body) = body {
-            self.hash_tree(body, &mut body_hash);
+            hash_tree_into(self.bytes, body, &mut body_hash, |_| false);
         }
         self.facts.push(Fact::Definition(Def {
             local: key.clone(),
@@ -484,30 +485,6 @@ impl<'t> Walker<'t> {
             doc_hash: None,
         }));
         key
-    }
-
-    /// The tree as node kinds, nesting and leaf text, comments left out.
-    fn hash_tree(&self, root: Node<'t>, hash: &mut Hasher) {
-        let mut stack = vec![(root, false)];
-        while let Some((node, closing)) = stack.pop() {
-            if closing {
-                hash.bytes(&[2]);
-                continue;
-            }
-            if node.kind() == "comment" {
-                continue;
-            }
-            if node.child_count() == 0 {
-                hash.bytes(&[3]).token(node.kind().as_bytes());
-                hash.token(self.text(node).as_bytes());
-            } else {
-                hash.bytes(&[1]).token(node.kind().as_bytes());
-                stack.push((node, true));
-                let mut cursor = node.walk();
-                let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-                stack.extend(kids.into_iter().rev().map(|k| (k, false)));
-            }
-        }
     }
 
     /// The leaves of a node, a space between every two.
