@@ -559,11 +559,9 @@ impl<'a> Reading<'a> {
     /// Whether `target` and the subject are a prototype and its definition.
     fn paired(&self, target: &DefKey) -> bool {
         let (subject, prototypes) = (&self.subject.key, &self.view.index.prototypes);
-        PAIRED_PROTOTYPES
-            .iter()
-            .any(|f| f.has(self.file.language()))
-            && target.project == subject.project
-            && target.language == subject.language
+        PAIRED_PROTOTYPES.iter().any(|f| {
+            f.has(self.file.language()) && f.has(target.language) && f.has(subject.language)
+        }) && target.project == subject.project
             && target.local == subject.local
             && (prototypes.contains(target) || prototypes.contains(subject))
     }
