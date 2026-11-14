@@ -205,6 +205,7 @@ struct CrateRec {
     kind: CrateKind,
     root_file: String,
     root: usize,
+    renames: Vec<(String, String)>,
 }
 
 struct ModRec {
@@ -296,6 +297,7 @@ impl Index {
                     kind: krate.kind,
                     root_file: krate.root_file.clone(),
                     root: 0,
+                    renames: krate.renames.clone(),
                 });
                 for module in &krate.modules {
                     let id = index.module_at(at, &module.path);
@@ -338,6 +340,7 @@ impl Index {
                         kind: CrateKind::Bin,
                         root_file: path.clone(),
                         root: 0,
+                        renames: Vec::new(),
                     });
                     let id = index.module_at(krate, "");
                     index.crates[krate].root = id;
@@ -387,6 +390,7 @@ impl Index {
                     kind: if lib { CrateKind::Lib } else { CrateKind::Bin },
                     root_file: root_file.clone(),
                     root: 0,
+                    renames: Vec::new(),
                 });
                 let root = self.module_at(at, "");
                 self.crates[at].root = root;
@@ -1050,6 +1054,11 @@ impl<'a> Engine<'a> {
     /// declares.
     fn crate_named(&self, site: &Site, name: &str) -> Option<Ent> {
         let own = self.ix.mods[site.module].krate;
+        let name = self.ix.crates[own]
+            .renames
+            .iter()
+            .find(|(alias, _)| alias == name)
+            .map_or(name, |(_, package)| package.as_str());
         if self.ix.crates[own].name == name {
             // The package's own library from its binary or tests.
             if self.ix.crates[own].kind == CrateKind::Lib {
