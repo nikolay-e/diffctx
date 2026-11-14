@@ -1,0 +1,70 @@
+name: rust_doc_example_runs_the_function_it_calls_as_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- doctest
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod core;
+      pub mod api;
+    src/core.rs: |
+      pub fn inner(x: i32) -> i32 {
+          x + 1
+      }
+
+      pub fn other(x: i32) -> i32 {
+          x + 1
+      }
+    src/api.rs: |
+      /// Doubles via inner.
+      ///
+      /// ```
+      /// assert_eq!(fixture::api::outer(1), 4);
+      /// ```
+      pub fn outer(x: i32) -> i32 {
+          crate::core::inner(x) * 2
+      }
+
+      /// Doubles via other.
+      ///
+      /// ```ignore
+      /// assert_eq!(fixture::api::wrap(1), 4);
+      /// ```
+      pub fn wrap(x: i32) -> i32 {
+          crate::core::other(x) * 2
+      }
+    tests/other.rs: |
+      #[test]
+      fn unrelated() {
+          assert!(true);
+      }
+  changed_files:
+    src/core.rs: |
+      pub fn inner(x: i32) -> i32 {
+          x + 2
+      }
+
+      pub fn other(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: change both
+expect:
+  changed:
+  - src/core.rs::inner
+  - src/core.rs::other
+  exact: false
+  tested_by:
+    src/core.rs: src/api.rs
+  not_untested:
+  - inner
+  untested:
+  - other

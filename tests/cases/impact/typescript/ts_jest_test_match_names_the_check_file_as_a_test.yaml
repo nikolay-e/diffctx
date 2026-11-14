@@ -1,0 +1,63 @@
+name: ts_jest_test_match_names_the_check_file_as_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- jest-config
+repo:
+  initial_files:
+    apps/web/jest.config.js: |
+      module.exports = { testMatch: ["**/qa/**/*.check.ts"] };
+    apps/web/src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLowerCase();
+      }
+    apps/web/src/page.ts: |
+      import { shout } from "./format";
+
+      export function page() {
+        return shout("b");
+      }
+    apps/web/src/note.ts: |
+      import { whisper } from "./format";
+
+      export function note() {
+        return whisper("B");
+      }
+    apps/web/qa/page.check.ts: |
+      import { page } from "../src/page";
+
+      test("page", () => expect(page()).toBe("B"));
+    apps/web/qa/note.helper.ts: |
+      import { note } from "../src/note";
+
+      export const noted = () => note();
+    libs/core/test/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    apps/web/src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLocaleLowerCase();
+      }
+  commit_message: change both
+expect:
+  changed:
+  - apps/web/src/format.ts::shout
+  - apps/web/src/format.ts::whisper
+  exact: false
+  tested_by:
+    apps/web/src/format.ts: apps/web/qa/page.check.ts
+  not_untested:
+  - shout
+  untested:
+  - whisper
