@@ -382,6 +382,9 @@ struct Ix {
     /// each pass, a local of the loop and not a definition.
     in_loop: bool,
     type_checking: bool,
+    /// Inside an `if` or a `try`: a definition here may or may not be the one
+    /// that runs, and a same-named twin is an alternative to it.
+    conditional: bool,
     /// Inside an `except` handler: the names its `try` body imports, which
     /// a definition here stands behind (`except ImportError: def main()`).
     fallback_for: Option<Rc<HashSet<String>>>,
@@ -397,6 +400,7 @@ struct Cand {
     kind: DefKind,
     shape: Shape,
     type_checking: bool,
+    conditional: bool,
     fallback: bool,
     statement: Option<usize>,
     variable: bool,
@@ -1010,6 +1014,11 @@ impl<'t> Walker<'t> {
                 let type_checking = condition.is_some_and(|c| self.is_type_checking(c));
                 let branch = Ix {
                     type_checking: ix.type_checking || type_checking,
+                    conditional: true,
+                    ..ix.clone()
+                };
+                let other = Ix {
+                    conditional: true,
                     ..ix.clone()
                 };
                 let mut cursor = node.walk();
@@ -1017,7 +1026,7 @@ impl<'t> Walker<'t> {
                     let inner = if consequence.is_some_and(|c| c.id() == child.id()) {
                         &branch
                     } else {
-                        ix
+                        &other
                     };
                     self.collect(child, inner, out, depth + 1);
                 }
@@ -1026,6 +1035,11 @@ impl<'t> Walker<'t> {
                 let imported = self.imported_names(node.child_by_field_name("body"));
                 let handler = Ix {
                     fallback_for: (!imported.is_empty()).then(|| Rc::new(imported)),
+                    conditional: true,
+                    ..ix.clone()
+                };
+                let attempt = Ix {
+                    conditional: true,
                     ..ix.clone()
                 };
                 let mut cursor = node.walk();
@@ -1033,7 +1047,7 @@ impl<'t> Walker<'t> {
                     let inner = if matches!(child.kind(), "except_clause" | "except_group_clause") {
                         &handler
                     } else {
-                        ix
+                        &attempt
                     };
                     self.collect(child, inner, out, depth + 1);
                 }
@@ -1136,6 +1150,7 @@ impl<'t> Walker<'t> {
             kind,
             shape,
             type_checking: ix.type_checking,
+            conditional: ix.conditional,
             fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
             statement: None,
             variable: false,
@@ -1156,6 +1171,7 @@ impl<'t> Walker<'t> {
             in_fn: ix.in_fn || !is_class,
             in_loop: false,
             type_checking: false,
+            conditional: false,
             fallback_for: None,
             leaving,
         };
@@ -1204,6 +1220,7 @@ impl<'t> Walker<'t> {
                             kind: DefKind::Field,
                             shape: Shape::Plain,
                             type_checking: false,
+                            conditional: false,
                             fallback: false,
                             statement: None,
                             variable: true,
@@ -1285,6 +1302,7 @@ impl<'t> Walker<'t> {
                     kind,
                     shape: Shape::Plain,
                     type_checking: ix.type_checking,
+                    conditional: ix.conditional,
                     fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
                     statement: Some(statement),
                     variable: true,
@@ -1318,6 +1336,7 @@ impl<'t> Walker<'t> {
             kind: DefKind::TypeAlias,
             shape: Shape::Plain,
             type_checking: ix.type_checking,
+            conditional: ix.conditional,
             fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
             statement: Some(statement.id()),
             variable: true,
@@ -1480,6 +1499,21 @@ impl<'t> Walker<'t> {
                 .copied()
                 .filter(|&i| Some(i) != cfg)
                 .collect();
+            // Twins on different paths through the file stand for each other.
+            if rest.len() > 1 && rest.iter().any(|&i| kept[i].conditional) {
+                let mut handler = false;
+                for (n, &i) in rest.iter().enumerate() {
+                    let behind = kept[i].fallback && !handler;
+                    handler |= behind;
+                    let tag = if behind {
+                        "fallback".to_string()
+                    } else {
+                        format!("branch{}", n + 1)
+                    };
+                    disambig[i] = Some(Disambig::Cfg(tag));
+                }
+                continue;
+            }
             let primary = rest
                 .iter()
                 .copied()
