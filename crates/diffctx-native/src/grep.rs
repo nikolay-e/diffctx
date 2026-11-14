@@ -101,7 +101,7 @@ pub(crate) fn grep_files_with_declaration(
 
 /// Lines of code files at `rev` that hold one of `words` as a whole word, at
 /// most `per_file` per file: where a removed definition's callers are read
-/// from.
+/// from. Past the run's deadline the rows found are the answer.
 pub(crate) fn grep_code_words(
     repo_root: &Path,
     source: &Source,
@@ -116,8 +116,15 @@ pub(crate) fn grep_code_words(
         .iter()
         .map(|ext| format!(":(glob,icase)**/*{ext}"))
         .collect();
-    snapshot::word_lines(repo_root, words, rev, per_file, &globs)
-        .map(|rows| admitted_rows(source, rows))
+    snapshot::word_lines(
+        repo_root,
+        words,
+        rev,
+        per_file,
+        &globs,
+        &crate::resource::current_check,
+    )
+    .map(|rows| admitted_rows(source, rows))
 }
 
 /// The first line of each file that holds `word` as a whole word, in the
