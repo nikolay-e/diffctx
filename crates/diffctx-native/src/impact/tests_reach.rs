@@ -26,11 +26,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::facts::EntryKind;
 
-use super::mentions::{Naming, commented, naming, starts_a_program};
+use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::rust;
 use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
-    base_symbol, cell_caller, lifted_caller, names_word, read_or_note, rel, spelling_files,
+    base_symbol, cell_caller, changed_rels, head_of, lifted_caller, names_word, read_or_note, rel,
+    spelling_files,
 };
 use crate::testfiles::naming_links;
 use crate::tokens::Names;
@@ -754,9 +755,7 @@ fn spelled_in_tests(
     diff_range: Option<&str>,
     needles: &[String],
 ) -> crate::grep::Grepped<crate::snapshot::Row> {
-    let head = diff_range
-        .map(crate::snapshot::split_diff_range)
-        .and_then(|(_, head)| head);
+    let head = head_of(diff_range);
     read_or_note(
         state,
         crate::grep::grep_lines(
@@ -1029,30 +1028,14 @@ fn script_runs(
     diff_range: Option<&str>,
     spelled: &FxHashMap<&str, &str>,
 ) -> Vec<Run> {
-    let targets: Vec<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
+    let targets: Vec<String> = changed_rels(state)
         .filter(|t| is_runnable(t) && !crate::testfiles::is_test_path(Path::new(t)))
         .filter(|t| spelled.contains_key(t.as_str()))
         .collect();
     if targets.is_empty() {
         return Vec::new();
     }
-    let root = state.root_dir.to_string_lossy().replace('\\', "/");
-    let mut basenames: FxHashMap<String, usize> = FxHashMap::default();
-    for p in read_or_note(state, state.run.source().list_paths(&state.root_dir)) {
-        if let Some(b) = p.rsplit('/').next() {
-            *basenames.entry(b.to_string()).or_default() += 1;
-        }
-    }
-    let basename_of = |t: &str| t.rsplit('/').next().unwrap_or(t).to_string();
-    let mut needles: Vec<String> = targets
-        .iter()
-        .flat_map(|t| [t.clone(), basename_of(t)])
-        .collect();
-    needles.sort();
-    needles.dedup();
+    let (root, basenames, needles) = path_search(state, &targets);
     let grepped = spelled_in_tests(state, diff_range, &needles);
     let token_re = once_cell::sync::Lazy::force(&super::mentions::PATH_TOKEN);
     let mut out = Vec::new();
@@ -1333,11 +1316,7 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     static STRING: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(r#""([^"\\\n]{8,80})"|'([^'\\\n]{8,80})'"#).expect("string regex")
     });
-    let changed: FxHashSet<String> = state
-        .changed_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .collect();
+    let changed: FxHashSet<String> = changed_rels(state).collect();
     // (the file as fragments spell it, as the answer prints it, the symbol, its strings)
     let mut held: Vec<(String, String, String, Vec<String>)> = Vec::new();
     for f in &state.all_fragments {
