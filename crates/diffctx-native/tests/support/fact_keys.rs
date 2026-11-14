@@ -88,10 +88,13 @@ pub(crate) fn repeated_facts(doc: &Value) -> Vec<String> {
 
 // The sites of one definition that stand twice: a line two rows list under
 // different standings, a line a resolved row lists that a gap names as a use
-// nothing settles, a file a row stands in that is listed as unread. A candidate
-// row and the gap that discloses it name one standing, not two.
+// nothing settles (a call row and a gap site of a call; a reference row beside
+// the call its value may become is two statements), a file a row stands in
+// that is listed as unread (a file read in part is named for the lines it lost).
+// A candidate row and the gap that discloses it name one standing, not two.
 fn double_standings(def: &Value) -> Vec<String> {
     let mut standing: BTreeMap<(String, u64), BTreeSet<String>> = BTreeMap::new();
+    let mut resolved_as: BTreeMap<(String, u64), BTreeSet<String>> = BTreeMap::new();
     let mut rowed = BTreeSet::new();
     for row in items(def, "rows") {
         let path = text(row, "path").to_string();
@@ -100,6 +103,12 @@ fn double_standings(def: &Value) -> Vec<String> {
                 .entry((path.clone(), line))
                 .or_default()
                 .insert(text(row, "standing").to_string());
+            if text(row, "standing") == "resolved" {
+                resolved_as
+                    .entry((path.clone(), line))
+                    .or_default()
+                    .insert(text(row, "class").to_string());
+            }
         }
         rowed.insert(path);
     }
@@ -112,16 +121,17 @@ fn double_standings(def: &Value) -> Vec<String> {
     for gap in items(def, "gaps") {
         for site in items(gap, "sites") {
             let (path, line) = (text(site, "path"), site["line"].as_u64().unwrap_or(0));
-            let settled = standing
+            let settled = resolved_as
                 .get(&(path.to_string(), line))
-                .is_some_and(|standings| standings.contains("resolved"));
+                .is_some_and(|classes| classes.contains(text(site, "via")));
             if settled {
                 twice.push(format!("{path}:{line} is a row and a use nothing settles"));
             }
         }
     }
     for file in items(def, "missed_in") {
-        if rowed.contains(text(file, "path")) {
+        // A file read in part keeps its rows and is named for the lines it lost.
+        if rowed.contains(text(file, "path")) && text(file, "reason") != "parse_failed" {
             twice.push(format!(
                 "{} has a row and is listed unread",
                 text(file, "path")
