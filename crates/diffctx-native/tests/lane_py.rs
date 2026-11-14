@@ -235,13 +235,14 @@ fn a_class_field_is_defined_and_its_readers_and_writers_listed() {
 }
 
 /// #477: a method called on what a repository function returns (a test
-/// helper's `make()`, `helpers.make()`) is a possible caller, its receiver
-/// unresolved: the syntax does not say what the function returns. The same
+/// helper's `make()`, `helpers.make()`) is a caller when the function's only
+/// return builds one class (gh#717), and a possible caller, its receiver
+/// unresolved, when it returns one of two constructions. The same
 /// method name on an instance of another class, in a comment and in a
 /// string stays no caller. Control: `auth_mod.check()` through an imported
 /// module answers exactly.
 #[test]
-fn a_receiver_a_function_returns_is_a_possible_caller() {
+fn a_receiver_a_sole_construction_returns_is_a_caller_and_a_choice_a_possible_one() {
     let tmp = repo(
         &[
             ("app/__init__.py", ""),
@@ -264,11 +265,11 @@ fn a_receiver_a_function_returns_is_a_possible_caller() {
             ("tests/__init__.py", ""),
             (
                 "tests/helpers.py",
-                "from app.client import Client\n\n\ndef make():\n    return Client()\n",
+                "from app.client import Client\nfrom app.other import Other\n\n\ndef make():\n    return Client()\n\n\ndef either(flag):\n    if flag:\n        return Client()\n    return Other()\n",
             ),
             (
                 "tests/test_api.py",
-                "from tests import helpers\nfrom tests.helpers import make\nfrom app.other import Other\n\n\ndef test_token():\n    client = make()\n    assert client.token() == \"t\"\n\n\ndef test_qualified():\n    c = helpers.make()\n    assert c.token()\n\n\ndef test_other():\n    o = Other()\n    # client.token() in a comment\n    assert o.token() == \"o\" and \"client.token()\"\n",
+                "from tests import helpers\nfrom tests.helpers import either, make\nfrom app.other import Other\n\n\ndef test_token():\n    client = make()\n    assert client.token() == \"t\"\n\n\ndef test_qualified():\n    c = helpers.make()\n    assert c.token()\n\n\ndef test_either():\n    e = either(1)\n    assert e.token()\n\n\ndef test_other():\n    o = Other()\n    # client.token() in a comment\n    assert o.token() == \"o\" and \"client.token()\"\n",
             ),
         ],
         &[],
@@ -292,11 +293,16 @@ fn a_receiver_a_function_returns_is_a_possible_caller() {
     assert_eq!(
         listed,
         set(&[
-            "tests/test_api.py::test_qualified candidate receiver_unresolved",
-            "tests/test_api.py::test_token candidate receiver_unresolved",
+            "tests/test_api.py::test_qualified resolved ",
+            "tests/test_api.py::test_token resolved ",
         ]),
         "{doc}"
     );
+    // `either()` returns one of two constructions: its receiver stays unlanded,
+    // a gap in the calls, never a caller.
+    assert_eq!(token["coverage"]["calls"]["complete"], false, "{doc}");
+    let unlanded = token["gaps"][0]["sites"][0]["path"].as_str();
+    assert_eq!(unlanded, Some("tests/test_api.py"), "{doc}");
     // Control: a function reached through its module.
     let doc = symbol(tmp.path(), "app/auth_mod.py:check");
     assert_eq!(
