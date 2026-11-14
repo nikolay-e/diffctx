@@ -11,7 +11,7 @@ use tree_sitter::{Node, ParseOptions, ParseState, Parser, Tree};
 use crate::facts::extractor::{Extractor, Registry};
 use crate::facts::hash::Hasher;
 use crate::facts::language::Language;
-use crate::facts::{Span, expired};
+use crate::facts::{BlobFacts, Span, expired};
 use crate::snapshot::RunBudget;
 
 #[macro_use]
@@ -212,6 +212,35 @@ fn parse_tree(language: Language, text: &[u8], budget: &RunBudget) -> Option<Tre
         }
         tree
     })
+}
+
+/// What the extractors that parse a tree and walk it do around their walk: a blob that
+/// is the deadline or an unsupported text, the unread lines, the walk, the lexical spans.
+fn read_tree(
+    language: Language,
+    grammar: Language,
+    text: &[u8],
+    budget: &RunBudget,
+    error_lines: impl FnOnce(Node) -> Vec<(u32, u32)>,
+    walk: impl FnOnce(Node, &mut BlobFacts),
+) -> BlobFacts {
+    let mut blob = BlobFacts::new(language);
+    let Some(tree) = parse_tree(grammar, text, budget) else {
+        if expired(budget) {
+            blob.deadline();
+        } else {
+            blob.unsupported();
+        }
+        return blob;
+    };
+    let root = tree.root_node();
+    if root.has_error() {
+        blob.parse_error(error_lines(root));
+    }
+    walk(root, &mut blob);
+    blob.record_lexical(root);
+    blob.in_source_order();
+    blob
 }
 
 fn lines_of(node: Node) -> (u32, u32) {
