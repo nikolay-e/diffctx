@@ -24,6 +24,15 @@ repo:
       {
           return 1;
       }
+    src/dl.h: |
+      int other(void);
+    src/main.c: |
+      #include "dl.h"
+
+      int run(void)
+      {
+          return other();
+      }
   changed_files:
     src/plugin.c: |
       int by_dl(void)

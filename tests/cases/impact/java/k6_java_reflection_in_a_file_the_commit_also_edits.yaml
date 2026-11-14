@@ -24,6 +24,14 @@ repo:
               return "a";
           }
       }
+    src/main/java/com/acme/app/App.java: |
+      package com.acme.app;
+
+      public class App {
+          public String run() {
+              return new Caller().other();
+          }
+      }
   changed_files:
     src/main/java/com/acme/app/Fixtures.java: |
       package com.acme.app;

@@ -1,0 +1,37 @@
+name: k6_swift_symbol_external_macro_type_is_named_in
+mode: symbol
+source: synthetic
+tags: [swift, literal-name, macro]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "M", targets: [
+          .target(name: "MMacros"),
+          .target(name: "MLib", dependencies: ["MMacros"]),
+      ])
+    Sources/MMacros/Stringify.swift: |
+      public struct StringifyMacro {
+          public static func expansion(of text: String) -> String {
+              return text
+          }
+      }
+    Sources/MLib/MLib.swift: |
+      @freestanding(expression)
+      public macro stringify<T>(_ value: T) -> (T, String) =
+          #externalMacro(module: "MMacros", type: "StringifyMacro")
+  commit_message: "base"
+query:
+  symbol: StringifyMacro
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  definitions:
+    - Sources/MMacros/Stringify.swift::StringifyMacro
+  relations:
+    - from: Sources/MLib/MLib.swift
+      to: Sources/MMacros/Stringify.swift::StringifyMacro
+      kind: calls
+      resolution: unresolved

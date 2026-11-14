@@ -1,0 +1,29 @@
+name: k6_sql_symbol_function_named_in_a_query_string
+mode: symbol
+source: synthetic
+tags: [sql, literal-name, query-string]
+repo:
+  initial_files:
+    db/functions/tax.sql: |
+      CREATE OR REPLACE FUNCTION calc_vat(amount numeric) RETURNS numeric AS $$
+        SELECT amount * 0.19;
+      $$ LANGUAGE sql;
+    db/views/order_totals.sql: |
+      CREATE VIEW order_totals AS
+      SELECT o.id, calc_vat(o.net_cents) AS vat
+      FROM orders o;
+    app/repo.py: |
+      def totals(cur):
+          cur.execute("SELECT calc_vat(net_cents) FROM orders")
+  commit_message: "base"
+query:
+  symbol: calc_vat
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  definitions:
+    - db/functions/tax.sql::calc_vat
+  relations:
+    - {from: db/views/order_totals.sql, to: db/functions/tax.sql::calc_vat, kind: calls, resolution: resolved}
+    - {from: app/repo.py, to: db/functions/tax.sql::calc_vat, kind: calls, resolution: unresolved}

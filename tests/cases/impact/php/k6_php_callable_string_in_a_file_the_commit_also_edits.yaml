@@ -29,6 +29,18 @@ repo:
               return 'a';
           }
       }
+    src/Main.php: |
+      <?php
+
+      namespace App;
+
+      class Main
+      {
+          public function run(): string
+          {
+              return (new Sorter())->other();
+          }
+      }
   changed_files:
     src/hooks.php: |
       <?php
