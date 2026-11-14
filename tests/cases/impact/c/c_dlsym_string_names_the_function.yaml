@@ -1,0 +1,32 @@
+name: c_dlsym_string_names_the_function
+mode: impact
+source: synthetic
+tags: [c, literal-name, dlsym]
+repo:
+  initial_files:
+    src/plugin.c: |
+      int by_name(int x)
+      {
+          return x + 1;
+      }
+    src/main.c: |
+      #include <dlfcn.h>
+
+      int run(void)
+      {
+          int (*f)(int) = (int (*)(int))dlsym(RTLD_DEFAULT, "by_name");
+          return f(1);
+      }
+  changed_files:
+    src/plugin.c: |
+      int by_name(int x)
+      {
+          return x + 2;
+      }
+  commit_message: "plugin: by_name adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/main.c, to: src/plugin.c::by_name, kind: calls, resolution: unresolved}

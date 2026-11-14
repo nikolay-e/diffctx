@@ -1,0 +1,27 @@
+name: py_getattr_string_name_is_a_candidate_caller
+mode: impact
+source: synthetic
+tags: [python, literal-name, getattr]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def compute(x):
+          return x + 1
+    app/u.py: |
+      import pkg.core
+
+
+      def run():
+          return getattr(pkg.core, "compute")(1)
+  changed_files:
+    pkg/core.py: |
+      def compute(x):
+          return x + 2
+  commit_message: "core: compute adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/u.py, to: pkg/core.py::compute, kind: calls, resolution: unresolved}
