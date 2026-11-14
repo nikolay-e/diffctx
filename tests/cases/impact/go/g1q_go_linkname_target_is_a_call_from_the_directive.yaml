@@ -1,0 +1,39 @@
+name: g1q_go_linkname_target_is_a_call_from_the_directive
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, linkname, blackbox2]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    lib/lib.go: |
+      package lib
+
+      func linked() int { return 1 }
+    app/app.go: |
+      package app
+
+      import (
+          _ "unsafe"
+
+          _ "example.com/app/lib"
+      )
+
+      //go:linkname localLinked example.com/app/lib.linked
+      func localLinked() int
+
+      func Use() int { return localLinked() }
+  changed_files:
+    lib/lib.go: |
+      package lib
+
+      func linked() int { return 2 }
+  commit_message: "lib: linked returns 2"
+expect:
+  changed: [lib/lib.go::linked]
+  relations:
+    - {from: app/app.go, to: lib/lib.go::linked, kind: calls, resolution: resolved, site: 9}
+  no_negative_claims: true
