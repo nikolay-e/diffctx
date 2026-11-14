@@ -101,6 +101,16 @@ expect:
     - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: calls, site: 5}
 ";
 
+const CHARGE_MAY_CALL_TOTAL: &str = r"
+mode: impact
+source: synthetic
+repo:
+  changed_files: {shop/pricing.py: x}
+expect:
+  relations:
+    - {from: 'shop/checkout.py::charge', to: 'shop/pricing.py::total', kind: calls, resolution: candidate, site: 5}
+";
+
 const CHARGE_READS_TOTAL: &str = r"
 mode: impact
 source: synthetic
@@ -331,6 +341,56 @@ fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
                 "standing": "resolved", "class": "call", "sites": [8],
             }])),
             verdict: Verdict::Fails("missing shop/checkout.py::charge -calls->"),
+        },
+    ])
+}
+
+/// A7: a row the answer folds as not affected is no caller (the reader is told
+/// the change cannot have reached it) and stands only for an expectation of the
+/// kind its rule folds, while a candidate folded for its
+/// untyped receiver stays a disclosed row.
+fn a7_a_folded_row_is_no_caller() -> Result<(), Failed> {
+    let folded = |evidence: &str, rule: &str| {
+        let mut row = charge(evidence, "call", None);
+        row["folded_by"] = json!(rule);
+        row
+    };
+    run(vec![
+        Probe {
+            what: "the row is folded as a declared type",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([folded("resolved", "declared-type")])),
+            verdict: Verdict::Fails("folds shop/checkout.py::charge"),
+        },
+        Probe {
+            what: "the row is folded as a call that still works",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([folded("resolved", "check-the-default")])),
+            verdict: Verdict::Fails("folds shop/checkout.py::charge"),
+        },
+        Probe {
+            what: "a row folded as a declared type still stands for an expected type use",
+            case: CHARGE_ANNOTATES_TOTAL,
+            answer: answer(&json!([folded("resolved", "declared-type")])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "a row folded as a declared type is no expected read",
+            case: CHARGE_READS_TOTAL,
+            answer: answer(&json!([folded("resolved", "declared-type")])),
+            verdict: Verdict::Fails("folds shop/checkout.py::charge"),
+        },
+        Probe {
+            what: "a candidate folded for its untyped receiver is a disclosed row",
+            case: CHARGE_MAY_CALL_TOTAL,
+            answer: answer(&json!([folded("candidate", "untyped-receiver")])),
+            verdict: Verdict::Passes,
+        },
+        Probe {
+            what: "the same row listed",
+            case: CHARGE_CALLS_TOTAL,
+            answer: answer(&json!([charge("resolved", "call", None)])),
+            verdict: Verdict::Passes,
         },
     ])
 }
@@ -609,7 +669,7 @@ fn a_site_has_one_standing() -> Result<(), Failed> {
 }
 
 pub(crate) fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 13] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 14] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",
             a1_a_named_test_function_needs_the_answer_to_name_it,
@@ -652,6 +712,7 @@ pub(crate) fn trials() -> Vec<Trial> {
             "a_zero_beside_not_determined_is_a_claim",
             a_zero_beside_not_determined_is_a_claim,
         ),
+        ("a7_a_folded_row_is_no_caller", a7_a_folded_row_is_no_caller),
         ("a_site_has_one_standing", a_site_has_one_standing),
     ];
     rules
