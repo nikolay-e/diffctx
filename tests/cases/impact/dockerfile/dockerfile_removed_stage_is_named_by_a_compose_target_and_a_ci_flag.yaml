@@ -1,0 +1,39 @@
+name: dockerfile_removed_stage_is_named_by_a_compose_target_and_a_ci_flag
+mode: impact
+source: synthetic
+tags: [dockerfile, literal-name, stage-target]
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM node:20 AS assets-builder
+      RUN echo built > /out
+
+      FROM nginx:1.27 AS runtime
+      COPY --from=assets-builder /out /out
+    docker-compose.yml: |
+      services:
+        web:
+          build:
+            context: .
+            target: assets-builder
+    .github/workflows/image.yml: |
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - run: docker build --target assets-builder -t shop .
+  changed_files:
+    Dockerfile: |
+      FROM node:20 AS assets
+      RUN echo built > /out
+
+      FROM nginx:1.27 AS runtime
+      COPY --from=assets /out /out
+  commit_message: "docker: rename the asset stage"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: docker-compose.yml, to: Dockerfile::assets-builder, kind: calls, resolution: unresolved}
+    - {from: .github/workflows/image.yml, to: Dockerfile::assets-builder, kind: calls, resolution: unresolved}

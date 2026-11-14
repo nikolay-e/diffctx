@@ -1,0 +1,46 @@
+name: php_callable_string_names_the_function
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}, "files": ["src/functions.php"]}}
+    src/functions.php: |
+      <?php
+
+      namespace App;
+
+      function mapper(int $a): int
+      {
+          return $a + 1;
+      }
+    src/Job.php: |
+      <?php
+
+      namespace App;
+
+      class Job
+      {
+          public function run(array $xs): array
+          {
+              return array_map('App\mapper', $xs);
+          }
+      }
+  changed_files:
+    src/functions.php: |
+      <?php
+
+      namespace App;
+
+      function mapper(int $a): int
+      {
+          return $a + 2;
+      }
+  commit_message: "functions: mapper adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/Job.php, to: src/functions.php::mapper, kind: calls, resolution: unresolved}

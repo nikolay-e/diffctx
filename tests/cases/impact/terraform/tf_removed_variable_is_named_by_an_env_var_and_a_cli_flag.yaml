@@ -1,0 +1,54 @@
+name: tf_removed_variable_is_named_by_an_env_var_and_a_cli_flag
+mode: impact
+source: synthetic
+tags: [terraform, literal-name, tf-var]
+repo:
+  initial_files:
+    stacks/app/variables.tf: |
+      variable "db_password_secret" {
+        type = string
+      }
+
+      variable "bucket_names" {
+        type = list(string)
+      }
+    stacks/app/main.tf: |
+      resource "aws_s3_bucket" "b" {
+        for_each = toset(var.bucket_names)
+        bucket   = each.value
+      }
+
+      output "secret" {
+        value = var.db_password_secret
+      }
+    .github/workflows/plan.yml: |
+      jobs:
+        plan:
+          runs-on: ubuntu-latest
+          env:
+            TF_VAR_db_password_secret: ${{ secrets.DB }}
+          steps:
+            - run: terraform plan
+    Makefile: |
+      plan:
+      	terraform -chdir=stacks/app plan -var 'bucket_names=["c"]'
+  changed_files:
+    stacks/app/variables.tf: |
+      variable "unrelated" {
+        type = string
+      }
+    stacks/app/main.tf: |
+      resource "aws_s3_bucket" "b" {
+        bucket = "fixed"
+      }
+  commit_message: "tf: drop the two variables"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: .github/workflows/plan.yml
+      to: stacks/app/variables.tf::var.db_password_secret
+      kind: calls
+      resolution: unresolved
+    - {from: Makefile, to: stacks/app/variables.tf::var.bucket_names, kind: calls, resolution: unresolved}

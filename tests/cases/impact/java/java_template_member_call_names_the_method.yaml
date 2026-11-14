@@ -1,0 +1,35 @@
+name: java_template_member_call_names_the_method
+mode: impact
+source: synthetic
+tags: [java, literal-name, thymeleaf]
+repo:
+  initial_files:
+    src/main/java/com/acme/Calc.java: |
+      package com.acme;
+
+      public class Calc {
+          public String templ() {
+              return "a";
+          }
+      }
+    src/main/resources/templates/page.html: |
+      <html><body><p th:text="${calc.templ()}">x</p></body></html>
+  changed_files:
+    src/main/java/com/acme/Calc.java: |
+      package com.acme;
+
+      public class Calc {
+          public String templ() {
+              return "b";
+          }
+      }
+  commit_message: "calc: templ returns b"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/resources/templates/page.html
+      to: src/main/java/com/acme/Calc.java::templ
+      kind: calls
+      resolution: unresolved

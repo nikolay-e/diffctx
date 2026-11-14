@@ -1,0 +1,50 @@
+name: java_method_source_qualified_name_is_a_candidate_user
+mode: impact
+source: synthetic
+tags: [java, literal-name, junit]
+repo:
+  initial_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      import java.util.stream.Stream;
+
+      public class Fixtures {
+          public static Stream<Integer> numbers() {
+              return Stream.of(1, 2);
+          }
+      }
+    src/test/java/com/acme/app/NumTest.java: |
+      package com.acme.app;
+
+      import org.junit.jupiter.params.ParameterizedTest;
+      import org.junit.jupiter.params.provider.MethodSource;
+
+      class NumTest {
+          @ParameterizedTest
+          @MethodSource("com.acme.app.Fixtures#numbers")
+          void positive(int n) {
+              assert n > 0;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/app/Fixtures.java: |
+      package com.acme.app;
+
+      import java.util.stream.Stream;
+
+      public class Fixtures {
+          public static Stream<Integer> numbers() {
+              return Stream.of(0, 2);
+          }
+      }
+  commit_message: "fixtures: numbers starts at zero"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/test/java/com/acme/app/NumTest.java
+      to: src/main/java/com/acme/app/Fixtures.java::numbers
+      kind: calls
+      resolution: unresolved

@@ -1,0 +1,44 @@
+name: php_symfony_route_yaml_names_the_action
+mode: impact
+source: synthetic
+tags: [php, literal-name, symfony-routes]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}}}
+    src/Controller/UserController.php: |
+      <?php
+
+      namespace App\Controller;
+
+      class UserController
+      {
+          public function show(int $id): string
+          {
+              return "user " . $id;
+          }
+      }
+    config/routes.yaml: |
+      user_show:
+        path: /user/{id}
+        controller: App\Controller\UserController::show
+  changed_files:
+    src/Controller/UserController.php: |
+      <?php
+
+      namespace App\Controller;
+
+      class UserController
+      {
+          public function show(int $id): string
+          {
+              return "member " . $id;
+          }
+      }
+  commit_message: "user: show says member"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: config/routes.yaml, to: src/Controller/UserController.php::show, kind: calls, resolution: unresolved}

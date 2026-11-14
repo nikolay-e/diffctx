@@ -1,0 +1,42 @@
+name: java_reflection_literal_method_name_is_a_candidate_caller
+mode: impact
+source: synthetic
+tags: [java, literal-name, reflection]
+repo:
+  initial_files:
+    src/main/java/com/acme/svc/PriceService.java: |
+      package com.acme.svc;
+
+      public class PriceService {
+          public static int reflected(int a) {
+              return a + 1;
+          }
+      }
+    src/main/java/com/acme/app/Controller.java: |
+      package com.acme.app;
+
+      public class Controller {
+          public Object h() throws Exception {
+              Class<?> c = Class.forName("com.acme.svc.PriceService");
+              return c.getMethod("reflected", int.class).invoke(null, 1);
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/svc/PriceService.java: |
+      package com.acme.svc;
+
+      public class PriceService {
+          public static int reflected(int a) {
+              return a + 2;
+          }
+      }
+  commit_message: "price: reflected adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Controller.java
+      to: src/main/java/com/acme/svc/PriceService.java::reflected
+      kind: calls
+      resolution: unresolved
