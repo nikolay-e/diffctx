@@ -30,8 +30,8 @@ use super::mentions::{Naming, basename_of, commented, naming, path_search, start
 use super::rust;
 use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
-    base_symbol, cell_caller, changed_rels, head_of, lifted_caller, names_word, read_or_note, rel,
-    spelling_files,
+    base_symbol, cell_caller, changed_rels, lifted_caller, names_word, read_or_note, rel,
+    spelled_lines, spelling_files,
 };
 use crate::testfiles::naming_links;
 use crate::tokens::Names;
@@ -749,24 +749,6 @@ pub(super) fn curried_registrations(f: &Fragment) -> impl Iterator<Item = (&str,
         })
 }
 
-/// The lines of the tree at the range's head that spell one of `needles`.
-fn spelled_in_tests(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    needles: &[String],
-) -> crate::grep::Grepped<crate::snapshot::Row> {
-    let head = head_of(diff_range);
-    read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            needles,
-            head.as_deref(),
-        ),
-    )
-}
-
 /// The Rust binaries in the analysed fragments, keyed by their entry file
 /// as fragments spell it, each run by one test of its crate that runs
 /// the built binary. `src/main.rs` is the package's binary, named in
@@ -804,7 +786,7 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
         return Vec::new();
     }
     let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
-    let grepped = spelled_in_tests(state, diff_range, &needles);
+    let grepped = spelled_lines(state, diff_range, &needles);
     let mut out = Vec::new();
     for (own, krate, name) in entries {
         let exe = format!("CARGO_BIN_EXE_{name}");
@@ -980,7 +962,7 @@ fn console_runs(
     let mut needles: Vec<String> = scripts.iter().map(|s| s.name.clone()).collect();
     needles.sort();
     needles.dedup();
-    let grepped = spelled_in_tests(state, diff_range, &needles);
+    let grepped = spelled_lines(state, diff_range, &needles);
     let mut out = Vec::new();
     for script in scripts {
         let Some(file) = spelled.get(script.file.as_str()) else {
@@ -1036,7 +1018,7 @@ fn script_runs(
         return Vec::new();
     }
     let (root, basenames, needles) = path_search(state, &targets);
-    let grepped = spelled_in_tests(state, diff_range, &needles);
+    let grepped = spelled_lines(state, diff_range, &needles);
     let token_re = once_cell::sync::Lazy::force(&super::mentions::PATH_TOKEN);
     let mut out = Vec::new();
     for target in &targets {
@@ -1261,7 +1243,7 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
     let mut needles: Vec<String> = entries.iter().map(|e| e.needle.clone()).collect();
     needles.sort();
     needles.dedup();
-    let grepped = spelled_in_tests(state, diff_range, &needles);
+    let grepped = spelled_lines(state, diff_range, &needles);
     entries
         .into_iter()
         .filter_map(|entry| {
@@ -1360,7 +1342,7 @@ fn literal_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     if needles.is_empty() {
         return Vec::new();
     }
-    let grepped = spelled_in_tests(state, diff_range, &needles);
+    let grepped = spelled_lines(state, diff_range, &needles);
     let mut files_of: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
     for (path, _, text) in &grepped.rows {
         for needle in &needles {

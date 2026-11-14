@@ -26,7 +26,7 @@ use serde::Serialize;
 use super::{
     Cells, MAX_NAMED_BY, MAX_NAMED_BY_PER_TARGET, MAX_STALE_PER_TARGET, MAX_STALE_REFERENCES,
     PROJECT_MANIFESTS, PathReference, ScoredState, StaleReference, changed_rels, extension,
-    head_of, is_code_file, is_document, read_or_note,
+    is_code_file, is_document, read_or_note, spelled_lines,
 };
 
 /// The kind of place a path is mentioned in.
@@ -335,7 +335,6 @@ pub(super) fn stale_references(
         return (Vec::new(), 0);
     }
     let root = state.root_dir.to_string_lossy().replace('\\', "/");
-    let head = head_of(diff_range);
     let surviving: FxHashSet<String> =
         read_or_note(state, state.run.source().list_paths(&state.root_dir))
             .into_iter()
@@ -376,15 +375,7 @@ pub(super) fn stale_references(
     }
     needles.sort();
     needles.dedup();
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_lines(state, diff_range, &needles);
     state.run.note_withheld(grepped.withheld);
     let lines = grepped.rows;
     let source = state.run.source();
@@ -645,19 +636,10 @@ pub(super) fn named_by_path(
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
-    let head = head_of(diff_range);
     let (root, basenames, needles) = path_search(state, &targets);
     // A file the ignore rules withhold is not searched here; the header's
     // withheld count stays the one the answer's own reads give.
-    let grepped = read_or_note(
-        state,
-        crate::grep::grep_lines(
-            &state.root_dir,
-            &state.run.source(),
-            &needles,
-            head.as_deref(),
-        ),
-    );
+    let grepped = spelled_lines(state, diff_range, &needles);
     // What this change wrote is the diff itself.
     let written: FxHashSet<(&str, &str)> = state
         .hunk_texts

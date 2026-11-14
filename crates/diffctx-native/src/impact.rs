@@ -1369,18 +1369,9 @@ impl UntracedNamers {
         if needles.is_empty() {
             return Self::default();
         }
-        let head = head_of(diff_range);
         let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
         let changed: FxHashSet<String> = changed_rels(state).collect();
-        let grepped = read_or_note(
-            state,
-            crate::grep::grep_lines(
-                &state.root_dir,
-                &state.run.source(),
-                &needles,
-                head.as_deref(),
-            ),
-        );
+        let grepped = spelled_lines(state, diff_range, &needles);
         let mut rows: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
         for (path, line, text) in &grepped.rows {
             // A comment or a document mentions a name without reading it.
@@ -1665,6 +1656,23 @@ fn head_of(range: Option<&str>) -> Option<String> {
     range
         .map(crate::snapshot::split_diff_range)
         .and_then(|(_, head)| head)
+}
+
+/// The lines of the tree at the range's head that spell one of `needles`.
+fn spelled_lines(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    needles: &[String],
+) -> crate::grep::Grepped<crate::snapshot::Row> {
+    read_or_note(
+        state,
+        crate::grep::grep_lines(
+            &state.root_dir,
+            &state.run.source(),
+            needles,
+            head_of(diff_range).as_deref(),
+        ),
+    )
 }
 
 /// The files whose change is layout alone.
