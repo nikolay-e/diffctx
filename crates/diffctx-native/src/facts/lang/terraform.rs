@@ -32,7 +32,9 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::{children, lines_of, parse_tree, span, through_errors};
+use super::{
+    ERROR_RANGES_KEPT, children, lines_of, merge_ranges, parse_tree, span, through_errors,
+};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
     Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
@@ -40,7 +42,6 @@ use crate::facts::{
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
 const MAX_DEPTH: u16 = 256;
-const ERROR_RANGES_KEPT: usize = 32;
 const POLL_EVERY: usize = 256;
 
 /// The arguments of a `module` call that configure the call, not the module.
@@ -149,16 +150,7 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
             }
         }
     }
-    ranges.sort_unstable();
-    let mut merged: Vec<(u32, u32)> = Vec::new();
-    for (from, to) in ranges {
-        match merged.last_mut() {
-            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
-            _ => merged.push((from, to)),
-        }
-    }
-    merged.truncate(ERROR_RANGES_KEPT);
-    merged
+    merge_ranges(ranges, ERROR_RANGES_KEPT)
 }
 
 /// What a walk of an expression carries: who owns the references and which names

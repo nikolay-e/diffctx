@@ -58,7 +58,10 @@ use std::rc::Rc;
 use tree_sitter::Node;
 
 use super::walker::hash_outside;
-use super::{children as named_children, lines_of, parse_tree, span, through_errors};
+use super::{
+    ERROR_RANGES_KEPT, children as named_children, lines_of, merge_ranges, parse_tree, span,
+    through_errors,
+};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -67,7 +70,6 @@ use crate::facts::{
 use crate::snapshot::{Loss, RepoPath, RunBudget};
 
 const MAX_DEPTH: u16 = 256;
-const ERROR_RANGES_KEPT: usize = 32;
 const POLL_EVERY: usize = 256;
 
 pub struct PhpExtractor;
@@ -172,16 +174,7 @@ fn error_lines(root: Node) -> Vec<(u32, u32)> {
             stack.extend(node.children(&mut cursor).map(|c| (c, among)));
         }
     }
-    ranges.sort_unstable();
-    let mut merged: Vec<(u32, u32)> = Vec::new();
-    for (from, to) in ranges {
-        match merged.last_mut() {
-            Some(last) if from <= last.1 + 1 => last.1 = last.1.max(to),
-            _ => merged.push((from, to)),
-        }
-    }
-    merged.truncate(ERROR_RANGES_KEPT);
-    merged
+    merge_ranges(ranges, ERROR_RANGES_KEPT)
 }
 
 /// The type a variable is known by, from what its assignments and declaration
