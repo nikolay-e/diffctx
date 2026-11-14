@@ -1,0 +1,25 @@
+name: k6_py_setup_entry_points_name_the_function
+mode: impact
+source: synthetic
+tags: [python, literal-name, entry-points]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/impl.py: |
+      def cli_main():
+          return 1 + 1
+    setup.py: |
+      from setuptools import setup
+
+      setup(name="pkg", entry_points={"console_scripts": ["pkg-cli = pkg.impl:cli_main"]})
+  changed_files:
+    pkg/impl.py: |
+      def cli_main():
+          return 1 + 2
+  commit_message: "impl: cli_main adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: setup.py, to: pkg/impl.py::cli_main, kind: calls, resolution: unresolved}
