@@ -96,6 +96,9 @@ struct Sig {
     /// The parameters of a method or a constructor: how many, and whether the
     /// last is variadic.
     params: Option<(usize, bool)>,
+    /// The type parameters the header declares, each with the written types of
+    /// its bounds: `<T extends A & B>`.
+    type_params: Vec<(String, Vec<String>)>,
 }
 
 impl Sig {
@@ -124,6 +127,11 @@ const MODIFIERS: &[&str] = &[
 const TYPE_KEYWORDS: &[&str] = &["class", "interface", "enum", "record"];
 
 impl Flat {
+    /// Where the first non-blank top-level character at or after `from` stands.
+    fn next_at(&self, from: usize) -> Option<usize> {
+        (from.min(self.top.len())..self.top.len()).find(|i| !self.top[*i].is_whitespace())
+    }
+
     /// The first non-blank top-level character at or after `from`.
     fn next_char(&self, from: usize) -> Option<char> {
         self.top[from.min(self.top.len())..]
@@ -153,6 +161,45 @@ fn outer_name(written: &str) -> Option<String> {
     path.rsplit('.').next().map(str::to_string)
 }
 
+/// The type parameters of the list opened by the `<` at `open`, each with the
+/// written types it is bounded by.
+fn type_params(flat: &Flat, open: Option<usize>) -> Vec<(String, Vec<String>)> {
+    let Some(open) = open else {
+        return Vec::new();
+    };
+    let end = (open + 1..flat.chars.len())
+        .find(|i| flat.chars[*i] == '>' && flat.depth[*i] == 1)
+        .unwrap_or(flat.chars.len());
+    let mut params = Vec::new();
+    let mut start = open + 1;
+    for i in open + 1..=end {
+        if i == end || (flat.chars[i] == ',' && flat.depth[i] == 1) {
+            let part: String = flat.chars[start..i].iter().collect();
+            let mut words = part.split_whitespace().filter(|w| !w.starts_with('@'));
+            if let Some(name) = words.next() {
+                let bounds = match words.next() {
+                    Some("extends") => words
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .split('&')
+                        .filter_map(bound_path)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                params.push((name.to_string(), bounds));
+            }
+            start = i + 1;
+        }
+    }
+    params
+}
+
+/// A bound as written, without its type arguments: `a.b.Repo<T>` is `a.b.Repo`.
+fn bound_path(bound: &str) -> Option<String> {
+    let head = bound.split('<').next()?;
+    written_path(head.split_whitespace().last()?)
+}
+
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
     let flat = Flat::new(text, jvm::JAVA);
     let tokens: Vec<(usize, usize, String)> = flat
@@ -178,6 +225,12 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
             if TYPE_KEYWORDS.contains(&tokens[first].2.as_str()) {
                 sig.keyword = Some(tokens[first].2.clone());
             }
+            if let Some((_, name_end, _)) = tokens.get(first + 1) {
+                sig.type_params = type_params(
+                    &flat,
+                    flat.next_at(*name_end).filter(|at| flat.chars[*at] == '<'),
+                );
+            }
             let mut listing = false;
             for (_, _, token) in &tokens[(first + 1).min(tokens.len())..] {
                 match token.as_str() {
@@ -193,6 +246,15 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                 .iter()
                 .position(|(_, end, _)| flat.next_char(*end) == Some('('));
             if let Some(named) = named {
+                let before = tokens[named].0;
+                sig.type_params = type_params(
+                    &flat,
+                    (0..before).find(|i| {
+                        flat.chars[*i] == '<'
+                            && flat.depth[*i] == 0
+                            && (*i == 0 || flat.chars[*i - 1].is_whitespace())
+                    }),
+                );
                 if kind != DefKind::Constructor && named > 0 {
                     let (_, end, written) = &tokens[named - 1];
                     if !MODIFIERS.contains(&written.as_str()) && flat.next_char(*end) != Some('[') {
@@ -692,12 +754,91 @@ impl<'w> Engine<'w> {
             return self.holder_of(id).map_or(Ent::Unknown, Ent::Instance);
         }
         match &rec.sig.declared {
-            Some(written) => self.type_ent(
+            Some(written) => self.bound_ent(
                 rec.file,
                 &rec.def.local.container,
+                Some(id),
                 &Name::new(written.as_str()),
             ),
             None => Ent::Unknown,
+        }
+    }
+
+    /// The bounds of the type parameter `name` as the declaration `own` and the
+    /// ones around `scope` state them, the innermost declaring it; none when no
+    /// declaration does.
+    fn type_param_bounds(
+        &self,
+        f: usize,
+        scope: &[Name],
+        own: Option<usize>,
+        name: &Name,
+    ) -> Option<Vec<Name>> {
+        let bounds_in = |ids: &[usize]| -> Option<Vec<Name>> {
+            let mut found: Option<Vec<Name>> = None;
+            for id in ids {
+                let params = &self.ix.defs[*id].sig.type_params;
+                if let Some((_, bounds)) = params.iter().find(|(n, _)| n == name.as_str()) {
+                    found
+                        .get_or_insert_with(Vec::new)
+                        .extend(bounds.iter().map(|b| Name::new(b.as_str())));
+                }
+            }
+            found
+        };
+        if let Some(found) = own.and_then(|id| bounds_in(&[id])) {
+            return Some(found);
+        }
+        let file = &self.ix.files[f];
+        (1..=scope.len()).rev().find_map(|depth| {
+            let ids = file.by_path.get(&scope[..depth])?;
+            bounds_in(ids)
+        })
+    }
+
+    /// What a written type stands for, one entity per bound when it is a type
+    /// parameter: a value of such a type has the members of each of its bounds.
+    fn type_ents(
+        &self,
+        f: usize,
+        scope: &[Name],
+        own: Option<usize>,
+        name: &Name,
+        depth: usize,
+    ) -> Vec<Ent> {
+        if let Some(bounds) = self.type_param_bounds(f, scope, own, name) {
+            if depth >= MAX_DEPTH {
+                return vec![Ent::Unknown];
+            }
+            let ents: Vec<Ent> = bounds
+                .iter()
+                .flat_map(|bound| self.type_ents(f, scope, own, bound, depth + 1))
+                .collect();
+            if !ents.is_empty() {
+                return ents;
+            }
+            return vec![Ent::Foreign(Name::new("Object"))];
+        }
+        vec![self.type_ent(f, scope, name)]
+    }
+
+    /// [`Self::type_ents`] as the one entity a stored value stands for: a type
+    /// parameter with several bounds is not told apart before its member is
+    /// known.
+    fn bound_ent(&self, f: usize, scope: &[Name], own: Option<usize>, name: &Name) -> Ent {
+        let mut ents = self.type_ents(f, scope, own, name, 0);
+        if ents.len() > 1 {
+            return Ent::Unknown;
+        }
+        ents.swap_remove(0)
+    }
+
+    fn holds_member(&self, entity: &Ent, name: &Name) -> bool {
+        match entity {
+            Ent::Instance(class) | Ent::Type(class) => self
+                .members_of(*class, name, matches!(entity, Ent::Type(_)), 0)
+                .is_some(),
+            _ => false,
         }
     }
 
@@ -1292,16 +1433,16 @@ impl<'w> Engine<'w> {
         if r.qualifier.is_empty() {
             return Head::Bare;
         }
-        let mut entity = match &r.receiver {
+        let (heads, how) = match &r.receiver {
             Receiver::Typed(written) => (
-                self.type_ent(f, scope, &Name::new(written.as_str())),
+                self.type_ents(f, scope, None, &Name::new(written.as_str()), 0),
                 EvidenceKind::TypedReceiver,
             ),
             Receiver::CallResult(chain) => (
-                self.call_result(f, scope, chain, 0),
+                vec![self.call_result(f, scope, chain, 0)],
                 EvidenceKind::Constructed,
             ),
-            Receiver::Unknown => (Ent::Unknown, EvidenceKind::TypedReceiver),
+            Receiver::Unknown => (vec![Ent::Unknown], EvidenceKind::TypedReceiver),
             Receiver::SelfType => {
                 let mut found = (Ent::Unknown, EvidenceKind::SelfReceiver);
                 for (class, instance) in self.implicit(f, scope) {
@@ -1310,20 +1451,37 @@ impl<'w> Engine<'w> {
                         break;
                     }
                 }
-                found
+                (vec![found.0], found.1)
             }
             Receiver::None | Receiver::Module(_) | Receiver::New(_) => (
-                self.head_entity(f, scope, &r.qualifier[0]),
+                vec![self.head_entity(f, scope, &r.qualifier[0])],
                 EvidenceKind::ModuleAttribute,
             ),
         };
         // A typed or constructed head is the first name of the chain itself; the
         // self receiver stands before it.
         let skip = usize::from(!matches!(r.receiver, Receiver::SelfType));
-        for name in r.qualifier.iter().skip(skip) {
-            entity.0 = self.step(f, &entity.0, name);
-        }
-        Head::Resolved(entity.0, entity.1)
+        let mut walked: Vec<Ent> = heads
+            .into_iter()
+            .map(|mut entity| {
+                for name in r.qualifier.iter().skip(skip) {
+                    entity = self.step(f, &entity, name);
+                }
+                entity
+            })
+            .collect();
+        // A type parameter with several bounds: the one that has the member, else
+        // one the repository does not declare, which may.
+        let at = if walked.len() > 1 {
+            walked
+                .iter()
+                .position(|e| self.holds_member(e, &r.name))
+                .or_else(|| walked.iter().position(|e| !matches!(e, Ent::Instance(_))))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        Head::Resolved(walked.swap_remove(at), how)
     }
 
     // ---- overrides
@@ -1470,6 +1628,34 @@ mod tests {
         assert_eq!(array.declared, None);
         let qualified = parse_sig(DefKind::Method, "public Lib.Inner<T> make()");
         assert_eq!(qualified.declared.as_deref(), Some("Lib.Inner"));
+    }
+
+    #[test]
+    fn a_header_gives_its_type_parameters_with_their_bounds() {
+        let method = parse_sig(
+            DefKind::Method,
+            "public static <U, T extends Comparable<T> & a.b.Repo> Map<String, T> find(T t)",
+        );
+        assert_eq!(
+            method.type_params,
+            [
+                ("U".to_string(), vec![]),
+                (
+                    "T".to_string(),
+                    vec!["Comparable".to_string(), "a.b.Repo".to_string()]
+                ),
+            ]
+        );
+        let class = parse_sig(
+            DefKind::Class,
+            "class Store<T extends Repo> extends Base<Other>",
+        );
+        assert_eq!(
+            class.type_params,
+            [("T".to_string(), vec!["Repo".to_string()])]
+        );
+        let plain = parse_sig(DefKind::Method, "List<String> names()");
+        assert!(plain.type_params.is_empty());
     }
 
     #[test]
