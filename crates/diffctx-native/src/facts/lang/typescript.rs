@@ -3305,7 +3305,10 @@ impl<'t> Walker<'t> {
     }
 
     fn emit_member(&mut self, property: Node<'t>, chain: Chain<'t>, use_kind: UseKind) {
-        let name = self.t(property);
+        let name = match property.kind() {
+            "string" => self.t(property).trim_matches(['"', '\'']),
+            _ => self.t(property),
+        };
         let Chain {
             qualifier,
             receiver,
@@ -3366,6 +3369,13 @@ impl<'t> Walker<'t> {
                     children.push((function, Ctx::default()));
                 }
             }
+            "subscript_expression" => match (field(function, "object"), field(function, "index")) {
+                (Some(object), Some(index)) if index.kind() == "string" => {
+                    let chain = self.chain(object);
+                    self.emit_member(index, chain, UseKind::Call);
+                }
+                _ => children.push((function, Ctx::default())),
+            },
             "super" => self.reference(function, "super", Vec::new(), Receiver::None, UseKind::Call),
             _ => children.push((function, Ctx::default())),
         }
