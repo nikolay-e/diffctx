@@ -447,8 +447,6 @@ enum Declares {
     Regex,
     /// Glob patterns of files that are not tests (`exclude`, `testIgnore`).
     Excludes,
-    /// Directories beneath which the declared files are looked for (`testpaths`).
-    Scope,
 }
 
 /// A test runner whose configuration decides which files are tests: the
@@ -475,10 +473,9 @@ static RUNNERS: &[Runner] = &[
                 Holder::Toml(&["tool", "pytest", "ini_options"]),
             ),
         ],
-        keys: &[
-            ("python_files", Declares::Globs),
-            ("testpaths", Declares::Scope),
-        ],
+        // `testpaths` is not read: it is only the default directories of a bare run,
+        // and a file outside them is still a test (`pytest path/test_x.py`).
+        keys: &[("python_files", Declares::Globs)],
         extensions: &["py"],
         names_only: true,
     },
@@ -562,8 +559,6 @@ struct Declared {
     names_only: bool,
     include: Vec<regex::Regex>,
     exclude: Vec<regex::Regex>,
-    /// Where the runner looks when it names directories; empty when it looks everywhere.
-    scope: Vec<regex::Regex>,
 }
 
 /// The test files the repository's runner configurations declare, beyond the
@@ -593,7 +588,6 @@ impl DeclaredTests {
                     names_only: runner.names_only,
                     include: Vec::new(),
                     exclude: Vec::new(),
-                    scope: Vec::new(),
                 };
                 for &(key, how) in runner.keys {
                     for (value, literal) in values_of(holder, &text, key) {
@@ -624,7 +618,6 @@ impl DeclaredTests {
                 |pattern: &regex::Regex| pattern.is_match(beneath) || pattern.is_match(&rooted);
             let name = beneath.rsplit('/').next().unwrap_or(beneath);
             declared.extensions.contains(&extension)
-                && (declared.scope.is_empty() || declared.scope.iter().any(judges))
                 && declared.include.iter().any(|pattern| {
                     pattern.is_match(if declared.names_only { name } else { beneath })
                         || pattern.is_match(&rooted)
@@ -653,12 +646,6 @@ impl Declared {
             },
             Declares::Regex => self.include.extend(regex::Regex::new(value).ok()),
             Declares::Excludes => self.exclude.extend(pattern(value)),
-            Declares::Scope => {
-                let dir = value.trim_start_matches("./").trim_end_matches('/');
-                if !matches!(dir, "" | ".") {
-                    self.scope.extend(glob_regex(&format!("{dir}{{,/**}}")));
-                }
-            }
         }
     }
 }
