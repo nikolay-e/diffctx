@@ -31,8 +31,7 @@ pub struct TerraformResolver {
     /// Module calls whose source is outside the repository.
     external: usize,
     /// The directories a module call of the repository sources: their variables
-    /// are set and their outputs read by that call. Any other directory is a root
-    /// module, set from outside (a tfvars file, `-var`, `TF_VAR_`), at any depth.
+    /// are set and their outputs read by that call.
     called: HashSet<String>,
 }
 
@@ -60,10 +59,21 @@ impl TerraformResolver {
         self.external
     }
 
-    /// Whether a module call of the repository sources the directory of `file`.
+    /// Whether a module call sets the variables of the module `file` is in: a
+    /// call of the repository sources its directory, or the standard module
+    /// structure nests it as `modules/<name>`, a module only a `module` block
+    /// calls, here or in a repository that sources it. Any other directory is a
+    /// root module, set from outside (a tfvars file, `-var`, `TF_VAR_`), at any
+    /// depth.
     pub fn is_called(&self, file: &str) -> bool {
-        self.called.contains(dir_of(file))
+        let dir = dir_of(file);
+        self.called.contains(dir) || nested_by_layout(dir)
     }
+}
+
+fn nested_by_layout(dir: &str) -> bool {
+    dir.rsplit_once('/')
+        .is_some_and(|(parent, _)| parent.rsplit('/').next() == Some("modules"))
 }
 
 solved_by!(TerraformResolver);
