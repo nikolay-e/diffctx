@@ -129,7 +129,7 @@ fn a_sourced_library_binds_its_callers_however_the_path_is_spelled() {
 }
 
 #[test]
-fn a_script_defining_the_name_calls_its_own_and_one_that_sources_nothing_calls_nothing() {
+fn a_script_defining_the_name_calls_its_own_and_one_that_sources_nothing_leaves_it_unbound() {
     let fixture = open(&library_fixture());
     assert_eq!(
         fixture.lands("scripts/other.sh", "fetch", Relation::Calls),
@@ -137,7 +137,7 @@ fn a_script_defining_the_name_calls_its_own_and_one_that_sources_nothing_calls_n
     );
     assert_eq!(
         fixture.lands("scripts/standalone.sh", "fetch", Relation::Calls),
-        [(1, "unresolved(External)".to_string())]
+        [(1, "unresolved(NoBinding)".to_string())]
     );
     // The names as words: no command of that name.
     assert!(
@@ -219,7 +219,7 @@ fn a_library_calls_what_the_scripts_that_source_it_source_beside_it() {
     );
     assert_eq!(
         fixture.lands("lib/orphan.sh", "log", Relation::Calls),
-        [(2, "unresolved(External)".to_string())]
+        [(2, "unresolved(NoBinding)".to_string())]
     );
     assert_eq!(
         fixture.lands("bin/deploy", "tidy", Relation::Calls),

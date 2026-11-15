@@ -263,9 +263,12 @@ fn resolutions(
             reason: CandidateReason::ImportUnresolved,
         });
     }
+    // The repository defines the name, and no script reaches the definition by what it
+    // sources: the call may run where the definition was loaded (an exported function,
+    // a script that sources both), so it is no proof that the name is another's.
     if resolved.is_empty() {
         resolved.push(Resolution::Unresolved {
-            reason: UnresolvedReason::External,
+            reason: UnresolvedReason::NoBinding,
         });
     }
     resolved
