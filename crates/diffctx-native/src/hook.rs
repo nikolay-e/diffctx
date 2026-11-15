@@ -72,15 +72,13 @@ pub const PIPELINE_SECS: u64 = 20;
 const TAIL_GRACE_SECS: u64 = 10;
 
 /// The ceiling of this run: `HOOK_DEADLINE_SECS`, unless a test sets its own.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a test knob: one that is no number leaves the ceiling as shipped"
-)]
-fn ceiling_secs() -> u64 {
-    std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV)
-        .ok()
-        .and_then(|secs| secs.parse().ok())
-        .unwrap_or(HOOK_DEADLINE_SECS)
+/// A test ceiling that is no number is the run's error, never the shipped one.
+fn ceiling_secs() -> Result<u64, Silence> {
+    match std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV) {
+        Err(std::env::VarError::NotPresent) => Ok(HOOK_DEADLINE_SECS),
+        Ok(secs) => secs.parse().map_err(|_| "error:test-ceiling"),
+        Err(std::env::VarError::NotUnicode(_)) => Err("error:test-ceiling"),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1842,14 +1840,15 @@ fn joined(answers: Vec<String>) -> Option<String> {
 /// for it when the answers of one call share a budget.
 struct Answered {
     json: String,
-    headline: Option<String>,
+    headline: String,
 }
 
-impl From<String> for Answered {
-    fn from(json: String) -> Self {
+impl Answered {
+    /// A note of the hook's own, whose first line stands for it.
+    fn note(event: Event, context: &str) -> Self {
         Self {
-            json,
-            headline: None,
+            json: hook_json(event, context, false),
+            headline: context.lines().next().unwrap_or("").to_string(),
         }
     }
 }
@@ -1857,10 +1856,6 @@ impl From<String> for Answered {
 /// The answers of one call's ranges under one budget (#741): the first in
 /// full, every other as the line naming its work tree and what it found, so
 /// that a call committing in several work trees costs one cap, not one each.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "every answer is `hook_json`'s own output: one that carries no context has no line"
-)]
 fn one_budget(mut answers: Vec<(PathBuf, Answered)>) -> Option<String> {
     if answers.is_empty() {
         return None;
@@ -1871,20 +1866,7 @@ fn one_budget(mut answers: Vec<(PathBuf, Answered)>) -> Option<String> {
     }
     let lines: Vec<String> = answers
         .into_iter()
-        .map(|(root, answered)| {
-            let context = serde_json::from_str::<serde_json::Value>(&answered.json)
-                .ok()
-                .and_then(|d| {
-                    d["hookSpecificOutput"]["additionalContext"]
-                        .as_str()
-                        .map(str::to_string)
-                })
-                .unwrap_or_default();
-            let line = answered
-                .headline
-                .unwrap_or_else(|| context.lines().next().unwrap_or("").to_string());
-            format!("- {}: {line}", root.display())
-        })
+        .map(|(root, answered)| format!("- {}: {}", root.display(), answered.headline))
         .collect();
     let note = format!(
         "diffctx also reviewed {} other range(s) this call changed, one line each; `diffctx <repo> --diff <range> --mode impact` gives the whole review:\n{}",
@@ -3176,33 +3158,43 @@ fn search_answer(
 
 /// The searched names a file of the pending change could define: none of a
 /// file of prose, which defines nothing, and those a file's text spells
-/// otherwise. A file that cannot be read whole could define any of them.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a pre-filter: a file it cannot read keeps every name, and the analysis decides"
-)]
+/// otherwise, in the order its files first spell them. A path that is no
+/// regular file now (deleted, a directory, a link) could have defined any of
+/// them, and so could a file git could not search.
 fn may_edit<'a>(root: &Path, paths: &[String], names: &'a [String]) -> Vec<&'a String> {
-    const MAX_READ: u64 = 1024 * 1024;
-    let mut maybe: Vec<&String> = Vec::new();
-    for p in paths.iter().filter(|p| !p.ends_with('/')) {
+    let code: Vec<String> = paths
+        .iter()
+        .filter(|p| !p.ends_with('/'))
+        .filter(|p| {
+            !crate::config::extensions::DOC_EXTENSIONS.contains(file_ext(Path::new(p)).as_str())
+        })
+        .cloned()
+        .collect();
+    if code.is_empty() {
+        return Vec::new();
+    }
+    if code.iter().any(|p| {
         let path = root.join(p);
-        if crate::config::extensions::DOC_EXTENSIONS.contains(file_ext(&path).as_str()) {
-            continue;
+        !path.is_file() || path.is_symlink()
+    }) {
+        return names.iter().collect();
+    }
+    let mut spelled = Vec::new();
+    for (at, name) in names.iter().enumerate() {
+        match snap::files_with_word(root, name, &code) {
+            Ok(files) => spelled.extend(
+                code.iter()
+                    .position(|p| files.contains(p))
+                    .map(|first| (first, at, name)),
+            ),
+            Err(_) => return names.iter().collect(),
         }
-        let text = std::fs::metadata(&path)
-            .ok()
-            .filter(|meta| meta.len() <= MAX_READ)
-            .and_then(|_| std::fs::read_to_string(&path).ok());
-        let Some(text) = text else {
-            return names.iter().collect();
-        };
-        let words: rustc_hash::FxHashSet<&str> = text
-            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
-            .collect();
-        for name in names {
-            if words.contains(name.as_str()) && !maybe.contains(&name) {
-                maybe.push(name);
-            }
+    }
+    spelled.sort_unstable();
+    let mut maybe: Vec<&String> = Vec::new();
+    for (_, _, name) in spelled {
+        if !maybe.contains(&name) {
+            maybe.push(name);
         }
     }
     maybe
@@ -3474,7 +3466,7 @@ fn within_budget<T: Send + 'static>(
     started: Instant,
     work: impl FnOnce(u64) -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
-    let ceiling = ceiling_secs();
+    let ceiling = ceiling_secs()?;
     let left = ceiling.saturating_sub(started.elapsed().as_secs());
     if left == 0
         || std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1")
@@ -3727,13 +3719,9 @@ fn review(
                 .range
                 .clone()
                 .unwrap_or_else(|| "the pending change".into());
-            return Ok(not_reviewed(
-                event,
-                &range,
-                why,
-                Some(&snap::NamedChanges::NONE),
-                trace,
-            ));
+            return Ok(
+                not_reviewed(event, &range, why, Some(&snap::NamedChanges::NONE), trace).json,
+            );
         }
         Err(why) => return Err(why),
     };
@@ -3825,15 +3813,13 @@ fn answer(
             && pushes_only_reviewed(&prepared.root, &prepared.range, trace.session.as_deref())
         {
             trace.noted = Some("reminder");
-            return Ok(hook_json(
+            return Ok(Answered::note(
                 event,
                 &format!(
                     "diffctx: this push publishes ({}) only commits this session's calls made and had reviewed when they landed; none of it is new to review.",
                     prepared.range
                 ),
-                false,
-            )
-            .into());
+            ));
         }
     }
     match (&prepared.shown, event) {
@@ -3845,7 +3831,7 @@ fn answer(
             }
             note_reviewed(&made, trace);
             if landed {
-                return Ok(nothing_reached(event, landed, trace).into());
+                return Ok(nothing_reached(event, landed, trace));
             }
             return Err("empty");
         }
@@ -3855,7 +3841,7 @@ fn answer(
             mark_seen(&prepared.record_key);
             note_reviewed(&made, trace);
             trace.noted = Some("reminder");
-            return Ok(hook_json(event, &reminder(event, &d.headline), false).into());
+            return Ok(Answered::note(event, &reminder(event, &d.headline)));
         }
         (Some(d), Event::PostToolUse { .. }) if !d.partial => return Err("seen"),
         _ => {}
@@ -3869,8 +3855,7 @@ fn answer(
                 "retry-exhausted",
                 Some(&snap::NamedChanges::NONE),
                 trace,
-            )
-            .into());
+            ));
         }
         return Err("retry-exhausted");
     }
@@ -3917,7 +3902,7 @@ fn answer(
         // An inspection too says so when git or the engine failed: only a
         // limit it stopped at (a timeout) stays silent there.
         Err(why) if recorded || why.starts_with("error:") => {
-            return Ok(not_reviewed(event, &reviewed, why, paths.as_ref(), trace).into());
+            return Ok(not_reviewed(event, &reviewed, why, paths.as_ref(), trace));
         }
         Err(why) => return Err(why),
     }
@@ -3930,7 +3915,7 @@ fn answer(
     }
     match answer {
         Err("empty") if event == Event::PreToolUse || landed => {
-            Ok(nothing_reached(event, landed, trace).into())
+            Ok(nothing_reached(event, landed, trace))
         }
         answer => answer.map(|a| {
             let deny = gate && !a.partial;
@@ -3943,7 +3928,7 @@ fn answer(
             }
             Answered {
                 json: hook_json(event, &a.context, deny),
-                headline: Some(a.headline),
+                headline: a.headline,
             }
         }),
     }
@@ -3995,7 +3980,7 @@ fn with_unread(answer: Result<Reply, Silence>, unread: &[String]) -> Result<Repl
 /// A line that records or publishes commits: the events whose silence would
 /// otherwise read as a clean review.
 /// One line, so that no block means the hook did not run (#464).
-fn nothing_reached(event: Event, landed: bool, trace: &mut Trace) -> String {
+fn nothing_reached(event: Event, landed: bool, trace: &mut Trace) -> Answered {
     trace.noted = Some("empty");
     let range = trace.range.as_deref().unwrap_or("this change");
     // What a call landed is what changed in the repository during it: git
@@ -4005,10 +3990,9 @@ fn nothing_reached(event: Event, landed: bool, trace: &mut Trace) -> String {
     } else {
         ""
     };
-    hook_json(
+    Answered::note(
         event,
         &format!("diffctx: {range} reaches nothing outside the diff{scope}."),
-        false,
     )
 }
 
@@ -4031,7 +4015,7 @@ fn not_reviewed(
     why: Silence,
     paths: Option<&snap::NamedChanges>,
     trace: &mut Trace,
-) -> String {
+) -> Answered {
     trace.noted = Some(why);
     let how = match why {
         "timeout" => "the review ran past the hook's deadline",
@@ -4051,12 +4035,11 @@ fn not_reviewed(
             withheld_clause(paths)
         ),
     };
-    hook_json(
+    Answered::note(
         event,
         &format!(
             "diffctx did not review {range}: {how}.{unread} Run `diffctx <repo> --diff {range} --mode impact` in that repository before going on."
         ),
-        false,
     )
 }
 
@@ -4159,9 +4142,10 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any
     // pipeline does; the hook's own context bounds them together.
-    let hook_run = crate::resource::RunContext::for_run(ceiling_secs());
+    let ceiling = ceiling_secs();
+    let hook_run = crate::resource::RunContext::for_run(ceiling.unwrap_or(0));
     let _in_hook = hook_run.enter();
-    let answer = decide(event, &stdin_json, gate, started, &mut trace);
+    let answer = ceiling.and_then(|_| decide(event, &stdin_json, gate, started, &mut trace));
     let outcome = match &answer {
         Ok(_) => trace.noted.unwrap_or("shown"),
         Err(why) => why,
