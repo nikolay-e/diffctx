@@ -38,6 +38,7 @@ pub use cache::{
     CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir,
 };
 pub use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes};
+pub(crate) use changes::{holds_data, members_of};
 pub use extractor::{Extractor, Registry, expired};
 pub use file::facts_of;
 pub use hash::{Hasher, hash_text, hash_tokens};
