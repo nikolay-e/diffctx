@@ -15,7 +15,7 @@ use crate::facts::extractor::expired;
 use crate::facts::file::facts_of;
 use crate::facts::ids::Name;
 use crate::facts::language::Language;
-use crate::facts::model::{Def, DefKey, DefKind};
+use crate::facts::model::{Def, DefKey, DefKind, LocalKey};
 use crate::snapshot::{
     AnalysisContext, Change, ChangeKind, Decision, Loss, RepoPath, Result, SideTag, SnapshotError,
     Stage,
@@ -283,7 +283,13 @@ impl Walk {
                 Some(at) => {
                     taken[at] = true;
                     let after = &self.head[at];
-                    if let Some(change) = compare(&before.def, &after.def, Origin::Same) {
+                    let change = compare(&before.def, &after.def, Origin::Same).or_else(|| {
+                        self.reordered(index, at).then(|| DefChange::Changed {
+                            origin: Origin::Same,
+                            delta: Delta::default(),
+                        })
+                    });
+                    if let Some(change) = change {
                         found.push(entry(
                             &after.key,
                             change,
@@ -299,6 +305,33 @@ impl Walk {
             .filter(|index| !taken[*index])
             .collect();
         (removed, added)
+    }
+
+    /// Whether a type's data members stand in another order at the head: the
+    /// type's layout and the order a positional constructor takes them in, which
+    /// neither its own hashes nor its members' see.
+    fn reordered(&self, before: usize, after: usize) -> bool {
+        let data = |items: &[Item], at: usize| -> Vec<LocalKey> {
+            let file: Vec<&Def> = items
+                .iter()
+                .filter(|item| item.path == items[at].path)
+                .map(|item| &item.def)
+                .collect();
+            members_of(file, &items[at].def)
+                .into_iter()
+                .filter(|member| holds_data(member.kind))
+                .map(|member| member.local.clone())
+                .collect()
+        };
+        matches!(
+            self.base[before].def.kind,
+            DefKind::Class
+                | DefKind::Struct
+                | DefKind::Enum
+                | DefKind::Trait
+                | DefKind::Interface
+                | DefKind::Object
+        ) && data(&self.base, before) != data(&self.head, after)
     }
 
     /// Pairs what is left by body hash and kind, where the pairing is the only one.
@@ -430,6 +463,44 @@ impl Walk {
             .collect();
         (pairs, rest_before, rest_after)
     }
+}
+
+/// The definitions directly inside `outer`, in source order: its members, not
+/// theirs. `defs` are those of `outer`'s file.
+pub(crate) fn members_of<'a>(defs: impl IntoIterator<Item = &'a Def>, outer: &Def) -> Vec<&'a Def> {
+    let span = &outer.span.bytes;
+    let mut inner: Vec<&Def> = defs
+        .into_iter()
+        .filter(|d| {
+            d.span.bytes != *span
+                && span.start <= d.span.bytes.start
+                && d.span.bytes.end <= span.end
+        })
+        .collect();
+    inner.sort_by_key(|d| (d.span.bytes.start, std::cmp::Reverse(d.span.bytes.end)));
+    let mut end = span.start;
+    inner.retain(|d| {
+        let direct = d.span.bytes.start >= end;
+        if direct {
+            end = d.span.bytes.end;
+        }
+        direct
+    });
+    inner
+}
+
+/// A member whose place among the others is part of what it means: a field's is
+/// the type's layout and a positional constructor's order, a variant's its
+/// ordinal.
+pub(crate) const fn holds_data(kind: DefKind) -> bool {
+    matches!(
+        kind,
+        DefKind::Field
+            | DefKind::Variable
+            | DefKind::Constant
+            | DefKind::Property
+            | DefKind::EnumMember
+    )
 }
 
 fn entry(
