@@ -1,0 +1,60 @@
+name: kotlin_spring_handler_is_an_entry_reached_by_a_test_of_its_path_and_verb
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- kotlin
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/kotlin/ItemController.kt: |
+      package demo
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.PostMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping("/api/items")
+      class ItemController {
+          @GetMapping("/{id}")
+          fun one(): String = "one"
+
+          @PostMapping
+          fun add(): String = "added"
+      }
+    src/test/kotlin/ItemControllerTest.kt: |
+      package demo
+
+      import org.springframework.test.web.reactive.server.WebTestClient
+
+      class ItemControllerTest(private val client: WebTestClient) {
+          fun readsOne() {
+              client.get().uri("/api/items/7").exchange().expectStatus().isOk()
+          }
+      }
+  changed_files:
+    src/main/kotlin/ItemController.kt: |
+      package demo
+
+      import org.springframework.web.bind.annotation.GetMapping
+      import org.springframework.web.bind.annotation.PostMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping("/api/items")
+      class ItemController {
+          @GetMapping("/{id}")
+          fun one(): String = "the one"
+
+          @PostMapping
+          fun add(): String = "added it"
+      }
+  commit_message: Reword both answers
+expect:
+  entry_tested: [one]
+  entry_not_tested: [add]

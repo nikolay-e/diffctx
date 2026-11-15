@@ -1,0 +1,92 @@
+name: java_spring_constant_paths_of_the_class_and_a_constants_class_are_reached
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- java
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "found:" + query;
+          }
+      }
+    src/main/java/demo/Routes.java: |
+      package demo;
+
+      public final class Routes {
+          public static final String API = "/api";
+          public static final String ITEMS = "/items";
+
+          private Routes() {
+          }
+      }
+    src/main/java/demo/ItemController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.PathVariable;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      @RequestMapping(Routes.API)
+      public class ItemController {
+          static final String ONE = "/items/{id}";
+
+          private final Tools tools = new Tools();
+
+          @GetMapping(Routes.ITEMS)
+          public String all() {
+              return tools.search("*");
+          }
+
+          @GetMapping(ONE)
+          public String one(@PathVariable String id) {
+              return tools.search(id);
+          }
+      }
+    src/test/java/demo/BrowsingItemsTest.java: |
+      package demo;
+
+      class BrowsingItemsTest {
+          void browses(org.springframework.boot.test.web.client.TestRestTemplate rest) {
+              rest.getForObject("/api/items", String.class);
+              rest.getForEntity("/api/items/7", String.class);
+          }
+      }
+  changed_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "hit:" + query;
+          }
+      }
+  commit_message: Change what search returns
+expect:
+  relations:
+    - from: "src/main/java/demo/ItemController.java::all"
+      to: "src/main/java/demo/Tools.java::search"
+      kind: calls
+      resolution: resolved
+    - from: "src/main/java/demo/ItemController.java::one"
+      to: "src/main/java/demo/Tools.java::search"
+      kind: calls
+      resolution: resolved
+    - from: "src/test/java/demo/BrowsingItemsTest.java"
+      to: "src/main/java/demo/ItemController.java::all"
+      kind: tests_reach
+      resolution: resolved
+    - from: "src/test/java/demo/BrowsingItemsTest.java"
+      to: "src/main/java/demo/ItemController.java::one"
+      kind: tests_reach
+      resolution: resolved
+  not_untested: [search]

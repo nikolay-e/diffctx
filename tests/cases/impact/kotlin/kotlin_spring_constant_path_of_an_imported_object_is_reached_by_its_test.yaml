@@ -1,0 +1,70 @@
+name: kotlin_spring_constant_path_of_an_imported_object_is_reached_by_its_test
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- kotlin
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/kotlin/demo/Tools.kt: |
+      package demo
+
+      class Tools {
+          fun search(query: String): String = "found:" + query
+      }
+    src/main/kotlin/demo/paths/ApiPaths.kt: |
+      package demo.paths
+
+      object ApiPaths {
+          const val TOOLS = "/tools"
+      }
+    src/main/kotlin/demo/ToolController.kt: |
+      package demo
+
+      import demo.paths.ApiPaths
+      import org.springframework.web.bind.annotation.PathVariable
+      import org.springframework.web.bind.annotation.PostMapping
+      import org.springframework.web.bind.annotation.RequestMapping
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      @RequestMapping(ApiPaths.TOOLS)
+      class ToolController(private val tools: Tools) {
+          @PostMapping("/{name}")
+          fun call(@PathVariable name: String): String {
+              return tools.search(name)
+          }
+      }
+    src/test/kotlin/demo/CallingToolsTest.kt: |
+      package demo
+
+      import org.springframework.test.web.servlet.MockMvc
+      import org.springframework.test.web.servlet.post
+
+      class CallingToolsTest(private val mockMvc: MockMvc) {
+          fun searchOverHttp() {
+              mockMvc.post("/tools/lookup").andExpect { status { isOk() } }
+          }
+      }
+  changed_files:
+    src/main/kotlin/demo/Tools.kt: |
+      package demo
+
+      class Tools {
+          fun search(query: String): String = "hit:" + query
+      }
+  commit_message: Change what search returns
+expect:
+  relations:
+    - from: "src/main/kotlin/demo/ToolController.kt::call"
+      to: "src/main/kotlin/demo/Tools.kt::search"
+      kind: calls
+      resolution: resolved
+    - from: "src/test/kotlin/demo/CallingToolsTest.kt"
+      to: "src/main/kotlin/demo/ToolController.kt::call"
+      kind: tests_reach
+      resolution: resolved
+  not_untested: [search]

@@ -1,0 +1,66 @@
+name: java_spring_class_and_method_mappings_are_one_path_a_resttemplate_test_reaches
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- java
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "found:" + query;
+          }
+      }
+    src/main/java/demo/ToolController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.PathVariable;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      @RequestMapping("/tools")
+      public class ToolController {
+          private final Tools tools = new Tools();
+
+          @GetMapping(path = "/{name}/run")
+          public String run(@PathVariable String name) {
+              return tools.search(name);
+          }
+      }
+    src/test/java/demo/ToolControllerTest.java: |
+      package demo;
+
+      class ToolControllerTest {
+          void runsOverHttp(org.springframework.boot.test.web.client.TestRestTemplate rest) {
+              rest.getForObject("/tools/search/run", String.class);
+          }
+      }
+  changed_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "hit:" + query;
+          }
+      }
+  commit_message: Change what search returns
+expect:
+  relations:
+    - from: "src/main/java/demo/ToolController.java::run"
+      to: "src/main/java/demo/Tools.java::search"
+      kind: calls
+      resolution: resolved
+    - from: "src/test/java/demo/ToolControllerTest.java"
+      to: "src/main/java/demo/ToolController.java::run"
+      kind: tests_reach
+      resolution: resolved
+  not_untested: [search]
