@@ -1,0 +1,65 @@
+name: dockerfile_build_context_is_read_from_the_declaring_file_and_a_comment_names_nothing
+mode: impact
+source: fj#742
+issue_state: open
+# A compose file under deploy/ builds ../svc with a Dockerfile named relative to
+# that context, a build action takes a context and `file`, a Makefile builds
+# with no tag. A directory that merely starts like the context, and a comment,
+# build nothing: the Makefile's comment repeats the build and names no second line.
+tags: [dockerfile, compose, ci, build-context, decoy]
+repo:
+  initial_files:
+    svc/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo dev
+    svc/Dockerfile.prod: |
+      FROM alpine:3.20
+      RUN echo prod
+    svc-extra/Dockerfile.prod: |
+      FROM alpine:3.20
+      RUN echo extra
+    deploy/compose.yaml: |
+      services:
+        api:
+          build:
+            context: ../svc
+            dockerfile: Dockerfile.prod
+        extra:
+          build:
+            context: ../svc-extra
+            dockerfile: Dockerfile.prod
+    .github/workflows/image.yml: |
+      jobs:
+        push:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: docker/build-push-action@v6
+              with:
+                context: svc
+                file: svc/Dockerfile.prod
+            - uses: docker/build-push-action@v6
+              with:
+                context: svc-extra
+                file: svc-extra/Dockerfile.prod
+    Makefile: |
+      image:
+      	docker build svc
+      # docker build svc
+  changed_files:
+    svc/Dockerfile: |
+      FROM alpine:3.21
+      RUN echo dev
+    svc/Dockerfile.prod: |
+      FROM alpine:3.21
+      RUN echo prod
+  commit_message: "svc: alpine 3.21"
+expect:
+  exact: true
+  named_by:
+    - deploy/compose.yaml
+    - .github/workflows/image.yml
+    - Makefile
+  relations:
+    - {from: deploy/compose.yaml, to: svc/Dockerfile.prod, kind: references_path, site: 5}
+    - {from: .github/workflows/image.yml, to: svc/Dockerfile.prod, kind: references_path, site: 8}
+    - {from: Makefile, to: svc/Dockerfile, kind: references_path, site: 2}

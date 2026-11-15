@@ -496,6 +496,24 @@ fn image_records(
     }
 }
 
+/// A line that builds the Dockerfile at `artifact`, whether or not it names the
+/// image. It carries no key: only [`builds`] reads it.
+fn build_site(line: usize, artifact: &str, out: &mut Vec<RawRecord>) {
+    out.push(RawRecord {
+        kind: Kind::Image,
+        key: String::new(),
+        strength: Strength::Strong,
+        role: Role::Build,
+        mechanism: "build-site",
+        line,
+        end: line,
+        anchor: None,
+        artifact: Some(artifact.to_string()),
+        router: None,
+        mount: None,
+    });
+}
+
 /// Extends the records pushed since `from` to cover through `end`.
 fn widen(out: &mut [RawRecord], from: usize, end: usize) {
     for record in &mut out[from..] {
@@ -586,7 +604,11 @@ fn dockerfile_in(dir: &str, name: &str) -> String {
     normalize_lexical(&joined).unwrap_or(joined)
 }
 
-fn docker_commands(text: &str, out: &mut Vec<RawRecord>) {
+/// The directory a command on a physical line runs in, from the repository
+/// root; none when it is not a plain path.
+type WorkDir<'a> = &'a dyn Fn(usize) -> Option<String>;
+
+fn docker_commands(text: &str, work_dir: WorkDir, out: &mut Vec<RawRecord>) {
     for (line, logical) in logical_lines(text) {
         if let Some(cap) = DOCKER_BUILD.captures(&logical) {
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
@@ -619,13 +641,20 @@ fn docker_commands(text: &str, out: &mut Vec<RawRecord>) {
                 }
                 i += 1;
             }
-            let context_dir = context.and_then(|c| join_dir("", c));
+            let from_here = |path: &str| join_dir(&work_dir(line)?, path);
+            let context_dir = context.and_then(from_here);
             let artifact = match file {
-                Some(f) => join_dir("", f),
+                Some(f) => from_here(f),
                 None => context_dir
                     .as_deref()
                     .map(|d| dockerfile_in(d, "Dockerfile")),
             };
+            if let Some(a) = artifact
+                .as_deref()
+                .filter(|_| !logical.trim_start().starts_with('#'))
+            {
+                build_site(line, a, out);
+            }
             for tag in tags {
                 image_records(
                     tag,
@@ -1009,29 +1038,48 @@ fn yaml_image_consumers(
     }
 }
 
+/// The context directory and the Dockerfile a `with:` block of
+/// `docker/build-push-action` builds: `context` (the root by default) and
+/// `file` (`Dockerfile` in the context by default).
+fn action_build(
+    entries: &[Entry],
+    kids: &[Vec<usize>],
+    with: usize,
+) -> (Option<String>, Option<String>) {
+    let sibling = |name: &str| {
+        kids[with]
+            .iter()
+            .find(|k| entries[**k].key == name)
+            .map(|k| unquote(&entries[*k].value))
+    };
+    let context = sibling("context")
+        .and_then(|c| join_dir("", c))
+        .or_else(|| Some(String::new()));
+    let artifact = match sibling("file") {
+        Some(f) => join_dir("", f),
+        None => context.as_deref().map(|d| dockerfile_in(d, "Dockerfile")),
+    };
+    (context, artifact)
+}
+
 /// `docker/build-push-action`'s `with:` block: `tags`, `context`, `file`.
 fn build_push_action(entries: &[Entry], kids: &[Vec<usize>], out: &mut Vec<RawRecord>) {
-    for (i, e) in entries.iter().enumerate() {
-        if e.plain || e.key != "tags" {
+    for (p, with) in entries.iter().enumerate() {
+        if with.plain || with.key != "with" {
             continue;
         }
-        let Some(p) = e.parent else { continue };
-        if entries[p].key != "with" {
-            continue;
+        let named = |name: &str| kids[p].iter().copied().find(|k| entries[*k].key == name);
+        if let (Some(at), (_, Some(artifact))) = (
+            named("file").or_else(|| named("context")),
+            action_build(entries, kids, p),
+        ) {
+            build_site(entries[at].line, &artifact, out);
         }
-        let sibling = |name: &str| {
-            kids[p]
-                .iter()
-                .find(|k| entries[**k].key == name)
-                .map(|k| unquote(&entries[*k].value))
+        let Some(i) = named("tags") else {
+            continue;
         };
-        let context = sibling("context")
-            .and_then(|c| join_dir("", c))
-            .or_else(|| Some(String::new()));
-        let artifact = match sibling("file") {
-            Some(f) => join_dir("", f),
-            None => context.as_deref().map(|d| dockerfile_in(d, "Dockerfile")),
-        };
+        let e = &entries[i];
+        let (context, artifact) = action_build(entries, kids, p);
         let mut tags: Vec<(String, usize)> = e
             .value
             .split(',')
@@ -1053,6 +1101,71 @@ fn build_push_action(entries: &[Entry], kids: &[Vec<usize>], out: &mut Vec<RawRe
                 out,
             );
         }
+    }
+}
+
+/// The `working-directory` of a GitHub Actions `run:` step: the step's own, else
+/// its job's `defaults.run`, else the workflow's. A value that is not a plain
+/// path leaves the directory unknown.
+fn run_dir(entries: &[Entry], kids: &[Vec<usize>], run: usize) -> Option<String> {
+    let value = |at: usize| -> Option<String> {
+        join_dir("", unquote(&entries[at].value)).filter(|_| !entries[at].value.is_empty())
+    };
+    let parent = entries[run].parent;
+    let of_steps = |j: &usize| entries[*j].parent == parent;
+    let first = (0..=run)
+        .rev()
+        .find(|j| of_steps(j) && entries[*j].item)
+        .unwrap_or(run);
+    let step = (first..entries.len())
+        .filter(of_steps)
+        .enumerate()
+        .take_while(|(n, j)| *n == 0 || !entries[*j].item)
+        .map(|(_, j)| j)
+        .find(|j| entries[*j].key == "working-directory");
+    if let Some(at) = step {
+        return value(at);
+    }
+    let find = |mut within: Box<dyn Iterator<Item = usize> + '_>, name: &str| {
+        within.find(|k| entries[*k].key == name)
+    };
+    let inside =
+        |at: usize| -> Box<dyn Iterator<Item = usize> + '_> { Box::new(kids[at].iter().copied()) };
+    let mut scope = parent.and_then(|steps| entries[steps].parent);
+    loop {
+        let siblings: Box<dyn Iterator<Item = usize>> = match scope {
+            Some(at) => inside(at),
+            None => Box::new((0..entries.len()).filter(|j| entries[*j].parent.is_none())),
+        };
+        let dir = find(siblings, "defaults")
+            .and_then(|d| find(inside(d), "run"))
+            .and_then(|r| find(inside(r), "working-directory"));
+        if let Some(at) = dir {
+            return value(at);
+        }
+        match scope {
+            Some(at) => scope = entries[at].parent,
+            None => return Some(String::new()),
+        }
+    }
+}
+
+/// Where each `run:` step of a workflow runs its lines.
+fn step_dirs(entries: &[Entry], kids: &[Vec<usize>]) -> impl Fn(usize) -> Option<String> {
+    let spans: Vec<(usize, usize, Option<String>)> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !e.plain && e.key == "run")
+        .map(|(i, e)| {
+            let last = kids[i].iter().map(|k| entries[*k].line).max();
+            (e.line, last.unwrap_or(e.line), run_dir(entries, kids, i))
+        })
+        .collect();
+    move |line| {
+        spans
+            .iter()
+            .find(|(from, to, _)| (*from..=*to).contains(&line))
+            .map_or(Some(String::new()), |(_, _, dir)| dir.clone())
     }
 }
 
@@ -1080,20 +1193,35 @@ fn compose(
     for &s in &kids[services] {
         let find = |name: &str| kids[s].iter().copied().find(|k| entries[*k].key == name);
         let build = find("build");
-        let context = build.and_then(|b| {
+        let context_entry = build.and_then(|b| {
             if entries[b].value.is_empty() {
-                let ctx = kids[b].iter().find(|k| entries[**k].key == "context")?;
-                join_dir(base, unquote(&entries[*ctx].value))
+                kids[b]
+                    .iter()
+                    .copied()
+                    .find(|k| entries[*k].key == "context")
             } else {
-                join_dir(base, unquote(&entries[b].value))
+                Some(b)
             }
         });
-        let dockerfile = build.and_then(|b| {
+        let context = context_entry.and_then(|c| join_dir(base, unquote(&entries[c].value)));
+        let dockerfile_entry = build.and_then(|b| {
             kids[b]
                 .iter()
-                .find(|k| entries[**k].key == "dockerfile")
-                .map(|k| unquote(&entries[*k].value).to_string())
+                .copied()
+                .find(|k| entries[*k].key == "dockerfile")
         });
+        let dockerfile = dockerfile_entry.map(|k| unquote(&entries[k].value).to_string());
+        // A build with no `context` builds the compose file's own directory; the
+        // line is the one that names the Dockerfile, else the context.
+        let built = build.and_then(|b| match context_entry {
+            Some(c) => context.as_deref().map(|dir| (dir, entries[c].line)),
+            None => Some((base, entries[b].line)),
+        });
+        if let Some((dir, context_line)) = built {
+            let file = dockerfile.as_deref().unwrap_or("Dockerfile");
+            let line = dockerfile_entry.map_or(context_line, |k| entries[k].line);
+            build_site(line, &dockerfile_in(dir, file), out);
+        }
         let env_file_dir = find("env_file").and_then(|f| {
             let first = if entries[f].value.is_empty() {
                 scalar_items(entries, &kids[f])
@@ -1158,7 +1286,7 @@ fn yaml(rel: &str, text: &str, lines: &Lines, compose_file: bool, out: &mut Vec<
     if name.starts_with("application") || name.starts_with("bootstrap") {
         spring_yaml(&entries, out);
     }
-    docker_commands(text, out);
+    docker_commands(text, &step_dirs(&entries, &kids), out);
     if compose_file {
         compose(rel, &entries, &kids, &mut env, out);
         for cap in INTERPOLATION.captures_iter(text) {
@@ -1865,6 +1993,25 @@ fn kafka_aliases(out: &mut Vec<RawRecord>) {
 
 /// Every record the file's text holds.
 pub(crate) fn extract(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord> {
+    let mut out = scan(rel, class, text);
+    out.retain(|r| !r.key.is_empty());
+    out
+}
+
+/// The lines of the file that build a Dockerfile, with its repo-relative path:
+/// a compose `build`, a `docker build`, a build action's `context`.
+pub(crate) fn builds(rel: &str, class: FileClass, text: &str) -> Vec<(usize, String)> {
+    let mut found: Vec<(usize, String)> = scan(rel, class, text)
+        .into_iter()
+        .filter(|r| r.mechanism == "build-site")
+        .filter_map(|r| Some((r.line, r.artifact?)))
+        .collect();
+    found.sort();
+    found.dedup();
+    found
+}
+
+fn scan(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord> {
     let lines = Lines::new(text);
     let mut out = Vec::new();
     match class {
@@ -1879,7 +2026,7 @@ pub(crate) fn extract(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord>
                 _ => {}
             }
             if lang == CodeLang::Shell {
-                docker_commands(text, &mut out);
+                docker_commands(text, &|_| Some(String::new()), &mut out);
             }
         }
         FileClass::Dotenv => dotenv(text, &lines, &mut out),
@@ -1895,7 +2042,7 @@ pub(crate) fn extract(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord>
         FileClass::Properties => properties(text, &lines, &mut out),
         FileClass::Template => envsubst(text, &lines, &mut out),
         FileClass::Json => openapi_json(text, &lines, &mut out),
-        FileClass::Script => docker_commands(text, &mut out),
+        FileClass::Script => docker_commands(text, &|_| Some(String::new()), &mut out),
     }
     kafka_aliases(&mut out);
     out

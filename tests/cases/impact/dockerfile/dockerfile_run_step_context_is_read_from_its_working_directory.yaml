@@ -1,0 +1,62 @@
+name: dockerfile_run_step_context_is_read_from_its_working_directory
+mode: impact
+source: fj#742
+issue_state: open
+# `docker build .` builds the directory its step runs in: the step's own
+# `working-directory`, else the job's `defaults.run`, else the workflow's. The
+# same `.` names svc/, api/ and web/ here; the root Dockerfile is built by none.
+tags: [dockerfile, ci, build-context, working-directory, decoy]
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20
+      RUN echo root
+    svc/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo svc
+    api/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo api
+    web/Dockerfile: |
+      FROM alpine:3.20
+      RUN echo web
+    .github/workflows/images.yml: |
+      name: images
+      on: [push]
+      defaults:
+        run:
+          working-directory: svc
+      jobs:
+        svc:
+          runs-on: ubuntu-latest
+          steps:
+            - run: docker build -t shop-svc .
+        rest:
+          runs-on: ubuntu-latest
+          defaults:
+            run:
+              working-directory: ./api
+          steps:
+            - run: docker build -t shop-api .
+            - name: web
+              working-directory: web
+              run: docker build -t shop-web .
+            - run: docker build -t shop-api-again .
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.21
+      RUN echo root
+    svc/Dockerfile: |
+      FROM alpine:3.21
+      RUN echo svc
+    web/Dockerfile: |
+      FROM alpine:3.21
+      RUN echo web
+  commit_message: "images: alpine 3.21"
+expect:
+  exact: true
+  relations:
+    - {from: .github/workflows/images.yml, to: svc/Dockerfile, kind: references_path, site: 10}
+    - {from: .github/workflows/images.yml, to: svc/Dockerfile, kind: references_path, resolution: candidate, site: 10}
+    - {from: .github/workflows/images.yml, to: web/Dockerfile, kind: references_path, site: 20}
+    - {from: .github/workflows/images.yml, to: web/Dockerfile, kind: references_path, resolution: candidate, site: 20}

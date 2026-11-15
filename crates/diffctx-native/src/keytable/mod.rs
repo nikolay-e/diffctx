@@ -40,8 +40,8 @@ mod routes;
 mod tech;
 
 use self::extract::{
-    FileClass, Kind, Mount, RawRecord, Role, Strength, classify, compatible, extract, route_key,
-    worth_reading,
+    CodeLang, FileClass, Kind, Mount, RawRecord, Role, Strength, builds, classify, compatible,
+    extract, route_key, worth_reading,
 };
 use self::routes::{join as join_path, module_stem};
 
@@ -888,6 +888,57 @@ pub(crate) fn counterparts_of_change(
         }
         out
     })
+}
+
+/// A line that builds a Dockerfile: the Dockerfile's repo-relative path, the
+/// file and 1-based line, and the line's text.
+pub(crate) struct BuildSite {
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+    pub dockerfile: String,
+}
+
+/// Every compose `build`, `docker build` and build action `context` of the
+/// analysed files, with the Dockerfile it builds. A build that names no image
+/// is here too: nothing but its context ties it to the Dockerfile.
+pub(crate) fn build_sites(fragments: &[Fragment], repo_root: Option<&Path>) -> Vec<BuildSite> {
+    let mut by_path: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
+    for f in fragments {
+        by_path.entry(f.path()).or_default().push(f);
+    }
+    let mut paths: Vec<&str> = by_path.keys().copied().collect();
+    paths.sort_unstable();
+    let mut found = Vec::new();
+    for (n, path) in paths.into_iter().enumerate() {
+        if !crate::resource::poll_current_every(n, 32) {
+            break;
+        }
+        let rel = index_key_of(path, repo_root);
+        let Some(class) = classify(&rel).filter(|c| {
+            matches!(
+                c,
+                FileClass::Yaml { .. } | FileClass::Script | FileClass::Code(CodeLang::Shell)
+            )
+        }) else {
+            continue;
+        };
+        let in_file = &by_path[path];
+        if !in_file.iter().any(|f| f.content.contains("build")) {
+            continue;
+        }
+        let text = file_text(in_file);
+        let rows: Vec<&str> = text.lines().collect();
+        for (line, dockerfile) in builds(&rel, class, &text) {
+            found.push(BuildSite {
+                path: rel.clone(),
+                line,
+                text: rows.get(line - 1).map_or("", |l| l.trim()).to_string(),
+                dockerfile,
+            });
+        }
+    }
+    found
 }
 
 /// A changed file's records bring in every file holding a same-key record
