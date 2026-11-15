@@ -47,10 +47,12 @@ repo:
 
 
       def log_note(text):
-          return {"text": text}
+          return {"text": text.strip()}
   commit_message: change
 expect:
-  tested_by:
-    srv/domain.py: tests/test_tools.py
   not_untested:
   - log_vital
+  entry_tested:
+  - log_vital
+  entry_not_tested:
+  - log_note
