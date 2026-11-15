@@ -7,6 +7,7 @@
 //! carries a reference, `{@demo.Routes#ITEMS}`, which a reader that holds the
 //! repository settles with [`resolve_constants`].
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::facts::model::{BlobFacts, Def, Fact};
@@ -248,31 +249,45 @@ fn reference(item: &str) -> bool {
         })
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "an escaped name the regex crate refuses declares nothing: the path stays unresolved"
-)]
-fn compiled(pattern: &str) -> Option<Regex> {
-    Regex::new(pattern).ok()
+/// The type and constant patterns hold no name: one is compared after a
+/// match, so no pattern is built from a file's text and none can fail.
+static TYPE_KEYWORD: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b(?:class|interface|object|enum)\s+").expect("a constant pattern"));
+static WORD_CHAR: Lazy<Regex> = Lazy::new(|| Regex::new(r"\A\w\z").expect("a constant pattern"));
+static CONSTANT_HEAD: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?:\bstatic\s+final|\bfinal\s+static)\s+String\s+|(\bconst\s+val\s+)")
+        .expect("a constant pattern")
+});
+/// What follows the name: Java's `= "…";`, Kotlin's with an optional `: String`.
+static CONSTANT_VALUE: Lazy<[Regex; 2]> = Lazy::new(|| {
+    [
+        r#"(?m)\A\s*=\s*"([^"\\\n]*)"[ \t]*(?:;|$)"#,
+        r#"(?m)\A\s*(?::\s*String\s*)?=\s*"([^"\\\n]*)"[ \t]*(?:;|$)"#,
+    ]
+    .map(|pattern| Regex::new(pattern).expect("a constant pattern"))
+});
+
+/// `\b` at `at`: a word character on one side of it only.
+fn word_boundary(text: &str, at: usize) -> bool {
+    let word = |c: Option<char>| c.is_some_and(|c| WORD_CHAR.is_match(c.encode_utf8(&mut [0; 4])));
+    word(text[..at].chars().next_back()) != word(text[at..].chars().next())
 }
 
 fn declares_type(text: &str, name: &str) -> bool {
-    compiled(&format!(
-        r"\b(?:class|interface|object|enum)\s+{}\b",
-        regex::escape(name)
-    ))
-    .is_some_and(|re| re.is_match(text))
+    TYPE_KEYWORD.find_iter(text).any(|head| {
+        text[head.end()..].starts_with(name) && word_boundary(text, head.end() + name.len())
+    })
 }
 
 /// The literal a `static final String` (Java) or a `const val` (Kotlin) of
 /// this name holds in `text`; a value that is not one string is none.
 pub fn constant_literal(text: &str, name: &str) -> Option<String> {
-    let name = regex::escape(name);
-    let pattern = format!(
-        r#"(?m)(?:\bstatic\s+final|\bfinal\s+static)\s+String\s+{name}\s*=\s*"([^"\\\n]*)"[ \t]*(?:;|$)|\bconst\s+val\s+{name}\s*(?::\s*String\s*)?=\s*"([^"\\\n]*)"[ \t]*(?:;|$)"#
-    );
-    let found = compiled(&pattern)?.captures(text)?;
-    let literal = found.get(1).or_else(|| found.get(2))?.as_str();
+    let literal = CONSTANT_HEAD.captures_iter(text).find_map(|head| {
+        let end = head.get(0)?.end();
+        let rest = text[end..].strip_prefix(name)?;
+        let value = &CONSTANT_VALUE[usize::from(head.get(1).is_some())];
+        Some(value.captures(rest)?.get(1)?.as_str())
+    })?;
     (!literal.contains('$')).then(|| literal.to_string())
 }
 
