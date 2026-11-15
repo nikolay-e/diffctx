@@ -176,3 +176,11 @@ symbol/python/gh482_dict_key_readers_across_languages_are_listed  # gh#482 open:
 symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed  # gh#718 open: a loop variable over list[Frame] stays untyped, its reads are unresolved
 symbol/rust/gh488_struct_field_is_a_definition_with_its_readers  # gh#488 open: a Rust struct field is no definition and its readers are not listed
 symbol/sql/fj185_mysql_backticked_function_is_one_name_with_its_bare_calls  # fj#185 open: a backticked MySQL function name is not seeded as a definition
+
+# Expectations restored ahead of their engine fix (EXP-1, expectation first): the engine still
+# answers the way the moved expectation said; each row names the step-2 item that empties it.
+impact/config/config_k8s_namespace_keeps_the_other_namespace_out_of_the_readers  # step 2: the changed-value scan names a sibling ConfigMap's own `mode: fast` in another namespace (staging/configmap.yaml:7) as a candidate reference
+impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as_a_candidate  # step 2: the changed-value scan names a sibling ConfigMap's own `mode: fast` (staging/configmap.yaml:7) as a candidate reference
+impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty  # step 2 blocker: `obj["total"](items)` on an `any` receiver is an unlanded gap at dispatch.ts:5, not a candidate row of `go`: the only caller is named by no relation
+impact/python/py_removed_field_lists_its_readers_only  # gh#400, step 2: a removed defaulted field lists the class's construction `settings = AppSettings()` as a caller
+impact/python/k4b_pytest_python_files_declare_check_modules_wherever_they_sit  # step 2: `smoke_b` in a declared check module is taken for a test function; pytest collects only `test*`
