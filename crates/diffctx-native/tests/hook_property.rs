@@ -403,6 +403,38 @@ fn a_force_push_reviews_what_the_push_changed() {
     );
 }
 
+/// A push of several refs reviews the first one the line names, not the
+/// first in git's report (the remote's refs, sorted, before new ones) or in
+/// the tracking refs, and names the refs it left unanalysed. `topic` changes
+/// what `caller.py` calls; `main`'s commit reaches nothing.
+#[test]
+fn a_push_of_several_refs_reviews_the_first_it_names_and_names_the_rest() {
+    let shell = &hook::shells()[0];
+    for quiet in ["", "-q "] {
+        let world = hook::world::World::new();
+        let work = world.path(Repo::A);
+        world.git(&work, &["checkout", "-q", "topic"]);
+        std::fs::write(
+            work.join("tracked.py"),
+            "def total(items):\n    return sum(items) + 1\n",
+        )
+        .expect("HARNESS: write");
+        world.git(&work, &["commit", "-q", "-am", "total"]);
+        world.git(&work, &["checkout", "-q", "main"]);
+        std::fs::write(work.join("other.py"), "RATE = 3\n").expect("HARNESS: write");
+        world.git(&work, &["commit", "-q", "-am", "rate"]);
+        let command = format!("git push {quiet}origin topic:release main");
+        let printed = hook::drive::drive_command(&world, shell, &work, &command).printed();
+        for want in [
+            "diffctx reviewed the push to release.",
+            "caller.py::charge",
+            "1 other pushed ref(s) are not analysed: main.",
+        ] {
+            assert!(printed.contains(want), "{command}: no {want:?}\n{printed}");
+        }
+    }
+}
+
 #[test]
 fn a_push_over_a_peer_commit_says_it_publishes_it() {
     family(
