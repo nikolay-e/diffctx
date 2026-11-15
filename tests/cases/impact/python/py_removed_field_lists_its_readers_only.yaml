@@ -44,6 +44,9 @@ expect:
   removed: [b]
   relations:
     - {from: "job.py::run", to: "config.py::AppSettings.b", kind: reads, resolution: resolved, site: 5}
-    - {from: "config.py::settings", to: "config.py::AppSettings", kind: calls, resolution: resolved, site: 9}
+  # `b` has a default and no construction passes it: removing it reaches no
+  # caller of the class (gh#400: readers of the removed field only).
+  callers:
+    "config.py::AppSettings": []
   decoys:
     "config.py::AppSettings.b": [app.py]

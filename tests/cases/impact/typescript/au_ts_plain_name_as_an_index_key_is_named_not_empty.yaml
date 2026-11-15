@@ -35,3 +35,9 @@ expect:
   never_empty: true
   no_negative_claims: true
   coverage: {total: {calls: partial}, run: {calls: partial}}
+  relations:
+    # `obj` is `pricing` under an `any` annotation: both keys call the changed
+    # functions, a call whose binding the resolver cannot prove, so a candidate
+    # of the enclosing `go`. A gap that cites the site is no relation.
+    - {from: src/dispatch.ts::go, to: src/pricing.ts::total, kind: calls, resolution: candidate, site: 5}
+    - {from: src/dispatch.ts::go, to: src/pricing.ts::run, kind: calls, resolution: candidate, site: 5}

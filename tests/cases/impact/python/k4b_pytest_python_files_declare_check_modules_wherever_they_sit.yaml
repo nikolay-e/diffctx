@@ -64,7 +64,10 @@ expect:
   exact: false
   tested_by:
     pkg/ua.py: checks/check_a.py
-    pkg/ub.py: tools/check_b.py
   not_untested:
   - a
+  # tools/check_b.py is a test module wherever it sits, but `smoke_b` is no
+  # test function (python_functions defaults to `test`): pytest collects
+  # nothing from it, so nothing tests `b`.
+  untested:
   - b
