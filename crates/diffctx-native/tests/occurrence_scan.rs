@@ -8,12 +8,13 @@ use std::sync::Arc;
 
 use _diffctx::facts::lang::python::PythonExtractor;
 use _diffctx::facts::{
-    BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, ProjectId,
+    BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, Name,
+    ProjectId, Span,
 };
 use _diffctx::occurrence::{
     Account, Alias, AliasBound, AliasScope, Basis, Case, Class, Entry, Hedge, Implicit,
     MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Occurrence, Outcome, Reason, Unread, ValuePlace, Verdict,
-    scan,
+    Witness, scan,
 };
 use _diffctx::resolve::{CandidateReason, Relation};
 use _diffctx::snapshot::{Loss, RepoPath, RunBudget, SideTag};
@@ -420,7 +421,12 @@ fn an_account_with_every_occurrence_explained_is_complete() {
     account.entries = vec![
         entry(1, Some(Relation::Calls), Outcome::Ours, Basis::Resolved),
         entry(2, None, Outcome::Declaration, Basis::DefinitionName),
-        entry(3, None, Outcome::NotOurs, Basis::Local),
+        entry(
+            3,
+            None,
+            Outcome::NotOurs(Witness::Local(Span::default())),
+            Basis::Witnessed,
+        ),
         entry(
             4,
             None,
@@ -545,23 +551,31 @@ fn the_alias_bound_is_past_the_constants_and_not_at_them() {
 }
 
 #[test]
-fn only_the_bases_the_accounting_checks_prove_not_ours() {
-    for basis in [
-        Basis::Local,
-        Basis::Builtin,
-        Basis::OtherDefinition,
-        Basis::Manifests,
-        Basis::BareName,
-    ] {
-        assert!(basis.proves_not_ours(), "{basis:?}");
+fn a_not_ours_names_its_row_by_its_witness() {
+    let witnesses = [
+        (Witness::Local(Span::default()), "local"),
+        (Witness::Builtin(path("app/x.py")), "builtin"),
+        (Witness::Compound(Name::new("lint.sh")), "builtin"),
+        (Witness::CommandWord(Name::new("cat")), "builtin"),
+        (Witness::ExternalName(Name::new("f")), "external_name"),
+        (Witness::OtherProject(path("app/x.py")), "other_project"),
+        (Witness::BareName(vec![Name::new("C")]), "bare_name"),
+        (Witness::Namespace(Name::new("f")), "other_module"),
+    ];
+    for (witness, row) in witnesses {
+        let entry = entry(1, None, Outcome::NotOurs(witness), Basis::Witnessed);
+        assert_eq!(entry.basis_str(), row);
     }
-    for basis in [Basis::Resolved, Basis::RenamedImport, Basis::Unproven] {
-        assert!(!basis.proves_not_ours(), "{basis:?}");
-    }
-    assert_eq!(Outcome::NotOurs.as_str(), "not_ours");
+    assert_eq!(
+        entry(1, None, Outcome::Ours, Basis::Resolved).basis_str(),
+        "resolved"
+    );
+    assert_eq!(
+        Outcome::NotOurs(Witness::Local(Span::default())).as_str(),
+        "not_ours"
+    );
     assert_eq!(
         Outcome::Candidate(Reason::Unexplained).as_str(),
         "candidate"
     );
-    assert_eq!(Basis::Local.as_str(), "local");
 }

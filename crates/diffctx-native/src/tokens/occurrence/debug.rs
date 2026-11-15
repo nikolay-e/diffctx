@@ -14,7 +14,7 @@ use tree_sitter::Tree;
 
 use super::{
     Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Implicit, Known, Occurrence, Outcome,
-    Reason, Unread, Verdict, View, admitted, close_aliases, counts_against, entered,
+    Reason, Unread, Verdict, View, Witness, admitted, close_aliases, counts_against, entered,
     implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Gap, USES, Use};
@@ -180,7 +180,7 @@ impl Shadow<'_> {
                     "file": at.file.as_str(), "line": at.line,
                     "bytes": [at.bytes.start, at.bytes.end],
                     "class": at.class.as_str(), "outcome": entry.outcome.as_str(),
-                    "basis": entry.basis.as_str(),
+                    "basis": entry.basis_str(),
                     "relation": entry.relation.map(Relation::name),
                     "detail": format!("{:?}", entry.outcome),
                     "position": self.position(&mut trees, at),
@@ -193,7 +193,7 @@ impl Shadow<'_> {
         let unused = found
             .entries
             .iter()
-            .all(|entry| matches!(entry.outcome, Outcome::Declaration | Outcome::NotOurs));
+            .all(|entry| matches!(entry.outcome, Outcome::Declaration | Outcome::NotOurs(_)));
         for (relation, gaps) in pairs {
             let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
@@ -293,12 +293,12 @@ impl Shadow<'_> {
             }
             for mut entry in done.entries {
                 if other_project && matches!(entry.outcome, Outcome::Candidate(_)) {
-                    entry.outcome = Outcome::NotOurs;
-                    entry.basis = Basis::OtherProject;
+                    entry.outcome =
+                        Outcome::NotOurs(Witness::OtherProject(definition.file.clone()));
+                    entry.basis = Basis::Witnessed;
                 }
                 let through = scope.is_some()
-                    && matches!(entry.outcome, Outcome::NotOurs)
-                    && entry.basis == Basis::OtherDefinition;
+                    && matches!(entry.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)));
                 if through {
                     entry.outcome = Outcome::Ours;
                     entry.basis = Basis::Resolved;

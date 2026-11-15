@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use _diffctx::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use _diffctx::occurrence::{
-    Basis, Entry, FileOutcomes, Outcome, Reason, View, admitted, counts_against, outcomes,
+    Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against, outcomes,
 };
 use _diffctx::resolve::{
     Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
@@ -232,7 +232,7 @@ fn on(found: &FileOutcomes, line: u32) -> &Entry {
 }
 
 fn shape(entry: &Entry) -> (&'static str, &'static str, Option<Relation>) {
-    (entry.outcome.as_str(), entry.basis.as_str(), entry.relation)
+    (entry.outcome.as_str(), entry.basis_str(), entry.relation)
 }
 
 const LIB_F: &str = "def f():\n    return 1\n";
@@ -299,7 +299,10 @@ fn a_local_variable_site_is_the_declaration_of_another_binding() {
         ("declaration", "local_site", None),
         "{found:#?}"
     );
-    assert_eq!(on(&found, 3).outcome, Outcome::NotOurs);
+    assert!(
+        matches!(on(&found, 3).outcome, Outcome::NotOurs(Witness::Local(_))),
+        "{found:#?}"
+    );
 }
 
 #[test]
@@ -1512,9 +1515,8 @@ fn a_call_of_the_name_a_local_also_bears_is_no_read_of_the_local() {
     for (lang, file, name, source, call) in SHADOWS {
         let world = snapshot_in(lang, &[(file, source)]);
         let found = world.outcomes(world.def(file, name), file, &[name]);
-        assert_ne!(
-            on(&found, call).outcome,
-            Outcome::NotOurs,
+        assert!(
+            !matches!(on(&found, call).outcome, Outcome::NotOurs(_)),
             "{file}: {found:#?}"
         );
     }
@@ -1601,7 +1603,7 @@ fn a_jvm_parameter_and_a_declarator_are_declared_at_the_name_and_a_call_in_the_i
         "{found:#?}"
     );
     assert!(
-        !matches!(line[1].outcome, Outcome::Declaration | Outcome::NotOurs),
+        !matches!(line[1].outcome, Outcome::Declaration | Outcome::NotOurs(_)),
         "{found:#?}"
     );
 }
@@ -1643,7 +1645,10 @@ fn a_segment_before_a_rust_path_separator_is_no_use_of_a_function_but_names_a_ty
         "{found:#?}"
     );
     let found = world.outcomes(world.def("src/lib.rs", "Reply"), "src/lib.rs", &["Reply"]);
-    assert_ne!(on(&found, 14).outcome, Outcome::NotOurs, "{found:#?}");
+    assert!(
+        !matches!(on(&found, 14).outcome, Outcome::NotOurs(_)),
+        "{found:#?}"
+    );
 }
 
 #[test]
@@ -1655,7 +1660,10 @@ fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
         "shop/total.go",
         &["Total"],
     );
-    assert_ne!(on(&found, 9).outcome, Outcome::NotOurs, "{found:#?}");
+    assert!(
+        !matches!(on(&found, 9).outcome, Outcome::NotOurs(_)),
+        "{found:#?}"
+    );
 }
 
 #[test]
