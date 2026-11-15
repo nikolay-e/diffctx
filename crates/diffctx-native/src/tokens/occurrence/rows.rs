@@ -1,6 +1,6 @@
 //! What the outcome of an occurrence reads per language: rows of data, never code.
 
-use crate::facts::LocalKind;
+use crate::facts::{DefKind, LocalKind};
 use crate::resolve::CandidateReason;
 use crate::vocabulary::family::Family;
 
@@ -13,6 +13,20 @@ pub(super) const DECLARING_LOCALS: &[(Family, LocalKind)] = &[
     (Family::TypeScript, LocalKind::Variable),
     (Family::TypeScript, LocalKind::Closure),
 ];
+
+/// The keyword after which a local's site is the declaration of the name and nothing else
+/// (`let total = …;`, `let mut total`): a pattern that is more than a name (`let T { a }`)
+/// does not follow it directly.
+pub(super) const DECLARING_KEYWORDS: &[(Family, LocalKind, &str)] =
+    &[(Family::Rust, LocalKind::Variable, "let")];
+
+/// Families whose extractors state the read of a value at the member after it (`NAME.exec(x)`
+/// binds `exec`): the object is that read, not a use of its own.
+pub(super) const MEMBER_OBJECTS: &[Family] = &[Family::TypeScript];
+
+/// Families where a call of a bare name is the call of a local of that name (a closure held in
+/// a `let`) once the local's statement is over and its block still open.
+pub(super) const LOCAL_CALLS: &[Family] = &[Family::Rust];
 
 /// Families whose local site starts where the local comes into force (after its declarator, or
 /// at the start of the scope of a parameter) and spans the scope: the name lies before it.
@@ -76,3 +90,15 @@ pub(super) const PAIRED_PROTOTYPES: &[Family] = &[Family::C];
 /// Families whose module offers every name it imports to its importers, so a renamed import
 /// is a name of the subject there too (`from a import f as g`, then `from m import g`).
 pub(super) const OFFERING_MODULES: &[Family] = &[Family::Python];
+
+/// The words after which a SQL name is declared or names an object of another namespace, never
+/// called (the extractor reads no fact there), for a subject of the kinds listed: `DROP FUNCTION
+/// f`, `INSERT INTO f`, `CREATE TABLE f` are no use of the routine `f`.
+pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
+    (
+        Family::Sql,
+        &[DefKind::Function],
+        "function procedure table into references type copy view",
+    ),
+    (Family::Sql, &[DefKind::Object], "view"),
+];

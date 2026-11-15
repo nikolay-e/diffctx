@@ -1,0 +1,35 @@
+name: ts_object_of_a_member_read_is_the_read_its_member_states
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, member-expression, coverage]
+repo:
+  initial_files:
+    src/contract.ts: |
+      const PANEL_LINE = /^DJ panel: (\{.*\})$/;
+
+      function knobs(text: string): string[] {
+        const match = PANEL_LINE.exec(text);
+        return match ? ['tempo'] : [];
+      }
+
+      export function readPanel(text: string): string[] {
+        return knobs(text);
+      }
+  changed_files:
+    src/contract.ts: |
+      const PANEL_LINE = /^DJ panel: (\{.*\})\s*$/;
+
+      function knobs(text: string): string[] {
+        const match = PANEL_LINE.exec(text);
+        return match ? ['tempo'] : [];
+      }
+
+      export function readPanel(text: string): string[] {
+        return knobs(text);
+      }
+  commit_message: "panel: tolerate trailing space"
+expect:
+  coverage:
+    src/contract.ts::PANEL_LINE:
+      reads: complete

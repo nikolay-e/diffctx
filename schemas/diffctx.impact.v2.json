@@ -459,6 +459,38 @@
           ]
         },
         {
+          "description": "The definition is handed on as an argument, and what the callees do with it is\nnot followed: the callees the text names.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "passed_as_value"
+            },
+            "to": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "A language construct calls it without its name written.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "implicitly_constructed"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
           "description": "A name defined in many files of a language without a binding model.",
           "type": "object",
           "properties": {

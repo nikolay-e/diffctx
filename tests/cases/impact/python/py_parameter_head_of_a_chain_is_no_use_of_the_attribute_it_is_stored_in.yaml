@@ -1,0 +1,22 @@
+name: py_parameter_head_of_a_chain_is_no_use_of_the_attribute_it_is_stored_in
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, shadowing, coverage]
+repo:
+  initial_files:
+    net/__init__.py: ""
+    net/models.py: |
+      class Request:
+          def configure(self, method, url):
+              self.method = method
+              self.url = url
+  changed_files:
+    net/models.py: |
+      class Request:
+          def configure(self, method, url):
+              self.method = method.upper()
+              self.url = url
+  commit_message: "models: normalise the request method"
+expect:
+  unknowns: {}

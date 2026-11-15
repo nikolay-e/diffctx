@@ -48,7 +48,9 @@ use crate::resource::LimitReason;
 use crate::run_provenance::state::ScoredState;
 use crate::snapshot::{AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag};
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::tokens::occurrence::{Hedge, Implicit, Index, Known, Reason as OccurrenceReason, View};
+use crate::tokens::occurrence::{
+    Hedge, Implicit, Index, Known, Reason as OccurrenceReason, ValuePlace, View,
+};
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 use crate::vocabulary::family::{Family, Group, Resolver, context_in};
 
@@ -138,6 +140,12 @@ pub enum Gap {
     /// A route no model traces can reach it: dispatch, an untyped receiver, a
     /// language no binding model reads.
     NotTraced,
+    /// The definition is handed on as an argument: what the callees do with it is not
+    /// followed. `to` are the callees the text names, sorted.
+    PassedAsValue { to: Vec<String> },
+    /// A language construct calls it without its name written (an iteration, a
+    /// conversion, a context manager, a constructor).
+    ImplicitlyConstructed,
     /// `files` hold a template (Helm, Go template files) that was read around,
     /// not expanded: what it renders is not known.
     Templated { files: usize },
@@ -206,6 +214,8 @@ impl std::fmt::Display for Gap {
             }
             Self::Capped => f.write_str("the answer cap shed it"),
             Self::NotTraced => f.write_str("a route no model traces can reach it"),
+            Self::PassedAsValue { to } => write_passed_as_value(f, to),
+            Self::ImplicitlyConstructed => f.write_str("constructed implicitly"),
             Self::Templated { files } => {
                 write!(f, "{files} template file(s) were read around, not expanded")
             }
@@ -233,6 +243,21 @@ impl std::fmt::Display for Gap {
                 }
             }
         }
+    }
+}
+
+/// The reason a value handed to callees is not followed, in the answer's words: the
+/// callees by name, the first three, then a count.
+pub(crate) fn write_passed_as_value(
+    f: &mut std::fmt::Formatter<'_>,
+    to: &[String],
+) -> std::fmt::Result {
+    f.write_str("passed as a value to ")?;
+    let shown: Vec<String> = to.iter().take(3).map(|name| format!("`{name}`")).collect();
+    match (shown.as_slice(), to.len().saturating_sub(3)) {
+        ([], _) => f.write_str("a callee the text does not name"),
+        (_, 0) => f.write_str(&shown.join(", ")),
+        (_, more) => write!(f, "{} and {more} more", shown.join(", ")),
     }
 }
 
@@ -413,6 +438,7 @@ pub enum Evidence<'a> {
 fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap> {
     let (mut common, mut sites) = (0, Vec::new());
     let (mut lost, mut rest) = (BTreeMap::<Reason, usize>::new(), Vec::new());
+    let mut passed: Option<BTreeSet<String>> = None;
     let reads = matches!(
         relation,
         Relation::Reads | Relation::Writes | Relation::PassesAsValue
@@ -449,12 +475,25 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap
                 }
                 Effect::Run(gap) => gap,
             },
+            Hedge::Leak {
+                place: ValuePlace::Argument,
+                callee,
+                ..
+            } => {
+                let to = passed.get_or_insert_default();
+                to.extend(callee.iter().map(|name| name.as_str().to_string()));
+                continue;
+            }
+            Hedge::Implicit(Implicit::Protocol) => Gap::ImplicitlyConstructed,
             Hedge::Leak { .. } | Hedge::Implicit(_) | Hedge::AliasBound(_) => Gap::NotTraced,
         };
         if !rest.contains(&gap) {
             rest.push(gap);
         }
     }
+    rest.extend(passed.map(|to| Gap::PassedAsValue {
+        to: to.into_iter().collect(),
+    }));
     let lost = lost
         .into_iter()
         .map(|(reason, files)| Gap::Unaccounted { reason, files });
@@ -600,6 +639,16 @@ impl Coverages {
         Self {
             calls: Coverage::Partial(gaps.clone()),
             reads: Coverage::Partial(gaps),
+        }
+    }
+
+    /// The coverage of a local: every use of it lies in the body it is a local of, which the
+    /// answer lists, so the gaps are the ones that body leaves (a use that hands it on, a file
+    /// read in part).
+    pub(crate) fn local(gaps: Vec<Gap>) -> Self {
+        Self {
+            calls: Coverage::close(Evidence::Run, gaps.clone()),
+            reads: Coverage::close(Evidence::Run, gaps),
         }
     }
 

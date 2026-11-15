@@ -25,8 +25,8 @@
 use std::ops::Range;
 
 use crate::facts::{
-    BlobFacts, Def, DefKind, Extractor, Fact, Language, LocalKey, Name, Namespace, Receiver, Ref,
-    Scope, Span, UseKind, Visibility, expired, hash_text, hash_tokens,
+    BlobFacts, Def, DefKind, Extractor, Fact, Language, Lexical, LocalKey, Name, Namespace,
+    Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
 use crate::snapshot::RunBudget;
 
@@ -48,6 +48,7 @@ impl Extractor for SqlExtractor {
             return blob;
         };
         blob.facts = facts_of(source);
+        blob.lexical = lexical_of(source);
         blob.in_source_order();
         blob
     }
@@ -461,6 +462,13 @@ const CLAUSES: &[&str] = &[
     "else",
 ];
 
+/// Whether the dollar-quoted text at `at` is code the database runs (`AS $$…$$`, `DO $$…$$`),
+/// else a string.
+fn runs(tokens: &[Token<'_>], at: usize) -> bool {
+    at.checked_sub(1)
+        .is_some_and(|prev| is_word(tokens[prev].tok, "as") || is_word(tokens[prev].tok, "do"))
+}
+
 /// Every name the code of `tokens` uses, a routine's or `DO` block's body
 /// included: a call of `name(`, a relation after `FROM`.
 fn names_in(tokens: &[Token<'_>], out: &mut Vec<Named>) {
@@ -469,8 +477,7 @@ fn names_in(tokens: &[Token<'_>], out: &mut Vec<Named>) {
     while i < tokens.len() {
         match tokens[i].tok {
             Tok::Dollar(body) => {
-                let prev = i.checked_sub(1).map(|p| tokens[p].tok);
-                if prev.is_some_and(|p| is_word(p, "as") || is_word(p, "do")) {
+                if runs(tokens, i) {
                     let base = tokens[i].inner;
                     let inner = lex(body, base, tokens[i].line);
                     for statement in inner.split(|t| t.tok == Tok::Punct(b';')) {
@@ -523,6 +530,63 @@ fn names_in(tokens: &[Token<'_>], out: &mut Vec<Named>) {
             }
             _ => i += 1,
         }
+    }
+}
+
+/// The words that run the text of a string.
+const DYNAMIC: &[&str] = &["execute", "exec", "sp_executesql"];
+
+/// The comments and string literals of `text`: no code, so that a name spelled in one is no
+/// use of a routine (a dollar-quoted body that runs is code, its own comments and strings not).
+fn lexical_of(text: &str) -> Vec<(Range<u32>, Lexical)> {
+    let mut found = Vec::new();
+    mark_lexical(text, 0, &mut found);
+    found.sort_unstable_by_key(|(range, _)| range.start);
+    found
+}
+
+fn mark_lexical(text: &str, base: usize, found: &mut Vec<(Range<u32>, Lexical)>) {
+    let tokens = lex(text, base, 1);
+    let mut comment = |from: usize, to: usize| {
+        let gap = &text[from - base..to - base];
+        let lead = gap.len() - gap.trim_start().len();
+        let kept = gap.trim();
+        if kept.starts_with("--") || kept.starts_with("/*") {
+            found.push((
+                (from + lead) as u32..(from + lead + kept.len()) as u32,
+                Lexical::Comment,
+            ));
+        }
+    };
+    let mut from = base;
+    let mut inner: Vec<(usize, &str)> = Vec::new();
+    let mut strings: Vec<Range<u32>> = Vec::new();
+    // A string in a statement that executes text (`EXECUTE 'SELECT f()'`) is a call's argument.
+    let mut executes = false;
+    for (i, token) in tokens.iter().enumerate() {
+        comment(from, token.at);
+        from = token.to;
+        match token.tok {
+            Tok::Word(word)
+                if DYNAMIC
+                    .iter()
+                    .any(|keyword| word.eq_ignore_ascii_case(keyword)) =>
+            {
+                executes = true;
+            }
+            Tok::Punct(b';') => executes = false,
+            Tok::Literal if !executes && !text.as_bytes()[token.at - base].is_ascii_digit() => {
+                strings.push(token.at as u32..token.to as u32);
+            }
+            Tok::Dollar(body) if runs(&tokens, i) => inner.push((token.inner, body)),
+            Tok::Dollar(_) if !executes => strings.push(token.at as u32..token.to as u32),
+            _ => {}
+        }
+    }
+    comment(from, base + text.len());
+    found.extend(strings.into_iter().map(|range| (range, Lexical::String)));
+    for (at, body) in inner {
+        mark_lexical(body, at, found);
     }
 }
 

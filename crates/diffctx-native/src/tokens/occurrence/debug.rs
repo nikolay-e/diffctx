@@ -14,8 +14,8 @@ use tree_sitter::Tree;
 
 use super::{
     Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Implicit, Known, Occurrence, Outcome,
-    Reason, Unread, Verdict, View, Witness, admitted, close_aliases, counts_against, entered,
-    implicit_kinds, outcomes, value_use,
+    Reason, Unread, ValuePlace, Verdict, View, Witness, admitted, callee_of, close_aliases,
+    counts_against, entered, implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Gap, USES, Use};
 use crate::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
@@ -309,6 +309,9 @@ impl Shadow<'_> {
                     if let Some((outcome, basis)) =
                         value_use(facts, &text, bytes, definition.kind, relation)
                     {
+                        if matches!(outcome, Outcome::Leak(ValuePlace::Argument)) {
+                            entry.passed_to = callee_of(&text, bytes);
+                        }
                         entry.outcome = outcome;
                         entry.basis = basis;
                         if matches!(entry.outcome, Outcome::Candidate(_)) {
@@ -348,6 +351,7 @@ impl Shadow<'_> {
                 relation: Some(binding.relation),
                 outcome: Outcome::Candidate(Reason::Unresolved(UnresolvedReason::Opaque)),
                 basis: Basis::Unproven,
+                passed_to: None,
             })
     }
 
@@ -382,6 +386,7 @@ impl Shadow<'_> {
                     relation: None,
                     outcome: Outcome::Candidate(Reason::Embedded),
                     basis: Basis::Unproven,
+                    passed_to: None,
                 })
             })
             .collect()

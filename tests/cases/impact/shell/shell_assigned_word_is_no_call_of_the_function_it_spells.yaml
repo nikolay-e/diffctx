@@ -1,0 +1,39 @@
+name: shell_assigned_word_is_no_call_of_the_function_it_spells
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, strings, coverage]
+repo:
+  initial_files:
+    scripts/lib.sh: |
+      login() {
+        echo ticket
+      }
+    scripts/run.sh: |
+      . ./lib.sh
+      login
+    scripts/words.sh: |
+      msg="login"
+      label='login'
+      echo "$msg $label"
+  changed_files:
+    scripts/lib.sh: |
+      login() {
+        echo ticket2
+      }
+  commit_message: Change login
+expect:
+  changed:
+  - scripts/lib.sh::login
+  relations:
+  - from: scripts/run.sh
+    to: scripts/lib.sh::login
+    kind: calls
+    resolution: resolved
+    site: 2
+  decoys:
+    scripts/lib.sh::login:
+    - scripts/words.sh
+  coverage:
+    scripts/lib.sh::login:
+      calls: complete
