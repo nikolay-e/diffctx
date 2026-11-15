@@ -1,0 +1,44 @@
+name: py_dict_entry_of_a_parameter_named_like_a_function_registers_nothing
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- registry
+- shadowing
+- tests-reach
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/users.py: |
+      def user(uid):
+          return {"id": uid}
+
+
+      def payload(user):
+          return {"user": user}
+    app/views.py: |
+      from app.users import payload, user
+
+
+      def show(uid):
+          return payload(user(uid))
+    tests/test_misc.py: |
+      def test_arithmetic():
+          assert 1 + 1 == 2
+  changed_files:
+    app/users.py: |
+      def user(uid):
+          return {"id": uid, "kind": "user"}
+
+
+      def payload(user):
+          return {"user": user}
+  commit_message: A user says its kind
+expect:
+  changed:
+  - app/users.py::user
+  relations:
+  - {from: "app/views.py::show", to: "app/users.py::user", kind: calls, resolution: resolved}
+  untested:
+  - user
