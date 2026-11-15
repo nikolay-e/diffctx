@@ -35,7 +35,6 @@ impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # B
 impact/rust/rust_removed_private_duplicate_has_no_callers  # C: absorb(x) in a.rs binds to the imported absorb that replaced the removed private fn
 impact/shell/shell_changed_library_function_names_the_scripts_that_source_it  # A: `msg="login"` is a string, counted as a call and a read of login; the source_flag part is honest
 impact/sql/sql_create_or_replace_keeps_the_routines_callers  # A,B: comment, string and other-schema calls in a decoy file; resolved sites counted again as reads
-impact/swift/fj156_framework_delegate_method_is_entered_by_the_framework  # B: the unaccounted gap's one file is the declaration's own: UntracedNamers::of groups the absolute definition path as Language("swift"), not Family(Swift), on Unix; the not_traced part is honest
 impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # A: "vpc-${var.cidr}": a string literal counted as a read of output.vpc
 impact/terraform/tf_every_traversal_form_reaches_its_variable  # C: the for-expression variable `n` shadows var.n
 impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # D: a removed variable is unowned though its reader is resolved
@@ -48,6 +47,5 @@ symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # B: b
 symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # A,B: the keyword name `agreement=` is counted as a read next to the resolved call (gh#708 family)
 symbol/shell/shell_symbol_hyphenated_library_and_built_source_path  # A: `msg="login"` is a string; the source_flag part is honest
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # A: comment, string and table decoys; the unaccounted host-code part is honest
-symbol/swift/swift_function_is_not_reached_by_a_kotlin_test_with_the_same_name  # B: the unaccounted gap's one file is the declaration's own: UntracedNamers::of groups the absolute definition path as Language("swift"), not Family(Swift), on Unix
 symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition  # D: a function nested in a component is unowned
 symbol/web/web_symbol_astro_frontmatter_and_template_calls  # B: the template call site is the resolved row

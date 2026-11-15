@@ -1643,11 +1643,11 @@ impl UntracedNamers {
     }
 
     /// The files outside code that spell `core`'s name.
-    fn of(&self, core: &Fragment) -> Vec<UnanalysedFile> {
+    fn of(&self, state: &ScoredState, core: &Fragment) -> Vec<UnanalysedFile> {
         let Some(name) = spelled_name(core) else {
             return Vec::new();
         };
-        let own = crate::vocabulary::family::Group::of_path(core.path());
+        let own = crate::vocabulary::family::Group::of_path(&rel(state, core.path()));
         self.naming(name, |p| {
             !is_code_file(p)
                 || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
@@ -4154,7 +4154,7 @@ pub fn build_impact(
             .flat_map(|n| untraced.literal_files(n))
             .map(|file| (file, true));
         let named = untraced
-            .of(core)
+            .of(state, core)
             .into_iter()
             .filter(|f| nothing_known || runs_script(f))
             .map(|file| (file, false))
