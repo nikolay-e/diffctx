@@ -1,0 +1,34 @@
+name: java_enum_constants_that_swapped_places_are_a_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, layout, enum, reorder]
+repo:
+  initial_files:
+    src/main/java/app/Level.java: |
+      package app;
+
+      public enum Level {
+          LOW,
+          HIGH
+      }
+    src/main/java/app/Gate.java: |
+      package app;
+
+      public class Gate {
+          public boolean open(Level level) {
+              return level.ordinal() > 0;
+          }
+      }
+  changed_files:
+    src/main/java/app/Level.java: |
+      package app;
+
+      public enum Level {
+          HIGH,
+          LOW
+      }
+  commit_message: "level: list HIGH first"
+expect:
+  exact: false
+  changed: [src/main/java/app/Level.java::Level]
