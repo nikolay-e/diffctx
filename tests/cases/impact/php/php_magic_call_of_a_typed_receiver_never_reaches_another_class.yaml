@@ -1,4 +1,4 @@
-name: php_magic_call_catches_a_call_and_is_never_a_verified_zero
+name: php_magic_call_of_a_typed_receiver_never_reaches_another_class
 mode: impact
 source: synthetic
 issue_state: closed
@@ -48,10 +48,9 @@ repo:
       }
   commit_message: Change magic call catches a call and is never a verified zero
 expect:
+  # `haunt` declares `Ghost $g`, which PHP enforces: `$g->boo()` lands in
+  # Ghost::__call, and Real is no Ghost, so nothing calls Real::boo.
   changed:
   - src/Real.php::Real.boo
-  discloses: true
-  no_negative_claims: true
-  partial:
-    src/Real.php::Real.boo:
-      calls: unlanded
+  callers:
+    src/Real.php::Real.boo: []
