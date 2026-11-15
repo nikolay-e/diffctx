@@ -316,6 +316,7 @@ macro_rules! jvm_engine_methods {
                 heads
                     .iter()
                     .position(holds)
+                    .or_else(|| heads.iter().position(|e| matches!(e, Ent::Unknown)))
                     .or_else(|| heads.iter().position(|e| !matches!(e, Ent::Instance(_))))
                     .unwrap_or(0)
             } else {
