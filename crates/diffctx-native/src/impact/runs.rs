@@ -40,9 +40,10 @@ pub(super) fn all(
     declared: &DeclaredTests,
 ) -> Vec<Run> {
     let mut runs = binary_runs(state, diff_range);
+    runs.extend(swift_product_runs(state, diff_range, declared));
     runs.extend(console_runs(state, diff_range, spelled, declared));
     runs.extend(script_runs(state, diff_range, spelled, declared));
-    runs.extend(framework_runs(state, cells, diff_range, declared));
+    runs.extend(framework_runs(state, cells, diff_range, spelled, declared));
     runs.extend(literal_runs(state, diff_range, declared));
     runs.extend(doctest_runs(state));
     runs
@@ -201,6 +202,101 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     out
 }
 
+/// The SwiftPM executables in the analysed fragments: an `.executableTarget(name:
+/// "<name>")` of a `Package.swift` builds the product `<name>` from the
+/// `main.swift` of `Sources/<name>` (or of the target's `path:`), whose top-level
+/// code is what runs. A test runs it by the built product's path
+/// (`.build/release/<name>`) or by `swift run <name>`.
+fn swift_product_runs(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    declared: &DeclaredTests,
+) -> Vec<Run> {
+    static TARGET: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
+            r#"\.executableTarget\(\s*name:\s*"([^"]+)"(?:[^()]*?\bpath:\s*"([^"]+)")?"#,
+        )
+        .expect("executable target regex")
+    });
+    let mut manifests: FxHashMap<String, Vec<(String, String)>> = FxHashMap::default();
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut seen: FxHashSet<&str> = FxHashSet::default();
+    for f in &state.all_fragments {
+        let own = f.path();
+        if !seen.insert(own) || !own.ends_with("main.swift") {
+            continue;
+        }
+        let path = rel(state, own);
+        let dirs = path.match_indices('/').map(|(at, _)| &path[..=at]);
+        for dir in std::iter::once("").chain(dirs) {
+            let targets = manifests.entry(dir.to_string()).or_insert_with(|| {
+                let manifest = state
+                    .run
+                    .source()
+                    .read_to_string(&state.root_dir.join(format!("{dir}Package.swift")));
+                manifest.map_or_else(Vec::new, |text| {
+                    TARGET
+                        .captures_iter(&text)
+                        .map(|c| {
+                            let name = c[1].to_string();
+                            let source = c.get(2).map_or_else(
+                                || format!("Sources/{name}"),
+                                |p| p.as_str().trim_matches('/').to_string(),
+                            );
+                            (name, format!("{dir}{source}/main.swift"))
+                        })
+                        .collect()
+                })
+            });
+            if let Some((name, _)) = targets.iter().find(|(_, main)| *main == path) {
+                entries.push((own.to_string(), name.clone()));
+            }
+        }
+    }
+    if entries.is_empty() {
+        return Vec::new();
+    }
+    let needles = vec![".build/".to_string(), "swift run".to_string()];
+    let grepped = spelled_lines(state, diff_range, &needles);
+    entries
+        .into_iter()
+        .filter_map(|(own, name)| {
+            let tests = ordered(
+                grepped
+                    .rows
+                    .iter()
+                    .filter(|(path, _, text)| {
+                        declared.runs(path) && !commented(text) && runs_product(text, &name)
+                    })
+                    .map(|(path, line, _)| (path.clone(), *line))
+                    .collect(),
+            );
+            (!tests.is_empty()).then_some(Run {
+                file: own,
+                symbol: None,
+                tests,
+            })
+        })
+        .collect()
+}
+
+/// A command line that starts the SwiftPM product `name`: its built path, or
+/// `swift run name`.
+fn runs_product(text: &str, name: &str) -> bool {
+    let words: Vec<&str> = text
+        .split(|c: char| {
+            c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '(' | ')' | ',' | '[' | ']' | '=')
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    words
+        .iter()
+        .any(|w| w.contains(".build/") && w.rsplit('/').next() == Some(name))
+        || words
+            .windows(3)
+            .any(|w| w[0] == "swift" && w[1] == "run" && w[2] == name)
+}
+
 /// `[package] name = "…"` in a Cargo manifest.
 fn package_name(manifest: &str) -> Option<String> {
     let package = manifest.split("[package]").nth(1)?;
@@ -330,8 +426,8 @@ pub(super) fn spelled_as_command(text: &str, name: &str) -> bool {
         .any(|q| text.contains(&format!("{q}{name}{q}")) || text.contains(&format!("{q}{name} ")))
 }
 
-/// The tests that run a console script: a test file with a line that starts a
-/// program and spells the script's name as a command. The function the manifest
+/// The tests that run a console script: a test file with a line that starts or
+/// locates a program and spells the script's name as a command. The function the manifest
 /// names (a Python entry), or the file (a Node bin), is what they run.
 fn console_runs(
     state: &ScoredState,
@@ -364,7 +460,7 @@ fn console_runs(
                     declared.runs(path)
                         && *path != script.file
                         && !commented(text)
-                        && starts_a_program(text)
+                        && (starts_a_program(text) || locates_a_program(text))
                         && spelled_as_command(text, &script.name)
                 })
                 .map(|(path, line, _)| (path.clone(), *line))
@@ -379,6 +475,15 @@ fn console_runs(
         }
     }
     out
+}
+
+/// A line that finds an installed console script to run it: beside the
+/// interpreter (`Path(sys.executable).with_name("pkg")`) or on the PATH
+/// (`shutil.which("pkg")`). `sys.executable, "-m", "pkg"` runs the package's
+/// `__main__`, not the script.
+fn locates_a_program(text: &str) -> bool {
+    text.contains("which(")
+        || (text.contains("sys.executable") && !text.contains("\"-m\"") && !text.contains("'-m'"))
 }
 
 /// What a command line can start by its path: a shell script, or a program of a
@@ -581,6 +686,7 @@ fn framework_runs(
     state: &ScoredState,
     cells: &Cells,
     diff_range: Option<&str>,
+    spelled: &FxHashMap<&str, &str>,
     declared: &DeclaredTests,
 ) -> Vec<Run> {
     struct Entry {
@@ -669,6 +775,54 @@ fn framework_runs(
             }
         }
     }
+    // A browser test that visits a route of a client-side router's table runs the
+    // definition that holds the route and the component the route renders.
+    let mut read: FxHashSet<&str> = FxHashSet::default();
+    for f in &state.all_fragments {
+        let script = matches!(
+            crate::languages::get_language_for_file(f.path()),
+            Some("javascript" | "typescript" | "tsx" | "jsx")
+        );
+        if !(script && f.content.contains("path") && read.insert(f.path())) {
+            continue;
+        }
+        let Some(text) = state.run.source().read_to_string(Path::new(f.path())) else {
+            continue;
+        };
+        let shown = rel(state, f.path());
+        for (line, label, component) in router_routes(&text) {
+            let needle = route_needle(&label);
+            if needle.trim_matches('/').len() < 3 {
+                continue;
+            }
+            let holder = state
+                .all_fragments
+                .iter()
+                .filter(|h| h.path() == f.path() && h.start_line() <= line && h.end_line() >= line)
+                .filter_map(|h| Some((h.line_count(), h.symbol_name.as_deref().map(base_symbol)?)))
+                .min()
+                .map(|(_, name)| (f.path().to_string(), name.to_string()));
+            let entered = rendered(state, &shown, &text, &component, spelled);
+            for (file, symbol) in holder.into_iter().chain(entered) {
+                let Some(spelling) = Spelling::of(EntryKind::Route, None, &label) else {
+                    continue;
+                };
+                if seen.insert((
+                    file.clone(),
+                    symbol.clone(),
+                    EntryKind::Route,
+                    label.clone(),
+                )) {
+                    entries.push(Entry {
+                        file,
+                        symbol,
+                        spelling,
+                        needle: needle.clone(),
+                    });
+                }
+            }
+        }
+    }
     if entries.is_empty() {
         return Vec::new();
     }
@@ -696,6 +850,131 @@ fn framework_runs(
             })
         })
         .collect()
+}
+
+/// The routes of a React Router table in `text` (a file that imports
+/// `react-router`), each its line, its path and the component it renders: a `<Route
+/// path=".." element={<Page />}>` element or a `{ path: "..", element: <Page /> }`
+/// object (`Component` alike). A route is the text from one `<Route` or `path:`
+/// to the next.
+fn router_routes(text: &str) -> Vec<(u32, String, String)> {
+    static START: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"<Route\b|\bpath\s*:").expect("route start regex")
+    });
+    static PATH: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r#"\bpath\s*[=:]\s*\{?\s*["'`]([^"'`]+)["'`]"#).expect("route path regex")
+    });
+    static RENDERS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"\b(?:element\s*[=:]\s*\{?\s*<\s*|Component\s*[=:]\s*\{?\s*)([A-Z]\w*)")
+            .expect("route component regex")
+    });
+    if !text.contains("react-router") {
+        return Vec::new();
+    }
+    let starts: Vec<usize> = START.find_iter(text).map(|m| m.start()).collect();
+    starts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &start)| {
+            let route = &text[start..starts.get(i + 1).copied().unwrap_or(text.len())];
+            let path = PATH.captures(route)?.get(1)?.as_str().to_string();
+            let component = RENDERS.captures(route)?.get(1)?.as_str().to_string();
+            let line = u32::try_from(text[..start].matches('\n').count() + 1).unwrap_or(u32::MAX);
+            Some((line, path, component))
+        })
+        .collect()
+}
+
+/// The definition a route renders as `component` names it in the router's file
+/// (`shown` as the answer prints it): the one a relative module exports under
+/// it — by name (`import { Page }`), or as its default (`import Page from`,
+/// `lazy(() => import(…))`) — with its file as fragments spell it.
+fn rendered(
+    state: &ScoredState,
+    shown: &str,
+    text: &str,
+    component: &str,
+    spelled: &FxHashMap<&str, &str>,
+) -> Vec<(String, String)> {
+    static DEFAULT: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
+            r#"import\s+(\w+)\s*(?:,\s*\{[^}]*\})?\s*from\s*["']([^"']+)["']|\b(\w+)\s*=\s*(?:React\.)?lazy\(\s*(?:async\s*)?\(\s*\)\s*=>\s*import\(\s*["']([^"']+)["']"#,
+        )
+        .expect("default import regex")
+    });
+    static NAMED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r#"import\s*(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']"#)
+            .expect("named import regex")
+    });
+    static EXPORTED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"export\s+default\s+(?:async\s+)?(?:function\s*\*?\s*|class\s+)?(\w+)")
+            .expect("default export regex")
+    });
+    let mut found: Vec<(String, String)> = Vec::new();
+    let module = |spec: &str| {
+        let dir = shown.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let base = spec
+            .starts_with('.')
+            .then(|| relative(dir, spec))
+            .flatten()?;
+        [
+            "",
+            ".tsx",
+            ".ts",
+            ".jsx",
+            ".js",
+            "/index.tsx",
+            "/index.ts",
+            "/index.jsx",
+            "/index.js",
+        ]
+        .iter()
+        .find_map(|tail| spelled.get(format!("{base}{tail}").as_str()).copied())
+    };
+    let defaults = DEFAULT.captures_iter(text).filter_map(|c| {
+        let (local, spec) = c.get(1).zip(c.get(2)).or_else(|| c.get(3).zip(c.get(4)))?;
+        (local.as_str() == component).then_some(spec.as_str())
+    });
+    for spec in defaults {
+        let Some(target) = module(spec) else {
+            continue;
+        };
+        let source = state.run.source().read_to_string(Path::new(target));
+        if let Some(name) = source.as_deref().and_then(|s| EXPORTED.captures(s)) {
+            found.push((target.to_string(), name[1].to_string()));
+        }
+    }
+    for c in NAMED.captures_iter(text) {
+        let exported = c[1].split(',').find_map(|binding| {
+            let mut words = binding.split_whitespace();
+            let name = words.next()?;
+            let local = match (words.next(), words.next()) {
+                (Some("as"), Some(local)) => local,
+                _ => name,
+            };
+            (local == component).then(|| name.to_string())
+        });
+        if let Some((target, name)) = module(&c[2]).zip(exported) {
+            found.push((target.to_string(), name));
+        }
+    }
+    found
+}
+
+/// `spec` (`./a`, `../b/c`) from the directory `dir`, none when it climbs above the
+/// repository.
+fn relative(dir: &str, spec: &str) -> Option<String> {
+    let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+    for part in spec.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            part => parts.push(part),
+        }
+    }
+    Some(parts.join("/"))
 }
 
 /// The most strings of changed definitions one answer looks for in the tests.
