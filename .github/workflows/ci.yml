@@ -414,16 +414,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [macos-latest, windows-latest]
+        part: ["rest:1/2", "rest:2/2", corpus]
         include:
-          - {os: macos-latest, part: "rest:1/2", label: "1/2"}
-          - {os: macos-latest, part: "rest:2/2", label: "2/2"}
-          - {os: macos-latest, part: corpus, label: corpus}
-          - {os: windows-latest, part: "rest:1/2", label: "1/2"}
-          - {os: windows-latest, part: "rest:2/2", label: "2/2"}
-          - {os: windows-latest, part: corpus, label: corpus}
+          - {part: "rest:1/2", label: "1/2"}
+          - {part: "rest:2/2", label: "2/2"}
+          - {part: corpus, label: corpus}
         # A stream check (a PR into ci-base/*) leaves macOS to the head check
         # (ci/head) and to main: the account runs five macOS jobs at once,
-        # and seven per stream run queued every stream behind them.
+        # and seven per stream run queued every stream behind them. exclude
+        # drops only combinations of the os and part vectors, never an
+        # include-only cell, so the legs are vectors.
         exclude: >-
           ${{ fromJSON(
             (startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
