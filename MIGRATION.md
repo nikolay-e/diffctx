@@ -4,7 +4,8 @@
 compatibility flag). Exit codes, `--budget` and `-f md` Markdown keep their
 meaning; the Markdown's wording changed where [the table at the end](#markdown)
 says so. A document names its version in `schema`: `diffctx.impact.v2`,
-`diffctx.locate.v2`, `diffctx.context.v2`.
+`diffctx.locate.v2`, `diffctx.context.v2`. The Python package needs
+[Python 3.11 or newer](#python-311-or-newer).
 
 This file covers `diffctx.impact.v2`, `diffctx.locate.v2` and the pack artifact
 `diffctx.context.v2` field by field.
@@ -205,3 +206,12 @@ the files they write. The MCP `diffctx_context` tool keeps its parameters and
 gains `include_overflow` (locate; the CLI's `--overflow`); `budget_tokens` is a
 per-mode default (impact 2 000, locate and pack automatic), and `max_tokens` is
 a ceiling the reply is fitted to.
+
+## Python 3.11 or newer
+
+The package declares `requires-python = ">=3.11"` and its `abi3` wheels are
+tagged `cp311-abi3`: Python 3.10 is past end of life, and the filelock release
+that fixes 17 advisories needs 3.11. On 3.10, pip and uv resolve to the last 1.x
+release, and a pin to 2.0.0 fails to install. The native binary, the
+npm wrapper and the Docker image carry no Python and are unaffected; the
+Action's `python-version` input must name 3.11 or newer (its default is 3.13).

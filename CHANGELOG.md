@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Python 3.11 or newer is required; 3.10 is past end of life (see
+  MIGRATION.md).
 - Provenance is `diffctx.provenance.v2`: it drops `input.diff_range`, which
   repeated `range.spec` (two more commit ids in every artifact); `base` and
   `head` stay.
