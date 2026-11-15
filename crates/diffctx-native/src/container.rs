@@ -28,20 +28,31 @@ pub(crate) fn named_container_of<'a>(
 }
 
 /// Of fragments nested in one another (a method and its impl, a function
-/// and its enclosing class), the innermost is the one that says where.
+/// and its enclosing class), the innermost is the one that says where. One
+/// pass, not a pair test: 60 000 changed definitions made 3.6e9 (gh#619).
 pub(crate) fn innermost<'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment> {
     frags.sort_by(|a, b| a.id.cmp(&b.id));
-    let keep: Vec<bool> = frags
-        .iter()
-        .map(|outer| {
-            !frags.iter().any(|inner| {
-                inner.id != outer.id
-                    && inner.path() == outer.path()
-                    && inner.id.start_line >= outer.id.start_line
-                    && inner.id.end_line <= outer.id.end_line
-            })
-        })
-        .collect();
+    // Sorted by path, start, end: what a fragment holds starts later in its
+    // file (`after`, their least end), or at its start and first there.
+    let mut keep = Vec::with_capacity(frags.len());
+    let (mut path, mut after) = ("", u32::MAX);
+    for group in frags
+        .chunk_by(|a, b| a.id.path == b.id.path && a.id.start_line == b.id.start_line)
+        .rev()
+    {
+        if group[0].path() != path {
+            (path, after) = (group[0].path(), u32::MAX);
+        }
+        let first = group[0].id.end_line;
+        keep.extend(
+            group
+                .iter()
+                .rev()
+                .map(|f| first >= f.id.end_line && after > f.id.end_line),
+        );
+        after = after.min(first);
+    }
+    keep.reverse();
     frags
         .into_iter()
         .zip(keep)
