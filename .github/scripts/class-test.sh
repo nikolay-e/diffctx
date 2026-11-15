@@ -4,7 +4,9 @@
 # the fix's class: an added or changed case under tests/cases/{diff,impact,symbol}
 # or the metamorphic, fault or hook-property suite. That test must FAIL on the
 # pull request's base and PASS on its head, or any unrelated test change would
-# satisfy the gate. The escape is a reviewed line in the PR body:
+# satisfy the gate. At least one of them must be red on the base; the others
+# may be green there (a guard that keeps a right answer, a moved expectation),
+# and all must pass on the head. The escape is a reviewed line in the PR body:
 #   Class test: none — truth|leak|delivery gh#N
 #
 # Where each kind of test runs:
@@ -146,6 +148,7 @@ fi
 head_cargo --no-run ${suite_args[@]+"${suite_args[@]}"} ${case_args[@]+"${case_args[@]}"}
 
 failures=0
+base_red=0
 expect() { # side expected-verdict label assertion-marker command...
   local side=$1 want=$2 label=$3 marker=$4 got=0 output verdict
   shift 4
@@ -159,7 +162,10 @@ expect() { # side expected-verdict label assertion-marker command...
     gate_error "${label}: exit ${got} on the ${side} without a failed assertion: a crash, a missing binary or a setup error, not a red test"
     return 0
   fi
-  if [[ "$verdict" != "$want" ]]; then
+  if [[ "$side" == base && "$want" == red ]]; then
+    if [[ "$verdict" == red ]]; then base_red=$((base_red + 1)); fi
+    echo "class-test: ${label} is ${verdict} on the base"
+  elif [[ "$verdict" != "$want" ]]; then
     printf '%s\n' "$output" | tail -n 40
     echo "::error::${label}: expected ${want} on the ${side}, exit ${got}"
     failures=$((failures + 1))
@@ -201,4 +207,8 @@ if [[ -n "$class_cases" ]]; then
 fi
 
 [[ "$gate_errors" -eq 0 ]] || exit 2
+if [[ "$base_red" -eq 0 ]]; then
+  echo "::error::no class test is red on the base: none of them would have caught the fix's class"
+  failures=$((failures + 1))
+fi
 [[ "$failures" -eq 0 ]]
