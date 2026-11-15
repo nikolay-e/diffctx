@@ -1009,3 +1009,59 @@ fn removed_definition_with_a_surviving_reference_is_never_an_absence() {
         );
     }
 }
+
+// gh#619: a file added whole is one hunk, so every definition in it survived
+// the per-file cap; 60 000 of them ran a 240 s deadline into the watchdog's
+// exit 124 with nothing printed. More edited definitions than the cap keeps
+// put the file over the size cap: the answer names it, also when the deadline
+// stopped the run, which named no unanalysed file at all.
+#[test]
+fn a_changed_file_past_the_definition_cap_is_named_not_lost() {
+    let handlers: String = (0..2_500)
+        .map(|i| format!("def handler_{i}(req):\n    return fetch(req) + {i}\n\n"))
+        .collect();
+    let tmp = support::repo(
+        &[(
+            "cli.py",
+            "def main(urls):\n    def fetch(url):\n        return url.upper()\n    return [fetch(u) for u in urls]\n",
+        )],
+        &[("server.py", &handlers)],
+    );
+    let ask = |format: &str, env: &[(&str, &str)]| {
+        let out = support::diffctx_unclocked()
+            .current_dir(tmp.path())
+            .args(["--diff", RANGE, "--mode", "impact", "-q", "-f", format])
+            .envs(env.iter().copied())
+            .output()
+            .expect("spawn diffctx");
+        assert!(out.status.success(), "{:?}", out.status);
+        String::from_utf8(out.stdout).expect("utf8")
+    };
+    let named_over_the_cap = |env: &[(&str, &str)]| {
+        let doc: Value = serde_json::from_str(&ask("json", env)).expect("JSON");
+        let named = doc["coverage"]["unanalysed"]["items"]
+            .as_array()
+            .is_some_and(|rows| {
+                rows.iter()
+                    .any(|r| r["path"] == "server.py" && r["reason"] == "too_large")
+            });
+        assert!(
+            named,
+            "server.py is not named as over the size cap: {doc:#}"
+        );
+        doc
+    };
+    let stopped = named_over_the_cap(&[("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")]);
+    assert!(
+        stopped["coverage"]["limits"]
+            .to_string()
+            .contains("deadline"),
+        "{stopped:#}"
+    );
+    named_over_the_cap(&[]);
+    let md = ask("md", &[]);
+    assert!(
+        md.contains("server.py") && md.contains("over the size cap"),
+        "{md}"
+    );
+}

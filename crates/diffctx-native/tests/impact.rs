@@ -1600,47 +1600,6 @@ fn a_rename_over_the_size_cap_is_named_not_analysed() {
     names_not_analysed(tmp.path(), "huge.py");
 }
 
-/// gh#619: a file added whole is one hunk, so every definition in it survived
-/// the per-file cap; 60 000 of them ran a 240 s deadline into the watchdog's
-/// exit 124 with nothing printed. More edited definitions than the cap keeps
-/// put the file over the size cap, and a run stopped by its deadline still
-/// answers and names it — it named no unanalysed file at all.
-#[test]
-fn a_file_added_with_more_definitions_than_the_cap_is_named_when_the_run_stops() {
-    let handlers: String = (0..2_500)
-        .map(|i| format!("def handler_{i}(req):\n    return fetch(req) + {i}\n\n"))
-        .collect();
-    let tmp = repo(
-        &[(
-            "cli.py",
-            "def main(urls):\n    def fetch(url):\n        return url.upper()\n    return [fetch(u) for u in urls]\n",
-        )],
-        &[("server.py", &handlers)],
-    );
-    let over_the_cap = |doc: &serde_json::Value| {
-        doc["coverage"]["unanalysed"]["items"]
-            .as_array()
-            .is_some_and(|rows| {
-                rows.iter()
-                    .any(|r| r["path"] == "server.py" && r["reason"] == "too_large")
-            })
-    };
-    let stopped = impact_env(
-        tmp.path(),
-        "HEAD~1..HEAD",
-        &[("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")],
-    );
-    assert!(stopped_by_the_deadline(&stopped), "{stopped:#}");
-    assert!(over_the_cap(&stopped), "{stopped:#}");
-    let whole = impact(tmp.path(), "HEAD~1..HEAD");
-    assert!(over_the_cap(&whole), "{whole:#}");
-    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
-    assert!(
-        md.contains("server.py") && md.contains("over the size cap"),
-        "{md}"
-    );
-}
-
 /// #498: a comment-only edit is skipped on purpose (a comment changes
 /// nothing a caller sees, #370), and the answer says that, instead of
 /// "No resolved static callers" about a function with a caller.
