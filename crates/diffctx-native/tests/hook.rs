@@ -5093,3 +5093,166 @@ fn a_hook_past_its_ceiling_says_it_did_not_review() {
     ));
     assert!(reviewed.contains("shop/checkout.py::charge"), "{reviewed}");
 }
+
+/// gh#508: an inspection a pathspec narrows is about what it showed, the
+/// pending change under that path, never the rest of the checkout; from a
+/// subdirectory the pathspec is that directory's.
+#[test]
+fn a_path_filtered_inspection_reviews_only_that_path() {
+    for (cwd, command) in [
+        ("", "git status --short -- dirA"),
+        ("", "git diff -- dirA"),
+        ("", "git diff dirA/"),
+        ("dirA", "git status --short ."),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        support::init_repo(repo);
+        let both = |n: u32| {
+            for d in ["a", "b"] {
+                write(
+                    repo,
+                    &format!("dir{}/{d}.py", d.to_uppercase()),
+                    &format!("def {d}():\n    return {n}\n\n\ndef use_{d}():\n    return {d}()\n"),
+                );
+            }
+        };
+        both(1);
+        commit_all(repo, "base");
+        both(2);
+        let cache = TempDir::new().unwrap();
+        let context = context_of(&run_line(&repo.join(cwd), cache.path(), command));
+        assert!(context.contains("dirA/a.py::a"), "{command}: {context}");
+        assert!(!context.contains("dirB/"), "{command}: {context}");
+    }
+}
+
+/// fj#127: a reminder repeats what the review it points at asked to check.
+/// A review that found no caller never gets "those callers still apply";
+/// one that asked for nothing is pointed at in one line.
+#[test]
+fn a_reminder_names_no_callers_a_review_did_not_find() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    support::init_repo(repo);
+    write(repo, "a.py", "def lonely(x):\n    return x + 1\n");
+    write(repo, ".env", "A=1\n");
+    write(
+        repo,
+        "Cargo.toml",
+        "[package]\nname = \"k\"\nversion = \"0.1.0\"\n",
+    );
+    write(repo, "src/lib.rs", "pub mod m;\n");
+    write(repo, "src/m.rs", "pub fn f(x: u32) -> u32 {\n    x\n}\n");
+    commit_all(repo, "base");
+    let cache = TempDir::new().unwrap();
+    write(repo, "a.py", "def lonely(x):\n    return x + 2\n");
+    write(repo, ".env", "A=2\n");
+    let shown = context_of(&run_line(repo, cache.path(), "git diff"));
+    assert!(shown.contains(" 0 caller(s) outside the diff"), "{shown}");
+    let context = context_of(&run_line(repo, cache.path(), "git commit -qam lonely"));
+    assert!(
+        context.starts_with("diffctx: this command recorded a change whose impact was shown"),
+        "{context}"
+    );
+    assert!(!context.contains("callers"), "{context}");
+    assert!(!context.contains("confirm"), "{context}");
+    assert_eq!(context.lines().count(), 1, "{context}");
+    write(
+        repo,
+        "src/m.rs",
+        "pub fn f(x: u32, y: u32) -> u32 {\n    x + y\n}\n",
+    );
+    let shown = context_of(&run_line(repo, cache.path(), "git diff"));
+    assert!(shown.contains("public_api src/m.rs::f"), "{shown}");
+    let context = context_of(&run_line(repo, cache.path(), "git commit -qam f"));
+    assert!(!context.contains("callers"), "{context}");
+    assert!(context.contains("the changed contract(s)"), "{context}");
+}
+
+/// A push of several refs reviews the first one the command names, not the
+/// first in git's report (the remote's order, sorted) or in the tracking refs,
+/// and names the refs it left unanalysed.
+#[test]
+fn a_push_of_several_refs_reviews_the_first_it_names_and_names_the_rest() {
+    for printed in [true, false] {
+        let (tmp, _remote) = repo_with_branches_beside_origin();
+        let repo = tmp.path();
+        let cache = TempDir::new().unwrap();
+        let command = "git push origin feature:release main";
+        let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
+        assert_eq!(pre.stdout, "");
+        let output = sh_printed(repo, command);
+        let after = if printed {
+            after_with_output("s1", repo, command, &output)
+        } else {
+            in_session("s1", &payload_for("PostToolUse", repo, command))
+        };
+        let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
+        assert!(
+            context.contains("shop/checkout.py::charge"),
+            "printed={printed}: {context}"
+        );
+        assert!(
+            !context.contains("shop/invoice.py::bill"),
+            "printed={printed}: {context}"
+        );
+        assert!(
+            context.contains("1 other pushed ref(s) are not analysed: main"),
+            "printed={printed}: {context}"
+        );
+    }
+}
+
+/// fj#219: the cap keeps the first contract of the section it prints;
+/// shedding them all left "Contracts changed:" over a count naming none.
+/// Sixteen changed signatures, each with its caller, outgrow the cap until
+/// definitions are omitted too.
+#[test]
+fn the_cap_keeps_one_changed_contract_named() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    support::init_repo(repo);
+    write(
+        repo,
+        "Cargo.toml",
+        "[package]\nname = \"k\"\nversion = \"0.1.0\"\n",
+    );
+    let mut lib = String::new();
+    for i in 0..16 {
+        lib.push_str(&format!("pub mod m{i};\npub mod use{i};\n"));
+        write(
+            repo,
+            &format!("src/m{i}.rs"),
+            &format!("pub fn f{i}(x: u32) -> u32 {{\n    x\n}}\n"),
+        );
+        write(
+            repo,
+            &format!("src/use{i}.rs"),
+            &format!("pub fn run{i}(x: u32) -> u32 {{\n    crate::m{i}::f{i}(x)\n}}\n"),
+        );
+    }
+    write(repo, "src/lib.rs", &lib);
+    commit_all(repo, "initial");
+    for i in 0..16 {
+        write(
+            repo,
+            &format!("src/m{i}.rs"),
+            &format!("pub fn f{i}(x: u32, y: u32) -> u32 {{\n    x + y\n}}\n"),
+        );
+    }
+    let cache = TempDir::new().unwrap();
+    let context = context_of(&run_line(repo, cache.path(), "git diff"));
+    assert!(
+        context.contains("changed definition(s) omitted"),
+        "the fixture no longer outgrows the cap\n{context}"
+    );
+    assert!(
+        !context.contains("Contracts changed: "),
+        "a contracts heading over a count alone\n{context}"
+    );
+    assert!(
+        context.contains("Contracts changed:\n  - public_api "),
+        "{context}"
+    );
+}
