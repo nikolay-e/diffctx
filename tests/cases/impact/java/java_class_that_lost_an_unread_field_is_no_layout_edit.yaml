@@ -1,0 +1,40 @@
+name: java_class_that_lost_an_unread_field_is_no_layout_edit
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, removed-definition, removed-api, absence-claim, contract]
+repo:
+  initial_files:
+    src/main/java/demo/Item.java: |
+      package demo;
+
+      public class Item {
+          public int id;
+          public String text;
+          public int size;
+          public String source;
+      }
+    src/main/java/demo/Reader.java: |
+      package demo;
+
+      public class Reader {
+          public static String typed(Item item) {
+              return item.text + item.size;
+          }
+      }
+  changed_files:
+    src/main/java/demo/Item.java: |
+      package demo;
+
+      public class Item {
+          public int id;
+          public String text;
+          public int size;
+      }
+  commit_message: "item: drop the unread source field"
+expect:
+  removed: [src/main/java/demo/Item.java::source]
+  contracts: [src/main/java/demo/Item.java]
+  changed: [src/main/java/demo/Item.java::source]
+  never_empty: true
+  no_negative_claims: true

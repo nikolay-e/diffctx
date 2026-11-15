@@ -804,9 +804,6 @@ enum Reach {
     /// Annotations, `isinstance`, `raises` and the class passed as a value are
     /// uses of the class a constructor change leaves alone.
     Constructor,
-    /// Only the base identities in `stale` reach it: a class reported for a
-    /// field it lost.
-    Stale,
 }
 
 impl Reach {
@@ -821,7 +818,6 @@ impl Reach {
                 relation,
                 Relation::Instantiates | Relation::Calls | Relation::Overrides
             ),
-            Self::Stale => false,
         }
     }
 }
@@ -1474,6 +1470,7 @@ impl Cell {
         };
         let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
         let mut removed: Vec<Changed> = Vec::new();
+        let mut lost_a_field: HashSet<DefKey> = HashSet::new();
         for d in &python {
             match &d.change {
                 // A definition the range removed, or one whose pairing is ambiguous and
@@ -1513,11 +1510,23 @@ impl Cell {
                         delta: None,
                         origin: None,
                     };
-                    // A class that lost its constructor is changed like one whose
-                    // constructor was edited: what builds, extends or names it is
-                    // affected, and nothing says so under the removed `__init__`.
-                    if kind == DefKind::Constructor && self.family == Family::Python {
-                        if let Some(class) = self.class_holding(&gone.file, &d.key) {
+                    // A class that lost its constructor or a field is changed like
+                    // one whose constructor or field was edited: what builds,
+                    // extends or names it is affected, and nothing says so under
+                    // the removed member.
+                    let rebuilt = match kind {
+                        DefKind::Constructor => Some(Reach::Constructor),
+                        DefKind::Field | DefKind::Variable | DefKind::Constant => {
+                            Some(Reach::Construction)
+                        }
+                        _ => None,
+                    };
+                    let holder = self.class_holding(&gone.file, &d.key);
+                    if matches!(kind, DefKind::Field | DefKind::Variable | DefKind::Constant) {
+                        lost_a_field.extend(holder.map(|class| class.key.clone()));
+                    }
+                    if let (Some(reach), Family::Python) = (rebuilt, self.family) {
+                        if let Some(class) = holder {
                             merge(
                                 &mut by_key,
                                 Changed {
@@ -1528,7 +1537,7 @@ impl Cell {
                                     how: How::Edited { layout_only: false },
                                     subjects: vec![Subject {
                                         key: class.key.clone(),
-                                        reach: Reach::Constructor,
+                                        reach,
                                         within: own_span(class.kind, class.span.lines),
                                     }],
                                     stale: Vec::new(),
@@ -1544,41 +1553,7 @@ impl Cell {
                             );
                         }
                     }
-                    // What reads a field the class lost is the class's to
-                    // report: the readers are listed under it, not under a
-                    // name that no longer exists.
-                    let class =
-                        matches!(kind, DefKind::Field | DefKind::Variable | DefKind::Constant)
-                            .then(|| self.class_holding(&gone.file, &d.key))
-                            .flatten();
-                    match class {
-                        Some(class) if self.stranded(&gone) => {
-                            let mut held = Changed {
-                                name: class.key.local.name.as_str().to_string(),
-                                kind: class.kind,
-                                file: class.file.as_str().to_string(),
-                                lines: class.span.lines,
-                                how: How::Edited { layout_only: false },
-                                subjects: vec![Subject {
-                                    key: class.key.clone(),
-                                    reach: Reach::Stale,
-                                    within: own_span(class.kind, class.span.lines),
-                                }],
-                                stale: vec![d.key.clone()],
-                                unpaired,
-                                local: false,
-                                public: false,
-                                basis: None,
-                                decorated: false,
-                                api: false,
-                                delta: None,
-                                origin: None,
-                            };
-                            held.subjects.truncate(1);
-                            merge(&mut by_key, held);
-                        }
-                        _ => removed.push(gone),
-                    }
+                    removed.push(gone);
                 }
                 change => {
                     let Some(def) = self.definition(&d.key) else {
@@ -1677,6 +1652,11 @@ impl Cell {
                 }
             }
         }
+        // A class whose own lines only moved because it lost a field is not a
+        // layout edit: the removed field is the change, and says so.
+        by_key.retain(|key, changed| {
+            !(lost_a_field.contains(key) && changed.how == How::Edited { layout_only: true })
+        });
         self.changed = by_key.into_values().chain(removed).collect();
         self.changed.sort_by(|a, b| {
             (a.file.as_str(), a.lines, a.name.as_str()).cmp(&(
