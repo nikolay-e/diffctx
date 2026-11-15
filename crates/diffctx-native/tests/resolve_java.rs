@@ -746,6 +746,12 @@ const RED: &[(&str, &str)] = &[
          binding to the sole implementor; the resolver leaves it a gap with a site",
     ),
     (
+        "impact/java/gh724_constants_class_that_gained_a_constant_is_no_layout_edit",
+        "gh#724: no resolver capability is missing: the resolver states the read of `Keys.USER`, \
+         and the class-keyed decoy is withheld by impact, which folds the class row into the \
+         added constant's, so only the full pipeline judges it",
+    ),
+    (
         "impact/java/gh732_constant_appended_to_a_constants_class_reaches_only_its_readers",
         "gh#732: no resolver capability is missing: the resolver states every read of a member of \
          the class, and the class-keyed decoys are withheld by impact, which lists the appended \
@@ -756,6 +762,12 @@ const RED: &[(&str, &str)] = &[
         "gh#734: no resolver capability is missing: the resolver states every use of the class, \
          and the class-keyed decoys are withheld by impact, which does not list the users of a \
          class for an added field, so only the full pipeline judges them",
+    ),
+    (
+        "impact/java/java_comment_inside_a_class_stays_layout_only",
+        "no resolver capability is missing: the resolver states the read of `Keys.USER`, and the \
+         class-keyed decoy is withheld by impact, which sets a comment-only edit aside as layout, \
+         so only the full pipeline judges it",
     ),
 ];
 
