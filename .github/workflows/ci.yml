@@ -5,8 +5,10 @@ name: diffctx CI
   pull_request:
     branches: ['**']
   push:
+    # A push to relay/arch is the 2.0 migration's head check: every platform.
     branches:
       - main
+      - relay/arch
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -219,7 +221,7 @@ jobs:
   # ============================================================================
   cargo-publish-dry-run:
     name: Crate packages for crates.io
-    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
+    if: ${{ !(github.base_ref == 'relay/arch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -260,7 +262,7 @@ jobs:
       (github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]')) &&
-      !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
+      !(github.base_ref == 'relay/arch')
     permissions:
       contents: read
     steps:
@@ -422,10 +424,10 @@ jobs:
           - {part: "rest:1/2", label: "1/2"}
           - {part: "rest:2/2", label: "2/2"}
           - {part: corpus, label: corpus}
-    # A stream check (a PR into ci-base/*) runs Linux only and leaves the other
-    # platforms to the head check (ci/head) and to main: the account runs 20
+    # A stream check (a PR into relay/arch) runs Linux only and leaves the other
+    # platforms to the head check (a push to relay/arch) and to main: the account runs 20
     # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
-    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
+    if: ${{ !(github.base_ref == 'relay/arch') }}
     runs-on: ${{ matrix.os }}
     # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
@@ -479,18 +481,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.11', '3.12', '3.13', '3.14']
-        # A stream check (a PR into ci-base/*, see rust-diffctx-test-cross)
+        # A stream check (a PR into relay/arch, see rust-diffctx-test-cross)
         # runs one Linux interpreter; exclude never drops an include-only
         # cell, so the ARM legs are an expression too.
         exclude: >-
-          ${{ fromJSON((startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
+          ${{ fromJSON((github.base_ref == 'relay/arch')
             && '[{"os":"macos-latest"},{"os":"windows-latest"},
                  {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
             || '[]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
         include: >-
-          ${{ fromJSON((startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') && '[]'
+          ${{ fromJSON((github.base_ref == 'relay/arch') && '[]'
             || '[{"os":"ubuntu-22.04-arm","python-version":"3.13"},
                  {"os":"windows-11-arm","python-version":"3.13"}]') }}
 
@@ -608,7 +610,7 @@ jobs:
   # ============================================================================
   docs-pwa:
     name: Landing page installs and opens offline
-    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
+    if: ${{ !(github.base_ref == 'relay/arch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
