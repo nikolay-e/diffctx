@@ -1721,7 +1721,9 @@ fn a_view_the_agent_does_not_read_whole_is_no_inspection() {
         ("git diff --exit-code", true),
         ("git diff || true", true),
         ("echo start | true && git diff", true),
-        ("git diff -- 'shop|other'", true),
+        ("git diff -- shop 'shop|other'", true),
+        // A pathspec that shows no change shows nothing to review (gh#508).
+        ("git diff -- 'shop|other'", false),
         ("git diff 2>&1", true),
     ] {
         let cache = TempDir::new().unwrap();
