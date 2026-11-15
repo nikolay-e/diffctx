@@ -846,3 +846,24 @@ impl LiteralNames {
         named
     }
 }
+
+/// The terms of the lines of `path` no hunk of the change wrote.
+pub(super) fn untouched_terms(state: &ScoredState, path: &str) -> rustc_hash::FxHashSet<String> {
+    let text = state
+        .run
+        .source()
+        .read_to_string(&state.root_dir.join(path));
+    let touched: Vec<(u32, u32)> = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.path == path && h.new_len > 0)
+        .map(crate::changed_lines::HunkText::new_range)
+        .collect();
+    (1..)
+        .zip(text.as_deref().unwrap_or("").lines())
+        .filter(|(n, l)| {
+            !super::mentions::commented(l) && !touched.iter().any(|&(a, b)| a <= *n && *n <= b)
+        })
+        .flat_map(|(_, l)| terms(l))
+        .collect()
+}
