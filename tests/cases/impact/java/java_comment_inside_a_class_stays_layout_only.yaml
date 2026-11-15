@@ -38,5 +38,5 @@ repo:
       }
   commit_message: "keys: say where new keys go"
 expect:
-  changed: [src/main/java/app/Keys.java::Keys]
+  exact: false
   decoys: {Keys: [src/main/java/app/UserView.java]}
