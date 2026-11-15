@@ -788,8 +788,16 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "symbol/python/gh708_keyword_argument_binds_the_callee_parameter",
-        "gh#708: a keyword argument does not bind the callee's parameter, so the parameter is no \
-         definition of the queried name and the callee is not listed",
+        "gh#708: the callee that stands for a keyword-bound parameter is named by the symbol \
+         answer (keyword_binding); a parameter is no definition of the resolver's facts",
+    ),
+    (
+        "symbol/python/gh708_keyword_follows_the_import_when_two_modules_define_the_callee",
+        "gh#708: as above, the symbol answer names the imported callee, not the resolver",
+    ),
+    (
+        "symbol/python/gh708_parameter_is_the_definition_when_only_a_keyword_names_it",
+        "gh#708: as above, the symbol answer names the callee, not the resolver",
     ),
     (
         "symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed",
