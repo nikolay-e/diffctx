@@ -30,6 +30,10 @@ pub struct TerraformResolver {
     solved: Solved,
     /// Module calls whose source is outside the repository.
     external: usize,
+    /// The directories a module call of the repository sources: their variables
+    /// are set and their outputs read by that call. Any other directory is a root
+    /// module, set from outside (a tfvars file, `-var`, `TF_VAR_`), at any depth.
+    called: HashSet<String>,
 }
 
 impl TerraformResolver {
@@ -42,10 +46,11 @@ impl TerraformResolver {
             ..
         } = gather_of(ctx, side, cache, Language::Terraform)?;
         let index = Index::build(files);
-        let (definitions, bindings, external) = Engine { ix: &index }.run();
+        let (definitions, bindings, external, called) = Engine { ix: &index }.run();
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
             external,
+            called,
         })
     }
 
@@ -53,6 +58,11 @@ impl TerraformResolver {
     /// reach is not held, and one of them may be a caller of any module here.
     pub fn external_sources(&self) -> usize {
         self.external
+    }
+
+    /// Whether a module call of the repository sources the directory of `file`.
+    pub fn is_called(&self, file: &str) -> bool {
+        self.called.contains(dir_of(file))
     }
 }
 
@@ -128,7 +138,7 @@ struct Engine<'a> {
 }
 
 impl Engine<'_> {
-    fn run(&self) -> (Vec<Definition>, Vec<Binding>, usize) {
+    fn run(&self) -> (Vec<Definition>, Vec<Binding>, usize, HashSet<String>) {
         let mut bindings = Vec::new();
         for (f, file) in self.ix.files.iter().enumerate() {
             for fact in &file.blob.facts {
@@ -149,15 +159,23 @@ impl Engine<'_> {
                 name_span: rec.name_span.clone(),
             })
             .collect();
-        let external = self
+        let calls: Vec<Source> = self
             .ix
             .defs
             .iter()
             .enumerate()
             .filter(|(_, rec)| rec.key.local.container.as_slice() == [Name::new("module")])
-            .filter(|(at, _)| self.source_of(*at) == Source::Outside)
-            .count();
-        (definitions, bindings, external)
+            .map(|(at, _)| self.source_of(at))
+            .collect();
+        let external = calls.iter().filter(|s| **s == Source::Outside).count();
+        let called = calls
+            .into_iter()
+            .filter_map(|source| match source {
+                Source::Local(path) => Some(path),
+                _ => None,
+            })
+            .collect();
+        (definitions, bindings, external, called)
     }
 
     fn path_of(&self, f: usize) -> &RepoPath {
