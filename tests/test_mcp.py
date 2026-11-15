@@ -589,9 +589,11 @@ class TestTokenBudgetGuardExecutes:
     the branch was dead code outside these tests.
 
     The class-level timeout overrides the global 10s: the diff-context legs
-    run the full parse+graph+selection pipeline over a 4000-function file at
+    run the full parse+graph+selection pipeline over a 1500-function file at
     an unlimited budget, which fits 10s locally but not on a loaded CI
-    runner sharing the box with xdist siblings."""
+    runner sharing the box with xdist siblings. 1500 stays under the 2000
+    changed definitions a file may hold before it is only named as over the
+    size cap (gh#619)."""
 
     pytestmark = pytest.mark.usefixtures("legacy_tools")
 
@@ -600,7 +602,7 @@ class TestTokenBudgetGuardExecutes:
         repo = Pygit2Repo(tmp_path / "big_file_repo")
         repo.add_file("small.py", "def noop():\n    return None\n")
         repo.commit("initial commit")
-        big_content = "\n".join(f"def func_{i}():\n    return {i}  # marker_{i}" for i in range(4000))
+        big_content = "\n".join(f"def func_{i}():\n    return {i}  # marker_{i}" for i in range(1500))
         repo.add_file("big.py", big_content)
         repo.commit("add big file")
         return repo
