@@ -43,4 +43,4 @@ expect:
     pkg/hooks.py::print_headers: [pkg/legacy.py::run]
   partial:
     pkg/hooks.py::print_headers:
-      calls: not_traced
+      calls: passed_as_value

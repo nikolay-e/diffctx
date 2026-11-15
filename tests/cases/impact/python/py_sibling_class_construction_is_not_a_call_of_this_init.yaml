@@ -51,4 +51,4 @@ expect:
     net/models.py::Request: [net/client.py::receive, tests/test_responses.py]
   partial:
     net/models.py::Request:
-      calls: not_traced
+      calls: implicitly_constructed

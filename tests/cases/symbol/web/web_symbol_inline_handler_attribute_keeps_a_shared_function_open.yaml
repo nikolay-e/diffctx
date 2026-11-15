@@ -24,3 +24,7 @@ expect:
   coverage:
     shared/telemetry.js::installTelemetry:
       calls: partial
+  partial:
+    shared/telemetry.js::installTelemetry:
+      calls: unlanded
+      reads: unlanded
