@@ -1,0 +1,57 @@
+name: shell_call_of_a_name_the_repository_defines_without_a_source_is_unlanded
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- shell
+- source
+- absence-claim
+repo:
+  initial_files:
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        echo "$sum"
+      }
+    scripts/checkout.sh: |
+      charge() {
+        local t
+        t=$(total "$@")
+        echo "$((t + 1))"
+      }
+    scripts/report.sh: |
+      . ./pricing.sh
+      total 1 2 3
+    scripts/legacy.sh: |
+      total() {
+        echo 0
+      }
+
+      total
+  changed_files:
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        printf '%s\n' "$sum"
+      }
+  commit_message: Change a function called by scripts that may not source it
+expect:
+  changed:
+  - scripts/pricing.sh::total
+  relations:
+  - from: scripts/report.sh
+    to: scripts/pricing.sh::total
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  unknowns:
+    total: unresolved_reads
+  coverage:
+    scripts/pricing.sh::total:
+      calls: partial
+  decoys:
+    scripts/pricing.sh::total:
+    - scripts/legacy.sh

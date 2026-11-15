@@ -552,6 +552,12 @@ impl Index {
                     }
                     Fact::Reference(r) => {
                         file.names.insert(r.name.as_str().to_ascii_lowercase());
+                        // `Pricing::total()` refers to `Pricing` too.
+                        if matches!(r.receiver, Receiver::None) {
+                            file.names.extend(
+                                r.qualifier.iter().map(|q| q.as_str().to_ascii_lowercase()),
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -1096,8 +1102,20 @@ impl<'w> Engine<'w> {
         match self.resolve_class(f, at, &segments, &name) {
             Found::Defs(ids, _) => Ent::Instance(ids[0]),
             Found::Blocked(_) => Ent::Outside,
+            Found::Nothing if self.should_be_here(f, at, &segments, &name) => Ent::Unknown,
             Found::External | Found::Nothing => Ent::Foreign,
         }
+    }
+
+    /// Whether a class written at `at` that was not found is under a namespace the
+    /// repository declares or maps: it should be one of its classes, so what it
+    /// stands for is unknown. A package's class that shares a short name with one
+    /// of the repository's is the package's.
+    fn should_be_here(&self, f: usize, at: u32, qualifier: &[Name], name: &Name) -> bool {
+        let (fqn, _) = self.class_name(f, at, qualifier, name);
+        fqn.rsplit_once('\\').is_none_or(|(namespace, _)| {
+            self.composer.owns(&fqn) || self.ix.namespaces.contains(&namespace.to_ascii_lowercase())
+        })
     }
 
     /// The class a type extends.
