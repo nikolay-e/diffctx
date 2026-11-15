@@ -125,7 +125,8 @@ struct Cli {
     #[arg(long, value_parser = ["pack", "locate", "impact"])]
     mode: Option<String>,
 
-    /// Wall-clock deadline in seconds; on expiry diffctx exits 124
+    /// Wall-clock deadline in seconds; past it the run answers partial, naming the limit
+    /// (exit 0); 124 is the watchdog 30 s later, for a phase that could not stop
     #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS, value_parser = clap::value_parser!(u64).range(1..))]
     timeout: u64,
 
@@ -372,8 +373,8 @@ fn real_main() -> Result<()> {
 
     // The per-phase git timeout does not bound in-process phases (parse, graph
     // build, scoring), so a pathological repo can hang far past `--timeout`
-    // until OOM/SIGKILL (#70). Run the pipeline on a worker thread and enforce
-    // `--timeout` as a true total wall-clock ceiling: on expiry, fail fast with
+    // until OOM/SIGKILL (#70). Run the pipeline on a worker thread: at `--timeout`
+    // it answers partial, and a grace period later the watchdog fails fast with
     // the actionable-error contract instead of hanging unbounded.
     let timeout = cli.timeout;
     // No `--diff` at all used to reach git as a bare `git diff` — index vs
