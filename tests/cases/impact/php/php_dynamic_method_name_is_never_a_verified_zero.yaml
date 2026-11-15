@@ -45,3 +45,6 @@ expect:
   - src/Greeter.php::Greeter.hello
   discloses: true
   no_negative_claims: true
+  partial:
+    src/Greeter.php::Greeter.hello:
+      calls: unlanded

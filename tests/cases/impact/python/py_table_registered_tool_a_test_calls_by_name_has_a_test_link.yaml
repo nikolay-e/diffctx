@@ -77,3 +77,6 @@ expect:
   - get_x
   untested:
   - get_unlisted
+  partial:
+    tools.py::get_x:
+      reads: unaccounted

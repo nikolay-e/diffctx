@@ -32,3 +32,6 @@ repo:
 # user, never left out and never a caller.
 expect:
   changed: [src/retry.ts::RetryObject.computeDelay, src/delay.ts::calculateRetryDelay]
+  partial:
+    src/retry.ts::RetryObject.computeDelay:
+      calls: unlanded

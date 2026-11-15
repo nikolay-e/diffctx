@@ -68,3 +68,7 @@ expect:
     - src/fmtlib.rs
   unknowns:
     fmt: dispatched
+  partial:
+    src/err.rs::fmt:
+      calls: [dispatched, not_traced]
+      reads: dispatched

@@ -43,3 +43,7 @@ expect:
     - clients/android/app/src/test/kotlin/ApiClientAdminTest.kt
   definitions:
   - clients/ios/Sources/Networking/APIClient.swift::APIClient.fetchUserPreferences
+  partial:
+    clients/ios/Sources/Networking/APIClient.swift::APIClient.fetchUserPreferences:
+      calls: unaccounted
+      reads: unaccounted

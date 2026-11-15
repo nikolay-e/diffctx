@@ -24,3 +24,7 @@ expect:
   - lib/greeter.rb::Greeter.hello
   discloses: true
   no_negative_claims: true
+  partial:
+    lib/greeter.rb::Greeter.hello:
+      calls: not_traced
+      reads: not_traced

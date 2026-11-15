@@ -46,3 +46,6 @@ expect:
     resolution: candidate
     site: 4
   exact: true
+  partial:
+    src/main/kotlin/p/Repo.kt::SqlRepo.find:
+      calls: not_traced

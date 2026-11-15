@@ -1,0 +1,57 @@
+# Cases whose answer hedges (names a gap in `coverage.calls` or `coverage.reads`) for a
+# definition the case itself proves fully resolved: a false hedge, each a defect of the
+# engine, not an oracle to bend. The coverage gate (judge.rs `gate`) fails an `exact`
+# case whose subject definition is hedged and not declared under `expect.partial`.
+# Enforced in both directions like known_below_threshold.txt: a listed case that stops
+# hedging falsely also fails. The letter after `#` is the HEDGE-R mechanism
+# (relay/hedge/ADJUDICATION.md): A a mention that is no use, B a site counted twice or
+# the declaration itself, C a shadowing local binding, D a definition no cell owns.
+# Never list a case to make an honest hedge pass: declare it under `partial:`.
+impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # A,B: the define line itself and a second chart's include are counted as unlanded uses; the definition is also unowned
+impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # A,B: a decoy chart's template and the resolved site itself are counted as unlanded reads
+impact/config/config_json_and_ci_entries_run_a_changed_script_by_path  # D: a script file definition is unowned though its executes rows are resolved
+impact/config/config_k8s_added_pod_label_reaches_the_service_that_selects_the_pods  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_every_reader_of_an_edited_object_is_listed_none_is_folded  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_namespace_keeps_the_other_namespace_out_of_the_readers  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_object_names_are_references  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as_a_candidate  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_relabel_names_the_service_whose_selector_no_longer_matches  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_role_ref_names_the_kind_it_binds  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_same_name_of_another_kind_is_no_reader_of_the_configmap  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_selector_of_another_namespace_is_not_a_reader_of_the_pod_labels  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_k8s_suffix_field_is_a_candidate_not_a_resolved_reader  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
+impact/config/config_shell_script_naming_changed_files_by_path  # D: a Kubernetes object definition is unowned though its readers are resolved
+impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # A: `RUN go build` is shell text, counted as a read of the stage `build`
+impact/kotlin/kotlin_callable_reference_is_a_use  # B: alias.rs:211-214: the callable reference is a resolved passes_as_value row and also unplaced
+impact/php/php_trait_method_reaches_the_class_using_it  # D: a trait member is unowned though its caller row is resolved
+impact/python/py_attribute_names_do_not_bind_across_packages  # A: attribute of another package's object with the same name
+impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # A: attribute of an unrelated object with the same name (decoy other.py)
+impact/python/py_fallback_of_an_outside_import_keeps_its_users  # B: outcome.rs:759: `import fastjson as codec` is the declaration of the name itself
+impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # C: a local variable named like the removed property
+impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # A: df.columns: a third-party type's attribute, a decoy
+impact/python/py_never_imported_script_method_has_no_sibling_hedge  # A: client.call in a decoy script that never imports the module
+impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # B: the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded
+impact/rust/rust_local_closure_named_like_a_definition  # C: a local closure binding shadows the definition; the oracle names loader.rs a decoy
+impact/rust/rust_removed_private_duplicate_has_no_callers  # C: absorb(x) in a.rs binds to the imported absorb that replaced the removed private fn
+impact/shell/shell_changed_library_function_names_the_scripts_that_source_it  # A: `msg="login"` is a string, counted as a call and a read of login; the source_flag part is honest
+impact/sql/sql_body_only_change_reaches_callers  # A: comment, string, dollar-quote and a table of the same name in a decoy file
+impact/sql/sql_create_or_replace_keeps_the_routines_callers  # A,B: comment, string and other-schema calls in a decoy file; resolved sites counted again as reads
+impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # A: "vpc-${var.cidr}": a string literal counted as a read of output.vpc
+impact/terraform/tf_every_traversal_form_reaches_its_variable  # C: the for-expression variable `n` shadows var.n
+impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # D: a removed variable is unowned though its reader is resolved
+impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # B: `const {normalizeArguments} = Request` is the alias the resolved call goes through
+impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # A: hooks.MODEL: an object member of the same name, not the constant
+impact/typescript/ts_lazy_import_is_a_caller  # B: `m.MobileFullPlayer` is the site of the resolved import row
+impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # B: `m.Lazy` is the site of the resolved import row
+impact/typescript/ts_module_constant_read_by_its_own_file_is_referenced  # B: `PANEL_LINE.exec` is the site of the resolved read row
+impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # A: standalone.html does not load lib.js: a decoy page
+symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # B: both unlanded sites are the resolved rows
+symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # A,B: the keyword name `agreement=` is counted as a read next to the resolved call (gh#708 family)
+symbol/python/py_local_function_symbol_lists_its_uses_in_the_enclosing_function  # D: decide.rs:596-604: a nested function is unowned though its uses are listed
+symbol/shell/shell_symbol_hyphenated_library_and_built_source_path  # A: `msg="login"` is a string; the source_flag part is honest
+symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # A: comment, string and table decoys; the unaccounted host-code part is honest
+symbol/sql/sql_symbol_function_callers_across_migrations  # A: comment, string and table decoys in V4__decoys.sql
+symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition  # D: a function nested in a component is unowned
+symbol/typescript/ts_declarations_nested_in_a_factory_closure_call_each_other  # D: a function nested in a factory closure is unowned
+symbol/web/web_symbol_astro_frontmatter_and_template_calls  # B: the template call site is the resolved row
+symbol/web/web_symbol_module_script_in_a_page_consumes_a_shared_module  # A: an HTML comment and paragraph text in a decoy page

@@ -38,3 +38,7 @@ expect:
   definitions:
   - shop.erl::total
   no_negative_claims: true
+  partial:
+    shop.erl::total:
+      calls: not_traced
+      reads: not_traced

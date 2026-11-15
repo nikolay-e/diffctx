@@ -95,3 +95,7 @@ expect:
     - scripts/words.sh
   definitions:
   - scripts/lib.sh::fetch
+  partial:
+    scripts/lib.sh::fetch:
+      calls: source_flag
+      reads: source_flag

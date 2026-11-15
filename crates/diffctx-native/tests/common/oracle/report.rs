@@ -25,7 +25,8 @@ pub(crate) struct CaseReport {
     pub source: String,
     pub issue_state: Option<&'static str>,
     pub tags: Vec<String>,
-    /// `pass`, `fail`, `baselined_red`, `stale_baseline` or `disputed`.
+    /// `pass`, `fail`, `baselined_red`, `stale_baseline`, `false_hedge`,
+    /// `stale_false_hedge` or `disputed`.
     pub state: &'static str,
     pub targets: Vec<TargetReport>,
     /// The class of each unknown the answer named, or its sentence when no

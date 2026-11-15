@@ -54,3 +54,7 @@ expect:
     site: 4
   exact: true
   no_negative_claims: true
+  partial:
+    src/main/scala/app/Users.scala::Users.findOne:
+      calls: not_traced
+      reads: not_traced

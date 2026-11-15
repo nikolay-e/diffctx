@@ -40,3 +40,7 @@ expect:
   coverage:
     hashicorp/consul/aws/main.tf::output.addr:
       reads: partial
+  partial:
+    hashicorp/consul/aws/main.tf::output.addr:
+      calls: external_source
+      reads: external_source

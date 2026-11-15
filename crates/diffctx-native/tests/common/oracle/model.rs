@@ -78,6 +78,16 @@ impl Kind {
             _ => Class::Code,
         }
     }
+
+    /// The coverage group the answer reports this kind under: a call-like use
+    /// (`calls`) or a read-like one (`reads`); the other kinds have none.
+    pub(crate) const fn coverage_group(self) -> Option<&'static str> {
+        match self {
+            Self::Calls | Self::Instantiates | Self::Overrides => Some("calls"),
+            Self::Reads | Self::Writes | Self::PassesAsValue => Some("reads"),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]

@@ -33,3 +33,6 @@ expect:
     - {from: "shapes/make.py::make", to: "shapes/box.py::Box", kind: instantiates, resolution: resolved, site: 5}
   decoys:
     shapes/box.py::Box: [shapes/describe.py]
+  partial:
+    shapes/box.py::Box:
+      calls: not_traced

@@ -111,3 +111,6 @@ expect:
   exact: true
   not_untested:
   - to_ms
+  partial:
+    src/lib.rs::to_ms:
+      calls: not_traced

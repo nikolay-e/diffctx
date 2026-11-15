@@ -66,3 +66,6 @@ expect:
   - src/Slugger.php::Slugger.slugify
   discloses: true
   no_negative_claims: true
+  partial:
+    src/Slugger.php::Slugger.slugify:
+      calls: unlanded

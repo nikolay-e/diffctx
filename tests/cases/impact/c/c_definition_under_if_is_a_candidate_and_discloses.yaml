@@ -50,3 +50,7 @@ expect:
     site: 5
   discloses: true
   no_negative_claims: true
+  partial:
+    src/plat.c::plat:
+      calls: macros
+      reads: macros

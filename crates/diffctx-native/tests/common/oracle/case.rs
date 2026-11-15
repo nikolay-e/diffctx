@@ -141,6 +141,10 @@ pub(crate) struct Expect {
     pub decoys: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub coverage: BTreeMap<String, BTreeMap<String, Coverage>>,
+    /// Per definition and relation kind, the gap kinds the answer must name
+    /// because its search of those uses is honestly incomplete.
+    #[serde(default)]
+    pub partial: BTreeMap<String, BTreeMap<String, OneOrMany>>,
     /// Present and empty: the answer names no unknown at all.
     #[serde(default)]
     pub unknowns: Option<BTreeMap<String, UnknownClass>>,
@@ -193,6 +197,8 @@ pub(crate) struct Expect {
 pub(crate) struct Compiled {
     pub relations: Vec<Relation>,
     pub listed: BTreeSet<(Node, Class)>,
+    /// The declared hedges: a definition and, per coverage group, the gap kinds.
+    pub partial: Vec<(Node, BTreeMap<&'static str, BTreeSet<String>>)>,
 }
 
 impl Expect {
@@ -251,9 +257,28 @@ impl Expect {
                 }
             }
         }
+        let mut partial = Vec::new();
+        for (target, kinds) in &self.partial {
+            let mut groups: BTreeMap<&'static str, BTreeSet<String>> = BTreeMap::new();
+            for (kind, reasons) in kinds {
+                let group = Kind::parse(kind)
+                    .and_then(Kind::coverage_group)
+                    .ok_or_else(|| {
+                        format!(
+                            "partial of `{target}` names `{kind}`, which is no calls or reads kind"
+                        )
+                    })?;
+                groups
+                    .entry(group)
+                    .or_default()
+                    .extend(reasons.items().into_iter().map(str::to_string));
+            }
+            partial.push((Node::target(target), groups));
+        }
         Ok(Compiled {
             relations: merge_sites(relations),
             listed,
+            partial,
         })
     }
 }
