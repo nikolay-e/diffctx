@@ -15,7 +15,7 @@ mod scanner;
 use std::fmt;
 use std::ops::Range;
 
-use crate::facts::{DefKey, ModulePath, Name, Scope};
+use crate::facts::{DefKey, ModulePath, Name, Scope, Span};
 use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
 use crate::snapshot::{Loss, RepoPath, SideTag};
 
@@ -138,8 +138,8 @@ pub enum Reason {
     Embedded,
 }
 
-/// The row of the contract that gave an outcome: the debug line prints it, and
-/// each basis of a `not_ours` is one the accounting checks itself.
+/// The row of the contract that gave an outcome: the debug line prints it. A
+/// `not_ours` carries its row as its [`Witness`], so none can be made without one.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Basis {
     /// `ours`: the binding resolved to the definition.
@@ -150,24 +150,8 @@ pub enum Basis {
     DefinitionName,
     /// `declaration`: the site of a `LocalBinding`.
     LocalSite,
-    /// `not_ours`: resolved to another definition that exists in the side's facts.
-    OtherDefinition,
-    /// `not_ours`: a module that is not the definition's and does not re-export it.
-    OtherModule,
-    /// `not_ours`: a local of that name in a scope enclosing the occurrence.
-    Local,
-    /// `not_ours`: no import binds the name, and the definition is not the file's own.
-    Builtin,
-    /// `not_ours`: an import binds the name to a module outside the repository.
-    ExternalModule,
-    /// `not_ours`: an external call no import binds, and no definition of the side is a member of that name.
-    ExternalName,
-    /// `not_ours`: outside the project or on an external base, the manifests read whole.
-    Manifests,
-    /// `not_ours`: a bare name is no member of a class it is written outside of.
-    BareName,
-    /// `not_ours`: the file's project cannot reference the definition's, the manifests read whole.
-    OtherProject,
+    /// `not_ours`: the basis is the outcome's [`Witness`].
+    Witnessed,
     /// `alias`: `import f as g`, `use m::f as g`; `declaration`: the new name `g`.
     RenamedImport,
     /// `alias`: `export { f as g }`, `pub use m::f as g`.
@@ -191,15 +175,7 @@ impl Basis {
             Self::OwnModule => "own_module",
             Self::DefinitionName => "definition_name",
             Self::LocalSite => "local_site",
-            Self::OtherDefinition => "other_definition",
-            Self::OtherModule => "other_module",
-            Self::Local => "local",
-            Self::Builtin => "builtin",
-            Self::ExternalModule => "external_module",
-            Self::ExternalName => "external_name",
-            Self::Manifests => "manifests",
-            Self::BareName => "bare_name",
-            Self::OtherProject => "other_project",
+            Self::Witnessed => "witnessed",
             Self::RenamedImport => "renamed_import",
             Self::RenamedExport => "renamed_export",
             Self::Assignment => "assignment",
@@ -209,30 +185,59 @@ impl Basis {
             Self::Unproven => "unproven",
         }
     }
+}
 
-    /// Whether the basis is one a `not_ours` may rest on.
-    pub const fn proves_not_ours(self) -> bool {
+/// What a `not_ours` stands on, and the one way to make it.
+///
+/// The identity of what the occurrence belongs to, or of the search that found no
+/// member of that name. A false "nobody calls" needs a witness, so a wrong one names itself.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Witness {
+    /// `other_definition`: resolved to another definition that exists in the side's facts.
+    OtherDefinition(DefKey),
+    /// `other_module`: a module that is not the definition's and does not re-export it.
+    OtherModule(RepoPath),
+    /// `other_module`: the module path an import or a package clause names.
+    ModulePath(ModulePath),
+    /// `other_module`: the namespace a path qualifier names, for a subject that is none.
+    Namespace(Name),
+    /// `local`: the site of a local of that name in a scope enclosing the occurrence.
+    Local(Span),
+    /// `builtin`, an absence: no import of the file binds the name and the definition is not
+    /// the file's own.
+    Builtin(RepoPath),
+    /// `builtin`: the word is part of a longer one (`lint.sh`, `--lint`), which it names.
+    Compound(Name),
+    /// `builtin`: the word follows a command (its name) that runs nothing.
+    CommandWord(Name),
+    /// `external_module`: an import binds the name to a module outside the repository.
+    ExternalModule(ModulePath),
+    /// `external_name`, an absence: an external call no import binds, and no definition
+    /// of the side is a member of that name.
+    ExternalName(Name),
+    /// `manifests`: the manifests read whole put the target outside the project or on an
+    /// external base.
+    Manifests(UnresolvedReason, Name),
+    /// `bare_name`, an absence: a bare name is no member of the class it is written outside
+    /// of (the class's path).
+    BareName(Vec<Name>),
+    /// `other_project`: the file's project cannot reference the definition's file, the
+    /// manifests read whole.
+    OtherProject(RepoPath),
+}
+
+impl Witness {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::OtherDefinition
-            | Self::OtherModule
-            | Self::Local
-            | Self::Builtin
-            | Self::ExternalModule
-            | Self::ExternalName
-            | Self::Manifests
-            | Self::BareName
-            | Self::OtherProject => true,
-            Self::Resolved
-            | Self::OwnModule
-            | Self::DefinitionName
-            | Self::LocalSite
-            | Self::RenamedImport
-            | Self::RenamedExport
-            | Self::Assignment
-            | Self::Destructuring
-            | Self::TypeAlias
-            | Self::ValuePosition
-            | Self::Unproven => false,
+            Self::OtherDefinition(_) => "other_definition",
+            Self::OtherModule(_) | Self::ModulePath(_) | Self::Namespace(_) => "other_module",
+            Self::Local(_) => "local",
+            Self::Builtin(_) | Self::Compound(_) | Self::CommandWord(_) => "builtin",
+            Self::ExternalModule(_) => "external_module",
+            Self::ExternalName(_) => "external_name",
+            Self::Manifests(..) => "manifests",
+            Self::BareName(_) => "bare_name",
+            Self::OtherProject(_) => "other_project",
         }
     }
 }
@@ -243,7 +248,8 @@ pub enum Outcome {
     /// A use of the definition, by the relation of its entry.
     Ours,
     Declaration,
-    NotOurs,
+    /// Not a use of the definition, and the witness says what it is instead.
+    NotOurs(Witness),
     /// A new name of the definition: accounted next.
     Alias(Alias),
     /// The definition passed on as a value: `calls` is partial.
@@ -256,7 +262,7 @@ impl Outcome {
         match self {
             Self::Ours => "ours",
             Self::Declaration => "declaration",
-            Self::NotOurs => "not_ours",
+            Self::NotOurs(_) => "not_ours",
             Self::Alias(_) => "alias",
             Self::Leak(_) => "leak",
             Self::Candidate(_) => "candidate",
@@ -277,6 +283,14 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The row that gave the outcome, as the debug line names it.
+    pub const fn basis_str(&self) -> &'static str {
+        match &self.outcome {
+            Outcome::NotOurs(witness) => witness.as_str(),
+            _ => self.basis.as_str(),
+        }
+    }
+
     pub fn counts_for(&self, relation: Relation) -> bool {
         self.relation.is_none_or(|own| own == relation)
     }
@@ -388,7 +402,7 @@ impl Account {
         for entry in &self.entries {
             let at = &entry.occurrence;
             match &entry.outcome {
-                Outcome::Ours | Outcome::Declaration | Outcome::NotOurs | Outcome::Alias(_) => {}
+                Outcome::Ours | Outcome::Declaration | Outcome::NotOurs(_) | Outcome::Alias(_) => {}
                 Outcome::Leak(place) => {
                     if self.relation == Relation::Calls && self.admits_calls {
                         hedges.push(Hedge::Leak {

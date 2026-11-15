@@ -13,10 +13,13 @@ use super::rows::{
     PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
 };
 use super::scanner::dollar_joins;
-use super::{Alias, AliasScope, Basis, Case, Class, Entry, Occurrence, Outcome, Reason, scan};
+use super::{
+    Alias, AliasScope, Basis, Case, Class, Entry, Occurrence, Outcome, Reason, Witness, scan,
+};
 use crate::decide::Standing;
 use crate::facts::{
-    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Star, UseKind,
+    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Span, Star,
+    UseKind,
 };
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
@@ -324,6 +327,10 @@ impl Claim {
         Self::new(relation, Outcome::Candidate(reason), Basis::Unproven)
     }
 
+    fn not_ours(relation: Option<Relation>, witness: Witness) -> Self {
+        Self::new(relation, Outcome::NotOurs(witness), Basis::Witnessed)
+    }
+
     fn at(self, occurrence: Occurrence) -> Entry {
         Entry {
             occurrence,
@@ -350,8 +357,7 @@ fn settle(mut claims: Vec<Claim>) -> Claim {
         .iter()
         .position(|c| matches!(c.outcome, Outcome::Candidate(_)));
     let elsewhere = |c: &Claim| {
-        matches!(c.outcome, Outcome::NotOurs)
-            && c.basis == Basis::OtherDefinition
+        matches!(c.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)))
             && ours.is_some_and(|at| claims[at].relation != c.relation)
     };
     let other = claims
@@ -519,21 +525,22 @@ impl<'a> Reading<'a> {
         let class = |a: &DefKey, b: &DefKey| {
             a.project == b.project && a.module == b.module && a.local.container == b.local.container
         };
-        let left_out = CLASS_CANDIDATES
+        let listed = CLASS_CANDIDATES
             .iter()
             .any(|(family, kind)| *kind == reason && family.has(self.file.language()))
-            && self.view.index.definitions.contains(subject)
-            && targets.iter().any(|key| class(key, subject))
-            && targets.iter().all(|key| {
-                key != subject
-                    && !self.family.contains(key)
-                    && self.view.index.definitions.contains(key)
-            });
-        if left_out {
-            Claim::new(relation, Outcome::NotOurs, Basis::OtherDefinition)
-        } else {
-            Claim::candidate(relation, Reason::Resolver(reason))
-        }
+            && self.view.index.definitions.contains(subject);
+        let left_out = targets.iter().find(|key| class(key, subject)).filter(|_| {
+            listed
+                && targets.iter().all(|key| {
+                    key != subject
+                        && !self.family.contains(key)
+                        && self.view.index.definitions.contains(key)
+                })
+        });
+        left_out.map_or_else(
+            || Claim::candidate(relation, Reason::Resolver(reason)),
+            |key| Claim::not_ours(relation, Witness::OtherDefinition(key.clone())),
+        )
     }
 
     fn resolved(&self, target: &DefKey, binding: &Binding) -> Claim {
@@ -550,7 +557,7 @@ impl<'a> Reading<'a> {
         {
             Claim::candidate(relation, Reason::OverrideUnproven)
         } else if self.view.index.definitions.contains(target) {
-            Claim::new(relation, Outcome::NotOurs, Basis::OtherDefinition)
+            Claim::not_ours(relation, Witness::OtherDefinition(target.clone()))
         } else {
             Claim::candidate(relation, Reason::BasisUnverified)
         }
@@ -575,7 +582,7 @@ impl<'a> Reading<'a> {
         match found {
             _ if ours => Claim::new(relation, Outcome::Ours, Basis::OwnModule),
             Some(file) if file.blob.losses.is_empty() => {
-                Claim::new(relation, Outcome::NotOurs, Basis::OtherModule)
+                Claim::not_ours(relation, Witness::OtherModule(file.path.clone()))
             }
             _ => Claim::candidate(relation, Reason::BasisUnverified),
         }
@@ -588,36 +595,36 @@ impl<'a> Reading<'a> {
 
     fn unresolved(&self, reason: UnresolvedReason, binding: &Binding, spelled: &[u8]) -> Claim {
         let relation = Some(binding.relation);
-        let verified = |basis: Basis, held: bool| {
-            if held {
-                Claim::new(relation, Outcome::NotOurs, basis)
-            } else {
-                Claim::candidate(relation, Reason::BasisUnverified)
-            }
+        let verified = |witness: Option<Witness>| {
+            witness.map_or_else(
+                || Claim::candidate(relation, Reason::BasisUnverified),
+                |witness| Claim::not_ours(relation, witness),
+            )
         };
         match reason {
             UnresolvedReason::Local => verified(
-                Basis::Local,
-                self.locals.iter().any(|local| {
-                    same(local.name.as_str(), spelled, self.case)
-                        && encloses(&local.enclosing, &binding.from)
-                }),
+                (self.locals.iter())
+                    .find(|local| {
+                        same(local.name.as_str(), spelled, self.case)
+                            && encloses(&local.enclosing, &binding.from)
+                    })
+                    .map(|local| Witness::Local(local.site.clone())),
             ),
             UnresolvedReason::Builtin => verified(
-                Basis::Builtin,
-                !self
+                (!self
                     .imports
                     .iter()
                     .any(|import| self.binds(import, spelled))
-                    && !(self.subject.key.local.container.is_empty()
-                        && self.is_own_module(self.file)),
+                    && (!self.subject.key.local.container.is_empty()
+                        || !self.is_own_module(self.file)))
+                .then(|| Witness::Builtin(self.file.path.clone())),
             ),
             UnresolvedReason::External => {
                 let named: Vec<&Import> = (self.imports.iter())
                     .filter(|import| self.binds(import, spelled))
                     .copied()
                     .collect();
-                let imported = named.iter().any(|import| {
+                let imported = named.iter().find(|import| {
                     import.relative == 0
                         && !(self.view.files.iter()).any(|file| file.module == import.module)
                 });
@@ -638,20 +645,18 @@ impl<'a> Reading<'a> {
                 let others =
                     (self.view.index.members.get(&lower)).map_or(0, |n| n.saturating_sub(own));
                 let bare = named.is_empty() && others == 0;
-                let basis = if imported {
-                    Basis::ExternalModule
-                } else {
-                    Basis::ExternalName
-                };
                 // An override names its base by its declaration, whatever else shares the name.
+                let nameless = bare || binding.relation == Relation::Overrides;
                 verified(
-                    basis,
-                    imported || bare || binding.relation == Relation::Overrides,
+                    imported
+                        .map(|import| Witness::ExternalModule(import.module.clone()))
+                        .or_else(|| nameless.then(|| Witness::ExternalName(binding.name.clone()))),
                 )
             }
-            UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => {
-                verified(Basis::Manifests, self.view.index.manifests_whole)
-            }
+            UnresolvedReason::OutsideProject | UnresolvedReason::ExternalBase => verified(
+                (self.view.index.manifests_whole)
+                    .then(|| Witness::Manifests(reason, binding.name.clone())),
+            ),
             UnresolvedReason::NoMember
             | UnresolvedReason::NoBinding
             | UnresolvedReason::UntypedRead
@@ -696,7 +701,7 @@ impl<'a> Reading<'a> {
         // A declaration needs no basis, so it is the better statement of a
         // `not_ours` at the place that declares.
         match declared {
-            Some((basis, _)) if matches!(claim.outcome, Outcome::NotOurs) => {
+            Some((basis, _)) if matches!(claim.outcome, Outcome::NotOurs(_)) => {
                 Claim::new(None, Outcome::Declaration, basis).at(occurrence)
             }
             _ => claim.at(occurrence),
@@ -708,14 +713,11 @@ impl<'a> Reading<'a> {
     fn settled(&self, occurrence: &Occurrence, claims: Vec<Claim>) -> Claim {
         let bound_elsewhere = claims
             .iter()
-            .all(|c| matches!(c.outcome, Outcome::NotOurs) && c.basis == Basis::OtherDefinition);
+            .all(|c| matches!(c.outcome, Outcome::NotOurs(Witness::OtherDefinition(_))));
         let local = bound_elsewhere
             .then(|| self.plain_read(occurrence, self.spelled(occurrence)))
             .flatten();
-        local.map_or_else(
-            || settle(claims),
-            |basis| Claim::new(None, Outcome::NotOurs, basis),
-        )
+        local.map_or_else(|| settle(claims), |witness| Claim::not_ours(None, witness))
     }
 
     /// No binding at the span: a basis shows it is no use of the subject, a wider
@@ -730,7 +732,7 @@ impl<'a> Reading<'a> {
         {
             return claim;
         }
-        if let Some(basis) = self
+        if let Some(witness) = self
             .bare_head(occurrence, spelled)
             .or_else(|| self.module_path(occurrence))
             .or_else(|| self.package_clause(occurrence))
@@ -738,7 +740,7 @@ impl<'a> Reading<'a> {
             .or_else(|| self.plain_read(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
         {
-            return Claim::new(None, Outcome::NotOurs, basis);
+            return Claim::not_ours(None, witness);
         }
         let wide = self.view.in_file(&occurrence.file).find(|binding| {
             let site = &binding.site.bytes;
@@ -800,7 +802,7 @@ impl<'a> Reading<'a> {
 
     /// A bare name heading a chain (`name.x`) is a local, an import or the file's own
     /// name, and never a member of a class it is written outside of.
-    fn bare_head(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Basis> {
+    fn bare_head(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Witness> {
         let (_, scoped, receiver) = BARE_HEADS
             .iter()
             .find(|row| row.0.has(self.file.language()))?;
@@ -811,23 +813,33 @@ impl<'a> Reading<'a> {
             return None;
         }
         let named = |name: &Name| same(name.as_str(), spelled, self.case);
-        let local = *scoped && self.shadowed(start, spelled, u32::MAX);
+        let local = scoped
+            .then(|| self.shadowed(start, spelled, u32::MAX))
+            .flatten();
         let imports = (self.view.in_file(&self.file.path))
             .filter(|binding| binding.relation == Relation::Imports && named(&binding.name));
         let claims: Vec<Claim> = imports
             .map(|binding| self.claim(binding, spelled))
             .collect();
+        let imported = claims.first().and_then(|c| match &c.outcome {
+            Outcome::NotOurs(witness) => Some(witness),
+            _ => None,
+        });
         let defined =
             (self.file.defs()).any(|def| def.local.container.is_empty() && named(&def.local.name));
-        if local {
-            Some(Basis::Local)
-        } else if !defined
-            && !claims.is_empty()
-            && claims.iter().all(|c| matches!(c.outcome, Outcome::NotOurs))
-        {
-            Some(claims[0].basis)
+        if let Some(site) = local {
+            Some(Witness::Local(site))
+        } else if let Some(witness) = imported.filter(|_| {
+            !defined
+                && !claims.is_empty()
+                && claims
+                    .iter()
+                    .all(|c| matches!(c.outcome, Outcome::NotOurs(_)))
+        }) {
+            Some(witness.clone())
         } else {
-            (*receiver && self.outside_class(start)).then_some(Basis::BareName)
+            (*receiver && self.outside_class(start))
+                .then(|| Witness::BareName(self.subject.key.local.container.clone()))
         }
     }
 
@@ -876,12 +888,16 @@ impl<'a> Reading<'a> {
         (bare && declares).then(|| Claim::new(None, Outcome::Declaration, Basis::LocalSite))
     }
 
-    /// Whether a local of that name, declared by `until`, is in a function enclosing `start`.
-    fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> bool {
+    /// The site of a local of that name, declared by `until`, in a function enclosing `start`.
+    fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> Option<Span> {
         let scope = self.scope_at(start);
         let joins = dollar_joins(self.file.language());
-        !writable(self.subject)
-            && self.locals.iter().any(|local| {
+        if writable(self.subject) {
+            return None;
+        }
+        self.locals
+            .iter()
+            .find(|local| {
                 let name = local.name.as_str();
                 same(
                     if joins {
@@ -895,10 +911,11 @@ impl<'a> Reading<'a> {
                     && matches!(local.enclosing, Scope::Def(_))
                     && encloses(&local.enclosing, &scope)
             })
+            .map(|local| local.site.clone())
     }
 
     /// A read of a local without a binding: no member (`x.name`), the sigil or no call, after it.
-    fn plain_read(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Basis> {
+    fn plain_read(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Witness> {
         let (_, sigil) = (NAMED_LOCALS.iter()).find(|row| row.0.has(self.file.language()))?;
         let at = occurrence.bytes.start;
         let prior = &self.text[..at as usize];
@@ -918,11 +935,14 @@ impl<'a> Reading<'a> {
         let bare =
             (rest.starts_with(b"=") && !rest.starts_with(b"==")) || opens(b"((") > opens(b"))");
         let read = mark.is_some() || !(*sigil || called) || (*sigil && bare);
-        (read && !after_path && self.shadowed(at, spelled, at)).then_some(Basis::Local)
+        if !read || after_path {
+            return None;
+        }
+        self.shadowed(at, spelled, at).map(Witness::Local)
     }
 
     /// A segment of the module path an import names is a module, never a definition.
-    fn module_path(&self, occurrence: &Occurrence) -> Option<Basis> {
+    fn module_path(&self, occurrence: &Occurrence) -> Option<Witness> {
         let (_, opens, closes) = MODULE_PATHS
             .iter()
             .find(|row| row.0.has(self.file.language()))?;
@@ -931,12 +951,12 @@ impl<'a> Reading<'a> {
         let site = &import.site.bytes;
         let words = split_words(&self.text[site.start as usize..at as usize]);
         (words.first() == Some(&opens.as_bytes()) && !words.contains(&closes.as_bytes()))
-            .then_some(Basis::OtherModule)
+            .then(|| Witness::ModulePath(import.module.clone()))
     }
 
     /// The name a package clause gives the file's package, and each segment of a dotted one, names
     /// a module, never a definition.
-    fn package_clause(&self, occurrence: &Occurrence) -> Option<Basis> {
+    fn package_clause(&self, occurrence: &Occurrence) -> Option<Witness> {
         let (_, keyword) = PACKAGE_HEADS
             .iter()
             .find(|row| row.0.has(self.file.language()))?;
@@ -946,11 +966,11 @@ impl<'a> Reading<'a> {
             .iter()
             .all(|b| b.is_ascii_alphanumeric() || b"_. \t".contains(b));
         (dotted && split_words(line).first() == Some(&keyword.as_bytes()))
-            .then_some(Basis::OtherModule)
+            .then(|| Witness::ModulePath(self.file.module.clone()))
     }
 
     /// A segment before the `::` of a path names a namespace: a subject of another kind is not it.
-    fn path_qualifier(&self, occurrence: &Occurrence) -> Option<Basis> {
+    fn path_qualifier(&self, occurrence: &Occurrence) -> Option<Witness> {
         let (_, separator) = PATH_SEPARATORS
             .iter()
             .find(|row| row.0.has(self.file.language()))?;
@@ -966,7 +986,9 @@ impl<'a> Reading<'a> {
                 | DefKind::TypeAlias
                 | DefKind::Module
         );
-        (after.starts_with(separator.as_bytes()) && !namespace).then_some(Basis::OtherModule)
+        (after.starts_with(separator.as_bytes()) && !namespace).then(|| {
+            Witness::Namespace(Name::new(String::from_utf8_lossy(self.spelled(occurrence))))
+        })
     }
 
     /// `Reply(url=...)` writes the field `url` of the class it builds: the keyword is a use
@@ -1040,7 +1062,7 @@ impl<'a> Reading<'a> {
     /// A word after a listed command names no function (an unlisted command may run it); a script, only after a
     /// listed command that runs nothing (`cat check`, not `bash check`). Part of a longer word
     /// (`lint.sh`, `--lint`, `lint-all`) it is no function's name at all.
-    fn command_argument(&self, occurrence: &Occurrence) -> Option<Basis> {
+    fn command_argument(&self, occurrence: &Occurrence) -> Option<Witness> {
         let language = self.file.language();
         let family = COMMAND_ARGUMENTS.iter().find(|row| row.0.has(language))?.0;
         let at = occurrence.bytes.start;
@@ -1050,7 +1072,17 @@ impl<'a> Reading<'a> {
             self.text[occurrence.bytes.end as usize..].first(),
         );
         if self.subject.kind != DefKind::Module && (joined(before) || joined(after)) {
-            return Some(Basis::Builtin);
+            let word = |b: &u8| b.is_ascii_alphanumeric() || b"_.-/".contains(b);
+            let start = self.text[..at as usize]
+                .iter()
+                .rposition(|b| !word(b))
+                .map_or(0, |i| i + 1);
+            let end = self.text[at as usize..]
+                .iter()
+                .position(|b| !word(b))
+                .map_or(self.text.len(), |i| at as usize + i);
+            let longer = String::from_utf8_lossy(&self.text[start..end]);
+            return Some(Witness::Compound(Name::new(longer)));
         }
         let call = (self.file.blob.facts.iter())
             .filter_map(|fact| match fact {
@@ -1071,7 +1103,8 @@ impl<'a> Reading<'a> {
         } else {
             row.is_some() && !writable(self.subject)
         };
-        (plain && !between.iter().any(|b| b"\n;&|(){}`".contains(b))).then_some(Basis::Builtin)
+        (plain && !between.iter().any(|b| b"\n;&|(){}`".contains(b)))
+            .then(|| Witness::CommandWord(call.name.clone()))
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body.
