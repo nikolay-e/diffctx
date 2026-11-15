@@ -3,7 +3,9 @@ name: Action smoke
 
 'on':
   pull_request:
-    branches: ['**']
+    # Relay stream checks (ci.yml, rust-diffctx-test-cross) and the head check
+    # target ci-base/*: the action is smoked on main.
+    branches-ignore: ['ci-base/**']
   push:
     branches:
       - main
