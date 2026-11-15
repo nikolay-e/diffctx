@@ -108,13 +108,36 @@ fn run_hook(world: &World, event: &'static str, cwd: &Path, stdin: &serde_json::
 }
 
 pub(crate) fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
-    let command = line.render(world);
     let cwd = match line.cwd {
         Cwd::In(repo) => world.path(repo),
         Cwd::Neutral => world.neutral(),
     };
+    drive_text(
+        world,
+        shell,
+        &cwd,
+        line.render(world),
+        line.peer,
+        line.background,
+    )
+}
+
+/// A line the grammar does not spell, run from `cwd` alone, in the
+/// foreground, with no peer.
+pub(crate) fn drive_command(world: &World, shell: &Shell, cwd: &Path, command: &str) -> Driven {
+    drive_text(world, shell, cwd, command.to_string(), Peer::None, false)
+}
+
+fn drive_text(
+    world: &World,
+    shell: &Shell,
+    cwd: &Path,
+    command: String,
+    peer: Peer,
+    in_background: bool,
+) -> Driven {
     let mut peer_commits: BTreeMap<Repo, BTreeSet<String>> = BTreeMap::new();
-    if let Peer::CommitBefore(repo) = line.peer {
+    if let Peer::CommitBefore(repo) = peer {
         peer_commits
             .entry(repo)
             .or_default()
@@ -124,31 +147,24 @@ pub(crate) fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
     let mut runs = vec![run_hook(
         world,
         "pretooluse",
-        &cwd,
-        &payload(
-            world,
-            "PreToolUse",
-            "toolu_1",
-            &cwd,
-            &command,
-            line.background,
-        ),
+        cwd,
+        &payload(world, "PreToolUse", "toolu_1", cwd, &command, in_background),
     )];
-    if let Peer::PushBefore(repo) = line.peer {
+    if let Peer::PushBefore(repo) = peer {
         world.peer_push(repo);
     }
-    if line.background {
-        background(world, shell, &cwd, &command, &mut runs);
+    if in_background {
+        background(world, shell, cwd, &command, &mut runs);
     } else {
         let out = world
             .command(&shell.path)
             .arg("-c")
             .arg(&command)
-            .current_dir(&cwd)
+            .current_dir(cwd)
             .stdin(Stdio::null())
             .output()
             .expect("HARNESS: run the line");
-        if let Peer::CommitAfter(repo) = line.peer {
+        if let Peer::CommitAfter(repo) = peer {
             peer_commits
                 .entry(repo)
                 .or_default()
@@ -158,7 +174,7 @@ pub(crate) fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr),
         );
-        let mut post = payload(world, "PostToolUse", "toolu_1", &cwd, &command, false);
+        let mut post = payload(world, "PostToolUse", "toolu_1", cwd, &command, false);
         let event = if out.status.success() {
             post["tool_response"] = serde_json::json!({
                 "stdout": stdout, "stderr": stderr, "interrupted": false, "isImage": false
@@ -174,7 +190,7 @@ pub(crate) fn drive(world: &World, shell: &Shell, line: &Line) -> Driven {
             post["is_interrupt"] = false.into();
             "posttoolusefailure"
         };
-        runs.push(run_hook(world, event, &cwd, &post));
+        runs.push(run_hook(world, event, cwd, &post));
     }
     let log = std::fs::read_to_string(world.cache().join("diffctx").join("hook-runs.log"))
         .unwrap_or_default();
