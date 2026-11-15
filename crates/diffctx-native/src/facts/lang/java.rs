@@ -48,7 +48,7 @@ use tree_sitter::Node;
 use super::jvm::shared_reader_methods;
 use super::kotlin::{Leaf, POLL_EVERY, error_ranges, has_word};
 use super::{LineStarts, parse_tree};
-use crate::facts::framework;
+use crate::facts::framework::{self, jvm::balanced};
 use crate::facts::kotlin as old;
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Import, ImportKind,
@@ -65,6 +65,30 @@ const TEST_ANNOTATIONS: &[&str] = &[
     "TestFactory",
     "TestTemplate",
 ];
+
+/// Where the parameter list opens: the first parenthesis that is no annotation's
+/// (`@GetMapping("/x") void list()` opens at the one after `list`).
+fn parameters_start(header: &str) -> usize {
+    let mut at = 0;
+    while let Some(next) = header[at..].find(['@', '(']) {
+        let found = at + next;
+        if header[found..].starts_with('(') {
+            return found;
+        }
+        let name_end = header[found + 1..]
+            .find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '$' | '.')))
+            .map_or(header.len(), |n| found + 1 + n);
+        let after = header[name_end..].trim_start();
+        at = match after.strip_prefix('(') {
+            Some(open) => match balanced(open) {
+                Some(end) => header.len() - open.len() + end + 1,
+                None => return header.len(),
+            },
+            None => name_end,
+        };
+    }
+    header.len()
+}
 
 pub struct JavaExtractor;
 
@@ -101,7 +125,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
         blob.deadline();
     }
     blob.facts = reader.facts;
-    framework::derive(&mut blob);
+    framework::derive_in(&mut blob, text);
     blob.record_lexical(root);
     blob.in_source_order();
     blob
@@ -395,7 +419,7 @@ impl<'a> Reader<'a> {
         }
         let header = self.slice(d.header.start..d.header.end.min(self.bytes.len()));
         let limit = match d.kind {
-            "fun" | "constructor" => header.find('(').unwrap_or(header.len()),
+            "fun" | "constructor" => parameters_start(header),
             _ => header.len(),
         };
         let boundary =

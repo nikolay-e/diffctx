@@ -11,9 +11,11 @@
 //! answer, a test-reach edge from a route to the tests that post to it) never
 //! learns a framework's name to use it.
 
+pub mod jvm;
+
 use crate::facts::ids::Name;
 use crate::facts::language::Language;
-use crate::facts::model::{BlobFacts, Def, EntryKind, EntryPoint, Fact, Framework, Scope};
+use crate::facts::model::{BlobFacts, Def, DefKind, EntryKind, EntryPoint, Fact, Framework, Scope};
 
 const PYTHON: &[Language] = &[Language::Python];
 const JVM: &[Language] = &[Language::Java, Language::Kotlin];
@@ -29,6 +31,9 @@ enum Verb {
     /// The strings of a keyword argument (`methods=["POST"]`), one entry each;
     /// the default when it is absent.
     Kwarg(&'static str, Option<&'static str>),
+    /// The methods a keyword argument names (`method = RequestMethod.POST`,
+    /// `method = {GET, POST}`), one entry each; any method when it is absent.
+    Methods(&'static str),
 }
 
 /// What the entry is called.
@@ -40,6 +45,12 @@ enum Label {
     /// The first positional string argument, else the keyword `name`, else the
     /// definition's own name (a command, a tool, a fixture).
     Named,
+    /// A Spring-style mapping: the strings of the first positional argument, or
+    /// of `value` or `path`, each under the path of the enclosing class's
+    /// `RequestMapping`; a mapping that states none is the class's path.
+    Mapping,
+    /// A JAX-RS route: the definition's `@Path` under the enclosing class's.
+    Path,
 }
 
 struct Rule {
@@ -225,15 +236,15 @@ static RULES: &[Rule] = &[
             "PatchMapping",
         ],
         Verb::Callee("Mapping"),
-        Label::Unstated,
+        Label::Mapping,
     ),
     route(
         "spring",
         JVM,
         &["org.springframework.web"],
         &["RequestMapping"],
-        Verb::Unstated,
-        Label::Unstated,
+        Verb::Methods("method"),
+        Label::Mapping,
     ),
     job(
         "spring",
@@ -255,7 +266,7 @@ static RULES: &[Rule] = &[
         &["jakarta.ws.rs", "javax.ws.rs"],
         &["GET", "POST", "PUT", "DELETE", "PATCH"],
         Verb::Callee(""),
-        Label::Unstated,
+        Label::Path,
     ),
     route(
         "micronaut",
@@ -286,6 +297,13 @@ static RULES: &[Rule] = &[
 /// the extractors of the languages that hold decorators, before the source
 /// order is fixed; it reads only what the blob already states.
 pub fn derive(blob: &mut BlobFacts) {
+    derive_in(blob, &[]);
+}
+
+/// [`derive`] for a language whose definitions hold annotations as names alone
+/// (Java, Kotlin): the arguments an annotation carries are read from `source`,
+/// the bytes the blob was extracted from.
+pub fn derive_in(blob: &mut BlobFacts, source: &[u8]) {
     let modules: Vec<String> = blob
         .facts
         .iter()
@@ -294,18 +312,39 @@ pub fn derive(blob: &mut BlobFacts) {
             _ => None,
         })
         .collect();
+    let jvm = jvm::Jvm::new(blob, source);
     let mut entries = Vec::new();
     for def in blob.defs() {
         for decorator in &def.decorators {
-            let call = Call::read(decorator.as_str());
+            let written = jvm.written(def, decorator.as_str());
+            let call = Call::read(&written);
             let rule = RULES.iter().find(|rule| {
                 rule.languages.contains(&blob.language)
                     && rule.decorators.contains(&call.name)
                     && rule.modules.iter().any(|m| imports(&modules, m))
             });
-            if let Some(rule) = rule {
-                entries.extend(entries_of(rule, &call, def));
-            }
+            let Some(rule) = rule else {
+                continue;
+            };
+            let paths = match rule.label {
+                // A class's own mapping is the prefix of its handlers, no handler.
+                Label::Mapping | Label::Path
+                    if !matches!(def.kind, DefKind::Function | DefKind::Method) =>
+                {
+                    continue;
+                }
+                Label::Mapping => jvm.routes(def, Some(&call), "RequestMapping"),
+                Label::Path => {
+                    let own = def
+                        .decorators
+                        .iter()
+                        .find(|d| d.as_str() == "Path")
+                        .map(|d| jvm.written(def, d.as_str()));
+                    jvm.routes(def, own.as_deref().map(Call::read).as_ref(), "Path")
+                }
+                _ => Vec::new(),
+            };
+            entries.extend(entries_of(rule, &call, def, paths));
         }
     }
     blob.facts.extend(entries.into_iter().map(Fact::EntryPoint));
@@ -327,7 +366,14 @@ pub fn describe(kind: EntryKind, framework: &Framework) -> String {
     };
     let mut words = vec![what.to_string()];
     words.extend(framework.verb.iter().map(ToString::to_string));
-    words.extend(framework.label.clone());
+    // A path that names a constant of another file is settled by whoever holds
+    // the repository; spelled out here it would be the reference.
+    words.extend(
+        framework
+            .label
+            .clone()
+            .filter(|label| !label.contains("{@")),
+    );
     format!("{ENTRY_PREFIX}{} ({})", words.join(" "), framework.name)
 }
 
@@ -339,7 +385,12 @@ fn imports(modules: &[String], wanted: &str) -> bool {
     })
 }
 
-fn entries_of(rule: &Rule, call: &Call<'_>, def: &Def) -> Vec<EntryPoint> {
+fn entries_of(
+    rule: &Rule,
+    call: &Call<'_>,
+    def: &Def,
+    paths: Vec<Option<String>>,
+) -> Vec<EntryPoint> {
     let verbs: Vec<Option<String>> = match &rule.verb {
         Verb::Unstated => vec![None],
         Verb::Callee(suffix) => {
@@ -359,31 +410,66 @@ fn entries_of(rule: &Rule, call: &Call<'_>, def: &Def) -> Vec<EntryPoint> {
                 stated
             }
         }
+        Verb::Methods(key) => {
+            let stated: Vec<Option<String>> = call
+                .keyword(key)
+                .map_or_else(Vec::new, http_methods)
+                .into_iter()
+                .map(Some)
+                .collect();
+            if stated.is_empty() {
+                vec![None]
+            } else {
+                stated
+            }
+        }
     };
-    let label = match rule.label {
-        Label::Unstated => None,
-        Label::First => call.positional_string(),
-        Label::Named => call
-            .positional_string()
-            .or_else(|| {
-                call.keyword("name")
-                    .and_then(|v| quoted(v).into_iter().next())
-            })
-            .or_else(|| Some(def.local.name.as_str().to_string())),
+    let labels: Vec<Option<String>> = match rule.label {
+        Label::Unstated => vec![None],
+        Label::First => vec![call.positional_string()],
+        Label::Named => vec![
+            call.positional_string()
+                .or_else(|| {
+                    call.keyword("name")
+                        .and_then(|v| quoted(v).into_iter().next())
+                })
+                .or_else(|| Some(def.local.name.as_str().to_string())),
+        ],
+        Label::Mapping | Label::Path => paths,
     };
     verbs
         .into_iter()
-        .map(|verb| EntryPoint {
+        .flat_map(|verb| {
+            labels
+                .iter()
+                .map(move |label| (verb.clone(), label.clone()))
+        })
+        .map(|(verb, label)| EntryPoint {
             site: def.name_span.clone(),
             kind: rule.kind,
             target: Scope::Def(def.local.clone()),
             framework: Some(Framework {
                 name: Name::new(rule.framework),
                 verb: verb.map(Name::new),
-                label: label.clone(),
+                label,
             }),
         })
         .collect()
+}
+
+/// The HTTP methods an argument names, in order, each once: `RequestMethod.GET`
+/// and `{GET, POST}` are `GET` and `GET, POST`.
+fn http_methods(text: &str) -> Vec<String> {
+    const METHODS: &[&str] = &[
+        "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE",
+    ];
+    let mut found: Vec<String> = Vec::new();
+    for word in text.split(|c: char| !c.is_alphanumeric()) {
+        if METHODS.contains(&word) && !found.iter().any(|m| m == word) {
+            found.push(word.to_string());
+        }
+    }
+    found
 }
 
 /// A decorator as written: `pytest.fixture(scope="module")`, `GetMapping`.

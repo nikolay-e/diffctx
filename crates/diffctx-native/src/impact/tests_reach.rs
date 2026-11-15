@@ -25,6 +25,7 @@ use std::path::Path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::facts::EntryKind;
+use crate::facts::framework::jvm;
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::rust;
@@ -1187,7 +1188,7 @@ impl Spelling {
                 path.is_match(text)
                     && verb.as_deref().is_none_or(|verb| {
                         text.split(|c: char| !c.is_alphanumeric())
-                            .any(|word| word.eq_ignore_ascii_case(verb))
+                            .any(|word| names_verb(word, verb))
                     })
             }
             Self::Command(name) => starts_a_program(text) && spelled_as_command(text, name),
@@ -1204,6 +1205,40 @@ impl Spelling {
             words.iter().map(ToString::to_string).collect(),
         )
     }
+}
+
+/// A word of a request line that is the verb, or a template client's call that
+/// carries it (`getForObject`, `postForEntity`).
+fn names_verb(word: &str, verb: &str) -> bool {
+    word.eq_ignore_ascii_case(verb)
+        || word
+            .get(..verb.len())
+            .zip(word.get(verb.len()..))
+            .is_some_and(|(head, rest)| head.eq_ignore_ascii_case(verb) && rest.starts_with("For"))
+}
+
+/// A route's path with the constants of other files it names put in, none when
+/// one cannot be read: the declaring file is no fragment of the run, or two
+/// of its fragments disagree. Any fragment of the file is read, since a
+/// constant can sit inside its class's fragment.
+fn settled(state: &ScoredState, label: &str) -> Option<String> {
+    jvm::resolve_constants(label, |owner, name| {
+        let file = owner.replace('.', "/");
+        let mut found: Vec<String> = state
+            .all_fragments
+            .iter()
+            .filter(|f| {
+                let path = rel(state, f.path());
+                path.strip_suffix(".java")
+                    .or_else(|| path.strip_suffix(".kt"))
+                    .is_some_and(|stem| stem == file || stem.ends_with(&format!("/{file}")))
+            })
+            .filter_map(|f| jvm::constant_literal(&f.content, name))
+            .collect();
+        found.sort();
+        found.dedup();
+        (found.len() == 1).then(|| found.remove(0))
+    })
 }
 
 /// A segment of a route that stands for any value: `{id}`, `<int:id>`, `:id`, `*`.
@@ -1254,7 +1289,11 @@ fn framework_runs(state: &ScoredState, cells: &Cells, diff_range: Option<&str>) 
             let key = if kind == EntryKind::Scheduled {
                 Some(name.to_string())
             } else {
-                framework.label.clone().filter(|l| !l.is_empty())
+                framework
+                    .label
+                    .clone()
+                    .filter(|l| !l.is_empty())
+                    .and_then(|label| settled(state, &label))
             };
             let Some(label) = key else {
                 continue;

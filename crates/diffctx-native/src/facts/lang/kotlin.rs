@@ -123,7 +123,7 @@ pub(super) fn blob_of(
         blob.deadline();
     }
     blob.facts = reader.facts;
-    framework::derive(&mut blob);
+    framework::derive_in(&mut blob, text);
     blob.record_lexical(root);
     blob.in_source_order();
     blob
