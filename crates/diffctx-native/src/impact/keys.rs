@@ -3,6 +3,8 @@
 //! changed side and on the reader's. The reader side is the token index's
 //! (`Cells::spelled_lines`); this is the vocabulary both sides agree on.
 
+use std::path::Path;
+
 use super::ScoredState;
 
 /// The terms of one line of a config: its key-shaped words and its value phrases.
@@ -301,6 +303,7 @@ pub(super) struct LiteralNames {
 }
 
 const MIN_LITERAL_NAME: usize = 4;
+const MIN_CALL_NAME: usize = 2;
 const NAMES_PER_SEARCH: usize = 40;
 /// A name that fills more files than this is a common word, not a reference.
 const MAX_LITERAL_FILES: usize = 12;
@@ -341,6 +344,104 @@ fn qualifier(c: char) -> bool {
 
 fn literal_name(name: &str) -> bool {
     name.chars().count() >= MIN_LITERAL_NAME && name.chars().all(|c| word_char(c) || c == '-')
+}
+
+/// What a search reads a name as.
+#[derive(Clone, Copy, PartialEq)]
+enum Shape {
+    /// `name(` in a file no reader parses.
+    Call,
+    /// A name spelled as a literal in code or config.
+    Literal,
+    /// A name too short for the literal forms, handed as a string to a
+    /// reflective accessor or used as an index key in code.
+    Argument,
+}
+
+/// The lines that quote one of `names` whole.
+fn quoted_pattern(names: &[&str]) -> String {
+    let all = names
+        .iter()
+        .map(|n| regex::escape(n))
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(r#"["'`]({all})["'`]"#)
+}
+
+/// A name a call in an unread file can carry: `name(` is selective enough to
+/// spare the length floor of the other searches.
+fn call_name(name: &str) -> bool {
+    name.chars().count() >= MIN_CALL_NAME && name.chars().all(word_char)
+}
+
+/// The calls whose string argument names a member, per language: where a name
+/// too short to search plain is read as one.
+fn accessors(language: &str) -> &'static [&'static str] {
+    match language {
+        "python" => &[
+            "getattr",
+            "hasattr",
+            "setattr",
+            "delattr",
+            "attrgetter",
+            "methodcaller",
+        ],
+        "go" => &["MethodByName", "FieldByName"],
+        "ruby" => &["send", "public_send", "__send__", "method", "respond_to?"],
+        "javascript" | "jsx" | "typescript" | "tsx" => {
+            &["Reflect.get", "Reflect.apply", "Reflect.has"]
+        }
+        "java" | "kotlin" => &[
+            "getMethod",
+            "getDeclaredMethod",
+            "getField",
+            "getDeclaredField",
+        ],
+        "php" => &[
+            "call_user_func",
+            "call_user_func_array",
+            "method_exists",
+            "property_exists",
+        ],
+        _ => &[],
+    }
+}
+
+/// Whether the quoted string opening at `from` is the key of an indexed call:
+/// `obj["name"](`.
+fn indexed_call(text: &str, from: usize, to: usize) -> bool {
+    text[..from - 1].trim_end().ends_with('[')
+        && text[to + 1..]
+            .trim_start()
+            .strip_prefix(']')
+            .is_some_and(|rest| rest.trim_start().starts_with('('))
+}
+
+/// Whether `before` ends inside the open parenthesis of a call to `accessor`.
+fn inside_call(before: &str, accessor: &str) -> bool {
+    before.match_indices(accessor).any(|(at, _)| {
+        let rest = before[at + accessor.len()..].trim_start();
+        !before[..at].chars().next_back().is_some_and(word_char)
+            && rest.strip_prefix('(').is_some_and(|args| {
+                let mut depth = 0i32;
+                args.chars().all(|c| {
+                    depth += i32::from(c == '(') - i32::from(c == ')');
+                    depth >= 0
+                })
+            })
+    })
+}
+
+/// Whether `text`, a line of code in `language`, hands `name` as a string to a
+/// reflective accessor or indexes a call by it.
+fn reflects(text: &str, name: &str, language: &str) -> bool {
+    quoted_spans(text).into_iter().any(|(from, to)| {
+        &text[from..to] == name
+            && (indexed_call(text, from, to)
+                || accessors(language)
+                    .iter()
+                    .any(|accessor| inside_call(&text[..from - 1], accessor)))
+    })
 }
 
 /// The heads of `name` a program can complete: up to each `_`.
@@ -478,7 +579,9 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
             // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
+            let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
+                || indexed
                 || matches!(lead, Some('(' | ','))
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
@@ -574,6 +677,42 @@ fn literal_pattern(names: &[&str]) -> String {
     forms.join("|")
 }
 
+/// The lines that call one of `names` — `name(` — where a program of any
+/// language would: the search leaves out the extensions a reader parses.
+fn call_pattern(names: &[&str]) -> String {
+    let all = names
+        .iter()
+        .map(|n| regex::escape(n))
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(r"(^|[^[:alnum:]_$])({all})[[:space:]]*[(]")
+}
+
+/// Whether `text` calls `name`: the name as a whole word, then `(`.
+fn called(text: &str, name: &str) -> bool {
+    text.match_indices(name).any(|(at, _)| {
+        !text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| word_char(c) || c == '$')
+            && text[at + name.len()..].trim_start().starts_with('(')
+    })
+}
+
+/// A file no reader parses: its name names no language, it is no data, and an
+/// extensionless one has no shebang. What it spells as a call is a use the
+/// engine cannot read.
+fn unread_file(state: &ScoredState, path: &str) -> bool {
+    crate::languages::get_language_for_file(path).is_none()
+        && !super::mentions::has_data_extension(path)
+        && (Path::new(path).extension().is_some()
+            || state
+                .run
+                .source()
+                .read_to_string(&state.root_dir.join(path))
+                .is_none_or(|text| crate::languages::sniff_language(path, &text).is_none()))
+}
+
 /// A definition's own lines: (file, literal name, lines). A literal inside its
 /// own span is the definition's text, never a use of it.
 pub(super) type OwnSpan = (String, String, (u32, u32));
@@ -581,14 +720,19 @@ pub(super) type OwnSpan = (String, String, (u32, u32));
 impl LiteralNames {
     /// The lines of the tree at the range's head that spell one of `names` as a
     /// literal, in any file — one the change edits and the definition's own
-    /// included — outside the definitions' own spans.
+    /// included — outside the definitions' own spans, and as a call in a file
+    /// no reader parses.
     pub(super) fn build(
         state: &ScoredState,
         diff_range: Option<&str>,
         names: &[&str],
         own: &[OwnSpan],
     ) -> Self {
-        let mut wanted: Vec<&str> = names.iter().copied().filter(|n| literal_name(n)).collect();
+        let mut wanted: Vec<&str> = names
+            .iter()
+            .copied()
+            .filter(|n| literal_name(n) || call_name(n))
+            .collect();
         wanted.sort_unstable();
         wanted.dedup();
         if wanted.is_empty() {
@@ -596,25 +740,39 @@ impl LiteralNames {
         }
         let head = super::head_of(diff_range);
         let source = state.run.source();
+        let mapped = crate::languages::EXTENSION_TO_LANGUAGE
+            .keys()
+            .map(|ext| format!(":(exclude,glob,icase)**/*{ext}"))
+            .collect::<Vec<_>>();
+        let unmapped = mapped.iter().map(String::as_str).collect::<Vec<_>>();
         let mut rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>> =
             rustc_hash::FxHashMap::default();
         for chunk in wanted.chunks(NAMES_PER_SEARCH) {
             if !state.run.check() {
                 break;
             }
-            let templates = format!(
-                r"[.]({})[(]",
-                chunk
-                    .iter()
-                    .map(|n| regex::escape(n))
-                    .collect::<Vec<_>>()
-                    .join("|")
-            );
-            let found = [
-                (literal_pattern(chunk), Vec::new()),
-                (templates, TEMPLATE_GLOBS.to_vec()),
-            ];
-            for (pattern, pathspec) in found {
+            let (long, short): (Vec<&str>, Vec<&str>) =
+                chunk.iter().copied().partition(|n| literal_name(n));
+            let callable: Vec<&str> = chunk.iter().copied().filter(|n| call_name(n)).collect();
+            let mut found = Vec::new();
+            if !callable.is_empty() {
+                found.push((call_pattern(&callable), unmapped.clone(), Shape::Call));
+            }
+            if !long.is_empty() {
+                let templates = format!(
+                    r"[.]({})[(]",
+                    long.iter()
+                        .map(|n| regex::escape(n))
+                        .collect::<Vec<_>>()
+                        .join("|")
+                );
+                found.push((literal_pattern(&long), Vec::new(), Shape::Literal));
+                found.push((templates, TEMPLATE_GLOBS.to_vec(), Shape::Literal));
+            }
+            if !short.is_empty() {
+                found.push((quoted_pattern(&short), Vec::new(), Shape::Argument));
+            }
+            for (pattern, pathspec, shape) in found {
                 let grepped = super::read_or_note(
                     state,
                     crate::grep::grep_lines_matching(
@@ -637,18 +795,32 @@ impl LiteralNames {
                     {
                         continue;
                     }
-                    let Some(reading) = Reading::of(path) else {
-                        continue;
+                    let reading = Reading::of(path);
+                    let language = crate::languages::get_language_for_file(path);
+                    let eligible = match shape {
+                        Shape::Call => unread_file(state, path),
+                        Shape::Literal => reading.is_some(),
+                        Shape::Argument => reading.is_some_and(|r| !r.values) && language.is_some(),
                     };
+                    if !eligible {
+                        continue;
+                    }
                     let inside = |name: &str| {
                         own.iter().any(|(file, own_name, (from, to))| {
                             file == path && own_name == name && (*from..=*to).contains(line)
                         })
                     };
-                    for name in chunk
-                        .iter()
-                        .filter(|n| !inside(n) && spells_literally(text, n, reading))
-                    {
+                    let hit = |name: &str| match (shape, reading, language) {
+                        (Shape::Call, ..) => call_name(name) && called(text, name),
+                        (Shape::Literal, Some(reading), _) => {
+                            literal_name(name) && spells_literally(text, name, reading)
+                        }
+                        (Shape::Argument, _, Some(language)) => {
+                            !literal_name(name) && reflects(text, name, language)
+                        }
+                        _ => false,
+                    };
+                    for name in chunk.iter().filter(|n| !inside(n) && hit(n)) {
                         let named = rows.entry((*name).to_string()).or_default();
                         if !named.iter().any(|(p, _)| p == path) {
                             named.push((path.clone(), *line));
