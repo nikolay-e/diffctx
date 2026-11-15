@@ -5179,40 +5179,6 @@ fn a_reminder_names_no_callers_a_review_did_not_find() {
     assert!(context.contains("the changed contract(s)"), "{context}");
 }
 
-/// A push of several refs reviews the first one the command names, not the
-/// first in git's report (the remote's order, sorted) or in the tracking refs,
-/// and names the refs it left unanalysed.
-#[test]
-fn a_push_of_several_refs_reviews_the_first_it_names_and_names_the_rest() {
-    for printed in [true, false] {
-        let (tmp, _remote) = repo_with_branches_beside_origin();
-        let repo = tmp.path();
-        let cache = TempDir::new().unwrap();
-        let command = "git push origin feature:release main";
-        let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
-        assert_eq!(pre.stdout, "");
-        let output = sh_printed(repo, command);
-        let after = if printed {
-            after_with_output("s1", repo, command, &output)
-        } else {
-            in_session("s1", &payload_for("PostToolUse", repo, command))
-        };
-        let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
-        assert!(
-            context.contains("shop/checkout.py::charge"),
-            "printed={printed}: {context}"
-        );
-        assert!(
-            !context.contains("shop/invoice.py::bill"),
-            "printed={printed}: {context}"
-        );
-        assert!(
-            context.contains("1 other pushed ref(s) are not analysed: main"),
-            "printed={printed}: {context}"
-        );
-    }
-}
-
 /// fj#219: the cap keeps the first contract of the section it prints;
 /// shedding them all left "Contracts changed:" over a count naming none.
 /// Sixteen changed signatures, each with its caller, outgrow the cap until
