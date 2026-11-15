@@ -2571,7 +2571,8 @@ enum Entered {
 
 /// A statement of `f` that enters the definition `name` of its own file:
 /// the module's `if __name__ == "__main__":` guard calling it, or a curried
-/// registration call naming it. Both are how it is run, not who calls it.
+/// registration call naming it. Both are how it is run, not who calls it;
+/// so is the entry of a name-keyed dict (`runs::dict_registration`).
 fn entered_by(f: &Fragment, name: &str) -> Option<Entered> {
     let first = f.content.lines().find(|l| !l.trim().is_empty())?.trim();
     let guard = first.starts_with("if __name__ ==")
@@ -3803,13 +3804,23 @@ pub fn build_impact(
         // The module's own guard and a registration call run the definition;
         // they are no callers of it (R3).
         let entered = symbol.and_then(|name| {
+            let name = base_symbol(name);
             file_of(core)
                 .iter()
-                .find_map(|f| entered_by(f, base_symbol(name)))
+                .find_map(|f| entered_by(f, name))
+                .or_else(|| {
+                    let (key, value) = state
+                        .all_fragments
+                        .iter()
+                        .find_map(|f| runs::dict_registration(f, core, name))?;
+                    Some(Entered::Registered(format!("\"{key}\": {value}")))
+                })
         });
         if let Some(name) = symbol.filter(|_| entered.is_some()) {
+            let name = base_symbol(name);
             sources.retain(|(f, _, _)| {
-                f.path() != core.path() || entered_by(f, base_symbol(name)).is_none()
+                (f.path() != core.path() || entered_by(f, name).is_none())
+                    && runs::dict_registration(f, core, name).is_none()
             });
         }
         let kept = sources.len();
