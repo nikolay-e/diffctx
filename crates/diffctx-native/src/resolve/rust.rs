@@ -206,6 +206,8 @@ struct CrateRec {
     root_file: String,
     root: usize,
     renames: Vec<(String, String)>,
+    /// The dependencies its manifest declares; none where no manifest was read.
+    dependencies: Option<Vec<String>>,
 }
 
 struct ModRec {
@@ -298,6 +300,7 @@ impl Index {
                     root_file: krate.root_file.clone(),
                     root: 0,
                     renames: krate.renames.clone(),
+                    dependencies: Some(krate.dependencies.clone()),
                 });
                 for module in &krate.modules {
                     let id = index.module_at(at, &module.path);
@@ -341,6 +344,7 @@ impl Index {
                         root_file: path.clone(),
                         root: 0,
                         renames: Vec::new(),
+                        dependencies: None,
                     });
                     let id = index.module_at(krate, "");
                     index.crates[krate].root = id;
@@ -391,6 +395,7 @@ impl Index {
                     root_file: root_file.clone(),
                     root: 0,
                     renames: Vec::new(),
+                    dependencies: None,
                 });
                 let root = self.module_at(at, "");
                 self.crates[at].root = root;
@@ -1087,6 +1092,15 @@ impl<'a> Engine<'a> {
         None
     }
 
+    /// Whether a head the repository does not hold may name a crate: the crate's
+    /// manifest declares a dependency of that name, or no manifest was read.
+    fn declared_crate(&self, site: &Site, head: &Name) -> bool {
+        let own = &self.ix.crates[self.ix.mods[site.module].krate];
+        own.dependencies
+            .as_ref()
+            .is_none_or(|declared| declared.iter().any(|name| name == head.as_str()))
+    }
+
     /// A path from `site`: the head, then each segment into what the one before
     /// it names.
     fn walk(&self, site: &Site, segs: &[Name], want: Want, depth: usize) -> Option<Ent> {
@@ -1595,9 +1609,12 @@ impl<'a> Engine<'a> {
             EvidenceKind::ModuleAttribute
         };
         if ent.is_none() && !bare {
-            // A path whose head the repository does not hold is a crate's.
+            // A path whose head the repository does not hold is a crate's when the
+            // manifest declares a crate of that name; any other head binds nothing
+            // this model can see (an `extern crate` alias, a macro's module).
             if let Some(head) = segs.first() {
-                if self.head(site, head, Want::Type, 0).is_none() {
+                if self.head(site, head, Want::Type, 0).is_none() && self.declared_crate(site, head)
+                {
                     return Outcome::Unresolved(UnresolvedReason::External);
                 }
             }

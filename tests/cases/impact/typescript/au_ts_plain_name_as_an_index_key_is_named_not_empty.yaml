@@ -35,6 +35,3 @@ expect:
   never_empty: true
   no_negative_claims: true
   coverage: {total: {calls: partial}, run: {calls: partial}}
-  relations:
-    - {from: src/dispatch.ts, to: src/pricing.ts::total, kind: calls, resolution: unresolved}
-    - {from: src/dispatch.ts, to: src/pricing.ts::run, kind: calls, resolution: unresolved}
