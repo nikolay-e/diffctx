@@ -2658,7 +2658,7 @@ fn no_code_reply(range: &str, withheld: usize) -> Result<Reply, Silence> {
     }
     let line = format!(
         "diffctx: {range} reaches nothing outside the diff in the files it read; not analysed: {} (what they name is unknown).",
-        crate::decide::Gap::Withheld { files: withheld }
+        crate::answer::v2::Gap::Withheld { files: withheld }
     );
     Ok(Reply {
         context: line.clone(),
