@@ -3613,7 +3613,9 @@ fn a_file_the_call_adds_to_an_untracked_directory_is_its_own() {
 }
 
 /// #668: the old paths of a renamed directory are as much the session's
-/// write as the new ones.
+/// write as the new ones. A byte-for-byte rename changes no contract
+/// (gh#593), so what the inspection says is the reader still naming an old
+/// path.
 #[test]
 fn the_old_paths_of_a_renamed_directory_are_its_own() {
     use std::time::{Duration, SystemTime};
@@ -3622,6 +3624,7 @@ fn the_old_paths_of_a_renamed_directory_are_its_own() {
     support::init_repo(repo);
     write(repo, "a/t/x.yaml", "k: 1\n");
     write(repo, "a/y.yaml", "k: 2\n");
+    write(repo, "deploy.sh", "kubectl apply -f a/t/x.yaml\n");
     commit_all(repo, "init");
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("b.jsonl");
@@ -3662,6 +3665,11 @@ fn the_old_paths_of_a_renamed_directory_are_its_own() {
         h.stdout
     );
     assert!(h.stdout.contains("2 changed file(s)"), "{}", h.stdout);
+    assert!(
+        h.stdout.contains("deploy.sh:1 names a/t/x.yaml"),
+        "{}",
+        h.stdout
+    );
 }
 
 /// #453: a definition the session added, called from the pending text of a
@@ -4806,13 +4814,14 @@ fn a_search_no_pending_file_could_answer_analyses_nothing() {
 
 /// #740: the names a pending change edits are read once per change: a second
 /// search of the same pending change, in another session, analyses nothing.
+/// The search runs for real, so it is one every runner has (no `rg`).
 #[cfg(unix)]
 #[test]
 fn the_names_a_pending_change_edits_are_read_once_per_change() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
-    let first = search_worked(repo, cache.path(), "s1", r"rg -n 'def total\(' shop/");
+    let first = search_worked(repo, cache.path(), "s1", "grep -rn 'def total(' shop/");
     assert!(
         context_of(&first.hook).contains("shop/checkout.py::charge"),
         "{}",
@@ -4823,7 +4832,7 @@ fn the_names_a_pending_change_edits_are_read_once_per_change() {
         "{}",
         first.phases
     );
-    let second = search_worked(repo, cache.path(), "s2", r"rg -n 'def total\(' shop/");
+    let second = search_worked(repo, cache.path(), "s2", "grep -rn 'def total(' shop/");
     assert!(
         context_of(&second.hook).contains("shop/checkout.py::charge"),
         "{}",
