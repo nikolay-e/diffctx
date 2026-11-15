@@ -14,14 +14,15 @@
 //!
 //! Not read: attribute values (`onclick="…"`), template expressions of an Astro
 //! file (`{…}`), and every other part of the markup. A name spelled only there
-//! is not found by the cell.
+//! is not found by the cell, except in a comment or a text node without `{`, which
+//! are prose and recorded as comments.
 
 use std::ops::Range;
 
 use super::LineStarts;
 use crate::facts::lang::typescript::{Dialect, extract_as, relative_of};
 use crate::facts::{
-    BlobFacts, Extractor, Fact, Import, ImportKind, Language, ModulePath, Scope, Star,
+    BlobFacts, Extractor, Fact, Import, ImportKind, Language, Lexical, ModulePath, Scope, Star,
 };
 use crate::snapshot::RunBudget;
 
@@ -64,6 +65,11 @@ fn page(language: Language, dialect: Dialect, text: &[u8], budget: &RunBudget) -
             default: None,
         }));
     }
+    blob.lexical.extend(
+        read.prose
+            .into_iter()
+            .map(|range| (range.start as u32..range.end as u32, Lexical::Comment)),
+    );
     blob.in_source_order();
     blob
 }
@@ -78,6 +84,8 @@ struct Page {
     /// The page with everything but code blanked, newlines kept.
     masked: Vec<u8>,
     loads: Vec<Load>,
+    /// The comments and the text nodes: words a reader reads, not code.
+    prose: Vec<Range<usize>>,
 }
 
 fn scan(text: &[u8], astro: bool) -> Page {
@@ -86,6 +94,7 @@ fn scan(text: &[u8], astro: bool) -> Page {
         .map(|byte| if *byte == b'\n' { b'\n' } else { b' ' })
         .collect();
     let mut loads = Vec::new();
+    let mut prose = Vec::new();
     let mut at = 0;
     if astro {
         if let Some(code) = frontmatter(text) {
@@ -93,13 +102,18 @@ fn scan(text: &[u8], astro: bool) -> Page {
             at = code.end;
         }
     }
+    let mut text_from = at;
     while at < text.len() {
         if text[at] != b'<' {
             at += 1;
             continue;
         }
         if text[at..].starts_with(b"<!--") {
-            at = find(text, at + 4, b"-->").map_or(text.len(), |end| end + 3);
+            text_node(text, text_from..at, astro, &mut prose);
+            let end = find(text, at + 4, b"-->").map_or(text.len(), |end| end + 3);
+            prose.push(at..end);
+            at = end;
+            text_from = at;
             continue;
         }
         let name: &[u8] = if opens(text, at, b"script") {
@@ -107,9 +121,17 @@ fn scan(text: &[u8], astro: bool) -> Page {
         } else if opens(text, at, b"style") {
             b"style"
         } else {
-            at += 1;
+            match text.get(at + 1) {
+                Some(next) if next.is_ascii_alphabetic() || matches!(next, b'/' | b'!') => {
+                    text_node(text, text_from..at, astro, &mut prose);
+                    at = tag_end(text, at).unwrap_or(at + 1);
+                    text_from = at;
+                }
+                _ => at += 1,
+            }
             continue;
         };
+        text_node(text, text_from..at, astro, &mut prose);
         let Some(open_end) = tag_end(text, at) else {
             break;
         };
@@ -148,8 +170,23 @@ fn scan(text: &[u8], astro: bool) -> Page {
         } else {
             find(text, close, b">").map_or(text.len(), |end| end + 1)
         };
+        text_from = at;
     }
-    Page { masked, loads }
+    text_node(text, text_from..text.len(), astro, &mut prose);
+    Page {
+        masked,
+        loads,
+        prose,
+    }
+}
+
+/// Records `run`, the text between two tags, as prose unless it may hold an
+/// expression a template evaluates (`{{ f() }}`, `{f()}`).
+fn text_node(text: &[u8], run: Range<usize>, astro: bool, prose: &mut Vec<Range<usize>>) {
+    if run.is_empty() || astro || text[run.clone()].contains(&b'{') {
+        return;
+    }
+    prose.push(run);
 }
 
 /// Whether the tag at `at` opens an element called `name`.

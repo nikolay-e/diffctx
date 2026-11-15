@@ -178,6 +178,14 @@ pub enum Gap {
     },
     Capped,
     NotTraced,
+    /// The definition is handed on as an argument, and what the callees do with it is
+    /// not followed: the callees the text names.
+    PassedAsValue {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        to: Vec<String>,
+    },
+    /// A language construct calls it without its name written.
+    ImplicitlyConstructed,
     /// A name defined in many files of a language without a binding model.
     Ambiguous {
         name: String,
@@ -286,6 +294,8 @@ impl std::fmt::Display for Gap {
             }
             Self::Capped => f.write_str("the answer cap shed it"),
             Self::NotTraced => f.write_str("a route no model traces can reach it"),
+            Self::PassedAsValue { to } => decide::write_passed_as_value(f, to),
+            Self::ImplicitlyConstructed => f.write_str("constructed implicitly"),
             Self::Ambiguous {
                 name,
                 definitions,
@@ -351,7 +361,7 @@ impl Gap {
             Self::Macros { .. } => 7,
             Self::NotModelled { .. } => 8,
             Self::Overridable { .. } => 9,
-            Self::NotTraced => 10,
+            Self::NotTraced | Self::PassedAsValue { .. } | Self::ImplicitlyConstructed => 10,
             Self::Ambiguous { .. } => 11,
             Self::BaseUnresolved { .. } => 12,
             Self::OutsideScope { .. } => 13,
@@ -399,6 +409,8 @@ impl Gap {
             },
             decide::Gap::Capped => Self::Capped,
             decide::Gap::NotTraced => Self::NotTraced,
+            decide::Gap::PassedAsValue { to } => Self::PassedAsValue { to: to.clone() },
+            decide::Gap::ImplicitlyConstructed => Self::ImplicitlyConstructed,
             decide::Gap::Templated { files } => Self::Templated { files: *files },
             decide::Gap::ContextUnbound { files } => Self::ContextUnbound { files: *files },
             decide::Gap::RenderedElsewhere { files } => Self::RenderedElsewhere { files: *files },

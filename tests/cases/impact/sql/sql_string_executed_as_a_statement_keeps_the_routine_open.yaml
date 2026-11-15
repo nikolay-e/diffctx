@@ -1,0 +1,40 @@
+name: sql_string_executed_as_a_statement_keeps_the_routine_open
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [sql, plpgsql, dynamic, coverage]
+repo:
+  initial_files:
+    db/V1__fn.sql: |
+      CREATE SCHEMA lib;
+
+      CREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RETURN 1;
+      END;
+      $$;
+    db/V2__dynamic.sql: |
+      CREATE FUNCTION lib.rebuild() RETURNS void
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        EXECUTE 'SELECT lib.refresh_book(NULL)';
+      END;
+      $$;
+  changed_files:
+    db/V1__fn.sql: |
+      CREATE SCHEMA lib;
+
+      CREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RETURN 2;
+      END;
+      $$;
+  commit_message: Change the routine body
+expect:
+  changed:
+  - db/V1__fn.sql::lib.refresh_book
+  coverage:
+    db/V1__fn.sql::lib.refresh_book:
+      calls: partial

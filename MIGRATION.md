@@ -90,6 +90,8 @@ first of the uses; `via` is `call`, `read`, `unbound` or `embedded`), `unpaired{
 `stopped{reasons}`, `outside_scope{files}`, `unaccounted{reason, files}`,
 `withheld{files}`, `untracked{files, name}`, `dispatched{via}`,
 `macros{files, what}`, `capped`, `not_traced`,
+`passed_as_value{to}` (the callees an argument is handed to, when named),
+`implicitly_constructed`,
 `ambiguous{name, definitions, language}`, `not_modelled{language}`,
 `overridable{via}`, `templated{files}`, `context_unbound{files}`,
 `rendered_elsewhere{files}`, `external_source{pointers}`, `source_flag{files}`,

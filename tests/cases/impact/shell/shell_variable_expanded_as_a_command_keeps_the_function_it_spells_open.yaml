@@ -1,0 +1,30 @@
+name: shell_variable_expanded_as_a_command_keeps_the_function_it_spells_open
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, strings, coverage]
+repo:
+  initial_files:
+    scripts/lib.sh: |
+      login() {
+        echo ticket
+      }
+    scripts/run.sh: |
+      . ./lib.sh
+      login
+    scripts/dynamic.sh: |
+      . ./lib.sh
+      action="login"
+      $action
+  changed_files:
+    scripts/lib.sh: |
+      login() {
+        echo ticket2
+      }
+  commit_message: Change login
+expect:
+  changed:
+  - scripts/lib.sh::login
+  coverage:
+    scripts/lib.sh::login:
+      calls: partial
