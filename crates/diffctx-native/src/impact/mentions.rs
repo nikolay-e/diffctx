@@ -802,6 +802,29 @@ pub(super) fn named_by_path(
             }
         }
     }
+    // A build names its Dockerfile by its context (`build: ./svc`,
+    // `docker build ./svc`), which no text search for the Dockerfile's path sees.
+    for site in crate::keytable::build_sites(&state.all_fragments, Some(state.root_dir.as_path())) {
+        if site.path == site.dockerfile
+            || !targets.contains(&site.dockerfile)
+            || written.contains(&(site.path.as_str(), site.text.as_str()))
+            || candidates.iter().any(|r| {
+                r.path == site.path && r.line as usize == site.line && r.target == site.dockerfile
+            })
+        {
+            continue;
+        }
+        let class = class_of(&state.root_dir, &source, &site.path, &site.text, None);
+        if class.reads() {
+            candidates.push(PathReference {
+                path: site.path,
+                line: site.line as u32,
+                target: site.dockerfile,
+                key: None,
+                class,
+            });
+        }
+    }
     // A generated file is its source's output: when the source names the
     // file too, the source is the consumer to open (#110).
     let spelled: FxHashSet<String> = candidates.iter().map(|r| r.path.clone()).collect();
