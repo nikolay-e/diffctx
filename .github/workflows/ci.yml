@@ -421,6 +421,13 @@ jobs:
           - {os: windows-latest, part: "rest:1/2", label: "1/2"}
           - {os: windows-latest, part: "rest:2/2", label: "2/2"}
           - {os: windows-latest, part: corpus, label: corpus}
+        # A stream check (a PR into ci-base/*) leaves macOS to the head check
+        # (ci/head) and to main: the account runs five macOS jobs at once,
+        # and seven per stream run queued every stream behind them.
+        exclude: >-
+          ${{ fromJSON(
+            (startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
+            && '[{"os":"macos-latest"}]' || '[]') }}
     runs-on: ${{ matrix.os }}
     # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
@@ -474,6 +481,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.11', '3.12', '3.13', '3.14']
+        # A stream check (a PR into ci-base/*) leaves macOS to the head check
+        # (ci/head) and to main: the account runs five macOS jobs at once,
+        # and seven per stream run queued every stream behind them.
+        exclude: >-
+          ${{ fromJSON(
+            (startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
+            && '[{"os":"macos-latest"}]' || '[]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
         include:
