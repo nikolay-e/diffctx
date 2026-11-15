@@ -902,12 +902,7 @@ fn selected_by_glob(state: &ScoredState, targets: &[String]) -> Vec<(String, u32
             .filter(|p| *p == entry || p.starts_with(&under))
             .all(|p| added.contains(p.as_str()))
     };
-    let (deadline, cancel) = state.run.io_limits();
-    let budget = crate::snapshot::RunBudget {
-        deadline,
-        cancel: Some(cancel),
-        read_fault: None,
-    };
+    let budget = super::keys::read_budget(state);
     let mut found = Vec::new();
     let selectors = tree.iter().filter(|p| crate::facts::config::may_select(p));
     for path in state.run.bounded(selectors) {
