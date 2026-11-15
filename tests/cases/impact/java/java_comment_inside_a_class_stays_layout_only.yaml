@@ -1,0 +1,42 @@
+name: java_comment_inside_a_class_stays_layout_only
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, layout, decoys]
+repo:
+  initial_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+
+          private Keys() {
+          }
+      }
+    src/main/java/app/UserView.java: |
+      package app;
+
+      public class UserView {
+          public String key() {
+              return Keys.USER;
+          }
+      }
+  changed_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+
+          private Keys() {
+          }
+
+          // New keys go above the constructor.
+      }
+  commit_message: "keys: say where new keys go"
+expect:
+  changed: [src/main/java/app/Keys.java::Keys]
+  decoys: {Keys: [src/main/java/app/UserView.java]}
