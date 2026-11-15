@@ -466,8 +466,10 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap
                 common += occurrences;
                 continue;
             }
-            // The call through a trait is the `Dispatched` gap's to name.
-            Hedge::Implicit(Implicit::Override) if dispatched => continue,
+            // The call through a trait is the `Dispatched` gap's to name: a
+            // `Display::fmt` that `format!` reaches is that one route, not a
+            // second "constructed implicitly" beside it.
+            Hedge::Implicit(Implicit::Override | Implicit::Protocol) if dispatched => continue,
             Hedge::Unread { loss, .. } => match effect_of(loss) {
                 Effect::File(reason) | Effect::Subtree(reason, _) => {
                     *lost.entry(reason).or_default() += 1;
