@@ -138,8 +138,9 @@ pub(super) fn curried_registrations(f: &Fragment) -> impl Iterator<Item = (&str,
 }
 
 /// The entries of name-keyed dicts in `f` (`{"log_vital": domain.log_vital}`), a
-/// registry a dispatcher reads by key: each key and the name its value spells.
-pub(super) fn dict_registrations(f: &Fragment) -> impl Iterator<Item = (&str, &str)> {
+/// registry a dispatcher reads by key: each key, the name its value spells and
+/// the line the value sits on.
+pub(super) fn dict_registrations(f: &Fragment) -> impl Iterator<Item = (&str, &str, u32)> {
     static ENTRY: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(
             r#"["']([\w.:/-]{3,})["']\s*:\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*[,}]"#,
@@ -149,22 +150,50 @@ pub(super) fn dict_registrations(f: &Fragment) -> impl Iterator<Item = (&str, &s
     let python = f.path().ends_with(".py");
     ENTRY
         .captures_iter(if python { &f.content } else { "" })
-        .filter_map(|c| Some((c.get(1)?.as_str(), c.get(2)?.as_str())))
+        .filter_map(move |c| {
+            let value = c.get(2)?;
+            let line = f.start_line() + f.content[..value.start()].matches('\n').count() as u32;
+            Some((c.get(1)?.as_str(), value.as_str(), line))
+        })
 }
 
-/// The dict entry of `f` that registers `name`, the definition `target`: a value
-/// of its own file that names it, or one that names it through its module
-/// (`domain.log_vital` for `srv/domain.py`).
-pub(super) fn dict_registration<'f>(
+/// The dict entries of `f` that register `name`, the definition `target`: a
+/// value that names it through its module (`domain.log_vital` for
+/// `srv/domain.py`) or by name in its own file, on a line where the resolver
+/// landed a use of it. A parameter or local of the same name
+/// (`def payload(user): return {"user": user}`) is no use of it and registers
+/// nothing.
+pub(super) fn dict_registrations_of<'f>(
+    state: &ScoredState,
+    cells: &Cells,
     f: &'f Fragment,
     target: &Fragment,
     name: &str,
-) -> Option<(&'f str, &'f str)> {
-    let stem = Path::new(target.path()).file_stem()?.to_str()?;
-    dict_registrations(f).find(|(_, value)| match value.rsplit_once('.') {
-        Some((module, last)) => last == name && module.rsplit('.').next() == Some(stem),
-        None => *value == name && f.path() == target.path(),
-    })
+) -> Vec<(&'f str, &'f str, u32)> {
+    let stem = Path::new(target.path())
+        .file_stem()
+        .and_then(|s| s.to_str());
+    let named: Vec<(&str, &str, u32)> = dict_registrations(f)
+        .filter(|(_, value, _)| match value.rsplit_once('.') {
+            Some((module, last)) => last == name && module.rsplit('.').next() == stem,
+            None => *value == name && f.path() == target.path(),
+        })
+        .collect();
+    if named.is_empty() {
+        return named;
+    }
+    let (shown, user) = (rel(state, target.path()), rel(state, f.path()));
+    let landed: Vec<u32> = cells.of(&shown).map_or_else(Vec::new, |cell| {
+        cell.users(&shown, name, (target.start_line(), target.end_line()))
+            .into_iter()
+            .filter(|(file, _)| *file == user)
+            .map(|(_, line)| line)
+            .collect()
+    });
+    named
+        .into_iter()
+        .filter(|(_, _, line)| landed.contains(line))
+        .collect()
 }
 
 /// The Rust binaries in the analysed fragments, keyed by their entry file
@@ -808,12 +837,14 @@ fn framework_runs(
     // A handler a name-keyed dict registers is spelled by its key beside a
     // function the registry's file defines (`call_tool("log_vital", …)`).
     for f in &state.all_fragments {
-        for (key, value) in dict_registrations(f) {
+        for (key, value, _) in dict_registrations(f) {
             let name = value.rsplit('.').next().unwrap_or(value);
             let Some(target) = state.all_fragments.iter().find(|t| {
                 t.kind.is_definition_kind()
                     && t.symbol_name.as_deref().map(base_symbol) == Some(name)
-                    && dict_registration(f, t, name).is_some()
+                    && dict_registrations_of(state, cells, f, t, name)
+                        .iter()
+                        .any(|(registered, _, _)| *registered == key)
             }) else {
                 continue;
             };
