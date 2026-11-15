@@ -488,6 +488,10 @@ impl<'a> Reader<'a> {
         } else {
             d.name.as_str()
         };
+        // A parse error can leave a declaration with no name; the search below would never advance on it.
+        if name.is_empty() {
+            return self.span(d.header.start..d.header.start);
+        }
         let mut found: Option<usize> = None;
         let mut from = 0;
         while let Some(at) = header[from..limit.max(from)].find(name) {

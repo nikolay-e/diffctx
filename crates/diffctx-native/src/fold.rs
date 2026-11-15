@@ -202,6 +202,10 @@ fn parameters(signature: &str, name: &str) -> Option<(String, Vec<Param>, String
 
 /// The `(` that opens the parameters of the definition called `name`.
 fn opening_paren(signature: &str, name: &str) -> Option<usize> {
+    // A parse error can leave a declaration with no name; the search below would never advance on it.
+    if name.is_empty() {
+        return None;
+    }
     let word = |c: char| c.is_alphanumeric() || c == '_';
     let mut from = 0;
     while let Some(found) = signature[from..].find(name) {
