@@ -3,11 +3,12 @@
 //! neighbours are not identifier bytes of the file's language; the comment and
 //! string ranges the extractor recorded say what it is.
 
+use std::borrow::Cow;
 use std::cmp::max;
 use std::ops::Range;
 
 use super::{Class, Occurrence};
-use crate::facts::{FileFacts, Language, Lexical};
+use crate::facts::{BlobFacts, FileFacts, Language, Lexical};
 
 /// Whether the language binds a name regardless of its case. Where unsure, it
 /// does: a wider scan only adds candidates.
@@ -61,7 +62,7 @@ pub struct Scan {
 /// Where a spelling stands, widest last: a spelling reaching code is code, one
 /// reaching a string and no code is a mention.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Standing {
+pub(super) enum Standing {
     Comment,
     Mention,
     Code,
@@ -73,6 +74,13 @@ fn standing(lexical: Option<Lexical>) -> Standing {
         Some(Lexical::String) => Standing::Mention,
         Some(Lexical::Comment) => Standing::Comment,
     }
+}
+
+/// Where the spelling at `bytes` stands by the comment and string ranges of `blob`.
+pub(super) fn standing_at(blob: &BlobFacts, bytes: &Range<u32>) -> Standing {
+    let first = standing(blob.lexical_at(bytes.start));
+    let last = standing(blob.lexical_at(bytes.end - 1));
+    max(first, last)
 }
 
 /// Whether the language reads `$` as part of an identifier.
@@ -144,6 +152,29 @@ fn spellings(text: &[u8], needle: &[u8], language: Language) -> Vec<Range<u32>> 
     found
 }
 
+/// The text a name is looked for in: folded where the language binds regardless of case.
+fn haystack(text: &[u8], case: Case) -> Cow<'_, [u8]> {
+    match case {
+        Case::Sensitive => Cow::Borrowed(text),
+        Case::Insensitive => Cow::Owned(text.to_ascii_lowercase()),
+    }
+}
+
+fn spellings_of(haystack: &[u8], name: &str, language: Language, case: Case) -> Vec<Range<u32>> {
+    let needle = match case {
+        Case::Sensitive => Cow::Borrowed(name.as_bytes()),
+        Case::Insensitive => Cow::Owned(name.as_bytes().to_ascii_lowercase()),
+    };
+    spellings(haystack, &needle, language)
+}
+
+/// The text matches of `name` in `text`: what one occurrence is, before anything
+/// says where it stands.
+#[cfg(debug_assertions)]
+pub(super) fn matches(text: &[u8], name: &str, language: Language, case: Case) -> Vec<Range<u32>> {
+    spellings_of(&haystack(text, case), name, language, case)
+}
+
 /// The 1-based line of each of `starts`, which ascend.
 fn lines_of(text: &[u8], starts: &[u32]) -> Vec<u32> {
     let breaks: Vec<u32> = text
@@ -170,21 +201,10 @@ pub fn scan(file: &FileFacts, text: &[u8], names: &[&str], case: Case) -> Scan {
         };
     }
     let lost = !file.blob.losses.is_empty();
-    let folded;
-    let haystack: &[u8] = match case {
-        Case::Sensitive => text,
-        Case::Insensitive => {
-            folded = text.to_ascii_lowercase();
-            &folded
-        }
-    };
+    let haystack = haystack(text, case);
     let mut found: Vec<Range<u32>> = Vec::new();
     for name in names {
-        let needle = match case {
-            Case::Sensitive => name.as_bytes().to_vec(),
-            Case::Insensitive => name.as_bytes().to_ascii_lowercase(),
-        };
-        found.extend(spellings(haystack, &needle, language));
+        found.extend(spellings_of(&haystack, name, language, case));
     }
     found.sort_by_key(|range| (range.start, range.end));
     found.dedup();
@@ -198,9 +218,7 @@ pub fn scan(file: &FileFacts, text: &[u8], names: &[&str], case: Case) -> Scan {
         let class = if lost {
             Class::Code
         } else {
-            let first = standing(file.blob.lexical_at(bytes.start));
-            let last = standing(file.blob.lexical_at(bytes.end - 1));
-            match max(first, last) {
+            match standing_at(&file.blob, &bytes) {
                 Standing::Comment => continue,
                 Standing::Mention => Class::Mention,
                 Standing::Code => Class::Code,

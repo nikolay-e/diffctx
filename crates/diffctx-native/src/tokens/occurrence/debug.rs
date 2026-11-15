@@ -67,6 +67,9 @@ pub struct Shadow<'a> {
     /// and unused (only asked for when the lines are written).
     pub held: usize,
     pub nested: bool,
+    /// Where the account's reach was cut, when the identity is checked on this path.
+    #[cfg(debug_assertions)]
+    pub identity: Option<super::identity::Bounds<'a>>,
 }
 
 /// What the accounting of one definition found.
@@ -97,6 +100,8 @@ struct Found {
     quoted: usize,
     files: HashSet<RepoPath>,
     elsewhere: HashSet<(RepoPath, u32)>,
+    #[cfg(debug_assertions)]
+    identity: Option<super::identity::Ledger>,
 }
 
 /// Whether `bytes` of `text` is a whole quoted string.
@@ -146,6 +151,11 @@ impl Shadow<'_> {
             .collect();
         let first = once(None);
         let mut found = Found::default();
+        #[cfg(debug_assertions)]
+        {
+            found.identity = (self.identity.as_ref())
+                .and_then(|_| super::identity::Ledger::open(&def, &side_text));
+        }
         let names: Vec<Name> = self
             .names
             .iter()
@@ -154,9 +164,27 @@ impl Shadow<'_> {
         let (_, alias_bound) = close_aliases(&names, |name, scope| {
             self.account_name(&mut found, definition, name, scope)
         });
+        #[cfg(debug_assertions)]
+        let matched = found.entries.len();
         found.entries.extend(self.unnamed(definition));
         let embedded = self.embedded.get_or_init(|| self.embedded_uses(definition));
         found.entries.extend_from_slice(embedded);
+        #[cfg(debug_assertions)]
+        if let (Some(mut ledger), Some(bounds)) = (found.identity.take(), &self.identity) {
+            let group = self.tokens.group(self.family.group());
+            let listing: Vec<RepoPath> = (self.cache.listing(&self.ctx.head).ok())
+                .map(|listing| listing.entries.iter().map(|e| e.path.clone()).collect())
+                .unwrap_or_default();
+            ledger.universe(&super::identity::Universe {
+                group: group.files(),
+                outside: self.outside,
+                listing,
+                read: &|path: &RepoPath| self.ctx.head.read(path).ok().flatten(),
+                bounds,
+                gaps: self.gaps,
+            });
+            ledger.finish(found.entries.len() - matched);
+        }
         let admits_calls = admitted(definition.kind).contains(&Relation::Calls);
         let consumed_by_reading =
             definition.kind == DefKind::Object && self.family == Family::Config;
@@ -290,6 +318,10 @@ impl Shadow<'_> {
         scope: Option<&AliasScope>,
     ) -> Vec<Alias> {
         let mut aliases = Vec::new();
+        #[cfg(debug_assertions)]
+        if let Some(ledger) = &mut found.identity {
+            ledger.name(name, scope);
+        }
         for file in self.spelling(name) {
             if matches!(scope, Some(AliasScope::File(only)) if *only != file) {
                 continue;
@@ -297,6 +329,11 @@ impl Shadow<'_> {
             found.files.insert(file.clone());
             let lost = (self.lost)(&file);
             let Some((facts, text)) = self.read(&file).filter(|_| lost.is_none()) else {
+                #[cfg(debug_assertions)]
+                if let Some(ledger) = &mut found.identity {
+                    let text = self.ctx.head.read(&file).ok().flatten();
+                    ledger.unread(name, &file, text.as_deref());
+                }
                 let loss = lost.unwrap_or_else(|| self.unread(&file));
                 found.unread.entry(file).or_insert(loss);
                 continue;
@@ -306,7 +343,17 @@ impl Shadow<'_> {
                 && !(self.ctx.workspace).may_reference(file.as_str(), definition.file.as_str());
             found.mentions += done.mentions;
             found.quoted += done.quoted;
+            #[cfg(debug_assertions)]
+            let (first, mentions, whole) = (
+                found.entries.len(),
+                done.mentions,
+                !(done.lost && done.entries.is_empty()),
+            );
             if done.lost && done.entries.is_empty() {
+                #[cfg(debug_assertions)]
+                if let Some(ledger) = &mut found.identity {
+                    ledger.unread(name, &file, Some(&text));
+                }
                 let loss =
                     (facts.losses().into_iter().next()).unwrap_or_else(|| self.unread(&file));
                 found.unread.entry(file).or_insert(loss);
@@ -350,6 +397,11 @@ impl Shadow<'_> {
                         .insert((entry.occurrence.file.clone(), entry.occurrence.line));
                 }
                 found.entries.push(entry);
+            }
+            #[cfg(debug_assertions)]
+            if let Some(ledger) = found.identity.as_mut().filter(|_| whole) {
+                // Comments are no record yet: the check names each as unrecorded.
+                ledger.file(name, facts, &text, &found.entries[first..], mentions, 0);
             }
         }
         aliases
