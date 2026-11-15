@@ -1,4 +1,4 @@
-name: k4b_pytest_testpaths_scope_the_declared_check_modules
+name: k4b_pytest_python_files_declare_check_modules_wherever_they_sit
 mode: impact
 source: synthetic
 issue_state: open
@@ -64,7 +64,7 @@ expect:
   exact: false
   tested_by:
     pkg/ua.py: checks/check_a.py
+    pkg/ub.py: tools/check_b.py
   not_untested:
   - a
-  untested:
   - b

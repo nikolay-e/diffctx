@@ -1,0 +1,42 @@
+name: mocha_spec_does_not_narrow_which_files_are_tests
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- mocha-config
+repo:
+  initial_files:
+    .mocharc.json: |
+      {"spec": ["qa/**/*.check.ts"]}
+    qa/page.check.ts: |
+      import { page } from "../src/page";
+
+      describe("page", () => { if (page() !== 2) throw new Error("x"); });
+    src/core.ts: |
+      export function widget(x: number): number {
+        return x + 1;
+      }
+    src/page.ts: |
+      import { widget } from "./core";
+
+      export function page() {
+        return widget(1);
+      }
+    scripts/widget.spec.ts: |
+      import { page } from "../src/page";
+
+      describe("widget", () => { if (page() !== 2) throw new Error("y"); });
+  changed_files:
+    src/core.ts: |
+      export function widget(x: number): number {
+        return x + 2;
+      }
+  commit_message: change widget
+expect:
+  changed:
+  - src/core.ts::widget
+  exact: false
+  tested_by:
+    src/page.ts: scripts/widget.spec.ts
