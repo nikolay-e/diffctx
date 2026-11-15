@@ -100,10 +100,10 @@ def test_hand_written_manifests_survive_the_bot_bumps(gitops_repo, budget):
 def test_an_unavoidable_omission_is_disclosed_on_every_structured_surface(gitops_repo):
     result = diffctx.build_diff_context(root_dir=gitops_repo.path, diff_range="HEAD~2", budget_tokens=300)
     represented = {f["path"] for f in result.get("fragments") or []}
-    omitted = sorted(set(result["changed_files"]) - represented)
+    omitted = sorted(set(result["inventory"]["changed"]["items"]) - represented)
     assert omitted, "a 300-token budget over 13 changed files must omit something"
     inventory = {c["path"]: c for c in result["changes"]}
-    assert sorted(inventory) == sorted(result["changed_files"]), "every changed file has an inventory row"
+    assert sorted(inventory) == sorted(result["inventory"]["changed"]["items"]), "every changed file has an inventory row"
     assert sorted(p for p, c in inventory.items() if not c["represented"]) == omitted
     assert {inventory[p]["class"] for p in BUMP_FILES} == {"mechanical"}
     assert inventory["infra/alerts.yaml"]["class"] == "content"
@@ -119,7 +119,7 @@ def test_an_unavoidable_omission_is_disclosed_on_every_structured_surface(gitops
 
 def test_a_multi_commit_range_is_not_titled_by_the_last_commit(gitops_repo):
     result = diffctx.build_diff_context(root_dir=gitops_repo.path, diff_range="HEAD~2")
-    subjects = result.get("commit_messages") or []
+    subjects = result["range"].get("messages") or []
     assert subjects == [BOT_SUBJECT, HUMAN_SUBJECT], subjects
     rendered = diffctx.to_markdown(result)
     assert HUMAN_SUBJECT in rendered
@@ -139,11 +139,7 @@ def test_a_reformatted_file_loses_its_witness_before_a_rewritten_one(tmp_path):
     assert classes["src/a_fmt.py"] == "layout"
     assert classes["src/z_calc.py"] in ("content", "unknown")
     full = writer.tree_to_string(result, "md")
-    selection = result["provenance"]["selection"]
-    tight = {
-        **result,
-        "provenance": {**result["provenance"], "selection": {**selection, "budget_tokens": count_tokens(full) - 20}},
-    }
+    tight = {**result, "fit": {**result["fit"], "cap": count_tokens(full) - 20}}
     fitted, _ = fit_artifact(tight, "md")
 
     def text_of(tree, path):

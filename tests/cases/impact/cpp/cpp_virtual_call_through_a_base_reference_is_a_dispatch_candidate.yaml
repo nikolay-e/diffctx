@@ -1,0 +1,47 @@
+name: cpp_virtual_call_through_a_base_reference_is_a_dispatch_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- virtual
+- dispatch
+repo:
+  initial_files:
+    src/shape.hpp: |
+      class Shape {
+      public:
+          virtual double area() const = 0;
+      };
+    src/circle.hpp: |
+      #include "shape.hpp"
+
+      class Circle : public Shape {
+      public:
+          double area() const override { return 3.0; }
+      };
+    src/total.cpp: |
+      #include "shape.hpp"
+
+      double total(const Shape &s)
+      {
+          return s.area();
+      }
+  changed_files:
+    src/circle.hpp: |
+      #include "shape.hpp"
+
+      class Circle : public Shape {
+      public:
+          double area() const override { return 3.14; }
+      };
+  commit_message: Change virtual call through a base reference is a dispatch candidate
+expect:
+  changed:
+  - src/circle.hpp::Circle.area
+  relations:
+  - from: src/total.cpp::total
+    to: src/circle.hpp::Circle.area
+    kind: calls
+    resolution: candidate
+    site: 5

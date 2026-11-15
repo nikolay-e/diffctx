@@ -1,0 +1,33 @@
+name: py_fallback_of_an_outside_import_keeps_its_users
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, try-except, fallback]
+repo:
+  initial_files:
+    toolkit/__init__.py: ""
+    toolkit/_compat.py: |
+      try:
+          import fastjson as codec
+      except ImportError:
+          codec = None
+    toolkit/_decoders.py: |
+      from ._compat import codec
+
+
+      def load(text):
+          if codec is None:
+              return text
+          return codec.loads(text)
+  changed_files:
+    toolkit/_compat.py: |
+      try:
+          import fastjson as codec
+      except ImportError:
+          codec = False
+  commit_message: "compat: the missing codec is False"
+expect:
+  changed:
+  - toolkit/_compat.py::codec
+  callers:
+    codec: [toolkit/_decoders.py::load]

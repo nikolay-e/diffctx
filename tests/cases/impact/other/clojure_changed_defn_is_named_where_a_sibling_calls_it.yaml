@@ -1,0 +1,28 @@
+name: clojure_changed_defn_is_named_where_a_sibling_calls_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- clojure
+- false-absence
+repo:
+  initial_files:
+    src/acme/core.clj: |
+      (ns acme.core)
+      (defn shout-it [s]
+        s)
+    src/acme/web.clj: |
+      (ns acme.web (:require [acme.core :as core]))
+      (core/shout-it "x")
+  changed_files:
+    src/acme/core.clj: |
+      (ns acme.core)
+      (defn shout-it [s]
+        (str s "!"))
+  commit_message: Change clojure shout-it body
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [src/acme/web.clj]

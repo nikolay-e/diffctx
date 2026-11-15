@@ -1,0 +1,100 @@
+name: jv1_inner_class_and_fully_qualified_receivers_resolve_like_imports
+mode: impact
+source: synthetic
+tags: [java, jv1, nested-type, qualified-type, receiver, inner-class]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public class Inner {
+              public int innerM() {
+                  return 1;
+              }
+          }
+
+          public static class SNested {
+              public int nestedM() {
+                  return 1;
+              }
+          }
+      }
+    src/main/java/com/acme/lib/W.java: |
+      package com.acme.lib;
+
+      public class W {
+          public int run() {
+              return 1;
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Lib;
+
+      public class Use {
+          public int inner() {
+              Lib outer = new Lib();
+              Lib.Inner in = outer.new Inner();
+              return in.innerM();
+          }
+
+          public int nestedByName() {
+              com.acme.lib.Lib.SNested s = new com.acme.lib.Lib.SNested();
+              return s.nestedM();
+          }
+
+          public int topLevelByName() {
+              com.acme.lib.W w = new com.acme.lib.W();
+              return w.run();
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public class Inner {
+              public int innerM() {
+                  return 2;
+              }
+          }
+
+          public static class SNested {
+              public int nestedM() {
+                  return 2;
+              }
+          }
+      }
+    src/main/java/com/acme/lib/W.java: |
+      package com.acme.lib;
+
+      public class W {
+          public int run() {
+              return 2;
+          }
+      }
+  commit_message: Change methods called through inner and fully qualified receiver types
+expect:
+  changed:
+  - src/main/java/com/acme/lib/Lib.java::Lib.Inner.innerM
+  - src/main/java/com/acme/lib/Lib.java::Lib.SNested.nestedM
+  - src/main/java/com/acme/lib/W.java::W.run
+  relations:
+  - from: src/main/java/com/acme/app/Use.java::Use.inner
+    to: src/main/java/com/acme/lib/Lib.java::Lib.Inner.innerM
+    kind: calls
+    resolution: resolved
+    site: 9
+  - from: src/main/java/com/acme/app/Use.java::Use.nestedByName
+    to: src/main/java/com/acme/lib/Lib.java::Lib.SNested.nestedM
+    kind: calls
+    resolution: resolved
+    site: 14
+  - from: src/main/java/com/acme/app/Use.java::Use.topLevelByName
+    to: src/main/java/com/acme/lib/W.java::W.run
+    kind: calls
+    resolution: resolved
+    site: 19
+  exact: true

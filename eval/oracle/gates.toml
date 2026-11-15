@@ -1,0 +1,41 @@
+# Every threshold the oracle's verdict reads. `report.py` prints one verdict line per entry and no threshold lives in
+# code; a test edits a copy of this file and watches the verdict flip.
+#
+# `<name>_max` is an inclusive ceiling, `<name>_min` an inclusive floor, `<name>_below` an exclusive ceiling, `true`
+# a condition the run must meet, and "read" a row set with no limit: each row is read and classified.
+
+[safety]
+incomplete_complete_max = 0        # an answer complete for a definition and relation that lists no truth site of it
+not_ours_by_place_max = 0          # a truth site the engine ruled `not_ours` or `declaration`
+false_fold_max = 0                 # a folded row the truth says the change affects
+silent_loss = "read"               # a changed definition with no entry, fold row or omitted record
+
+[measurability]
+# A cell is measured when the 95 % interval of its paired difference is at most this wide, and a measured cell
+# fails when the lower bound of the difference falls under the floor. Any other cell is judged on safety rows alone.
+interval_width_max = 0.20
+lower_bound_min = -0.05
+
+[precise]
+# A cell declared precise holds all of these, or its declaration is untrue: its head numbers meet the floors on a fresh
+# seed, it is measured, the path it replaced is deleted, and the evidence is not thin (W7-D, Revision 14.5: at least 30
+# true relations in every measured row of the cell and 10 decoys, at T13's thresholds, every error read).
+precision_min = 0.95
+recall_min = 0.90
+true_relations_min = 30
+decoys_min = 10
+fresh_seed = true
+measured_cell = true
+old_path_deleted = true
+
+[declared]
+# T16: every cell is `precise`, `heuristic` or `none`, and each declared state is true (`cellstate.py`).
+every_state_true = true
+
+[ac5]
+head_not_below_recomputed_base = true
+noise_below = 0.893
+
+[speed]
+impact_p95_seconds_max = 5.0
+hook_partial_deadline_share_max = 0

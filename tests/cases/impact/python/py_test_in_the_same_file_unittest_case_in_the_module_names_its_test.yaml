@@ -1,0 +1,62 @@
+name: py_test_in_the_same_file_unittest_case_in_the_module_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- test-in-the-same-file
+- unittest
+repo:
+  initial_files:
+    shop/price.py: |
+      import unittest
+
+
+      def total(items):
+          return sum(items)
+
+
+      def tax(amount):
+          return amount * 2
+
+
+      class TotalTest(unittest.TestCase):
+          def test_total(self):
+              self.assertEqual(total([1, 2]), 3)
+
+
+      if __name__ == "__main__":
+          unittest.main()
+  changed_files:
+    shop/price.py: |
+      import unittest
+
+
+      def total(items):
+          return sum(items) + 0
+
+
+      def tax(amount):
+          return amount * 3
+
+
+      class TotalTest(unittest.TestCase):
+          def test_total(self):
+              self.assertEqual(total([1, 2]), 3)
+
+
+      if __name__ == "__main__":
+          unittest.main()
+  commit_message: Touch both functions
+expect:
+  changed:
+  - shop/price.py::total
+  - shop/price.py::tax
+  exact: false
+  tested_by:
+    shop/price.py::test_total: shop/price.py
+  not_untested:
+  - total
+  untested:
+  - tax

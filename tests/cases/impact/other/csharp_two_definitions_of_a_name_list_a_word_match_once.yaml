@@ -1,0 +1,53 @@
+name: csharp_two_definitions_of_a_name_list_a_word_match_once
+mode: impact
+source: fj#171
+issue_state: closed
+tags:
+- tier3
+- csharp
+- word-match
+repo:
+  initial_files:
+    src/Pool.cs: |
+      namespace App;
+
+      public class Pool
+      {
+          public int Drop() => 1;
+      }
+    src/Cache.cs: |
+      namespace App;
+
+      public class Cache
+      {
+          public int Drop() => 1;
+      }
+    src/Program.cs: |
+      namespace App;
+
+      public class Program
+      {
+          public static int Main(object x) => x.Drop();
+      }
+  changed_files:
+    src/Pool.cs: |
+      namespace App;
+
+      public class Pool
+      {
+          public int Drop() => 2;
+      }
+    src/Cache.cs: |
+      namespace App;
+
+      public class Cache
+      {
+          public int Drop() => 2;
+      }
+  commit_message: Change both Drop methods
+expect:
+  changed:
+  - src/Pool.cs::Pool.Drop
+  - src/Cache.cs::Cache.Drop
+  discloses: true
+  no_negative_claims: true

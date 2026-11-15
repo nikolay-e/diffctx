@@ -1,0 +1,34 @@
+name: ts_module_level_calls_stay_beside_function_level_ones
+mode: impact
+source: gh#449
+issue_state: closed
+tags: [typescript, module-level, sites, smoke]
+repo:
+  initial_files:
+    src/registry.ts: |
+      export function register(name: string): string {
+        return name;
+      }
+    src/boot.ts: |
+      import { register } from './registry';
+
+      export function install(): void {
+        register('app');
+      }
+
+      if (typeof window !== 'undefined') {
+        register('flag');
+      }
+
+      register('plain');
+  changed_files:
+    src/registry.ts: |
+      export function register(name: string): string {
+        return name.toLowerCase();
+      }
+  commit_message: "registry: normalise names"
+expect:
+  relations:
+    - {from: "src/boot.ts::install", to: "src/registry.ts::register", kind: calls, resolution: resolved, site: 4}
+    - {from: "src/boot.ts", to: "src/registry.ts::register", kind: calls, resolution: resolved, site: 8}
+    - {from: "src/boot.ts", to: "src/registry.ts::register", kind: calls, resolution: resolved, site: 11}

@@ -10,7 +10,8 @@ use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 mod support;
-use support::{commit_all, diffctx, git, write};
+use _diffctx::snapshot::git_command;
+use support::{commit_all, diffctx, git, scrubbed_sh, write};
 
 /// `pricing.total` is edited in the working tree; `checkout.charge` calls it
 /// from another file and `test_checkout.py` pins `charge`.
@@ -144,13 +145,8 @@ fn payload_in_session(session: &str, repo: &Path, command: &str) -> String {
 /// `command` as the Bash tool runs it: through `sh`, in `cwd`. A line that
 /// fails is still a line the agent ran.
 fn sh(cwd: &Path, env: &[(&str, &Path)], command: &str) {
-    Command::new("sh")
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
+    scrubbed_sh(cwd, command)
         .envs(env.iter().copied())
-        .args(["-c", command])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -386,13 +382,16 @@ fn a_subshell_add_before_a_commit_is_reviewed() {
     );
     let context = context_of(&h);
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(
+        !context.contains("did not analyse"),
+        "a directory inside the call's own repository names no other: {context}"
+    );
 }
 
-/// #405: a comment's apostrophe opens no quote; a `cd` inside a subshell
-/// names the repository its commit runs in; `cd -` goes where the line does
-/// not say; an odd `"` inside `-m "$(cat <<'EOF' … EOF)"` closes nothing.
+/// #405: a comment's apostrophe opens no quote, and an odd `"` inside
+/// `-m "$(cat <<'EOF' … EOF)"` closes nothing.
 #[test]
-fn comments_subshell_cds_cd_dash_and_heredoc_messages_keep_their_commit() {
+fn comments_and_heredoc_messages_keep_their_commit() {
     let answered = |command: &str| {
         let tmp = repo_with_pending_change();
         let cache = TempDir::new().unwrap();
@@ -407,38 +406,14 @@ fn comments_subshell_cds_cd_dash_and_heredoc_messages_keep_their_commit() {
     );
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
-    // Recorded, not read as git hidden in a substitution. Not run: bash 3.2,
-    // macOS's `sh`, cannot parse this line itself.
+    // Recorded before it runs. Not run: bash 3.2, macOS's `sh`, cannot parse
+    // this line itself.
     let cache = TempDir::new().unwrap();
     let message = "git commit -am \"$(cat <<'EOF'\nSupport 5\" screens (and more)\nEOF\n)\"";
     let h = hook(repo, cache.path(), &payload(repo, message));
     assert_eq!(h.stdout, "");
     let line = last_log_line(cache.path());
     assert!(line.contains(" recorded "), "{line}");
-
-    let cache = TempDir::new().unwrap();
-    let h = hook(
-        repo,
-        cache.path(),
-        &payload(repo, "cd - && git commit -am vat"),
-    );
-    assert!(
-        h.stdout.contains("did not analyse this command"),
-        "cd - names no directory, and says so: {}",
-        h.stdout
-    );
-
-    let other = repo_with_pending_change();
-    write(
-        other.path(),
-        "shop/inventory.py",
-        "def restock(item):\n    return item.count + 5\n",
-    );
-    let cache = TempDir::new().unwrap();
-    // Quoted as a shell carries it: a Windows path's backslashes are not escapes.
-    let command = format!("(cd '{}' && git commit -am x)", other.path().display());
-    let context = context_of(&run_line(repo, cache.path(), &command));
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
 }
 
 #[test]
@@ -762,6 +737,53 @@ fn a_ref_the_line_does_not_resolve_is_logged_not_replaced() {
     assert!(line.contains(" unresolved-ref "), "{line}");
 }
 
+/// A PR base nothing resolves is "unresolved-ref" by git's exit status, not by
+/// the English of its refusal: the same log line when git speaks German.
+#[cfg(unix)]
+#[test]
+fn an_unresolved_pr_base_is_logged_unresolved_in_any_language() {
+    let (tmp, _remote) = repo_with_branches_beside_origin();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = support::path_with_translated_git(tools.path());
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &env,
+        &payload(repo, "gh pr create --base nope --fill"),
+    );
+    assert_eq!(h.stdout, "");
+    let line = last_log_line(cache.path());
+    assert!(line.contains(" unresolved-ref "), "{line}");
+}
+
+/// A directory that is no repository is "not-git" by what the file system and
+/// git's exit status say, not by git's words.
+#[cfg(unix)]
+#[test]
+fn a_directory_that_is_no_repository_is_not_git_in_any_language() {
+    let plain = TempDir::new().unwrap();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let path = support::path_with_translated_git(tools.path());
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        plain.path(),
+        cache.path(),
+        "pretooluse",
+        &[],
+        &env,
+        &payload(plain.path(), "gh pr create --fill"),
+    );
+    assert_eq!(h.stdout, "");
+    let line = last_log_line(cache.path());
+    assert!(line.contains(" not-git "), "{line}");
+}
+
 /// One command line's `PreToolUse` and `PostToolUse` in `session`, with what
 /// the line does in between.
 fn hook_pair(session: &str, repo: &Path, cache: &Path, command: &str, runs: impl FnOnce()) -> Hook {
@@ -798,11 +820,11 @@ fn a_commit_that_landed_nothing_is_not_answered_with_another_sessions_commit() {
     assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
 }
 
-/// #575: a recording verb word inside another command's argument (`--jq`,
-/// `-m`, a `grep` pattern) does not make a read-only git line record refs and
-/// claim a commit another session lands while it runs.
+/// Git's record cannot tell a commit a peer makes in the same checkout while
+/// a line ran from the line's own: a line that only reads is answered with
+/// it, and the answer says it covers what changed during the call (T19).
 #[test]
-fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
+fn a_peer_commit_during_a_read_only_line_is_read_as_changed_during_the_call() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
@@ -810,12 +832,9 @@ fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
     let h = hook_pair("b", repo, cache.path(), command, || {
         commit_all(repo, "vat");
     });
-    assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
-    assert!(
-        last_log_line(cache.path()).contains(" no-trigger "),
-        "{}",
-        last_log_line(cache.path())
-    );
+    let context = context_of(&h);
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("during this call"), "{context}");
 }
 
 /// An amend replaces `HEAD` on its parent: what it records is measured from
@@ -860,10 +879,6 @@ fn transcript(
         let mut lines = vec![
             serde_json::json!({"type": "user", "sessionId": "b", "message": {"role": "user", "content": "what changed?"}})
                 .to_string(),
-            serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
-                {"type": "tool_use", "id": "t0", "name": "Bash", "input": {"command": "git status"}}
-            ]}})
-            .to_string(),
         ];
         lines.extend(paths.iter().map(|p| {
             serde_json::json!({"type": "assistant", "sessionId": "b", "message": {"role": "assistant", "content": [
@@ -1194,33 +1209,50 @@ fn everything_else_is_silence_with_exit_zero() {
     assert_eq!(h.stdout, "", "not a repository");
 }
 
+/// What a call did is git's record of the repository it started in and of
+/// that repository's linked work trees. A line that points git at another
+/// repository (`cd`, `-C`, a variable) says so: that repository was not read
+/// (fj#127). A git hidden in a quoted script names no place, and stays silent.
 #[test]
-fn the_git_dash_c_directory_wins_over_cwd() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!("git -C '{}' commit -am vat", repo.to_string_lossy());
-    let h = line_in("s1", elsewhere.path(), cache.path(), &[], &command);
-    assert_eq!(h.code, Some(0));
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
-}
-
-/// #422: landing from a worktree is usually `L=/abs; cd $L && git commit …`;
-/// the variable the line itself sets names the repository.
-#[test]
-fn a_directory_the_line_sets_in_a_variable_is_followed() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!(
-        "L='{}'; cd \"$L\" && git commit -qam vat",
-        tmp.path().to_string_lossy()
-    );
-    let h = line_in("s1", elsewhere.path(), cache.path(), &[], &command);
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+fn a_repository_the_call_does_not_start_in_is_reported_unreviewed() {
+    for template in [
+        "git -C '{dir}' commit -qam vat",
+        "L='{dir}'; cd \"$L\" && git commit -qam vat",
+        "cd ~/{name} && git commit -qam vat",
+        "for d in '{dir}'; do ( cd \"$d\" && git commit -qam vat ); done",
+        "sh -c \"cd '{dir}' && git commit -qam vat\"",
+    ] {
+        let tmp = repo_with_pending_change();
+        let repo = tmp.path();
+        let name = repo.file_name().unwrap().to_string_lossy();
+        let command = template
+            .replace("{dir}", &repo.to_string_lossy())
+            .replace("{name}", &name);
+        let elsewhere = TempDir::new().unwrap();
+        let cache = TempDir::new().unwrap();
+        let home = repo.parent().unwrap();
+        let h = line_in(
+            "s1",
+            elsewhere.path(),
+            cache.path(),
+            &[("HOME", home)],
+            &command,
+        );
+        assert_eq!(h.code, Some(0), "{command}");
+        if template.starts_with("sh -c") {
+            assert_eq!(h.stdout, "", "{command}");
+        } else {
+            let context = context_of(&h);
+            assert!(
+                context.contains("did not analyse this command"),
+                "{command}: {context}"
+            );
+            assert!(
+                !context.contains("diffctx reviewed"),
+                "{command}: {context}"
+            );
+        }
+    }
 }
 
 fn search_payload(repo: &Path, tool: &str, query: &str) -> String {
@@ -1318,6 +1350,87 @@ fn a_search_on_a_clean_tree_is_answered_as_symbol_would() {
     // since a caller in a file no model reads would read as none.
     assert_eq!(search("grep -rn refill .").stdout, "");
     assert_eq!(search("git log --oneline | grep restock").stdout, "");
+}
+
+/// Forgejo #113: a search whose analysis the hook's ceiling cuts says so, by
+/// name, and does not use the name up: silence read as a quiet analysis, and
+/// the next search of the name never tried again. The ceiling is spent before
+/// the analysis starts, as when an engine does not return in time.
+#[test]
+fn a_search_the_ceiling_cuts_is_said_by_name_and_tried_again() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let cut = [("DIFFCTX_TEST_HOOK_CEILING_EXPIRED", Path::new("1"))];
+    let search = |env: &[(&str, &Path)], query: &str| {
+        hook_in_env(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            env,
+            &search_payload(repo, "Bash", query),
+        )
+    };
+    // A name the pending change edits.
+    let edited = context_of(&search(&cut, r"rg -n 'def total\(' shop/"));
+    assert!(
+        edited.contains("`total`") && edited.contains("ran past the hook's deadline"),
+        "{edited}"
+    );
+    assert!(edited.contains("--symbol total"), "{edited}");
+    let answered = context_of(&search(&[], r"rg -n 'def total\(' shop/"));
+    assert!(answered.contains("shop/checkout.py::charge"), "{answered}");
+    // A name it does not.
+    let other = context_of(&search(&cut, "grep -rn restock ."));
+    assert!(
+        other.contains("lookup of `restock`") && other.contains("ran past the hook's deadline"),
+        "{other}"
+    );
+    let answered = context_of(&search(&[], "grep -rn restock ."));
+    assert!(answered.contains("shop/shelf.py::refill"), "{answered}");
+    let log = hook_log(cache.path());
+    let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
+    assert_eq!(outcomes, ["timeout", "shown", "timeout", "shown"], "{log}");
+    // A commit's review the ceiling cuts names what it changes.
+    let commit = context_of(&line_in(
+        "s2",
+        repo,
+        cache.path(),
+        &cut,
+        "git commit -qam vat",
+    ));
+    assert!(
+        commit.contains("ran past the hook's deadline") && commit.contains("shop/pricing.py"),
+        "{commit}"
+    );
+}
+
+/// A repository git refuses to read is an error the log names, not a path
+/// that is no repository: "not-git" would send the reader after the wrong
+/// problem, and the hook would stay silent about it.
+#[test]
+fn a_repository_git_cannot_read_is_an_error_not_a_non_repository() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let config = repo.join(".git/config");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    text.push_str("[core\n");
+    std::fs::write(&config, text).unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "grep -rn total ."),
+    );
+    assert_eq!(h.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" error:git "),
+        "{}",
+        last_log_line(cache.path())
+    );
 }
 
 /// R2, Forgejo #114: a lookup of a name no file defines but a config and a
@@ -1480,11 +1593,7 @@ fn a_search_is_answered_for_each_name_it_seeks_where_it_looked() {
     let mut n = 0;
     let mut search = |query: &str| {
         n += 1;
-        let ran = Command::new("sh")
-            .args(["-c", query])
-            .current_dir(repo)
-            .output()
-            .unwrap();
+        let ran = scrubbed_sh(repo, query).output().unwrap();
         let mut payload: serde_json::Value = serde_json::from_str(&in_session(
             &format!("s{n}"),
             &search_payload(repo, "Bash", query),
@@ -1722,6 +1831,10 @@ fn a_partial_answer_is_retried_a_bounded_number_of_times() {
         vec![true, true, false, false],
         "partial, retried once, then left alone"
     );
+    // The log says which answers were partial (fj#127).
+    let log = hook_log(cache.path());
+    let outcomes: Vec<&str> = log.lines().map(|l| l.split(' ').nth(5).unwrap()).collect();
+    assert_eq!(&outcomes[..2], ["partial", "partial"], "{log}");
 }
 
 /// A wide change in one commit, the shape of Forgejo #113: `n` modules each
@@ -1844,6 +1957,177 @@ fn a_gated_commit_whose_review_failed_names_the_files_it_did_not_review() {
     assert!(context.contains("--mode impact"), "{context}");
 }
 
+/// The pending edit of `repo_with_pending_change` plus two files the engine
+/// withholds, both committed before and both changed now: a private key by its
+/// name, and a note a `.diffctx/ignore` declares private. `git add -A` stages
+/// all three.
+fn staged_change_with_withheld_files() -> TempDir {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "deploy/server.key", "key v1\n");
+    write(repo, "private/notes.md", "# notes v1\n");
+    write(repo, ".diffctx/ignore", "private/\n");
+    git(repo, &["add", "deploy", "private", ".diffctx"]);
+    git(repo, &["commit", "-q", "-m", "seed"]);
+    write(repo, "deploy/server.key", "key v2\n");
+    write(repo, "private/notes.md", "# notes v2\n");
+    git(repo, &["add", "-A"]);
+    tmp
+}
+
+fn assert_withheld_counted_never_named(context: &str) {
+    assert!(!context.contains("server.key"), "{context}");
+    assert!(!context.contains("notes.md"), "{context}");
+    assert!(!context.contains("private/"), "{context}");
+    assert!(
+        context.contains("2 more changed file(s) are withheld by the ignore rules and not named")
+            || context.contains("withheld by the ignore rules and not named"),
+        "{context}"
+    );
+}
+
+/// #188, fj#194: the note a cut-short review adds lists the range's changed
+/// files, and a file admission withholds is counted there, never named.
+#[test]
+fn a_review_the_deadline_cut_counts_a_withheld_file_and_never_names_it() {
+    let tmp = staged_change_with_withheld_files();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let env = [("DIFFCTX_TEST_DEADLINE_EXPIRED", Path::new("1"))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let out = output_of(&h, "PreToolUse");
+    let context = out["additionalContext"].as_str().unwrap();
+    assert!(context.contains("partial"), "{context}");
+    assert!(
+        context.contains(" of the 1 changed file(s) list no caller above"),
+        "{context}"
+    );
+    assert!(context.contains("shop/pricing.py"), "{context}");
+    assert_withheld_counted_never_named(context);
+}
+
+/// The same for a review that failed outright: "It changes N file(s), none of
+/// them reviewed" names the files a reader may name.
+#[test]
+fn a_review_that_failed_counts_a_withheld_file_and_never_names_it() {
+    let tmp = staged_change_with_withheld_files();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let env = [
+        ("DIFFCTX_EVAL_STRICT", Path::new("1")),
+        ("DIFFCTX_NOT_A_SETTING", Path::new("1")),
+    ];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(
+        context.contains("It changes 1 file(s), none of them reviewed: shop/pricing.py."),
+        "{context}"
+    );
+    assert_withheld_counted_never_named(&context);
+}
+
+/// An inspection names the changed files no write of the session explains;
+/// a withheld one (an untracked private key) is neither named in the lead nor
+/// counted among them.
+#[test]
+fn an_inspection_names_no_withheld_file_among_the_other_changed_files() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "deploy/server.key", "key v1\n");
+    add_unrelated_edit(repo);
+    let inventory = repo.join("shop/inventory.py");
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[inventory], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+    assert!(!h.stdout.contains("server.key"), "{}", h.stdout);
+}
+
+/// The same where a `.diffctx/ignore` declares the file private: the working
+/// tree is judged by the rules in it, which need the reader.
+#[test]
+fn an_inspection_names_no_file_a_declared_policy_withholds() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    write(repo, "private/notes.md", "# notes v1\n");
+    write(repo, ".diffctx/ignore", "private/\n");
+    git(repo, &["add", "private", ".diffctx"]);
+    git(repo, &["commit", "-q", "-m", "seed"]);
+    write(repo, "private/notes.md", "# notes v2\n");
+    add_unrelated_edit(repo);
+    let inventory = repo.join("shop/inventory.py");
+    let dir = TempDir::new().unwrap();
+    let own = transcript(dir.path(), &[inventory], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&own));
+    assert!(
+        h.stdout.contains(
+            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
+        ),
+        "{}",
+        h.stdout
+    );
+    assert!(!h.stdout.contains("notes.md"), "{}", h.stdout);
+}
+
+/// fj#170, fj#194: a commit's review reads a committed range, which has no
+/// untracked files in its diff, so it never lists the checkout's untracked
+/// files, however many there are.
+#[test]
+fn a_commit_review_lists_no_untracked_file_of_a_large_checkout() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let bulk = repo.join("bulk");
+    std::fs::create_dir(&bulk).unwrap();
+    for n in 0..20_000 {
+        std::fs::write(bulk.join(format!("f{n}.txt")), "x\n").unwrap();
+    }
+    git(repo, &["add", "shop/pricing.py"]);
+    let trace = repo.join(".git").join("trace.log");
+    let env = [("GIT_TRACE", trace.as_path())];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    assert!(
+        context_of(&h).contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    let calls = std::fs::read_to_string(&trace).expect("git wrote its trace");
+    assert!(
+        calls.contains("ls-tree"),
+        "the trace sees git calls: {calls}"
+    );
+    let listings: Vec<&str> = calls.lines().filter(|l| l.contains("--others")).collect();
+    assert!(listings.is_empty(), "{listings:#?}");
+}
+
 /// #612, #613: a commit whose review failed is said to be unreviewed, with
 /// the range to run by hand; silence there read as a clean review.
 #[test]
@@ -1897,27 +2181,6 @@ fn a_commit_is_reviewed_whatever_verb_or_shell_records_it() {
     }
 }
 
-/// A git only the shell runs, that recorded nothing where the hook could
-/// look, is said to be unread once it ran: never a guess before it runs.
-#[test]
-fn a_hidden_git_that_moved_nothing_here_says_it_was_not_analysed() {
-    let tmp = repo_with_pending_change();
-    let elsewhere = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let command = format!(
-        "sh -c \"cd '{}' && git commit -qam vat\"",
-        elsewhere.path().display()
-    );
-    let h = run_line(tmp.path(), cache.path(), &command);
-    assert!(
-        h.stdout.contains("did not analyse this command"),
-        "{}",
-        h.stdout
-    );
-    let line = last_log_line(cache.path());
-    assert!(line.contains(" unsupported-syntax "), "{line}");
-}
-
 /// What landed is every entry git wrote while the line ran, not its last
 /// one: a reset, switch, stash or rebase after the commit on the same line
 /// hid it (#508, a commit then `fetch && rebase` in the field).
@@ -1962,9 +2225,10 @@ fn a_push_from_a_work_tree_the_line_removes_is_reviewed() {
     assert!(context.contains("shop/invoice.py::bill"), "{context}");
 }
 
-/// #608: a line that records in two repositories gets both reviewed.
+/// A line that commits in two repositories is read in the one the call
+/// started in; the other is no place its text can send the hook to (fj#127).
 #[test]
-fn every_repository_a_line_records_in_is_reviewed() {
+fn a_line_in_two_repositories_is_reviewed_in_the_one_the_call_started_in() {
     let a = repo_with_pending_change();
     let b = repo_with_pending_change();
     git(b.path(), &["checkout", "-q", "--", "shop/pricing.py"]);
@@ -1976,7 +2240,11 @@ fn every_repository_a_line_records_in_is_reviewed() {
     );
     let context = context_of(&run_line(a.path(), cache.path(), &command));
     assert!(context.contains("shop/checkout.py::charge"), "{context}");
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(!context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
 }
 
 /// #608: one commit pushed to two remotes moved one range: one review, and
@@ -2078,10 +2346,11 @@ fn another_checkouts_push_during_a_commit_is_not_this_lines() {
     assert!(!context.contains("shop/checkout.py::charge"), "{context}");
 }
 
-/// #556: a line that commits in another repository is answered with that
-/// commit, never with what moved in the cwd's repository meanwhile.
+/// #556: a commit made in another repository is not read from the line; what
+/// moved in the cwd's repository during the call is, and the answer says it
+/// covers the call, not the line's own commit.
 #[test]
-fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
+fn a_commit_in_another_repository_is_not_reviewed_but_the_cwds_changes_are() {
     let cwd = repo_with_pending_change();
     let there = repo_with_pending_change();
     git(there.path(), &["checkout", "-q", "--", "shop/pricing.py"]);
@@ -2093,8 +2362,13 @@ fn a_commit_in_another_repository_is_not_answered_with_the_cwds() {
         commit_all(cwd.path(), "another session's vat");
     });
     let context = context_of(&h);
-    assert!(context.contains("shop/shelf.py::refill"), "{context}");
-    assert!(!context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("during this call"), "{context}");
+    assert!(!context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
 }
 
 /// R1: a word match is listed as text and never asks for a check; a resolved
@@ -2270,30 +2544,6 @@ fn a_commit_of_paths_from_a_file_reviews_only_those_paths() {
 }
 
 #[test]
-fn a_home_relative_cd_reaches_the_repository() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    let home = repo.parent().unwrap();
-    let name = repo.file_name().unwrap().to_string_lossy();
-    let elsewhere = TempDir::new().unwrap();
-    let command = format!(
-        "cd ~/{name} && FP=$(cat README.md) && git add shop/pricing.py && git commit -q -m x -- shop/pricing.py"
-    );
-    let h = line_in(
-        "s1",
-        elsewhere.path(),
-        cache.path(),
-        &[("HOME", home)],
-        &command,
-    );
-    let context = context_of(&h);
-    assert!(context.contains("shop/checkout.py::charge"), "{context}");
-    let line = last_log_line(cache.path());
-    assert!(!line.contains("unsupported-syntax"), "{line}");
-}
-
-#[test]
 fn a_commit_in_a_linked_worktree_is_read_on_its_own_branch() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
@@ -2358,14 +2608,7 @@ fn staging_by_any_means_is_read_off_the_commit() {
     ] {
         let tmp = repo_with_pending_change();
         let repo = tmp.path();
-        let diff = Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .args(["diff"])
-            .output()
-            .unwrap();
+        let diff = git_command(repo).args(["diff"]).output().unwrap();
         std::fs::write(repo.join("vat.patch"), diff.stdout).unwrap();
         add_unrelated_edit(repo);
         let cache = TempDir::new().unwrap();
@@ -2480,11 +2723,7 @@ fn a_fast_forward_to_the_upstream_is_silence() {
     );
     git(repo, &["push", "-q", "-u", "origin", "HEAD"]);
     let branch = String::from_utf8(
-        Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
+        git_command(repo)
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .output()
             .unwrap()
@@ -2615,14 +2854,7 @@ fn a_push_after_a_pull_on_the_same_line_reviews_only_what_it_sent() {
 /// of a push, which the hook's payload carries as `tool_response`. A push
 /// that fails still reports.
 fn sh_printed(cwd: &Path, command: &str) -> String {
-    let out = Command::new("sh")
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .args(["-c", command])
-        .output()
-        .expect("run sh");
+    let out = scrubbed_sh(cwd, command).output().expect("run sh");
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
@@ -2777,9 +3009,9 @@ fn a_push_through_a_stale_alias_reviews_what_git_printed() {
     );
 }
 
-/// Forgejo #97: a background line that may merge claims what its own reflog
-/// entries show, not a commit another session lands in the checkout while it
-/// waits, whether or not that session's hook has already taken it.
+/// Forgejo #97: a commit another session's hook has already taken is not a
+/// background line's; one no hook saw is read as changed since the call
+/// began, because git cannot say whose it was.
 #[test]
 fn a_commit_a_peer_lands_is_not_a_background_lines() {
     for (background, peer_has_hook) in [
@@ -2821,12 +3053,19 @@ fn a_commit_a_peer_lands_is_not_a_background_lines() {
         }
         let next = payload_in_session("a", repo, "git log --oneline -1");
         let h = hook(repo, cache.path(), &next);
-        assert_eq!(
-            h.stdout,
-            "",
-            "{background}: {}",
-            last_log_line(cache.path())
-        );
+        if peer_has_hook {
+            assert_eq!(
+                h.stdout,
+                "",
+                "{background}: {}",
+                last_log_line(cache.path())
+            );
+        } else {
+            // No hook saw the commit made: git cannot say whose it was, and
+            // the review says it covers what changed since the call began.
+            let context = context_of(&h);
+            assert!(context.contains("since that call began"), "{context}");
+        }
     }
 }
 
@@ -2994,9 +3233,9 @@ fn the_marker_sweep_runs_daily_without_a_rotation() {
     assert!(later.exists(), "one sweep a day, not one per run");
 }
 
-/// #534: the body of a quoted here-document is data — Markdown code spans,
-/// a `$(…)` quoted in an issue body — and so is a single-quoted argument or
-/// a comment: none of them is git the shell hides.
+/// #534: every line is recorded before it runs, whatever its text says —
+/// Markdown code spans in a here-document, a `$(…)` quoted in an issue body,
+/// a `-c` script — and git's record answers once it ran.
 #[test]
 fn quoted_text_naming_git_hides_no_git() {
     let tmp = repo_with_pending_change();
@@ -3013,14 +3252,9 @@ fn quoted_text_naming_git_hides_no_git() {
         let cache = TempDir::new().unwrap();
         let h = hook(repo, cache.path(), &payload(repo, command));
         assert_eq!((h.code, h.stdout.as_str()), (Some(0), ""), "{command}");
-        assert!(
-            !last_log_line(cache.path()).contains("unsupported-syntax"),
-            "{command}"
-        );
     }
-    // What the shell does run still hides git: an unquoted here-document
-    // expands its body, and a `-c` or `eval` script is code. The cwd's
-    // refs are recorded for git's record to answer once the line ran.
+    // The same for what the shell does run: an unquoted here-document
+    // expands its body, and a `-c` or `eval` script is code.
     for command in [
         "cat > notes.md <<X\n$(git commit -qam change)\nX",
         "cat <<X\n`git push`\nX",
@@ -3057,55 +3291,6 @@ fn quoted_text_naming_git_hides_no_git() {
         context_of(&h).starts_with("diffctx reviewed what this commit recorded."),
         "{}",
         h.stdout
-    );
-}
-
-/// #575: a word the line hands to another program — a jq path, an API
-/// route, a pattern — is no git verb, so a line that only reads does not
-/// take a commit another session made while it ran as its own.
-#[test]
-fn a_commit_named_in_another_programs_argument_is_not_this_lines() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    for (i, command) in [
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq .commit.author.date",
-        "git log -1 --format=%s | grep -c commit",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let pre = hook(repo, cache.path(), &payload(repo, command));
-        assert_eq!(pre.stdout, "", "{command}");
-        write(
-            repo,
-            "shop/pricing.py",
-            &format!("def total(items):\n    return sum(i.price for i in items) + {i}\n"),
-        );
-        git(repo, &["commit", "-qam", "another session"]);
-        let post = hook_with(
-            repo,
-            cache.path(),
-            "posttooluse",
-            &[],
-            &payload_for("PostToolUse", repo, command),
-        );
-        assert_eq!(
-            post.stdout, "",
-            "{command}: another session's commit is not this line's"
-        );
-    }
-    write(repo, "shop/pricing.py", "def total(items):\n    return 0\n");
-    let h = run_line(
-        repo,
-        cache.path(),
-        "git commit -qam vat; echo '{\"commit\": 1}' | grep -c commit",
-    );
-    let context = context_of(&h);
-    assert!(
-        context.starts_with("diffctx reviewed what this commit recorded."),
-        "{context}"
     );
 }
 
@@ -3191,65 +3376,66 @@ fn bash_call(id: &str, from: std::time::SystemTime, to: Option<std::time::System
     lines.join("\n") + "\n"
 }
 
-/// #453: a file the session's own shell rewrote (`sed -i`, a heredoc
-/// script, `git rm`) is its edit, as one its edit tools wrote is; another
-/// session's edit, made while none of its Bash calls ran, still is not
-/// (#404).
+/// #453, #404: what a Bash call the hook never bracketed may have written is
+/// not guessed from a transcript's times. With no edit tool's write to tell
+/// the session's files from a peer's, an inspection says it did not review
+/// them; with one, the other changed files are read as committed and the
+/// answer counts the calls it could not bracket.
 #[test]
-fn a_file_the_sessions_shell_wrote_is_its_own() {
+fn a_file_only_an_unbracketed_call_could_have_written_is_named_not_reviewed() {
     use std::time::{Duration, SystemTime};
-    // `pricing.total` is another session's edit, made before any shell call
-    // of this one returned or ran.
+    // `pricing.total` is another session's edit; `inventory.restock` and the
+    // deleted README are changes of the session's shell, which nothing
+    // bracketed.
     let tmp = repo_with_pending_change();
     let repo = tmp.path();
-    let theirs = SystemTime::now();
-    while SystemTime::now() < theirs + Duration::from_millis(1500) {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    let from = SystemTime::now();
     add_unrelated_edit(repo);
     std::fs::remove_file(repo.join("README.md")).unwrap();
-    let to = SystemTime::now() + Duration::from_millis(1);
-
+    let now = SystemTime::now();
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("b.jsonl");
-    std::fs::write(
-        &main,
-        [
-            // Returned before their edit; still running, so no span yet.
-            bash_call(
-                "t1",
-                theirs - Duration::from_secs(20),
-                Some(theirs - Duration::from_secs(10)),
-            ),
-            bash_call("t2", theirs - Duration::from_secs(5), None),
-            // The `git rm` of README.md.
-            bash_call("t3", from, Some(to)),
-        ]
-        .concat(),
-    )
-    .unwrap();
-    let subagents = dir.path().join("b").join("subagents");
-    std::fs::create_dir_all(&subagents).unwrap();
-    // A subagent's heredoc rewrite of `inventory.restock`.
-    std::fs::write(
-        subagents.join("agent-1.jsonl"),
-        bash_call("t4", from, Some(to)),
-    )
-    .unwrap();
-
+    let shell = [
+        bash_call(
+            "t1",
+            now - Duration::from_secs(20),
+            Some(now - Duration::from_secs(10)),
+        ),
+        bash_call("t2", now - Duration::from_secs(5), None),
+    ]
+    .concat();
+    std::fs::write(&main, &shell).unwrap();
     let h = inspect_with_transcript(repo, "git diff", Some(&main));
-    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
-    assert!(h.stdout.contains("(1 deleted)"), "{}", h.stdout);
     assert!(
-        !h.stdout.contains("shop/checkout.py::charge"),
+        h.stdout
+            .contains("did not review the pending change you just inspected"),
+        "{}",
+        h.stdout
+    );
+    assert!(h.stdout.contains("could not be bracketed"), "{}", h.stdout);
+    assert!(
+        !h.stdout.contains("shop/shelf.py::refill") && !h.stdout.contains("shop/checkout.py"),
+        "{}",
+        h.stdout
+    );
+
+    // An edit tool wrote the README's neighbour; the shell's files are read as
+    // committed, and two calls are named as unbracketed.
+    let edited = transcript(dir.path(), &[repo.join("shop/inventory.py")], &[]);
+    let mut text = std::fs::read_to_string(&edited).unwrap();
+    text.push_str(&shell);
+    std::fs::write(&edited, text).unwrap();
+    let h = inspect_with_transcript(repo, "git diff", Some(&edited));
+    assert!(h.stdout.contains("shop/shelf.py::refill"), "{}", h.stdout);
+    assert!(
+        h.stdout.contains(
+            "2 other changed file(s) show no write by this session or its subagents and are read as committed: README.md, shop/pricing.py."
+        ),
         "{}",
         h.stdout
     );
     assert!(
-        h.stdout.contains(
-            "1 other changed file(s) show no write by this session or its subagents and are read as committed: shop/pricing.py."
-        ),
+        h.stdout
+            .contains("2 Bash call(s) of this session could not be bracketed"),
         "{}",
         h.stdout
     );
@@ -3394,6 +3580,73 @@ fn a_file_written_before_the_call_ran_is_not_its_own() {
         &main,
         "sed -i s/1/10/ shop/inventory.py && git diff",
         || add_unrelated_edit(repo),
+    );
+    assert_inventory_only(&h);
+}
+
+/// A call that rewrites a file somebody already modified is told apart from
+/// one that creates the change: git's record holds no earlier copy, so the
+/// review covers the file's whole difference from `HEAD` and says that the
+/// file was already modified before the call changed it. The rewrite has
+/// another size, so no clock decides it.
+#[test]
+fn a_file_already_modified_before_the_call_is_named_so() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(&main, bash_call("c1", std::time::SystemTime::now(), None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1.19/1.2/ shop/pricing.py && git diff",
+        || {
+            write(
+                repo,
+                "shop/pricing.py",
+                "def total(items):\n    return round(sum(i.price for i in items) * 1.2, 2)\n",
+            );
+        },
+    );
+    assert!(
+        h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        h.stdout
+            .contains("already modified before this call changed them: shop/pricing.py"),
+        "{}",
+        h.stdout
+    );
+}
+
+/// A file a call adds to a directory git lists whole (nothing of it is
+/// tracked) is the call's, whichever file of the directory the inspection
+/// names.
+#[test]
+fn a_file_the_call_adds_to_an_untracked_directory_is_its_own() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("b.jsonl");
+    std::fs::write(&main, bash_call("c1", std::time::SystemTime::now(), None)).unwrap();
+    let cache = TempDir::new().unwrap();
+    let h = bracketed_call(
+        "b",
+        "c1",
+        repo,
+        cache.path(),
+        &main,
+        "sed -i s/1/10/ shop/inventory.py && echo notes > shop/extra/notes.txt && git diff",
+        || {
+            add_unrelated_edit(repo);
+            write(repo, "shop/extra/notes.txt", "notes\n");
+        },
     );
     assert_inventory_only(&h);
 }
@@ -3557,4 +3810,906 @@ fn an_older_pins_log_rotation_keeps_this_binarys_history() {
         kept.lines().any(|l| l.split(' ').nth(1) == Some("kept-1")),
         "the run's line is gone"
     );
+}
+
+/// #508: a rebase replays commits onto another base; it is read off the
+/// reflog as one review of what was replayed, from the commit it replays onto.
+#[test]
+fn a_rebase_is_reviewed_from_where_it_replays_onto() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
+    git(repo, &["branch", "-M", "main"]);
+    git(repo, &["checkout", "-q", "-b", "topic"]);
+    add_unrelated_edit(repo);
+    commit_all(repo, "restock");
+    git(repo, &["checkout", "-q", "main"]);
+    write(repo, "README.md", "# shop\n\nmore\n");
+    commit_all(repo, "docs");
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git rebase -q main topic");
+    let context = context_of(&h);
+    assert!(context.contains("what this rebase recorded"), "{context}");
+    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+}
+
+/// An empty commit changes no file: one line says so, never silence.
+#[test]
+fn an_empty_commit_is_said_to_change_no_file() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "shop/pricing.py"]);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git commit -q --allow-empty -m empty");
+    let context = context_of(&h);
+    assert!(context.contains("changes no file"), "{context}");
+}
+
+/// #508: a repository named by `--git-dir` and `--work-tree`, or by `GIT_DIR`
+/// and `GIT_WORK_TREE`, is the call's own when the call starts in it; from
+/// another directory the line names no place the hook looks.
+#[test]
+fn a_commit_through_git_dir_is_the_calls_own_only_from_its_repository() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let elsewhere = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let dir = repo.display();
+    let command = format!("git --git-dir='{dir}/.git' --work-tree='{dir}' commit -qam vat");
+    let context = context_of(&line_in("s1", repo, cache.path(), &[], &command));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    let env =
+        format!("GIT_DIR='{dir}/.git' GIT_WORK_TREE='{dir}' git commit -q --allow-empty -m e");
+    let context = context_of(&line_in("s2", repo, cache.path(), &[], &env));
+    assert!(context.contains("changes no file"), "{context}");
+    let from_elsewhere =
+        format!("git --git-dir='{dir}/.git' --work-tree='{dir}' commit -q --allow-empty -m n");
+    let h = line_in("s3", elsewhere.path(), cache.path(), &[], &from_elsewhere);
+    assert!(
+        h.stdout.contains("did not analyse this command"),
+        "{from_elsewhere}: {}",
+        h.stdout
+    );
+}
+
+/// fj#127: a script that commits shows no git on its line; the repository the
+/// call starts in is watched, and git's record of it is reviewed.
+#[test]
+fn a_commit_inside_a_script_is_reviewed() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let scripts = TempDir::new().unwrap();
+    let script = scripts.path().join("release.sh");
+    std::fs::write(&script, "#!/bin/sh\ncd \"$1\" && git commit -qam vat\n").unwrap();
+    let command = format!("sh '{}' '{}'", script.display(), repo.display());
+    let cache = TempDir::new().unwrap();
+    let context = context_of(&run_line(repo, cache.path(), &command));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+}
+
+/// gh#596: a force-push that replaces a tip reviews what changed between the
+/// two tips, and says the ref was rewritten; not the whole rewritten commit.
+#[test]
+fn a_force_push_reviews_the_delta_between_the_tips() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    git(repo, &["push", "-q", "origin", "HEAD:main"]);
+    add_unrelated_edit(repo);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qa --amend --no-edit && git push -qf origin HEAD:main",
+    );
+    let context = context_of(&h);
+    assert!(context.contains("was rewritten"), "{context}");
+    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+    assert!(
+        !context.contains("shop/checkout.py::charge"),
+        "the pricing change was on both tips: {context}"
+    );
+}
+
+/// A branch that shares no commit with the remote starts from a root: the
+/// push is reviewed from the empty tree, as a range with nothing to descend
+/// from, never refused.
+#[test]
+fn a_push_of_an_unrelated_branch_is_reviewed_from_the_empty_tree() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--orphan", "fresh"]);
+    git(repo, &["rm", "-rfq", "."]);
+    write(repo, "lone/solo.py", "def solo():\n    return 1\n");
+    commit_all(repo, "fresh");
+    let cache = TempDir::new().unwrap();
+    let h = run_line(repo, cache.path(), "git push -q origin HEAD");
+    let context = context_of(&h);
+    assert!(
+        context.contains("reaches nothing outside the diff"),
+        "{context}"
+    );
+    assert!(!context.contains("did not review"), "{context}");
+}
+
+/// gh#669: a push that publishes a commit no call of this session made says so.
+#[test]
+fn a_push_names_the_commits_this_session_did_not_make() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    commit_all(repo, "held back by a peer");
+    add_unrelated_edit(repo);
+    let cache = TempDir::new().unwrap();
+    let h = run_line(
+        repo,
+        cache.path(),
+        "git commit -qam restock && git push -q origin HEAD:main",
+    );
+    let context = context_of(&h);
+    assert!(context.contains("did not make"), "{context}");
+    assert!(context.contains("held back by a peer"), "{context}");
+    assert!(!context.contains("'restock'"), "{context}");
+}
+
+/// The next push does not read the commits an earlier call of the session
+/// made as foreign.
+#[test]
+fn a_push_of_this_sessions_earlier_commit_names_nothing() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let committed = run_line(repo, cache.path(), "git commit -qam vat");
+    assert!(context_of(&committed).contains("what this commit recorded"));
+    let pushed = run_line(repo, cache.path(), "git push -q origin HEAD:main");
+    let context = pushed.stdout;
+    assert!(!context.contains("did not make"), "{context}");
+}
+
+/// #640: a push of commits this session's calls made and had reviewed when
+/// they landed says so in one line, and does not list their callers again
+/// under "check these callers" - the one that reached nothing included.
+#[test]
+fn a_push_of_commits_already_reviewed_says_so_and_lists_no_callers() {
+    let (tmp, _remote) = repo_beside_a_bare_remote();
+    let repo = tmp.path();
+    let cache = TempDir::new().unwrap();
+    let first = run_line(repo, cache.path(), "git commit -qam vat");
+    assert!(context_of(&first).contains("shop/checkout.py::charge"));
+    write(repo, "README.md", "# shop\n\nnotes\n");
+    let second = run_line(repo, cache.path(), "git commit -qam readme");
+    assert!(
+        context_of(&second).contains("reaches nothing"),
+        "{}",
+        second.stdout
+    );
+    let pushed = run_line(repo, cache.path(), "git push -q origin HEAD:main");
+    let context = context_of(&pushed);
+    assert!(context.contains("none of it is new to review"), "{context}");
+    assert!(!context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(!context.contains("Check the"), "{context}");
+}
+
+/// #667: a search whose matched files neither define the name nor use it (it
+/// is spelled in a comment) is settled from the files' own syntax, before any
+/// symbol is built; one that matches a use still builds the answer.
+#[test]
+fn a_search_matching_no_definition_or_use_builds_no_answer() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(repo, "notes/tasks.py", "# restock the shelf nightly\n");
+    commit_all(repo, "notes");
+    let profiles = TempDir::new().unwrap();
+    let mut n = 0;
+    let mut search = |query: &str| {
+        n += 1;
+        let ran = scrubbed_sh(repo, query).output().unwrap();
+        let mut payload: serde_json::Value = serde_json::from_str(&in_session(
+            &format!("s{n}"),
+            &search_payload(repo, "Bash", query),
+        ))
+        .unwrap();
+        payload["tool_response"] =
+            serde_json::json!({"stdout": String::from_utf8_lossy(&ran.stdout), "stderr": ""});
+        let profile = profiles.path().join(format!("run{n}.jsonl"));
+        let h = hook_in_env(
+            repo,
+            cache.path(),
+            "posttooluse",
+            &[],
+            &[("DIFFCTX_PROFILE", profile.as_path())],
+            &payload.to_string(),
+        );
+        let phases = std::fs::read_to_string(&profile).unwrap_or_default();
+        (h, phases)
+    };
+    let (comment, phases) = search("grep -n restock notes/tasks.py");
+    assert_eq!(comment.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" out-of-scope "),
+        "{}",
+        last_log_line(cache.path())
+    );
+    assert!(
+        !phases.contains("impact.setup"),
+        "no symbol was built for a comment: {phases}"
+    );
+    let (used, phases) = search("grep -n restock shop/shelf.py");
+    assert!(
+        context_of(&used).contains("shop/shelf.py::refill"),
+        "{}",
+        used.stdout
+    );
+    assert!(phases.contains("impact.setup"), "{phases}");
+    // The parts of a phase are reported beside it, outside its sum: which
+    // resolver the setup opened, and the work of the callers' loop.
+    assert!(phases.contains("resolver.open.head:Python"), "{phases}");
+    assert!(phases.contains("impact.setup.cells"), "{phases}");
+}
+
+/// #676: a newline ends a statement as `;` does, so a grep on a later line of
+/// a multi-line command is looked up like one that starts it.
+#[test]
+fn a_grep_on_a_later_line_of_a_command_is_answered() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "true\ngrep -rn 'total(' shop/"),
+    );
+    assert!(
+        context_of(&h).contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+}
+
+/// AC8: what the hook says for one searched name on a clean tree is at most
+/// 150 tokens, the lead line included, however many callers the name has.
+#[test]
+fn a_clean_tree_search_answer_fits_one_hundred_and_fifty_tokens() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    for i in 0..40 {
+        write(
+            repo,
+            &format!("shop/user_{i}.py"),
+            &format!(
+                "from shop.pricing import total\n\n\ndef use_{i}(cart):\n    return total(cart.items) + {i}\n"
+            ),
+        );
+    }
+    commit_all(repo, "users");
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Bash", "grep -rn 'total(' shop/"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("--symbol total"), "{context}");
+    let tokens = _diffctx::tokenizer::count_tokens(&context);
+    assert!(tokens <= 150, "{tokens} tokens: {context}");
+}
+
+/// M1: a log line names the tool call it belongs to, which joins a call's
+/// lines with the transcript, and every repository something landed in.
+#[test]
+fn a_log_line_names_the_call_and_the_repositories_that_landed() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let command = "git commit -qam vat";
+    let with_call = |doc: String| {
+        let mut doc: serde_json::Value = serde_json::from_str(&doc).unwrap();
+        doc["tool_use_id"] = "toolu_log_1".into();
+        doc.to_string()
+    };
+    let pre = hook(
+        repo,
+        cache.path(),
+        &with_call(payload_in_session("s1", repo, command)),
+    );
+    assert_eq!(pre.stdout, "");
+    sh(repo, &[], command);
+    let after = with_call(in_session("s1", &payload_for("PostToolUse", repo, command)));
+    hook_with(repo, cache.path(), "posttooluse", &[], &after);
+    let log = hook_log(cache.path());
+    let lines: Vec<&str> = log.lines().collect();
+    assert!(lines[0].contains(" call=toolu_log_1 roots=- "), "{log}");
+    let name = repo.file_name().unwrap().to_string_lossy().to_string();
+    let landed = lines[1];
+    assert!(landed.contains(" call=toolu_log_1 roots="), "{log}");
+    assert!(
+        landed
+            .split(' ')
+            .any(|f| f.starts_with("roots=") && f.contains(&name)),
+        "{log}"
+    );
+    assert!(
+        landed.split(' ').last() == Some(_diffctx::run_provenance::BUILD_LABEL),
+        "the version stays last: {log}"
+    );
+}
+
+/// A `git` ahead of the real one on `PATH` that refuses every call spelling
+/// `arg` as an argument and runs the rest: one read of git's fails while
+/// the repository stays whole. Returns the `PATH` to run the hook with.
+#[cfg(unix)]
+fn path_refusing(dir: &Path, arg: &str) -> std::ffi::OsString {
+    use std::os::unix::fs::PermissionsExt as _;
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("locate git");
+    let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+    let bin = dir.join("refusing-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let shim = bin.join("git");
+    std::fs::write(
+        &shim,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = '{arg}' ]; then echo 'fatal: simulated refusal' >&2; exit 128; fi\ndone\nexec '{real}' \"$@\"\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    std::env::join_paths(paths).unwrap()
+}
+
+/// A `git diff --raw` that fails says nothing about which files changed:
+/// the commit it was asked to review is said to be unread, never "changes
+/// no file". On the base the failed read was `None`, which `prepared` took
+/// for "nothing changed" and printed as an empty commit.
+#[cfg(unix)]
+#[test]
+fn a_commit_whose_raw_diff_git_refused_is_not_called_empty() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = line_in("s1", repo, cache.path(), &env, "git commit -qam vat");
+    let context = context_of(&h);
+    assert!(
+        context.contains("did not analyse this command"),
+        "{context}"
+    );
+    assert!(context.contains("git refused a read"), "{context}");
+    assert!(!context.contains("changes no file"), "{context}");
+}
+
+/// The gate's `PreToolUse` on a commit whose diff git refused answers that
+/// the change was not reviewed, instead of the silence that lets it run as
+/// if it were clean (the base returned `Err("clean")`, an empty stdout).
+#[cfg(unix)]
+#[test]
+fn a_gated_commit_whose_raw_diff_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// An inspection whose list of changed paths git refused has no changed
+/// file to look at: it is said to be unreviewed, not "clean" (on the base
+/// the failed listing was an empty one, and the run ended in silence).
+#[cfg(unix)]
+#[test]
+fn an_inspection_whose_path_listing_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--name-only");
+    let env = [("PATH", Path::new(&path))];
+    let diff = in_session("s1", &payload_for("PostToolUse", repo, "git diff"));
+    let h = hook_in_env(repo, cache.path(), "posttooluse", &[], &env, &diff);
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// A review that failed names the files it changes; when git refused that
+/// listing too it says the files could not be listed, never an empty list
+/// (the base left the sentence out, which read as a change with no file).
+#[cfg(unix)]
+#[test]
+fn a_failed_review_says_when_its_changed_files_could_not_be_listed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "--no-commit-id");
+    let env = [
+        ("PATH", Path::new(&path)),
+        ("DIFFCTX_EVAL_STRICT", Path::new("1")),
+        ("DIFFCTX_NOT_A_SETTING", Path::new("1")),
+    ];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(
+        context.contains("Its changed files could not be listed"),
+        "{context}"
+    );
+    assert!(!context.contains("It changes"), "{context}");
+}
+
+/// A search answered while git refused the read of the pending change says
+/// so: which names the change edits is unknown (on the base the failed
+/// identity was "nothing changed", and the search was answered as if no name
+/// were edited).
+#[cfg(unix)]
+#[test]
+fn a_search_whose_pending_change_git_refused_says_it_could_not_read_it() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--raw");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &env,
+        &search_payload(repo, "Bash", "grep -rn 'total(' shop/"),
+    );
+    let context = context_of(&h);
+    assert!(
+        context.contains("could not read the pending change"),
+        "{context}"
+    );
+}
+
+/// The engine's own probe of the repository (`rev-parse --git-dir`) refused
+/// on an inspection: the change is said to be unreviewed. On the base only a
+/// commit, push or pull request said so; an inspection whose review failed
+/// printed nothing, which reads as a clean one.
+#[cfg(unix)]
+#[test]
+fn an_inspection_whose_engine_read_git_refused_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let path = path_refusing(tools.path(), "--git-dir");
+    let env = [("PATH", Path::new(&path))];
+    let diff = in_session("s1", &payload_for("PostToolUse", repo, "git diff"));
+    let h = hook_in_env(repo, cache.path(), "posttooluse", &[], &env, &diff);
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// An amend whose `HEAD~1` git refused to resolve is a failed read, not a
+/// commit with no parent: said, instead of the silence that means "no
+/// range". On the base both answers were `None`.
+#[cfg(unix)]
+#[test]
+fn an_amend_whose_parent_git_refused_to_resolve_is_not_reviewed() {
+    let tmp = repo_with_pending_change();
+    let tools = TempDir::new().unwrap();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["add", "-A"]);
+    let path = path_refusing(tools.path(), "HEAD~1");
+    let env = [("PATH", Path::new(&path))];
+    let h = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &["--gate"],
+        &env,
+        &payload(repo, "git commit --amend -m vat"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("diffctx did not review"), "{context}");
+    assert!(context.contains("git refused a read"), "{context}");
+}
+
+/// What the hook put between its lead and its notes.
+fn hook_block(context: &str) -> &str {
+    let (_, after) = context
+        .split_once("What it reaches outside the diff:\n")
+        .unwrap_or_else(|| panic!("no review block in {context:?}"));
+    after.split("\nCheck ").next().unwrap_or(after)
+}
+
+/// The answer without its header line, which names what was reviewed: the hook
+/// says the snapshot it read, the command line the range it was given.
+fn after_header(text: &str) -> String {
+    text.trim_end()
+        .split_once('\n')
+        .map_or("", |(_, rest)| rest)
+        .trim_end()
+        .to_string()
+}
+
+/// The hook's block is the engine's render of the same change, not a text of its
+/// own: `Profile::Hook`, read in-process, is what the hook printed; and where the
+/// automatic answer cuts nothing, it is the text the command line prints.
+#[test]
+fn the_hooks_block_is_the_engines_render_of_the_same_change() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git diff"),
+    );
+    let context = context_of(&h);
+    let block = after_header(hook_block(&context));
+    assert!(block.contains("shop/checkout.py::charge"), "{context}");
+
+    let mut request =
+        _diffctx::delivery::Request::new(repo.to_path_buf(), _diffctx::delivery::Mode::Impact);
+    request.range = Some("HEAD".to_string());
+    request.profile = _diffctx::delivery::Profile::Hook;
+    let engine = _diffctx::delivery::deliver(&request).unwrap().text;
+    assert_eq!(
+        block,
+        after_header(&engine),
+        "hook:\n{context}\nengine:\n{engine}"
+    );
+
+    let cli = diffctx()
+        .current_dir(repo)
+        .env("DIFFCTX_CACHE_DIR", cache.path())
+        .args([".", "--diff", "HEAD", "--mode", "impact", "-f", "md", "-q"])
+        .output()
+        .expect("run diffctx");
+    assert!(cli.status.success());
+    let cli = String::from_utf8(cli.stdout).unwrap();
+    assert_eq!(block, after_header(&cli), "hook:\n{context}\ncli:\n{cli}");
+}
+
+/// fj#170: a checkout can hold a million untracked files, and listing them
+/// one by one took 20 s to 26 s of the hook's 30 s before anything was read.
+/// Whether a change is analysable never needs that listing: a collapsed
+/// directory entry names the untracked part. The property is the one the
+/// slow listing violates and no clock decides: the calls git was asked.
+#[cfg(unix)]
+mod untracked_listing {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+    use support::fake_git::FAKE_GIT;
+
+    /// Only a withheld Markdown file changes (modified, tracked), beside
+    /// untracked directories: nothing in the change is analysable.
+    pub(crate) fn repo_with_only_a_withheld_change() -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        git(repo, &["init", "-q", "."]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+        git(repo, &["config", "user.name", "diffctx tests"]);
+        write(repo, ".diffctx/ignore", "notes/\n");
+        write(repo, "notes/plan.md", "# plan\n");
+        write(
+            repo,
+            "shop/pricing.py",
+            "def total(items):\n    return sum(i.price for i in items)\n",
+        );
+        commit_all(repo, "initial");
+        write(repo, "notes/plan.md", "# plan\n\nmore\n");
+        for dir in 0..6 {
+            for file in 0..4 {
+                write(repo, &format!("bulk/d{dir}/f{file}.txt"), "x\n");
+            }
+        }
+        tmp
+    }
+
+    /// The git calls one hook event made, through the logging shim.
+    pub(crate) fn calls_of(
+        repo: &Path,
+        cache: &Path,
+        shim: &Path,
+        event: &str,
+        line: &str,
+    ) -> Calls {
+        let bin = shim.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let fake = bin.join("git");
+        std::fs::write(&fake, FAKE_GIT).unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let real = Command::new("sh")
+            .args(["-c", "command -v git"])
+            .output()
+            .expect("locate git");
+        let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let log = shim.join("calls");
+        let env = [
+            ("PATH", Path::new(&path)),
+            ("REAL_GIT", Path::new(&real)),
+            ("FAKE_GIT_CALLS", log.as_path()),
+        ];
+        let out = hook_in_env(
+            repo,
+            cache,
+            "posttooluse",
+            &[],
+            &env,
+            &payload_for(event, repo, line),
+        );
+        Calls {
+            hook_stdout: out.stdout,
+            lines: std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect(),
+        }
+    }
+
+    pub(crate) struct Calls {
+        pub hook_stdout: String,
+        pub lines: Vec<String>,
+    }
+
+    impl Calls {
+        /// Calls that list every untracked file instead of its directory.
+        pub(crate) fn per_file_listings(&self) -> Vec<&str> {
+            self.lines
+                .iter()
+                .map(String::as_str)
+                .filter(|call| {
+                    let words: Vec<&str> = call.split_whitespace().collect();
+                    let lists_untracked = words
+                        .iter()
+                        .any(|w| matches!(*w, "-o" | "--others" | "--untracked-files=all"));
+                    lists_untracked && !words.contains(&"--directory")
+                })
+                .collect()
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_pending_change_with_nothing_analysable_lists_no_untracked_file_one_by_one() {
+    let tmp = untracked_listing::repo_with_only_a_withheld_change();
+    let repo = tmp.path();
+    for (n, line) in ["git diff", "grep -rn total shop"].into_iter().enumerate() {
+        let cache = TempDir::new().unwrap();
+        let shim = TempDir::new().unwrap();
+        let calls =
+            untracked_listing::calls_of(repo, cache.path(), shim.path(), "PostToolUse", line);
+        assert_eq!(
+            calls.per_file_listings(),
+            Vec::<&str>::new(),
+            "entry {n} ({line}) asked git for every untracked file; calls:\n{}",
+            calls.lines.join("\n")
+        );
+        assert!(
+            !calls.hook_stdout.contains("partial"),
+            "entry {n} ({line}): {}",
+            calls.hook_stdout
+        );
+    }
+}
+
+/// The review of a pushed range reads no checkout listing at all; a push is
+/// reviewed from its trees, so a large untracked tree costs it nothing.
+#[cfg(unix)]
+#[test]
+fn a_push_review_lists_no_untracked_file_one_by_one() {
+    let tmp = untracked_listing::repo_with_only_a_withheld_change();
+    let repo = tmp.path();
+    let remote = TempDir::new().unwrap();
+    git(remote.path(), &["init", "-q", "--bare", "."]);
+    git(
+        repo,
+        &["remote", "add", "origin", &remote.path().to_string_lossy()],
+    );
+    git(repo, &["push", "-q", "-u", "origin", "HEAD"]);
+    git(repo, &["add", "notes/plan.md"]);
+    git(repo, &["commit", "-q", "-m", "plan", "--", "notes/plan.md"]);
+    let cache = TempDir::new().unwrap();
+    let shim = TempDir::new().unwrap();
+    let pre = hook_with(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &payload_in_session("s1", repo, "git push"),
+    );
+    assert_eq!(pre.stdout, "");
+    sh(repo, &[], "git push -q");
+    let calls =
+        untracked_listing::calls_of(repo, cache.path(), shim.path(), "PostToolUse", "git push");
+    assert_eq!(
+        calls.per_file_listings(),
+        Vec::<&str>::new(),
+        "calls:\n{}",
+        calls.lines.join("\n")
+    );
+    assert!(
+        !calls.hook_stdout.contains("partial"),
+        "{}",
+        calls.hook_stdout
+    );
+}
+
+/// fj#170: the untracked part of a pending change is read collapsed, and a
+/// directory is expanded for what it holds: a package directory no git
+/// listing names file by file is still a change the review reads.
+#[test]
+fn a_search_for_a_name_defined_in_an_untracked_directory_is_answered() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["init", "-q", "."]);
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    write(
+        repo,
+        "main.py",
+        "from pkg.tools import convert\n\n\ndef run(x):\n    return convert(x)\n",
+    );
+    commit_all(repo, "main");
+    write(repo, "pkg/tools.py", "def convert(x):\n    return int(x)\n");
+    let cache = TempDir::new().unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def convert"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("`convert`"), "{context}");
+    assert!(context.contains("main.py::run"), "{context}");
+}
+
+/// A policy file inside an untracked directory the read expanded still
+/// withholds what it names, and the file beside it stays reviewed.
+#[test]
+fn a_policy_in_an_expanded_untracked_directory_withholds_its_files() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    git(repo, &["init", "-q", "."]);
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    write(
+        repo,
+        "main.py",
+        "from pkg.tools import convert\n\n\ndef run(x):\n    return convert(x)\n",
+    );
+    commit_all(repo, "main");
+    write(repo, "pkg/tools.py", "def convert(x):\n    return int(x)\n");
+    write(repo, "private/.diffctx/ignore", "secret.py\n");
+    write(
+        repo,
+        "private/secret.py",
+        "def hidden_name(x):\n    return x\n",
+    );
+    let cache = TempDir::new().unwrap();
+    let open = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def convert"),
+    );
+    assert!(context_of(&open).contains("`convert`"), "{}", open.stdout);
+    let cache = TempDir::new().unwrap();
+    let withheld = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &search_payload(repo, "Grep", "def hidden_name"),
+    );
+    assert!(
+        !withheld.stdout.contains("secret.py"),
+        "{}",
+        withheld.stdout
+    );
+}
+
+/// An untracked directory whose entries do not fit the budget of the read is
+/// left unread, and the review says so by name: a smaller answer is never a
+/// clean one. With no session ledger to tell whose change it is, the hook's
+/// note names every unread directory. (The budget is 5000 entries below the
+/// top level.)
+#[test]
+fn an_untracked_directory_over_the_budget_is_named_as_unread() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    for n in 0..5_100 {
+        write(repo, &format!("bulk/f{n}.txt"), "x\n");
+    }
+    let cache = TempDir::new().unwrap();
+    let h = hook_with(
+        repo,
+        cache.path(),
+        "posttooluse",
+        &[],
+        &payload_for("PostToolUse", repo, "git diff"),
+    );
+    let context = context_of(&h);
+    assert!(context.contains("1 untracked director"), "{context}");
+    assert!(context.contains("bulk"), "{context}");
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+}
+
+/// The hook's own note on an unread untracked directory is about the session's
+/// change: a directory this session wrote in is named, one it wrote nothing in
+/// is another session's pending work and left to the engine's coverage line.
+#[test]
+fn the_note_on_an_unread_directory_names_only_the_directories_this_session_wrote_in() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    for n in 0..5_100 {
+        write(repo, &format!("bulk/f{n}.txt"), "x\n");
+    }
+    let dir = TempDir::new().unwrap();
+    let pricing = repo.join("shop/pricing.py");
+
+    let elsewhere = transcript(dir.path(), std::slice::from_ref(&pricing), &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&elsewhere));
+    assert!(
+        h.stdout.contains("shop/checkout.py::charge"),
+        "{}",
+        h.stdout
+    );
+    assert!(
+        !h.stdout.contains("diffctx did not read"),
+        "a directory this session wrote nothing in is no note of its own: {}",
+        h.stdout
+    );
+
+    let wrote_in = transcript(dir.path(), &[pricing, repo.join("bulk/f0.txt")], &[]);
+    let h = inspect_with_transcript(repo, "git diff", Some(&wrote_in));
+    assert!(
+        h.stdout
+            .contains("diffctx did not read 1 untracked director"),
+        "{}",
+        h.stdout
+    );
+    assert!(h.stdout.contains("bulk"), "{}", h.stdout);
 }

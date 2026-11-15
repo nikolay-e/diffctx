@@ -1,0 +1,33 @@
+name: py_test_helper_used_only_by_changed_tests_is_named
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, tests, also-changed, s2]
+repo:
+  initial_files:
+    tests/__init__.py: ""
+    tests/helpers.py: |
+      def make(n):
+          return n
+    tests/test_make.py: |
+      from tests.helpers import make
+
+
+      def test_make():
+          assert make(1) == 1
+  changed_files:
+    tests/helpers.py: |
+      def make(n):
+          return n + 0
+    tests/test_make.py: |
+      from tests.helpers import make
+
+
+      def test_make():
+          assert make(2) == 2
+  commit_message: "tests: the helper and its test"
+# A definition in a test file is traced like any other: the helper is used by a
+# test the range changes, and is named with it. The changed test function, which
+# nothing calls, is named as one the test runner enters.
+expect:
+  changed: [tests/helpers.py::make, tests/test_make.py::test_make]

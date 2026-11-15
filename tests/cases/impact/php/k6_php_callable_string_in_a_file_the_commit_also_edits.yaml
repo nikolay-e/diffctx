@@ -1,0 +1,76 @@
+name: k6_php_callable_string_in_a_file_the_commit_also_edits
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string, changed-file]
+repo:
+  initial_files:
+    src/hooks.php: |
+      <?php
+
+      function app_compare(int $a, int $b): int
+      {
+          return $a <=> $b;
+      }
+    src/Sorter.php: |
+      <?php
+
+      namespace App;
+
+      class Sorter
+      {
+          public function sort(array $xs): array
+          {
+              usort($xs, 'app_compare');
+              return $xs;
+          }
+
+          public function other(): string
+          {
+              return 'a';
+          }
+      }
+    src/Main.php: |
+      <?php
+
+      namespace App;
+
+      class Main
+      {
+          public function run(): string
+          {
+              return (new Sorter())->other();
+          }
+      }
+  changed_files:
+    src/hooks.php: |
+      <?php
+
+      function app_compare(int $a, int $b): int
+      {
+          return $b <=> $a;
+      }
+    src/Sorter.php: |
+      <?php
+
+      namespace App;
+
+      class Sorter
+      {
+          public function sort(array $xs): array
+          {
+              usort($xs, 'app_compare');
+              return $xs;
+          }
+
+          public function other(): string
+          {
+              return 'b';
+          }
+      }
+  commit_message: "hooks: compare descending; sorter other says b"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/Sorter.php, to: src/hooks.php::app_compare, kind: calls, resolution: unresolved}

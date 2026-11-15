@@ -1,0 +1,64 @@
+name: ts_rewritten_exported_function_is_the_changed_definition_not_its_inner_method
+mode: impact
+source: gh#512
+issue_state: open
+tags:
+- typescript
+- javascript
+- representative
+repo:
+  initial_files:
+    sw/update.js: |
+      export const OBJECTION_WINDOW_MS = 1000;
+      export const SWAP_CHANNEL = 'swap';
+
+      export function installAutoUpdate(register) {
+        let waiting = false;
+        const applyIfIdle = () => {
+          if (!waiting) register.update();
+        };
+        const schedule = () => setTimeout(applyIfIdle, OBJECTION_WINDOW_MS);
+        return register({
+          onNeedRefresh() {
+            waiting = true;
+            schedule();
+          },
+        });
+      }
+    src/main.js: |
+      import { installAutoUpdate } from '../sw/update.js';
+
+      export function boot(register) {
+        return installAutoUpdate(register);
+      }
+  changed_files:
+    sw/update.js: |
+      export const OBJECTION_WINDOW_MS = 2000;
+      export const SWAP_CHANNEL = 'swap-v2';
+
+      export function installAutoUpdate(register) {
+        let waiting = false;
+        const applyIfIdle = async () => {
+          if (!waiting && (await register.consent())) register.update();
+        };
+        const schedule = () => setTimeout(applyIfIdle, OBJECTION_WINDOW_MS);
+        return register({
+          async onNeedRefresh() {
+            waiting = true;
+            schedule();
+          },
+        });
+      }
+  commit_message: Ask for consent before applying an update
+expect:
+  changed:
+  - sw/update.js::installAutoUpdate
+  - sw/update.js::OBJECTION_WINDOW_MS
+  - sw/update.js::SWAP_CHANNEL
+  relations:
+  - from: src/main.js::boot
+    to: sw/update.js::installAutoUpdate
+    kind: calls
+    resolution: resolved
+    site: 4
+  exact: false

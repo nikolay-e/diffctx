@@ -1,0 +1,38 @@
+name: config_symbol_name_only_in_yaml_and_shell
+mode: symbol
+source: fj#114
+issue_state: open
+tags:
+- config
+- yaml
+- shell
+- symbol
+- textual
+repo:
+  initial_files:
+    scripts/backup.sh: |
+      #!/bin/sh
+      echo "backup_last_success_seconds $(date +%s)" > /var/lib/node/metrics.prom
+    rules/alerts.yaml: |
+      groups:
+        - name: backup
+          rules:
+            - alert: BackupStale
+              expr: time() - backup_last_success_seconds > 86400
+  commit_message: Change config symbol name only in yaml and shell
+query:
+  symbol: backup_last_success_seconds
+expect:
+  relations:
+  - from: rules/alerts.yaml
+    to: backup_last_success_seconds
+    kind: reads
+    resolution: candidate
+    site: 5
+  - from: scripts/backup.sh
+    to: backup_last_success_seconds
+    kind: reads
+    resolution: candidate
+    site: 2
+  exact: true
+  never_empty: true

@@ -23,7 +23,7 @@ fn selection_cost(selected: &[Fragment]) -> u32 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectionReason {
+pub(crate) enum SelectionReason {
     TopK,
     NoCandidates,
     BudgetExhausted,
@@ -32,7 +32,7 @@ pub enum SelectionReason {
     BestSingleton,
 }
 
-pub struct SelectionResult {
+pub(crate) struct SelectionResult {
     pub selected: Vec<Fragment>,
     #[cfg_attr(
         not(test),
@@ -68,7 +68,7 @@ pub struct SelectionResult {
 impl SelectionResult {
     /// Nothing selected: no candidates reached the selector at all. Spelled out
     /// identically in the greedy and the Boltzmann path before this.
-    pub fn none() -> Self {
+    pub(crate) fn none() -> Self {
         Self {
             selected: Vec::new(),
             reason: SelectionReason::NoCandidates,
@@ -1040,8 +1040,8 @@ fn setup_and_select_core(
     // the core pass places. A core's stub can also arrive through the greedy
     // or a post-pass (core skipped, stub picked later), and it stands in for
     // the change just the same. Recording only the core pass's placements
-    // rendered such a stub as context (measured: `select_with_params`'s stub
-    // lost its role on the bitcheck fixture). The set is safe to hold as
+    // rendered such a stub as context (measured on this repository:
+    // `select_with_params`'s stub lost its role). The set is safe to hold as
     // candidates: only SELECTED fragments are ever asked, and a selected stub
     // cannot coexist with its selected core (interval superset), so selected
     // AND paired is exactly "placed as a stand-in".
@@ -1091,7 +1091,7 @@ fn setup_and_select_core(
     )
 }
 
-pub fn lazy_greedy_select(
+pub(crate) fn lazy_greedy_select(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,

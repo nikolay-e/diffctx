@@ -53,8 +53,9 @@ class TestLocateMode:
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "-q"])
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
-        assert doc["schema"] == "diffctx.locate.v1"
-        assert doc["item_count"] == len(doc["items"]) > 0
+        assert doc["schema"] == "diffctx.locate.v2"
+        assert "item_count" not in doc, "a count beside the list it counts"
+        assert len(doc["items"]) > 0
         for item in doc["items"]:
             assert {"path", "lines", "kind", "score", "tokens", "reasons"} <= item.keys()
             assert item["reasons"], "every ranked item carries >=1 provenance reason"
@@ -62,7 +63,7 @@ class TestLocateMode:
 
         summary = doc["summary"]
         assert summary["changed"] == sum(1 for i in doc["items"] if i.get("role") == "changed")
-        assert summary["context"] == doc["item_count"] - summary["changed"]
+        assert summary["context"] == len(doc["items"]) - summary["changed"]
         assert summary["files"] == len({i["path"] for i in doc["items"]})
         test_items = [i for i in doc["items"] if i.get("group") == "test"]
         assert summary["tests"] == len(test_items)
@@ -100,8 +101,8 @@ class TestLocateMode:
         out = repo.path / "where.md"
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "-o", str(out), "-q"])
         assert result.returncode == 0, result.stderr
-        assert f"the '{out}' extension says md, but --mode locate writes diffctx.locate.v1 JSON" in result.stderr
-        assert json.loads(out.read_text(encoding="utf-8"))["schema"] == "diffctx.locate.v1"
+        assert f"the '{out}' extension says md, but --mode locate writes diffctx.locate.v2 JSON" in result.stderr
+        assert json.loads(out.read_text(encoding="utf-8"))["schema"] == "diffctx.locate.v2"
 
     def test_native_build_locate_treats_an_empty_range_as_the_working_tree(self, locate_repo):
         """`build_diff_context` maps an empty diff_range to the working tree;
@@ -114,8 +115,8 @@ class TestLocateMode:
         (repo.path / "src" / "calc.py").write_text("def add(a, b):\n    return a + b + 0\n")
 
         payload = json.loads(build_locate(repo.path, "", budget_tokens=8000))
-        assert payload["schema"] == "diffctx.locate.v1"
-        assert "src/calc.py" in payload["changed_files"]
+        assert payload["schema"] == "diffctx.locate.v2"
+        assert "src/calc.py" in payload["inventory"]["changed"]["items"]
 
 
 class TestCoverageAndOverflow:
@@ -143,34 +144,55 @@ class TestCoverageAndOverflow:
         head = repo.commit("change shared")
         return repo, f"{base}..{head}"
 
-    def test_overflow_names_what_did_not_fit_without_source(self, tmp_path):
+    def test_overflow_is_counted_and_not_listed_unless_asked(self, tmp_path):
         repo, diff_range = self._crowded_repo(tmp_path)
         result = _run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "--budget", "200", "-q"])
         assert result.returncode == 0, result.stderr
         doc = json.loads(result.stdout)
 
-        assert doc["overflow"], "a 200-token budget on 25 callers must leave something behind"
-        assert doc["overflow_count"] >= len(doc["overflow"])
-        selected = {(i["path"], i["lines"]) for i in doc["items"]}
-        for entry in doc["overflow"]:
-            assert {"path", "lines", "score", "tokens", "why"} <= entry.keys()
-            assert entry["why"], "an overflow entry the caller cannot interpret is noise"
-            assert (entry["path"], entry["lines"]) not in selected, "overflow must not repeat the selection"
-        # No bodies: the overflow list is a pointer, and paying source cost for
-        # what was skipped would defeat the budget it reports on.
+        assert doc["overflow"]["total"] > 0, "a 200-token budget on 25 callers must leave something behind"
+        assert not doc["overflow"].get("items"), "the entries are listed only on request"
+        assert "overflow_count" not in doc, "the count lives in the list it counts"
+        # No bodies: what was skipped is a pointer, and paying source cost for
+        # it would defeat the budget it reports on.
         assert "def helper_" not in result.stdout
 
-        scores = [e["score"] for e in doc["overflow"]]
-        assert scores == sorted(scores, reverse=True), "overflow is a ranking, not a set"
+    def test_overflow_entries_come_on_request_and_are_charged(self, tmp_path):
+        from diffctx._diffctx import count_tokens
+
+        repo, diff_range = self._crowded_repo(tmp_path)
+        for budget in ("200", "1200"):
+            result = _run(
+                repo.path,
+                [".", "--diff", diff_range, "--mode", "locate", "--overflow", "--budget", budget, "-q"],
+            )
+            assert result.returncode == 0, result.stderr
+            doc = json.loads(result.stdout)
+            entries = doc["overflow"].get("items", [])
+            selected = {(i["path"], i["lines"]) for i in doc["items"]}
+            for entry in entries:
+                assert {"path", "lines", "score", "tokens", "why"} <= entry.keys()
+                assert entry["why"], "an overflow entry the caller cannot interpret is noise"
+                assert (entry["path"], entry["lines"]) not in selected, "overflow must not repeat the selection"
+            scores = [e["score"] for e in entries]
+            assert scores == sorted(scores, reverse=True), "overflow is a ranking, not a set"
+            assert len(entries) <= min(50, doc["overflow"]["total"])
+            # Charged like every other byte: within the budget, or declared too small.
+            assert count_tokens(result.stdout) <= int(budget) or doc["fit"].get("least"), budget
 
     def test_overflow_is_capped_but_the_total_is_not(self, tmp_path):
         """A capped list with no true total would understate the gap in exactly
         the runs where the gap is largest."""
         repo, diff_range = self._crowded_repo(tmp_path)
-        doc = json.loads(_run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "--budget", "200", "-q"]).stdout)
-        assert len(doc["overflow"]) <= 50
-        if doc["overflow_count"] > 50:
-            assert len(doc["overflow"]) == 50
+        args = [".", "--diff", diff_range, "--mode", "locate", "--overflow", "--budget", "1200", "-q"]
+        doc = json.loads(_run(repo.path, args).stdout)
+        assert len(doc["overflow"].get("items", [])) <= 50
+
+    def test_overflow_is_refused_outside_locate(self, locate_repo):
+        repo, diff_range = locate_repo
+        result = _run(repo.path, [".", "--diff", diff_range, "--overflow"])
+        assert result.returncode == 2
+        assert "--overflow applies to --mode locate only" in result.stderr
 
     def test_an_unlimited_budget_reports_no_budget_pressure(self, tmp_path):
         """`next_up` answers "would paying more change the answer". At
@@ -179,15 +201,14 @@ class TestCoverageAndOverflow:
         than spending tokens to say "fine"."""
         repo, diff_range = self._crowded_repo(tmp_path)
         doc = json.loads(_run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "--budget", "-1", "-q"]).stdout)
-        assert doc.get("coverage", {}).get("next_up", 0) == 0
+        assert doc.get("coverage", {}).get("selection", {}).get("next_up", 0) == 0
         assert not doc.get("overflow"), "nothing is left behind when the budget is unlimited"
 
-    def test_a_tight_budget_reports_pressure_and_a_lower_confidence(self, tmp_path):
+    def test_a_tight_budget_reports_pressure(self, tmp_path):
         repo, diff_range = self._crowded_repo(tmp_path)
         tight = json.loads(_run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "--budget", "200", "-q"]).stdout)
-        loose = json.loads(_run(repo.path, [".", "--diff", diff_range, "--mode", "locate", "--budget", "-1", "-q"]).stdout)
-        assert tight["coverage"]["next_up"] > 0
-        assert tight["coverage"]["confidence"] < loose.get("coverage", {}).get("confidence", 1.0)
+        assert tight["coverage"]["selection"]["next_up"] > 0
+        assert "confidence" not in tight["coverage"], "a heuristic that reads as a score is not reported"
 
     def test_an_unparseable_changed_file_is_named_as_a_blind_spot(self, tmp_path):
         """The acceptance case: a file whose language diffctx claims to parse, but
@@ -204,8 +225,7 @@ class TestCoverageAndOverflow:
         head = repo.commit("touch the unparseable file")
 
         doc = json.loads(_run(repo.path, [".", "--diff", f"{base}..{head}", "--mode", "locate", "-q"]).stdout)
-        assert "src/broken.py" in doc["coverage"]["unparsed_files"]
-        assert doc["coverage"]["confidence"] < 1.0
+        assert "src/broken.py" in doc["coverage"]["selection"]["unparsed_files"]
 
     def test_a_documentation_file_is_not_reported_as_a_blind_spot(self, tmp_path):
         """Markdown has no symbols to find, so naming it would be true and
@@ -219,7 +239,7 @@ class TestCoverageAndOverflow:
         head = repo.commit("extend the docs")
 
         doc = json.loads(_run(repo.path, [".", "--diff", f"{base}..{head}", "--mode", "locate", "-q"]).stdout)
-        assert "README.md" not in doc.get("coverage", {}).get("unparsed_files", [])
+        assert "README.md" not in doc.get("coverage", {}).get("selection", {}).get("unparsed_files", [])
 
     def test_pack_output_is_unchanged_by_the_coverage_fields(self, locate_repo):
         """The coverage block is a locate-mode disclosure. If it moved a single

@@ -22,6 +22,7 @@ struct Record {
     started: Instant,
     phases: Vec<(&'static str, f64)>,
     counts: Vec<(&'static str, u64)>,
+    details: Vec<(&'static str, &'static str, f64)>,
     written: bool,
 }
 
@@ -72,6 +73,7 @@ fn start(mode: &'static str, cli: bool) -> Run {
         started: Instant::now(),
         phases: Vec::new(),
         counts: Vec::new(),
+        details: Vec::new(),
         written: false,
     }));
     ACTIVE.with(|a| *a.borrow_mut() = Some(shared.clone()));
@@ -106,6 +108,24 @@ impl Drop for Phase {
         if let Some((shared, name, started)) = self.0.take() {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             shared.lock().unwrap().phases.push((name, ms));
+        }
+    }
+}
+
+/// Times a part of a phase until dropped, under a label (a language, a side).
+/// Details are reported beside the phases, never in their sum: they say where
+/// the time of a phase went, so a phase that holds several is not read twice.
+pub struct Detail(Option<(Shared, &'static str, &'static str, Instant)>);
+
+pub fn detail(name: &'static str, label: &'static str) -> Detail {
+    Detail(active().map(|s| (s, name, label, Instant::now())))
+}
+
+impl Drop for Detail {
+    fn drop(&mut self) {
+        if let Some((shared, name, label, started)) = self.0.take() {
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            shared.lock().unwrap().details.push((name, label, ms));
         }
     }
 }
@@ -184,12 +204,29 @@ fn write(shared: &Shared) {
         .iter()
         .map(|(name, n)| ((*name).to_string(), serde_json::json!(n)))
         .collect();
+    let mut details = serde_json::Map::new();
+    for (name, label, ms) in &r.details {
+        let key = if label.is_empty() {
+            (*name).to_string()
+        } else {
+            format!("{name}:{label}")
+        };
+        let entry = details
+            .entry(key)
+            .or_insert_with(|| serde_json::json!({"ms": 0.0, "n": 0}));
+        entry["ms"] = serde_json::json!(entry["ms"].as_f64().unwrap_or(0.0) + ms);
+        entry["n"] = serde_json::json!(entry["n"].as_u64().unwrap_or(0) + 1);
+    }
+    for entry in details.values_mut() {
+        entry["ms"] = serde_json::json!(round(entry["ms"].as_f64().unwrap_or(0.0)));
+    }
     let mut line = serde_json::json!({
         "tag": tag(),
         "mode": r.mode,
         "total_ms": round(r.started.elapsed().as_secs_f64() * 1000.0),
         "phases": phases,
         "counts": counts,
+        "details": details,
     });
     if r.cli {
         line["peak_rss_mb"] = serde_json::json!(round(

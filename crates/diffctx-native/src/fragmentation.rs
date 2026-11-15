@@ -9,8 +9,9 @@ use crate::candidate_files::normalize_path;
 use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::git::{self, CatFileBatch};
+use crate::languages::file_ext;
 use crate::parsers::fragment_file;
+use crate::source::Source;
 use crate::tokenizer::count_tokens;
 use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
@@ -219,10 +220,10 @@ enum FileRead {
     },
     TooLarge,
     Unreadable,
-    /// The run's deadline or cancellation stopped the read: the file is
-    /// unknown, and reading the disk instead would answer for another
-    /// snapshot.
-    Interrupted(crate::resource::LimitReason),
+    /// The run's deadline or cancellation stopped the read, or the read
+    /// failed: the file is unknown, and reading the disk instead would answer
+    /// for another snapshot.
+    Lost(crate::resource::LimitReason),
 }
 
 /// The one decoder for file bytes, whichever store they came from. A
@@ -248,14 +249,10 @@ fn decode_text(bytes: &[u8]) -> (String, bool) {
 fn read_file_content(
     file_path: &Path,
     root_dir: &Path,
-    preferred_revs: &[String],
-    mut batch_reader: Option<&mut CatFileBatch>,
+    source: &Source,
     is_changed: bool,
 ) -> FileRead {
-    let ext = file_path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let ext = file_ext(file_path);
     if KNOWN_BINARY_EXTENSIONS.contains(ext.as_str()) {
         return FileRead::Unreadable;
     }
@@ -263,9 +260,9 @@ fn read_file_content(
     let abs_path = normalize_path(file_path, root_dir);
     let resolved_root =
         crate::paths::canonical_root(root_dir).unwrap_or_else(|| root_dir.to_path_buf());
-    let Some(rel) = abs_path.strip_prefix(&resolved_root).ok() else {
+    if abs_path.strip_prefix(&resolved_root).is_err() {
         return FileRead::Unreadable;
-    };
+    }
 
     let max_size = if is_changed {
         LIMITS.max_changed_file_size
@@ -273,20 +270,17 @@ fn read_file_content(
         LIMITS.max_file_size
     };
     let mut oversized = false;
-    for rev in preferred_revs {
-        let bytes = match batch_reader.as_deref_mut() {
-            Some(reader) => reader.get_bytes(rev, rel),
-            None => git::show_file_bytes_at_revision(root_dir, rev, rel),
-        };
-        let bytes = match bytes {
-            Ok(bytes) => bytes,
-            Err(git::GitError::Cancelled) => {
-                return FileRead::Interrupted(crate::resource::LimitReason::Cancelled);
+    // The side the range ends at first, then the one it started from: a
+    // snapshot's file absent from both is not in the snapshot, and the disk's
+    // copy would answer for another state (#354).
+    for side in std::iter::once(source.clone()).chain(source.fallback()) {
+        let bytes = match side.read(&abs_path) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => continue,
+            Err(crate::snapshot::SnapshotError::Cancelled) => {
+                return FileRead::Lost(crate::resource::LimitReason::Cancelled);
             }
-            Err(e) if e.is_interruption() => {
-                return FileRead::Interrupted(crate::resource::LimitReason::Deadline);
-            }
-            Err(_) => continue,
+            Err(e) => return FileRead::Lost(crate::resource::reason_for(&e)),
         };
         if bytes.len() > max_size {
             oversized = true;
@@ -299,22 +293,6 @@ fn read_file_content(
         return FileRead::Text { content, lossy };
     }
 
-    // A snapshot's file absent from both its revisions is not in the
-    // snapshot; the disk's copy would answer for another state (#354).
-    if crate::source::current().rev().is_none() && abs_path.is_file() {
-        if let Ok(meta) = std::fs::metadata(&abs_path) {
-            if meta.len() as usize > max_size {
-                return FileRead::TooLarge;
-            }
-        }
-        if let Ok(bytes) = std::fs::read(&abs_path) {
-            if !looks_binary(&bytes) {
-                let (content, lossy) = decode_text(&bytes);
-                return FileRead::Text { content, lossy };
-            }
-        }
-    }
-
     if oversized {
         FileRead::TooLarge
     } else {
@@ -323,43 +301,21 @@ fn read_file_content(
 }
 
 /// A changed file's text as the fragmenter reads it.
-pub(crate) fn changed_text(
-    file_path: &Path,
-    root_dir: &Path,
-    preferred_revs: &[String],
-    batch_reader: &mut CatFileBatch,
-) -> Option<String> {
-    match read_file_content(
-        file_path,
-        root_dir,
-        preferred_revs,
-        Some(batch_reader),
-        true,
-    ) {
+pub(crate) fn changed_text(file_path: &Path, root_dir: &Path, source: &Source) -> Option<String> {
+    match read_file_content(file_path, root_dir, source, true) {
         FileRead::Text { content, .. } => Some(content),
         _ => None,
     }
 }
 
-pub fn process_files_for_fragments(
+pub(crate) fn process_files_for_fragments(
     files: &[PathBuf],
     root_dir: &Path,
-    preferred_revs: &[String],
     seen_frag_ids: &mut FxHashSet<FragmentId>,
-    batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
     ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
-    fragment_files(
-        files,
-        root_dir,
-        preferred_revs,
-        seen_frag_ids,
-        batch_reader,
-        is_changed,
-        ctx,
-        &[],
-    )
+    fragment_files(files, root_dir, seen_frag_ids, is_changed, ctx, &[])
 }
 
 /// `hunks` are the edited lines of the changed files: a fragment overlapping
@@ -367,20 +323,18 @@ pub fn process_files_for_fragments(
 /// of a 4000-function file is the changed fragment and not whichever of its
 /// neighbours the cap happened to keep (core identification would otherwise
 /// label the nearest survivor as the change).
-pub fn fragment_files(
+pub(crate) fn fragment_files(
     files: &[PathBuf],
     root_dir: &Path,
-    preferred_revs: &[String],
     seen_frag_ids: &mut FxHashSet<FragmentId>,
-    mut batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
     ctx: &crate::resource::RunContext,
     hunks: &[crate::types::DiffHunk],
 ) -> Vec<Fragment> {
     let max_source_bytes = ctx.budget().max_source_bytes;
 
-    // Process files in chunks: sequential read (CatFileBatch is &mut, !Send) then
-    // parallel parse within each chunk. Peak raw-content memory = chunk_size × max_file_size
+    // Process files in chunks: sequential read, then parallel parse within
+    // each chunk. Peak raw-content memory = chunk_size × max_file_size
     // instead of N_files × avg_file_size — eliminates OOM on large repos like astropy.
     let chunk_size = rayon::current_num_threads().max(1);
     let mut parsed: Vec<Vec<Fragment>> = Vec::with_capacity(files.len());
@@ -399,14 +353,7 @@ pub fn fragment_files(
                 break;
             }
         }
-        let chunk_contents = read_chunk(
-            chunk,
-            root_dir,
-            preferred_revs,
-            batch_reader.as_deref_mut(),
-            is_changed,
-            ctx,
-        );
+        let chunk_contents = read_chunk(chunk, root_dir, is_changed, ctx);
         parsed.extend(
             chunk_contents
                 .par_iter()
@@ -427,26 +374,19 @@ pub fn fragment_files(
     fragments
 }
 
-/// One chunk of files read in order (the batch reader is not `Send`), with
-/// every lossy decode and size exclusion recorded on `ctx`.
+/// One chunk of files read in order, with every lossy decode and size
+/// exclusion recorded on `ctx`.
 fn read_chunk(
     chunk: &[PathBuf],
     root_dir: &Path,
-    preferred_revs: &[String],
-    mut batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
     ctx: &crate::resource::RunContext,
 ) -> Vec<(PathBuf, String)> {
+    let source = ctx.source();
     let contents: Vec<(PathBuf, String)> = chunk
         .iter()
-        .filter_map(|file_path| {
-            match read_file_content(
-                file_path,
-                root_dir,
-                preferred_revs,
-                batch_reader.as_deref_mut(),
-                is_changed,
-            ) {
+        .filter_map(
+            |file_path| match read_file_content(file_path, root_dir, &source, is_changed) {
                 FileRead::Text { content, lossy } => {
                     if lossy {
                         ctx.note_lossy(crate::paths::display_rel_or_abs(root_dir, file_path));
@@ -460,7 +400,7 @@ fn read_chunk(
                     );
                     None
                 }
-                FileRead::Interrupted(reason) => {
+                FileRead::Lost(reason) => {
                     ctx.note_file(
                         reason,
                         crate::paths::display_rel_or_abs(root_dir, file_path),
@@ -468,8 +408,8 @@ fn read_chunk(
                     None
                 }
                 FileRead::Unreadable => None,
-            }
-        })
+            },
+        )
         .collect();
     let bytes: u64 = contents.iter().map(|(_, c)| c.len() as u64).sum();
     ctx.record_usage(|u| {
@@ -492,7 +432,13 @@ fn fragment_one(
     ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
     let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
-    let mut raw_frags = fragment_file(path_arc, content);
+    let mut raw_frags = fragment_file(Arc::clone(&path_arc), content);
+    if is_changed
+        && raw_frags.len() > LIMITS.max_fragments
+        && is_added_data_document(file_path, content, hunks)
+    {
+        return truncate_generated_fragments(vec![whole_file_chunk(path_arc, content.to_owned())]);
+    }
     let generated = !is_changed && is_generated_file(file_path, content);
     // Changed files also get 10x cap headroom: the biggest-N truncation below
     // keeps the LONGEST fragments, and the edited hunk is typically a small
@@ -518,6 +464,27 @@ fn fragment_one(
         raw_frags = truncate_generated_fragments(raw_frags);
     }
     raw_frags
+}
+
+/// A JSON or YAML file added whole, with more keys than a file may hold
+/// fragments. Its keys are not named symbols, and the whole-file hunk makes
+/// every one of them a changed definition: a generated artifact beside a
+/// one-line source edit spent the budget on data (gh#731). The file is one
+/// change, shown by its head with the count of lines left out, as a
+/// generated file is.
+fn is_added_data_document(
+    file_path: &Path,
+    content: &str,
+    hunks: &[crate::types::DiffHunk],
+) -> bool {
+    if !matches!(file_ext(file_path).as_str(), ".json" | ".yaml" | ".yml") {
+        return false;
+    }
+    let key = file_path.to_string_lossy();
+    let lines = content.lines().count() as u32;
+    hunks.iter().any(|h| {
+        h.path.as_ref() == key.as_ref() && h.old_len == 0 && h.new_start == 1 && h.new_len >= lines
+    })
 }
 
 /// Longest first — but a manifest's one-line `apiVersion:`/`kind:` pairs are
@@ -551,15 +518,12 @@ fn overlaps_hunk(fragment: &Fragment, hunk: &crate::types::DiffHunk) -> bool {
     fragment.start_line() <= end && fragment.end_line() >= start
 }
 
-pub fn create_whole_file_fragment(
+pub(crate) fn create_whole_file_fragment(
     path: &Path,
     root_dir: &Path,
-    preferred_revs: &[String],
-    batch_reader: Option<&mut CatFileBatch>,
+    source: &Source,
 ) -> Option<Fragment> {
-    let FileRead::Text { content, .. } =
-        read_file_content(path, root_dir, preferred_revs, batch_reader, true)
-    else {
+    let FileRead::Text { content, .. } = read_file_content(path, root_dir, source, true) else {
         return None;
     };
     let trimmed = content.trim();
@@ -584,20 +548,24 @@ pub fn create_whole_file_fragment(
         content
     };
 
-    let lines: Vec<&str> = content.lines().collect();
-    let line_count = lines.len() as u32;
-    let path_arc: Arc<str> = Arc::from(path.to_string_lossy().as_ref());
+    Some(whole_file_chunk(
+        Arc::from(path.to_string_lossy().as_ref()),
+        content,
+    ))
+}
+
+fn whole_file_chunk(path: Arc<str>, content: String) -> Fragment {
+    let line_count = content.lines().count() as u32;
     let token_count = count_tokens(&content) + LIMITS.overhead_per_fragment;
     let identifiers = extract_identifiers(&content, TOKENIZATION.fragment_min_identifier_length);
-
-    Some(Fragment {
-        id: FragmentId::new(path_arc, 1, line_count),
+    Fragment {
+        id: FragmentId::new(path, 1, line_count),
         kind: FragmentKind::Chunk,
         content: Arc::from(content),
         identifiers,
         token_count,
         symbol_name: None,
-    })
+    }
 }
 
 #[cfg(test)]

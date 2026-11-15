@@ -6,11 +6,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::CODE_EXTENSIONS;
+use crate::languages::file_ext;
 use crate::types::{Fragment, FragmentId};
 
 use super::EdgeDict;
 
-pub trait EdgeBuilder: Send + Sync {
+pub(crate) use crate::paths::{index_key_of, normalize_lexical};
+pub(crate) use crate::resource::read_file_cached;
+
+pub(crate) trait EdgeBuilder: Send + Sync {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict;
 
     fn discover_related_files(
@@ -94,7 +98,7 @@ fn strip_file_extension(stem: &str) -> &str {
     stem
 }
 
-pub fn path_to_module(path: &Path, repo_root: Option<&Path>) -> String {
+pub(crate) fn path_to_module(path: &Path, repo_root: Option<&Path>) -> String {
     let effective = if let Some(root) = repo_root {
         if path.is_absolute() {
             path.strip_prefix(root).unwrap_or(path)
@@ -122,7 +126,7 @@ pub fn path_to_module(path: &Path, repo_root: Option<&Path>) -> String {
     parts.join(".")
 }
 
-pub struct FragmentIndex {
+pub(crate) struct FragmentIndex {
     pub by_name: FxHashMap<String, Vec<FragmentId>>,
     /// Lowercased path table plus a component→paths posting list, so a path
     /// reference resolves by looking up its last component instead of scanning
@@ -138,7 +142,7 @@ pub struct FragmentIndex {
 }
 
 impl FragmentIndex {
-    pub fn new(fragments: &[Fragment], repo_root: Option<&Path>) -> Self {
+    pub(crate) fn new(fragments: &[Fragment], repo_root: Option<&Path>) -> Self {
         let mut by_name: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
 
         for f in fragments {
@@ -209,7 +213,7 @@ impl FragmentIndex {
 /// spread the relation to every sibling was measured net-negative on the
 /// corpus (#208) and removed — an accepted trade: a file-level relation
 /// endorses the file, not each of its siblings.
-pub fn file_representatives<'a>(
+pub(crate) fn file_representatives<'a>(
     fragments: impl IntoIterator<Item = &'a Fragment>,
 ) -> FxHashMap<String, FragmentId> {
     let mut file_to_rep: FxHashMap<String, (u32, FragmentId)> = FxHashMap::default();
@@ -236,7 +240,7 @@ pub fn file_representatives<'a>(
 
 /// The fragments a builder recognises, or `None` when there are none —
 /// the prelude 37 builders open the same way with.
-pub fn frags_where<'a>(
+pub(crate) fn frags_where<'a>(
     fragments: &'a [Fragment],
     keep: impl Fn(&&'a Fragment) -> bool,
 ) -> Option<Vec<&'a Fragment>> {
@@ -246,7 +250,7 @@ pub fn frags_where<'a>(
 
 /// Register `id` under the lowercase of every name — the definition index
 /// twenty builders build the same way.
-pub fn index_lower(
+pub(crate) fn index_lower(
     index: &mut FxHashMap<String, Vec<FragmentId>>,
     names: impl IntoIterator<Item = String>,
     id: &FragmentId,
@@ -259,7 +263,65 @@ pub fn index_lower(
     }
 }
 
-pub fn add_edge(
+/// A builder's definitions by lowercased name, and the reverse factor every
+/// edge to them carries.
+pub(crate) struct DefIndex {
+    pub by_name: FxHashMap<String, Vec<FragmentId>>,
+    pub reverse_factor: f64,
+}
+
+impl DefIndex {
+    pub(crate) fn new<I: IntoIterator<Item = String>>(
+        frags: &[&Fragment],
+        reverse_factor: f64,
+        defs: impl Fn(&str) -> I,
+    ) -> Self {
+        let mut by_name = FxHashMap::default();
+        for f in frags {
+            index_lower(&mut by_name, defs(&f.content), &f.id);
+        }
+        Self {
+            by_name,
+            reverse_factor,
+        }
+    }
+
+    pub(crate) fn link_one(&self, edges: &mut EdgeDict, src: &FragmentId, name: &str, weight: f64) {
+        if let Some(targets) = self.by_name.get(&name.to_lowercase()) {
+            add_edges_from_ids(edges, src, targets, weight, self.reverse_factor);
+        }
+    }
+
+    pub(crate) fn link<S: AsRef<str>>(
+        &self,
+        edges: &mut EdgeDict,
+        src: &FragmentId,
+        names: impl IntoIterator<Item = S>,
+        weight: f64,
+    ) {
+        for name in names {
+            self.link_one(edges, src, name.as_ref(), weight);
+        }
+    }
+
+    /// `link` without the names `src` defines itself.
+    pub(crate) fn link_except<S: AsRef<str>>(
+        &self,
+        edges: &mut EdgeDict,
+        src: &FragmentId,
+        names: impl IntoIterator<Item = S>,
+        self_defs: &FxHashSet<String>,
+        weight: f64,
+    ) {
+        let foreign = names.into_iter().filter(|n| {
+            let name: &str = n.as_ref();
+            !self_defs.contains(name)
+        });
+        self.link(edges, src, foreign, weight);
+    }
+}
+
+pub(crate) fn add_edge(
     edges: &mut EdgeDict,
     src: &FragmentId,
     dst: &FragmentId,
@@ -279,7 +341,7 @@ pub fn add_edge(
     }
 }
 
-pub fn add_edge_unidirectional(
+pub(crate) fn add_edge_unidirectional(
     edges: &mut EdgeDict,
     src: &FragmentId,
     dst: &FragmentId,
@@ -292,7 +354,7 @@ pub fn add_edge_unidirectional(
     }
 }
 
-pub fn add_edges_from_ids(
+pub(crate) fn add_edges_from_ids(
     edges: &mut EdgeDict,
     src: &FragmentId,
     targets: &[FragmentId],
@@ -306,19 +368,7 @@ pub fn add_edges_from_ids(
     }
 }
 
-/// A fragment's path as `FragmentIndex` keys it: repo-relative, posix. In
-/// production fragment paths are absolute (`fragmentation.rs` stores what it
-/// was handed) and the index strips `repo_root`; a caller that derives a
-/// reference from a fragment's own path has to do the same, or its reference
-/// is absolute and matches nothing.
-pub fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
-    repo_root
-        .and_then(|root| Path::new(path).strip_prefix(root).ok())
-        .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
-        .unwrap_or_else(|| crate::paths::to_posix_display(path.into()))
-}
-
-pub fn link_by_name(
+pub(crate) fn link_by_name(
     src_id: &FragmentId,
     name: &str,
     idx: &FragmentIndex,
@@ -376,7 +426,7 @@ pub fn link_by_name(
 /// `test`, `common` — matched thousands of paths and linked every fragment of
 /// each, which is one of the two mechanisms behind envoy-class instances
 /// hanging the graph build (50% of dcbench).
-pub fn link_by_path_match(
+pub(crate) fn link_by_path_match(
     src_id: &FragmentId,
     ref_str: &str,
     idx: &FragmentIndex,
@@ -449,23 +499,13 @@ fn component_aligned(path: &str, reference: &str, interior_needle: &str) -> bool
     path.contains(interior_needle)
 }
 
-pub fn read_file_cached<'a>(
-    path: &Path,
-    cache: Option<&'a FxHashMap<PathBuf, String>>,
-) -> Option<String> {
-    crate::source::read_cached(path, cache)
-}
-
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
     if let Some(root) = repo_root {
         if let Ok(rel) = candidate.strip_prefix(root) {
             return crate::paths::to_posix_display(rel.to_string_lossy()).to_lowercase();
         }
     }
-    candidate
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default()
+    lower_file_name(candidate)
 }
 
 fn matches_any_ref(candidate_name: &str, candidate_rel: &str, refs: &FxHashSet<String>) -> bool {
@@ -506,7 +546,7 @@ impl FragmentIndex {
 
     /// The representative of the file at the repo-relative `rel`, compared
     /// without case like every other path lookup here.
-    pub fn representative_of(&self, rel: &str) -> Option<&FragmentId> {
+    fn representative_of(&self, rel: &str) -> Option<&FragmentId> {
         let lower = rel.to_lowercase();
         let last = lower.rsplit('/').next()?;
         self.component_to_paths.get(last)?.iter().find_map(|&pi| {
@@ -520,7 +560,7 @@ impl FragmentIndex {
     /// The representatives of the files at the repo-relative `rel`: the file
     /// itself, or, when `rel` is a directory, every file under it. Empty when
     /// nothing is there.
-    pub fn representatives_at(&self, rel: &str) -> Vec<&FragmentId> {
+    pub(crate) fn representatives_at(&self, rel: &str) -> Vec<&FragmentId> {
         if let Some(file) = self.representative_of(rel) {
             return vec![file];
         }
@@ -533,28 +573,12 @@ impl FragmentIndex {
     }
 }
 
-/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
-/// above its start.
-pub fn normalize_lexical(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
-}
-
 /// Where an import that spells a path may land (Nix `import ../x.nix`, Nim
 /// `import vendor/palette`): next to the importing file first, then from the
 /// repository root, with each suffix tried (`""` when the spec carries its
 /// own extension). A `..` was never folded, so such imports reached nothing
 /// (#285).
-pub fn module_path_candidates(importer_rel: &str, spec: &str, suffixes: &[&str]) -> Vec<String> {
+fn module_path_candidates(importer_rel: &str, spec: &str, suffixes: &[&str]) -> Vec<String> {
     let dir = importer_rel.rsplit_once('/').map_or("", |(d, _)| d);
     let spec = spec.trim();
     let mut out = Vec::new();
@@ -579,7 +603,7 @@ pub fn module_path_candidates(importer_rel: &str, spec: &str, suffixes: &[&str])
 
 /// One edge from `src_id` to the file a path-spelled import resolves to;
 /// `false` when no indexed file is there.
-pub fn link_module_path(
+pub(crate) fn link_module_path(
     src_id: &FragmentId,
     spec: &str,
     suffixes: &[&str],
@@ -602,7 +626,7 @@ pub fn link_module_path(
 
 /// A module named by its file stem (OCaml `open Palette` is `palette.ml`):
 /// one edge to each file carrying it, abstaining above the ambiguity bar.
-pub fn link_by_stem(
+pub(crate) fn link_by_stem(
     src_id: &FragmentId,
     stem: &str,
     exts: &[&str],
@@ -634,7 +658,7 @@ pub fn link_by_stem(
 
 /// Discovery for path-spelled imports: the candidates the changed files'
 /// imports resolve to, with the same rule `link_module_path` links by.
-pub fn discover_by_module_paths<P, E, I>(
+pub(crate) fn discover_by_module_paths<P, E, I>(
     changed: &[PathBuf],
     candidates: &[PathBuf],
     repo_root: Option<&Path>,
@@ -672,7 +696,7 @@ where
     found
 }
 
-pub fn discover_files_by_refs(
+pub(crate) fn discover_files_by_refs(
     refs: &FxHashSet<String>,
     changed_files: &[PathBuf],
     all_candidates: &[PathBuf],
@@ -687,10 +711,7 @@ pub fn discover_files_by_refs(
         if changed_set.contains(candidate) {
             continue;
         }
-        let candidate_name = candidate
-            .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
+        let candidate_name = lower_file_name(candidate);
         let candidate_rel = candidate_rel_path(candidate, repo_root);
         if matches_any_ref(&candidate_name, &candidate_rel, refs) {
             discovered.push(candidate.clone());
@@ -703,7 +724,7 @@ pub fn discover_files_by_refs(
 // builder recognises, union the references their contents name, and hand those
 // to `discover_files_by_refs`. Written out per language, it was 13 lines each
 // that differed only in the two function names.
-pub fn discover_by_extracted_refs<P, E, I>(
+pub(crate) fn discover_by_extracted_refs<P, E, I>(
     changed: &[PathBuf],
     candidates: &[PathBuf],
     repo_root: Option<&Path>,
@@ -726,10 +747,34 @@ where
     )
 }
 
+/// The `discover_related_files` of a builder whose discovery is
+/// `discover_by_extracted_refs` over one recogniser and one extractor.
+macro_rules! discover_by_refs {
+    ($recognises:expr, $extract:expr) => {
+        fn discover_related_files(
+            &self,
+            changed: &[::std::path::PathBuf],
+            candidates: &[::std::path::PathBuf],
+            repo_root: Option<&::std::path::Path>,
+            file_cache: Option<&::rustc_hash::FxHashMap<::std::path::PathBuf, String>>,
+        ) -> Vec<::std::path::PathBuf> {
+            $crate::edges::base::discover_by_extracted_refs(
+                changed,
+                candidates,
+                repo_root,
+                file_cache,
+                $recognises,
+                $extract,
+            )
+        }
+    };
+}
+pub(crate) use discover_by_refs;
+
 /// The same shape when the extractor needs the file's path as well as its
 /// text (a CI file's flavour, a Dockerfile against a compose file, a C#
 /// file's own namespace).
-pub fn discover_by_extracted_path_refs<P, E, I>(
+pub(crate) fn discover_by_extracted_path_refs<P, E, I>(
     changed: &[PathBuf],
     candidates: &[PathBuf],
     repo_root: Option<&Path>,
@@ -757,7 +802,7 @@ where
 
 // The first capture group of every match, owned. Written out 97 times across
 // `edges/`, and rustfmt spreads the chain over three lines each time.
-pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = String> + 'a {
+pub(crate) fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = String> + 'a {
     re.captures_iter(content).map(|c| c[1].to_string())
 }
 
@@ -766,27 +811,27 @@ pub fn captures1<'a>(re: &'a Regex, content: &'a str) -> impl Iterator<Item = St
 // keywords across 28 tables occupied 880 lines. Every one of those tables is
 // only ever probed with `contains`, never iterated, so nothing observes the
 // literal layout.
-pub fn kw(list: &str) -> FxHashSet<&str> {
+pub(crate) fn kw(list: &str) -> FxHashSet<&str> {
     list.split_ascii_whitespace().collect()
 }
 
-pub fn file_stem_string(path: &Path) -> String {
+pub(crate) fn file_stem_string(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default()
 }
 
-pub fn file_stem_lower(path: &Path) -> String {
+pub(crate) fn file_stem_lower(path: &Path) -> String {
     file_stem_string(path).to_lowercase()
 }
 
-pub fn file_ext(path: &Path) -> String {
-    path.extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+pub(crate) fn lower_file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
         .unwrap_or_default()
 }
 
-pub fn has_ext(path: &Path, exts: &[&str]) -> bool {
+pub(crate) fn has_ext(path: &Path, exts: &[&str]) -> bool {
     let ext = file_ext(path);
     exts.iter().any(|e| *e == ext)
 }

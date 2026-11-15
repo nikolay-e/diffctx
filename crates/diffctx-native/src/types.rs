@@ -8,6 +8,78 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EdgeCategory {
+    Semantic,
+    Structural,
+    Sibling,
+    Config,
+    KeyMatch,
+    Document,
+    Similarity,
+    History,
+    TestEdge,
+    Generic,
+}
+
+impl EdgeCategory {
+    // `from_str` deliberately falls back to Generic: `edges/mod.rs` feeds it
+    // builder-supplied category labels where an unknown one is a builder
+    // without a declared category, not a caller error. A user-supplied string
+    // is the opposite case, so the Python boundary uses `try_from_str` and
+    // reports the typo instead of silently answering a different question.
+    pub fn try_from_str(s: &str) -> Option<Self> {
+        let parsed = Self::from_str(s);
+        if matches!(parsed, Self::Generic) && s != "generic" {
+            return None;
+        }
+        Some(parsed)
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "semantic" => Self::Semantic,
+            "structural" => Self::Structural,
+            "sibling" => Self::Sibling,
+            "config" => Self::Config,
+            // `config_generic` is the name this category had until the typed
+            // key table: still accepted wherever a user types one.
+            "key_match" | "config_generic" => Self::KeyMatch,
+            "document" => Self::Document,
+            "similarity" => Self::Similarity,
+            "history" => Self::History,
+            "test_edge" => Self::TestEdge,
+            _ => Self::Generic,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Semantic => "semantic",
+            Self::Structural => "structural",
+            Self::Sibling => "sibling",
+            Self::Config => "config",
+            Self::KeyMatch => "key_match",
+            Self::Document => "document",
+            Self::Similarity => "similarity",
+            Self::History => "history",
+            Self::TestEdge => "test_edge",
+            Self::Generic => "generic",
+        }
+    }
+
+    /// Name matches took part in the damping, the dangling-reference check and
+    /// the hub-noise filter as `Semantic` edges for as long as the tags
+    /// fallback was one; they keep that part now that it is `KeyMatch`.
+    pub(crate) fn acts_as_reference(self) -> bool {
+        matches!(self, Self::Semantic | Self::KeyMatch)
+    }
+
+    pub(crate) fn is_suppression_exempt(self) -> bool {
+        self.acts_as_reference() || matches!(self, Self::Structural | Self::TestEdge)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentKind {
     Function,
     Class,
@@ -310,7 +382,82 @@ impl DiffHunk {
 
 static IDENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Za-z_]\w*").unwrap());
 
-pub fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
+pub(crate) fn unquote_c_style(quoted: &str) -> String {
+    if !(quoted.starts_with('"') && quoted.ends_with('"')) {
+        return quoted.to_string();
+    }
+
+    let raw = &quoted[1..quoted.len() - 1];
+    let bytes = raw.as_bytes();
+    let mut result: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            let nxt = bytes[i + 1];
+            match nxt {
+                b't' => {
+                    result.push(b'\t');
+                    i += 2;
+                }
+                b'n' => {
+                    result.push(b'\n');
+                    i += 2;
+                }
+                b'r' => {
+                    result.push(b'\r');
+                    i += 2;
+                }
+                b'b' => {
+                    result.push(0x08);
+                    i += 2;
+                }
+                b'f' => {
+                    result.push(0x0C);
+                    i += 2;
+                }
+                b'v' => {
+                    result.push(0x0B);
+                    i += 2;
+                }
+                b'a' => {
+                    result.push(0x07);
+                    i += 2;
+                }
+                b'\\' => {
+                    result.push(b'\\');
+                    i += 2;
+                }
+                b'"' => {
+                    result.push(b'"');
+                    i += 2;
+                }
+                b'0'..=b'7'
+                    if i + 3 < bytes.len()
+                        && bytes[i + 2].is_ascii_digit()
+                        && bytes[i + 2] <= b'7'
+                        && bytes[i + 3].is_ascii_digit()
+                        && bytes[i + 3] <= b'7' =>
+                {
+                    let val = (nxt - b'0') * 64 + (bytes[i + 2] - b'0') * 8 + (bytes[i + 3] - b'0');
+                    result.push(val);
+                    i += 4;
+                }
+                _ => {
+                    result.push(b'\\');
+                    i += 1;
+                }
+            }
+        } else {
+            result.push(bytes[i]);
+            i += 1;
+        }
+    }
+
+    String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+pub(crate) fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -318,7 +465,7 @@ pub fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
         .collect()
 }
 
-pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
+pub(crate) fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -326,7 +473,10 @@ pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
         .collect()
 }
 
-pub fn extract_identifier_counts(text: &str, min_length: usize) -> (FxHashMap<String, u32>, u32) {
+pub(crate) fn extract_identifier_counts(
+    text: &str,
+    min_length: usize,
+) -> (FxHashMap<String, u32>, u32) {
     let mut counts: FxHashMap<String, u32> = FxHashMap::default();
     let mut total = 0u32;
     for m in IDENT_RE.find_iter(text) {
@@ -373,6 +523,19 @@ mod fragment_id_tests {
         assert_eq!(direct.start_line, 12);
         assert_eq!(direct.end_line, 12);
     }
+
+    #[test]
+    fn unquote_c_style_decodes_octal_utf8_escapes() {
+        // Exactly what git emits for `café.py` under the default
+        // core.quotePath=true: é is UTF-8 0xC3 0xA9, i.e. octal 303 251.
+        let quoted = r#""a/caf\303\251.py""#;
+        assert_eq!(unquote_c_style(quoted), "a/café.py");
+    }
+
+    #[test]
+    fn unquote_c_style_leaves_unquoted_input_untouched() {
+        assert_eq!(unquote_c_style("a/plain.py"), "a/plain.py");
+    }
 }
 
 /// A fragment carries the change when it IS a changed core, an excerpt
@@ -385,7 +548,7 @@ mod fragment_id_tests {
 /// recorded fact from the moment of substitution, not a guess from a shared
 /// start line, so a stand-in that one day gets its own location keeps its
 /// role.
-pub fn carries_change(
+pub(crate) fn carries_change(
     frag: &Fragment,
     core_ids: &rustc_hash::FxHashSet<FragmentId>,
     stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,

@@ -13,7 +13,7 @@ use support::{diffctx, repo};
 fn symbol(repo: &Path, query: &str) -> Value {
     let out = diffctx()
         .current_dir(repo)
-        .args(["--symbol", query, "-q"])
+        .args(["--symbol", query, "-q", "--unfold"])
         .output()
         .expect("run diffctx");
     assert!(
@@ -27,7 +27,15 @@ fn symbol(repo: &Path, query: &str) -> Value {
 fn impact(repo: &Path) -> Value {
     let out = diffctx()
         .current_dir(repo)
-        .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q"])
+        // The suite asserts relations, whatever the answer folds.
+        .args([
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "impact",
+            "-q",
+            "--unfold",
+        ])
         .output()
         .expect("run diffctx");
     assert!(
@@ -41,13 +49,13 @@ fn impact(repo: &Path) -> Value {
 /// `path::caller-symbol evidence relation` of every caller of the first
 /// changed definition named `name`.
 fn callers(doc: &Value, name: &str) -> Vec<String> {
-    let Some(sym) = doc["changed"]
+    let Some(sym) = doc["definitions"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["symbol"] == name))
     else {
         return Vec::new();
     };
-    let mut out: Vec<String> = sym["callers"]
+    let mut out: Vec<String> = sym["rows"]
         .as_array()
         .unwrap()
         .iter()
@@ -56,8 +64,8 @@ fn callers(doc: &Value, name: &str) -> Vec<String> {
                 "{}::{} {} {}",
                 c["path"].as_str().unwrap(),
                 c["symbol"].as_str().unwrap_or("-"),
-                c["evidence"].as_str().unwrap(),
-                c["relation"].as_str().unwrap_or("call"),
+                c["standing"].as_str().unwrap(),
+                c["class"].as_str().unwrap_or("call"),
             )
         })
         .collect();
@@ -245,10 +253,10 @@ fn an_overloaded_member_is_a_candidate_not_a_resolved_call() {
         &[],
     );
     let doc = symbol(tmp.path(), "Log.write");
-    assert_eq!(doc["changed"].as_array().unwrap().len(), 2, "{doc:#}");
-    for sym in doc["changed"].as_array().unwrap() {
-        for c in sym["callers"].as_array().unwrap() {
-            assert_eq!(c["evidence"], "candidate", "{doc:#}");
+    assert_eq!(doc["definitions"].as_array().unwrap().len(), 2, "{doc:#}");
+    for sym in doc["definitions"].as_array().unwrap() {
+        for c in sym["rows"].as_array().unwrap() {
+            assert_eq!(c["standing"], "candidate", "{doc:#}");
             assert_eq!(c["reason"], "overloaded", "{doc:#}");
         }
     }
@@ -291,6 +299,39 @@ fn implementers_of_a_changed_abstract_member_are_their_own_relation() {
             "src/main/kotlin/a/adapter/Cloud.kt::purge resolved implementation",
             "src/main/kotlin/a/adapter/Disk.kt::purge resolved implementation",
         ],
+        "{doc:#}"
+    );
+}
+
+/// A method a framework calls through its annotation is an entry point, read
+/// off the annotations the facts state: here the second of two on one line,
+/// which the first-token text read of the fragment never saw. The change to it
+/// is named as entered by the framework, not as a function nothing calls.
+#[test]
+fn a_framework_annotated_function_is_an_entry_point() {
+    let job = |body: &str| {
+        format!(
+            "package a.jobs\n\nimport org.springframework.scheduling.annotation.Scheduled\n\nclass Cleanup {{\n    @Suppress(\"unused\") @Scheduled(fixedRate = 1000)\n    fun purge() {{\n        println(\"{body}\")\n    }}\n}}\n"
+        )
+    };
+    let tmp = repo(
+        &[("src/main/kotlin/a/jobs/Cleanup.kt", &job("one"))],
+        &[("src/main/kotlin/a/jobs/Cleanup.kt", &job("two"))],
+    );
+    let doc = impact(tmp.path());
+    let entered = doc["unlisted"]["entered_by"]["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        entered.iter().any(|e| {
+            e["def"]["symbol"]
+                .as_str()
+                .is_some_and(|s| s.ends_with("purge"))
+                && e["role"]
+                    .as_str()
+                    .is_some_and(|r| r.contains("entry point: scheduled job (spring)"))
+        }),
         "{doc:#}"
     );
 }
@@ -417,9 +458,10 @@ fn companion_and_object_members_bind_through_their_holder_case_kept() {
         ],
         &[],
     );
+    // `UI.DP` reads a constant: the use is a reference, not a call.
     assert_eq!(
         callers(&symbol(tmp.path(), "UI.DP"), "DP"),
-        ["src/main/kotlin/a/Layout.kt::gutter resolved call"]
+        ["src/main/kotlin/a/Layout.kt::gutter resolved reference"]
     );
     assert_eq!(
         callers(&symbol(tmp.path(), "create"), "create"),
@@ -477,11 +519,11 @@ fn a_removed_declaration_is_reported_and_a_removed_call_is_not() {
         )],
     );
     let doc = impact(tmp.path());
-    let removed: Vec<&str> = doc["changed"]
+    let removed: Vec<&str> = doc["definitions"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["kind"] == "removed")
+        .filter(|c| c["change"]["kind"] == "removed")
         .map(|c| c["symbol"].as_str().unwrap())
         .collect();
     assert_eq!(removed, ["legacy"], "{doc:#}");
@@ -506,7 +548,7 @@ fn a_signature_change_after_a_default_is_a_contract_and_a_body_edit_is_not() {
         &[("src/main/kotlin/a/Api.kt", &api("Slow", "2"))],
     );
     let doc = impact(tmp.path());
-    let contracts: Vec<&str> = doc["contracts"]
+    let contracts: Vec<&str> = doc["contracts"]["items"]
         .as_array()
         .map(|a| a.iter().filter_map(|c| c["symbol"].as_str()).collect())
         .unwrap_or_default();
@@ -528,7 +570,7 @@ fn a_surviving_definition_does_not_hide_a_broken_parse() {
         )],
     );
     let doc = impact(tmp.path());
-    let files = doc["unanalysed_files"]
+    let files = doc["coverage"]["unanalysed"]["items"]
         .as_array()
         .expect("unanalysed_files");
     assert_eq!(files.len(), 1, "{doc:#}");
@@ -561,12 +603,15 @@ fn a_test_class_guards_the_methods_it_calls_and_only_those() {
         )
     };
     let unguarded = impact(with_test("other").path());
-    let unlisted: Vec<&str> = unguarded["untested_unlisted"]
+    let unlisted = unguarded["unlisted"]["no_caller"]["items"]
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .cloned()
         .unwrap_or_default();
     assert!(
-        unlisted.iter().any(|u| u.contains("Foo.kt::changed")),
+        unlisted.iter().any(
+            |u| u["path"].as_str().is_some_and(|p| p.ends_with("Foo.kt"))
+                && u["symbol"].as_str().is_some_and(|s| s.ends_with("changed"))
+        ),
         "{unguarded:#}"
     );
     let guarded = impact(with_test("changed").path());
@@ -576,7 +621,7 @@ fn a_test_class_guards_the_methods_it_calls_and_only_those() {
         "{guarded:#}"
     );
     assert!(
-        guarded["untested_unlisted"].is_null(),
+        guarded["unlisted"]["no_caller"].is_null(),
         "a called method is guarded: {guarded:#}"
     );
 }
@@ -603,7 +648,7 @@ fn a_namer_that_did_not_parse_is_named_where_a_caller_may_hide() {
         &[("src/main/kotlin/a/Ledger.kt", &ledger("x + 1"))],
     );
     let doc = impact(tmp.path());
-    let sym = doc["changed"]
+    let sym = doc["definitions"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["symbol"] == "settle"))
         .unwrap_or_else(|| panic!("settle listed: {doc:#}"));
@@ -636,7 +681,7 @@ fn a_symbol_query_takes_receivers_and_companions_from_the_syntax() {
         &[],
     );
     let pad = symbol(tmp.path(), "String.pad");
-    let defs: Vec<&str> = pad["changed"]
+    let defs: Vec<&str> = pad["definitions"]
         .as_array()
         .unwrap()
         .iter()
@@ -673,11 +718,11 @@ fn a_caller_with_a_signature_variant_keeps_the_sites_in_its_body() {
         &[],
     );
     let doc = symbol(tmp.path(), "Turns");
-    let sym = doc["changed"]
+    let sym = doc["definitions"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["symbol"] == "Turns"))
         .expect("Turns");
-    let caller = sym["callers"]
+    let caller = sym["rows"]
         .as_array()
         .and_then(|a| a.iter().find(|c| c["symbol"] == "turns"))
         .unwrap_or_else(|| panic!("{doc:#}"));
@@ -718,7 +763,7 @@ fn a_caller_in_a_sub_fragment_of_a_long_function_keeps_its_test_link() {
         &[],
     );
     let doc = symbol(tmp.path(), "findPending");
-    let list = doc["changed"][0]["callers"]
+    let list = doc["definitions"][0]["rows"]
         .as_array()
         .unwrap_or_else(|| panic!("{doc:#}"));
     let proc_a = list
@@ -727,8 +772,8 @@ fn a_caller_in_a_sub_fragment_of_a_long_function_keeps_its_test_link() {
         .unwrap_or_else(|| panic!("expected processA caller, not a sub-fragment: {doc:#}"));
     assert_eq!(proc_a["lines"], "6-49", "{doc:#}");
     assert_eq!(
-        proc_a["tested_by"], "src/test/kotlin/demo/WorkerTest.kt",
+        proc_a["guard"]["test"], "src/test/kotlin/demo/WorkerTest.kt",
         "{doc:#}"
     );
-    assert_eq!(proc_a["tested_via"], "run", "{doc:#}");
+    assert_eq!(proc_a["guard"]["via"], "run", "{doc:#}");
 }

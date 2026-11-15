@@ -1,6 +1,5 @@
 //! Java facts from `tree-sitter-java`, in the shape of the Kotlin facts, so
-//! one binding model (`kotlin_bindings`) reads the JVM's two languages
-//! (#335).
+//! one extractor body reads the JVM's two languages (#335).
 //!
 //! An anonymous class is a type of its own, named for what it instantiates
 //! (`new Service`): its members are reached through that supertype, never by
@@ -17,16 +16,11 @@ use super::kotlin::{
     line_of, push_use, squash, text, walk,
 };
 
-pub fn facts(content: &str) -> Option<KotlinFacts> {
-    let tree = crate::parsers::parse_tree("java", content)?;
-    Some(extract(tree.root_node(), content.as_bytes()))
-}
-
 /// The types around a node: each name, its visibility, and whether it is an
 /// interface, whose members are public unless they say otherwise.
 type Owners = Vec<(String, Option<Visibility>, bool)>;
 
-fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
+pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
@@ -140,10 +134,12 @@ fn declarations(
         .child_by_field_name("body")
         .or_else(|| child(*node, "class_body"));
     let header_end = body.map_or_else(|| node.end_byte(), |b| b.start_byte());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a declaration without modifiers states no annotations"
+    )]
     let annotations = modifiers.map(|m| annotations(m, bytes)).unwrap_or_default();
     let in_interface = owners.last().is_some_and(|(_, _, interface)| *interface);
-    let abstract_member =
-        kind == "fun" && body.is_none() && (in_interface || has_modifier(modifiers, "abstract"));
     let own = visibility.or(in_interface.then_some(Visibility::Public));
     names
         .into_iter()
@@ -164,10 +160,7 @@ fn declarations(
             // a nested interface, enum or record is static.
             inner: anonymous
                 || (node.kind() == "class_declaration" && !has_modifier(modifiers, "static")),
-            abstract_member,
             annotations: annotations.clone(),
-            required_params: None,
-            params: None,
             start_line: line_of(*node),
             end_line: node.end_position().row as u32 + 1,
             span: node.byte_range(),
@@ -193,10 +186,7 @@ fn record_component(node: &Node, owners: &Owners, bytes: &[u8]) -> Option<Declar
         effective: Some(Visibility::Private),
         is_override: false,
         inner: false,
-        abstract_member: false,
         annotations: Vec::new(),
-        required_params: None,
-        params: None,
         start_line: line_of(*node),
         end_line: node.end_position().row as u32 + 1,
         span: node.byte_range(),
@@ -285,6 +275,25 @@ fn type_name(node: Node, bytes: &[u8]) -> Option<String> {
     }
 }
 
+/// The type as written, qualifier kept and type arguments dropped: `Lib.Inner`
+/// for `Lib.Inner<T>` and `a.b.Repo` for itself. A receiver declared this way
+/// resolves through its qualifier like the imported spelling.
+fn written_type(node: Node, bytes: &[u8]) -> Option<String> {
+    match node.kind() {
+        "type_identifier" => type_name(node, bytes),
+        "generic_type" => written_type(node.named_child(0)?, bytes),
+        "scoped_type_identifier" => {
+            let count = node.named_child_count();
+            let last = type_name(node.named_child(count.checked_sub(1)?)?, bytes)?;
+            match node.named_child(0).filter(|_| count > 1) {
+                Some(scope) => Some(format!("{}.{last}", written_type(scope, bytes)?)),
+                None => Some(last),
+            }
+        }
+        _ => None,
+    }
+}
+
 fn last_identifier(node: Node, bytes: &[u8]) -> Option<String> {
     match node.kind() {
         "scoped_identifier" => node
@@ -338,7 +347,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     };
     let written = |n: &Node| {
         n.child_by_field_name("type")
-            .and_then(|t| type_name(t, bytes))
+            .and_then(|t| written_type(t, bytes))
     };
     match node.kind() {
         "formal_parameter" | "spread_parameter" => {
@@ -418,7 +427,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             let scope = node.parent().map(|c| c.byte_range());
             let caught = child(*node, "catch_type")
                 .and_then(|t| t.named_child(0))
-                .and_then(|t| type_name(t, bytes));
+                .and_then(|t| written_type(t, bytes));
             if let (Some(scope), Some(n)) = (scope, name(node)) {
                 bindings.push(Binding::new(n, caught, scope.start, scope));
             }
@@ -426,7 +435,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
         "instanceof_expression" => {
             let tested = node
                 .child_by_field_name("right")
-                .and_then(|t| type_name(t, bytes));
+                .and_then(|t| written_type(t, bytes));
             if let (Some(scope), Some(n)) = (pattern_scope(node), name(node)) {
                 bindings.push(Binding::new(n, tested, node.end_byte(), scope));
             }
@@ -437,7 +446,7 @@ fn bindings_at(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
             let parts: Vec<Node> = node.named_children(&mut cursor).collect();
             if let (Some(scope), [kind, .., id]) = (pattern_scope(node), parts.as_slice()) {
                 if let Some(n) = text(*id, bytes).filter(|_| id.kind() == "identifier") {
-                    let typed = type_name(*kind, bytes);
+                    let typed = written_type(*kind, bytes);
                     bindings.push(Binding::new(n.to_string(), typed, node.end_byte(), scope));
                 }
             }
@@ -666,7 +675,8 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
 }\n";
 
     fn facts_of() -> KotlinFacts {
-        facts(SOURCE).expect("java grammar")
+        let tree = crate::parsers::parse_tree("java", SOURCE).expect("java grammar");
+        extract(tree.root_node(), SOURCE.as_bytes())
     }
 
     fn decl<'a>(f: &'a KotlinFacts, name: &str) -> &'a Declaration {
@@ -679,7 +689,7 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
     #[test]
     fn package_imports_and_declarations_read_off_the_tree() {
         let f = facts_of();
-        assert!(!f.partial(), "{:?}", f.error_lines);
+        assert!(f.error_lines.is_empty(), "{:?}", f.error_lines);
         assert_eq!(f.package.as_deref(), Some("com.acme.svc"));
         assert_eq!(
             f.imported("DrugMapper").map(|i| i.path.as_str()),
@@ -716,7 +726,6 @@ public class MedicineService extends Base implements Svc, Other<T> {\n\
         );
         assert_eq!(decl(&f, "MedicineService").annotations, ["Service"]);
         let save = decl(&f, "save");
-        assert!(save.abstract_member);
         assert_eq!(
             save.effective,
             Some(Visibility::Internal),

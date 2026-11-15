@@ -257,7 +257,7 @@ def _print_instance_header(
 def _print_pipeline_dump(
     output: dict, elapsed: float, p_set: set, deleted: set, repo_dir: Path, nontrivial: set, gold_set: set, selected: set
 ) -> tuple[set, set, set]:
-    print(f"\n[DIFFCTX]   {len(selected):3d} files, {output['fragment_count']:3d} fragments, {elapsed:.1f}s")
+    print(f"\n[DIFFCTX]   {len(selected):3d} files, {len(output['fragments']):3d} fragments, {elapsed:.1f}s")
     _print_patch_coverage(p_set, selected, deleted, repo_dir)
     universe = read_dump_set("universe.txt")
     fragmented = read_dump_set("fragmented.txt")

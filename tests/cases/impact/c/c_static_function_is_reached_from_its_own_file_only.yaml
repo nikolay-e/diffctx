@@ -1,0 +1,53 @@
+name: c_static_function_is_reached_from_its_own_file_only
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- static
+repo:
+  initial_files:
+    src/a.c: |
+      static int helper(int x)
+      {
+          return x + 1;
+      }
+
+      int run_a(void)
+      {
+          return helper(1);
+      }
+    src/b.c: |
+      static int helper(int x)
+      {
+          return x + 2;
+      }
+
+      int run_b(void)
+      {
+          return helper(1);
+      }
+  changed_files:
+    src/a.c: |
+      static int helper(int x)
+      {
+          return x + 3;
+      }
+
+      int run_a(void)
+      {
+          return helper(1);
+      }
+  commit_message: Change static function is reached from its own file only
+expect:
+  changed:
+  - src/a.c::helper
+  relations:
+  - from: src/a.c::run_a
+    to: src/a.c::helper
+    kind: calls
+    resolution: resolved
+    site: 8
+  decoys:
+    src/a.c::helper:
+    - src/b.c

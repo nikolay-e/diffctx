@@ -1,0 +1,42 @@
+name: fj192_shorthand_initializer_reads_the_outer_const
+mode: impact
+source: fj#192
+issue_state: open
+tags: [rust, shadowing, shorthand]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod limits;
+      pub mod build;
+    src/limits.rs: |
+      pub const TOTAL: u32 = 10;
+    src/build.rs: |
+      use crate::limits::TOTAL;
+
+      pub struct W {
+          pub total: u32,
+      }
+
+      pub fn make() -> W {
+          let total = TOTAL;
+          W { total }
+      }
+
+      pub fn grow(x: u32) -> u32 {
+          let x = x + TOTAL;
+          x
+      }
+  changed_files:
+    src/limits.rs: |
+      pub const TOTAL: u32 = 12;
+  commit_message: "limits: raise the total"
+expect:
+  exact: false
+  relations:
+    - {from: src/build.rs::make, to: src/limits.rs::TOTAL, kind: reads, site: 8}
+    - {from: src/build.rs::grow, to: src/limits.rs::TOTAL, kind: reads, site: 13}

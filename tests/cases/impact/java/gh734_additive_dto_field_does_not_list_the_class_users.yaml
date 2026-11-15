@@ -1,0 +1,98 @@
+name: gh734_additive_dto_field_does_not_list_the_class_users
+mode: impact
+source: gh#734
+issue_state: open
+tags: [java, additive-field, granularity, decoys]
+repo:
+  initial_files:
+    src/main/java/app/Handler1.java: |
+      package app;
+
+      public class Handler1 {
+          String run(OrderDto dto) {
+              return dto.getId() + "1";
+          }
+      }
+    src/main/java/app/Handler2.java: |
+      package app;
+
+      public class Handler2 {
+          String run(OrderDto dto) {
+              return dto.getId() + "2";
+          }
+      }
+    src/main/java/app/Handler3.java: |
+      package app;
+
+      public class Handler3 {
+          String run(OrderDto dto) {
+              return dto.getId() + "3";
+          }
+      }
+    src/main/java/app/Handler4.java: |
+      package app;
+
+      public class Handler4 {
+          String run(OrderDto dto) {
+              return dto.getId() + "4";
+          }
+      }
+    src/main/java/app/Handler5.java: |
+      package app;
+
+      public class Handler5 {
+          String run(OrderDto dto) {
+              return dto.getId() + "5";
+          }
+      }
+    src/main/java/app/Handler6.java: |
+      package app;
+
+      public class Handler6 {
+          String run(OrderDto dto) {
+              return dto.getId() + "6";
+          }
+      }
+    src/main/java/app/Mapper.java: |
+      package app;
+
+      public class Mapper {
+          OrderDto map(String id, int quantity) {
+              OrderDto dto = new OrderDto();
+              return dto;
+          }
+      }
+    src/main/java/app/OrderDto.java: |
+      package app;
+
+      public class OrderDto {
+          private String id;
+          private int quantity;
+
+          public String getId() { return id; }
+          public int getQuantity() { return quantity; }
+      }
+  changed_files:
+    src/main/java/app/OrderDto.java: |
+      package app;
+
+      public class OrderDto {
+          private String id;
+          private int quantity;
+          private String note;
+
+          public String getId() { return id; }
+          public int getQuantity() { return quantity; }
+          public String getNote() { return note; }
+      }
+expect:
+  exact: false
+  decoys:
+    OrderDto:
+    - src/main/java/app/Handler1.java
+    - src/main/java/app/Handler2.java
+    - src/main/java/app/Handler3.java
+    - src/main/java/app/Handler4.java
+    - src/main/java/app/Handler5.java
+    - src/main/java/app/Handler6.java
+    - src/main/java/app/Mapper.java

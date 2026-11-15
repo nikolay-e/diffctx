@@ -1,0 +1,55 @@
+name: gh336_prometheus_alert_name_is_a_definition_with_its_rule_test
+mode: symbol
+source: gh#336
+issue_state: open
+tags:
+- config
+- prometheus
+- symbol
+repo:
+  initial_files:
+    docs/runbook.md: |
+      # Runbook
+
+      When QueueBacklogHigh fires, scale the workers.
+    rule-tests/app_test.yaml: |
+      rule_files:
+        - ../rules/app.yaml
+      tests:
+        - interval: 1m
+          input_series:
+            - series: queue_depth
+              values: "200x20"
+          alert_rule_test:
+            - eval_time: 15m
+              alertname: QueueBacklogHigh
+              exp_alerts:
+                - exp_labels:
+                    severity: warning
+    rules/app.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: app-rules
+      spec:
+        groups:
+          - name: app
+            rules:
+              - alert: QueueBacklogHigh
+                expr: queue_depth > 100
+                for: 10m
+                labels:
+                  severity: warning
+  commit_message: init
+query:
+  symbol: QueueBacklogHigh
+expect:
+  definitions:
+  - rules/app.yaml::QueueBacklogHigh
+  relations:
+  - from: rule-tests/app_test.yaml
+    to: rules/app.yaml::QueueBacklogHigh
+    kind: tests_reach
+    resolution: resolved
+    site: 10
+  exact: false

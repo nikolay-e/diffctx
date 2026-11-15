@@ -1,44 +1,54 @@
-pub mod ansible;
-pub mod bazel;
-pub mod c_family;
-pub mod cargo_edges;
-pub mod clojure;
-pub mod css;
-pub mod dart;
-pub mod dbt;
-pub mod dotnet;
-pub mod elixir;
-pub mod erlang;
-pub mod go;
-pub mod graphql;
-pub mod haskell;
-pub mod javascript;
-pub mod julia;
-pub mod jvm;
-pub mod latex;
-pub mod lua;
-pub mod nim;
-pub mod nix;
-pub mod ocaml;
-pub mod openapi;
-pub mod perl;
-pub mod php;
-pub mod prisma;
-pub mod protobuf;
-pub mod python;
-pub mod r_lang;
-pub mod ruby;
-pub mod rust_lang;
-pub mod shell;
-pub mod sql;
-pub mod swift;
-pub mod tags;
-pub mod terraform;
-pub mod zig;
+mod ansible;
+mod bazel;
+mod c_family;
+mod cargo_edges;
+mod clojure;
+mod css;
+mod dart;
+mod dbt;
+mod dotnet;
+mod elixir;
+mod erlang;
+mod go;
+mod graphql;
+mod haskell;
+mod javascript;
+mod julia;
+mod jvm;
+mod latex;
+pub(in crate::edges) mod legacy;
+mod lua;
+mod nim;
+mod nix;
+mod ocaml;
+mod openapi;
+mod perl;
+mod php;
+mod prisma;
+mod protobuf;
+mod python;
+mod r_lang;
+mod ruby;
+mod rust_lang;
+mod shell;
+mod sql;
+mod swift;
+mod tags;
+mod terraform;
+mod zig;
 
 use super::base::EdgeBuilder;
 
-pub fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
+/// The cells' builders for the groups drawn from them (none by default), then
+/// the text builders, each narrowed to what the cells do not cover
+/// (`CELL_EDGES`).
+pub(crate) fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
+    let mut builders = super::cells::builders();
+    builders.extend(text_builders().into_iter().map(super::cells::beside));
+    builders
+}
+
+pub(super) fn text_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![
         Box::new(python::PythonEdgeBuilder),
         Box::new(javascript::JavaScriptEdgeBuilder),

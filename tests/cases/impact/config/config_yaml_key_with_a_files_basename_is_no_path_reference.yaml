@@ -1,0 +1,31 @@
+name: config_yaml_key_with_a_files_basename_is_no_path_reference
+mode: impact
+source: gh#658
+issue_state: open
+tags:
+- config
+- yaml
+- named-by
+- decoy
+repo:
+  initial_files:
+    rules/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: loki-rules
+      data:
+        alerts.yaml: |
+          groups:
+            - name: example
+              rules: []
+    rules/prometheusrule.yaml: |
+      groups: []
+  changed_files:
+    tests/alerts.yaml: |
+      rule_files: [prometheusrule.yaml]
+      tests: []
+  commit_message: Change config yaml key with a files basename is no path reference
+expect:
+  not_named_by:
+  - rules/configmap.yaml

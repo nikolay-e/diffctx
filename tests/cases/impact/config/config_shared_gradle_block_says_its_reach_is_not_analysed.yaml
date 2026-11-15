@@ -1,0 +1,52 @@
+name: config_shared_gradle_block_says_its_reach_is_not_analysed
+mode: impact
+source: gh#516
+issue_state: open
+tags:
+- config
+- gradle
+- kotlin
+- discloses
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" apply false }
+
+      subprojects {
+          tasks.withType<Test> {
+              useJUnitPlatform()
+          }
+      }
+    settings.gradle.kts: |
+      rootProject.name = "demo"
+      include(":a", ":b")
+    a/build.gradle.kts: |
+      plugins { kotlin("jvm") }
+    b/build.gradle.kts: |
+      plugins { kotlin("jvm") }
+    a/src/test/kotlin/ATest.kt: |
+      package a
+
+      import kotlin.test.Test
+
+      class ATest {
+          @Test
+          fun ok() {}
+      }
+  changed_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" apply false }
+
+      subprojects {
+          tasks.withType<Test> {
+              useJUnitPlatform()
+              systemProperty("kotest.framework.classpath.scanning.config.disable", "true")
+              systemProperty("kotest.framework.classpath.scanning.autoscan.disable", "true")
+          }
+      }
+  commit_message: Change config shared gradle block says its reach is not analysed
+expect:
+  unknowns:
+    build.gradle.kts: not_modelled
+  discloses: true
+  no_negative_claims: true

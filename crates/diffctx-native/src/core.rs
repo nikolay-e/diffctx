@@ -104,7 +104,7 @@ fn add_container_headers(
     }
 }
 
-pub fn identify_core_fragments(
+pub(crate) fn identify_core_fragments(
     hunks: &[DiffHunk],
     all_fragments: &[Fragment],
 ) -> FxHashSet<FragmentId> {
@@ -213,7 +213,7 @@ fn fill_missing_core_weights(
 }
 
 /// PPR's seed mass: every core a hunk overlaps carries the whole hunk.
-pub fn compute_seed_weights(
+pub(crate) fn compute_seed_weights(
     hunks: &[DiffHunk],
     core_ids: &FxHashSet<FragmentId>,
     all_fragments: &[Fragment],
@@ -226,7 +226,7 @@ pub fn compute_seed_weights(
 /// core: an added module is one hunk overlapping every fragment in it, and
 /// charging each its whole size ranked a one-line local above the function
 /// around it (#308).
-pub fn compute_changed_lines(
+pub(crate) fn compute_changed_lines(
     hunks: &[DiffHunk],
     core_ids: &FxHashSet<FragmentId>,
     all_fragments: &[Fragment],

@@ -1,0 +1,75 @@
+name: php_static_call_in_a_namespace_nothing_declares_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- namespace
+- absence-claim
+repo:
+  initial_files:
+    src/Shop/Pricing.php: |
+      <?php
+
+      namespace Shop;
+
+      class Pricing
+      {
+          public static function total(array $items): int
+          {
+              return array_sum($items);
+          }
+      }
+    src/Zz/Checkout.php: |
+      <?php
+
+      namespace Zz\Renamed;
+
+      class Checkout
+      {
+          public function charge(array $items): int
+          {
+              return Pricing::total($items);
+          }
+      }
+    src/Shop/Report.php: |
+      <?php
+
+      namespace Shop;
+
+      use Vendor\Lib\Pricing as VendorPricing;
+
+      class Report
+      {
+          public function render(array $items): int
+          {
+              return VendorPricing::total($items);
+          }
+      }
+  changed_files:
+    src/Shop/Pricing.php: |
+      <?php
+
+      namespace Shop;
+
+      class Pricing
+      {
+          public static function total(array $items): int
+          {
+              return array_sum($items) * 2;
+          }
+      }
+  commit_message: Change a static method called from a namespace nothing declares
+expect:
+  changed:
+  - src/Shop/Pricing.php::Pricing.total
+  relations:
+  - from: src/Zz/Checkout.php::Checkout.charge
+    to: src/Shop/Pricing.php::Pricing.total
+    kind: calls
+    resolution: candidate
+    site: 9
+  exact: true
+  decoys:
+    src/Shop/Pricing.php::Pricing.total:
+    - src/Shop/Report.php

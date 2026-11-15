@@ -5,6 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::HELM;
+use crate::source::Source;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
@@ -24,15 +25,12 @@ fn is_helm_template(path: &Path) -> bool {
     if !path_str.contains("templates") {
         return false;
     }
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     ext == ".yaml" || ext == ".yml" || ext == ".tpl"
 }
 
 fn is_helm_values(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "values.yaml"
         || name == "values.yml"
         || name.starts_with("values-")
@@ -40,10 +38,7 @@ fn is_helm_values(path: &Path) -> bool {
 }
 
 fn is_chart_yaml(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "chart.yaml" || name == "chart.yml"
 }
 
@@ -80,9 +75,8 @@ fn extract_yaml_keys(content: &str, max_depth: usize) -> FxHashSet<String> {
 }
 
 /// The chart directory above `path`, in the analysed source: a snapshot's
-/// chart is its own, whatever the disk holds (#408).
-fn get_chart_root(path: &Path) -> Option<PathBuf> {
-    let source = crate::source::current();
+/// chart is its own, whatever the disk holds (#408, #511).
+fn get_chart_root(source: &Source, path: &Path) -> Option<PathBuf> {
     let mut current = path.parent()?.to_path_buf();
     for _ in 0..5 {
         if ["Chart.yaml", "chart.yaml"]
@@ -100,10 +94,10 @@ fn get_chart_root(path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn collect_chart_roots(paths: &[&PathBuf]) -> FxHashSet<PathBuf> {
+fn collect_chart_roots(source: &Source, paths: &[&PathBuf]) -> FxHashSet<PathBuf> {
     let mut roots = FxHashSet::default();
     for p in paths {
-        if let Some(root) = get_chart_root(p) {
+        if let Some(root) = get_chart_root(source, p) {
             roots.insert(root);
         }
     }
@@ -119,17 +113,18 @@ fn is_in_chart(candidate: &Path, chart_roots: &FxHashSet<PathBuf>) -> bool {
     false
 }
 
-fn get_chart_root_from_fragment(path: &Path) -> Option<PathBuf> {
-    get_chart_root(path)
+fn get_chart_root_from_fragment(source: &Source, path: &Path) -> Option<PathBuf> {
+    get_chart_root(source, path)
 }
 
 fn build_values_index(
+    source: &Source,
     values_files: &[&Fragment],
 ) -> FxHashMap<PathBuf, FxHashMap<String, Vec<FragmentId>>> {
     let mut idx: FxHashMap<PathBuf, FxHashMap<String, Vec<FragmentId>>> = FxHashMap::default();
     for vf in values_files {
         let path = Path::new(vf.path());
-        let chart_root = get_chart_root_from_fragment(path)
+        let chart_root = get_chart_root_from_fragment(source, path)
             .unwrap_or_else(|| path.parent().unwrap_or(Path::new("")).to_path_buf());
         let chart_entry = idx.entry(chart_root).or_default();
         for key in extract_yaml_keys(&vf.content, 4) {
@@ -225,18 +220,20 @@ fn add_include_edges(
 }
 
 fn add_chart_file_edges(
+    source: &Source,
     tmpl: &Fragment,
     chart_root: &Path,
     chart_files: &[&Fragment],
     edges: &mut EdgeDict,
 ) {
     for cf in chart_files {
-        let cf_root = get_chart_root_from_fragment(Path::new(cf.path())).unwrap_or_else(|| {
-            Path::new(cf.path())
-                .parent()
-                .unwrap_or(Path::new(""))
-                .to_path_buf()
-        });
+        let cf_root =
+            get_chart_root_from_fragment(source, Path::new(cf.path())).unwrap_or_else(|| {
+                Path::new(cf.path())
+                    .parent()
+                    .unwrap_or(Path::new(""))
+                    .to_path_buf()
+            });
         if cf_root == chart_root {
             add_edge(
                 edges,
@@ -250,6 +247,7 @@ fn add_chart_file_edges(
 }
 
 fn add_template_edges(
+    source: &Source,
     tmpl: &Fragment,
     values_idx: &FxHashMap<PathBuf, FxHashMap<String, Vec<FragmentId>>>,
     define_defs: &FxHashMap<String, Vec<FragmentId>>,
@@ -257,7 +255,7 @@ fn add_template_edges(
     edges: &mut EdgeDict,
 ) {
     let tmpl_path = Path::new(tmpl.path());
-    let chart_root = get_chart_root_from_fragment(tmpl_path).unwrap_or_else(|| {
+    let chart_root = get_chart_root_from_fragment(source, tmpl_path).unwrap_or_else(|| {
         tmpl_path
             .parent()
             .and_then(|p| p.parent())
@@ -270,10 +268,10 @@ fn add_template_edges(
 
     add_values_ref_edges(tmpl, values_keys, edges);
     add_include_edges(tmpl, define_defs, edges);
-    add_chart_file_edges(tmpl, &chart_root, chart_files, edges);
+    add_chart_file_edges(source, tmpl, &chart_root, chart_files, edges);
 }
 
-pub struct HelmEdgeBuilder;
+pub(super) struct HelmEdgeBuilder;
 
 impl EdgeBuilder for HelmEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -294,12 +292,20 @@ impl EdgeBuilder for HelmEdgeBuilder {
             return FxHashMap::default();
         }
 
+        let source = crate::resource::current_source();
         let mut edges: EdgeDict = FxHashMap::default();
-        let values_idx = build_values_index(&values_files);
+        let values_idx = build_values_index(&source, &values_files);
         let define_defs = build_define_index(&templates);
 
         for tmpl in &templates {
-            add_template_edges(tmpl, &values_idx, &define_defs, &chart_files, &mut edges);
+            add_template_edges(
+                &source,
+                tmpl,
+                &values_idx,
+                &define_defs,
+                &chart_files,
+                &mut edges,
+            );
         }
 
         edges
@@ -320,7 +326,7 @@ impl EdgeBuilder for HelmEdgeBuilder {
         }
 
         let all_helm: Vec<&PathBuf> = templates.iter().chain(values.iter()).copied().collect();
-        let chart_roots = collect_chart_roots(&all_helm);
+        let chart_roots = collect_chart_roots(&crate::resource::current_source(), &all_helm);
         if chart_roots.is_empty() {
             return vec![];
         }

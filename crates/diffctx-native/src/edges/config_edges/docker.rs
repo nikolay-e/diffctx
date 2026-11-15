@@ -24,18 +24,12 @@ static COMPOSE_VOLUME_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s+-\s*['"]?([./][^:'"\n]+):"#).unwrap());
 
 fn is_dockerfile(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "dockerfile" || name.starts_with("dockerfile.") || name.ends_with(".dockerfile")
 }
 
 fn is_compose_file(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let name = base::lower_file_name(path);
     name == "docker-compose.yml"
         || name == "docker-compose.yaml"
         || name == "compose.yml"
@@ -155,7 +149,7 @@ fn link_declared(
     link_by_name(src, reference, idx, edges, weight, reverse_factor);
 }
 
-pub struct DockerEdgeBuilder;
+pub(super) struct DockerEdgeBuilder;
 
 impl EdgeBuilder for DockerEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

@@ -19,12 +19,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Why a run did not do everything it could have. One vocabulary for every
-/// phase; consumers read `coverage.limit_reasons` and never a per-subsystem
+/// phase; consumers read `coverage.limits` and never a per-subsystem
 /// boolean.
-#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitReason {
     FileTooLarge,
@@ -52,6 +54,28 @@ pub enum LimitReason {
     EvidenceBudgetExceeded,
     SelectionBudgetExceeded,
     SanitizationRedaction,
+}
+
+/// Test hook: the n-th blob read of every analysis fails on purpose, base and
+/// head sides counted together, or one side's alone with `base:N` / `head:N`.
+/// Semantic — it changes the artifact.
+pub const TEST_READ_FAULT_ENV: &str = "DIFFCTX_TEST_READ_FAULT";
+
+pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFault>> {
+    crate::snapshot::ReadFault::parse(&std::env::var(TEST_READ_FAULT_ENV).ok()?)
+}
+
+/// Test hook: `<kind>:<n>` gives the n-th file, by path, of each cell's
+/// interaction group one loss of that kind (`Loss::kind`, `Loss::samples`), as if
+/// the run had lost it, so that a sweep can put every variant of `Loss` on every
+/// family in turn. Semantic — it changes the artifact.
+pub const TEST_LOSS_ENV: &str = "DIFFCTX_TEST_LOSS";
+
+/// The kind and the place `TEST_LOSS_ENV` names; a malformed knob names none.
+pub(crate) fn test_loss() -> Option<(String, usize)> {
+    let spec = std::env::var(TEST_LOSS_ENV).ok()?;
+    let (kind, at) = spec.rsplit_once(':')?;
+    Some((kind.to_string(), at.parse().ok()?))
 }
 
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest
@@ -92,6 +116,11 @@ pub const TEST_DEADLINE_EXPIRED_ENV: &str = "DIFFCTX_TEST_DEADLINE_EXPIRED";
 /// wall clock (#510, #489, #502). Semantic, like the expired deadline.
 pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POLLS";
 
+/// Test hook: the hook's one wall-clock ceiling is spent before its analysis
+/// starts, as when an engine does not return in time, so a test reaches what
+/// the hook says then without waiting for a clock. Semantic, like the deadline.
+pub const TEST_HOOK_CEILING_EXPIRED_ENV: &str = "DIFFCTX_TEST_HOOK_CEILING_EXPIRED";
+
 impl ResourceBudget {
     pub fn resolve(timeout_secs: u64) -> Self {
         let limits = &*crate::config::limits::LIMITS;
@@ -114,7 +143,7 @@ impl ResourceBudget {
                 "DIFFCTX_MAX_EDGE_CONTRIBUTIONS",
                 DEFAULT_MAX_EDGE_CONTRIBUTIONS,
             ),
-            max_out_edges_per_node: crate::graph::read_max_out_edges_per_node(),
+            max_out_edges_per_node: crate::config::limits::read_max_out_edges_per_node(),
             max_needs: env_u64("DIFFCTX_MAX_NEEDS", DEFAULT_MAX_NEEDS as u64) as usize,
         }
     }
@@ -146,7 +175,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 /// What the run consumed, for the coverage block. Deterministic for a given
 /// input and configuration (counts, not clocks).
-#[derive(Serialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceUsage {
     pub source_bytes: u64,
     pub parsed_files: u64,
@@ -156,7 +185,7 @@ pub struct ResourceUsage {
 }
 
 /// A limit that touched one file, by its display path.
-#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LimitedFile {
     pub path: String,
     pub reason: LimitReason,
@@ -180,6 +209,12 @@ impl LimitReason {
         )
     }
 
+    /// A run that noted it did not finish looking: what it printed as a
+    /// count of what it found is a lower bound.
+    pub fn stops_a_search(self) -> bool {
+        matches!(self, Self::Deadline | Self::Cancelled | Self::ReadFailed)
+    }
+
     /// Loses context only in the file it names.
     fn is_per_file(self) -> bool {
         matches!(
@@ -191,19 +226,19 @@ impl LimitReason {
 
 const MAX_LIMITED_FILES_LISTED: usize = 20;
 
-/// What a run's limits mean for the reader (#306). `limit_reasons` are the
+/// What a run's limits mean for the reader (#306). `limits` are the
 /// ones that can have cost this answer context: a run-wide stop, or a
 /// per-file limit on a file the answer is about (changed, or holding a
 /// selected fragment). Graph caps every repository trips, and a size cap on
 /// a lockfile nobody reads, go to `capped` and leave the status `complete`.
-#[derive(Serialize, JsonSchema, Clone, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct CoverageReport {
-    pub status: &'static str,
+    pub status: CoverageStatus,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limit_reasons: Vec<LimitReason>,
+    pub limits: Vec<LimitReason>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capped: Vec<LimitReason>,
-    /// The files behind the per-file reasons in `limit_reasons`.
+    /// The files behind the per-file reasons in `limits`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limited_files: Vec<LimitedFile>,
     pub resources: ResourceUsage,
@@ -212,7 +247,7 @@ pub struct CoverageReport {
     /// the raw diff — and its counts read 0 only because the schema requires
     /// numbers there (#550).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unknown: Vec<&'static str>,
+    pub unknown: Vec<String>,
     /// Files that were not UTF-8 and were decoded with replacement
     /// characters (`NonUtf8Content`): their symbols and identifiers may be
     /// truncated at the first non-ASCII byte.
@@ -220,7 +255,28 @@ pub struct CoverageReport {
     pub lossy_files: Vec<String>,
 }
 
-/// `limit_reasons`, `capped` and the relevant `limited_files` of a run, by
+/// How much of what the run was about it covered: `degraded` when a changed file
+/// has no witness in the answer, `partial` when a limit cost context, `complete`
+/// when only caps nothing needed were hit.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageStatus {
+    Complete,
+    Partial,
+    Degraded,
+}
+
+impl CoverageStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+/// `limits`, `capped` and the relevant `limited_files` of a run, by
 /// the rule on [`CoverageReport`]. `extra` are the selection's own reasons.
 pub fn classify_limits(
     ctx: &RunContext,
@@ -244,9 +300,17 @@ pub fn classify_limits(
             capped.push(reason);
         }
     }
-    let mut limited: Vec<LimitedFile> = limited
+    // An unread directory is no file the answer is about: it is named whenever
+    // the run was limited by it, whatever the answer holds.
+    let mut limited: Vec<LimitedFile> = ctx
+        .source()
+        .unread_directories()
         .into_iter()
-        .filter(|f| headline.contains(&f.reason))
+        .map(|path| LimitedFile {
+            path,
+            reason: LimitReason::DiscoveryTruncated,
+        })
+        .chain(limited.into_iter().filter(|f| headline.contains(&f.reason)))
         .collect();
     limited.truncate(MAX_LIMITED_FILES_LISTED);
     (headline, capped, limited)
@@ -265,15 +329,15 @@ impl CoverageReport {
             return None;
         }
         let status = if limit_reasons.contains(&LimitReason::EvidenceBudgetExceeded) {
-            "degraded"
+            CoverageStatus::Degraded
         } else if limit_reasons.is_empty() {
-            "complete"
+            CoverageStatus::Complete
         } else {
-            "partial"
+            CoverageStatus::Partial
         };
         Some(Self {
             status,
-            limit_reasons,
+            limits: limit_reasons,
             capped,
             limited_files,
             resources: ctx.usage(),
@@ -396,13 +460,21 @@ impl RunContext {
         *self.inner.head_rev.lock().unwrap() = rev;
     }
 
+    /// The current side of the analysis this run serves; a run that was
+    /// given none reads nothing.
     pub fn source(&self) -> crate::source::Source {
         self.inner
             .source
             .lock()
             .unwrap()
             .clone()
-            .unwrap_or_default()
+            .unwrap_or_else(crate::source::Source::empty)
+    }
+
+    /// What bounds a git child started for this run: its I/O deadline and
+    /// its cancellation.
+    pub fn io_limits(&self) -> (Option<Instant>, Arc<AtomicBool>) {
+        (self.inner.io_expires_at, self.inner.cancel.clone())
     }
 
     pub fn set_source(&self, source: crate::source::Source) {
@@ -464,6 +536,7 @@ impl RunContext {
             self.inner.tripped.store(true, Ordering::Relaxed);
             return false;
         }
+        #[allow(deprecated, reason = "try_update needs Rust 1.95; MSRV is 1.85")]
         let logical = self.inner.polls_left.as_ref().is_some_and(|left| {
             left.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
                 .is_err()
@@ -533,8 +606,28 @@ impl RunContext {
         self.inner.withheld.lock().unwrap().len()
     }
 
+    /// What limited the run: the reasons noted on it, and a failed read the
+    /// snapshot layer recorded even if its caller dropped the error.
     pub fn reasons(&self) -> Vec<LimitReason> {
-        self.inner.reasons.lock().unwrap().iter().copied().collect()
+        let mut all: BTreeSet<LimitReason> = self.inner.reasons.lock().unwrap().clone();
+        let source = self.source();
+        if source.lost_a_read() {
+            all.insert(LimitReason::ReadFailed);
+        }
+        if !source.unread_directories().is_empty() {
+            all.insert(LimitReason::DiscoveryTruncated);
+        }
+        all.into_iter().collect()
+    }
+
+    /// The reasons that make a count of what the run searched for unfinished:
+    /// the deadline, a cancellation, a read that failed. Empty while nothing
+    /// of the kind has been noted; once it is not, a caller count the run
+    /// prints is what it reached, not what there is.
+    pub fn stops(&self) -> Vec<LimitReason> {
+        let mut stops = self.reasons();
+        stops.retain(|r| r.stops_a_search());
+        stops
     }
 
     /// Records `n` more edge emissions. `false` once the run is over its
@@ -568,7 +661,12 @@ impl RunContext {
     pub fn enter(&self) -> ScopedContext {
         let prev = CURRENT.with(|c| c.replace(Some(self.clone())));
         SELF_REPORTED.with(|r| r.set(0));
-        ScopedContext { prev }
+        let git = crate::snapshot::enter_run(crate::snapshot::RunBudget {
+            deadline: self.inner.io_expires_at,
+            cancel: Some(self.inner.cancel.clone()),
+            read_fault: None,
+        });
+        ScopedContext { prev, _git: git }
     }
 
     /// Charges a finished builder's total minus what its own loops already
@@ -594,10 +692,15 @@ thread_local! {
     /// (the discovery strategies run on rayon workers).
     static CHANGED_LINES: RefCell<Option<Arc<crate::changed_lines::ChangedLines>>> =
         const { RefCell::new(None) };
+    /// The analysis' source on a thread the run's context is not published to.
+    static SOURCE: RefCell<Option<crate::source::Source>> = const { RefCell::new(None) };
 }
 
 pub struct ScopedContext {
     prev: Option<RunContext>,
+    /// The run's limits as the git children of this thread see them, put back
+    /// with the context.
+    _git: crate::snapshot::RunScope,
 }
 
 impl Drop for ScopedContext {
@@ -655,6 +758,18 @@ impl RunNotes {
     }
 }
 
+/// `true` while the current run may go on; always `true` on a thread that
+/// serves no run. The first expiry is noted as the deadline, as `check` does.
+pub fn current_check() -> bool {
+    with_current(RunContext::check).unwrap_or(true)
+}
+
+/// What bounds a read made for the current run: its I/O deadline and its
+/// cancellation. `None` outside a run.
+pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
+    with_current(RunContext::io_limits)
+}
+
 /// The current run's note, when this thread runs one.
 pub fn note_current(reason: LimitReason) {
     with_current(|ctx| ctx.note(reason));
@@ -663,10 +778,11 @@ pub fn note_current(reason: LimitReason) {
 /// What a failed git read leaves the answer missing, as a limit: out of time
 /// or cancelled is the deadline, an oversized blob its size, anything else a
 /// read that failed.
-pub fn reason_for(e: &crate::git::GitError) -> LimitReason {
+pub fn reason_for(e: &crate::snapshot::SnapshotError) -> LimitReason {
+    use crate::snapshot::SnapshotError as E;
     match e {
-        crate::git::GitError::Timeout(_) | crate::git::GitError::Cancelled => LimitReason::Deadline,
-        crate::git::GitError::BlobTooLarge { .. } => LimitReason::FileTooLarge,
+        E::Timeout(_) | E::Cancelled => LimitReason::Deadline,
+        E::TooLarge { .. } => LimitReason::FileTooLarge,
         _ => LimitReason::ReadFailed,
     }
 }
@@ -709,14 +825,39 @@ pub fn current_changed_lines() -> Option<Arc<crate::changed_lines::ChangedLines>
         .or_else(|| with_current(RunContext::changed_lines).flatten())
 }
 
-pub fn current_source() -> Option<crate::source::Source> {
-    with_current(RunContext::source)
+/// The source of the run this thread serves, or of the analysis a worker was
+/// handed with `with_source`. Outside both it reads nothing: there is no
+/// working-tree default to fall back on.
+pub fn current_source() -> crate::source::Source {
+    SOURCE
+        .with(|c| c.borrow().clone())
+        .or_else(|| with_current(RunContext::source))
+        .unwrap_or_else(crate::source::Source::empty)
 }
 
-/// What bounds a git child started now: the run's I/O deadline and its
-/// cancellation. `None` outside a run.
-pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
-    with_current(|ctx| (ctx.inner.io_expires_at, ctx.inner.cancel.clone()))
+/// A file's text: the caller's cache when it holds the file, else the run's source.
+pub fn read_file_cached(
+    path: &std::path::Path,
+    cache: Option<&rustc_hash::FxHashMap<std::path::PathBuf, String>>,
+) -> Option<String> {
+    cache
+        .and_then(|c| c.get(path).cloned())
+        .or_else(|| current_source().read_to_string(path))
+}
+
+/// Runs `f` with `source` published to this thread: for rayon workers the
+/// run's context is not published to.
+pub fn with_source<T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> T {
+    let prev = SOURCE.with(|c| c.replace(Some(source.clone())));
+    struct Restore(Option<crate::source::Source>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let prev = self.0.take();
+            SOURCE.with(|c| *c.borrow_mut() = prev);
+        }
+    }
+    let _restore = Restore(prev);
+    f()
 }
 
 /// Where history ends for the current run: the same `--diff A..B` must see

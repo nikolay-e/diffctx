@@ -9,10 +9,12 @@ use crate::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
     DEFAULT_STOPPING_THRESHOLD,
 };
-use crate::git::GitError as RustGitError;
+use crate::delivery::{Delivery, Mode, Note, Request};
 use crate::mode::ScoringMode;
-use crate::pipeline::{self, ScoredState};
+use crate::pipeline;
 use crate::render::DiffContextOutput;
+use crate::run_provenance::state::ScoredState;
+use crate::snapshot::SnapshotError as RustGitError;
 
 #[pyclass(unsendable)]
 pub struct PyScoredState {
@@ -77,9 +79,128 @@ impl PyCancelToken {
     }
 }
 
+/// The request every door builds the same way: the Python spelling of an
+/// unspecified range is the empty string, and means the working tree.
+fn request_for(
+    root_dir: &str,
+    mode: Mode,
+    diff_range: &str,
+    scoring_mode: &str,
+) -> PyResult<Request> {
+    let mut request = Request::new(Path::new(root_dir).to_path_buf(), mode);
+    request.scoring =
+        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    request.range = (!diff_range.is_empty()).then(|| diff_range.to_string());
+    Ok(request)
+}
+
+fn deliver_detached(py: Python<'_>, request: Request) -> PyResult<Delivery> {
+    detach_guarded(py, move || crate::delivery::deliver(&request))
+}
+
+fn note_pair(note: Note) -> (&'static str, String) {
+    match note {
+        Note::Warning(text) => ("warning", text),
+        Note::Detail(text) => ("detail", text),
+        Note::Figure(text) => ("figure", text),
+    }
+}
+
+/// What a door delivers (`crate::delivery`): the text, the notes for stderr as
+/// `(kind, text)` pairs, the exit status, how many fragments or items the text
+/// lists, and the telemetry that rides beside the artifact. The Python CLI and
+/// the MCP server print and exit on what this returns and decide none of it.
+#[pyfunction]
+#[pyo3(signature = (
+    root_dir,
+    mode,
+    diff_range = "",
+    symbol = None,
+    paths = Vec::new(),
+    budget = None,
+    ceiling = None,
+    envelope = "",
+    format = "md",
+    unfold = false,
+    alpha = DEFAULT_PPR_ALPHA,
+    tau = None,
+    scoring_mode = DEFAULT_SCORING,
+    timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+    no_content = false,
+    full = false,
+    with_raw_diff = false,
+    overflow = false,
+))]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn deliver<'py>(
+    py: Python<'py>,
+    root_dir: &str,
+    mode: &str,
+    diff_range: &str,
+    symbol: Option<String>,
+    paths: Vec<String>,
+    budget: Option<i64>,
+    ceiling: Option<u32>,
+    envelope: &str,
+    format: &str,
+    unfold: bool,
+    alpha: f64,
+    tau: Option<f64>,
+    scoring_mode: &str,
+    timeout: u64,
+    no_content: bool,
+    full: bool,
+    with_raw_diff: bool,
+    overflow: bool,
+) -> PyResult<(
+    String,
+    Vec<(&'static str, String)>,
+    i32,
+    usize,
+    Option<Bound<'py, PyAny>>,
+)> {
+    let mode = Mode::named(mode).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown mode {mode:?}: pack, locate or impact"
+        ))
+    })?;
+    let mut request = request_for(root_dir, mode, diff_range, scoring_mode)?;
+    request.format = crate::artifact::Format::named(format).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown format {format:?}: yaml, json, md or txt"
+        ))
+    })?;
+    request.symbol = symbol;
+    request.paths = paths;
+    request.budget = budget;
+    request.ceiling = ceiling;
+    request.envelope = envelope.to_string();
+    request.unfold = unfold;
+    request.alpha = alpha;
+    request.tau = tau;
+    request.timeout = timeout;
+    request.no_content = no_content;
+    request.full = full;
+    request.with_raw_diff = with_raw_diff;
+    request.overflow = overflow;
+    let delivery = deliver_detached(py, request)?;
+    let latency = delivery
+        .latency
+        .as_ref()
+        .map(|value| json_to_py(py, value))
+        .transpose()?;
+    Ok((
+        delivery.text,
+        delivery.notes.into_iter().map(note_pair).collect(),
+        delivery.exit,
+        delivery.listed,
+        latency,
+    ))
+}
+
 /// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
-/// as the compact `diffctx.locate.v1` JSON string (ranked items + provenance
-/// reasons, no source bodies).
+/// as the compact `diffctx.locate.v2` JSON string (ranked items + provenance
+/// reasons, no source bodies), the overflow list only when asked for.
 #[pyfunction]
 #[pyo3(signature = (
     root_dir,
@@ -90,6 +211,7 @@ impl PyCancelToken {
     scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     paths = Vec::new(),
+    include_overflow = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn build_locate(
@@ -102,37 +224,20 @@ fn build_locate(
     scoring_mode: &str,
     timeout: u64,
     paths: Vec<String>,
+    include_overflow: bool,
 ) -> PyResult<String> {
-    let mode =
-        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
-    let path = Path::new(root_dir).to_path_buf();
-    // Empty means "the working tree", exactly as in `build_diff_context`.
-    // Forwarding `Some("")` instead reached `validate_diff_range`, which
-    // rejects it — so the two entry points into the same pipeline disagreed
-    // about what an unspecified range means.
-    let range = if diff_range.is_empty() {
-        None
-    } else {
-        Some(diff_range.to_string())
-    };
-    let output = detach_guarded(py, move || {
-        crate::pipeline::build_diff_context_locate(
-            &path,
-            range.as_deref(),
-            &paths,
-            budget_tokens,
-            alpha,
-            tau,
-            mode,
-            timeout,
-        )
-    })?;
-    serde_json::to_string(&output)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    let mut request = request_for(root_dir, Mode::Locate, diff_range, scoring_mode)?;
+    request.budget = budget_tokens.map(i64::from);
+    request.alpha = alpha;
+    request.tau = tau;
+    request.timeout = timeout;
+    request.paths = paths;
+    request.overflow = include_overflow;
+    Ok(deliver_detached(py, request)?.text)
 }
 
 /// `--mode impact` (#310): callers outside the diff, their tests and the
-/// range's cross-commit overlap, as `diffctx.impact.v1` JSON or as the
+/// range's cross-commit overlap, as `diffctx.impact.v2` JSON or as the
 /// markdown the hook injects — one renderer for every surface.
 #[pyfunction]
 #[pyo3(signature = (
@@ -145,6 +250,7 @@ fn build_locate(
     markdown = false,
     symbol = None,
     budget = None,
+    unfold = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn build_impact(
@@ -158,40 +264,21 @@ fn build_impact(
     markdown: bool,
     symbol: Option<String>,
     budget: Option<i64>,
+    unfold: bool,
 ) -> PyResult<String> {
-    let mode =
-        ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
-    let path = Path::new(root_dir).to_path_buf();
-    let range = if diff_range.is_empty() {
-        None
+    let mut request = request_for(root_dir, Mode::Impact, diff_range, scoring_mode)?;
+    request.format = if markdown {
+        crate::artifact::Format::Md
     } else {
-        Some(diff_range.to_string())
+        crate::artifact::Format::Json
     };
-    // A scoped answer reviewed part of the change; the gate keys on all of it.
-    let mark =
-        (paths.is_empty() && symbol.is_none()).then(|| diff_range_or_head(diff_range).to_string());
-    let mut output = detach_guarded(py, move || {
-        if let Some(symbol) = symbol {
-            return crate::pipeline::build_symbol_impact(
-                &path, &symbol, &paths, alpha, mode, timeout,
-            );
-        }
-        let output = crate::pipeline::build_diff_context_impact(
-            &path,
-            range.as_deref(),
-            &paths,
-            alpha,
-            mode,
-            timeout,
-        )?;
-        if let Some(range) = mark {
-            crate::hook::mark_range_reviewed(&path, &range, &output);
-        }
-        Ok(output)
-    })?;
-    // -1 is unlimited, as for pack; past u32, too.
-    let cap = budget.map(|b| u32::try_from(b).unwrap_or(u32::MAX));
-    Ok(crate::impact::deliver(&mut output, markdown, cap))
+    request.alpha = alpha;
+    request.timeout = timeout;
+    request.paths = paths;
+    request.symbol = symbol;
+    request.budget = budget;
+    request.unfold = unfold;
+    Ok(deliver_detached(py, request)?.text)
 }
 
 /// `diffctx hook <event>` for installs that reach diffctx through the PyPI
@@ -225,14 +312,6 @@ fn hook_respond(
     }))
 }
 
-fn diff_range_or_head(diff_range: &str) -> &str {
-    if diff_range.is_empty() {
-        "HEAD"
-    } else {
-        diff_range
-    }
-}
-
 fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     if let Some(git_err) = e.downcast_ref::<RustGitError>() {
         return GitError::new_err(git_err.to_string());
@@ -259,6 +338,7 @@ fn map_pipeline_err(e: anyhow::Error) -> PyErr {
     scoring_mode = DEFAULT_SCORING,
     timeout = DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     paths = Vec::new(),
+    with_raw_diff = false,
 ))]
 fn build_diff_context<'py>(
     py: Python<'py>,
@@ -272,6 +352,7 @@ fn build_diff_context<'py>(
     scoring_mode: &str,
     timeout: u64,
     paths: Vec<String>,
+    with_raw_diff: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let mode =
         ScoringMode::from_str(scoring_mode).map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -283,7 +364,7 @@ fn build_diff_context<'py>(
     };
 
     let start = std::time::Instant::now();
-    let output = detach_guarded(py, || {
+    let mut output = detach_guarded(py, || {
         pipeline::build_diff_context_in(
             path,
             range,
@@ -298,6 +379,11 @@ fn build_diff_context<'py>(
         )
     })?;
     let total_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if with_raw_diff {
+        detach_guarded(py, || {
+            crate::delivery::with_raw_diff(&mut output, path, range, &paths, timeout)
+        })?;
+    }
 
     diff_context_output_to_dict(py, &output, Some(total_ms))
 }
@@ -410,7 +496,17 @@ fn fit_artifact<'py>(
         ))
     })?;
     let mut doc = py_to_json(document)?;
-    let rendered = py.detach(|| crate::artifact::fit(&mut doc, format));
+    // Telemetry rides beside the artifact: the document has no place for it, and
+    // the caller reads it back from the fitted dict.
+    let latency = doc
+        .as_object_mut()
+        .and_then(|map| map.shift_remove("latency"));
+    let rendered = py
+        .detach(|| crate::artifact::fit_value(&mut doc, format))
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    if let (Some(latency), Some(map)) = (latency, doc.as_object_mut()) {
+        map.insert("latency".to_string(), latency);
+    }
     Ok((json_to_py(py, &doc)?, rendered))
 }
 
@@ -516,29 +612,6 @@ fn get_raw_diff_text(
     Ok((text, r.count, r.categories))
 }
 
-/// The commit a duration spec (`24h`, `8d`, `1h30m`) resolves to, or the range
-/// verbatim when it is an ordinary revision. Exported so the Python CLI phrases
-/// its messages in terms of the same window the pipeline actually diffed,
-/// instead of restating the duration grammar on its own.
-#[pyfunction]
-fn resolve_diff_range(py: Python<'_>, root_dir: &str, diff_range: &str) -> PyResult<String> {
-    let root = Path::new(root_dir).to_path_buf();
-    let range = (!diff_range.is_empty()).then(|| diff_range.to_string());
-    // Spawns `git`: holding the GIL across a subprocess blocks every other
-    // thread in the interpreter for its whole duration, which is exactly the
-    // wall-clock the latency columns are supposed to attribute to diffctx.
-    let resolved = py
-        .detach(move || crate::git::resolve_duration_range(&root, range.as_deref()))
-        .map_err(|e| GitError::new_err(e.to_string()))?;
-    // Every other range resolves too (to its fork point), but what the
-    // caller phrases is the window, not a commit id.
-    Ok(if resolved.from_duration {
-        resolved.range.unwrap_or_default()
-    } else {
-        diff_range.to_string()
-    })
-}
-
 #[pyfunction]
 fn get_language_for_file(path: &str) -> Option<String> {
     crate::languages::get_language_for_file(path).map(|s| s.to_string())
@@ -547,7 +620,7 @@ fn get_language_for_file(path: &str) -> Option<String> {
 /// The engine's secret-path policy, for tree mode and the MCP tools (#227).
 #[pyfunction]
 fn is_secret_path(path: &str) -> bool {
-    crate::pipeline::is_secret_path(Path::new(path))
+    crate::source::is_secret_path(Path::new(path))
 }
 
 /// Which of `rel_paths` the engine withholds — secret by name or ignored as
@@ -580,9 +653,9 @@ fn count_tokens(py: Python<'_>, text: &str) -> PyResult<u32> {
 use rustc_hash::{FxHashMap as RsFxHashMap, FxHashSet as RsFxHashSet};
 
 use crate::analytics;
-use crate::graph::EdgeCategory;
 use crate::graph_export;
 use crate::project_graph;
+use crate::types::EdgeCategory;
 
 #[pyclass]
 pub struct PyProjectGraph {
@@ -859,6 +932,7 @@ fn graph_summary<'py>(
 pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_diff_context, m)?)?;
     m.add_function(wrap_pyfunction!(fit_artifact, m)?)?;
+    m.add_function(wrap_pyfunction!(deliver, m)?)?;
     m.add_function(wrap_pyfunction!(build_locate, m)?)?;
     m.add_function(wrap_pyfunction!(build_impact, m)?)?;
     m.add_function(wrap_pyfunction!(hook_respond, m)?)?;
@@ -867,7 +941,6 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyScoredState>()?;
     m.add_class::<PyCancelToken>()?;
     m.add_function(wrap_pyfunction!(get_raw_diff_text, m)?)?;
-    m.add_function(wrap_pyfunction!(resolve_diff_range, m)?)?;
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(is_secret_path, m)?)?;

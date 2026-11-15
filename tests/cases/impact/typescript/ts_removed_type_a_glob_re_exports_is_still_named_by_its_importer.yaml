@@ -1,0 +1,44 @@
+name: ts_removed_type_a_glob_re_exports_is_still_named_by_its_importer
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, removed-definition, absence-claim, re-export, rebound]
+repo:
+  initial_files:
+    src/core/index.ts: |
+      export interface Response<T = unknown> {
+        body: T;
+      }
+    src/as-promise/types.ts: |
+      import {Response as RequestResponse} from '../core';
+
+      export interface Response<T = unknown> extends RequestResponse<T> {
+        retries: number;
+      }
+
+      export type Mode = 'json' | 'text';
+    src/as-promise/core.ts: |
+      import {Mode, Response} from './types';
+
+      export const parse = (response: Response, mode: Mode): unknown => {
+        return mode === 'json' ? response.body : String(response.body);
+      };
+  changed_files:
+    src/as-promise/types.ts: |
+      import {Response} from '../core';
+
+      export type Mode = 'json' | 'text';
+
+      export type Handler = (response: Response) => void;
+
+      export * from '../core';
+  commit_message: "types: take Response from core"
+expect:
+  removed: [src/as-promise/types.ts::Response]
+  relations:
+  - from: src/as-promise/core.ts
+    to: src/as-promise/types.ts::Response
+    kind: type_use
+    resolution: candidate
+  exact: false
+  never_empty: true

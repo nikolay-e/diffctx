@@ -5,17 +5,17 @@ use rustc_hash::FxHashMap;
 use serde::Serialize;
 
 use crate::analytics::QuotientGraph;
-use crate::graph::{EdgeCategory, Graph};
-use crate::types::{Fragment, FragmentId};
+use crate::graph::Graph;
+use crate::types::{EdgeCategory, Fragment, FragmentId};
 
-pub struct ProjectGraphView<'a> {
+pub(crate) struct ProjectGraphView<'a> {
     pub graph: &'a Graph,
     pub fragments: &'a FxHashMap<FragmentId, Fragment>,
     pub root_dir: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct NodeRecord {
+struct NodeRecord {
     pub id: String,
     pub label: String,
     pub path: String,
@@ -26,7 +26,7 @@ pub struct NodeRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct EdgeRecord {
+struct EdgeRecord {
     pub source: String,
     pub source_symbol: String,
     pub target: String,
@@ -36,7 +36,7 @@ pub struct EdgeRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GraphDocument {
+pub(crate) struct GraphDocument {
     pub name: String,
     #[serde(rename = "type")]
     pub doc_type: String,
@@ -47,7 +47,7 @@ pub struct GraphDocument {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GraphSummary {
+pub(crate) struct GraphSummary {
     pub node_count: usize,
     pub edge_count: usize,
     pub file_count: usize,
@@ -57,7 +57,7 @@ pub struct GraphSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct TopInDegreeEntry {
+pub(crate) struct TopInDegreeEntry {
     pub label: String,
     pub in_degree: usize,
 }
@@ -176,7 +176,7 @@ fn collect_sorted_edges(graph: &Graph) -> Vec<(FragmentId, FragmentId, f64, Edge
     entries
 }
 
-pub fn graph_to_document(view: &ProjectGraphView<'_>) -> GraphDocument {
+pub(crate) fn graph_to_document(view: &ProjectGraphView<'_>) -> GraphDocument {
     let root_name = root_name(view);
 
     let sorted_nodes = collect_sorted_nodes(view.fragments);
@@ -204,7 +204,7 @@ pub fn graph_to_document(view: &ProjectGraphView<'_>) -> GraphDocument {
 /// One node per file or directory and one edge per pair of them, labelled
 /// with the category most of its fragment edges carry (#352): what
 /// `--level` asks for, without the caller regrouping 17k fragment nodes.
-pub fn quotient_document(
+pub(crate) fn quotient_document(
     view: &ProjectGraphView<'_>,
     qg: &QuotientGraph,
     kind: &str,
@@ -262,7 +262,7 @@ fn root_name(view: &ProjectGraphView<'_>) -> String {
         .to_string()
 }
 
-pub fn document_to_json(doc: &GraphDocument) -> Result<String, serde_json::Error> {
+pub(crate) fn document_to_json(doc: &GraphDocument) -> Result<String, serde_json::Error> {
     let mut out = serde_json::to_string_pretty(doc)?;
     out.push('\n');
     Ok(out)
@@ -284,7 +284,7 @@ fn escape_graphml(text: &str) -> String {
     out
 }
 
-pub fn document_to_graphml(doc: &GraphDocument) -> String {
+pub(crate) fn document_to_graphml(doc: &GraphDocument) -> String {
     let mut out = String::new();
 
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -381,7 +381,7 @@ fn compute_in_degree(graph: &Graph) -> FxHashMap<FragmentId, usize> {
     counts
 }
 
-pub fn graph_summary(view: &ProjectGraphView<'_>, top_n: usize) -> GraphSummary {
+pub(crate) fn graph_summary(view: &ProjectGraphView<'_>, top_n: usize) -> GraphSummary {
     let node_count = view.graph.node_count();
     let edge_count = view.graph.edge_count();
     let file_count = collect_files(view.fragments);
@@ -433,7 +433,7 @@ pub fn graph_summary(view: &ProjectGraphView<'_>, top_n: usize) -> GraphSummary 
 
 /// The summary at file or directory level: groups are the nodes, and a
 /// group's in-degree counts the fragment edges reaching it from other groups.
-pub fn quotient_summary(
+pub(crate) fn quotient_summary(
     view: &ProjectGraphView<'_>,
     qg: &QuotientGraph,
     top_n: usize,
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn export_stays_cap_consistent_when_edge_cap_fires() {
-        use crate::graph::DEFAULT_MAX_OUT_EDGES_PER_NODE;
+        use crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE;
 
         let hub = make_fragment("hub.rs", 1, 10, Some("hub"));
         let mut frags = vec![hub.clone()];

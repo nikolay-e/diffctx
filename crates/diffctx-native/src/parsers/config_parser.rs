@@ -14,7 +14,7 @@ use super::FragmentationStrategy;
 // cases; every hit was `.toml`, which has no grammar).
 static TOML_SECTION_HEADER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\[").unwrap());
 
-pub struct ConfigStrategy;
+pub(super) struct ConfigStrategy;
 
 impl FragmentationStrategy for ConfigStrategy {
     fn can_handle(&self, path: &str, _content: &str) -> bool {

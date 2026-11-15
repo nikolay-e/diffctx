@@ -1,0 +1,33 @@
+name: au_py_short_name_as_an_ordinary_argument_stays_complete
+mode: impact
+source: synthetic
+tags: [python, au-literal, literal-name, short-name, decoy]
+repo:
+  initial_files:
+    shop/store.py: |
+      def get(key):
+          return key
+    shop/use.py: |
+      from shop.store import get
+
+
+      def read(key):
+          return get(key)
+    shop/schema.py: |
+      def decl(f, name):
+          return (f, name)
+
+
+      def declare(f):
+          return decl(f, "get")
+  changed_files:
+    shop/store.py: |
+      def get(key):
+          return key + 1
+  commit_message: "store: get adds one"
+expect:
+  exact: true
+  callers: {get: [shop/use.py::read]}
+  coverage: {shop/store.py::get: {calls: complete}}
+  decoys:
+    shop/store.py::get: [shop/schema.py]

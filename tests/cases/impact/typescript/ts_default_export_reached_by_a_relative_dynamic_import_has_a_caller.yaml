@@ -1,0 +1,20 @@
+name: ts_default_export_reached_by_a_relative_dynamic_import_has_a_caller
+mode: impact
+source: fj#106
+issue_state: open
+tags: [typescript, react-lazy, dynamic-import, default-export]
+repo:
+  initial_files:
+    Card.tsx: |
+      export default function Card() { return <div>Old</div>; }
+    App.tsx: |
+      import { lazy, Suspense } from 'react';
+      const Card = lazy(() => import('./Card'));
+      export function App() { return <Suspense fallback={null}><Card /></Suspense>; }
+  worktree: true
+  changed_files:
+    Card.tsx: |
+      export default function Card() { return <div>New</div>; }
+expect:
+  relations:
+    - {from: "App.tsx", to: "Card.tsx::Card", kind: imports, resolution: resolved, site: 2}

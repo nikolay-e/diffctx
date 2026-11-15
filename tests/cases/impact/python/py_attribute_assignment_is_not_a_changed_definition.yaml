@@ -1,0 +1,30 @@
+name: py_attribute_assignment_is_not_a_changed_definition
+mode: impact
+source: gh#672
+issue_state: open
+tags: [python, attribute-assignment, changed-definition, unittest]
+repo:
+  initial_files:
+    README.md: |
+      demo
+  changed_files:
+    test_tool.py: |
+      import tempfile
+      import unittest
+
+
+      class ToolTest(unittest.TestCase):
+          def setUp(self):
+              self.workdir = tempfile.mkdtemp()
+
+          def test_workdir_exists(self):
+              self.assertTrue(self.workdir)
+  commit_message: "test_tool: give each test a work directory"
+# The added test class and its two methods are changed definitions, named. The
+# attribute `workdir` is not one (gh#672): the answer still names it, so the case
+# stays red until it does not.
+expect:
+  changed:
+    - test_tool.py::ToolTest
+    - test_tool.py::setUp
+    - test_tool.py::test_workdir_exists

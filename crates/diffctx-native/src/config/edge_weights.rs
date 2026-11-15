@@ -161,3 +161,140 @@ pub const SEMANTIC_DISCOVERY: SemanticDiscoveryConfig = SemanticDiscoveryConfig 
     min_identifier_length: 2,
     min_ref_length_for_path_match: 3,
 };
+
+/// The groups of languages whose ranking edges can come from the cells' bindings
+/// (`edges/cells.rs`); a group not drawn from them keeps its text builders.
+pub const CELL_EDGE_GROUPS: [&str; 12] = [
+    "python",
+    "typescript",
+    "rust",
+    "jvm",
+    "go",
+    "php",
+    "c",
+    "terraform",
+    "shell",
+    "swift",
+    "sql",
+    "config",
+];
+
+/// The one table of what a cell-drawn edge is worth. A resolved binding's edge
+/// carries the weight the language's weight table names for its relation, times
+/// `resolved`; the rest are switches the measurement flips, each env-overridable
+/// so one binary measures every variant.
+///
+/// - `groups`: the groups drawn from cells (`DIFFCTX_CELL_EDGES`: `all`, `none`
+///   or a comma list of `CELL_EDGE_GROUPS`). The default is `none`: the old
+///   builders' edges, until the measurement of phase 2 says a group is no worse
+///   drawn from cells. A drawn group narrows its old builder to the files the
+///   cell does not cover (`cells::beside`), it never silences it whole.
+/// - `candidates` (`DIFFCTX_CELL_EDGE_CANDIDATES`): a binding the cell narrowed to
+///   several definitions draws an edge to each, worth the weight times
+///   `candidate_factor` divided by their number, up to `max_candidates`.
+/// - `unresolved` (`DIFFCTX_CELL_EDGE_UNRESOLVED`): a binding of a name nothing
+///   binds draws a weak edge to each definition of that name in the family, worth
+///   the weight times `unresolved_factor`, divided by their number, up to
+///   `max_unresolved_targets`. At the shipped factor it stays below
+///   `NAMING_WEIGHT_FLOOR`, so it ranks and admits through the declared channel
+///   only.
+#[derive(Debug, Clone)]
+pub struct CellEdgeWeights {
+    groups: Vec<String>,
+    pub resolved: f64,
+    pub candidates: bool,
+    pub candidate_factor: f64,
+    pub max_candidates: usize,
+    pub unresolved: bool,
+    pub unresolved_factor: f64,
+    pub max_unresolved_targets: usize,
+}
+
+impl CellEdgeWeights {
+    /// Whether the ranking edges of `group` come from the cells.
+    pub fn draws(&self, group: &str) -> bool {
+        self.groups.iter().any(|g| g == group)
+    }
+
+    fn from_env(read: impl Fn(&str) -> Option<String>) -> Self {
+        use super::env_overrides::{parse_f64_or_default, parse_usize_or_default};
+        let flag = |name: &str, default: bool| match read(name).as_deref().map(str::trim) {
+            Some("1" | "true" | "on") => true,
+            Some("0" | "false" | "off") => false,
+            _ => default,
+        };
+        Self {
+            groups: parse_groups(read("DIFFCTX_CELL_EDGES").as_deref()),
+            resolved: parse_f64_or_default(read("DIFFCTX_CELL_EDGE_RESOLVED"), 1.0),
+            candidates: flag("DIFFCTX_CELL_EDGE_CANDIDATES", false),
+            candidate_factor: parse_f64_or_default(read("DIFFCTX_CELL_EDGE_CANDIDATE_FACTOR"), 1.0),
+            max_candidates: parse_usize_or_default(read("DIFFCTX_CELL_EDGE_MAX_CANDIDATES"), 8),
+            unresolved: flag("DIFFCTX_CELL_EDGE_UNRESOLVED", false),
+            unresolved_factor: parse_f64_or_default(
+                read("DIFFCTX_CELL_EDGE_UNRESOLVED_FACTOR"),
+                0.3,
+            ),
+            max_unresolved_targets: parse_usize_or_default(
+                read("DIFFCTX_CELL_EDGE_MAX_UNRESOLVED_TARGETS"),
+                8,
+            ),
+        }
+    }
+}
+
+fn parse_groups(raw: Option<&str>) -> Vec<String> {
+    let all = || CELL_EDGE_GROUPS.iter().map(|g| (*g).to_string()).collect();
+    match raw.map(|r| r.trim().to_ascii_lowercase()).as_deref() {
+        Some("all") => all(),
+        None | Some("" | "none" | "old") => Vec::new(),
+        Some(list) => list
+            .split(',')
+            .map(str::trim)
+            .filter(|g| CELL_EDGE_GROUPS.contains(g))
+            .map(str::to_string)
+            .collect(),
+    }
+}
+
+pub static CELL_EDGES: once_cell::sync::Lazy<CellEdgeWeights> =
+    once_cell::sync::Lazy::new(|| CellEdgeWeights::from_env(|name| std::env::var(name).ok()));
+
+#[cfg(test)]
+mod cell_edge_tests {
+    use super::*;
+
+    fn weights(vars: &[(&str, &str)]) -> CellEdgeWeights {
+        CellEdgeWeights::from_env(|name| {
+            vars.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (*v).to_string())
+        })
+    }
+
+    #[test]
+    fn the_old_builders_draw_by_default_and_the_inexact_edges_are_off() {
+        let w = weights(&[]);
+        assert!(CELL_EDGE_GROUPS.iter().all(|g| !w.draws(g)));
+        assert!(!w.candidates && !w.unresolved);
+        assert_eq!(w.resolved, 1.0);
+    }
+
+    #[test]
+    fn a_list_names_the_groups_and_all_draws_every_one_from_cells() {
+        let w = weights(&[("DIFFCTX_CELL_EDGES", "python, go, nonsense")]);
+        assert!(w.draws("python") && w.draws("go") && !w.draws("rust"));
+        let all = weights(&[("DIFFCTX_CELL_EDGES", "all")]);
+        assert!(CELL_EDGE_GROUPS.iter().all(|g| all.draws(g)));
+    }
+
+    #[test]
+    fn the_switches_read_their_variables() {
+        let w = weights(&[
+            ("DIFFCTX_CELL_EDGE_CANDIDATES", "1"),
+            ("DIFFCTX_CELL_EDGE_UNRESOLVED", "on"),
+            ("DIFFCTX_CELL_EDGE_UNRESOLVED_FACTOR", "0.2"),
+        ]);
+        assert!(w.candidates && w.unresolved);
+        assert_eq!(w.unresolved_factor, 0.2);
+    }
+}

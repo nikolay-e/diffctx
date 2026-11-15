@@ -1,0 +1,582 @@
+//! Compares an answer with a case's expectation. Every failure message shows
+//! the relation diff, not only that one exists.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::case::{Case, Compiled, Coverage};
+use super::engine::{Answer, absence_claims};
+use super::model::{Kind, Node, Relation, UnknownClass};
+use super::report::{CaseReport, TargetReport};
+
+#[derive(Default)]
+struct Counts {
+    tp: usize,
+    fp: usize,
+    fn_: usize,
+}
+
+pub(crate) fn judge(
+    name: &str,
+    case: &Case,
+    compiled: &Compiled,
+    language: &str,
+    answer: &Answer,
+) -> (Vec<String>, CaseReport) {
+    let mut report = CaseReport::new(name, case, language);
+    let mut failures = Vec::new();
+
+    compare_relations(case, compiled, answer, &mut report, &mut failures);
+    check_decoys(case, answer, &mut failures);
+    check_definitions(case, answer, &mut failures);
+    check_unknowns(case, answer, &mut failures);
+    check_coverage(case, answer, &mut failures);
+    check_lists(case, answer, &mut failures);
+    check_text(answer, &mut failures);
+
+    report.unknowns = answer
+        .unknowns
+        .iter()
+        .map(|(node, class, sentence)| {
+            format!(
+                "{node}: {}",
+                class.map_or_else(|| sentence.clone(), |c| c.name().to_string())
+            )
+        })
+        .collect();
+    report.empty = answer.empty;
+    report.disclosed = answer.run_disclosure || !answer.gapped.is_empty();
+    report.absence_claims = answer
+        .markdown
+        .as_deref()
+        .map(absence_claims)
+        .unwrap_or_default();
+    report.failures.clone_from(&failures);
+    (failures, report)
+}
+
+fn pairs(expected: &Relation, actual: &Relation) -> bool {
+    let tests = expected.kind == Kind::TestsReach;
+    // A test link names the test file, and the test function where the engine
+    // resolved it: an expectation naming only the file is met by either.
+    let from_agrees = expected.from.covers(&actual.from)
+        || (actual.kind == Kind::ReferencesPath
+            && actual.from.symbol.is_none()
+            && expected.from.path == actual.from.path);
+    // A test link carries no line: an expected site cannot be checked.
+    let sites_agree = (tests && actual.sites.is_empty())
+        || expected.sites.iter().all(|s| actual.sites.contains(s));
+    // A module that re-exports a definition is where it reaches the package's
+    // users, never a caller of it: only a `reexports` expectation names it, and
+    // it names nothing else.
+    from_agrees
+        && (expected.kind == Kind::Reexports) == (actual.kind == Kind::Reexports)
+        && expected.resolution == actual.resolution
+        && sites_agree
+        && (!actual.kind_stated || expected.loose_kind || expected.kind == actual.kind)
+}
+
+fn compare_relations(
+    case: &Case,
+    compiled: &Compiled,
+    answer: &Answer,
+    report: &mut CaseReport,
+    failures: &mut Vec<String>,
+) {
+    for (target, class) in &compiled.listed {
+        let expected: Vec<&Relation> = compiled
+            .relations
+            .iter()
+            .filter(|r| r.to == *target && r.kind.class() == *class)
+            .collect();
+        let actual: Vec<&Relation> = answer
+            .relations
+            .iter()
+            .filter(|a| target.covers(&a.to) && a.kind.class() == *class)
+            .collect();
+        let family = format!("{class:?}").to_lowercase();
+        let mut taken = vec![false; actual.len()];
+        let mut counts: BTreeMap<&'static str, Counts> = BTreeMap::new();
+        let mut lines: Vec<String> = Vec::new();
+        let mut red = false;
+
+        for want in &expected {
+            let mut hits = 0;
+            for (i, got) in actual.iter().enumerate() {
+                // A caller the engine reports once with several sites can satisfy
+                // several expectations that each name one of its sites.
+                if (taken[i] && want.sites.is_empty()) || !pairs(want, got) {
+                    continue;
+                }
+                taken[i] = true;
+                hits += 1;
+                counts.entry(want.kind.name()).or_default().tp += 1;
+                if got.kind != want.kind && !want.loose_kind {
+                    report.kind_mismatches.push(format!(
+                        "{}: expected {}, found {}",
+                        want.show(),
+                        want.kind.name(),
+                        got.kind.name()
+                    ));
+                }
+                // A relation naming a definition stands for one caller; one
+                // naming a file stands for every caller in that file.
+                if want.from.symbol.is_some() {
+                    break;
+                }
+            }
+            if hits == 0 && answer.folded.iter().any(|f| folded_stands_for(want, f)) {
+                hits = 1;
+                counts.entry(want.kind.name()).or_default().tp += 1;
+            }
+            if hits == 0 {
+                red = true;
+                counts.entry(want.kind.name()).or_default().fn_ += 1;
+                lines.push(format!("  - missing {}", want.show()));
+                explain_missing(want, &actual, answer, &mut lines);
+            }
+        }
+        for (i, got) in actual.iter().enumerate() {
+            if taken[i] {
+                continue;
+            }
+            counts.entry(got.kind.name()).or_default().fp += 1;
+            if case.expect.exact {
+                red = true;
+                lines.push(format!("  + extra   {}", got.show()));
+            }
+        }
+        if counts.is_empty() {
+            report.targets.push(TargetReport {
+                target: target.to_string(),
+                relation: family.clone(),
+                tp: 0,
+                fp: 0,
+                fn_: 0,
+            });
+        }
+        for (relation, c) in counts {
+            report.targets.push(TargetReport {
+                target: target.to_string(),
+                relation: relation.to_string(),
+                tp: c.tp,
+                fp: c.fp,
+                fn_: c.fn_,
+            });
+        }
+        if red {
+            failures.push(format!(
+                "relations to `{target}` ({family}):\n{}",
+                lines.join("\n")
+            ));
+        }
+    }
+}
+
+/// The kinds a folding rule folds: a folded row is the answer finding a relation
+/// of that kind and calling it immaterial, so it still stands for an
+/// expectation naming that kind. It never stands for a call, a read, a write or
+/// an expectation naming no kind (`callers`): that is a caller the answer
+/// tells the reader is not one.
+fn folded_kinds(rule: &str) -> &'static [Kind] {
+    match rule {
+        "declared-type" => &[Kind::TypeUse],
+        "override-not-run" => &[Kind::Overrides],
+        "imports-a-body" => &[Kind::Imports, Kind::Reexports],
+        _ => &[],
+    }
+}
+
+/// The folded row joins `want`'s ends at its standing and sites, whatever the
+/// kind its class implies: a folded row's kind is the one its rule folds.
+fn folded_pairs(want: &Relation, (row, _): &(Relation, String)) -> bool {
+    let as_wanted = Relation {
+        kind: want.kind,
+        kind_stated: false,
+        ..row.clone()
+    };
+    want.to.covers(&row.to) && pairs(want, &as_wanted)
+}
+
+fn folded_stands_for(want: &Relation, folded: &(Relation, String)) -> bool {
+    !want.loose_kind && folded_kinds(&folded.1).contains(&want.kind) && folded_pairs(want, folded)
+}
+
+/// Why an expected relation has no row: the answer folds it as not affected,
+/// or has a row at the caller only.
+fn explain_missing(
+    want: &Relation,
+    actual: &[&Relation],
+    answer: &Answer,
+    lines: &mut Vec<String>,
+) {
+    if let Some(folded) = answer.folded.iter().find(|f| folded_pairs(want, f)) {
+        lines.push(format!(
+            "      the answer folds {} as not affected ({}): a row it does not list as a caller",
+            folded.0.show(),
+            folded.1
+        ));
+    } else if let Some(near) = actual.iter().find(|got| want.from.covers(&got.from)) {
+        lines.push(format!("      the answer has {}", near.show()));
+    }
+}
+
+fn check_decoys(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
+    for (key, decoys) in &case.expect.decoys {
+        let target = Node::target(key);
+        for decoy in decoys {
+            let decoy_node = Node::parse(decoy);
+            for related in answer
+                .relations
+                .iter()
+                .filter(|a| target.covers(&a.to) && decoy_node.covers(&a.from))
+            {
+                failures.push(format!(
+                    "decoy `{decoy}` is related to `{key}`: {}",
+                    related.show()
+                ));
+            }
+            for definition in answer
+                .definitions
+                .iter()
+                .filter(|d| target.covers(d) && decoy_node.covers(d))
+            {
+                failures.push(format!(
+                    "decoy `{decoy}` is answered as a definition of `{key}`: {definition}"
+                ));
+            }
+        }
+    }
+}
+
+fn compare_set(
+    what: &str,
+    expected: &[String],
+    actual: &[Node],
+    exact: bool,
+    failures: &mut Vec<String>,
+) {
+    let wanted: Vec<Node> = expected.iter().map(|e| Node::target(e)).collect();
+    // A bare file path names the file's own row, not the definitions in it.
+    let names = |w: &Node, a: &Node| {
+        if w.symbol.is_none() && !w.path.is_empty() {
+            w.path == a.path && a.symbol.is_none()
+        } else {
+            w.covers(a)
+        }
+    };
+    let missing: Vec<String> = wanted
+        .iter()
+        .filter(|w| !actual.iter().any(|a| names(w, a)))
+        .map(ToString::to_string)
+        .collect();
+    let unexpected: BTreeSet<String> = if exact {
+        actual
+            .iter()
+            .filter(|a| !wanted.iter().any(|w| names(w, a)))
+            .map(ToString::to_string)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    if !missing.is_empty() || !unexpected.is_empty() {
+        let reported: BTreeSet<String> = actual.iter().map(ToString::to_string).collect();
+        failures.push(format!(
+            "{what}: missing [{}], unexpected [{}]; the answer names [{}]",
+            missing.join(", "),
+            unexpected.iter().cloned().collect::<Vec<_>>().join(", "),
+            reported.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+}
+
+fn check_definitions(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
+    if let Some(expected) = &case.expect.changed {
+        compare_set(
+            "changed definitions",
+            expected,
+            &answer.touched,
+            case.expect.exact,
+            failures,
+        );
+    }
+    if let Some(expected) = &case.expect.definitions {
+        compare_set(
+            "definitions",
+            expected,
+            &answer.definitions,
+            case.expect.exact,
+            failures,
+        );
+    }
+}
+
+fn check_unknowns(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
+    let Some(unknowns) = &case.expect.unknowns else {
+        return;
+    };
+    if unknowns.is_empty() && !answer.unknowns.is_empty() {
+        let said: Vec<String> = answer
+            .unknowns
+            .iter()
+            .map(|(node, _, sentence)| format!("{node}: \"{sentence}\""))
+            .collect();
+        failures.push(format!(
+            "expected no unknown; the answer names {}",
+            said.join("; ")
+        ));
+    }
+    for (key, class) in unknowns {
+        let target = Node::target(key);
+        let named: Vec<&(Node, Option<UnknownClass>, String)> = answer
+            .unknowns
+            .iter()
+            .filter(|(node, _, _)| target.covers(node))
+            .collect();
+        if !named.iter().any(|(_, c, _)| *c == Some(*class)) {
+            let said = if named.is_empty() {
+                "none".to_string()
+            } else {
+                named
+                    .iter()
+                    .map(|(_, _, sentence)| format!("\"{sentence}\""))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            failures.push(format!(
+                "expected the unknown `{}` for `{key}`; the answer names {said}",
+                class.name()
+            ));
+        }
+    }
+}
+
+fn check_coverage(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
+    for (key, kinds) in &case.expect.coverage {
+        let target = Node::target(key);
+        let definitions: Vec<&Node> = answer
+            .definitions
+            .iter()
+            .filter(|d| target.covers(d))
+            .collect();
+        if definitions.is_empty() {
+            failures.push(format!(
+                "coverage of `{key}`: the answer reports no such definition"
+            ));
+            continue;
+        }
+        let gapped = definitions.iter().any(|d| answer.gapped.contains(*d));
+        for (kind, expected) in kinds {
+            let partial =
+                gapped || answer.run_disclosure || (kind == "tests_reach" && !answer.tests_known);
+            let found = if partial {
+                Coverage::Partial
+            } else {
+                Coverage::Complete
+            };
+            if found != *expected {
+                failures.push(format!(
+                    "coverage of `{key}` for {kind}: expected {expected:?}, the answer is {found:?}"
+                ));
+            }
+        }
+    }
+}
+
+fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
+    let expect = &case.expect;
+    for name in &expect.untested {
+        let node = Node::target(name);
+        if !answer.untested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is not reported as a definition without a static test link"
+            ));
+        }
+    }
+    for name in &expect.not_untested {
+        let node = Node::target(name);
+        if answer.untested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is reported as a definition without a static test link"
+            ));
+        }
+    }
+    for name in &expect.entry_tested {
+        let node = Node::target(name);
+        if !answer.entry_tested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is not reported as an entry a test reaches"
+            ));
+        }
+    }
+    for name in &expect.entry_not_tested {
+        let node = Node::target(name);
+        if !answer.entry_not_tested.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` is not reported as an entry no test reaches"
+            ));
+        }
+    }
+    for path in &expect.stale {
+        if !answer.stale.contains(path) {
+            failures.push(format!("`{path}` is not listed as a stale reference"));
+        }
+    }
+    for path in &expect.not_stale {
+        if answer.stale.contains(path) {
+            failures.push(format!("`{path}` is listed as a stale reference"));
+        }
+    }
+    for path in &expect.named_by {
+        if !answer.named_by.contains(path) {
+            failures.push(format!("`{path}` is not listed as naming a changed file"));
+        }
+    }
+    for (path, class) in &expect.mention_class {
+        let found: Vec<&str> = answer
+            .mention_classes
+            .iter()
+            .filter(|(p, _)| p == path)
+            .map(|(_, c)| c.as_str())
+            .collect();
+        if !found.contains(&class.as_str()) {
+            failures.push(format!(
+                "`{path}` names the change from a place of class `{class}`; the answer says {found:?}"
+            ));
+        }
+    }
+    for path in &expect.not_named_by {
+        if answer.named_by.contains(path) {
+            failures.push(format!("`{path}` is listed as naming a changed file"));
+        }
+    }
+    for path in &expect.contracts {
+        if !answer.contracts.iter().any(|c| c.path == *path) {
+            failures.push(format!("`{path}` is not listed as a changed contract"));
+        }
+    }
+    for path in &expect.not_contracts {
+        if answer.contracts.iter().any(|c| c.path == *path) {
+            failures.push(format!("`{path}` is listed as a changed contract"));
+        }
+    }
+    if let Some(removed) = &expect.removed {
+        for name in removed {
+            let node = Node::target(name);
+            if !answer.removed.iter().any(|r| node.covers(r)) {
+                failures.push(format!("`{name}` is not reported as a removed definition"));
+            }
+        }
+        if removed.is_empty() && !answer.removed.is_empty() {
+            let named: Vec<String> = answer.removed.iter().map(ToString::to_string).collect();
+            failures.push(format!(
+                "expected no removed definition; the answer names {}",
+                named.join(", ")
+            ));
+        }
+    }
+    if expect.never_empty && answer.empty {
+        failures.push("the answer is empty".to_string());
+    }
+    if expect.discloses && !(answer.run_disclosure || !answer.gapped.is_empty()) {
+        failures.push("the answer names no limit, unanalysed file or unknown".to_string());
+    }
+    if expect.no_negative_claims {
+        let claims = answer
+            .markdown
+            .as_deref()
+            .map(absence_claims)
+            .unwrap_or_default();
+        if !claims.is_empty() {
+            failures.push(format!(
+                "the text answer claims an absence: {}",
+                claims.join("; ")
+            ));
+        }
+    }
+}
+
+/// The text form must say what the JSON says: the header's count of callers
+/// is the number of resolved caller rows and the calls counted beside them (word
+/// matches are no callers), and a
+/// "called from" or "referenced from" line needs a resolved row behind it.
+/// Each form is fit to the cap on its own size, so a budgeted answer that shed
+/// rows is read against the same invocation asked with no budget: every row the
+/// text states is in it, and every row the budgeted JSON kept is in the text
+/// unless the text counts callers as omitted.
+fn check_text(answer: &Answer, failures: &mut Vec<String>) {
+    let Some(markdown) = answer.markdown.as_deref() else {
+        return;
+    };
+    let shed = answer.truncated > 0;
+    let stated = match (&answer.unbudgeted_rows, shed) {
+        (Some(unbudgeted), true) => unbudgeted,
+        _ => &answer.caller_rows,
+    };
+    let resolved = stated
+        .iter()
+        .filter(|(_, evidence)| evidence == "resolved")
+        .count()
+        + usize::try_from(answer.counted_not_listed).unwrap_or(usize::MAX);
+    let header = markdown.lines().next().unwrap_or("");
+    if let Some(at) = header.find(" caller(s) outside the diff") {
+        let digits: String = header[..at]
+            .chars()
+            .rev()
+            .take_while(char::is_ascii_digit)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let counted = digits.parse::<usize>().ok();
+        if counted.is_some_and(|n| n != resolved) {
+            failures.push(format!(
+                "the text header counts {digits} caller(s) outside the diff; \
+                 the JSON has {resolved} resolved caller row(s)"
+            ));
+        }
+    }
+    let omitted =
+        markdown.contains("caller(s) omitted") || markdown.contains("caller(s) are not listed");
+    let mut listed: Vec<&str> = Vec::new();
+    for line in markdown.lines() {
+        let line = line.trim_start();
+        let Some(rest) = line
+            .strip_prefix("- called from ")
+            .or_else(|| line.strip_prefix("- referenced from "))
+        else {
+            continue;
+        };
+        let target = rest.split_whitespace().next().unwrap_or("");
+        let path = target.split_once("::").map_or_else(
+            || {
+                target
+                    .rsplit_once(':')
+                    .filter(|(_, lines)| lines.chars().all(|c| c.is_ascii_digit() || c == '-'))
+                    .map_or(target, |(path, _)| path)
+            },
+            |(path, _)| path,
+        );
+        listed.push(path);
+        if !stated
+            .iter()
+            .any(|(p, evidence)| p == path && evidence == "resolved")
+        {
+            failures.push(format!(
+                "the text lists `{target}` as a caller; the JSON has no resolved caller row for `{path}`"
+            ));
+        }
+    }
+    if shed && !omitted {
+        for (path, _) in answer
+            .caller_rows
+            .iter()
+            .filter(|(_, evidence)| evidence == "resolved")
+            .filter(|(path, _)| !listed.contains(&path.as_str()))
+        {
+            failures.push(format!(
+                "the JSON keeps a resolved caller row for `{path}` under its budget; \
+                 the text neither lists it nor counts callers as omitted"
+            ));
+        }
+    }
+}

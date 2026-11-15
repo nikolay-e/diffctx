@@ -11,7 +11,7 @@ use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
 use crate::types::Fragment;
 
-pub trait FragmentationStrategy: Send + Sync {
+trait FragmentationStrategy: Send + Sync {
     fn can_handle(&self, path: &str, content: &str) -> bool;
     fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment>;
 }
@@ -27,7 +27,7 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
 
 pub(crate) use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree};
 
-pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
+pub(crate) use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
 
 /// Why a code file's definitions were not all read (#454): `no_grammar` when
 /// this build has no grammar for its language, `parse_timeout` when the
@@ -35,12 +35,12 @@ pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declaration
 /// out, `parse_partial` when it broke on some lines and the rest was read.
 /// `None` for a clean parse, a definition-free script included, and for
 /// prose, config and data, which have no definitions to miss.
-pub fn unanalysed_reason(
+pub(crate) fn unanalysed_reason(
     path: &str,
     has_definition: bool,
     content: impl FnOnce() -> Option<Vec<u8>>,
 ) -> Option<(&'static str, Vec<u32>)> {
-    let ext = crate::edges::base::file_ext(std::path::Path::new(path));
+    let ext = crate::languages::file_ext(std::path::Path::new(path));
     if !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
         return None;
     }
@@ -56,28 +56,8 @@ pub fn unanalysed_reason(
     }
 }
 
-/// Whether `name` is spelled, in any case, on a line the parse of `content`
-/// broke on. The rest of a partial tree was read, and a use there is seen
-/// like any other.
-pub fn spelled_where_broken(path: &str, content: &str, name: &str) -> bool {
-    let Some(ParseOutcome::Partial { spans, .. }) =
-        tree_sitter_strategy::parse_outcome(path, content)
-    else {
-        return false;
-    };
-    let word = |c: char| c.is_alphanumeric() || c == '_';
-    let name = name.to_lowercase();
-    content.to_lowercase().lines().zip(1u32..).any(|(line, n)| {
-        spans.iter().any(|&(start, end)| start <= n && n <= end)
-            && line.match_indices(name.as_str()).any(|(at, _)| {
-                !line[..at].chars().next_back().is_some_and(word)
-                    && !line[at + name.len()..].chars().next().is_some_and(word)
-            })
-    })
-}
-
 /// How a reason of `unanalysed_reason` reads in prose.
-pub fn unanalysed_text(reason: &str) -> &'static str {
+pub(crate) fn unanalysed_text(reason: &str) -> &'static str {
     match reason {
         "no_grammar" => "no grammar in this build",
         "parse_timeout" => "parse timed out",
@@ -91,7 +71,7 @@ pub fn unanalysed_text(reason: &str) -> &'static str {
     }
 }
 
-pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
+pub(crate) fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {
             let fragments = strategy.fragment(Arc::clone(&path), content);

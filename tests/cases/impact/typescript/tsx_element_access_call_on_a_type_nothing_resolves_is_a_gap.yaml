@@ -1,0 +1,34 @@
+name: tsx_element_access_call_on_a_type_nothing_resolves_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, element-access, gap, absence-claim]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"ti"}
+    src/repo.ts: |
+      export class Repo {
+        load(x: number) {
+          return x + 1;
+        }
+      }
+    src/use.ts: |
+      export const use = (r: Repo) => r["load"](1);
+  changed_files:
+    src/repo.ts: |
+      export class Repo {
+        load(x: number) {
+          return x + 2;
+        }
+      }
+  commit_message: "repo: add two"
+expect:
+  changed: [src/repo.ts::load]
+  callers:
+    load: []
+  coverage:
+    src/repo.ts::Repo.load:
+      calls: partial
+  no_negative_claims: true
+  never_empty: true

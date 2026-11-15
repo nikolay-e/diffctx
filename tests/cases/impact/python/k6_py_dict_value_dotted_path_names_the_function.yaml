@@ -1,0 +1,23 @@
+name: k6_py_dict_value_dotted_path_names_the_function
+mode: impact
+source: synthetic
+tags: [python, literal-name, dotted-path]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/impl.py: |
+      def mw_hook(x):
+          return x + 1
+    app/settings.py: |
+      HANDLERS = {"a": "pkg.impl.mw_hook"}
+  changed_files:
+    pkg/impl.py: |
+      def mw_hook(x):
+          return x + 2
+  commit_message: "impl: mw_hook adds two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/settings.py, to: pkg/impl.py::mw_hook, kind: calls, resolution: unresolved}

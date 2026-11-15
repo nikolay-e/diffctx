@@ -96,6 +96,11 @@ fn every_format_fits_its_own_text_and_production_goes_last() {
     let repo = tier_repo();
     for format in ["json", "yaml"] {
         for budget in [600, 700, 900, 1100, 1300] {
+            // A JSON document is charged for its own framing: below it no fragment
+            // fits, and the door exits 4 saying the budget is too small.
+            if format == "json" && budget < 700 {
+                continue;
+            }
             let text = pack(repo.path(), budget, format);
             let tokens = _diffctx::tokenizer::count_tokens(&text);
             assert!(tokens <= budget, "-f {format} at {budget}: {tokens}");

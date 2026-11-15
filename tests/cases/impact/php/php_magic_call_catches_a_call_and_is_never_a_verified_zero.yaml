@@ -1,0 +1,54 @@
+name: php_magic_call_catches_a_call_and_is_never_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- magic
+- absence-claim
+repo:
+  initial_files:
+    src/Ghost.php: |
+      <?php
+
+      class Ghost
+      {
+          public function __call(string $name, array $arguments)
+          {
+              return null;
+          }
+      }
+    src/Real.php: |
+      <?php
+
+      class Real
+      {
+          public function boo(): int
+          {
+              return 1;
+          }
+      }
+    src/Haunt.php: |
+      <?php
+
+      function haunt(Ghost $g)
+      {
+          return $g->boo();
+      }
+  changed_files:
+    src/Real.php: |
+      <?php
+
+      class Real
+      {
+          public function boo(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: Change magic call catches a call and is never a verified zero
+expect:
+  changed:
+  - src/Real.php::Real.boo
+  discloses: true
+  no_negative_claims: true

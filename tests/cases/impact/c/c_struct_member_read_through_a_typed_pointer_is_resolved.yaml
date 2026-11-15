@@ -1,0 +1,35 @@
+name: c_struct_member_read_through_a_typed_pointer_is_resolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- struct-member
+repo:
+  initial_files:
+    src/point.h: |
+      struct point {
+          int x;
+          int y;
+      };
+    src/point.c: |
+      #include "point.h"
+
+      int get_x(struct point *p)
+      {
+          return p->x;
+      }
+  changed_files:
+    src/point.h: |
+      struct point {
+          long x;
+          int y;
+      };
+  commit_message: Change struct member read through a typed pointer is resolved
+expect:
+  relations:
+  - from: src/point.c::get_x
+    to: src/point.h::point.x
+    kind: reads
+    resolution: resolved
+    site: 5

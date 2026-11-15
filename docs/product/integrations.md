@@ -68,7 +68,8 @@ exists only from 1.12.3 and maps a directory named `mcp` on older releases.
 answers what a change reaches outside its diff — callers, the tests that reach
 them, changed contracts — in under 2k tokens; `symbol` asks the same of a name
 with no change; `paths` scopes the analysis to children of a monorepo, as the
-CLI's positional paths do. `mode=locate` ranks the code that explains a diff, and
+CLI's positional paths do. `mode=locate` ranks the code that explains a diff (`include_overflow` also
+lists the ranked candidates the budget left out), and
 `fragment_ids` then reads only the fragments picked; `mode=pack` returns the
 code. `get_tree_map` and `get_file_context` are opt-in via
 `DIFFCTX_MCP_LEGACY_TOOLS=1`; filesystem confinement via
@@ -91,7 +92,7 @@ print(to_markdown(ctx))
 print(to_yaml(map_directory(".", max_depth=None, no_content=False)))
 ```
 
-Every JSON/YAML artifact opens with `schema: diffctx.context.v1`, validates
-against [`schemas/diffctx.context.v1.json`](https://github.com/nikolay-e/diffctx/blob/main/schemas/diffctx.context.v1.json)
+Every JSON/YAML artifact opens with `schema: diffctx.context.v2`, validates
+against [`schemas/diffctx.context.v2.json`](https://github.com/nikolay-e/diffctx/blob/main/schemas/diffctx.context.v2.json)
 (generated from the engine's own type), and closes with a `provenance` block
 and, when a limit cut the run short, a `coverage` block naming it.

@@ -8,7 +8,7 @@ use crate::types::Fragment;
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
 
-pub struct ContainmentEdgeBuilder;
+pub(crate) struct ContainmentEdgeBuilder;
 
 impl EdgeBuilder for ContainmentEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {

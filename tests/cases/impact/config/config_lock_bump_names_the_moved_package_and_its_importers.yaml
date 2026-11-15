@@ -1,0 +1,72 @@
+name: config_lock_bump_names_the_moved_package_and_its_importers
+mode: impact
+source: gh#620
+issue_state: open
+tags:
+- config
+- lock
+- imports
+- tests
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0"
+      dependencies = ["requests>=2", "rich>=13"]
+    uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "requests"
+      version = "2.31.0"
+
+      [[package]]
+      name = "rich"
+      version = "13.7.0"
+    src/app/client.py: |
+      import requests
+
+
+      def fetch(url):
+          return requests.get(url, timeout=5).text
+    src/app/ui.py: |
+      from rich.console import Console
+
+
+      def show(text):
+          Console().print(text)
+    tests/test_client.py: |
+      from app.client import fetch
+
+
+      def test_fetch():
+          assert callable(fetch)
+  changed_files:
+    uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "requests"
+      version = "2.32.3"
+
+      [[package]]
+      name = "rich"
+      version = "13.7.0"
+  commit_message: Change config lock bump names the moved package and its importers
+expect:
+  relations:
+  - from: src/app/client.py::fetch
+    to: uv.lock::requests
+    kind: imports
+    resolution: resolved
+    site: 5
+  - from: tests/test_client.py::test_fetch
+    to: src/app/client.py::fetch
+    kind: tests_reach
+    resolution: resolved
+    site: 5
+  exact: true
+  decoys:
+    uv.lock::requests:
+    - src/app/ui.py

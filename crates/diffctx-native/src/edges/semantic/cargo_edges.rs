@@ -37,7 +37,7 @@ fn is_cargo_toml(path: &Path) -> bool {
 }
 
 fn is_rust_source(path: &Path) -> bool {
-    base::file_ext(path) == ".rs"
+    crate::languages::file_ext(path) == ".rs"
 }
 
 fn extract_workspace_members(content: &str) -> Vec<String> {
@@ -84,7 +84,7 @@ fn extract_entry_points(content: &str) -> Vec<String> {
     entries
 }
 
-pub struct CargoEdgeBuilder;
+pub(crate) struct CargoEdgeBuilder;
 
 impl EdgeBuilder for CargoEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {

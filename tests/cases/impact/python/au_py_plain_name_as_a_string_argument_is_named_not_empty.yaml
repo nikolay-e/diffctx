@@ -1,0 +1,37 @@
+name: au_py_plain_name_as_a_string_argument_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [python, au-literal, literal-name, short-name]
+repo:
+  initial_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+
+
+      def run(items):
+          return len(items)
+    app/dispatch.py: |
+      import shop.pricing as pricing
+
+
+      def go(items):
+          return getattr(pricing, "total")(items), getattr(pricing, "run")(items)
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) + 1
+
+
+      def run(items):
+          return len(items) + 1
+  commit_message: "pricing: both add one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {total: {calls: partial}, run: {calls: partial}}
+  relations:
+    - {from: app/dispatch.py, to: shop/pricing.py::total, kind: calls, resolution: unresolved}
+    - {from: app/dispatch.py, to: shop/pricing.py::run, kind: calls, resolution: unresolved}

@@ -5,9 +5,12 @@
 //! change or disappear between releases without a semver signal.
 
 // Input: git plumbing and path handling.
-pub mod git;
+pub(crate) mod diff_parse;
+pub mod fit;
+pub(crate) mod grep;
 pub mod in_memory_harness;
 mod paths;
+pub mod snapshot;
 
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;
@@ -15,18 +18,24 @@ pub(crate) mod canon;
 pub mod change_class;
 pub(crate) mod changed_lines;
 pub(crate) mod container;
+pub(crate) mod decide;
 pub(crate) mod excerpt;
+pub(crate) mod fold;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
 pub(crate) mod parsers;
 pub(crate) mod signatures;
 pub(crate) mod testfiles;
+pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
-pub(crate) mod facts;
+pub mod facts;
 pub(crate) mod graph;
+pub(crate) mod keytable;
 pub(crate) mod provenance;
+pub mod resolve;
+pub use tokens::occurrence;
 
 // Ranking: relevance of each candidate to the change.
 pub(crate) mod core;
@@ -45,17 +54,16 @@ pub(crate) mod select;
 pub(crate) mod utility;
 
 // Output.
+pub mod answer;
 pub mod artifact;
-pub mod go_bindings;
+pub mod delivery;
 pub mod hook;
 pub mod impact;
-pub mod kotlin_bindings;
-pub(crate) mod lang;
 pub mod locate;
+pub(crate) mod overlay;
 pub mod render;
 
 // Orchestration and shared configuration.
-pub(crate) mod bindings;
 pub mod config;
 pub mod effective_config;
 pub mod mode;
@@ -69,6 +77,8 @@ pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
 pub(crate) mod types;
+mod vocabulary;
+pub use vocabulary::{RelationKind, is_precise};
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.
 #[cfg(feature = "python")]

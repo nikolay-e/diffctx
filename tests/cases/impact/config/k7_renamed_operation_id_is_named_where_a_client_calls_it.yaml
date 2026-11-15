@@ -1,0 +1,33 @@
+name: k7_renamed_operation_id_is_named_where_a_client_calls_it
+mode: impact
+source: synthetic
+tags: [config, openapi, key-search, false-absence]
+repo:
+  initial_files:
+    api/openapi.yaml: |
+      openapi: 3.0.0
+      paths:
+        /invoices/{id}:
+          get:
+            operationId: getInvoiceById
+            responses:
+              "200":
+                description: ok
+    web/client.ts: |
+      import { DefaultApi } from "./gen";
+      export const load = (api: DefaultApi, id: string) => api.getInvoiceById(id);
+  changed_files:
+    api/openapi.yaml: |
+      openapi: 3.0.0
+      paths:
+        /invoices/{id}:
+          get:
+            operationId: fetchInvoice
+            responses:
+              "200":
+                description: ok
+  commit_message: "api: rename the invoice operation"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [web/client.ts]

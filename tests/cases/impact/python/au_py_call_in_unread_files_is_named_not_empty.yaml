@@ -1,0 +1,27 @@
+name: au_py_call_in_unread_files_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [python, au-unread, unread-file, literal-name]
+repo:
+  initial_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+    notes.xyz: |
+      before shipping run total(x) by hand
+    runner: |
+      total(x)
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) + 1
+  commit_message: "pricing: total adds one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {total: {calls: partial}}
+  relations:
+    - {from: notes.xyz, to: shop/pricing.py::total, kind: calls, resolution: unresolved}
+    - {from: runner, to: shop/pricing.py::total, kind: calls, resolution: unresolved}

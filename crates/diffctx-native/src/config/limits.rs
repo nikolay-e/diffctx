@@ -36,12 +36,6 @@ impl Default for AlgorithmLimits {
     }
 }
 
-/// Hard ceiling for a single `git cat-file` blob read. Sized with headroom
-/// above `max_changed_file_size` (5 MB) so legitimate large changed files still
-/// load, while a pathological multi-hundred-MB blob is drained and rejected
-/// instead of allocated up front.
-pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
-
 /// The scoring mode every entry point ships. Named rather than repeated as a
 /// literal in the CLI arg, three pyo3 signatures and the Python layers: those
 /// copies are what would make a future default change land in some entry points
@@ -64,6 +58,22 @@ pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.05;
 /// two never ship apart. An explicit `--tau` still wins.
 pub const UNGATED_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
+
+/// Default top-K out-edges per source node. Calibrated against the
+/// observed edge density distribution: typical Python file emits
+/// 5-20 semantic + 2-5 structural + ≤20 sibling edges (~30-50 normal),
+/// so K=64 preserves all legitimate edges while clamping pathological
+/// dense nodes (e.g. utility hubs in django/material-ui that radiate
+/// into thousands of dependents).
+pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
+
+pub(crate) fn read_max_out_edges_per_node() -> usize {
+    std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
+}
 
 pub struct PPRConfig {
     pub alpha: f64,

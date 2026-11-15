@@ -1,0 +1,33 @@
+name: dockerfile_copy_from_with_another_case_is_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- copy-from
+- case
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS Build
+      RUN echo a > /out
+
+      FROM alpine:3.20
+      COPY --from=build /out /out
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS Build
+      RUN echo b > /out
+
+      FROM alpine:3.20
+      COPY --from=build /out /out
+  commit_message: Change copy from with another case is a candidate
+expect:
+  changed:
+  - Dockerfile::Build
+  relations:
+  - from: Dockerfile::1
+    to: Dockerfile::Build
+    kind: reads
+    resolution: candidate
+    site: 5

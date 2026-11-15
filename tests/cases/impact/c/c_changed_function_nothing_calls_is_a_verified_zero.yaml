@@ -1,0 +1,33 @@
+name: c_changed_function_nothing_calls_is_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- c
+- absence-claim
+repo:
+  initial_files:
+    src/greet.c: |
+      #include <stdio.h>
+
+      void greet(const char *name) {
+          printf("hi %s\n", name);
+      }
+    tests/test_other.c: |
+      int check(void)
+      {
+          return 1;
+      }
+  changed_files:
+    src/greet.c: |
+      #include <stdio.h>
+
+      void greet(const char *name) {
+          printf("hello %s\n", name);
+      }
+  commit_message: Change c changed function nothing calls is a verified zero
+expect:
+  changed:
+  - src/greet.c::greet
+  callers:
+    greet: []

@@ -55,7 +55,7 @@ def main() -> int:
 
     api = HfApi()
     pins = load_pins()
-    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     failures: list[tuple[str, str]] = []
 
     for hf_path in _hf_paths_to_pin():

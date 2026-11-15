@@ -236,7 +236,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "diffctx"
-version = "1.20.0"
+version = "2.0.0-dev.0"
 dependencies = [
  "anyhow",
  "brokk-tree-sitter-kotlin",
@@ -296,7 +296,6 @@ dependencies = [
  "tree-sitter-ruby",
  "tree-sitter-rust",
  "tree-sitter-scala",
- "tree-sitter-sequel",
  "tree-sitter-svelte-ng",
  "tree-sitter-swift",
  "tree-sitter-typescript",
@@ -1428,16 +1427,6 @@ name = "tree-sitter-scala"
 version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c554730d29306d9c7cdd26912638d2401378c26961e12d161a071df43f49b81b"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-sequel"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d198ad3c319c02e43c21efa1ec796b837afcb96ffaef1a40c1978fbdcec7d17"
 dependencies = [
  "cc",
  "tree-sitter-language",

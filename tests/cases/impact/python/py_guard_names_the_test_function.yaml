@@ -1,0 +1,35 @@
+name: py_guard_names_the_test_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, tests-reach]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(price, qty):
+          return price * qty
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(price, qty):
+          return total(price, qty)
+    tests/test_checkout_total.py: |
+      from shop.checkout import charge
+
+
+      def test_test_checkout_total():
+          assert charge(2, 3) == 6
+  changed_files:
+    shop/pricing.py: |
+      def total(price, qty):
+          return round(price * qty, 2)
+  commit_message: "pricing: round the total"
+expect:
+  relations:
+    - {from: "shop/checkout.py::charge", to: "shop/pricing.py::total", kind: calls, resolution: resolved, site: 5}
+    - from: "tests/test_checkout_total.py::test_test_checkout_total"
+      to: "shop/checkout.py::charge"
+      kind: tests_reach
+      resolution: resolved

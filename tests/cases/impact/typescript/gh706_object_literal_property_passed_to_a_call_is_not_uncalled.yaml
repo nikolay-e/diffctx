@@ -1,0 +1,25 @@
+name: gh706_object_literal_property_passed_to_a_call_is_not_uncalled
+mode: impact
+source: gh#706
+issue_state: open
+tags: [typescript, object-literal, nothing-calls]
+repo:
+  initial_files:
+    web/lib.ts: |
+      export function useQuery(opts: { queryKey: string[]; refetchInterval: number; queryFn: () => unknown }) {
+        return opts;
+      }
+  changed_files:
+    web/query.ts: |
+      import { useQuery } from './lib';
+
+      export function useThing() {
+        return useQuery({
+          queryKey: ['thing'],
+          refetchInterval: 2000,
+          queryFn: () => fetch('/thing?v=2'),
+        });
+      }
+expect:
+  exact: true
+  changed: [web/query.ts::useThing]

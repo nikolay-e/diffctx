@@ -1,0 +1,54 @@
+name: py_subclass_attribute_read_by_the_base_class_is_not_unused
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- inheritance
+- class-attribute
+- decoy
+repo:
+  initial_files:
+    highlighter.py: |
+      class Highlighter:
+          highlights = []
+
+          def run(self):
+              for pattern in self.highlights:
+                  print(pattern)
+
+
+      class ReprHighlighter(Highlighter):
+          highlights = ["tag", "brace"]
+    other.py: |
+      class Other:
+          highlights = []
+
+          def run(self):
+              return self.highlights
+  changed_files:
+    highlighter.py: |
+      class Highlighter:
+          highlights = []
+
+          def run(self):
+              for pattern in self.highlights:
+                  print(pattern)
+
+
+      class ReprHighlighter(Highlighter):
+          highlights = ["tag", "brace", "url"]
+  commit_message: Change py subclass attribute read by the base class is not unused
+expect:
+  changed:
+  - highlighter.py::ReprHighlighter.highlights
+  relations:
+  - from: highlighter.py::Highlighter.run
+    to: highlighter.py::ReprHighlighter.highlights
+    kind: reads
+    resolution: candidate
+    site: 5
+  exact: true
+  decoys:
+    highlighter.py::ReprHighlighter.highlights:
+    - other.py

@@ -7,7 +7,6 @@ pub mod env_overrides;
 pub mod extensions;
 pub mod filtering;
 pub mod fragmentation;
-pub mod git;
 pub mod graph_filtering;
 pub mod importance;
 pub mod limits;

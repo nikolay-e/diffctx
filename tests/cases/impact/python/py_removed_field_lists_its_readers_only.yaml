@@ -1,0 +1,47 @@
+name: py_removed_field_lists_its_readers_only
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, reads, decoy]
+repo:
+  initial_files:
+    config.py: |
+      from pydantic import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          a: str = ""
+          b: str = ""
+          c: bool = False
+
+
+      settings = AppSettings()
+    app.py: |
+      from config import settings
+
+
+      def serve():
+          return settings.a
+    job.py: |
+      from config import settings
+
+
+      def run():
+          return settings.b
+  changed_files:
+    config.py: |
+      from pydantic import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          a: str = ""
+          c: bool = False
+
+
+      settings = AppSettings()
+  commit_message: "config: drop the unused b setting"
+expect:
+  relations:
+    - {from: "job.py::run", to: "config.py::AppSettings", kind: reads, resolution: resolved, site: 5}
+  decoys:
+    "config.py::AppSettings": [app.py]

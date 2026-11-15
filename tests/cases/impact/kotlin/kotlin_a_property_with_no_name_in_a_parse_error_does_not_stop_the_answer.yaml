@@ -1,0 +1,40 @@
+name: kotlin_a_property_with_no_name_in_a_parse_error_does_not_stop_the_answer
+mode: impact
+source: synthetic
+issue_state: open
+tags: [kotlin, parse, coverage, nameless-declaration]
+repo:
+  initial_files:
+    A.kt: |
+      package a
+
+      fun real(): Int { return 1 }
+
+      val = 5
+    B.kt: |
+      package a
+
+      fun user(): Int { return real() }
+  changed_files:
+    A.kt: |
+      package a
+
+      fun real(): Int { return 2 }
+
+      val = 5
+  commit_message: "a: real returns 2, its file has a property with no name"
+expect:
+  changed:
+  - A.kt::real
+  relations:
+  - from: B.kt::user
+    to: A.kt::real
+    kind: calls
+    resolution: resolved
+    site: 3
+  exact: false
+  never_empty: true
+  coverage:
+    A.kt::real:
+      calls: partial
+  discloses: true

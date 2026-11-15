@@ -9,7 +9,7 @@ use crate::types::Fragment;
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
 
-pub struct SiblingEdgeBuilder;
+pub(crate) struct SiblingEdgeBuilder;
 
 impl SiblingEdgeBuilder {
     fn group_files_by_dir<'a>(&self, fragments: &'a [Fragment]) -> FxHashMap<String, Vec<&'a str>> {

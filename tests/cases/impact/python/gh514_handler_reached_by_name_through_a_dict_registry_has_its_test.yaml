@@ -1,0 +1,56 @@
+name: gh514_handler_reached_by_name_through_a_dict_registry_has_its_test
+mode: impact
+source: gh#514
+issue_state: open
+tags:
+- python
+- tests
+- registry
+repo:
+  initial_files:
+    srv/__init__.py: ""
+    srv/domain.py: |
+      def log_vital(kind, value):
+          return {"kind": kind, "value": value}
+
+
+      def log_note(text):
+          return {"text": text}
+    srv/server.py: |
+      from srv import domain
+
+      TOOLS = {}
+
+
+      def _register(name, fn, mutating=False):
+          TOOLS[name] = (fn, mutating)
+
+
+      for name, fn in {"log_vital": domain.log_vital, "log_note": domain.log_note}.items():
+          _register(name, fn, mutating=True)
+
+
+      def call_tool(name, args):
+          fn, _ = TOOLS[name]
+          return fn(**args)
+    tests/__init__.py: ""
+    tests/test_tools.py: |
+      from srv.server import call_tool
+
+
+      def test_log_vital():
+          assert call_tool("log_vital", {"kind": "hr", "value": 60})["kind"] == "hr"
+  changed_files:
+    srv/domain.py: |
+      def log_vital(kind, value):
+          return {"kind": kind, "value": float(value)}
+
+
+      def log_note(text):
+          return {"text": text}
+  commit_message: change
+expect:
+  tested_by:
+    srv/domain.py: tests/test_tools.py
+  not_untested:
+  - log_vital

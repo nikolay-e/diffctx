@@ -4,11 +4,11 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::analytics::ANALYTICS;
-use crate::graph::{EdgeCategory, Graph};
-use crate::types::{Fragment, FragmentId};
+use crate::graph::Graph;
+use crate::types::{EdgeCategory, Fragment, FragmentId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QuotientLevel {
+pub(crate) enum QuotientLevel {
     Fragment,
     File,
     Directory,
@@ -18,7 +18,7 @@ impl QuotientLevel {
     // The only caller is the Python bridge, and its argument comes from a
     // user. A `_ => Directory` fallback turned `level="modules"` into a valid
     // query for something else and returned it without a word.
-    pub fn try_from_str(s: &str) -> Option<Self> {
+    pub(crate) fn try_from_str(s: &str) -> Option<Self> {
         match s {
             "fragment" => Some(Self::Fragment),
             "file" => Some(Self::File),
@@ -29,7 +29,7 @@ impl QuotientLevel {
 }
 
 #[derive(Debug, Clone)]
-pub struct QuotientNode {
+pub(crate) struct QuotientNode {
     pub key: Arc<str>,
     pub label: String,
     pub fragment_count: u32,
@@ -38,7 +38,7 @@ pub struct QuotientNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct QuotientEdge {
+pub(crate) struct QuotientEdge {
     pub source: Arc<str>,
     pub target: Arc<str>,
     pub weight: f64,
@@ -46,13 +46,13 @@ pub struct QuotientEdge {
 }
 
 #[derive(Debug, Clone)]
-pub struct QuotientGraph {
+pub(crate) struct QuotientGraph {
     pub nodes: FxHashMap<Arc<str>, QuotientNode>,
     pub edges: FxHashMap<(Arc<str>, Arc<str>), QuotientEdge>,
 }
 
 impl QuotientGraph {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             nodes: FxHashMap::default(),
             edges: FxHashMap::default(),
@@ -61,7 +61,7 @@ impl QuotientGraph {
 }
 
 #[derive(Debug, Clone)]
-pub struct ModuleMetrics {
+pub(crate) struct ModuleMetrics {
     pub name: Arc<str>,
     pub cohesion: f64,
     pub coupling: f64,
@@ -71,7 +71,7 @@ pub struct ModuleMetrics {
 }
 
 #[derive(Debug, Clone)]
-pub struct HotspotEntry {
+pub(crate) struct HotspotEntry {
     pub path: Arc<str>,
     pub score: f64,
     pub out_degree: u32,
@@ -176,7 +176,7 @@ fn iter_forward_edges<F: FnMut(&FragmentId, &FragmentId, f64)>(graph: &Graph, mu
 // whole sum (semantic=1 + history=9 reported coupling 10 under
 // `edge_types=["semantic"]`), and `self_weight` was never filtered at all,
 // so cohesion always mixed every category regardless of the argument.
-pub fn quotient_graph(
+pub(crate) fn quotient_graph(
     graph: &Graph,
     fragments: &[Fragment],
     level: QuotientLevel,
@@ -240,7 +240,7 @@ pub fn quotient_graph(
     qg
 }
 
-pub fn coupling_metrics(
+pub(crate) fn coupling_metrics(
     graph: &Graph,
     fragments: &[Fragment],
     level: QuotientLevel,
@@ -301,7 +301,7 @@ pub fn coupling_metrics(
     results
 }
 
-pub fn hotspots(
+pub(crate) fn hotspots(
     graph: &Graph,
     fragments: &[Fragment],
     top: usize,
@@ -392,7 +392,7 @@ fn escape_mermaid_label(text: &str) -> String {
     out
 }
 
-pub fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
+pub(crate) fn to_mermaid(qg: &QuotientGraph, top_n: usize) -> String {
     if qg.nodes.is_empty() {
         return "graph LR\n".to_string();
     }
@@ -520,16 +520,15 @@ mod tests {
         edges: &[(FragmentId, FragmentId, f64, EdgeCategory)],
         fragments: &[Fragment],
     ) -> Graph {
-        let mut g = Graph::new();
-        for f in fragments {
-            g.add_node(f.id.clone());
-        }
-        for (s, d, w, c) in edges {
-            g.add_edge(s.clone(), d.clone(), *w);
-            g.insert_edge_category(s.clone(), d.clone(), *c);
-        }
-        g.freeze();
-        g
+        let weights = edges
+            .iter()
+            .map(|(s, d, w, _)| ((s.clone(), d.clone()), *w))
+            .collect();
+        let categories = edges
+            .iter()
+            .map(|(s, d, _, c)| ((s.clone(), d.clone()), *c))
+            .collect();
+        crate::graph::build_graph(fragments, weights, categories)
     }
 
     #[test]

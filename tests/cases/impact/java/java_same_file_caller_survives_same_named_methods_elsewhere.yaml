@@ -1,0 +1,130 @@
+name: java_same_file_caller_survives_same_named_methods_elsewhere
+mode: impact
+source: gh#538
+issue_state: closed
+tags:
+- java
+- ambiguity
+- tests
+repo:
+  initial_files:
+    src/main/java/com/example/ReportService.java: |
+      package com.example;
+
+      public class ReportService {
+          private final NameClient client;
+
+          public ReportService(NameClient client) {
+              this.client = client;
+          }
+
+          public Report findOne(String id) {
+              return toReport(id);
+          }
+
+          private Report toReport(String id) {
+              return new Report(client.name(id));
+          }
+      }
+    src/main/java/com/example/NameClient.java: |
+      package com.example;
+
+      public interface NameClient {
+          String name(String id);
+      }
+    src/main/java/com/example/Report.java: |
+      package com.example;
+
+      public class Report {
+          public Report(String id) {}
+      }
+    src/main/java/com/example/UserService.java: |
+      package com.example;
+
+      public class UserService {
+          public Report findOne(String id) {
+              return toReport(id);
+          }
+
+          private Report toReport(String id) {
+              return new Report(id);
+          }
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+
+      public class OrderService {
+          public Report findOne(String id) {
+              return toReport(id);
+          }
+
+          private Report toReport(String id) {
+              return new Report(id);
+          }
+      }
+    src/main/java/com/example/ItemService.java: |
+      package com.example;
+
+      public class ItemService {
+          public Report findOne(String id) {
+              return toReport(id);
+          }
+
+          private Report toReport(String id) {
+              return new Report(id);
+          }
+      }
+    src/test/java/com/example/ReportServiceTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+
+      class ReportServiceTest {
+          @Test
+          void finds() {
+              new ReportService(id -> id).findOne("1");
+          }
+      }
+  changed_files:
+    src/main/java/com/example/ReportService.java: |
+      package com.example;
+
+      public class ReportService {
+          private final NameClient client;
+
+          public ReportService(NameClient client) {
+              this.client = client;
+          }
+
+          public Report findOne(String id) {
+              return toReport(id);
+          }
+
+          private Report toReport(String id) {
+              return new Report(client.name(id).trim());
+          }
+      }
+  worktree: true
+  commit_message: Change java same file caller survives same named methods elsewhere
+expect:
+  changed:
+  - src/main/java/com/example/ReportService.java::ReportService.toReport
+  relations:
+  - from: src/main/java/com/example/ReportService.java::ReportService.findOne
+    to: src/main/java/com/example/ReportService.java::ReportService.toReport
+    kind: calls
+    resolution: resolved
+    site: 11
+  - from: src/test/java/com/example/ReportServiceTest.java::ReportServiceTest.finds
+    to: src/main/java/com/example/ReportService.java::ReportService.findOne
+    kind: tests_reach
+    resolution: resolved
+    site: 8
+  exact: true
+  decoys:
+    src/main/java/com/example/ReportService.java::ReportService.toReport:
+    - src/main/java/com/example/UserService.java
+    - src/main/java/com/example/OrderService.java
+    - src/main/java/com/example/ItemService.java
+  not_untested:
+  - toReport

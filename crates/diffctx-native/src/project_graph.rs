@@ -11,23 +11,23 @@ use crate::fragmentation::process_files_for_fragments;
 use crate::graph::{self, Graph};
 use crate::types::{Fragment, FragmentId};
 
-pub struct ProjectGraph {
+pub(crate) struct ProjectGraph {
     pub fragments: Vec<Fragment>,
     pub graph: Graph,
     pub root_dir: PathBuf,
 }
 
-pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
+pub(crate) fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
     let resolved_root = dunce::canonicalize(root_dir)
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
+    // The checkout as it is: one snapshot, read through its reader alone.
+    let run = crate::resource::RunContext::unbounded();
+    let analysis = crate::source::Analysis::at_working_tree(&resolved_root, &run)?;
+    run.set_source(analysis.head());
+
     let included_set: FxHashSet<PathBuf> = FxHashSet::default();
-    let candidate_files = collect_candidate_files(
-        &resolved_root,
-        &included_set,
-        &[],
-        &crate::resource::RunContext::unbounded(),
-    );
+    let candidate_files = collect_candidate_files(&resolved_root, &included_set, &[], &run);
 
     info!(
         "project_graph: found {} candidate files",
@@ -38,11 +38,9 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
     let mut all_fragments = process_files_for_fragments(
         &candidate_files,
         &resolved_root,
-        &[],
         &mut seen_frag_ids,
-        None,
         false,
-        &crate::resource::RunContext::unbounded(),
+        &run,
     );
 
     crate::pipeline::assign_token_counts(&mut all_fragments);
@@ -59,10 +57,10 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         &all_fragments,
         Some(resolved_root.as_path()),
         skip_expensive,
-        &crate::resource::RunContext::unbounded(),
+        &run,
     );
 
-    let graph = graph::build_graph_capped(&all_fragments, capped);
+    let graph = graph::build_graph_capped(capped);
 
     Ok(ProjectGraph {
         fragments: all_fragments,
@@ -74,36 +72,8 @@ pub fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use crate::snapshot::testing::{commit_all, init_git_repo, write_file};
     use tempfile::TempDir;
-
-    fn git(dir: &Path, args: &[&str]) {
-        let status = crate::git::git_command(dir)
-            .args(args)
-            .status()
-            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
-        assert!(status.success(), "git {args:?} failed");
-    }
-
-    fn init_git_repo(dir: &Path) {
-        git(dir, &["init", "-q", "-b", "main"]);
-        git(dir, &["config", "user.email", "test@example.com"]);
-        git(dir, &["config", "user.name", "Test"]);
-        git(dir, &["config", "commit.gpgsign", "false"]);
-    }
-
-    fn commit_all(dir: &Path) {
-        git(dir, &["add", "-A"]);
-        git(dir, &["commit", "-q", "-m", "initial"]);
-    }
-
-    fn write_file(root: &Path, rel: &str, content: &str) {
-        let path = root.join(rel);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create parent");
-        }
-        fs::write(&path, content).expect("write file");
-    }
 
     #[test]
     fn build_project_graph_on_tiny_python_project() {
@@ -120,7 +90,7 @@ mod tests {
             "consumer.py",
             "from alpha import alpha\n\ndef main():\n    return alpha()\n",
         );
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(
@@ -138,7 +108,7 @@ mod tests {
         let root = tmp.path();
         init_git_repo(root);
         write_file(root, ".gitkeep", "");
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert_eq!(pg.fragments.len(), 0);
@@ -161,7 +131,7 @@ mod tests {
             "app.py",
             "from lib import helper, other\n\ndef run():\n    return helper(other(3))\n",
         );
-        commit_all(root);
+        commit_all(root, "initial");
 
         let pg = build_project_graph(root).expect("build_project_graph");
         assert!(pg.fragments.len() >= 2);

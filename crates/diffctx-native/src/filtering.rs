@@ -6,8 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::CODE_EXTENSIONS;
 use crate::config::filtering::FILTERING;
-use crate::graph::{EdgeCategory, Graph};
-use crate::types::{DiffHunk, Fragment, FragmentId, FragmentKind};
+use crate::graph::Graph;
+use crate::languages::file_ext;
+use crate::types::{DiffHunk, EdgeCategory, Fragment, FragmentId, FragmentKind};
 
 fn fragment_hunk_gap(frag_start: u32, frag_end: u32, hunk_start: u32, hunk_end: u32) -> u32 {
     if frag_end < hunk_start {
@@ -35,7 +36,7 @@ fn proximity_score(frag: &Fragment, file_hunks: &[(u32, u32)]) -> f64 {
     FILTERING.proximity_floor_max / (1.0 + min_gap as f64 / half_decay)
 }
 
-pub fn apply_hunk_proximity_bonus(
+pub(crate) fn apply_hunk_proximity_bonus(
     rel: &mut FxHashMap<FragmentId, f64>,
     core_ids: &FxHashSet<FragmentId>,
     fragments: &[Fragment],
@@ -198,10 +199,7 @@ fn find_config_generic_code_files(
         .into_iter()
         .filter(|p| {
             let path = Path::new(p.as_ref());
-            let ext = path
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-                .unwrap_or_default();
+            let ext = file_ext(path);
             let stem = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_lowercase())
@@ -213,7 +211,7 @@ fn find_config_generic_code_files(
         .collect()
 }
 
-pub fn filter_unrelated_fragments(
+pub(crate) fn filter_unrelated_fragments(
     fragments: &[Fragment],
     core_ids: &FxHashSet<FragmentId>,
     graph: &Graph,
@@ -236,7 +234,7 @@ pub fn filter_unrelated_fragments(
         .collect()
 }
 
-pub fn filter_positive_relevance(
+pub(crate) fn filter_positive_relevance(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,
@@ -256,7 +254,7 @@ pub fn filter_positive_relevance(
 /// from the very core the excerpt had compressed (#184). A slice of a core
 /// restates what the excerpt already represents, so it cannot be independent
 /// context. Signature variants stay: a stub is the sanctioned cheap stand-in.
-pub fn filter_core_slice_context(
+pub(crate) fn filter_core_slice_context(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,
 ) -> Vec<Fragment> {
@@ -286,7 +284,7 @@ pub fn filter_core_slice_context(
         .collect()
 }
 
-pub fn cap_context_fragments(
+pub(crate) fn cap_context_fragments(
     fragments: Vec<Fragment>,
     core_ids: &FxHashSet<FragmentId>,
     rel: &FxHashMap<FragmentId, f64>,

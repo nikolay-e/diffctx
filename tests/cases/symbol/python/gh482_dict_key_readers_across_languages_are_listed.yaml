@@ -1,0 +1,49 @@
+name: gh482_dict_key_readers_across_languages_are_listed
+mode: symbol
+source: gh#482
+issue_state: open
+tags:
+- python
+- javascript
+- symbol
+- dict-key
+repo:
+  initial_files:
+    app/audio.py: |
+      def tone(freq):
+          return freq * 2
+    app/verdict.py: |
+      def verdict(score):
+          return {"label": "low", "tone": "bad" if score < 3 else "good"}
+    app/view.py: |
+      def colour(score):
+          return score.get("verdict", {}).get("tone")
+
+
+      def css(v):
+          return v["tone"]
+    web/badge.js: |
+      export function badge(s) {
+        return `<span class="${s.verdict?.tone}">${s.verdict.label}</span>`;
+      }
+  commit_message: init
+query:
+  symbol: tone
+expect:
+  relations:
+  - from: app/view.py::colour
+    to: app/verdict.py::verdict
+    kind: reads
+    resolution: candidate
+    site: 2
+  - from: app/view.py::css
+    to: app/verdict.py::verdict
+    kind: reads
+    resolution: candidate
+    site: 6
+  - from: web/badge.js::badge
+    to: app/verdict.py::verdict
+    kind: reads
+    resolution: candidate
+    site: 2
+  exact: false

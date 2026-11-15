@@ -1,0 +1,40 @@
+name: py_shell_variable_is_not_a_possible_caller_of_a_python_constant
+mode: impact
+source: fj#115
+issue_state: open
+tags: [python, shell, name-match, decoy, unanalysed-file]
+repo:
+  initial_files:
+    scripts/check-prom-rules.py: |
+      import re
+
+      NAMESPACES = re.compile(r"^(app|infra)_")
+
+
+      def check(name):
+          return bool(NAMESPACES.match(name))
+    ansible/roles/k3s/templates/k3s-bootstrap-images.sh.j2: |
+      #!/bin/sh
+      NAMESPACES="{{ k3s_namespaces | join(' ') }}"
+      for ns in $NAMESPACES; do
+        echo "$ns"
+      done
+  changed_files:
+    scripts/check-prom-rules.py: |
+      import re
+
+      NAMESPACES = re.compile(r"^(app|infra|ops)_")
+
+
+      def check(name):
+          return bool(NAMESPACES.match(name))
+  commit_message: "rules: accept the ops namespace"
+expect:
+  relations:
+    - from: "scripts/check-prom-rules.py::check"
+      to: "scripts/check-prom-rules.py::NAMESPACES"
+      kind: "reads"
+      resolution: "resolved"
+      site: 7
+  decoys:
+    NAMESPACES: [ansible/roles/k3s/templates/k3s-bootstrap-images.sh.j2]

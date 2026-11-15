@@ -1,0 +1,52 @@
+name: php_trait_method_reaches_the_class_using_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- trait
+repo:
+  initial_files:
+    src/Loggable.php: |
+      <?php
+
+      trait Loggable
+      {
+          public function log(string $m): string
+          {
+              return "$m";
+          }
+      }
+    src/Mailer.php: |
+      <?php
+
+      class Mailer
+      {
+          use Loggable;
+
+          public function send(): string
+          {
+              return $this->log('x');
+          }
+      }
+  changed_files:
+    src/Loggable.php: |
+      <?php
+
+      trait Loggable
+      {
+          public function log(string $m): string
+          {
+              return "> $m";
+          }
+      }
+  commit_message: Change trait method reaches the class using it
+expect:
+  changed:
+  - src/Loggable.php::Loggable.log
+  relations:
+  - from: src/Mailer.php::Mailer.send
+    to: src/Loggable.php::Loggable.log
+    kind: calls
+    resolution: resolved
+    site: 9

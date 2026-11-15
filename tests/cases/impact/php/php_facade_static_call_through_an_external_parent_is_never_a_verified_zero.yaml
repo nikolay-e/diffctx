@@ -1,0 +1,68 @@
+name: php_facade_static_call_through_an_external_parent_is_never_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- magic
+- facade
+- absence-claim
+repo:
+  initial_files:
+    src/Slug.php: |
+      <?php
+
+      namespace App;
+
+      use Illuminate\Support\Facades\Facade;
+
+      class Slug extends Facade
+      {
+          protected static function getFacadeAccessor(): string
+          {
+              return Slugger::class;
+          }
+      }
+    src/Slugger.php: |
+      <?php
+
+      namespace App;
+
+      class Slugger
+      {
+          public function slugify(string $s): string
+          {
+              return str_replace(' ', '_', $s);
+          }
+      }
+    src/Client.php: |
+      <?php
+
+      namespace App;
+
+      class Client
+      {
+          public function title(string $t): string
+          {
+              return Slug::slugify($t);
+          }
+      }
+  changed_files:
+    src/Slugger.php: |
+      <?php
+
+      namespace App;
+
+      class Slugger
+      {
+          public function slugify(string $s): string
+          {
+              return str_replace(' ', '-', $s);
+          }
+      }
+  commit_message: Change facade static call through an external parent is never a verified zero
+expect:
+  changed:
+  - src/Slugger.php::Slugger.slugify
+  discloses: true
+  no_negative_claims: true

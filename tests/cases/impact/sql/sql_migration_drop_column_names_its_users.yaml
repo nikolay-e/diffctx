@@ -1,0 +1,31 @@
+name: sql_migration_drop_column_names_its_users
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- sql
+- migration
+- drop
+- false-absence
+repo:
+  initial_files:
+    db/migrations/001_init.sql: |
+      CREATE TABLE customer_accounts (
+        id bigserial PRIMARY KEY,
+        loyalty_points integer NOT NULL DEFAULT 0
+      );
+    db/views/vip.sql: |
+      CREATE VIEW vip_customers AS
+      SELECT id FROM customer_accounts WHERE loyalty_points > 1000;
+    app/loyalty.py: |
+      def award(cur, cid):
+          cur.execute("UPDATE customer_accounts SET loyalty_points = loyalty_points + 10 WHERE id = %s", (cid,))
+  changed_files:
+    db/migrations/002.sql: |
+      ALTER TABLE customer_accounts DROP COLUMN loyalty_points;
+  commit_message: Drop a column in a migration
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [db/views/vip.sql, app/loyalty.py]

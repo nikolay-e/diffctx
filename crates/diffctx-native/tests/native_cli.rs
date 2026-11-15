@@ -6,7 +6,7 @@
 // that gap.
 
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use tempfile::TempDir;
 
@@ -14,7 +14,8 @@ use tempfile::TempDir;
 /// job — the shipped artifact for a target, so every standalone binary that
 /// reaches a user passes this suite on its own platform.
 mod support;
-use support::{commit_all, diffctx, git, init_repo};
+use _diffctx::snapshot::git_command;
+use support::{NO_WALL_DEADLINE, commit_all, diffctx, diffctx_unclocked, git, init_repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {
     diffctx()
@@ -214,9 +215,9 @@ fn locate_mode_emits_the_versioned_schema_with_reasons() {
     assert_eq!(out.status.code(), Some(0));
     let doc: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("locate output must be valid JSON");
-    assert_eq!(doc["schema"], "diffctx.locate.v1");
+    assert_eq!(doc["schema"], "diffctx.locate.v2");
     let items = doc["items"].as_array().expect("items array");
-    assert_eq!(items.len(), doc["item_count"].as_u64().unwrap() as usize);
+    assert!(doc.get("item_count").is_none(), "a count beside its list");
     assert!(!items.is_empty());
     for item in items {
         assert!(item["path"].is_string());
@@ -247,7 +248,40 @@ fn locate_mode_rejects_full_and_survives_empty_diffs() {
     let empty = run(tmp.path(), &[".", "--diff", "--mode", "locate", "-q"]);
     assert_eq!(empty.status.code(), Some(4));
     let doc: serde_json::Value = serde_json::from_slice(&empty.stdout).expect("valid JSON");
-    assert_eq!(doc["item_count"], 0);
+    assert_eq!(doc["items"], serde_json::json!([]));
+}
+
+/// The ranked candidates a budget left out are counted whether or not they are
+/// listed; the flag that lists them belongs to locate alone.
+#[test]
+fn overflow_is_a_locate_flag() {
+    let tmp = code_change_repo();
+    let refused = run(tmp.path(), &[".", "--diff", "HEAD~1..HEAD", "--overflow"]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("--overflow applies to --mode locate only")
+    );
+
+    let asked = run(
+        tmp.path(),
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "--mode",
+            "locate",
+            "--overflow",
+            "-q",
+        ],
+    );
+    assert_eq!(asked.status.code(), Some(0));
+    let doc = json_doc(&asked);
+    let listed = doc["overflow"]["items"].as_array().map_or(0, Vec::len) as u64;
+    assert!(
+        listed <= doc["overflow"]["total"].as_u64().unwrap_or(0),
+        "{doc}"
+    );
 }
 
 /// #239: on POSIX a backslash is an ordinary filename byte. Every path that
@@ -277,7 +311,7 @@ fn a_backslash_filename_keeps_its_name_and_its_own_content() {
     );
     let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
-    let changed: Vec<&str> = parsed["changed_files"]
+    let changed: Vec<&str> = parsed["inventory"]["changed"]["items"]
         .as_array()
         .unwrap()
         .iter()
@@ -413,7 +447,7 @@ fn full_mode_sees_untracked_files_and_owns_up_to_what_it_withholds() {
         "--full did not see the untracked file:\n{text}"
     );
     assert!(
-        text.contains("policy_excluded_count: 1"),
+        text.contains("withheld: 1"),
         "--full withheld a changed file without saying so:\n{text}"
     );
     assert!(
@@ -529,6 +563,55 @@ fn a_broken_git_config_surfaces_gits_own_fatal_line() {
     assert!(!stderr.contains("not a git repository"), "{stderr}");
 }
 
+/// Which directories are no repository is decided without reading git's
+/// words: a git that refuses in German still names a plain directory "not a
+/// git repository" and still exits 3.
+#[cfg(unix)]
+#[test]
+fn a_plain_directory_is_named_so_when_git_speaks_another_language() {
+    let plain = TempDir::new().expect("tempdir");
+    let tools = TempDir::new().expect("tempdir");
+    let path = support::path_with_translated_git(tools.path());
+    let out = diffctx()
+        .current_dir(plain.path())
+        .env("PATH", &path)
+        .args([".", "--diff", "HEAD"])
+        .output()
+        .expect("run diffctx");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(3), "{stderr}");
+    assert!(stderr.contains("not a git repository"), "{stderr}");
+    assert!(!stderr.contains("Schwerwiegend"), "{stderr}");
+}
+
+/// A bare repository has no work tree and is read from where it was named,
+/// the same in any language git speaks.
+#[cfg(unix)]
+#[test]
+fn a_bare_repository_is_read_from_where_it_was_named_when_git_speaks_another_language() {
+    let tmp = code_change_repo();
+    let parent = TempDir::new().expect("tempdir");
+    let bare = parent.path().join("bare.git");
+    git(
+        tmp.path(),
+        &["clone", "-q", "--bare", ".", bare.to_str().expect("utf-8")],
+    );
+    let args = [bare.to_str().expect("utf-8"), "--diff", "HEAD~1..HEAD"];
+    let english = run(parent.path(), &args);
+    let tools = TempDir::new().expect("tempdir");
+    let path = support::path_with_translated_git(tools.path());
+    let translated = diffctx()
+        .current_dir(parent.path())
+        .env("PATH", &path)
+        .args(args)
+        .output()
+        .expect("run diffctx");
+    let stderr = String::from_utf8_lossy(&translated.stderr);
+    assert!(!stderr.contains("Schwerwiegend"), "{stderr}");
+    assert_eq!(translated.status.code(), english.status.code(), "{stderr}");
+    assert_eq!(translated.stdout, english.stdout);
+}
+
 /// The known-bad probe for the resource contract: a contribution cap the
 /// smallest graph exceeds must yield a valid artifact that names the limit,
 /// not an error and not a silent full result.
@@ -548,9 +631,9 @@ fn a_bound_resource_yields_a_partial_artifact_that_says_so() {
     );
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
     assert_eq!(doc["coverage"]["status"], "partial");
-    let reasons = doc["coverage"]["limit_reasons"]
+    let reasons = doc["coverage"]["limits"]
         .as_array()
-        .expect("limit_reasons")
+        .expect("limits")
         .iter()
         .map(|r| r.as_str().unwrap_or_default().to_string())
         .collect::<Vec<_>>();
@@ -564,7 +647,12 @@ fn a_bound_resource_yields_a_partial_artifact_that_says_so() {
             .map(str::len),
         Some(16)
     );
-    assert!(!doc["changed_files"].as_array().unwrap().is_empty());
+    assert!(
+        !doc["inventory"]["changed"]["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 fn wide_repo() -> TempDir {
@@ -673,8 +761,14 @@ fn a_budget_below_the_inventory_yields_the_inventory_alone() {
     // Same as the Python CLI: nothing selected is exit 4, with the inventory
     // still written so the omission is stated rather than implied.
     assert_eq!(out.status.code(), Some(4));
-    assert_eq!(doc["fragment_count"], 0);
-    assert_eq!(doc["changed_files"].as_array().map(Vec::len), Some(60));
+    assert_eq!(doc["fragments"], serde_json::json!([]));
+    assert_eq!(doc["inventory"]["changed"]["total"], 60);
+    assert_eq!(
+        doc["inventory"]["changed"]["items"]
+            .as_array()
+            .map(Vec::len),
+        Some(60)
+    );
 }
 
 fn json_doc(out: &Output) -> serde_json::Value {
@@ -687,7 +781,7 @@ fn json_doc(out: &Output) -> serde_json::Value {
 }
 
 fn limit_reasons(doc: &serde_json::Value) -> Vec<String> {
-    doc["coverage"]["limit_reasons"]
+    doc["coverage"]["limits"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -719,19 +813,25 @@ fn a_subtree_argument_or_working_directory_narrows_the_diff() {
         &[".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"],
     ));
     assert_eq!(
-        whole["changed_files"],
+        whole["inventory"]["changed"]["items"],
         serde_json::json!(["other/m.py", "pkg/m.py"])
     );
     let by_arg = json_doc(&run(
         repo,
         &["pkg", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"],
     ));
-    assert_eq!(by_arg["changed_files"], serde_json::json!(["pkg/m.py"]));
+    assert_eq!(
+        by_arg["inventory"]["changed"]["items"],
+        serde_json::json!(["pkg/m.py"])
+    );
     let by_cwd = json_doc(&run(
         &repo.join("pkg"),
         &[".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"],
     ));
-    assert_eq!(by_cwd["changed_files"], serde_json::json!(["pkg/m.py"]));
+    assert_eq!(
+        by_cwd["inventory"]["changed"]["items"],
+        serde_json::json!(["pkg/m.py"])
+    );
     assert!(
         by_cwd["fragments"]
             .as_array()
@@ -786,7 +886,7 @@ fn a_closed_stdout_pipe_exits_quietly() {
     std::fs::write(repo.join("big.py"), body).expect("write");
     commit_all(repo, "big");
 
-    let mut child = diffctx()
+    let mut child = diffctx_unclocked()
         .current_dir(repo)
         .args([".", "--diff", "HEAD~1..HEAD", "--full", "-q"])
         .stdout(Stdio::piped())
@@ -825,7 +925,10 @@ fn an_expired_deadline_yields_a_partial_artifact_naming_it() {
         "{:?}",
         limit_reasons(&doc)
     );
-    assert_eq!(doc["changed_files"], serde_json::json!(["util.py"]));
+    assert_eq!(
+        doc["inventory"]["changed"]["items"],
+        serde_json::json!(["util.py"])
+    );
 }
 
 /// The watchdog behind the cooperative deadline: when the worker does not
@@ -897,7 +1000,7 @@ fn locate_redacts_the_commit_message() {
     assert!(!text.contains("AKIAIOSFODNN7EXAMPLE"), "{text}"); // pragma: allowlist secret
     let doc = json_doc(&out);
     assert!(
-        doc["commit_message"]
+        doc["range"]["messages"][0]
             .as_str()
             .unwrap_or_default()
             .contains("[REDACTED:aws_access_key]"),
@@ -928,7 +1031,7 @@ fn a_non_utf8_changed_file_is_decoded_and_disclosed() {
         doc["coverage"]["lossy_files"],
         serde_json::json!(["caf.py"])
     );
-    assert!(doc["fragment_count"].as_u64().unwrap() >= 1, "{doc}");
+    assert!(!doc["fragments"].as_array().unwrap().is_empty(), "{doc}");
 }
 
 /// A file with more fragments than the per-file cap keeps the function the
@@ -956,7 +1059,16 @@ fn the_fragment_cap_never_drops_the_edited_function() {
     commit_all(repo, "edit f2500");
     let doc = json_doc(&run(
         repo,
-        &[".", "--diff", "HEAD~1..HEAD", "-f", "json", "-q"],
+        &[
+            ".",
+            "--diff",
+            "HEAD~1..HEAD",
+            "-f",
+            "json",
+            "-q",
+            "--timeout",
+            NO_WALL_DEADLINE,
+        ],
     ));
     let changed: Vec<&serde_json::Value> = doc["fragments"]
         .as_array()
@@ -986,7 +1098,10 @@ fn a_hunkless_change_is_listed_and_the_hint_stays_truthful() {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     let out = run(tmp.path(), &[".", "--diff", "-f", "json", "-q"]);
     let doc = json_doc(&out);
-    assert_eq!(doc["changed_files"], serde_json::json!(["app.py"]));
+    assert_eq!(
+        doc["inventory"]["changed"]["items"],
+        serde_json::json!(["app.py"])
+    );
     assert_eq!(doc["changes"][0]["represented"], false);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!stderr.contains("matches HEAD"), "{stderr}");
@@ -1046,7 +1161,9 @@ fn a_larger_budget_never_shows_less_of_the_change() {
     commit_all(tmp.path(), "rewrite every value");
 
     let mut shown = Vec::new();
-    for budget in ["600", "900", "1200", "1500", "2000", "3000"] {
+    // The JSON document is charged for its own framing, so the tightest budget
+    // that still leaves room for a fragment is above what the text formats need.
+    for budget in ["700", "900", "1200", "1500", "2000", "3000"] {
         let out = run(
             tmp.path(),
             &[
@@ -1105,11 +1222,11 @@ fn a_long_range_says_how_many_commits_the_list_left_out() {
         );
         let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
         assert_eq!(
-            doc["commit_messages"].as_array().unwrap().len(),
+            doc["range"]["messages"].as_array().unwrap().len(),
             20,
             "{mode}"
         );
-        assert_eq!(doc["commit_count"], 25, "{mode}");
+        assert_eq!(doc["range"]["commits"], 25, "{mode}");
     }
 }
 
@@ -1132,7 +1249,19 @@ fn a_per_file_limit_raises_the_headline_only_where_the_answer_is() {
     .expect("write");
     commit_all(repo, "flip sub");
     let json = |range: &str| -> serde_json::Value {
-        let out = run(repo, &[".", "--diff", range, "--format", "json", "--quiet"]);
+        let out = run(
+            repo,
+            &[
+                ".",
+                "--diff",
+                range,
+                "--format",
+                "json",
+                "--quiet",
+                "--timeout",
+                NO_WALL_DEADLINE,
+            ],
+        );
         assert!(
             out.status.success(),
             "{}",
@@ -1210,15 +1339,20 @@ fn a_locate_answer_fits_its_budget() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let mut doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
-    // What an MCP client receives: the overflow pointer list is stripped there.
-    doc.as_object_mut().unwrap().remove("overflow");
-    let tokens = _diffctx::tokenizer::count_tokens(&doc.to_string());
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    // The bytes the command prints, newline included: what the budget charges.
+    let tokens = _diffctx::tokenizer::count_tokens(&String::from_utf8_lossy(&out.stdout));
     assert!(
         tokens <= 2000,
         "locate answer is {tokens} tokens for --budget 2000"
     );
-    assert!(doc["item_count"].as_u64().unwrap() >= 1);
+    assert!(!doc["items"].as_array().unwrap().is_empty());
+    assert!(
+        doc["overflow"]
+            .get("items")
+            .is_none_or(|items| items == &serde_json::json!([])),
+        "the overflow entries are listed only on request: {doc}"
+    );
 }
 
 /// #330, #454: a blind spot is code whose definitions were not read — no
@@ -1260,7 +1394,7 @@ fn only_code_whose_definitions_were_not_read_is_a_blind_spot() {
     );
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
     assert_eq!(
-        doc["coverage"]["unparsed_files"],
+        doc["coverage"]["selection"]["unparsed_files"],
         serde_json::json!(["broken.py", "solver.f90"]),
         "{:#}",
         doc["coverage"]
@@ -1284,11 +1418,7 @@ fn a_historical_range_ignores_history_after_its_head() {
     std::fs::write(repo.join("ledger.py"), "def post(x):\n    return x + 1\n").expect("write");
     commit_all(repo, "the change");
     let range = {
-        let out = Command::new("git")
-            .current_dir(repo)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
+        let out = git_command(repo)
             .args(["rev-parse", "HEAD~1", "HEAD"])
             .output()
             .expect("rev-parse");

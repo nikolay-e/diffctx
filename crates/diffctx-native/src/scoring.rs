@@ -84,7 +84,7 @@ impl Default for ScoringResult {
     }
 }
 
-pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
+pub(crate) fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrategy> {
     match config.scoring {
         ScoringMode::Ego => Box::new(EgoGraphScoring::new(config.ego_depth)),
         ScoringMode::Ppr => Box::new(PPRScoring::new(config.ppr_alpha)),
@@ -94,7 +94,7 @@ pub fn create_scoring_strategy(config: &PipelineConfig) -> Box<dyn ScoringStrate
     }
 }
 
-pub trait ScoringStrategy: Send + Sync {
+pub(crate) trait ScoringStrategy: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn score_and_filter(
         &self,
@@ -108,12 +108,12 @@ pub trait ScoringStrategy: Send + Sync {
     ) -> ScoringResult;
 }
 
-pub struct PPRScoring {
+struct PPRScoring {
     pub alpha: f64,
 }
 
 impl PPRScoring {
-    pub fn new(alpha: f64) -> Self {
+    fn new(alpha: f64) -> Self {
         Self { alpha }
     }
 }
@@ -134,10 +134,10 @@ impl ScoringStrategy for PPRScoring {
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let seeds = lift_to_files(all_fragments, core_ids);
         let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
-        let mut g = graph::build_graph_capped(all_fragments, capped);
+        let g = graph::build_graph_capped(capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
-            &mut g,
+            &g,
             core_ids,
             self.alpha,
             PPR.convergence_tolerance,
@@ -172,12 +172,12 @@ impl ScoringStrategy for PPRScoring {
     }
 }
 
-pub struct EgoGraphScoring {
+struct EgoGraphScoring {
     pub max_depth: usize,
 }
 
 impl EgoGraphScoring {
-    pub fn new(max_depth: usize) -> Self {
+    fn new(max_depth: usize) -> Self {
         Self { max_depth }
     }
 }
@@ -237,7 +237,7 @@ impl ScoringStrategy for EgoGraphScoring {
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let seeds = lift_to_files(all_fragments, core_ids);
         let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
-        let g = graph::build_graph_capped(all_fragments, capped);
+        let g = graph::build_graph_capped(capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let mut rel_scores = g.ego_graph_weighted(&seeds, self.max_depth);
 
@@ -276,7 +276,7 @@ impl ScoringStrategy for EgoGraphScoring {
     }
 }
 
-pub struct BM25Scoring;
+struct BM25Scoring;
 
 impl ScoringStrategy for BM25Scoring {
     fn score_and_filter(
@@ -388,13 +388,13 @@ impl ScoringStrategy for BM25Scoring {
 /// recall well above either — a miscalibrated-mixture signature. RRF
 /// fuses on ranks only, so neither component's score scale can dominate
 /// the other, which is exactly the failure the weighted mixture had.
-pub struct RrfFusionScoring {
+struct RrfFusionScoring {
     pub ego_depth: usize,
     pub k: f64,
 }
 
 impl RrfFusionScoring {
-    pub fn new(ego_depth: usize) -> Self {
+    fn new(ego_depth: usize) -> Self {
         Self {
             ego_depth,
             k: RRF.k,
@@ -614,7 +614,7 @@ impl ScoringStrategy for RrfFusionScoring {
 /// The agreement term is what fusion is actually for — a fragment both signals
 /// rank highly is more trustworthy than either alone — and it is additive and
 /// small so it breaks ties rather than deciding the ranking.
-pub struct PitFusionScoring {
+struct PitFusionScoring {
     pub ego_depth: usize,
     pub blend: f64,
     pub agreement_bonus: f64,
@@ -622,7 +622,7 @@ pub struct PitFusionScoring {
 }
 
 impl PitFusionScoring {
-    pub fn new(ego_depth: usize) -> Self {
+    fn new(ego_depth: usize) -> Self {
         let cfg = &*PIT;
         Self {
             ego_depth,

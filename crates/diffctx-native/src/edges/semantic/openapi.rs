@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -9,10 +9,10 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_openapi_candidate(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = crate::languages::file_ext(path);
     matches!(ext.as_str(), ".yaml" | ".yml" | ".json")
 }
 
@@ -78,7 +78,7 @@ fn extract_schema_defs(content: &str) -> FxHashSet<String> {
     defs
 }
 
-pub struct OpenapiEdgeBuilder;
+pub(crate) struct OpenapiEdgeBuilder;
 
 impl EdgeBuilder for OpenapiEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
@@ -93,19 +93,13 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         let reverse_factor = EDGE_WEIGHTS["openapi_internal_ref"].reverse_factor;
 
         let idx = base::FragmentIndex::new(fragments, repo_root);
-        let mut schema_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
-        for f in &frags {
-            base::index_lower(&mut schema_to_frags, extract_schema_defs(&f.content), &f.id);
-        }
+        let schemas = base::DefIndex::new(&frags, reverse_factor, extract_schema_defs);
 
         let mut edges: EdgeDict = FxHashMap::default();
 
         for f in &frags {
-            for iref in extract_internal_refs(&f.content) {
-                if let Some(targets) = schema_to_frags.get(&iref.to_lowercase()) {
-                    add_edges_from_ids(&mut edges, &f.id, &targets, internal_w, reverse_factor);
-                }
-            }
+            let irefs = extract_internal_refs(&f.content);
+            schemas.link(&mut edges, &f.id, irefs, internal_w);
             for eref in extract_external_refs(&f.content) {
                 base::link_by_name(&f.id, &eref, &idx, &mut edges, external_w, reverse_factor);
             }
@@ -113,25 +107,10 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         edges
     }
 
-    fn discover_related_files(
-        &self,
-        changed: &[PathBuf],
-        candidates: &[PathBuf],
-        repo_root: Option<&Path>,
-        file_cache: Option<&FxHashMap<PathBuf, String>>,
-    ) -> Vec<PathBuf> {
-        base::discover_by_extracted_refs(
-            changed,
-            candidates,
-            repo_root,
-            file_cache,
-            |p| is_openapi_candidate(p),
-            |c| {
-                is_openapi_file(c)
-                    .then(|| extract_external_refs(c))
-                    .into_iter()
-                    .flatten()
-            },
-        )
-    }
+    discover_by_refs!(|p| is_openapi_candidate(p), |c| {
+        is_openapi_file(c)
+            .then(|| extract_external_refs(c))
+            .into_iter()
+            .flatten()
+    });
 }

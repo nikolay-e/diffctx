@@ -1,0 +1,38 @@
+name: shell_extensionless_script_alone_in_its_group_is_not_an_unread_group
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, shebang, extensionless, absence-claim, group]
+repo:
+  initial_files:
+    app.py: |
+      def main():
+          return 1
+    scripts/check: |
+      #!/bin/sh -e
+
+      set -x
+      ruff check .
+    scripts/test: |
+      #!/bin/sh -e
+
+      scripts/check
+      pytest
+  changed_files:
+    scripts/check: |
+      #!/bin/sh -e
+
+      set -x
+      ruff check --diff .
+  commit_message: "scripts: check shows the diff"
+expect:
+  changed: [scripts/check]
+  relations:
+  - from: scripts/test
+    to: scripts/check
+    kind: executes
+    resolution: resolved
+    site: 3
+  coverage:
+    scripts/check: {executes: complete}
+  exact: false

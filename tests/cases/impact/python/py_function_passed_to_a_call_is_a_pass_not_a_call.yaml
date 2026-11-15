@@ -1,0 +1,41 @@
+name: py_function_passed_to_a_call_is_a_pass_not_a_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, pass-as-value, decoy]
+repo:
+  initial_files:
+    tool/__init__.py: ""
+    tool/cli.py: |
+      def main(argv):
+          return len(argv)
+    tool/runner.py: |
+      def invoke(command, args):
+          return command(args)
+    tool/app.py: |
+      from tool.cli import main
+      from tool.runner import invoke
+
+
+      def run_cli():
+          return invoke(main, ["--help"])
+    tool/entry.py: |
+      import sys
+
+      from tool.cli import main
+
+
+      def entry():
+          return main(sys.argv[1:])
+  changed_files:
+    tool/cli.py: |
+      def main(argv):
+          return len(argv) - 1
+  commit_message: "cli: do not count the program name"
+expect:
+  changed: [tool/cli.py::main]
+  relations:
+    - {from: "tool/app.py::run_cli", to: "tool/cli.py::main", kind: passes_as_value, resolution: resolved, site: 6}
+    - {from: "tool/entry.py::entry", to: "tool/cli.py::main", kind: calls, resolution: resolved, site: 7}
+  decoys:
+    tool/cli.py::main: [tool/runner.py::invoke]

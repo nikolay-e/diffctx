@@ -1,0 +1,28 @@
+name: py_tests_importing_through_pytest_pythonpath_have_a_test_link
+mode: impact
+source: gh#553
+issue_state: closed
+tags: [python, pytest-pythonpath, src-layout, tests-reach]
+repo:
+  initial_files:
+    pyproject.toml: |
+      [tool.pytest.ini_options]
+      pythonpath = ["src"]
+    src/metrics.py: |
+      def render_metrics():
+          return "up 1"
+    tests/test_metrics.py: |
+      import metrics
+
+
+      def test_render_metrics():
+          assert metrics.render_metrics() == "up 1"
+  changed_files:
+    src/metrics.py: |
+      def render_metrics():
+          return "up 1\n"
+  commit_message: "metrics: end the exposition with a newline"
+expect:
+  not_untested: [render_metrics]
+  callers:
+    render_metrics: [tests/test_metrics.py::test_render_metrics]

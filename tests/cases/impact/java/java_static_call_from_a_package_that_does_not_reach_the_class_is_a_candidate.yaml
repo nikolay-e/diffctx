@@ -1,0 +1,46 @@
+name: java_static_call_from_a_package_that_does_not_reach_the_class_is_a_candidate
+mode: impact
+source: synthetic
+tags: [java, package-scope, candidate, receiver]
+repo:
+  initial_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) sum += n;
+              return sum;
+          }
+      }
+    src/main/java/web/Checkout.java: |
+      package web;
+
+      public class Checkout {
+          public int charge(int[] items) {
+              return Pricing.total(items);
+          }
+      }
+  changed_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) sum += n;
+              return sum * 2;
+          }
+      }
+  commit_message: "shop: total doubles"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  never_empty: true
+  relations:
+    - from: src/main/java/web/Checkout.java
+      to: src/main/java/shop/Pricing.java::Pricing.total
+      kind: calls
+      resolution: candidate

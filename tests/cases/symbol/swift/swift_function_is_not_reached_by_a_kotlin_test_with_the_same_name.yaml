@@ -1,0 +1,45 @@
+name: swift_function_is_not_reached_by_a_kotlin_test_with_the_same_name
+mode: symbol
+source: gh#487
+issue_state: closed
+tags:
+- swift
+- kotlin
+- cross-language
+- tests
+- smoke
+repo:
+  initial_files:
+    clients/ios/Sources/Networking/APIClient.swift: |
+      final class APIClient {
+          func fetchUserPreferences() -> Int { 1 }
+          func updateUserPreferences(_ v: Int) -> Int { v }
+      }
+    clients/android/app/src/main/kotlin/ApiClient.kt: |
+      package android
+
+      class ApiClient {
+          fun fetchUserPreferences(): Int = 1
+          fun updateUserPreferences(v: Int): Int = v
+      }
+    clients/android/app/src/test/kotlin/ApiClientAdminTest.kt: |
+      package android
+
+      import kotlin.test.Test
+
+      class ApiClientAdminTest {
+          @Test
+          fun prefs() {
+              ApiClient().fetchUserPreferences()
+              ApiClient().updateUserPreferences(2)
+          }
+      }
+  commit_message: Change swift function is not reached by a kotlin test with the same name
+query:
+  symbol: clients/ios/Sources/Networking/APIClient.swift:fetchUserPreferences
+expect:
+  decoys:
+    clients/ios/Sources/Networking/APIClient.swift::APIClient.fetchUserPreferences:
+    - clients/android/app/src/test/kotlin/ApiClientAdminTest.kt
+  definitions:
+  - clients/ios/Sources/Networking/APIClient.swift::APIClient.fetchUserPreferences

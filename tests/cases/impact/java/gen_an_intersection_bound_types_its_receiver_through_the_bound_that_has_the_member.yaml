@@ -1,0 +1,52 @@
+name: gen_an_intersection_bound_types_its_receiver_through_the_bound_that_has_the_member
+mode: impact
+source: synthetic
+tags:
+- java
+- generics
+repo:
+  initial_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 1;
+          }
+      }
+    src/main/java/com/acme/core/Marker.java: |
+      package com.acme.core;
+
+      public interface Marker {
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.core.Repo;
+      import com.acme.core.Marker;
+
+      public class Use {
+          public <T extends Marker & Repo> int use(T t) {
+              return t.load(1);
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/core/Repo.java: |
+      package com.acme.core;
+
+      public class Repo {
+          public int load(int x) {
+              return x + 2;
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - src/main/java/com/acme/core/Repo.java::Repo.load
+  relations:
+  - from: src/main/java/com/acme/app/Use.java::Use.use
+    to: src/main/java/com/acme/core/Repo.java::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 8
+  exact: true

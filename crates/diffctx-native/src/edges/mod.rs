@@ -1,10 +1,11 @@
-pub mod base;
-pub mod config_edges;
-pub mod document;
-pub mod history;
-pub mod semantic;
-pub mod similarity;
-pub mod structural;
+pub(crate) mod base;
+mod cells;
+mod config_edges;
+mod document;
+mod history;
+mod semantic;
+mod similarity;
+mod structural;
 
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
@@ -13,14 +14,14 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
+use crate::config::limits::read_max_out_edges_per_node;
 use crate::graph::{
-    CappedEdges, CompactEdge, EdgeCapStats, EdgeCategory, RankedCandidate, SourceTopK,
-    SuppressionFactors, cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes,
-    push_bounded_top_k, read_max_out_edges_per_node,
+    CappedEdges, CompactEdge, EdgeCapStats, RankedCandidate, SourceTopK, SuppressionFactors,
+    cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes, push_bounded_top_k,
 };
-use crate::types::FragmentId;
+use crate::types::{EdgeCategory, FragmentId};
 
-pub type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
+type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 
 use crate::types::Fragment;
 
@@ -32,7 +33,7 @@ use self::base::EdgeBuilder;
 /// test_reverse at 0.30 and same-package/namespace markers at 0.05 stay
 /// diffuse — `naming_reachable_files` walks undirected, so the reverse arc
 /// adds nothing the forward one lacks).
-pub const NAMING_WEIGHT_FLOOR: f64 = 0.30;
+const NAMING_WEIGHT_FLOOR: f64 = 0.30;
 
 const EXPENSIVE_CATEGORIES: &[&str] = &["similarity", "history"];
 
@@ -74,7 +75,7 @@ fn builder_categories() -> Vec<BuilderCategory> {
 /// run. A measurement knife, not a tuning knob: the nightly builder-knife job
 /// disables one builder at a time and asserts the corpus notices, which is
 /// the only evidence a builder carries any case at all.
-pub fn disabled_builders() -> FxHashSet<String> {
+fn disabled_builders() -> FxHashSet<String> {
     std::env::var("DIFFCTX_DISABLE_BUILDERS")
         .unwrap_or_default()
         .split(',')
@@ -91,7 +92,7 @@ fn enabled_builders(cat: &BuilderCategory) -> Vec<Box<dyn EdgeBuilder>> {
         .collect()
 }
 
-pub fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
+fn get_all_builders() -> Vec<Box<dyn EdgeBuilder>> {
     let mut all = Vec::new();
     for cat in builder_categories() {
         all.extend(enabled_builders(&cat));
@@ -132,7 +133,7 @@ struct LoggedEmission {
 /// per-builder heap is outranked by K surviving same-source edges, so
 /// the final merge + dedup + cap over the survivors is bit-identical to
 /// capping the full materialized universe.
-pub fn collect_capped_edges(
+pub(crate) fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
@@ -299,7 +300,7 @@ fn collect_capped_edges_from(
         let kind_of = |p: &str| -> Option<String> {
             let path = Path::new(p);
             if path.extension().is_some() {
-                return Some(crate::edges::base::file_ext(path));
+                return Some(crate::languages::file_ext(path));
             }
             crate::languages::get_language_for_file(p)
                 .or_else(|| shebang_languages.get(p).copied())
@@ -459,13 +460,10 @@ fn collect_capped_edges_from(
     cap_out_edges_per_source(&mut edges, max_per_node);
     ctx.record_usage(|u| u.final_edges = edges.len() as u64);
 
-    let capped_sources: FxHashSet<FragmentId> = out_degree
+    let nodes_capped = out_degree
         .iter()
-        .enumerate()
-        .filter(|&(_, &d)| d as usize > max_per_node)
-        .map(|(i, _)| idx_to_node[i].clone())
-        .collect();
-    let nodes_capped = capped_sources.len();
+        .filter(|&&d| d as usize > max_per_node)
+        .count();
     let cap_stats = EdgeCapStats {
         edges_before_cap: deduped_edge_count,
         edges_after_cap: edges.len(),
@@ -473,7 +471,6 @@ fn collect_capped_edges_from(
         nodes_capped,
         max_out_edges_per_node: max_per_node,
         emissions_by_category,
-        capped_sources,
     };
 
     CappedEdges {
@@ -484,7 +481,7 @@ fn collect_capped_edges_from(
     }
 }
 
-pub fn discover_all_related_files(
+pub(crate) fn discover_all_related_files(
     changed_files: &[PathBuf],
     all_candidates: &[PathBuf],
     repo_root: Option<&Path>,
@@ -507,7 +504,7 @@ pub fn discover_all_related_files(
 /// `max_depth` hops (#65 per-file admission). Diffuse channels (markers,
 /// tags, similarity, structural stars) do not open a file; a file whose only
 /// connection is proximity never enters the admissible set.
-pub fn naming_reachable_files(
+pub(crate) fn naming_reachable_files(
     capped: &CappedEdges,
     core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
     max_depth: usize,
@@ -530,7 +527,7 @@ pub fn naming_reachable_files(
 /// lowers, so they can never clear it — without the floor they made every
 /// same-package sibling "declared" and the gate admitted the same junk it
 /// exists to block (measured: 143 of 146 corpus improvements lost).
-pub fn declared_reachable_files(
+pub(crate) fn declared_reachable_files(
     capped: &CappedEdges,
     core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
     max_depth: usize,
@@ -618,22 +615,22 @@ mod fallback_gate_tests {
 
     #[test]
     fn tags_edges_survive_only_where_dedicated_builders_came_back_empty() {
-        // a.c and c.c each include a header (a dedicated edge) and share an
-        // identifier, but nothing includes between them. Two .xyz files have
+        // a.rb and c.rb each require a sibling (a dedicated edge) and share an
+        // identifier, but nothing requires between them. Two .xyz files have
         // no dedicated builder at all and share the same identifier.
         let fragments = vec![
             frag(
-                "proj/a.c",
-                "#include \"bdep.h\"\nint zzcommonzz;\n",
+                "proj/a.rb",
+                "require_relative \"bdep\"\nzzcommonzz = 1\n",
                 &["zzcommonzz"],
             ),
-            frag("proj/bdep.h", "int bdecl(void);\n", &["bdecl"]),
+            frag("proj/bdep.rb", "def bdecl\nend\n", &["bdecl"]),
             frag(
-                "proj/c.c",
-                "#include \"ddep.h\"\nint zzcommonzz;\n",
+                "proj/c.rb",
+                "require_relative \"ddep\"\nzzcommonzz = 1\n",
                 &["zzcommonzz"],
             ),
-            frag("proj/ddep.h", "int ddecl(void);\n", &["ddecl"]),
+            frag("proj/ddep.rb", "def ddecl\nend\n", &["ddecl"]),
             frag("proj/u1.xyz", "zzcommonzz here\n", &["zzcommonzz"]),
             frag("proj/u2.xyz", "zzcommonzz there\n", &["zzcommonzz"]),
         ];
@@ -648,9 +645,43 @@ mod fallback_gate_tests {
             "fallback must still connect files no dedicated builder covers"
         );
         assert!(
-            !has_fallback_pair(&capped, "a.c", "c.c"),
+            !has_fallback_pair(&capped, "a.rb", "c.rb"),
             "a tags-only link between two dedicated-covered files is the measured noise class (#131)"
         );
+    }
+
+    /// The files written to a temporary repository: the cells read a snapshot, so a
+    /// test of the languages they cover needs one. The fragments name the files by
+    /// their repository paths.
+    fn repository_of(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for (path, content) in files {
+            let at = dir.path().join(path);
+            std::fs::create_dir_all(at.parent().expect("a parent")).expect("a directory");
+            std::fs::write(at, content).expect("a file");
+        }
+        let git = |args: &[&str]| {
+            let out = crate::snapshot::git_command(dir.path())
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .expect("git runs");
+            assert!(out.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        git(&["add", "-A"]);
+        git(&[
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@localhost",
+            "commit",
+            "-q",
+            "-m",
+            "tree",
+        ]);
+        dir
     }
 
     // Category matters: two files in one directory legitimately share a
@@ -777,10 +808,10 @@ mod fallback_gate_tests {
         );
     }
 
-    /// `proj/a.c` is dedicated (it includes a header) and shares one name with
+    /// `proj/a.rb` is dedicated (it requires a sibling) and shares one name with
     /// each other file, so that file alone decides whether its tags edge
-    /// stands. `.c`, `.proto` and shell are covered by the dedicated edges of
-    /// `a.c`, `s1.proto` and `bin/run`.
+    /// stands. `.rb`, `.proto` and shell are covered by the dedicated edges of
+    /// `a.rb`, `s1.proto` and `bin/run`.
     #[test]
     fn each_branch_of_the_gate_decides_the_pair_it_owns() {
         let unread = |path: &str, content: &str, idents: &[&str]| Fragment {
@@ -789,40 +820,45 @@ mod fallback_gate_tests {
         };
         let fragments = vec![
             frag(
-                "proj/a.c",
-                "#include \"bdep.h\"\n",
+                "proj/a.rb",
+                "require_relative \"bdep\"\n",
                 &["zzparsedzz", "zzunreadzz", "zzdeclzz", "zzscriptzz"],
             ),
-            frag("proj/bdep.h", "int bdecl(void);\n", &[]),
+            frag("proj/bdep.rb", "def bdecl\nend\n", &[]),
             frag("proj/s1.proto", "import \"s2.proto\";\n", &[]),
             frag("proj/s2.proto", "message Bar {}\n", &[]),
             frag("bin/run", "#!/bin/sh\n. ./lib/env.sh\n", &[]),
             frag("lib/env.sh", "export LEVEL=1\n", &[]),
-            frag("proj/e.c", "int zzparsedzz;\n", &["zzparsedzz"]),
-            unread("proj/f.c", "int zzunreadzz\n", &["zzunreadzz"]),
+            frag("proj/e.rb", "zzparsedzz = 1\n", &["zzparsedzz"]),
+            unread("proj/f.rb", "zzunreadzz = \n", &["zzunreadzz"]),
             frag("proj/g.proto", "message Foo {}\n", &["zzdeclzz"]),
             frag("bin/other", "#!/bin/sh\nzzscriptzz\n", &["zzscriptzz"]),
         ];
+        let written: Vec<(&str, &str)> = fragments
+            .iter()
+            .map(|f| (f.path(), f.content.as_ref()))
+            .collect();
+        let repository = repository_of(&written);
         let capped = collect_capped_edges(
             &fragments,
-            None,
+            Some(repository.path()),
             false,
             &crate::resource::RunContext::unbounded(),
         );
         assert!(
-            !has_fallback_pair(&capped, "proj/a.c", "proj/e.c"),
+            !has_fallback_pair(&capped, "proj/a.rb", "proj/e.rb"),
             "a parsed file of a covered language: no edge is its builder's answer (#286)"
         );
         assert!(
-            has_fallback_pair(&capped, "proj/a.c", "proj/f.c"),
+            has_fallback_pair(&capped, "proj/a.rb", "proj/f.rb"),
             "a file its parser could not read keeps the fallback"
         );
         assert!(
-            has_fallback_pair(&capped, "proj/a.c", "proj/g.proto"),
+            has_fallback_pair(&capped, "proj/a.rb", "proj/g.proto"),
             "a declarative file keeps the fallback in a covered language"
         );
         assert!(
-            !has_fallback_pair(&capped, "proj/a.c", "bin/other"),
+            !has_fallback_pair(&capped, "proj/a.rb", "bin/other"),
             "an extensionless script is the language its shebang names, covered by `bin/run`"
         );
     }
@@ -835,9 +871,10 @@ mod fallback_gate_tests {
             .iter()
             .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
             .collect();
+        let repository = repository_of(files);
         let capped = collect_capped_edges(
             &fragments,
-            None,
+            Some(repository.path()),
             false,
             &crate::resource::RunContext::unbounded(),
         );

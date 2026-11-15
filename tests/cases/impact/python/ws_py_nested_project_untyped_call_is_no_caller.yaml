@@ -1,0 +1,40 @@
+name: ws_py_nested_project_untyped_call_is_no_caller
+mode: impact
+source: gh#649
+issue_state: open
+tags: [python, workspace, project-root, nested, decoy, body-only]
+repo:
+  initial_files:
+    app/pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0.1.0"
+    app/src/shop/__init__.py: ""
+    app/src/shop/pricing.py: |
+      class Cart:
+          def total(self):
+              return 0
+    app/src/shop/checkout.py: |
+      def charge(cart):
+          return cart.total()
+    app/extras/legacy/pyproject.toml: |
+      [project]
+      name = "legacy"
+      version = "0.1.0"
+    app/extras/legacy/shop/__init__.py: ""
+    app/extras/legacy/shop/report.py: |
+      def build(cart):
+          return cart.total()
+  changed_files:
+    app/src/shop/pricing.py: |
+      class Cart:
+          def total(self):
+              return 1
+  commit_message: "pricing: a cart totals one"
+expect:
+  changed: [app/src/shop/pricing.py::Cart.total]
+  relations:
+    - {from: "app/src/shop/checkout.py::charge", to: "app/src/shop/pricing.py::Cart.total", kind: calls,
+       resolution: candidate, site: 2}
+  decoys:
+    "app/src/shop/pricing.py::Cart.total": [app/extras/legacy/shop/report.py]

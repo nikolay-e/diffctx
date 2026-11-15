@@ -1,0 +1,66 @@
+name: config_k8s_added_pod_label_reaches_the_service_that_selects_the_pods
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- selector
+- candidate
+- decoy
+repo:
+  initial_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+    k8s/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+    k8s/db-svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db
+      spec:
+        selector:
+          app: db
+  changed_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: ui
+          spec:
+            containers: []
+  commit_message: Change config k8s added pod label reaches the service that selects the pods
+expect:
+  relations:
+  - from: k8s/svc.yaml
+    to: k8s/web.yaml
+    kind: reads
+    resolution: candidate
+    site: 7
+  exact: true
+  decoys:
+    k8s/web.yaml:
+    - k8s/db-svc.yaml

@@ -19,14 +19,6 @@ pub enum TokenizerId {
     O200kBase,
 }
 
-impl TokenizerId {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            TokenizerId::O200kBase => "o200k_base",
-        }
-    }
-}
-
 pub trait TokenCounter: Send + Sync {
     fn id(&self) -> TokenizerId;
     fn count(&self, text: &str) -> u32;
@@ -148,7 +140,7 @@ mod tests {
 
     #[test]
     fn the_accounting_counter_names_its_tokenizer() {
-        assert_eq!(ACCOUNTING.id().as_str(), "o200k_base");
+        assert_eq!(serde_json::json!(ACCOUNTING.id()), "o200k_base");
         assert_eq!(ACCOUNTING.count("hello world"), count_raw("hello world"));
     }
 }

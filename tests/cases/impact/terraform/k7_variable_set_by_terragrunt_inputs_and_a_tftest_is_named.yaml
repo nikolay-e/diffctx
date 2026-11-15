@@ -1,0 +1,52 @@
+name: k7_variable_set_by_terragrunt_inputs_and_a_tftest_is_named
+mode: impact
+source: synthetic
+tags: [terraform, terragrunt, tftest, false-absence]
+repo:
+  initial_files:
+    modules/db/main.tf: |
+      variable "db_port" {
+        type = number
+      }
+      output "endpoint" {
+        value = "db:${var.db_port}"
+      }
+    live/prod/terragrunt.hcl: |
+      terraform {
+        source = "../../modules/db"
+      }
+      inputs = {
+        db_port = 5432
+      }
+    modules/db/tests/basic.tftest.hcl: |
+      variables {
+        db_port = 6543
+      }
+      run "endpoint" {
+        assert {
+          condition     = output.endpoint == "db:6543"
+          error_message = "bad endpoint"
+        }
+      }
+  changed_files:
+    modules/db/main.tf: |
+      variable "db_port" {
+        type = string
+      }
+      output "endpoint" {
+        value = "db:${var.db_port}"
+      }
+  commit_message: "db: the port is a string"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: live/prod/terragrunt.hcl
+      to: modules/db/main.tf::var.db_port
+      kind: calls
+      resolution: unresolved
+    - from: modules/db/tests/basic.tftest.hcl
+      to: modules/db/main.tf::var.db_port
+      kind: calls
+      resolution: unresolved

@@ -6,79 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::config::scoring::EGO;
-use crate::types::{Fragment, FragmentId};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EdgeCategory {
-    Semantic,
-    Structural,
-    Sibling,
-    Config,
-    KeyMatch,
-    Document,
-    Similarity,
-    History,
-    TestEdge,
-    Generic,
-}
-
-impl EdgeCategory {
-    // `from_str` deliberately falls back to Generic: `edges/mod.rs` feeds it
-    // builder-supplied category labels where an unknown one is a builder
-    // without a declared category, not a caller error. A user-supplied string
-    // is the opposite case, so the Python boundary uses `try_from_str` and
-    // reports the typo instead of silently answering a different question.
-    pub fn try_from_str(s: &str) -> Option<Self> {
-        let parsed = Self::from_str(s);
-        if matches!(parsed, Self::Generic) && s != "generic" {
-            return None;
-        }
-        Some(parsed)
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "semantic" => Self::Semantic,
-            "structural" => Self::Structural,
-            "sibling" => Self::Sibling,
-            "config" => Self::Config,
-            // `config_generic` is the name this category had until the typed
-            // key table: still accepted wherever a user types one.
-            "key_match" | "config_generic" => Self::KeyMatch,
-            "document" => Self::Document,
-            "similarity" => Self::Similarity,
-            "history" => Self::History,
-            "test_edge" => Self::TestEdge,
-            _ => Self::Generic,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Semantic => "semantic",
-            Self::Structural => "structural",
-            Self::Sibling => "sibling",
-            Self::Config => "config",
-            Self::KeyMatch => "key_match",
-            Self::Document => "document",
-            Self::Similarity => "similarity",
-            Self::History => "history",
-            Self::TestEdge => "test_edge",
-            Self::Generic => "generic",
-        }
-    }
-
-    /// Name matches took part in the damping, the dangling-reference check and
-    /// the hub-noise filter as `Semantic` edges for as long as the tags
-    /// fallback was one; they keep that part now that it is `KeyMatch`.
-    pub(crate) fn acts_as_reference(self) -> bool {
-        matches!(self, Self::Semantic | Self::KeyMatch)
-    }
-
-    fn is_suppression_exempt(self) -> bool {
-        self.acts_as_reference() || matches!(self, Self::Structural | Self::TestEdge)
-    }
-}
+use crate::types::{EdgeCategory, Fragment, FragmentId};
 
 pub struct CsrGraph {
     pub n: usize,
@@ -112,11 +40,6 @@ pub struct EdgeCapStats {
     /// Names the builder category responsible for near-dense emission
     /// blowups (#116). Empty on the materialized-edge path.
     pub emissions_by_category: Vec<(EdgeCategory, u64, u64)>,
-    /// The source nodes whose out-edges the cap truncated: a caller among
-    /// them may have lost its edge to the definition it calls, which impact
-    /// recovers rather than read as no caller (#446). Empty on the
-    /// materialized-edge path.
-    pub capped_sources: FxHashSet<FragmentId>,
 }
 
 /// A single node-interned edge. 24 bytes instead of a string-keyed
@@ -124,7 +47,7 @@ pub struct EdgeCapStats {
 /// multi-million-edge repositories (vendored Go monorepos, vscode),
 /// which is what used to OOM-kill memory-limited benchmark runners.
 #[derive(Clone, Copy)]
-pub struct CompactEdge {
+pub(crate) struct CompactEdge {
     pub src: u32,
     pub dst: u32,
     pub weight: f64,
@@ -139,16 +62,15 @@ pub struct CompactEdge {
 
 /// Node-interned edge list: the memory-bounded intermediate between
 /// edge collection and graph construction. `idx_to_node` is the sorted,
-/// deduplicated fragment-id universe, so CSR node indexing built from it
-/// is identical to the ordering `Graph::freeze` produces.
+/// deduplicated fragment-id universe.
 #[cfg(test)]
-pub struct CompactEdges {
+struct CompactEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
 }
 
-pub fn intern_fragment_nodes(
+pub(crate) fn intern_fragment_nodes(
     fragments: &[Fragment],
 ) -> (FxHashMap<FragmentId, u32>, Vec<FragmentId>) {
     let mut idx_to_node: Vec<FragmentId> = fragments.iter().map(|f| f.id.clone()).collect();
@@ -169,7 +91,7 @@ pub fn intern_fragment_nodes(
 /// `par_sort_by` is a stable parallel merge sort, so its output is
 /// bit-identical to `sort_by` while cutting the dominant serial phase of a
 /// tens-of-millions-edge build (#196).
-pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
+pub(crate) fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
     use rayon::prelude::*;
     edges.par_sort_by(|a, b| (a.src, a.dst).cmp(&(b.src, b.dst)));
     let mut out = 0usize;
@@ -195,11 +117,10 @@ pub fn dedup_compact_edges(edges: &mut Vec<CompactEdge>) {
 /// Replaces the FragmentId-pair-keyed hashmap that used to retain the
 /// full uncapped edge universe for the lifetime of the pipeline.
 #[derive(Default)]
-pub struct EdgeCategoryTable {
+struct EdgeCategoryTable {
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     entries: Vec<(u32, u32, EdgeCategory)>,
-    sorted: bool,
 }
 
 impl EdgeCategoryTable {
@@ -217,54 +138,10 @@ impl EdgeCategoryTable {
             node_to_idx,
             idx_to_node,
             entries,
-            sorted: true,
         }
     }
 
-    fn intern(&mut self, id: FragmentId) -> u32 {
-        if let Some(&i) = self.node_to_idx.get(&id) {
-            return i;
-        }
-        let i = self.idx_to_node.len() as u32;
-        self.idx_to_node.push(id.clone());
-        self.node_to_idx.insert(id, i);
-        i
-    }
-
-    pub fn insert(&mut self, src: FragmentId, dst: FragmentId, category: EdgeCategory) {
-        let s = self.intern(src);
-        let d = self.intern(dst);
-        self.entries.push((s, d, category));
-        self.sorted = false;
-    }
-
-    /// Stable-sort + last-wins dedup, matching hashmap overwrite
-    /// semantics for repeated `insert` of the same key.
-    pub fn ensure_sorted(&mut self) {
-        if self.sorted {
-            return;
-        }
-        self.entries.sort_by_key(|e| (e.0, e.1));
-        let mut out = 0usize;
-        let mut i = 0usize;
-        while i < self.entries.len() {
-            let mut j = i;
-            while j + 1 < self.entries.len()
-                && self.entries[j + 1].0 == self.entries[i].0
-                && self.entries[j + 1].1 == self.entries[i].1
-            {
-                j += 1;
-            }
-            self.entries[out] = self.entries[j];
-            out += 1;
-            i = j + 1;
-        }
-        self.entries.truncate(out);
-        self.sorted = true;
-    }
-
-    pub fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
-        debug_assert!(self.sorted, "EdgeCategoryTable queried before freeze");
+    fn get(&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory> {
         let s = *self.node_to_idx.get(src)?;
         let d = *self.node_to_idx.get(dst)?;
         self.entries
@@ -273,7 +150,7 @@ impl EdgeCategoryTable {
             .map(|k| self.entries[k].2)
     }
 
-    pub fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
+    fn for_each<F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>(&self, mut f: F) {
         for &(s, d, c) in &self.entries {
             f(
                 &self.idx_to_node[s as usize],
@@ -285,9 +162,6 @@ impl EdgeCategoryTable {
 }
 
 pub struct Graph {
-    nodes: FxHashSet<FragmentId>,
-    fwd: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
-    rev: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
     edge_categories: EdgeCategoryTable,
     csr_cache: Option<(CsrGraph, CsrGraph)>,
     pub cap_stats: EdgeCapStats,
@@ -296,9 +170,6 @@ pub struct Graph {
 impl Graph {
     pub fn new() -> Self {
         Self {
-            nodes: FxHashSet::default(),
-            fwd: FxHashMap::default(),
-            rev: FxHashMap::default(),
             edge_categories: EdgeCategoryTable::default(),
             csr_cache: None,
             cap_stats: EdgeCapStats::default(),
@@ -316,91 +187,28 @@ impl Graph {
         self.edge_categories.for_each(f)
     }
 
-    pub fn insert_edge_category(&mut self, src: FragmentId, dst: FragmentId, cat: EdgeCategory) {
-        self.edge_categories.insert(src, dst, cat);
-    }
-
     pub fn categorized_edge_count(&self) -> usize {
         self.edge_categories.entries.len()
     }
 
-    pub fn add_node(&mut self, node: FragmentId) {
-        self.nodes.insert(node);
-    }
-
-    pub fn add_edge(&mut self, src: FragmentId, dst: FragmentId, weight: f64) {
-        if weight.is_nan() || weight.is_infinite() || weight <= 0.0 {
-            return;
-        }
-        if src == dst {
-            return;
-        }
-        debug_assert!(
-            self.csr_cache.is_none(),
-            "add_edge called after Graph was frozen"
-        );
-
-        let fwd_nbrs = self.fwd.entry(src.clone()).or_default();
-        let existing = fwd_nbrs.get(&dst).copied().unwrap_or(0.0);
-        let new_weight = existing.max(weight);
-        fwd_nbrs.insert(dst.clone(), new_weight);
-
-        let rev_nbrs = self.rev.entry(dst).or_default();
-        rev_nbrs.insert(src, new_weight);
-    }
-
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
-    }
-
-    pub fn nodes(&self) -> impl Iterator<Item = &FragmentId> {
-        self.nodes.iter()
+        self.fwd_csr().map_or(0, |fwd| fwd.n)
     }
 
     pub fn edge_count(&self) -> usize {
-        if let Some((fwd, _)) = &self.csr_cache {
-            return fwd.indices.len();
-        }
-        self.fwd.values().map(|nbrs| nbrs.len()).sum()
+        self.fwd_csr().map_or(0, |fwd| fwd.indices.len())
     }
 
-    /// Convert the build-time hashmap representation into CSR and drop the hashmaps.
-    /// After freeze, fwd/rev are empty and all reads go through CSR.
-    pub fn freeze(&mut self) {
-        self.edge_categories.ensure_sorted();
-        if self.csr_cache.is_some() {
-            return;
-        }
-
-        let mut nodes: Vec<FragmentId> = self.nodes.iter().cloned().collect();
-        nodes.sort();
-
-        let node_to_idx: FxHashMap<FragmentId, u32> = nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.clone(), i as u32))
-            .collect();
-
-        let fwd = std::mem::take(&mut self.fwd);
-        let rev = std::mem::take(&mut self.rev);
-
-        let fwd_csr = build_csr_owned(fwd, &nodes, &node_to_idx);
-        let rev_csr = build_csr_owned(rev, &nodes, &node_to_idx);
-
-        self.csr_cache = Some((fwd_csr, rev_csr));
-    }
-
-    pub fn to_csr(&mut self) -> &(CsrGraph, CsrGraph) {
-        self.freeze();
-        self.csr_cache.as_ref().unwrap()
+    /// The forward and reverse CSR of an assembled graph, which every graph with
+    /// a node is.
+    pub fn to_csr(&self) -> &(CsrGraph, CsrGraph) {
+        self.csr_cache
+            .as_ref()
+            .expect("a graph with nodes is assembled with its CSR")
     }
 
     pub fn fwd_csr(&self) -> Option<&CsrGraph> {
         self.csr_cache.as_ref().map(|(f, _)| f)
-    }
-
-    pub fn rev_csr(&self) -> Option<&CsrGraph> {
-        self.csr_cache.as_ref().map(|(_, r)| r)
     }
 
     /// Look up the weight of edge `src -> dst` in the forward CSR.
@@ -438,39 +246,6 @@ impl Graph {
             let dst_idx = fwd.indices[k] as usize;
             f(&fwd.idx_to_node[dst_idx], fwd.weights[k]);
         }
-    }
-
-    /// Invoke `f(source_id, weight)` for each node with an edge INTO `node`,
-    /// with the weight of that incoming edge.
-    pub fn for_each_reverse_neighbor<F: FnMut(&FragmentId, f64)>(
-        &self,
-        node: &FragmentId,
-        mut f: F,
-    ) {
-        let rev = match self.rev_csr() {
-            Some(c) => c,
-            None => return,
-        };
-        let idx = match rev.node_to_idx.get(node) {
-            Some(&i) => i as usize,
-            None => return,
-        };
-        let s = rev.indptr[idx] as usize;
-        let e = rev.indptr[idx + 1] as usize;
-        for k in s..e {
-            let src_idx = rev.indices[k] as usize;
-            f(&rev.idx_to_node[src_idx], rev.weights[k]);
-        }
-    }
-
-    /// Whether `a -> b` is the stronger direction of the pair. Every builder
-    /// writes the reverse of an edge at `weight * reverse_factor` with the
-    /// factor below one, so the comparison recovers the direction the builder
-    /// meant (caller -> callee, importer -> imported) without a second table.
-    pub fn is_forward(&self, a: &FragmentId, b: &FragmentId) -> bool {
-        let ab = self.forward_edge_weight(a, b).unwrap_or(0.0);
-        let ba = self.forward_edge_weight(b, a).unwrap_or(0.0);
-        ab > ba
     }
 
     pub fn ego_graph(
@@ -583,67 +358,20 @@ fn bfs_from_seed_with_path_weight(
     result
 }
 
-fn build_csr_owned(
-    adj: FxHashMap<FragmentId, FxHashMap<FragmentId, f64>>,
-    nodes: &[FragmentId],
-    node_to_idx: &FxHashMap<FragmentId, u32>,
-) -> CsrGraph {
-    let n = nodes.len();
-    let total_edges: usize = adj.values().map(|v| v.len()).sum();
-
-    let mut indptr = vec![0u32; n + 1];
-    let mut indices = Vec::with_capacity(total_edges);
-    let mut weights = Vec::with_capacity(total_edges);
-
-    for (i, node) in nodes.iter().enumerate() {
-        if let Some(nbrs) = adj.get(node) {
-            let mut edges: Vec<(u32, f64)> = nbrs
-                .iter()
-                .filter_map(|(dst, &w)| node_to_idx.get(dst).map(|&idx| (idx, w)))
-                .collect();
-            edges.sort_by_key(|&(idx, _)| idx);
-            for (idx, w) in edges {
-                indices.push(idx);
-                weights.push(w);
-            }
-        }
-        indptr[i + 1] = indices.len() as u32;
-    }
-
-    let mut out_weight_sum = vec![0.0f64; n];
-    for i in 0..n {
-        let s = indptr[i] as usize;
-        let e = indptr[i + 1] as usize;
-        if e > s {
-            out_weight_sum[i] = weights[s..e].iter().sum();
-        }
-    }
-
-    CsrGraph {
-        n,
-        indptr,
-        indices,
-        weights,
-        out_weight_sum,
-        node_to_idx: node_to_idx.clone(),
-        idx_to_node: nodes.to_vec(),
-    }
-}
-
 /// Hub-suppression damping factors, precomputed from dedup-aware degree
 /// counters so the damped weight of any edge can be evaluated without
 /// materializing the edge universe. The per-edge arithmetic is identical
 /// to the historical in-place suppression loops: at most one division,
 /// by `ln(1+in_degree)` for non-exempt edges into hub destinations or by
 /// `sqrt(fan)` for Semantic edges out of wide-fan sources.
-pub struct SuppressionFactors {
+pub(crate) struct SuppressionFactors {
     in_degree: Vec<u32>,
     d_p95: f64,
     sem_file_deg: Vec<u32>,
 }
 
 impl SuppressionFactors {
-    pub fn from_counters(in_degree: Vec<u32>, sem_file_deg: Vec<u32>) -> Self {
+    pub(crate) fn from_counters(in_degree: Vec<u32>, sem_file_deg: Vec<u32>) -> Self {
         let mut degrees_sorted: Vec<u32> = in_degree.iter().copied().filter(|&d| d > 0).collect();
         degrees_sorted.sort_unstable();
         let d_p95 = if degrees_sorted.is_empty() {
@@ -687,7 +415,7 @@ impl SuppressionFactors {
         Self::from_counters(in_degree, sem_file_deg)
     }
 
-    pub fn damp(&self, weight: f64, category: EdgeCategory, src: u32, dst: u32) -> f64 {
+    pub(crate) fn damp(&self, weight: f64, category: EdgeCategory, src: u32, dst: u32) -> f64 {
         let mut w = weight;
         let dst_deg = self.in_degree[dst as usize] as f64;
         if dst_deg > self.d_p95 && !category.is_suppression_exempt() {
@@ -713,14 +441,6 @@ fn apply_hub_suppression(edges: &mut [CompactEdge], idx_to_node: &[FragmentId]) 
         e.weight = factors.damp(e.weight, e.category, e.src, e.dst);
     }
 }
-
-/// Default top-K out-edges per source node. Calibrated against the
-/// observed edge density distribution: typical Python file emits
-/// 5-20 semantic + 2-5 structural + ≤20 sibling edges (~30-50 normal),
-/// so K=64 preserves all legitimate edges while clamping pathological
-/// dense nodes (e.g. utility hubs in django/material-ui that radiate
-/// into thousands of dependents).
-pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
 
 /// Truncate each node's outgoing edge list to the top-K by weight.
 /// Run AFTER `apply_hub_suppression` so the suppression pass sees
@@ -776,16 +496,7 @@ pub(crate) fn cap_out_edges_per_source(
         nodes_capped,
         max_out_edges_per_node: max_per_node,
         emissions_by_category: Vec::new(),
-        capped_sources: FxHashSet::default(),
     }
-}
-
-pub(crate) fn read_max_out_edges_per_node() -> usize {
-    std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_MAX_OUT_EDGES_PER_NODE)
 }
 
 /// Candidate out-edge ranked by post-suppression weight. The ordering
@@ -793,7 +504,7 @@ pub(crate) fn read_max_out_edges_per_node() -> usize {
 /// ties by ascending dst index), so a bounded min-heap of these keeps
 /// exactly the edges the full sort-and-truncate would keep.
 #[derive(Clone, Copy)]
-pub struct RankedCandidate {
+pub(crate) struct RankedCandidate {
     pub weight: f64,
     pub dst: u32,
     pub category: EdgeCategory,
@@ -829,9 +540,9 @@ impl Ord for RankedCandidate {
     }
 }
 
-pub type SourceTopK = BinaryHeap<Reverse<RankedCandidate>>;
+pub(crate) type SourceTopK = BinaryHeap<Reverse<RankedCandidate>>;
 
-pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: usize) {
+pub(crate) fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: usize) {
     if heap.len() < k {
         heap.push(Reverse(candidate));
         return;
@@ -849,7 +560,7 @@ pub fn push_bounded_top_k(heap: &mut SourceTopK, candidate: RankedCandidate, k: 
 /// The category table is *not* carried here — `assemble_graph` derives it
 /// from this same post-cap `edges` vector, which is the only way to
 /// guarantee the exported category table and the CSR never disagree.
-pub struct CappedEdges {
+pub(crate) struct CappedEdges {
     pub node_to_idx: FxHashMap<FragmentId, u32>,
     pub idx_to_node: Vec<FragmentId>,
     pub edges: Vec<CompactEdge>,
@@ -857,9 +568,7 @@ pub struct CappedEdges {
 }
 
 /// Build a CSR from (src, dst, weight) triples over the interned node
-/// universe. Sorting by (src, dst) reproduces the neighbor ordering the
-/// hashmap-based `freeze` path produced (neighbors sorted by dst index),
-/// so weights, out-weight sums, and traversal results are bit-identical.
+/// universe, neighbors sorted by dst index.
 fn build_csr_from_pairs(
     mut pairs: Vec<(u32, u32, f64)>,
     idx_to_node: &[FragmentId],
@@ -909,7 +618,7 @@ fn build_csr_from_pairs(
 /// Graph-construction path for pre-capped edges from the two-pass
 /// pipeline: suppression and the per-source cap already ran, so only
 /// the category table and CSR assembly remain.
-pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph {
+pub(crate) fn build_graph_capped(capped: CappedEdges) -> Graph {
     let CappedEdges {
         node_to_idx,
         idx_to_node,
@@ -924,7 +633,7 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
         cap_stats.edges_dropped_by_cap,
         cap_stats.nodes_capped,
     );
-    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
+    assemble_graph(node_to_idx, idx_to_node, edges, cap_stats)
 }
 
 /// Materialized-edge construction path behind the map-based `build_graph`
@@ -933,7 +642,7 @@ pub fn build_graph_capped(fragments: &[Fragment], capped: CappedEdges) -> Graph 
 /// inside `edges::collect_capped_edges` via `SuppressionFactors::from_counters`
 /// and enters at `build_graph_capped`.
 #[cfg(test)]
-pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Graph {
+fn build_graph_compact(compact: CompactEdges) -> Graph {
     let CompactEdges {
         node_to_idx,
         idx_to_node,
@@ -942,7 +651,7 @@ pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Gra
 
     apply_hub_suppression(&mut edges, &idx_to_node);
 
-    let max_per_node = read_max_out_edges_per_node();
+    let max_per_node = crate::config::limits::read_max_out_edges_per_node();
     let cap_stats = cap_out_edges_per_source(&mut edges, max_per_node);
     tracing::debug!(
         "edge cap K={}: {} -> {} (dropped {} from {} nodes)",
@@ -953,13 +662,11 @@ pub fn build_graph_compact(fragments: &[Fragment], compact: CompactEdges) -> Gra
         cap_stats.nodes_capped,
     );
 
-    assemble_graph(fragments, node_to_idx, idx_to_node, edges, cap_stats)
+    assemble_graph(node_to_idx, idx_to_node, edges, cap_stats)
 }
 
 /// Self-loops and non-finite/non-positive weights must never reach a live
-/// graph: they used to be rejected only by `Graph::add_edge`'s guard, which
-/// has no production caller (both real construction paths route through
-/// here). An infinite weight makes `out_weight_sum` infinite, every
+/// graph. An infinite weight makes `out_weight_sum` infinite, every
 /// normalized PPR transition probability NaN, and the score map come back
 /// empty with exit 0 -- silently shipping core-only context.
 fn is_valid_edge(e: &CompactEdge) -> bool {
@@ -975,7 +682,6 @@ fn is_valid_edge(e: &CompactEdge) -> bool {
 /// fired (capped-away edges exported with `weight: 0.0`, `edge_count`
 /// mismatching `len(edges)` in the same JSON document).
 fn assemble_graph(
-    fragments: &[Fragment],
     node_to_idx: FxHashMap<FragmentId, u32>,
     idx_to_node: Vec<FragmentId>,
     edges: Vec<CompactEdge>,
@@ -1003,9 +709,6 @@ fn assemble_graph(
     let rev_csr = build_csr_from_pairs(rev_pairs, &idx_to_node, &node_to_idx);
 
     let mut graph = Graph::new();
-    for frag in fragments {
-        graph.nodes.insert(frag.id.clone());
-    }
     graph.edge_categories =
         EdgeCategoryTable::from_sorted_parts(node_to_idx, idx_to_node, category_entries);
     graph.cap_stats = cap_stats;
@@ -1019,7 +722,7 @@ fn assemble_graph(
 /// builds every edge with `naming: false`, so graphs made this way never
 /// exercise the per-file naming-admission gate (#65).
 #[cfg(test)]
-pub fn build_graph(
+pub(crate) fn build_graph(
     fragments: &[Fragment],
     edges: FxHashMap<(FragmentId, FragmentId), f64>,
     categories: FxHashMap<(FragmentId, FragmentId), EdgeCategory>,
@@ -1048,13 +751,44 @@ pub fn build_graph(
         });
     }
     dedup_compact_edges(&mut compact_edges);
-    build_graph_compact(
-        fragments,
-        CompactEdges {
-            node_to_idx,
-            idx_to_node,
-            edges: compact_edges,
-        },
+    build_graph_compact(CompactEdges {
+        node_to_idx,
+        idx_to_node,
+        edges: compact_edges,
+    })
+}
+
+/// A graph over `nodes` with the given weighted edges, assembled the way the
+/// pipeline assembles one: duplicate pairs keep the largest weight, and
+/// self-loops, non-finite and non-positive weights are dropped.
+#[cfg(test)]
+pub(crate) fn graph_of(nodes: &[&FragmentId], edges: &[(&FragmentId, &FragmentId, f64)]) -> Graph {
+    let mut idx_to_node: Vec<FragmentId> = nodes.iter().map(|n| (*n).clone()).collect();
+    idx_to_node.sort();
+    idx_to_node.dedup();
+    let node_to_idx: FxHashMap<FragmentId, u32> = idx_to_node
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.clone(), i as u32))
+        .collect();
+    let mut compact_edges: Vec<CompactEdge> = edges
+        .iter()
+        .filter_map(|&(src, dst, weight)| {
+            Some(CompactEdge {
+                src: *node_to_idx.get(src)?,
+                dst: *node_to_idx.get(dst)?,
+                weight,
+                category: EdgeCategory::Generic,
+                naming: false,
+            })
+        })
+        .collect();
+    dedup_compact_edges(&mut compact_edges);
+    assemble_graph(
+        node_to_idx,
+        idx_to_node,
+        compact_edges,
+        EdgeCapStats::default(),
     )
 }
 
@@ -1074,16 +808,10 @@ mod tests {
     }
 
     #[test]
-    fn add_edge_takes_max_weight() {
-        let mut g = Graph::new();
+    fn duplicate_edges_keep_the_largest_weight() {
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_edge(a.clone(), b.clone(), 0.5);
-        g.add_edge(a.clone(), b.clone(), 0.8);
-        g.add_edge(a.clone(), b.clone(), 0.3);
-        g.freeze();
+        let g = graph_of(&[&a, &b], &[(&a, &b, 0.5), (&a, &b, 0.8), (&a, &b, 0.3)]);
 
         let fwd = collect_forward(&g, &a);
         assert_eq!(fwd.len(), 1);
@@ -1092,17 +820,18 @@ mod tests {
     }
 
     #[test]
-    fn add_edge_drops_invalid_weights() {
-        let mut g = Graph::new();
+    fn invalid_weights_make_no_edge() {
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_edge(a.clone(), b.clone(), f64::NAN);
-        g.add_edge(a.clone(), b.clone(), f64::INFINITY);
-        g.add_edge(a.clone(), b.clone(), -1.0);
-        g.add_edge(a.clone(), b.clone(), 0.0);
-        g.freeze();
+        let g = graph_of(
+            &[&a, &b],
+            &[
+                (&a, &b, f64::NAN),
+                (&a, &b, f64::INFINITY),
+                (&a, &b, -1.0),
+                (&a, &b, 0.0),
+            ],
+        );
 
         assert!(collect_forward(&g, &a).is_empty());
         assert_eq!(g.edge_count(), 0);
@@ -1110,15 +839,10 @@ mod tests {
 
     #[test]
     fn csr_round_trip() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 2.0);
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 2.0)]);
 
         let (fwd, _rev) = g.to_csr();
         assert_eq!(fwd.n, 3);
@@ -1128,16 +852,10 @@ mod tests {
 
     #[test]
     fn ego_graph_scores() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 1.0);
-        g.add_edge(b.clone(), c.clone(), 1.0);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 1.0), (&b, &c, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -1151,16 +869,10 @@ mod tests {
 
     #[test]
     fn ego_graph_sums_over_seeds() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let v = fid("v.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(v.clone());
-        g.add_edge(a.clone(), v.clone(), 1.0);
-        g.add_edge(b.clone(), v.clone(), 1.0);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &v], &[(&a, &v, 1.0), (&b, &v, 1.0)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -1177,16 +889,10 @@ mod tests {
 
     #[test]
     fn ego_graph_uses_path_weight() {
-        let mut g = Graph::new();
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);
         let c = fid("c.rs", 1, 10);
-        g.add_node(a.clone());
-        g.add_node(b.clone());
-        g.add_node(c.clone());
-        g.add_edge(a.clone(), b.clone(), 0.7);
-        g.add_edge(b.clone(), c.clone(), 0.4);
-        g.freeze();
+        let g = graph_of(&[&a, &b, &c], &[(&a, &b, 0.7), (&b, &c, 0.4)]);
 
         let mut seeds = FxHashSet::default();
         seeds.insert(a.clone());
@@ -1207,8 +913,7 @@ mod tests {
 
     #[test]
     fn ego_graph_empty() {
-        let mut g = Graph::new();
-        g.freeze();
+        let g = graph_of(&[], &[]);
         let seeds = FxHashSet::default();
         let scores = g.ego_graph(&seeds, 2);
         assert!(scores.is_empty());
@@ -1530,7 +1235,7 @@ mod tests {
         let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
         let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
 
-        let n_leaves = DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
+        let n_leaves = crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
         for i in 0..n_leaves {
             let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
             frags.push(plain_fragment(leaf.clone()));

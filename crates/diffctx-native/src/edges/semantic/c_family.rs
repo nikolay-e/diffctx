@@ -8,13 +8,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::C_FAMILY_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
+use crate::languages::file_ext;
 use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_c_family(path: &Path) -> bool {
-    let ext = base::file_ext(path);
+    let ext = file_ext(path);
     C_FAMILY_EXTENSIONS.contains(ext.as_str())
 }
 
@@ -101,7 +102,7 @@ fn extract_references(
     (calls, type_refs)
 }
 
-pub struct CFamilyEdgeBuilder;
+pub(crate) struct CFamilyEdgeBuilder;
 
 impl EdgeBuilder for CFamilyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -324,11 +325,11 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             }
             let headers: Vec<&&str> = files
                 .iter()
-                .filter(|p| HEADER_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
+                .filter(|p| HEADER_EXTENSIONS.contains(file_ext(Path::new(**p)).as_str()))
                 .collect();
             let impls: Vec<&&str> = files
                 .iter()
-                .filter(|p| IMPL_EXTENSIONS.contains(base::file_ext(Path::new(**p)).as_str()))
+                .filter(|p| IMPL_EXTENSIONS.contains(file_ext(Path::new(**p)).as_str()))
                 .collect();
             for h in &headers {
                 for imp in &impls {
@@ -362,6 +363,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         if c_changed.is_empty() {
             return vec![];
         }
+        let source = crate::resource::current_source();
 
         let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
@@ -372,7 +374,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
             let mut included_headers: FxHashSet<String> = FxHashSet::default();
             for f in &frontier {
-                if let Some(content) = crate::source::read_to_string(f) {
+                if let Some(content) = source.read_to_string(f) {
                     included_headers.extend(extract_includes(&content));
                 }
             }
@@ -404,7 +406,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                     hop_found.push(candidate.clone());
                     continue;
                 }
-                if let Some(content) = crate::source::read_to_string(candidate) {
+                if let Some(content) = source.read_to_string(candidate) {
                     let cand_includes = extract_includes(&content);
                     for inc in &cand_includes {
                         let inc_name = if inc.contains('/') {

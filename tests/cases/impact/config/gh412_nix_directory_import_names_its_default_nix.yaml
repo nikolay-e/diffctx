@@ -1,0 +1,33 @@
+name: gh412_nix_directory_import_names_its_default_nix
+mode: impact
+source: gh#412
+issue_state: open
+tags:
+- nix
+- import
+repo:
+  initial_files:
+    default.nix: |
+      { }:
+      let
+        lib = import ./lib;
+      in
+        lib.greet "world"
+    lib/default.nix: |
+      {
+        greet = name: "hello ${name}";
+      }
+    pkgs/tool.nix: |
+      { }:
+      let
+        helpers = import ../lib/default.nix;
+      in
+        helpers.greet "pkg"
+  changed_files:
+    lib/default.nix: |
+      {
+        greet = name: "hi ${name}";
+      }
+  commit_message: change
+expect:
+  named_by: [default.nix, pkgs/tool.nix]

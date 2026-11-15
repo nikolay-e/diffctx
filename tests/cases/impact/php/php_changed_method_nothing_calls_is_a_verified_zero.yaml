@@ -1,0 +1,45 @@
+name: php_changed_method_nothing_calls_is_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- php
+- absence-claim
+repo:
+  initial_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(string $name): string
+          {
+              return "hi $name";
+          }
+      }
+    tests/OtherTest.php: |
+      <?php
+
+      class OtherTest
+      {
+          public function testNothing(): void
+          {
+          }
+      }
+  changed_files:
+    src/Greeter.php: |
+      <?php
+
+      class Greeter
+      {
+          public function hello(string $name): string
+          {
+              return "hello $name";
+          }
+      }
+  commit_message: Change php changed method nothing calls is a verified zero
+expect:
+  changed:
+  - src/Greeter.php::Greeter.hello
+  callers:
+    hello: []

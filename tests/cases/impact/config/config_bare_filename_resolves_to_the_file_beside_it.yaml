@@ -1,0 +1,36 @@
+name: config_bare_filename_resolves_to_the_file_beside_it
+mode: impact
+source: gh#670
+issue_state: open
+tags:
+- config
+- stale
+- basename
+- ambiguity
+repo:
+  initial_files:
+    alpha/NOTES.md: |
+      # alpha notes
+    beta/NOTES.md: |
+      # beta notes
+    beta/README.md: |
+      Verification steps are in `NOTES.md`.
+    release.sh: |
+      # check the steps (NOTES.md) before release
+      set -e
+  deleted_files:
+  - alpha/NOTES.md
+  - beta/NOTES.md
+  commit_message: Change config bare filename resolves to the file beside it
+expect:
+  relations:
+  - from: beta/README.md
+    to: beta/NOTES.md
+    kind: references_path
+    resolution: resolved
+    site: 1
+  exact: false
+  decoys:
+    alpha/NOTES.md:
+    - beta/README.md
+    - release.sh

@@ -1,0 +1,28 @@
+name: py_console_script_entry_names_the_function
+mode: impact
+source: synthetic
+tags: [python, literal-name, pyproject]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def entry():
+          return 1
+    pyproject.toml: |
+      [project]
+      name = "pkg"
+      version = "1.0"
+
+      [project.scripts]
+      pkg-entry = "pkg.core:entry"
+  changed_files:
+    pkg/core.py: |
+      def entry():
+          return 2
+  commit_message: "core: entry returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: pyproject.toml, to: pkg/core.py::entry, kind: calls, resolution: unresolved}

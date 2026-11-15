@@ -1,0 +1,35 @@
+name: ruby_method_named_in_a_rakefile_and_an_extensionless_script
+mode: impact
+source: synthetic
+tags: [ruby, literal-name, mention-scan]
+repo:
+  initial_files:
+    lib/pricing.rb: |
+      module Pricing
+        def self.compute_price(x)
+          x
+        end
+      end
+    Rakefile: |
+      Pricing.compute_price(1)
+    exe/price: |
+      #!/usr/bin/env ruby
+      Pricing.compute_price(1)
+    app/views/p.html.erb: |
+      <%= Pricing.compute_price(1) %>
+  changed_files:
+    lib/pricing.rb: |
+      module Pricing
+        def self.compute_price(x)
+          x * 2
+        end
+      end
+  commit_message: "pricing: double the price"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: Rakefile, to: lib/pricing.rb::compute_price, kind: calls, resolution: unresolved}
+    - {from: exe/price, to: lib/pricing.rb::compute_price, kind: calls, resolution: unresolved}
+    - {from: app/views/p.html.erb, to: lib/pricing.rb::compute_price, kind: calls, resolution: unresolved}

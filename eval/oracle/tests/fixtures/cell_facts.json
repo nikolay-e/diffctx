@@ -1,0 +1,26 @@
+{
+  "schema": "diffctx.cell-facts.v2",
+  "engine": "an engine label or commit at the head",
+  "fresh_seed": {
+    "python": "seed drawn after the code freeze: run dir fresh-python"
+  },
+  "cells": {
+    "python/calls": {
+      "state": "precise",
+      "old_path_deleted": "commit 1a2b3c4 removed the regex call resolver",
+      "decoys": 14
+    },
+    "python/imports": {
+      "state": "precise",
+      "old_path_deleted": "commit 1a2b3c4 removed the regex import resolver",
+      "decoys": 12
+    },
+    "python/reads": {
+      "state": "heuristic"
+    },
+    "python/dispatch": {
+      "state": "none",
+      "unknown": "dynamic dispatch through a registry is not traced"
+    }
+  }
+}

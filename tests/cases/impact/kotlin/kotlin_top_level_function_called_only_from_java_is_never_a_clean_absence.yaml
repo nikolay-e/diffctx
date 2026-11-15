@@ -1,0 +1,40 @@
+name: kotlin_top_level_function_called_only_from_java_is_never_a_clean_absence
+mode: impact
+source: fj#159
+issue_state: open
+tags: [kotlin, java, jvm, absence-claim, neighbour-language]
+repo:
+  initial_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun roundedTotal(amount: Int): Int {
+          return amount
+      }
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      public class Checkout {
+          public int charge(int amount) {
+              return PricingKt.roundedTotal(amount);
+          }
+      }
+  changed_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      fun roundedTotal(amount: Int): Int {
+          return amount + 1
+      }
+  commit_message: "pricing: round up by one"
+expect:
+  changed: [src/main/kotlin/shop/Pricing.kt::roundedTotal]
+  relations:
+  - from: src/main/java/shop/Checkout.java::Checkout.charge
+    to: src/main/kotlin/shop/Pricing.kt::roundedTotal
+    kind: calls
+    resolution: resolved
+    site: 5
+  exact: false
+  never_empty: true
+  no_negative_claims: true

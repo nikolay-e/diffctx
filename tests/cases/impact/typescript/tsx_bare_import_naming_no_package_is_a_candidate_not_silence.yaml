@@ -1,0 +1,35 @@
+name: tsx_bare_import_naming_no_package_is_a_candidate_not_silence
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, alias, disclosure]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"al","version":"0.0.0","dependencies":{"react":"18.3.1"},"devDependencies":{"@types/node":"22.0.0"}}
+    src/lib/core.ts: |
+      export function compute(x: number) {
+        return x + 1;
+      }
+    src/app/use.ts: |
+      import { compute } from "Lib/core";
+      export const useIt = () => compute(1);
+    src/app/declared.ts: |
+      import { compute } from "react";
+      export const viaPackage = () => compute(1);
+    src/app/builtin.ts: |
+      import { compute } from "node:path";
+      export const viaBuiltin = () => compute(1);
+    src/app/plain.ts: |
+      import { compute } from "path";
+      export const viaPlain = () => compute(1);
+  changed_files:
+    src/lib/core.ts: |
+      export function compute(x: number) {
+        return x + 2;
+      }
+  commit_message: "core: add two"
+expect:
+  changed: [src/lib/core.ts::compute]
+  relations:
+    - {from: "src/app/use.ts::useIt", to: "src/lib/core.ts::compute", kind: calls, resolution: candidate, site: 2}

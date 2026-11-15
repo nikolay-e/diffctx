@@ -1,0 +1,52 @@
+name: config_tests_reach_autouse_fixture_is_reached_by_the_tests_of_its_scope_only
+mode: impact
+source: synthetic
+tags: [python, pytest-fixture, autouse, tests-reach, framework-registration, decoy]
+repo:
+  initial_files:
+    conftest.py: |
+      import pytest
+
+
+      @pytest.fixture(autouse=True)
+      def frozen_clock(monkeypatch):
+          monkeypatch.setenv("TZ", "UTC")
+
+
+      @pytest.fixture
+      def plain_clock(monkeypatch):
+          monkeypatch.setenv("TZ", "UTC")
+    services/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture(autouse=True)
+      def service_env(monkeypatch):
+          monkeypatch.setenv("SERVICE", "test")
+    tests/test_report.py: |
+      def test_report_is_dated():
+          assert "2026" in "2026-11-11"
+  changed_files:
+    conftest.py: |
+      import pytest
+
+
+      @pytest.fixture(autouse=True)
+      def frozen_clock(monkeypatch):
+          monkeypatch.setenv("TZ", "Europe/Berlin")
+
+
+      @pytest.fixture
+      def plain_clock(monkeypatch):
+          monkeypatch.setenv("TZ", "Europe/Berlin")
+    services/conftest.py: |
+      import pytest
+
+
+      @pytest.fixture(autouse=True)
+      def service_env(monkeypatch):
+          monkeypatch.setenv("SERVICE", "staging")
+  commit_message: "conftest: clocks and the service in another zone"
+expect:
+  not_untested: [frozen_clock]
+  untested: [plain_clock, service_env]

@@ -1,0 +1,23 @@
+name: dart_changed_method_nothing_calls_is_not_modelled
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- no-grammar
+- dart
+repo:
+  initial_files:
+    lib/greeter.dart: |
+      class Greeter {
+        String hello(String name) => 'hi ' + name;
+      }
+  changed_files:
+    lib/greeter.dart: |
+      class Greeter {
+        String hello(String name) => 'hello ' + name;
+      }
+  commit_message: Change dart changed method nothing calls is not modelled
+expect:
+  discloses: true
+  no_negative_claims: true

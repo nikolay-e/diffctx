@@ -66,7 +66,7 @@ def test_a_budget_smaller_than_the_summary_yields_the_summary_alone(tmp_path):
     # Deliberate: a changed path is never dropped to fit, so the summary can
     # exceed a budget that cannot hold it — but nothing else is spent.
     assert not result.get("fragments")
-    assert len(result["changed_files"]) == FILE_COUNT
+    assert len(result["inventory"]["changed"]["items"]) == FILE_COUNT
     assert count_tokens(md) > 100
 
 
@@ -76,9 +76,9 @@ def test_the_changed_file_list_is_printed_once(tmp_path):
     # Without an actual omission there is no second list to find, and the
     # assertion below would hold on the pre-#241 build too.
     represented = {f["path"] for f in result.get("fragments") or []}
-    assert set(result["changed_files"]) - represented, "the budget must force at least one omission"
+    assert set(result["inventory"]["changed"]["items"]) - represented, "the budget must force at least one omission"
     assert "not represented in the output" not in md
-    for path in result["changed_files"]:
+    for path in result["inventory"]["changed"]["items"]:
         assert md.count(f"`{path}`") == 1, f"{path} appears more than once in the artifact"
 
 
@@ -111,6 +111,28 @@ def test_a_larger_budget_never_shows_less_of_the_change(tmp_path, fmt):
     assert shown == sorted(shown), shown
 
 
+def test_the_smallest_budget_keeps_the_change_whatever_the_commit_ids_are(tmp_path, monkeypatch):
+    """The artifact names commit ids, and an id costs 15 to 32 tokens by its
+    digits. A budget at the edge of the least answer was met or missed by the
+    clock the repository was created at: the same files represented the change
+    in one run and shed it in the next. The repositories below differ only in
+    their commit time."""
+    import pygit2
+
+    from tests.framework import pygit2_backend
+
+    unrepresented = []
+    for i in range(12):
+        monkeypatch.setattr(pygit2_backend, "_SIGNATURE", pygit2.Signature("Test", "test@test.com", 1_700_000_000 + 86_413 * i))
+        repo = _rewritten_list_repo(tmp_path / f"at_{i}")
+        doc = json.loads(
+            run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "600", "-f", "json", "-q"], cwd=repo.path).stdout
+        )
+        if [c["represented"] for c in doc["changes"]] != [True]:
+            unrepresented.append(i)
+    assert not unrepresented, f"repositories {unrepresented} lost the change at --budget 600"
+
+
 def test_budget_fitting_drops_context_whole_and_never_marks_it_as_the_change(tmp_path):
     repo = Pygit2Repo(tmp_path / "ctx")
     body = "".join(f"    acc_{i} = rows[{i}] * {i}\n" for i in range(120))
@@ -127,7 +149,7 @@ def test_budget_fitting_drops_context_whole_and_never_marks_it_as_the_change(tmp
     assert any(f["path"] == "lib/helpers.py" and len(f["content"].splitlines()) > 50 for f in context), context
 
     changed_tokens = sum(count_tokens(f["content"]) for f in tree["fragments"] if f.get("role") == "changed")
-    tree["provenance"]["selection"]["budget_tokens"] = count_tokens(json.dumps({**tree, "fragments": []})) + changed_tokens + 60
+    tree["fit"]["cap"] = count_tokens(json.dumps({**tree, "fragments": []})) + changed_tokens + 60
     fitted, _ = fit_artifact(tree, "json")
     for fragment in fitted["fragments"]:
         if fragment.get("role") != "changed":

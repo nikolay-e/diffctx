@@ -5,9 +5,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::selection::rescue;
 use crate::fragmentation::create_whole_file_fragment;
-use crate::git::CatFileBatch;
 use crate::graph::Graph;
 use crate::interval::IntervalIndex;
+use crate::source::Source;
 use crate::types::{Fragment, FragmentId};
 
 fn find_dangling_semantic_names(
@@ -102,7 +102,7 @@ fn pick_smallest_fitting(
     None
 }
 
-pub fn coherence_post_pass(
+pub(crate) fn coherence_post_pass(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     graph: &Graph,
@@ -178,7 +178,7 @@ fn compute_rescue_threshold(
     context_scores[idx.min(context_scores.len() - 1)]
 }
 
-pub fn rescue_nontrivial_context(
+pub(crate) fn rescue_nontrivial_context(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     rel_scores: &FxHashMap<FragmentId, f64>,
@@ -290,14 +290,13 @@ fn rescue_score(
         .fold(own, f64::max)
 }
 
-pub fn ensure_changed_files_represented(
+pub(crate) fn ensure_changed_files_represented(
     selected: &mut Vec<Fragment>,
     all_fragments: &[Fragment],
     changed_files: &[PathBuf],
     remaining_budget: u32,
     root_dir: &Path,
-    preferred_revs: &[String],
-    mut batch_reader: Option<&mut CatFileBatch>,
+    source: &Source,
     core_ids: &FxHashSet<FragmentId>,
     core_excerpts: &FxHashMap<FragmentId, Fragment>,
     stand_in_ids: &FxHashSet<FragmentId>,
@@ -347,12 +346,7 @@ pub fn ensure_changed_files_represented(
         let path_str = path.to_string_lossy().to_string();
         let candidates = frags_by_path.get(&path_str).cloned().unwrap_or_default();
         let candidates = if candidates.is_empty() {
-            match create_whole_file_fragment(
-                path,
-                root_dir,
-                preferred_revs,
-                batch_reader.as_deref_mut(),
-            ) {
+            match create_whole_file_fragment(path, root_dir, source) {
                 Some(f) => vec![f],
                 None => continue,
             }
@@ -427,8 +421,7 @@ mod tests {
             &changed_files,
             100,
             Path::new("."),
-            &[],
-            None,
+            &crate::source::Source::empty(),
             &core_ids,
             &FxHashMap::default(),
             &stand_in_ids,
@@ -508,8 +501,7 @@ mod tests {
             &changed_files,
             15,
             Path::new("."),
-            &[],
-            None,
+            &crate::source::Source::empty(),
             &core_ids,
             &FxHashMap::default(),
             &stand_in_ids,
@@ -565,8 +557,7 @@ mod tests {
                 &changed,
                 remaining,
                 Path::new("."),
-                &[],
-                None,
+                &crate::source::Source::empty(),
                 &core_ids,
                 &excerpts,
                 &FxHashSet::default(),

@@ -1,0 +1,49 @@
+name: config_k8s_an_edit_outside_the_labels_does_not_reach_the_selectors
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- selector
+- no-noise
+repo:
+  initial_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+    k8s/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+  changed_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+            serviceAccountName: runner
+  commit_message: Change config k8s an edit outside the labels does not reach the selectors
+expect:
+  relations: []
+  exact: true

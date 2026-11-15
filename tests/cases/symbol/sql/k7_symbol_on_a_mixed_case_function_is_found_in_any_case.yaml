@@ -1,0 +1,17 @@
+name: k7_symbol_on_a_mixed_case_function_is_found_in_any_case
+mode: symbol
+source: synthetic
+tags: [sql, symbol, case-insensitive, false-absence]
+repo:
+  initial_files:
+    db/functions/all.sql: |
+      CREATE OR REPLACE FUNCTION Net_Total(x numeric) RETURNS numeric AS $$ SELECT x * 1.0 $$ LANGUAGE sql;
+    db/migrations/003_tables.sql: |
+      CREATE TABLE orders (id serial, net numeric);
+      CREATE VIEW order_net AS SELECT NET_TOTAL(net) AS t FROM orders;
+query:
+  symbol: net_total
+expect:
+  exact: false
+  definitions: [db/functions/all.sql::net_total]
+  callers: {net_total: [db/migrations/003_tables.sql]}

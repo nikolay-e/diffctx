@@ -1896,9 +1896,9 @@
           return;
         }
         let out = "";
+        out += `<span class="yk">schema</span>: <span class="yv">diffctx.context.v2</span>\n`;
         out += `<span class="yk">name</span>: <span class="yv">toy-repo</span>\n`;
         out += `<span class="yk">type</span>: <span class="yv">diff_context</span>\n`;
-        out += `<span class="yk">fragment_count</span>: <span class="ys">${picked.length}</span>\n`;
         out += `<span class="yk">fragments</span>:\n`;
         picked.forEach((n) => {
           const cls = n.seed ? "yseed" : "ys";

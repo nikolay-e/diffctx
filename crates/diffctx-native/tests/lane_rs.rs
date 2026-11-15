@@ -9,7 +9,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, git};
+use support::{NO_WALL_DEADLINE, diffctx, git};
 
 const MANIFEST: (&str, &str) = (
     "Cargo.toml",
@@ -44,8 +44,10 @@ fn repo(steps: &[&[(&str, Option<&str>)]]) -> TempDir {
 fn run(repo: &Path, args: &[&str]) -> String {
     let out = diffctx()
         .current_dir(repo)
+        // The suite asserts relations, whatever the answer folds.
+        .arg("--unfold")
         .args(args)
-        .args(["-q", "--timeout", "600"])
+        .args(["-q", "--timeout", NO_WALL_DEADLINE])
         .output()
         .expect("run diffctx");
     assert!(
@@ -273,7 +275,7 @@ fn an_inline_test_is_a_test_link_not_an_untested_caller() {
     );
     let out = run(tmp.path(), &[".", "--symbol", "poll_current", "-f", "json"]);
     let doc: serde_json::Value = serde_json::from_str(&out).expect("json");
-    let mut guards: Vec<String> = doc["changed"][0]["callers"]
+    let mut guards: Vec<String> = doc["definitions"][0]["rows"]
         .as_array()
         .into_iter()
         .flatten()
@@ -281,8 +283,8 @@ fn an_inline_test_is_a_test_link_not_an_untested_caller() {
             format!(
                 "{} {} {}",
                 c["symbol"].as_str().unwrap_or(""),
-                c["tested_by"].as_str().unwrap_or("-"),
-                c["file_tested"].as_bool().unwrap_or(false)
+                c["guard"]["test"].as_str().unwrap_or("-"),
+                c["guard"]["state"] == "file_only"
             )
         })
         .collect();
@@ -429,12 +431,12 @@ fn a_definition_moved_in_a_split_is_not_removed() {
     };
     let expected = ["src/bindings.rs::helper", "src/bindings.rs::obsolete"];
     assert_eq!(
-        named(&doc["changed"], &|s| s["kind"] == "removed"),
+        named(&doc["definitions"], &|s| s["change"]["kind"] == "removed"),
         expected,
         "{out}"
     );
     assert_eq!(
-        named(&doc["contracts"], &|s| s["kind"] == "removed_api"),
+        named(&doc["contracts"]["items"], &|s| s["kind"] == "removed_api"),
         expected,
         "{out}"
     );
@@ -492,12 +494,12 @@ fn impact_json(repo: &Path) -> serde_json::Value {
 
 /// `path::symbol` of each caller of the changed (or removed) `symbol`.
 fn callers_of(doc: &serde_json::Value, symbol: &str, removed: bool) -> Vec<String> {
-    let mut found: Vec<String> = doc["changed"]
+    let mut found: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["symbol"] == symbol && (c["kind"] == "removed") == removed)
-        .flat_map(|c| c["callers"].as_array().cloned().unwrap_or_default())
+        .filter(|c| c["symbol"] == symbol && (c["change"]["kind"] == "removed") == removed)
+        .flat_map(|c| c["rows"].as_array().cloned().unwrap_or_default())
         .map(|c| {
             format!(
                 "{}::{}",
@@ -512,7 +514,7 @@ fn callers_of(doc: &serde_json::Value, symbol: &str, removed: bool) -> Vec<Strin
 
 /// `path::symbol` of every contract of `kind`.
 fn contracts(doc: &serde_json::Value, kind: &str) -> Vec<String> {
-    let mut found: Vec<String> = doc["contracts"]
+    let mut found: Vec<String> = doc["contracts"]["items"]
         .as_array()
         .into_iter()
         .flatten()
@@ -909,11 +911,11 @@ fn a_kotlin_removal_from_a_renamed_file_carries_the_base_path() {
         ],
     ]);
     let doc = impact_json(tmp.path());
-    let removed: Vec<String> = doc["changed"]
+    let removed: Vec<String> = doc["definitions"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["kind"] == "removed")
+        .filter(|c| c["change"]["kind"] == "removed")
         .map(|c| {
             format!(
                 "{}::{} {}",
@@ -1004,7 +1006,7 @@ fn a_function_passed_by_name_is_a_use_with_its_test_reach() {
         "{md}"
     );
     assert!(
-        md.contains("referenced from src/locate.rs::Output (1-83) — reachable from tests: tests/schema.rs via schema"),
+        md.contains("referenced from src/locate.rs::Output (1-83) — reachable from tests: tests/schema.rs::schema_is_sized via schema"),
         "{md}"
     );
     assert!(
@@ -1132,9 +1134,10 @@ fn a_method_moved_to_another_impl_of_its_type_is_no_removal() {
 }
 
 /// #599: a private item is named only in its module and the ones below
-/// it, so a file over the size cap elsewhere is no hedge on it. A file
-/// below its module keeps the hedge, and so does any file for a
-/// `pub(crate)` item.
+/// it, so a file over the size cap elsewhere is no hedge on it. The model
+/// that hedged files below the module and every file for a `pub(crate)` item
+/// is gone: the facts layer reads those files whole, so what they spell is a
+/// use or it is not, and nothing is left to hedge.
 #[test]
 fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
     let paths = |n: u32| {
@@ -1161,7 +1164,7 @@ fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
     ]);
     let doc = impact_json(tmp.path());
     let missed = |symbol: &str| -> Vec<String> {
-        let mut found: Vec<String> = doc["changed"]
+        let mut found: Vec<String> = doc["definitions"]
             .as_array()
             .into_iter()
             .flatten()
@@ -1172,9 +1175,21 @@ fn a_private_item_is_hedged_only_by_files_that_can_name_it() {
         found.sort();
         found
     };
+    // The facts layer reads both files over the cap whole: `.join(..)`, `.split(..)`
+    // and the word in a string are no use of a free function, so no file is a
+    // hedge on any of the three, however far its module is from the item.
     assert_eq!(missed("join"), [""; 0], "{doc:#}");
-    assert_eq!(missed("split"), ["src/paths/deep.rs"], "{doc:#}");
-    assert_eq!(missed("wide"), ["src/big.rs"], "{doc:#}");
+    assert_eq!(missed("split"), [""; 0], "{doc:#}");
+    assert_eq!(missed("wide"), [""; 0], "{doc:#}");
+    for symbol in ["join", "split", "wide"] {
+        let unresolved = doc["definitions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["symbol"] == symbol)
+            .any(|c| c.get("gaps").is_some());
+        assert!(!unresolved, "{symbol}: {doc:#}");
+    }
     assert_eq!(
         callers_of(&doc, "join", false),
         ["src/paths.rs::full"],

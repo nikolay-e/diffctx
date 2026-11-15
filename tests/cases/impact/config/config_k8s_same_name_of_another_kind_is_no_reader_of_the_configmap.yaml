@@ -1,0 +1,74 @@
+name: config_k8s_same_name_of_another_kind_is_no_reader_of_the_configmap
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- decoy
+- configmap
+repo:
+  initial_files:
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: db
+      data:
+        mode: fast
+    k8s/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db
+      spec:
+        port: 5432
+    k8s/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web
+      spec:
+        rules:
+          - http:
+              paths:
+                - path: /
+                  backend:
+                    service:
+                      name: db
+                      port:
+                        number: 5432
+    k8s/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                envFrom:
+                  - configMapRef:
+                      name: db
+  changed_files:
+    k8s/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: db
+      data:
+        mode: slow
+  commit_message: Change config k8s same name of another kind is no reader of the configmap
+expect:
+  relations:
+  - from: k8s/deployment.yaml
+    to: k8s/configmap.yaml
+    kind: reads
+    resolution: resolved
+    site: 12
+  exact: true
+  decoys:
+    k8s/configmap.yaml:
+    - k8s/ingress.yaml
+    - k8s/service.yaml

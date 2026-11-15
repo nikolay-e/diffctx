@@ -1,0 +1,250 @@
+//! `git grep` over a revision or the working tree: its tracked and unignored
+//! untracked files, as every other reader of the working tree lists them.
+//! Rows come back raw; which of their files the run may show is the caller's
+//! policy, applied where the rows are read.
+
+use std::path::Path;
+
+use regex::escape;
+
+use crate::snapshot::diff::validate_pathspec;
+use crate::snapshot::error::Result;
+use crate::snapshot::git::{Exec, git_command, refusal};
+use crate::snapshot::types::contains_lexically;
+
+/// One matching line: repo-relative path, line number, text.
+pub type Row = (String, u32, String);
+
+/// Needles sent to one `git grep` by [`needle_lines`] and [`word_lines`], and
+/// the bytes of them: tens of thousands of `-e` arguments overflow `ARG_MAX` and
+/// the whole search fails (#440).
+const NEEDLES_PER_CALL: usize = 50;
+const NEEDLE_BYTES_PER_CALL: usize = 32 * 1024;
+
+/// `git grep`'s stdout; exit 1 means "no match", which is an answer here, not
+/// a failure.
+fn run_grep(root: &Path, args: &[&str]) -> Result<String> {
+    let mut cmd = git_command(root);
+    cmd.args(args);
+    let exec = Exec::current();
+    let output = exec.output(cmd)?;
+    if output.status.code() == Some(1) && output.stderr.is_empty() {
+        return Ok(String::new());
+    }
+    if !output.status.success() {
+        return Err(refusal(args, &output));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// `git grep -n -z` at `rev` as rows. The working tree is its tracked and
+/// unignored untracked files: without `--untracked` a new file's own callers
+/// and tests were nowhere, and its definitions read as called by nothing
+/// (#625).
+fn rows(root: &Path, args: &[&str], rev: Option<&str>) -> Result<Vec<Row>> {
+    let prefix = match rev {
+        Some(r) => format!("{r}:"),
+        None => String::new(),
+    };
+    let mut args = args.to_vec();
+    if rev.is_none() {
+        args.insert(1, "--untracked");
+    }
+    Ok(run_grep(root, &args)?
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, '\0');
+            let path = parts.next()?;
+            let path = path.strip_prefix(prefix.as_str()).unwrap_or(path);
+            let Ok(no) = parts.next()?.parse::<u32>() else {
+                return None;
+            };
+            Some((path.to_string(), no, parts.next()?.to_string()))
+        })
+        .collect())
+}
+
+/// Every line matching the extended regex `pattern` at `rev` (the working tree
+/// when `None`) in the files `pathspec` names.
+pub fn lines_matching(
+    root: &Path,
+    pattern: &str,
+    rev: Option<&str>,
+    pathspec: &[&str],
+) -> Result<Vec<Row>> {
+    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-E", "-e", pattern];
+    args.extend(rev);
+    if !pathspec.is_empty() {
+        args.push("--");
+        args.extend_from_slice(pathspec);
+    }
+    rows(root, &args, rev)
+}
+
+/// The files (repo-relative, inside the repository) tracked or untracked and
+/// unignored that hold a line `pattern` selects.
+fn files(root: &Path, pattern: &[&str], pathspec: &[String]) -> Result<Vec<String>> {
+    let mut args: Vec<&str> = vec!["grep", "--untracked", "-l", "-z", "-I"];
+    args.extend_from_slice(pattern);
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    Ok(run_grep(root, &args)?
+        .split('\0')
+        .filter(|p| !p.is_empty() && contains_lexically(Path::new(p)))
+        .map(str::to_string)
+        .collect())
+}
+
+/// Tracked and unignored untracked files holding `word` as a whole word.
+pub fn files_with_word(root: &Path, word: &str, pathspec: &[String]) -> Result<Vec<String>> {
+    files(root, &["-w", "-F", "-e", word], pathspec)
+}
+
+/// The files holding `word` as a whole word in any case.
+pub fn files_with_word_any_case(
+    root: &Path,
+    word: &str,
+    pathspec: &[String],
+) -> Result<Vec<String>> {
+    files(root, &["-w", "-F", "-i", "-e", word], pathspec)
+}
+
+/// The files with a line that declares `name`: `def name`, `class name`,
+/// `fn name`, `func (r T) name`, `const name =`, `name = function`.
+pub fn files_with_declaration(root: &Path, name: &str, pathspec: &[String]) -> Result<Vec<String>> {
+    let name = escape(name);
+    let pattern = format!(
+        r#"((def|class|fn|fun|func|function|struct|interface|trait|enum|type|typealias|module|const|let|var|val|object|define)[[:space:]]+(\([^)]*\)[[:space:]]*)?["']?{name}([^[:alnum:]_$]|$))|((^|[^[:alnum:]_$.]){name}[[:space:]]*[:=][[:space:]]*(function|async|\())"#
+    );
+    files(root, &["-E", "-e", &pattern], pathspec)
+}
+
+/// Lines of the files `globs` select at `rev` that hold one of `words` as a
+/// whole word, at most `per_file` per file: where a removed definition's
+/// callers are read from. Unbounded, `-F -e call` matched every `callback` in
+/// every data file of a monorepo and the run never stopped (#413, #457).
+///
+/// Searched in chunks, as [`needle_lines`] does: one `-F -w` search over tens
+/// of thousands of names ran for hours, and orphaned when its run was killed
+/// (fj#211). `more` is asked before each chunk; past the run's deadline the
+/// rows found are the answer.
+pub fn word_lines(
+    root: &Path,
+    words: &[String],
+    rev: Option<&str>,
+    per_file: usize,
+    globs: &[String],
+    more: &dyn Fn() -> bool,
+) -> Result<Vec<Row>> {
+    let per_file_arg = per_file.to_string();
+    let mut found = Vec::new();
+    for chunk in chunks(words) {
+        if chunk.iter().all(String::is_empty) {
+            continue;
+        }
+        if !more() {
+            break;
+        }
+        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F", "-w", "-m", &per_file_arg];
+        args.extend(patterns(chunk));
+        args.extend(rev);
+        args.push("--");
+        args.extend(globs.iter().map(String::as_str));
+        found.extend(rows(root, &args, rev)?);
+    }
+    found.sort_unstable();
+    found.dedup();
+    // `-m` bounds each chunk's search: the chunks together may hold more.
+    let mut kept_for: Option<String> = None;
+    let mut kept = 0;
+    found.retain(|(path, _, _)| {
+        if kept_for.as_deref() != Some(path.as_str()) {
+            kept_for = Some(path.clone());
+            kept = 0;
+        }
+        kept += 1;
+        kept <= per_file
+    });
+    Ok(found)
+}
+
+/// The first line of each file that holds `word` as a whole word, in the
+/// working tree: where a name nothing defines is spelled.
+pub fn word_first_lines(root: &Path, word: &str, pathspec: &[String]) -> Result<Vec<Row>> {
+    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F", "-w", "-m", "1", "-e", word];
+    if !pathspec.is_empty() {
+        validate_pathspec(pathspec)?;
+        args.push("--");
+        args.extend(pathspec.iter().map(String::as_str));
+    }
+    rows(root, &args, None)
+}
+
+/// Every line holding one of `needles` (fixed strings) at `rev`, or in the
+/// working tree when `rev` is `None`, sorted by path then line.
+///
+/// One `-F` search over a thousand needles costs more than twenty over fifty:
+/// git's matcher is superlinear in the needle count (540 CPU seconds for 1150
+/// needles on a 387-file range). Chunked, a line that holds needles of two
+/// chunks comes back twice and is kept once. `more` is asked before each
+/// chunk: past the run's deadline the rows found are the answer, and the run
+/// says it is partial.
+pub fn needle_lines(
+    root: &Path,
+    needles: &[String],
+    rev: Option<&str>,
+    more: &dyn Fn() -> bool,
+) -> Result<Vec<Row>> {
+    let mut found = Vec::new();
+    for chunk in chunks(needles) {
+        if chunk.iter().all(String::is_empty) {
+            continue;
+        }
+        if !more() {
+            break;
+        }
+        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
+        args.extend(patterns(chunk));
+        args.extend(rev);
+        found.extend(rows(root, &args, rev)?);
+    }
+    found.sort_unstable();
+    found.dedup();
+    Ok(found)
+}
+
+/// The needles in runs one search takes. They go as `-e` arguments: a pattern
+/// file would outlive a run that is killed (fj#211).
+fn chunks(needles: &[String]) -> impl Iterator<Item = &[String]> {
+    let mut rest = needles;
+    std::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let mut bytes = 0;
+        let taken = rest
+            .iter()
+            .take(NEEDLES_PER_CALL)
+            .take_while(|needle| {
+                bytes += needle.len();
+                bytes <= NEEDLE_BYTES_PER_CALL
+            })
+            .count()
+            .max(1);
+        let (chunk, tail) = rest.split_at(taken);
+        rest = tail;
+        Some(chunk)
+    })
+}
+
+/// `-e` per pattern. An empty pattern would match every line.
+fn patterns(chunk: &[String]) -> impl Iterator<Item = &str> {
+    chunk
+        .iter()
+        .map(String::as_str)
+        .filter(|w| !w.is_empty())
+        .flat_map(|w| ["-e", w])
+}

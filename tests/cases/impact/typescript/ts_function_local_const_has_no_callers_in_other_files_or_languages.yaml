@@ -1,0 +1,45 @@
+name: ts_function_local_const_has_no_callers_in_other_files_or_languages
+mode: impact
+source: gh#491
+issue_state: closed
+tags: [typescript, local-binding, cross-language, decoy]
+repo:
+  initial_files:
+    tests/e2e/feature.spec.ts: |
+      import { test, expect } from '@playwright/test';
+
+      test('lists the stems', async ({ page }) => {
+        const stems = () => page.evaluate(() => document.title);
+        expect(await stems()).toBe('a');
+      });
+    service/app.py: |
+      def stems(text):
+          return text.split()
+
+
+      def run(text):
+          return stems(text)
+    service/tests/test_stems.py: |
+      from service.app import stems
+
+
+      def test_stems():
+          assert stems("a b") == ["a", "b"]
+    worker/Worker.kt: |
+      class Worker {
+          fun stems(text: String): List<String> = text.split(" ")
+      }
+  changed_files:
+    tests/e2e/feature.spec.ts: |
+      import { test, expect } from '@playwright/test';
+
+      test('lists the stems', async ({ page }) => {
+        const stems = () => page.evaluate(() => document.title.trim());
+        expect(await stems()).toBe('a');
+      });
+  commit_message: "e2e: trim the title"
+expect:
+  callers:
+    stems: []
+  decoys:
+    stems: [service/app.py, service/tests/test_stems.py, worker/Worker.kt]

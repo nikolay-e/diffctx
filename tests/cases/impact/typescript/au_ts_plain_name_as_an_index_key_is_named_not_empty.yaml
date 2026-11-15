@@ -1,0 +1,37 @@
+name: au_ts_plain_name_as_an_index_key_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [typescript, au-literal, literal-name, short-name]
+repo:
+  initial_files:
+    src/pricing.ts: |
+      export function total(items: number[]): number {
+        return items.length;
+      }
+
+      export function run(items: number[]): number {
+        return items.length;
+      }
+    src/dispatch.ts: |
+      import * as pricing from "./pricing";
+
+      export function go(items: number[]) {
+        const obj: any = pricing;
+        return [obj["total"](items), obj["run"](items)];
+      }
+  changed_files:
+    src/pricing.ts: |
+      export function total(items: number[]): number {
+        return items.length + 1;
+      }
+
+      export function run(items: number[]): number {
+        return items.length + 1;
+      }
+  commit_message: "pricing: both add one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {total: {calls: partial}, run: {calls: partial}}

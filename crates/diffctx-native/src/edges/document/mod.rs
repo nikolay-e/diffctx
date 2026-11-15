@@ -31,7 +31,7 @@ fn is_document_fragment(kind: FragmentKind) -> bool {
     matches!(kind, FragmentKind::Section | FragmentKind::Chunk)
 }
 
-pub struct DocumentStructureEdgeBuilder;
+struct DocumentStructureEdgeBuilder;
 
 impl EdgeBuilder for DocumentStructureEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -58,7 +58,7 @@ impl EdgeBuilder for DocumentStructureEdgeBuilder {
     }
 }
 
-pub struct AnchorLinkEdgeBuilder;
+struct AnchorLinkEdgeBuilder;
 
 impl AnchorLinkEdgeBuilder {
     fn build_anchor_index<'a>(
@@ -103,7 +103,7 @@ impl EdgeBuilder for AnchorLinkEdgeBuilder {
     }
 }
 
-pub struct CitationEdgeBuilder;
+struct CitationEdgeBuilder;
 
 impl EdgeBuilder for CitationEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
@@ -144,7 +144,7 @@ impl EdgeBuilder for CitationEdgeBuilder {
     }
 }
 
-pub fn get_document_builders() -> Vec<Box<dyn EdgeBuilder>> {
+pub(crate) fn get_document_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![
         Box::new(DocumentStructureEdgeBuilder),
         Box::new(AnchorLinkEdgeBuilder),

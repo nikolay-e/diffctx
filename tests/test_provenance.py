@@ -10,6 +10,8 @@ import os
 import subprocess
 import sys
 
+from packaging.version import Version
+
 import diffctx
 from tests.framework.pygit2_backend import Pygit2Repo
 
@@ -28,9 +30,9 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     repo = _repo(tmp_path)
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", budget_tokens=4000)
     prov = result["provenance"]
-    assert prov["schema"] == "diffctx.provenance.v1"
+    assert prov["schema"] == "diffctx.provenance.v2"
     assert prov["engine"]["name"] == "diffctx"
-    assert prov["engine"]["version"] == diffctx.__version__
+    assert Version(prov["engine"]["version"]) == Version(diffctx.__version__)
     assert len(prov["effective_config_hash"]) == 16
     assert "effective_config" not in prov, "the ~500-token record is opt-in; the hash travels always"
     assert prov["selection"]["budget_tokens"] == 4000
@@ -40,6 +42,7 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     assert prov["input"]["working_tree"] is True
     assert len(prov["input"]["base"]) == 40
     assert "head" not in prov["input"]
+    assert "diff_range" not in prov["input"], "the range is named once, by `range.spec`"
     committed = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1..HEAD")["provenance"]["input"]
     assert committed["working_tree"] is False
     assert committed["base"] == prov["input"]["base"]

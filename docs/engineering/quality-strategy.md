@@ -57,7 +57,7 @@ diffctx --diff -f yaml                         # working tree vs HEAD
 - Format flag is `-f / --format`, NOT `--output-format`.
 - Empty-diff result (docs-only, binary-only, clean tree, `--budget 0`)
   is **rc=4** plus a skeleton carrying the commit message and
-  `changed_files` — the actionable-error contract, not a regression.
+  `inventory.changed` — the actionable-error contract, not a regression.
   If the skeleton ever shrinks to name/type only, look at
   `_has_diff_metadata` in `writer.py`.
 
@@ -79,7 +79,7 @@ locale edits, symbol-edge byte-share) are catalogued on the issue —
 comment there, do not re-file.
 
 **Confirmed-correct shapes (don't re-file):** deletion-only diffs emit
-no `fragments:` but a populated `deleted_files:` list — correct, not
+no `fragments:` but a populated `inventory.deleted` list — correct, not
 lost signal. Binary-only diffs (all `-\t-` in `git diff --numstat`)
 correctly exit 4.
 
@@ -118,7 +118,7 @@ diffctx . --diff HEAD~1 --timeout 200
   Verify against the dev binary before reopening #70 (closed).
 - Bash-tool timeout must exceed the watchdog (pass `timeout: 260000`
   for a 200s `--timeout`), or rc=143 masquerades as a mystery kill.
-- Per repo judge: no panic/hang; `changed_files` matches
+- Per repo judge: no panic/hang; `inventory.changed` matches
   `git diff --stat`; no gross over-selection (measure as above); no
   secret/garbage leakage; reasonable time. On any non-empty diff assert
   at least one changed-role fragment.
@@ -240,7 +240,7 @@ publication, so `update-packaging-manifests` is a real publishing job
 and must not carry `continue-on-error`.
 
 `channel-parity.yml` (weekly, or `gh workflow run channel-parity.yml`)
-compares every channel against `src/diffctx/version.py`, fetches each release
+compares every channel against the last release (`server.json`), fetches each release
 asset unauthenticated (a drafted release 404s there while `gh release download`
 still succeeds) and opens or refreshes one issue on drift. A release QA pass
 still verifies every live channel by INSTALLING it:

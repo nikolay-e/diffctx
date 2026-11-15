@@ -14,10 +14,6 @@ impl EdgeWeightConfig {
             reverse_factor,
         }
     }
-
-    pub fn reverse(&self) -> f64 {
-        self.forward * self.reverse_factor
-    }
 }
 
 pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy::new(|| {
@@ -27,7 +23,7 @@ pub static EDGE_WEIGHTS: Lazy<FxHashMap<&'static str, EdgeWeightConfig>> = Lazy:
         ("test_naming", EdgeWeightConfig::new(0.50, 0.50)),
         ("test_reverse", EdgeWeightConfig::new(0.30, 1.0)),
         ("config_code", EdgeWeightConfig::new(0.35, 0.50)),
-        // The typed key table (`edges/config_edges/keys.rs`). Both start at
+        // The typed key table (`keytable/mod.rs`). Both start at
         // the config-to-code weight; the weak image key, which drops the
         // registry, sits below the naming floor. Calibration is v3 C1 (#246).
         ("config_env", EdgeWeightConfig::new(0.35, 0.50)),

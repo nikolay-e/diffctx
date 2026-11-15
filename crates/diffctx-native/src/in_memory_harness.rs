@@ -73,15 +73,72 @@ fn final_state_fragments(repo: &MemoryRepo) -> Vec<Fragment> {
     fragments
 }
 
+/// The final tree written to a temporary repository, so the cells that read a
+/// snapshot (the ranking graph's edges for the languages that have one) have one
+/// to read. Removed on drop. A repository that cannot be made leaves the harness
+/// as it was: no root, and no cell edges.
+struct TempTree {
+    root: PathBuf,
+}
+
+impl TempTree {
+    fn write(files: &FxHashMap<String, String>) -> Option<Self> {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "diffctx-memory-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).ok()?;
+        let tree = Self { root };
+        for (path, content) in files {
+            let at = tree.root.join(path);
+            std::fs::create_dir_all(at.parent()?).ok()?;
+            std::fs::write(at, content).ok()?;
+        }
+        let git = |args: &[&str]| {
+            crate::snapshot::git_command(&tree.root)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .is_ok_and(|out| out.status.success())
+        };
+        (git(&["init", "-q"])
+            && git(&["add", "-A"])
+            && git(&[
+                "-c",
+                "user.name=memory",
+                "-c",
+                "user.email=memory@localhost",
+                "commit",
+                "-q",
+                "-m",
+                "tree",
+            ]))
+        .then_some(tree)
+    }
+}
+
+impl Drop for TempTree {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 /// Every cross-file edge `collect_capped_edges` keeps over the files of the
 /// repository after the change — the whole final tree, not the discovery
 /// universe of one run, so a link is measured whether or not a given diff
 /// would have admitted its endpoint. Selection is untouched.
 pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
     let fragments = final_state_fragments(repo);
+    let tree = TempTree::write(&merge_file_contents(
+        &repo.initial_files,
+        &repo.changed_files,
+    ));
     let capped = crate::edges::collect_capped_edges(
         &fragments,
-        None,
+        tree.as_ref().map(|t| t.root.as_path()),
         false,
         &crate::resource::RunContext::unbounded(),
     );
@@ -125,7 +182,7 @@ pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
         &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
     ));
     let _in_run = run.enter();
-    let mut links: Vec<TypedKeyLink> = crate::edges::config_edges::typed_links(&fragments, None)
+    let mut links: Vec<TypedKeyLink> = crate::keytable::typed_links(&fragments, None)
         .into_iter()
         .map(|l| TypedKeyLink {
             kind: l.kind,
@@ -182,15 +239,17 @@ pub fn build_diff_context_in_memory(
         crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
             .into_iter()
             .collect();
+    let tree = TempTree::write(&all_files);
+    let tree_root = tree.as_ref().map(|t| t.root.clone());
     let discovery_ctx = crate::discovery::DiscoveryContext {
-        root_dir: PathBuf::from("."),
+        root_dir: tree_root.clone().unwrap_or_else(|| PathBuf::from(".")),
         changed_files: changed_file_paths.clone(),
         all_candidates: all_file_paths.clone(),
         diff_text: diff_text.clone(),
         expansion_concepts,
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
-        source: crate::source::Source::default(),
+        source: crate::source::Source::empty(),
         run: run.clone(),
     };
     let (discovered, _attribution) =
@@ -243,7 +302,7 @@ pub fn build_diff_context_in_memory(
         &hunks,
         &diff_text,
         &config,
-        None,
+        tree_root.as_deref(),
         &discovered_arc,
         &run,
     );
@@ -258,7 +317,7 @@ pub fn build_diff_context_in_memory(
     let dummy_root = Path::new(".");
     let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     changed_files.sort();
-    let mut hunk_texts = crate::change_class::hunk_texts(&diff_text);
+    let mut hunk_texts = crate::changed_lines::hunk_texts(&diff_text);
     for runs in hunk_texts.chunk_by_mut(|a, b| a.path == b.path) {
         let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
         crate::change_class::settle_layout(runs, text);
@@ -270,8 +329,11 @@ pub fn build_diff_context_in_memory(
         &hunk_texts,
         &all_fragments,
     );
-    let fragmentless =
-        crate::pipeline::fragmentless_changed_files(dummy_root, &changed_files, &all_fragments);
+    let fragmentless = crate::run_provenance::state::fragmentless_changed_files(
+        dummy_root,
+        &changed_files,
+        &all_fragments,
+    );
 
     let crate::pipeline::PostpassOutcome {
         mut selected,
@@ -298,8 +360,7 @@ pub fn build_diff_context_in_memory(
         &changed_files,
         remaining,
         Path::new("."),
-        &[],
-        None,
+        &crate::source::Source::empty(),
         &core_ids,
         &FxHashMap::default(),
         &stand_in_ids,
@@ -308,6 +369,8 @@ pub fn build_diff_context_in_memory(
     let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
     changed_list.sort();
     let change = crate::render::ChangeSummary {
+        range_spec: None,
+        index_tree: None,
         lockfile_changes: Vec::new(),
         ignored_changes: Vec::new(),
         policy_excluded_count: 0,
@@ -517,7 +580,7 @@ mod tests {
 
         // `--no-index` needs no repository and emits exactly the header and
         // hunk syntax `parse_diff` consumes in production.
-        let output = std::process::Command::new("git")
+        let output = crate::snapshot::git_command(tmp.path())
             .args([
                 "diff",
                 "--no-index",
@@ -526,11 +589,10 @@ mod tests {
                 "old.py",
                 "new.py",
             ])
-            .current_dir(tmp.path())
             .output()
             .expect("git diff --no-index");
         let diff_text = String::from_utf8_lossy(&output.stdout);
-        let from_git = crate::git::parse_hunks_from_diff_output(&diff_text, tmp.path());
+        let from_git = crate::diff_parse::parse_hunks_from_diff_output(&diff_text, tmp.path());
         assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
 
         let path: Arc<str> = Arc::from("f.py");

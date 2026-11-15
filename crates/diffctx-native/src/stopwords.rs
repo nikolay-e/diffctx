@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
 use crate::config::extensions::{CODE_EXTENSIONS, DOC_EXTENSIONS};
+use crate::languages::file_ext;
 
 fn set_from_list(list: &str) -> FxHashSet<String> {
     list.split_ascii_whitespace().map(str::to_string).collect()
@@ -12,21 +13,21 @@ fn set_from_list(list: &str) -> FxHashSet<String> {
 // lines here. They are unioned into a set, so their order and any duplicate
 // across the old three-way code split are unobservable — which is what makes
 // the move to a flat file bit-equivalent.
-pub static CODE_STOPWORDS: Lazy<FxHashSet<String>> =
+pub(crate) static CODE_STOPWORDS: Lazy<FxHashSet<String>> =
     Lazy::new(|| set_from_list(include_str!("stopwords/code.txt")));
 
 static DOCS_STOPWORDS: Lazy<FxHashSet<String>> =
     Lazy::new(|| set_from_list(include_str!("stopwords/docs.txt")));
 
-pub const PROFILE_CODE: &str = "code";
-pub const PROFILE_DOCS: &str = "docs";
-pub const PROFILE_LEGAL: &str = "legal";
-pub const PROFILE_DATA: &str = "data";
-pub const PROFILE_GENERIC: &str = "generic";
+const PROFILE_CODE: &str = "code";
+const PROFILE_DOCS: &str = "docs";
+const PROFILE_LEGAL: &str = "legal";
+const PROFILE_DATA: &str = "data";
+const PROFILE_GENERIC: &str = "generic";
 
 static EMPTY_STOPWORDS: Lazy<FxHashSet<String>> = Lazy::new(FxHashSet::default);
 
-pub fn get_stopwords(profile: &str) -> &FxHashSet<String> {
+fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     match profile {
         PROFILE_CODE | PROFILE_GENERIC => &CODE_STOPWORDS,
         PROFILE_DOCS | PROFILE_LEGAL => &DOCS_STOPWORDS,
@@ -35,12 +36,9 @@ pub fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     }
 }
 
-pub fn profile_from_path(path: &str) -> &'static str {
+pub(crate) fn profile_from_path(path: &str) -> &'static str {
     let p = std::path::Path::new(path);
-    let suffix = p
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
+    let suffix = file_ext(p);
     let name_lower = p
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
@@ -88,7 +86,7 @@ pub fn profile_from_path(path: &str) -> &'static str {
     PROFILE_GENERIC
 }
 
-pub fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
+fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
     if ident.is_empty() || ident.len() < min_len {
         return false;
     }
@@ -103,7 +101,7 @@ pub fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
     true
 }
 
-pub fn filter_idents(idents: &[String], min_len: usize, profile: &str) -> Vec<String> {
+pub(crate) fn filter_idents(idents: &[String], min_len: usize, profile: &str) -> Vec<String> {
     idents
         .iter()
         .filter(|s| is_reasonable_ident(s, min_len, profile))
