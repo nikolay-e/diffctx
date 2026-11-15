@@ -1,7 +1,7 @@
 # pyproject.toml
 [build-system]
 build-backend = "maturin"
-requires = [ "maturin>=1.10,<1.16" ]
+requires = [ "maturin>=1.16,<1.17" ]
 
 [project]
 name = "diffctx"
@@ -101,7 +101,7 @@ scripts.diffctx-mcp = "diffctx.mcp.launch:main"
 eval = [
   "charset-normalizer>=3.0,<4.0",
   "datasets>=5.0.1,<6.0",
-  "huggingface-hub>=2.3,<2.4",
+  "huggingface-hub>=2.4,<2.5",
   "numpy>=2.2.6,<3.0",
   "pathspec>=0.11,<2.0",
   "pebble>=5.2.1,<6.0",
