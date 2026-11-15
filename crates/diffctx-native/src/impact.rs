@@ -5764,11 +5764,13 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         return true;
     }
     // A removed or changed contract is a break the reader must see; only the
-    // public API the range merely touches is context (#663).
-    if output
-        .contracts
-        .last()
-        .is_some_and(|c| c.kind == "public_api")
+    // public API the range merely touches is context (#663). The first stays:
+    // a heading over a count alone names no contract (fj#219).
+    if output.contracts.len() > 1
+        && output
+            .contracts
+            .last()
+            .is_some_and(|c| c.kind == "public_api")
     {
         output.contracts.pop();
         output.contracts_omitted += 1;
@@ -5822,16 +5824,6 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     // test reaches, the omitted entry its definitions and callers, so their
     // names go only when nothing else can, and the answer still fits.
     if output.untested_called_in_diff.pop().is_some() || output.untested_unlisted.pop().is_some() {
-        return true;
-    }
-    // The first shed name outranks a contracts line that only counts: which
-    // definition the answer is silent about is worth more than "and N more".
-    // Without an entry to carry a name the count is all there is to say.
-    if output.contracts.is_empty()
-        && output.contracts_omitted > 0
-        && output.changed.iter().any(is_omitted)
-    {
-        output.contracts_omitted = 0;
         return true;
     }
     false
