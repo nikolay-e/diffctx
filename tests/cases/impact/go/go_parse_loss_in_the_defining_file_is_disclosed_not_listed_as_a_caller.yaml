@@ -41,3 +41,7 @@ expect:
     p.go::F:
       calls: partial
   discloses: true
+  partial:
+    p.go::F:
+      calls: unaccounted
+      reads: unaccounted

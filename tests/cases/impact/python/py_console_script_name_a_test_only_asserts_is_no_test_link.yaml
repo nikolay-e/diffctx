@@ -33,3 +33,7 @@ expect:
   - tool/cli.py::main
   untested:
   - main
+  partial:
+    tool/cli.py::main:
+      calls: unaccounted
+      reads: unaccounted

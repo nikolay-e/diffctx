@@ -81,3 +81,6 @@ expect:
     visitFile: []
   not_untested:
   - visitFile
+  partial:
+    src/main/kotlin/scan/LibraryScanner.kt::LibraryScanner.Collector.visitFile:
+      calls: not_traced

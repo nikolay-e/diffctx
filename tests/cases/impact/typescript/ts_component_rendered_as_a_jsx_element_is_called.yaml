@@ -52,3 +52,6 @@ expect:
       kind: "passes_as_value"
       resolution: "resolved"
       site: 9
+  partial:
+    src/tooltips.ts::renderCompactTooltip:
+      calls: not_traced

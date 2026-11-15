@@ -44,3 +44,6 @@ expect:
   coverage:
     scripts/rank.py::score:
       calls: partial
+  partial:
+    scripts/rank.py::score:
+      calls: not_traced

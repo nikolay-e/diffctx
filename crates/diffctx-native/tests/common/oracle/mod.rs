@@ -48,6 +48,9 @@ pub(crate) fn assertion_failed(details: impl std::fmt::Display) -> libtest_mimic
 /// sets the report's state once the baseline has been consulted, then records it.
 pub(crate) struct Outcome {
     pub failures: Vec<String>,
+    /// What the coverage gate found; empty under a released binary, whose
+    /// answers carry no coverage.
+    pub hedges: Vec<String>,
     pub disputed: bool,
     pub report: report::CaseReport,
 }
@@ -76,14 +79,21 @@ pub(crate) fn evaluate(
     if case.dispute.is_some() {
         return Ok(Outcome {
             failures: Vec::new(),
+            hedges: Vec::new(),
             disputed: true,
             report: report::CaseReport::new(name, &case, language),
         });
     }
     let answer = engine::run(&case, name)?;
     let (failures, report) = judge::judge(name, &case, &compiled, language, &answer);
+    let hedges = if std::env::var_os("DIFFCTX_BIN").is_some() {
+        Vec::new()
+    } else {
+        judge::gate(&case, &compiled, &answer)
+    };
     Ok(Outcome {
         failures,
+        hedges,
         disputed: false,
         report,
     })

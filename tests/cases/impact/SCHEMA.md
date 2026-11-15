@@ -159,8 +159,21 @@ Everything is optional; an absent field asserts nothing.
   path.
 - `coverage` per (target, relation kind): `complete` holds when the answer
   names no unknown, gap, limit or unanalysed file for the target (and, for
-  `tests_reach`, tests are in view); `partial` otherwise. The engine has no
-  per-relation coverage yet, so the kind picks only the test rule.
+  `tests_reach`, tests are in view); `partial` otherwise. This is the coarse
+  check: the kind picks only the test rule. `partial` below reads the answer's
+  own `coverage.calls` and `coverage.reads`.
+- The coverage gate: in an `exact` case every subject definition (impact: a
+  `changed` entry, symbol: a `definitions` entry, in both the target of a listed
+  code relation or `callers` key) must have `calls` and `reads` complete, ignoring
+  gaps whose every site lies in a file the case lists as the `from` of a candidate
+  or unresolved relation. A hedge the answer honestly keeps is declared:
+  `partial: {<definition>: {<calls|reads|...>: <gap kind or [kinds]>}}`. The kind
+  picks the group (`calls`, `instantiates`, `overrides` -> `calls`; `reads`,
+  `writes`, `passes_as_value` -> `reads`); the answer must name exactly the declared
+  gap kinds there (`not_traced`, `unlanded`, `unaccounted`, `macros`, `dispatched`,
+  `source_flag`, `external_source`, ...). A declared hedge the answer does not name
+  fails, and so does one on a group the answer calls complete. Not applied under
+  `DIFFCTX_BIN`, whose answers carry no coverage.
 - `stale`, `named_by`, `contracts` and their `not_` forms are membership of
   paths in the answer's `stale_references`, `named_by` and `contracts`; for
   exact sets use `relations`.
@@ -196,13 +209,19 @@ case that passes fails. A case that does not parse or build is an error
 whatever the baseline says. A `dispute:` case is skipped and reported as
 `disputed`.
 
+`crates/diffctx-native/tests/known_false_hedges.txt` lists, in the same form and
+enforced both ways, the cases whose answer hedges a definition the case proves
+resolved: each is an engine defect (the letter after `#` names the mechanism), never
+a hedge to declare under `partial:`.
+
 ## Report
 
 `DIFFCTX_ORACLE_REPORT=<path>` writes
 `{"schema": "diffctx.oracle-report.v1", "cases": [...]}`: per case the mode,
 language, source, issue state, tags, state (`pass`, `fail`, `baselined_red`,
-`stale_baseline`, `disputed`), per-target TP/FP/FN by relation, the unknowns
-named, `empty`, `disclosed`, absence claims, kind mismatches and failures.
+`stale_baseline`, `false_hedge`, `stale_false_hedge`, `disputed`), per-target
+TP/FP/FN by relation, the unknowns named, `empty`, `disclosed`, absence
+claims, kind mismatches and failures.
 
 ## Dump
 

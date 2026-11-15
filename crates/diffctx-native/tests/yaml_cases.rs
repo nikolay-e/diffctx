@@ -387,6 +387,28 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
     })
 }
 
+/// `known_false_hedges.txt`: cases whose answer hedges a definition the case
+/// proves is fully resolved (the coverage gate). Bidirectional like the
+/// baseline above; a released binary (`DIFFCTX_BIN`) is judged by its own corpus.
+fn known_false_hedges() -> &'static std::collections::BTreeSet<String> {
+    static LIST: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    LIST.get_or_init(|| {
+        if std::env::var("DIFFCTX_YAML_IGNORE_BASELINE").is_ok() {
+            return std::collections::BTreeSet::new();
+        }
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("known_false_hedges.txt");
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+        raw.lines()
+            .map(|line| line.split_once('#').map_or(line, |(name, _)| name).trim())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+}
+
 /// The gate runs the SHIPPED default and nothing else — see the header of
 /// `known_below_threshold.txt` for why that matters (#175: three harnesses each
 /// scored a private tau nobody ships).
@@ -744,6 +766,27 @@ fn run_oracle_case(
             "fail",
             Err(oracle::assertion_failed(outcome.failures.join("\n\n"))),
         ),
+    };
+    let (state, verdict) = if verdict.is_ok() {
+        let hedged = !outcome.hedges.is_empty();
+        match (hedged, known_false_hedges().contains(case_name)) {
+            (false, false) => (state, verdict),
+            (true, true) => ("false_hedge", Ok(())),
+            (false, true) => (
+                "stale_false_hedge",
+                Err(Failed::from(
+                    "case no longer hedges falsely but is still listed in \
+                     tests/known_false_hedges.txt — remove it from that file, otherwise a \
+                     future false hedge here would be silently absorbed",
+                )),
+            ),
+            (true, false) => (
+                "fail",
+                Err(oracle::assertion_failed(outcome.hedges.join("\n\n"))),
+            ),
+        }
+    } else {
+        (state, verdict)
     };
     outcome.report.state = state;
     oracle::report::record(outcome.report);

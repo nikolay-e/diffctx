@@ -49,3 +49,6 @@ expect:
     - {from: "net/client.py::send", to: "net/models.py::Request", kind: instantiates, resolution: resolved, site: 5}
   decoys:
     net/models.py::Request: [net/client.py::receive, tests/test_responses.py]
+  partial:
+    net/models.py::Request:
+      calls: not_traced

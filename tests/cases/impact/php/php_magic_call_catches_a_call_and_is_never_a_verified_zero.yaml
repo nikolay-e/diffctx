@@ -52,3 +52,6 @@ expect:
   - src/Real.php::Real.boo
   discloses: true
   no_negative_claims: true
+  partial:
+    src/Real.php::Real.boo:
+      calls: unlanded

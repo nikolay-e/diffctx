@@ -25,3 +25,7 @@ expect:
   - src/Greeter.cs::Greeter.Hello
   discloses: true
   no_negative_claims: true
+  partial:
+    src/Greeter.cs::Greeter.Hello:
+      calls: not_traced
+      reads: not_traced
