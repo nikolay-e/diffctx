@@ -38,3 +38,7 @@ expect:
   coverage:
     db/V1__fn.sql::lib.refresh_book:
       calls: partial
+  partial:
+    db/V1__fn.sql::lib.refresh_book:
+      calls: unlanded
+      reads: unlanded

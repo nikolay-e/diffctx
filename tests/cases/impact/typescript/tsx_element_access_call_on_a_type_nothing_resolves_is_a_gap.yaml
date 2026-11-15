@@ -32,3 +32,6 @@ expect:
       calls: partial
   no_negative_claims: true
   never_empty: true
+  partial:
+    src/repo.ts::Repo.load:
+      calls: unlanded

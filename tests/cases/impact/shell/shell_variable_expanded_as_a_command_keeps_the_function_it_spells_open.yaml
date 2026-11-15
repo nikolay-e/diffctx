@@ -28,3 +28,7 @@ expect:
   coverage:
     scripts/lib.sh::login:
       calls: partial
+  partial:
+    scripts/lib.sh::login:
+      calls: unlanded
+      reads: unlanded

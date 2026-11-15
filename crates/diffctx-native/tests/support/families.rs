@@ -966,6 +966,10 @@ pub(crate) fn discloses(doc: &Value) -> bool {
         || doc["coverage"]["unanalysed"]["total"].as_u64() > Some(0)
         || doc["inventory"]["withheld"].as_u64() > Some(0)
         || listed(&doc["spelled"]["rows"])
+        // A changed lock file is answered as "Lock files changed (what that
+        // reaches is not traced)": where no definition is listed beside it, that
+        // listing is the whole answer, and it says its reach is open.
+        || (listed(&doc["inventory"]["lockfiles"]["items"]) && !listed(&doc["definitions"]))
         || doc["definitions"]
             .as_array()
             .into_iter()

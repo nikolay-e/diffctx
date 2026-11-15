@@ -41,4 +41,4 @@ expect:
     tool/cli.py::main: [tool/runner.py::invoke]
   partial:
     tool/cli.py::main:
-      calls: not_traced
+      calls: passed_as_value
