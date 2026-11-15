@@ -23,6 +23,7 @@
 
 mod candidates;
 pub mod dockerfile;
+mod globs;
 mod helm;
 mod ini;
 mod json;
@@ -43,6 +44,7 @@ use serde::{Deserialize, Serialize};
 use crate::snapshot::RunBudget;
 
 pub use candidates::{Candidate, candidates};
+pub use globs::{PathGlob, Selects, globs_of, may_select};
 pub use helm::{Analysis, ConfigUse, Define, UseOf, analyse};
 pub use object::{Found, Object, ObjectId, identity_of, local_key, objects};
 pub use pointer::{PointerKind, Resolved, SourcePointer, directory_of};

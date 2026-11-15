@@ -856,7 +856,7 @@ fn script_values(text: &str, key: &str) -> Vec<(String, bool)> {
 /// `**/` spans segments, `[..]` classes, `{a,b}` alternatives and the extglob
 /// groups `?(..)`, `*(..)`, `+(..)`, `@(..)`. A negated group `!(..)` is not
 /// read: the pattern then declares nothing.
-fn glob_regex(glob: &str) -> Option<regex::Regex> {
+pub(crate) fn glob_regex(glob: &str) -> Option<regex::Regex> {
     let chars: Vec<char> = glob.chars().collect();
     let mut out = String::from("^");
     let mut closers: Vec<&str> = Vec::new();
