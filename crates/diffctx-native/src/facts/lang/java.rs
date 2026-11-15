@@ -389,6 +389,10 @@ impl<'a> Reader<'a> {
     /// method's or a constructor's before the parameter list, a field's before
     /// its initializer, a separator or the end.
     fn name_span(&self, d: &old::Declaration) -> Span {
+        // A parse error can leave a declaration with no name; the search below would never advance on it.
+        if d.name.is_empty() {
+            return self.span(d.header.start..d.header.start);
+        }
         let header = self.slice(d.header.start..d.header.end.min(self.bytes.len()));
         let limit = match d.kind {
             "fun" | "constructor" => header.find('(').unwrap_or(header.len()),
