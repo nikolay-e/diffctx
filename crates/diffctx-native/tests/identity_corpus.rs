@@ -109,6 +109,11 @@ fn is(line: &Value, kind: &str) -> bool {
 }
 
 fn identity(language: &str) {
+    // A release binary writes no line, and every case would pass unchecked.
+    assert!(
+        cfg!(debug_assertions),
+        "the identity is checked by a debug binary only"
+    );
     let (mut checked, mut unchecked, mut failed) = (0, Vec::new(), Vec::new());
     for (name, mut case) in load(language) {
         let dir = TempDir::new().expect("tempdir");
