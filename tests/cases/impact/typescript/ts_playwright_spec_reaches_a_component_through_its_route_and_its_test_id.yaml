@@ -71,13 +71,11 @@ repo:
 expect:
   exact: false
   tested_by:
-    src/pages/AlbumsPage.tsx: tests/e2e/albums.mocked.spec.ts
-    src/components/SongInfoSheet.tsx: tests/e2e/song-info.mocked.spec.ts
+    src/app/App.tsx: tests/e2e/albums.mocked.spec.ts
+    src/pages/SearchPage.tsx: tests/e2e/song-info.mocked.spec.ts
   not_untested:
   - AlbumsPage
   - SongInfoSheet
   decoys:
-    src/pages/AlbumsPage.tsx:
-    - tests/e2e/song-info.mocked.spec.ts
-    src/components/SongInfoSheet.tsx:
+    src/pages/SearchPage.tsx:
     - tests/e2e/albums.mocked.spec.ts
