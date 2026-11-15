@@ -38,7 +38,7 @@ use anyhow::Result;
 use crate::facts::{
     Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
     FileFacts, Framework, Language, ModulePath, Name, Origin, ProjectId, Scope, SemanticDef,
-    Visibility, facts_of, semantic_changes,
+    Visibility, facts_of, holds_data, members_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
 use crate::resolve::{
@@ -905,6 +905,28 @@ fn own_span(kind: DefKind, lines: (u32, u32)) -> Option<(u32, u32)> {
     .then_some(lines)
 }
 
+/// Whether a definition's own signature, body, visibility and decorators held:
+/// what is left to differ is layout, its doc, and its members.
+fn own_tokens_held(d: &SemanticDef) -> bool {
+    matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
+        if !(delta.signature || delta.body || delta.visibility || delta.decorators))
+}
+
+/// What a definition whose own tokens held did once its members are counted: its
+/// whole token sequence is its own and its members', in order.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Whole {
+    /// Every token a caller sees is as it was: comments, formatting, position.
+    Layout,
+    /// Members were added, removed or edited, each with a change of its own
+    /// that says so.
+    Members,
+    /// Its tokens changed and no member's change says how: its data members
+    /// swapped places (the type's layout, a positional constructor), a member
+    /// left or came with no change of its own, or it is not one definition.
+    Unaccounted,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum How {
     Edited { layout_only: bool },
@@ -938,9 +960,10 @@ pub struct Changed {
     /// What the range did to the definition, for the folding table; none when
     /// it was removed, renamed, moved, re-scoped, ambiguously paired or added.
     basis: Option<Basis>,
-    /// A function, method or class with decorators: a decorator may read what a
-    /// doc or layout edit touched, so such an edit is never set aside.
-    pub decorated: bool,
+    /// Never set aside as layout, whatever its hunks look like: a decorator may
+    /// read what a doc or layout edit touched, and a type whose data members
+    /// changed order has another layout and constructor.
+    pub not_layout: bool,
     /// What the range did moves the definition's place in the module's surface: it
     /// was added, renamed or moved, or its signature (which carries its kind) or
     /// its visibility changed. A body, doc or decorator edit leaves it. In Kotlin
@@ -1489,19 +1512,25 @@ impl Cell {
         // fold as no code change (`basis_of`).
         let mut decorated: HashSet<DefKey> = HashSet::new();
         for d in &python {
-            let only_doc = matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
-                if !(delta.signature || delta.body || delta.visibility || delta.decorators));
-            if only_doc && self.decorated_at_head(d) {
+            if own_tokens_held(d) && self.decorated_at_head(d) {
                 decorated.insert(d.key.clone());
             }
         }
-        let layout_only = |d: &SemanticDef| {
-            matches!(&d.change, DefChange::Changed { origin: Origin::Same, delta }
-                if !(delta.signature || delta.body || delta.visibility || delta.decorators))
-                && !decorated.contains(&d.key)
+        let entries: HashMap<&DefKey, &SemanticDef> = python.iter().map(|d| (&d.key, *d)).collect();
+        let mut wholes = HashMap::new();
+        for d in python.iter().filter(|d| own_tokens_held(d)) {
+            self.whole(d, &entries, &decorated, &mut wholes)?;
+        }
+        let whole = |d: &SemanticDef| {
+            (own_tokens_held(d) && !decorated.contains(&d.key))
+                .then(|| wholes.get(&d.key).copied().unwrap_or(Whole::Layout))
         };
+        let layout_only = |d: &SemanticDef| whole(d) == Some(Whole::Layout);
+        // A definition whose members were added, removed or edited, and nothing
+        // else: their own rows are the change, and say what it was.
+        let folded = |d: &SemanticDef| whole(d) == Some(Whole::Members);
         for d in &python {
-            if !layout_only(d) {
+            if !layout_only(d) && !folded(d) {
                 self.changed_keys.insert(d.key.clone());
             }
         }
@@ -1538,7 +1567,6 @@ impl Cell {
         };
         let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
         let mut removed: Vec<Changed> = Vec::new();
-        let mut lost_a_field: HashSet<DefKey> = HashSet::new();
         for d in &python {
             match &d.change {
                 // A definition the range removed, or one whose pairing is ambiguous and
@@ -1573,7 +1601,7 @@ impl Cell {
                         local: false,
                         public,
                         basis: None,
-                        decorated: false,
+                        not_layout: false,
                         api: false,
                         delta: None,
                         origin: None,
@@ -1589,12 +1617,8 @@ impl Cell {
                         }
                         _ => None,
                     };
-                    let holder = self.class_holding(&gone.file, &d.key);
-                    if matches!(kind, DefKind::Field | DefKind::Variable | DefKind::Constant) {
-                        lost_a_field.extend(holder.map(|class| class.key.clone()));
-                    }
                     if let (Some(reach), Family::Python) = (rebuilt, self.family) {
-                        if let Some(class) = holder {
+                        if let Some(class) = self.class_holding(&gone.file, &d.key) {
                             merge(
                                 &mut by_key,
                                 Changed {
@@ -1613,7 +1637,7 @@ impl Cell {
                                     local: false,
                                     public: false,
                                     basis: None,
-                                    decorated: false,
+                                    not_layout: false,
                                     api: false,
                                     delta: None,
                                     origin: None,
@@ -1623,10 +1647,12 @@ impl Cell {
                     }
                     removed.push(gone);
                 }
+                _ if folded(d) => {}
                 change => {
                     let Some(def) = self.definition(&d.key) else {
                         continue;
                     };
+                    let unaccounted = whole(d) == Some(Whole::Unaccounted);
                     let how = match change {
                         DefChange::Added => How::Added,
                         _ => How::Edited {
@@ -1637,7 +1663,7 @@ impl Cell {
                         DefChange::Changed {
                             origin: Origin::Same,
                             delta,
-                        } => self.basis_of(d, def, *delta),
+                        } if !unaccounted => self.basis_of(d, def, *delta),
                         _ => None,
                     };
                     let mut stale = match change {
@@ -1674,7 +1700,7 @@ impl Cell {
                                 local: false,
                                 public,
                                 basis: None,
-                                decorated: false,
+                                not_layout: false,
                                 api: false,
                                 delta: None,
                                 origin: None,
@@ -1702,7 +1728,7 @@ impl Cell {
                     let api = self.surface_moved(d, change, reshaped_here);
                     for mut changed in self.report_as(def, how, stale, unpaired, true) {
                         changed.basis.clone_from(&basis);
-                        changed.decorated = decorated.contains(&d.key);
+                        changed.not_layout = decorated.contains(&d.key) || unaccounted;
                         changed.api =
                             api && changed.subjects.first().is_some_and(|s| s.key == d.key);
                         if changed.subjects.first().is_some_and(|s| s.key == d.key) {
@@ -1720,11 +1746,6 @@ impl Cell {
                 }
             }
         }
-        // A class whose own lines only moved because it lost a field is not a
-        // layout edit: the removed field is the change, and says so.
-        by_key.retain(|key, changed| {
-            !(lost_a_field.contains(key) && changed.how == How::Edited { layout_only: true })
-        });
         self.changed = by_key.into_values().chain(removed).collect();
         self.changed.sort_by(|a, b| {
             (a.file.as_str(), a.lines, a.name.as_str()).cmp(&(
@@ -2168,7 +2189,7 @@ impl Cell {
             local: self.inside_function(def),
             public: false,
             basis: None,
-            decorated: false,
+            not_layout: false,
             api: false,
             delta: None,
             origin: None,
@@ -2207,6 +2228,93 @@ impl Cell {
             _ => out.push(own(def, Reach::Every)),
         }
         out
+    }
+
+    /// The `Whole` of `d`, whose own tokens held, and of its members on the way.
+    /// A member decorated at the head is never a layout edit.
+    fn whole(
+        &self,
+        d: &SemanticDef,
+        by_key: &HashMap<&DefKey, &SemanticDef>,
+        decorated: &HashSet<DefKey>,
+        out: &mut HashMap<DefKey, Whole>,
+    ) -> Result<Whole> {
+        if let Some(known) = out.get(&d.key) {
+            return Ok(*known);
+        }
+        let (Some(base), Some(head)) = (&d.base, &d.head) else {
+            return Ok(Whole::Layout);
+        };
+        let whole = match (
+            self.members(SideTag::Base, base, &d.key)?,
+            self.members(SideTag::Head, head, &d.key)?,
+        ) {
+            (Some(before), Some(after)) => {
+                let once = |members: &[(DefKey, bool)], key: &DefKey| {
+                    members.iter().filter(|(k, _)| k == key).count() == 1
+                };
+                let mut kept: HashSet<&DefKey> = HashSet::new();
+                let mut accounted = true;
+                let mut changed = false;
+                for (key, _) in before.iter().chain(&after) {
+                    let paired = once(&before, key) && once(&after, key);
+                    let same = match by_key.get(key) {
+                        None => paired,
+                        Some(m) if paired && own_tokens_held(m) && !decorated.contains(key) => {
+                            self.whole(m, by_key, decorated, out)? == Whole::Layout
+                        }
+                        Some(_) => false,
+                    };
+                    if same {
+                        kept.insert(key);
+                    } else {
+                        changed = true;
+                        accounted &= by_key.contains_key(key);
+                    }
+                }
+                let data = |members: &[(DefKey, bool)]| -> Vec<DefKey> {
+                    members
+                        .iter()
+                        .filter(|(key, data)| *data && kept.contains(key))
+                        .map(|(key, _)| key.clone())
+                        .collect()
+                };
+                if !accounted || data(&before) != data(&after) {
+                    Whole::Unaccounted
+                } else if changed {
+                    Whole::Members
+                } else {
+                    Whole::Layout
+                }
+            }
+            _ => Whole::Unaccounted,
+        };
+        out.insert(d.key.clone(), whole);
+        Ok(whole)
+    }
+
+    /// The direct members of the definition `key` names in `file` on one side, in
+    /// source order, each with whether its place holds data. `None` when the
+    /// file does not hold exactly one definition of that name.
+    fn members(
+        &self,
+        side: SideTag,
+        file: &RepoPath,
+        key: &DefKey,
+    ) -> Result<Option<Vec<(DefKey, bool)>>> {
+        let Some(facts) = facts_of(&self.ctx, side, &self.cache, file)? else {
+            return Ok(None);
+        };
+        let mut named = facts.defs().filter(|d| d.local == key.local);
+        let (Some(outer), None) = (named.next(), named.next()) else {
+            return Ok(None);
+        };
+        Ok(Some(
+            members_of(facts.defs(), outer)
+                .into_iter()
+                .map(|member| (facts.key(&member.local), holds_data(member.kind)))
+                .collect(),
+        ))
     }
 
     fn base_definition(
@@ -3682,7 +3790,7 @@ fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
             if known.basis != changed.basis {
                 known.basis = None;
             }
-            known.decorated |= changed.decorated;
+            known.not_layout |= changed.not_layout;
             known.api |= changed.api;
             known.delta = known.delta.or(changed.delta);
             known.origin = known.origin.or(changed.origin);
