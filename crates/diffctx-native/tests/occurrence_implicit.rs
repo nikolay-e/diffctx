@@ -202,14 +202,31 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
 }
 
 #[test]
-fn only_the_root_module_variable_and_output_are_set_from_outside() {
+fn only_a_root_module_variable_and_output_are_set_from_outside() {
+    let called = Known {
+        module_called: true,
+        ..Known::default()
+    };
     for (source, at) in [
         ("variable \"n\" {\n  type = string\n}\n", "var.n"),
         ("output \"id\" {\n  value = 1\n}\n", "output.id"),
     ] {
-        let kinds = |path| kinds_in(path, &TerraformExtractor, source, at, Known::default());
-        assert_eq!(kinds("main.tf"), [Implicit::Outside], "{at} of the root");
-        assert!(kinds("modules/net/main.tf").is_empty(), "{at} of a module");
+        let kinds = |path, known| kinds_in(path, &TerraformExtractor, source, at, known);
+        assert_eq!(
+            kinds("main.tf", Known::default()),
+            [Implicit::Outside],
+            "{at} of the root"
+        );
+        // fj#193: a root module under a directory is a root all the same.
+        assert_eq!(
+            kinds("infra/prod/main.tf", Known::default()),
+            [Implicit::Outside],
+            "{at} of a root module in a directory"
+        );
+        assert!(
+            kinds("modules/net/main.tf", called).is_empty(),
+            "{at} of a module a call sources"
+        );
     }
 }
 
@@ -266,6 +283,7 @@ fn kinds_come_in_one_order_each_once() {
     let known = Known {
         dispatched: true,
         consumed_outside: true,
+        ..Known::default()
     };
     let found = kinds_with(&RustExtractor, RUST_NEXT, "P.next", known);
     assert_eq!(
@@ -279,6 +297,7 @@ fn what_decide_knows_is_taken_as_given() {
     let known = Known {
         dispatched: true,
         consumed_outside: false,
+        ..Known::default()
     };
     let found = kinds_with(
         &PythonExtractor,
@@ -359,6 +378,7 @@ fn another_kind_of_a_test_file_definition_keeps_its_hedge() {
     let entered = Known {
         dispatched: true,
         consumed_outside: false,
+        ..Known::default()
     };
     let found = kinds_in(
         "tests/test_app.py",
