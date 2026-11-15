@@ -33,4 +33,8 @@ expect:
   changed:
   - bot.py::ping
   relations:
-  - {from: "bot.py::dispatch", to: "bot.py::ping", kind: calls, resolution: resolved}
+  - {from: "bot.py::dispatch", to: "bot.py::ping", kind: reads, resolution: resolved, site: 6}
+  - {from: "bot.py::dispatch", to: "bot.py::ping", kind: calls, resolution: resolved, site: 8}
+  partial:
+    bot.py::ping:
+      calls: unlanded
