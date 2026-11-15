@@ -28,7 +28,7 @@ repo:
     apps/pricing: apps/pricing-svc
   commit_message: "move the pricing app"
 expect:
-  exact: false
-  discloses: true
+  exact: true
+  changed: []
   no_negative_claims: true
   stale: [Dockerfile, docker/dev.Dockerfile, docker/glob.Dockerfile, .github/workflows/pricing.yml]

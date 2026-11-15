@@ -87,6 +87,8 @@ struct Item {
     path: RepoPath,
     key: DefKey,
     def: Def,
+    /// Where git says the file came from, for a head item of a renamed file.
+    renamed_from: Option<RepoPath>,
 }
 
 #[derive(Default)]
@@ -161,10 +163,15 @@ impl Walk {
             Some(path) => self.items(ctx, cache, SideTag::Base, path)?,
             None => Vec::new(),
         };
-        let new = match after {
+        let mut new = match after {
             Some(path) => self.items(ctx, cache, SideTag::Head, path)?,
             None => Vec::new(),
         };
+        if change.kind == ChangeKind::Renamed {
+            for item in &mut new {
+                item.renamed_from.clone_from(&change.from);
+            }
+        }
         // A file read on one side only would read as added or removed.
         if !self.stopped {
             self.base.extend(old);
@@ -200,6 +207,7 @@ impl Walk {
                         path: path.clone(),
                         key: file.key(&def.local),
                         def: def.clone(),
+                        renamed_from: None,
                     })
                     .collect())
             }
@@ -374,9 +382,12 @@ impl Walk {
         before: &[usize],
         after: &[usize],
     ) -> (Vec<(usize, usize)>, Vec<usize>, Vec<usize>) {
+        // A directory moved with its manifest is another project at the head, and
+        // its files are still git's renames: what moves with the file is paired.
         let same_project = |b: usize, a: usize| {
-            self.base[b].key.project == self.head[a].key.project
-                && self.base[b].key.language == self.head[a].key.language
+            self.base[b].key.language == self.head[a].key.language
+                && (self.base[b].key.project == self.head[a].key.project
+                    || self.head[a].renamed_from.as_ref() == Some(&self.base[b].path))
         };
         if let ([b], [a]) = (before, after) {
             return if same_project(*b, *a) {

@@ -1,0 +1,37 @@
+name: gh593_rename_that_edits_a_body_is_a_changed_definition
+mode: impact
+source: gh#593
+issue_state: closed
+tags: [python, rename, guard]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/a.py: |
+      def f(x):
+          return x + 1
+
+
+      def g(y):
+          return y * 2
+    app/__init__.py: ""
+    app/use.py: |
+      from pkg.a import f
+
+
+      def use(v):
+          return f(v)
+  renamed_files:
+    pkg/a.py: pkg/b.py
+  changed_files:
+    pkg/b.py: |
+      def f(x):
+          return x + 2
+
+
+      def g(y):
+          return y * 2
+  commit_message: move pkg.a to pkg.b and change f
+expect:
+  exact: false
+  changed: [pkg/b.py::f]
+  stale: [app/use.py]

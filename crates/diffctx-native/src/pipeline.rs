@@ -35,6 +35,8 @@ use crate::types::{Fragment, FragmentId, unquote_c_style};
 use crate::utility::InformationNeed;
 use crate::{diff_parse, grep};
 
+mod keyword_binding;
+
 /// NaN is the case a `< 0.0` check alone misses: every comparison against it
 /// is false, so it read as "not negative" and became a threshold nothing could
 /// ever exceed. Checked at the two `Result`-returning entry points; the
@@ -1199,6 +1201,13 @@ fn resolve_symbol_change_set(
     // A name the facts layer holds only as a local of a definition is no
     // definition, whatever the fragmenter named.
     definitions.retain(|f| !is_local_fragment(f, name, run));
+    if segments.len() == 1 {
+        for owner in keyword_binding::parameter_owners(root_dir, &files, &fragments, name, run) {
+            if !definitions.iter().any(|d| d.id == owner.id) {
+                definitions.push(owner);
+            }
+        }
+    }
     let container = segments[..segments.len() - 1].join(".");
     for stand_in in shadowed_definitions(&fragments, &definitions, name, &container, run) {
         definitions.push(stand_in);

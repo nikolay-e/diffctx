@@ -1455,9 +1455,26 @@ impl Cell {
                     ) && !def.key.local.container.is_empty()
                 })
         };
+        // A file git renames byte for byte took its definitions along: their
+        // place changed, nothing they say did (#593). The stale readers of the
+        // old path are the file-level channel's.
+        let pure_moves: HashSet<(&RepoPath, &RepoPath)> = self
+            .ctx
+            .changes
+            .changes
+            .iter()
+            .filter(|c| c.kind == ChangeKind::Renamed && c.similarity == Some(100))
+            .filter_map(|c| Some((c.from.as_ref()?, &c.path)))
+            .collect();
+        let moved_with_its_file = |d: &SemanticDef| {
+            matches!(&d.change, DefChange::Changed { origin: Origin::Moved { .. }, delta }
+                if !(delta.signature || delta.body || delta.visibility || delta.decorators))
+                && matches!((&d.base, &d.head), (Some(from), Some(to))
+                    if pure_moves.contains(&(from, to)))
+        };
         let python: Vec<_> = python
             .into_iter()
-            .filter(|&d| !moved_as_it_was(d))
+            .filter(|&d| !moved_as_it_was(d) && !moved_with_its_file(d))
             .collect();
         let moved = self.moved_declarations(&python)?;
         let python: Vec<_> = python

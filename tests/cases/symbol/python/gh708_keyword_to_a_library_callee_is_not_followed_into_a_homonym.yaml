@@ -1,0 +1,29 @@
+name: gh708_keyword_to_a_library_callee_is_not_followed_into_a_homonym
+mode: symbol
+source: gh#708
+issue_state: closed
+tags: [python, keyword-argument, parameter, decoy]
+repo:
+  initial_files:
+    vendorlike/__init__.py: ""
+    vendorlike/http.py: |
+      def get(url, timeout=3):
+          return url
+    app/__init__.py: ""
+    app/fetch.py: |
+      import requests
+
+
+      def pull(url, limits):
+          return requests.get(url, timeout=limits.timeout)
+    app/limits.py: |
+      class Limits:
+          def __init__(self) -> None:
+              self.timeout = 5
+query:
+  symbol: timeout
+expect:
+  exact: false
+  definitions: [app/limits.py::timeout]
+  decoys:
+    "app/limits.py::timeout": [vendorlike/http.py]
