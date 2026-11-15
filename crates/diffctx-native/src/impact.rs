@@ -25,6 +25,7 @@ use crate::vocabulary;
 
 mod keys;
 mod mentions;
+mod runs;
 mod rust;
 mod tests_reach;
 mod text;
@@ -2557,7 +2558,7 @@ fn entered_by(f: &Fragment, name: &str) -> Option<Entered> {
             .any(|l| calls_word(l, name))
             .then_some(Entered::Script);
     }
-    tests_reach::curried_registrations(f)
+    runs::curried_registrations(f)
         .find(|(_, registered)| *registered == name)
         .map(|(call, _)| Entered::Registered(call.to_string()))
 }
@@ -4153,8 +4154,7 @@ pub fn build_impact(
                     if sites.iter().any(|s| s.path == file.path))
             {
                 outside += 1;
-                outside_tests +=
-                    usize::from(!literal || crate::testfiles::is_test_path(Path::new(&file.path)));
+                outside_tests += usize::from(!literal || tests.is_test_file(&file.path));
                 missed_in.push(file);
             }
         }
@@ -4359,7 +4359,7 @@ pub fn build_impact(
         // view it keeps its row, which claims none; the list that says "no static
         // test link" is for the answer that has no tests to say it against.
         let named = place(&sym.path, sym.symbol.as_deref(), &sym.lines);
-        let in_a_test_file = crate::testfiles::is_test_path(Path::new(&sym.path));
+        let in_a_test_file = tests.is_test_file(&sym.path);
         let witness = sym.coverage.all().witness();
         match witness.filter(|_| callerless && verdict.complete()) {
             Some(_) if in_a_test_file => {
