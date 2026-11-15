@@ -1,0 +1,52 @@
+name: java_spring_route_a_test_does_not_request_is_not_reached
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- java
+- spring
+- route
+- tests-reach
+- decoy
+repo:
+  initial_files:
+    src/main/java/demo/ReviewController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.PostMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class ReviewController {
+          @PostMapping("/reviews")
+          public String add() {
+              return "added";
+          }
+      }
+    src/test/java/demo/ReviewControllerTest.java: |
+      package demo;
+
+      import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+
+      class ReviewControllerTest {
+          void listsReviews(org.springframework.test.web.servlet.MockMvc mockMvc) throws Exception {
+              mockMvc.perform(get("/reviews"));
+          }
+      }
+  changed_files:
+    src/main/java/demo/ReviewController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.PostMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class ReviewController {
+          @PostMapping("/reviews")
+          public String add() {
+              return "added it";
+          }
+      }
+  commit_message: Reword the answer
+expect:
+  entry_not_tested: [add]

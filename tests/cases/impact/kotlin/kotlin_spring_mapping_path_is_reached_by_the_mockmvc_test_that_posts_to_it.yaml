@@ -1,0 +1,79 @@
+name: kotlin_spring_mapping_path_is_reached_by_the_mockmvc_test_that_posts_to_it
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- kotlin
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/kotlin/Tools.kt: |
+      package demo
+
+      class Tools {
+          fun search(query: String): String = "found:" + query
+
+          fun fetch(id: Int): String = "item:" + id
+
+          fun dispatch(name: String, args: Map<String, String>): String {
+              return when (name) {
+                  "search" -> search(args.getValue("query"))
+                  "fetch" -> fetch(args.getValue("id").toInt())
+                  else -> error("unknown tool " + name)
+              }
+          }
+      }
+    src/main/kotlin/ToolController.kt: |
+      package demo
+
+      import org.springframework.web.bind.annotation.PathVariable
+      import org.springframework.web.bind.annotation.PostMapping
+      import org.springframework.web.bind.annotation.RequestBody
+      import org.springframework.web.bind.annotation.RestController
+
+      @RestController
+      class ToolController(private val tools: Tools) {
+          @PostMapping("/tools/{name}")
+          fun call(@PathVariable name: String, @RequestBody args: Map<String, String>): String {
+              return tools.dispatch(name, args)
+          }
+      }
+    src/test/kotlin/ToolControllerTest.kt: |
+      package demo
+
+      import org.springframework.test.web.servlet.MockMvc
+      import org.springframework.test.web.servlet.post
+
+      class ToolControllerTest(private val mockMvc: MockMvc) {
+          fun searchOverHttp() {
+              mockMvc.post("/tools/search") { content = """{"query":"x"}""" }.andExpect { status { isOk() } }
+          }
+
+          fun fetchOverHttp() {
+              mockMvc.post("/tools/fetch") { content = """{"id":"1"}""" }.andExpect { status { isOk() } }
+          }
+      }
+  changed_files:
+    src/main/kotlin/Tools.kt: |
+      package demo
+
+      class Tools {
+          fun search(query: String): String = "hit:" + query
+
+          fun fetch(id: Int): String = "item:" + id
+
+          fun dispatch(name: String, args: Map<String, String>): String {
+              return when (name) {
+                  "search" -> search(args.getValue("query"))
+                  "fetch" -> fetch(args.getValue("id").toInt())
+                  else -> error("unknown tool " + name)
+              }
+          }
+      }
+  commit_message: Change what search returns
+expect:
+  tested_by:
+    src/main/kotlin/Tools.kt: src/test/kotlin/ToolControllerTest.kt
+  not_untested: [search]

@@ -106,7 +106,7 @@ fn jvm_annotations_name_the_framework_the_import_names() {
     assert_eq!(
         entries(&java),
         [
-            "Route C.list spring GET -",
+            "Route C.list spring GET /x",
             "Scheduled C.purge spring - -",
             "Route C.create spring POST -",
         ]
@@ -116,12 +116,130 @@ fn jvm_annotations_name_the_framework_the_import_names() {
             .as_bytes(),
         &RunBudget::default(),
     );
-    assert_eq!(entries(&kotlin), ["Route C.list spring GET -"]);
+    assert_eq!(entries(&kotlin), ["Route C.list spring GET /x"]);
     let unimported = JavaExtractor.extract(
         "package p;\n\nclass C {\n    @GetMapping(\"/x\") void list() {\n    }\n}\n".as_bytes(),
         &RunBudget::default(),
     );
     assert!(entries(&unimported).is_empty());
+}
+
+#[test]
+fn a_spring_handler_states_its_path_under_the_classs_mapping() {
+    let java = JavaExtractor.extract(
+        "package p;\n\nimport org.springframework.web.bind.annotation.*;\n\n@RestController\n@RequestMapping(\"/api/orders\")\nclass C {\n    @GetMapping(\"/{id}\") void one() {\n    }\n\n    @PostMapping void add() {\n    }\n\n    @PutMapping(path = {\"/a\", \"b\"}, produces = \"x/y\") void both() {\n    }\n}\n"
+            .as_bytes(),
+        &RunBudget::default(),
+    );
+    assert_eq!(
+        entries(&java),
+        [
+            "Route C.one spring GET /api/orders/{id}",
+            "Route C.add spring POST /api/orders",
+            "Route C.both spring PUT /api/orders/a",
+            "Route C.both spring PUT /api/orders/b",
+        ]
+    );
+    let kotlin = KotlinExtractor.extract(
+        "package p\n\nimport org.springframework.web.bind.annotation.PostMapping\nimport org.springframework.web.bind.annotation.RequestMapping\n\n@RequestMapping(value = [\"/tools\"])\nclass C {\n    @PostMapping(\"/{name}\")\n    fun call() {\n    }\n}\n"
+            .as_bytes(),
+        &RunBudget::default(),
+    );
+    assert_eq!(entries(&kotlin), ["Route C.call spring POST /tools/{name}"]);
+}
+
+#[test]
+fn a_request_mapping_on_a_method_is_a_route_and_on_a_class_is_none() {
+    let java = JavaExtractor.extract(
+        "package p;\n\nimport org.springframework.web.bind.annotation.*;\n\n@RequestMapping(\"/x\")\nclass C {\n    @RequestMapping(\"/y\") void m() {\n    }\n}\n"
+            .as_bytes(),
+        &RunBudget::default(),
+    );
+    assert_eq!(entries(&java), ["Route C.m spring - /x/y"]);
+}
+
+fn java(source: &str) -> Vec<String> {
+    entries(&JavaExtractor.extract(source.as_bytes(), &RunBudget::default()))
+}
+
+fn kotlin(source: &str) -> Vec<String> {
+    entries(&KotlinExtractor.extract(source.as_bytes(), &RunBudget::default()))
+}
+
+#[test]
+fn a_handler_with_annotation_arguments_is_sited_at_its_name() {
+    let source = "package p;\n\nimport org.springframework.web.bind.annotation.GetMapping;\n\nclass C {\n    @GetMapping(\"/x\") void list() {\n    }\n}\n";
+    let blob = JavaExtractor.extract(source.as_bytes(), &RunBudget::default());
+    let sites: Vec<&str> = blob
+        .facts
+        .iter()
+        .filter_map(|fact| match fact {
+            Fact::EntryPoint(entry) => {
+                Some(&source[entry.site.bytes.start as usize..entry.site.bytes.end as usize])
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sites, ["list"]);
+}
+
+#[test]
+fn a_request_mapping_names_its_methods() {
+    let found = java(
+        "package p;\n\nimport org.springframework.web.bind.annotation.*;\n\nclass C {\n    @RequestMapping(value = \"/a\", method = RequestMethod.POST) void one() {\n    }\n\n    @RequestMapping(path = \"/b\", method = {RequestMethod.GET, RequestMethod.PUT}) void two() {\n    }\n\n    @RequestMapping(\"/c\") void any() {\n    }\n}\n",
+    );
+    assert_eq!(
+        found,
+        [
+            "Route C.one spring POST /a",
+            "Route C.two spring GET /b",
+            "Route C.two spring PUT /b",
+            "Route C.any spring - /c",
+        ]
+    );
+    let found = kotlin(
+        "package p\n\nimport org.springframework.web.bind.annotation.RequestMapping\nimport org.springframework.web.bind.annotation.RequestMethod\n\nclass C {\n    @RequestMapping(\"/a\", method = [RequestMethod.DELETE])\n    fun one() {\n    }\n}\n",
+    );
+    assert_eq!(found, ["Route C.one spring DELETE /a"]);
+}
+
+#[test]
+fn jax_rs_paths_compose_like_spring_and_the_verb_is_the_annotation() {
+    let found = java(
+        "package p;\n\nimport jakarta.ws.rs.GET;\nimport jakarta.ws.rs.POST;\nimport jakarta.ws.rs.Path;\n\n@Path(\"/tools\")\nclass C {\n    @GET @Path(\"/{name}\") String one() {\n        return null;\n    }\n\n    @POST String add() {\n        return null;\n    }\n}\n",
+    );
+    assert_eq!(
+        found,
+        [
+            "Route C.one jax-rs GET /tools/{name}",
+            "Route C.add jax-rs POST /tools"
+        ]
+    );
+    let found = kotlin(
+        "package p\n\nimport jakarta.ws.rs.GET\nimport jakarta.ws.rs.Path\n\n@Path(\"/tools\")\nclass C {\n    @GET\n    @Path(\"/{name}\")\n    fun one(): String = \"\"\n}\n",
+    );
+    assert_eq!(found, ["Route C.one jax-rs GET /tools/{name}"]);
+}
+
+#[test]
+fn a_constant_path_is_its_literal_where_the_file_or_its_imports_say_which() {
+    let found = java(
+        "package p;\n\nimport org.springframework.web.bind.annotation.*;\nimport demo.Routes;\n\nclass C {\n    static final String LOCAL = \"/local\";\n\n    @GetMapping(LOCAL) void a() {\n    }\n\n    @GetMapping(Routes.ITEMS) void b() {\n    }\n\n    @GetMapping(Other.X) void c() {\n    }\n\n    @GetMapping(\"${api.base}/d\") void d() {\n    }\n\n    @GetMapping(LOCAL + \"/e\") void e() {\n    }\n}\n",
+    );
+    assert_eq!(
+        found,
+        [
+            "Route C.a spring GET /local",
+            "Route C.b spring GET /{@demo.Routes#ITEMS}",
+            "Route C.c spring GET /{@p.Other#X}",
+            "Route C.d spring GET -",
+            "Route C.e spring GET -",
+        ]
+    );
+    let found = kotlin(
+        "package p\n\nimport org.springframework.web.bind.annotation.GetMapping\nimport org.springframework.web.bind.annotation.RequestMapping\n\nobject Paths {\n    const val BASE = \"/base\"\n}\n\n@RequestMapping(Paths.BASE)\nclass C {\n    @GetMapping(\"/x\")\n    fun a() {\n    }\n}\n",
+    );
+    assert_eq!(found, ["Route C.a spring GET /base/x"]);
 }
 
 #[test]
