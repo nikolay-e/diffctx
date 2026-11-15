@@ -880,7 +880,9 @@ fn a_closed_stdout_pipe_exits_quietly() {
     init_repo(repo);
     std::fs::write(repo.join("seed.py"), "x = 0\n").expect("write");
     commit_all(repo, "initial");
-    let body: String = (0..3000)
+    // More than a pipe buffer, under the 2000 changed definitions past which
+    // a file is only named as over the size cap (gh#619).
+    let body: String = (0..1500)
         .map(|i| format!("def function_number_{i}(value):\n    return value + {i}\n\n\n"))
         .collect();
     std::fs::write(repo.join("big.py"), body).expect("write");
