@@ -1,0 +1,32 @@
+name: c_struct_member_read_through_a_type_no_include_reaches_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [c, struct-member, gap, absence-claim]
+repo:
+  initial_files:
+    src/point.h: |
+      struct point {
+          int x;
+          int y;
+      };
+    src/point.c: |
+      int get_x(struct point *p)
+      {
+          return p->x;
+      }
+  changed_files:
+    src/point.h: |
+      struct point {
+          long x;
+          int y;
+      };
+  commit_message: "point: x is long"
+expect:
+  callers:
+    x: []
+  coverage:
+    src/point.h::point.x:
+      reads: partial
+  no_negative_claims: true
+  never_empty: true

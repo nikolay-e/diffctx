@@ -47,6 +47,8 @@ pub struct RustCrate {
     /// Dependencies the package renames: the name `use` spells and the name of
     /// the crate it stands for.
     pub renames: Vec<(String, String)>,
+    /// Every dependency the manifest declares, as `use` spells it.
+    pub dependencies: Vec<String>,
 }
 
 struct Manifest<'a> {
@@ -172,8 +174,10 @@ fn read_manifest(
 
     let mut links: Vec<String> = Vec::new();
     let mut renames: Vec<(String, String)> = Vec::new();
+    let mut declared: Vec<String> = Vec::new();
     for dependencies in dependency_tables {
         for (name, spec) in dependencies {
+            declared.push(name.replace('-', "_"));
             let package = package_of(spec).or_else(|| {
                 let inherited = spec.get("workspace").and_then(|w| w.as_bool()) == Some(true);
                 inherited
@@ -206,6 +210,7 @@ fn read_manifest(
     let mut crates = crates_of(files, manifest, package_name.as_deref())?;
     for krate in &mut crates {
         krate.renames.clone_from(&renames);
+        krate.dependencies.clone_from(&declared);
     }
     let sets = ["src", "tests", "benches", "examples"]
         .iter()
@@ -330,6 +335,7 @@ fn crates_of(files: &Files, manifest: &Manifest, package: Option<&str>) -> Resul
             root_file,
             modules,
             renames: Vec::new(),
+            dependencies: Vec::new(),
         });
     }
     Ok(out)
