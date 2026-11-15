@@ -299,6 +299,8 @@ pub struct FileOutcomes {
     /// Of those, the ones that are a whole string (`"name"`): a name a program may
     /// resolve at run time, which no tree reads.
     pub quoted: usize,
+    /// Spellings in comments: counted, never listed.
+    pub comments: usize,
     /// The scan could not read the file whole; with no entry to say so, the
     /// caller lists the file as unread.
     pub lost: bool,
@@ -1475,6 +1477,7 @@ pub fn outcomes(
         entries: Vec::new(),
         mentions: 0,
         quoted: 0,
+        comments: found.comments,
         lost: found.lost,
     };
     if found.lost {

@@ -344,9 +344,10 @@ impl Shadow<'_> {
             found.mentions += done.mentions;
             found.quoted += done.quoted;
             #[cfg(debug_assertions)]
-            let (first, mentions, whole) = (
+            let (first, mentions, comments, whole) = (
                 found.entries.len(),
                 done.mentions,
+                done.comments,
                 !(done.lost && done.entries.is_empty()),
             );
             if done.lost && done.entries.is_empty() {
@@ -400,8 +401,14 @@ impl Shadow<'_> {
             }
             #[cfg(debug_assertions)]
             if let Some(ledger) = found.identity.as_mut().filter(|_| whole) {
-                // Comments are no record yet: the check names each as unrecorded.
-                ledger.file(name, facts, &text, &found.entries[first..], mentions, 0);
+                ledger.file(
+                    name,
+                    facts,
+                    &text,
+                    &found.entries[first..],
+                    mentions,
+                    comments,
+                );
             }
         }
         aliases
