@@ -1,0 +1,46 @@
+name: kotlin_typed_receiver_from_a_package_that_does_not_reach_the_class_is_a_candidate
+mode: impact
+source: synthetic
+tags: [kotlin, package-scope, candidate, receiver]
+repo:
+  initial_files:
+    settings.gradle.kts: |
+      rootProject.name = "shop"
+    build.gradle.kts: |
+      plugins {
+          kotlin("jvm") version "2.0.0"
+      }
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      class Pricing {
+          fun total(items: List<Int>): Int {
+              return items.sum()
+          }
+      }
+    src/main/kotlin/web/Checkout.kt: |
+      package web
+
+      fun charge(pricing: Pricing, items: List<Int>): Int {
+          return pricing.total(items)
+      }
+  changed_files:
+    src/main/kotlin/shop/Pricing.kt: |
+      package shop
+
+      class Pricing {
+          fun total(items: List<Int>): Int {
+              return items.sum() * 2
+          }
+      }
+  commit_message: "shop: total doubles"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  never_empty: true
+  relations:
+    - from: src/main/kotlin/web/Checkout.kt
+      to: src/main/kotlin/shop/Pricing.kt::Pricing.total
+      kind: calls
+      resolution: candidate

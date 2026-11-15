@@ -771,6 +771,7 @@ impl<'w> Engine<'w> {
         match self.resolve_type(f, scope, name) {
             Found::Defs(ids, _) => Ent::Instance(ids[0]),
             Found::Blocked(_) => Ent::Outside,
+            Found::Nothing if self.declared_type(name) => Ent::Unknown,
             _ => Ent::Foreign(name.clone()),
         }
     }
@@ -783,6 +784,7 @@ impl<'w> Engine<'w> {
             Found::Defs(ids, _) => Ent::Type(ids[0]),
             Found::Blocked(_) => return Ent::Outside,
             _ if self.ix.packages.contains(head) => Ent::Package(head.to_string()),
+            Found::Nothing if self.declared_type(&Name::new(head)) => return Ent::Unknown,
             _ => return Ent::Foreign(Name::new(last)),
         };
         for part in rest.split('.') {
@@ -864,11 +866,18 @@ impl<'w> Engine<'w> {
         if self.ix.packages.contains(text) {
             return Ent::Package(text.to_string());
         }
-        if text.starts_with(char::is_uppercase) {
+        if text.starts_with(char::is_uppercase) && !self.declared_type(name) {
             Ent::External
         } else {
             Ent::Unknown
         }
+    }
+
+    /// A name no import and no package in reach binds is a library's only while the
+    /// repository declares no type of it: one that does is a file whose package
+    /// clause or imports do not reach it, and what it names is unknown.
+    fn declared_type(&self, name: &Name) -> bool {
+        self.ix.types.contains_key(name)
     }
 
     /// The next step of a chain: a field of an instance, a nested type or a
@@ -954,7 +963,10 @@ impl<'w> Engine<'w> {
                     Found::Defs(ids, how) => self.resolved_or_candidates(&ids, how),
                     Found::Blocked(reason) => unresolved(reason),
                     Found::External => unresolved(UnresolvedReason::External),
-                    Found::Nothing if r.name.as_str().starts_with(char::is_uppercase) => {
+                    Found::Nothing
+                        if r.name.as_str().starts_with(char::is_uppercase)
+                            && !self.declared_type(&r.name) =>
+                    {
                         unresolved(UnresolvedReason::External)
                     }
                     Found::Nothing => unresolved(UnresolvedReason::NoBinding),

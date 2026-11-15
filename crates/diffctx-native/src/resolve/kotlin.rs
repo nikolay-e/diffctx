@@ -977,6 +977,7 @@ impl<'w> Engine<'w> {
             }
             Found::Defs(ids, _) => self.alias_target(ids[0]),
             Found::Blocked(_) => Ent::Outside,
+            Found::Nothing if self.declared_type(name) => Ent::Unknown,
             _ => Ent::Foreign(name.clone()),
         }
     }
@@ -1013,7 +1014,9 @@ impl<'w> Engine<'w> {
             return match self.top_level(f, callee, is_callable) {
                 Found::Defs(ids, _) => self.value_type(ids[0], depth),
                 Found::External => Ent::External,
-                _ if callee.as_str().starts_with(char::is_uppercase) => {
+                _ if callee.as_str().starts_with(char::is_uppercase)
+                    && !self.declared_type(callee) =>
+                {
                     Ent::Foreign(callee.clone())
                 }
                 _ => Ent::Unknown,
@@ -1073,11 +1076,19 @@ impl<'w> Engine<'w> {
         if self.ix.swift && text.starts_with(char::is_uppercase) {
             // A type the repository may extend (`extension Int`).
             Ent::Foreign(name.clone())
-        } else if text.starts_with(char::is_uppercase) {
+        } else if text.starts_with(char::is_uppercase) && !self.declared_type(name) {
             Ent::External
         } else {
             Ent::Unknown
         }
+    }
+
+    /// A name no import and no package in reach binds is a library's only while the
+    /// repository declares no type of it: one that does is a file whose package
+    /// clause or imports do not reach it, and what it names is unknown. Swift reaches
+    /// a module's types without a clause: its own rules stay.
+    fn declared_type(&self, name: &Name) -> bool {
+        !self.ix.swift && self.ix.types.contains_key(name)
     }
 
     fn entity_of_member(&self, id: usize, depth: usize) -> Ent {
@@ -1311,7 +1322,10 @@ impl<'w> Engine<'w> {
                     Found::Defs(ids, how) => self.resolved_or_overloaded(&ids, how, &r.name, false),
                     Found::Blocked(reason) => unresolved(reason),
                     Found::External => unresolved(UnresolvedReason::External),
-                    Found::Nothing if r.name.as_str().starts_with(char::is_uppercase) => {
+                    Found::Nothing
+                        if r.name.as_str().starts_with(char::is_uppercase)
+                            && !self.declared_type(&r.name) =>
+                    {
                         unresolved(UnresolvedReason::External)
                     }
                     Found::Nothing => unresolved(UnresolvedReason::NoBinding),
